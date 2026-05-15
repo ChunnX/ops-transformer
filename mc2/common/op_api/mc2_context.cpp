@@ -100,7 +100,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclRankGraphGetLayers), "HcclRankGraphGetLayers"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRankSizeByLayer), "HcclRankGraphGetRankSizeByLayer"},
         {reinterpret_cast<void **>(&HcclChannelAcquire), "HcclChannelAcquire"},
-        {reinterpret_cast<void **>(&HcclGetHcclBuffer), "HcclGetHcclBuffer"},
+        {reinterpret_cast<void **>(&HcclGetHcclBufferCleared), "HcclGetHcclBufferCleared"},
         {reinterpret_cast<void **>(&HcclChannelGetHcclBuffer), "HcclChannelGetHcclBuffer"},
         {reinterpret_cast<void **>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
         {reinterpret_cast<void **>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
@@ -287,7 +287,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
         HcclResult hcclRet;
 
         if (i == rankId) {
-            hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+            continue;
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
             hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
@@ -305,8 +305,8 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
 }
 
 aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                        const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                        Mc2MoeContext *mc2ContextStruct)
+                                        const CommEngine &engine, const CommProtocol &protocol, 
+                                        Mc2MoeContext *mc2ContextStruct, void *&ctx, uint64_t &hcclBuffSize)
 {
     OP_LOGD("Start to create HCCL context");
     uint64_t ctxSize = sizeof(Mc2MoeContext);
@@ -331,6 +331,15 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
     }
     OP_LOGD("Get rank size success, rankSize is: %u", epRankSize_);
 
+    void *tempBuffer = nullptr;
+    hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize_);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Cleared failed");
+        return ACLNN_ERR_INNER;
+    }
+    mc2ContextStruct->epHcclBuffer_[mc2ContextStruct->epRankId] = reinterpret_cast<uint64_t>(tempBuffer);
+    OP_LOGD("Get HCCL Buffer Cleared success, hcclBuffSize is: %u", hcclBuffSize_);
+
     auto ret = GetHcclCommResource(hcclHandle, engine, protocol, mc2ContextStruct);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL communication resource failed");
@@ -344,6 +353,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         return ACLNN_ERR_INNER;
     }
     OP_LOGD("Copy context from host to device success");
+    hcclBuffSize = hcclBuffSize_;
     return ACLNN_SUCCESS;
 }
 
@@ -371,7 +381,7 @@ aclnnStatus Mc2Context::CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context)
 aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize)
 {
     void *tempBuffer = nullptr;
-    auto hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize);
+    auto hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Size failed");
         return ACLNN_ERR_INNER;
@@ -479,22 +489,20 @@ aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                              const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                              uint64_t &hcclBuffSize)
+aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                          const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize)
 {
     uint64_t ctxSize = 0;
     auto hcclRet = HcclEngineCtxGet(hcclHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
-    if (hcclRet != HCCL_SUCCESS) {
-        Mc2MoeContext mc2ContextStruct;
-        auto aclnnRet = CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct);
-        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-        hcclBuffSize = hcclBuffSize_;
-    } else {
-        auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
-        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    if (hcclRet != HCCL_SUCCESS) { // 没找到缓存，创建context
+        hcclBuffSize = 0;
+        OP_LOGI("Context cache not found, need to create");
+        return ACLNN_SUCCESS;
     }
+    auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     return ACLNN_SUCCESS;
+
 }
 
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
@@ -509,6 +517,8 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     void *ctx = nullptr;
     CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
+    CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+    hcclBuffSize = 0;
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
@@ -517,11 +527,20 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+    aclnnRet = instance.CheckContextCache(hcclHandle, mc2ContextTag, engine, ctx, hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    if (hcclBuffSize != 0) { // 找到缓存，直接返回
+        aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+        OP_LOGD("Found context cache, Get Mc2MoeContext Tensor Success");
+        return ACLNN_SUCCESS;
+    }
+
     aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    aclnnRet = instance.GetOrCreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, hcclBuffSize);
+    Mc2MoeContext mc2ContextStruct;
+    aclnnRet = instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol, &mc2ContextStruct, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);

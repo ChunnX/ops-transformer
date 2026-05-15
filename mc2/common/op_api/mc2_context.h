@@ -56,16 +56,16 @@ private:
     aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
                                     Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                                const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
+                                const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct,
+                                void *&ctx, uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
     aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum);
     aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
-    aclnnStatus GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                      const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                      uint64_t &hcclBuffSize);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
+    aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,
+                                void *&ctx, uint64_t &hcclBuffSize);
 
     const std::string GetLibPath();
     template <typename T>
@@ -82,7 +82,7 @@ private:
     HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t **, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t *) = nullptr;
     HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc *, uint32_t, ChannelHandle *) = nullptr;
-    HcclResult (*HcclGetHcclBuffer)(HcclComm, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclGetHcclBufferCleared)(HcclComm, void **, uint64_t *) = nullptr;
     HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void **, uint64_t *) = nullptr;
     HcclResult (*HcclEngineCtxCreate)(HcclComm, const char *, CommEngine, uint64_t, void **) = nullptr;
     HcclResult (*HcclEngineCtxGet)(HcclComm, const char *, CommEngine, void **, uint64_t *) = nullptr;
