@@ -63,7 +63,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAllV2Get
     const aclTensor* x1Scale, const aclTensor* x2Scale,
     const aclTensor* commScaleOptional,
     const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
-    const aclIntArray* alltoAllAxesOptional, const char* group,
+    const aclIntArray* alltoAllAxesOptional, const char* group, const char* commMode,
     int64_t x1QuantMode, int64_t x2QuantMode,
     int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
     bool transposeX1, bool transposeX2, const aclTensor* output,
