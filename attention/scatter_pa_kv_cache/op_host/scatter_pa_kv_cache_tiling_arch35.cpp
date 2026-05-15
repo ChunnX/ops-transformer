@@ -785,10 +785,10 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, slotMapping);
     slotMappingShape_ = slotMapping->GetStorageShape();
 
-    auto inputValue = context_->GetRequiredInputTensor(inputValue_);
-    auto inputValueCacheIn = context_->GetRequiredInputTensor(inputValueCacheIn_);
     if (inOutMode_ == DUAL_IN_OUT) {
+        auto inputValue = context_->GetRequiredInputTensor(inputValue_);
         OP_CHECK_NULL_WITH_CONTEXT(context_, inputValue);
+        auto inputValueCacheIn = context_->GetRequiredInputTensor(inputValueCacheIn_);
         OP_CHECK_NULL_WITH_CONTEXT(context_, inputValueCacheIn);
         inputValueShape_ = inputValue->GetStorageShape();
         inputValueCacheInShape_ = inputValueCacheIn->GetStorageShape();
