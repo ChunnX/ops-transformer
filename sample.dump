@@ -1,0 +1,10 @@
+[info] [00004178] (PC: 0x900864e000) SCALAR  : operation 1
+[info] [00004200] (PC: 0x900864e001) SCALAR  : operation 2
+[info] [00004350] (PC: 0x900864e002) SCALAR  : operation 3
+[info] [00004500] (PC: 0x900864e003) SCALAR  : operation 4
+[info] [00004800] (PC: 0x900864e004) SCALAR  : operation 5
+[info] [00005000] (PC: 0x900864e005) SCALAR  : operation 6
+[info] [00005200] (PC: 0x900864e006) SCALAR  : operation 7
+[info] [00005500] (PC: 0x900864e007) SCALAR  : operation 8
+[info] [00005800] (PC: 0x900864e008) SCALAR  : operation 9
+[info] [00006000] (PC: 0x900864e009) SCALAR  : operation 10
