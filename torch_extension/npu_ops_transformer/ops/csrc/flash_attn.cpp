@@ -26,7 +26,7 @@ const int64_t MAX_DIM_SIZE = 8;
  */
 std::tuple<at::Tensor, at::Tensor>
 npu_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
-               const c10::optional<at::Tensor> &block_able, const c10::optional<at::Tensor> &cu_seqlens_q,
+               const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &cu_seqlens_q,
                const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
                const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
                const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata,
@@ -81,7 +81,7 @@ npu_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
 
     // 考虑直接调，对照aclnn接口
-    ACLNN_CMD(aclnnFlashAttn, q, k, v, block_able, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask,
+    ACLNN_CMD(aclnnFlashAttn, q, k, v, block_table, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask,
               metadata, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
               layout_kv_ptr, layout_out_ptr, return_softmax_lse, deterministic, attentionOutput, softmaxLse);
 

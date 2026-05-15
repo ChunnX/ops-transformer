@@ -23,8 +23,8 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, True, True, True, True, True, True])
+        [False, False, False, False, False, False, False, False, False, False, False],
+        [False, False, False, True, True, True, True, True, True, True])
     def FlashAttn(q: Tensor,
         k: Tensor,
         v: Tensor,
@@ -34,6 +34,7 @@ if _TORCHAIR_AVAILABLE:
         seqused_q: Optional[Tensor],
         seqused_kv: Optional[Tensor],
         sinks: Optional[Tensor],
+        attn_mask: Optional[Tensor],
         metadata: Optional[Tensor],
         softmax_scale: float = 1.0,
         mask_mode: int = 0,
@@ -61,6 +62,7 @@ if _TORCHAIR_AVAILABLE:
         seqused_q: Tensor = None,
         seqused_kv: Tensor = None,
         sinks: Tensor = None,
+        attn_mask: Tensor = None,
         metadata: Tensor = None,
         softmax_scale: float = 1.0,
         mask_mode: int = 0,
@@ -85,6 +87,7 @@ if _TORCHAIR_AVAILABLE:
                         seqused_q = seqused_q,
                         seqused_kv = seqused_kv,
                         sinks =sinks,
+                        attn_mask = attn_mask,
                         metadata = metadata,
                         softmax_scale = softmax_scale,
                         mask_mode = mask_mode,
