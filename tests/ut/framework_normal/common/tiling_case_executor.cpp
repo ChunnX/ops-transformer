@@ -19,6 +19,8 @@
 #include <iomanip>
 #include <cstdint>
 
+constexpr uint64_t SKIP_TILING_KEY_VALIDATION = UINT64_MAX;
+
 #define DO_TILING(tilingPara)                                                                                          \
     auto contextFaker = gert::TilingContextFaker();                                                                    \
     /* 1. input/output information */                                                                                  \
@@ -325,8 +327,10 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
     }
 
     // check tiling key
-    auto tilingKeyResult = tilingContext->GetTilingKey();
-    ASSERT_EQ(tilingKeyResult, expectTilingKey);
+    if (expectTilingKey != SKIP_TILING_KEY_VALIDATION) {
+        auto tilingKeyResult = tilingContext->GetTilingKey();
+        ASSERT_EQ(tilingKeyResult, expectTilingKey);
+    }
 
     // check tiling data
     if (expectTilingData != "") {
