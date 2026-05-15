@@ -450,7 +450,7 @@ gmm:
     options:
       - grouped_matmul
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant:
     module: True
@@ -464,7 +464,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant_v2:
     module: True
