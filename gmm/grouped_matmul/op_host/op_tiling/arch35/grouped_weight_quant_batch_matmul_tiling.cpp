@@ -150,12 +150,12 @@ bool GroupedWeightQuantBatchMatmulTiling::IsNzFormat(const gert::TilingContext *
 bool GroupedWeightQuantBatchMatmulTiling::CheckXAndWeightFormat(const gert::TilingContext *context, size_t idx) const
 {
     bool xNzFlag = IsNzFormat(context, X_IDX, idx);
-    OP_CHECK_IF(xNzFlag, OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(context->GetNodeName(), "x[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "FORMAT_ND"),
+    OP_CHECK_IF(xNzFlag, OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(context->GetNodeName(), "x[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "FORMAT_ND"),
                 return false);
     if (IsA16W4ND()) {
         bool weightNzFlag = IsNzFormat(context, WEIGHT_IDX, idx);
         OP_CHECK_IF(weightNzFlag,
-                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(context->GetNodeName(), "weight[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "FORMAT_ND"),
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(context->GetNodeName(), "weight[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "FORMAT_ND"),
                     return false);
         return true;
     }
@@ -922,11 +922,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckBiasDtype(const gert::TilingConte
 bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert::TilingContext *context) const
 {
     if (IsA16W4ND()) {
-        OP_CHECK_IF(
-            (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT)) &&
-                (groupType_ != static_cast<int64_t>(GroupType::SPLIT_M)),
-            OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
-                                       "when x-weight is bf16/fp16-int32/int4, grouptype only supports -1 or 0"),
+        OP_CHECK_IF((groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT)) && (groupType_ != static_cast<int64_t>(GroupType::SPLIT_M)),
+            OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "when x-weight is bf16/fp16-int32/int4, grouptype only supports -1 or 0"),
             return false);
         if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
             OP_CHECK_IF((splitItem_ != 0 && splitItem_ != 1),
