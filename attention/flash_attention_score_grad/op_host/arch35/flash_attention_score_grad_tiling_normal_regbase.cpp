@@ -169,6 +169,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) : 0;
+        fBaseParams.b -= fBaseParams.tailZeroCount;
     } else {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
@@ -1586,7 +1587,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
 {
     s1s2BNGS1S2BaseParams_->set_coreNum(fBaseParams.coreNum);
     // set tilingdata baseinfo
-    s1s2BNGS1S2BaseParams_->set_b(fBaseParams.b - fBaseParams.tailZeroCount);
+    s1s2BNGS1S2BaseParams_->set_b(fBaseParams.b);
     s1s2BNGS1S2BaseParams_->set_n2(fBaseParams.n2);
     s1s2BNGS1S2BaseParams_->set_g(fBaseParams.g);
     s1s2BNGS1S2BaseParams_->set_s1(fBaseParams.s1);
