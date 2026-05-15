@@ -257,7 +257,7 @@ __aicore__ inline void VecOp<SFAGT>::InitParams(const TILING_CLASS *__restrict o
 
     if constexpr (IS_BSND == false) {
         dimTq = dimS1;
- 	  	dimTkv = dimS2;
+        dimTkv = dimS2;
     } else {
         dimTq = dimB * dimS1;
         dimTkv = dimB * dimS2;
