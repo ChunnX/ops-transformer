@@ -274,7 +274,8 @@ constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
 
 template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT,
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE,
-          ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
+          ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE = false, uint32_t CV_RATIO = 2,
+          bool IS_SPLIT_KN = false, typename... Args>
 struct MLAPType {
     using mmInputType = X_T;           // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
@@ -307,14 +308,16 @@ struct MLAPType {
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+    static constexpr bool isSplitKn = IS_SPLIT_KN;
 };
 
 // 类模板特化，支持mxfp8/fp8全量化
 #if __CCE_AICORE__ == 310
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
-          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
+          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO,
+          bool IS_SPLIT_KN, typename... Args>
 struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
-                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, Args...> {
+                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, IS_SPLIT_KN, Args...> {
     using mmInputType = FP8E4M3;           // tokenX的类型与weight的类型一致
     using mmQcQrInputType = FP8E4M3;
     using mmQnInputType = bfloat16_t;         // matmul计算Qn的输入类型
@@ -344,13 +347,15 @@ struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+    static constexpr bool isSplitKn = IS_SPLIT_KN;
 };
 
 // 类模板特化，支持hif8全量化
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
-          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
+          EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO,
+          bool IS_SPLIT_KN, typename... Args>
 struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
-                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, Args...> {
+                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, IS_SPLIT_KN, Args...> {
     using mmInputType = HIF8;           // tokenX的类型与weight的类型一致
     using mmQcQrInputType = HIF8;
     using mmQnInputType = bfloat16_t;         // matmul计算Qn的输入类型
@@ -380,6 +385,7 @@ struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
+    static constexpr bool isSplitKn = IS_SPLIT_KN;
 };
 #endif
 

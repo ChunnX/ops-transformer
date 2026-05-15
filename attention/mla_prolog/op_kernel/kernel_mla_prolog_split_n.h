@@ -206,7 +206,6 @@ private:
     uint32_t curStepVecBackToken_;
     uint32_t curVecTokenMax_;
     bool enableSmoothScalesCq_;
-    bool splitKN = false;
     static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv1:2
     static constexpr bool isFp8E8m0 = std::is_same<dequantScaleType, FP8E8M0>::value;
     uint32_t cvRatio_ = 2U; // 默认cv 1:2
@@ -373,7 +372,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
     }
 
-    splitKN = baseParams_->mm1KnKGroupSize > 1;
     ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW,
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
@@ -524,7 +522,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
     mmQcQrParam_.orgN = mmQcQrParam_.n;
     mmQcQrParam_.orgKa = mmQcQrParam_.k;
     mmQcQrParam_.orgKb = mmQcQrParam_.k;
-    if (splitKN) {
+    if (MLAPT::isSplitKn) {
         mmQcQrParam_.orgKc = (baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope); // (128 * 32 + 64 * 32)
     } else {
         mmQcQrParam_.orgKc = (baseParams_->headSizeQc + baseParams_->headSizeQr); // (128 * 32 + 64 * 32)
@@ -533,7 +531,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
     if constexpr (MLAPT::enableGroupComputeOpt) {
         mmQcQrParam_.baseN = 128;
     } else {
-        if (splitKN) {
+        if (MLAPT::isSplitKn) {
             mmQcQrParam_.baseN = 192;
         } else {
             if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) { // FP8全量化场景下L1B用满，修改baseN会造成内存踩踏
@@ -584,7 +582,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
     usedShareBytes = 0;
-    if (splitKN) {
+    if (MLAPT::isSplitKn) {
         uint64_t cvShareBufferSize = 64 * 192 * 4 + 64 * 512 * 4;
         pipe_->InitBuffer(shareBuffer_, cvShareBufferSize);
         mm3ResLocal_ = shareBuffer_.Get<float>();
@@ -667,7 +665,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     usedBytes += deQuantScaleCqSize;
 
     uint64_t sincosSize = 0;
-    if (MLAPT::enableDequantOpt || splitKN) {
+    if (MLAPT::enableDequantOpt || MLAPT::isSplitKn) {
         // 在ropeQr进行切N处理后，会复用shareBuffer的内存，不需要额外申请
         // 开启开关后会按照head切分rope qr，此时需要加载一半batchsize数量的sin和cos值
         // 需要2倍的空间分别存储sin和cos
@@ -680,7 +678,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     }
     usedBytes += sincosSize;
 
-    if (MLAPT::enableDequantOpt || splitKN) {
+    if (MLAPT::enableDequantOpt || MLAPT::isSplitKn) {
         cosLocal_ = sincosBuffer_.Get<ropeComputType>();
         sinLocal_ = cosLocal_[baseParams_->dimHeadRope * ((baseParams_->stepBatchSize + cvRatio_ - 1) / cvRatio_)];
     } else {
@@ -696,7 +694,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     }
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
-    if (splitKN) {
+    if (MLAPT::isSplitKn) {
         pipe_->InitBuffer(shareBuffer2_, MAX_UB_SIZE - usedBytes);
     } else {
         pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
@@ -1024,7 +1022,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 #endif
     CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
 
-    if (splitKN) {
+    if (MLAPT::isSplitKn) {
         M3AndM4<needQnDynamicQuant>(aicOffset);
     } else {
         if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
@@ -1090,7 +1088,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 
     // 根据不同分支条件处理
-    if (splitKN) {
+    if (MLAPT::isSplitKn) {
         V3AndV4<needQnDynamicQuant>(aivOffset, batchOffset);
         aivOffset.ropeQrResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeQr);
     } else {
@@ -1186,7 +1184,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
     aivOffset.rmsNormCqOffset = baseParams_->headSizeCq * aivOffset.curBlockTokenOffset;  //  1536 * idx
     aivOffset.rmsNormCkvOffset = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) * aivOffset.curBlockTokenOffset;  // (512 + 64) * idx
     aivOffset.ropeKrOffset = baseParams_->headSizeCkv + aivOffset.rmsNormCkvOffset;  // 512 + (512 + 64) * idx
-    if (!MLAPT::enableDequantOpt && !splitKN) {
+    if (!MLAPT::enableDequantOpt && !MLAPT::isSplitKn) {
         aivOffset.mmQnPreDequantOffset = (baseParams_->headSizeQc + baseParams_->headSizeQr) * aivOffset.curBlockTokenOffset;
         aivOffset.mmQnPreDequantResOffset = baseParams_->headSizeQc * aivOffset.curBlockTokenOffset;
         aivOffset.ropeQrOffset = static_cast<int64_t>(baseParams_->dimHeadSizeQc) + static_cast<int64_t>(baseParams_->numHeadSize) *
@@ -1196,7 +1194,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
 
     // 以下的Offset均是与batchOffset无关的，仅初始化一次即可。
     if (batchOffset == 0) {
-        if (MLAPT::enableDequantOpt || splitKN) {
+        if (MLAPT::enableDequantOpt || MLAPT::isSplitKn) {
             aivOffset.mmQnPreDequantOffset = baseParams_->mm3SingleCoreN * cubeBlockIdx_; //qcQrResOffset
             aivOffset.mmQnPreDequantResOffset = baseParams_->mm3SingleCoreN / (baseParams_->dimHeadSizeQc +
                 baseParams_->dimHeadRope) * baseParams_->dimHeadSizeQc * cubeBlockIdx_;
@@ -1465,7 +1463,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyInSinCos(int64_t tokenInd
         int64_t offset = (curStepBatchSize / cvRatio_) * subBlockIdx_ + batchOffset;
         GatherSinCos<ropeSinCosType, ropeComputType>(cosLocal_, sinLocal_, ropeCosGm_, ropeSinGm_, offset, (curStepBatchSize + cvRatio_ - 1) / cvRatio_,
             shareTmpUb, vectorRow_, baseParams_->dimHeadRope);
-    } else if (splitKN) {
+    } else if (MLAPT::isSplitKn) {
         // 如果是切N场景，mm3的每个C核都会做rope
         if (cubeBlockIdx_ >= baseParams_->mm3BlockNum) {
             return;
@@ -1909,7 +1907,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(
 
     LocalTensor<ropeComputType> cosLocal;
     LocalTensor<ropeComputType> sinLocal;
-    if (MLAPT::enableDequantOpt || splitKN) {
+    if (MLAPT::enableDequantOpt || MLAPT::isSplitKn) {
         cosLocal = cosLocalCkvKr[baseParams_->dimHeadRope * ropeAndScatterKrParams.curVecTokenIdx];
         sinLocal = sinLocalCkvKr[baseParams_->dimHeadRope * ropeAndScatterKrParams.curVecTokenIdx];
     } else {
@@ -2018,7 +2016,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormRopeScatterCkvKr(int64
     LocalTensor<ropeComputType> cosLocalCkvKr = dequantScaleXLocal[FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<ropeComputType>();
     LocalTensor<ropeComputType> sinLocalCkvKr = cosLocalCkvKr[baseParams_->dimHeadRope * curVecToken];
     LocalTensor<uint8_t> shareTmpUb = sinLocalCkvKr[baseParams_->dimHeadRope * curVecToken].template ReinterpretCast<uint8_t>();
-    if (MLAPT::enableDequantOpt || splitKN) {
+    if (MLAPT::enableDequantOpt || MLAPT::isSplitKn) {
         GatherSinCos<ropeSinCosType, ropeComputType>(cosLocalCkvKr, sinLocalCkvKr, ropeCosGm_, ropeSinGm_, tokenIndex, curVecToken,
                     shareTmpUb, vectorRow_, baseParams_->dimHeadRope);
     }
