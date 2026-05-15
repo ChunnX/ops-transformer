@@ -485,17 +485,11 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     }
     
     uint8_t quanMmMode = static_cast<uint8_t>(quantMmMode_) - 1;
-    uint8_t commMode = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)?
-                        Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
-    // Non-A5 platform must use AICPU mode
-    if (npuArch_ != NpuArch::DAV_3510) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        inputIsBf16Fp16_, args_.isBTrans, outputType, quanMmMode, scaleType, commMode);
+        inputIsBf16Fp16_, args_.isBTrans, outputType, quanMmMode, scaleType);
     OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, outputType, "        \
-        "args_.isBTrans, quanMmMode, scaleType, commMode: [%d,%u,%d,%u,%u,%d]",              \
-        inputIsBf16Fp16_, outputType, args_.isBTrans, quanMmMode, scaleType, commMode);
+        "args_.isBTrans, quanMmMode, scaleType: [%d,%u,%d,%u,%u]",              \
+        inputIsBf16Fp16_, outputType, args_.isBTrans, quanMmMode, scaleType);
     OP_LOGD(opName_, "tilingkey=%lu", tilingKey);
     return tilingKey;
 }
