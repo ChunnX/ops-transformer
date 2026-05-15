@@ -32,7 +32,18 @@ using namespace AscendC;
 constexpr uint64_t PERBLOCK_BLOCK_SIZE = 128;
 constexpr uint32_t MAX_RANK_DIM = 64;
 
-template <typename AType, typename CType, Mc2CoreType CoreType>
+template<uint8_t commMode>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template<>
+struct HcclTypeSelector<HCCL_COMM_MODE_AICPU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template <typename AType, typename CType, Mc2CoreType CoreType,
+          uint8_t ServerMode = HCCL_COMM_MODE_CCU>
 class AllGatherMatmulBase
 {
 public:
@@ -145,7 +156,7 @@ protected:
     Mc2Tiling::MC2TileInfo localInfo_;
     Mc2Tiling::MC2TileInfo tileInfo_;
     Mc2Tiling::MC2TileInfo tailInfo_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<ServerMode>::type hccl_;
     AscendC::HcclDataType dataType_;
     GM_ADDR context_;
     bool notifyFlag_;

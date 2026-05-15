@@ -38,7 +38,7 @@ namespace AllGatherMatmulImpl {
 using namespace AscendC;
 
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans>
+           bool BTrans, uint8_t ServerMode = HCCL_COMM_MODE_CCU>
 class AllGatherQuantBmm {
 public:
     __aicore__ inline AllGatherQuantBmm() {}
@@ -77,7 +77,7 @@ private:
     uint32_t rankId_;
 
     HcclHandle handleList_[MAX_HANDLE_WITH_SCALE1];             /* hccl handle */
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hcclAllgather_;
+    typename HcclTypeSelector<ServerMode>::type hcclAllgather_;
     uint64_t preCoreNum_ = 0;
 };
 
@@ -98,8 +98,8 @@ private:
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans>::Init(
+           bool BTrans, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, ServerMode>::Init(
                                 GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1,
                                 GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
                                 GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
@@ -146,9 +146,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans>
+           bool BTrans, uint8_t ServerMode>
 __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
-                                         CType, ATrans, BTrans>::AllGatherCommit() {
+                                         CType, ATrans, BTrans, ServerMode>::AllGatherCommit() {
     auto&& cfg = tilingData_->param;
     uint32_t tileCnt = cfg.tileCnt;                                     // 整块个数
     uint32_t tailCnt = cfg.tailCnt;                                     // 尾块个数
@@ -196,9 +196,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans>
+           bool BTrans, uint8_t ServerMode>
 __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
-                                         X2ScaleType, CType, ATrans, BTrans>::QuantMatmulLocalCompute() {
+                                         X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulLocalCompute() {
     auto &&cfg = tilingData_->param;
     auto &&qBMMLocalTiling = tilingData_->quantBmmv3LocalTiling;     // QuantBatchMatmulV3TilingData 本地核切分tiling参数
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
@@ -228,9 +228,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans>
+           bool BTrans, uint8_t ServerMode>
 __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
-                                         CType, ATrans, BTrans>::MatmulKernelComputeGather(
+                                         CType, ATrans, BTrans, ServerMode>::MatmulKernelComputeGather(
     GM_ADDR aGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& qMmv3Tiling, uint32_t count, bool isLast, bool isTail)
 {
     auto&& cfg = tilingData_->param;
@@ -285,9 +285,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
  * @return void
 */
 template <typename AType, typename BType, typename BiasType,
-          typename X2ScaleType, typename CType, bool ATrans, bool BTrans>
+          typename X2ScaleType, typename CType, bool ATrans, bool BTrans, uint8_t ServerMode>
 __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
-                                         X2ScaleType, CType, ATrans, BTrans>::QuantMatmulCompute() {
+                                         X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulCompute() {
     auto &&cfg = tilingData_->param;
     // 计算本片的块
     // 未用到的AIC核不需要参与计算
@@ -308,9 +308,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
 }
 
 template <
-    typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans, bool BTrans>
+    typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans, bool BTrans, uint8_t ServerMode>
 __aicore__ inline void
-AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans>::QuantMatmulGatherCompute()
+AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulGatherCompute()
 {
     auto &&cfg = tilingData_->param;
     // 处理gather主块
@@ -341,8 +341,8 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans>::Q
  * @return void
 */
 template <typename AType, typename BType, typename BiasType,
-          typename X2ScaleType, typename CType, bool ATrans, bool BTrans>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans>::PostProcess() {
+          typename X2ScaleType, typename CType, bool ATrans, bool BTrans, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, ServerMode>::PostProcess() {
     // 在最后一次计算完成后，单核清除状态位置，避免核间读写依赖
     // 防止某一个核执行过快清空RcvCnt, 增加全核同步
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
@@ -356,8 +356,8 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
  * @return void
 */
 template <typename AType, typename BType, typename BiasType,
-          typename X2ScaleType, typename CType, bool ATrans, bool BTrans>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans>::Process() {
+          typename X2ScaleType, typename CType, bool ATrans, bool BTrans, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, ServerMode>::Process() {
     // AIV核不进行通信和计算
     if ASCEND_IS_AIC {
         // 通信
