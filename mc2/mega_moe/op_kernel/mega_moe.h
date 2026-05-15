@@ -860,15 +860,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // 与 GMM1 epilogue(AIV0)→AIC 用的 flag 6 自动错开。
         // 信号是 per-pair 的，不同 pair 之间天然隔离，所以 group 之间也无需再分 flag。
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
-        constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
+        // constexpr uint16_t WAVE_BARRIER_FLAG = 1U;  // 配合 wave-end barrier 用，已关掉
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
-            // wave 起点的 AIC 等待端：上一 wave subBlock1 combine MTE3 完成后才能复用 UB。
-            // [EXP-A] 之前为 timeline 实验注释过，但关掉会让 UB race 破坏精度 —— 现在恢复。
-            if (anyWaveDone_) {
-                if constexpr(g_coreType == AIC) {
-                    WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-                }
-            }
+            // [REMOVED] wave 起点的 AIC 等待端：原本用来等上一 wave AIV1 combine MTE3 完成。
+            // 重新分析后发现没有数据依赖：
+            //   - AIV0 (sub0) 与 AIV1 (sub1) 的 UB 物理上独立
+            //   - cube GMM1 fixpipe 输出送到 sub0 UB（epi 读侧），与 sub1 combine 用的 UB 不冲突
+            //   - GM 上 A2 / gmm2Out / win 区都按 waveIdx 分 offset，跨 wave 无冲突
+            // 所以这条 barrier 是多余的，关掉让 cube 流水直接跑下一 wave。
+            // if (anyWaveDone_) {
+            //     if constexpr(g_coreType == AIC) {
+            //         WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
+            //     }
+            // }
 
             // [TRACE] sp0: wave loop iteration 入口
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_ENTRY);
@@ -925,14 +929,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // [TRACE] sp10: GMM2 函数返回后
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM2_END);
 
-            // wave 末的 AIV1 发送端：等到 subBlock1 combine MTE3 完成才告诉 AIC 可以进下一 wave。
-            // 与上面 AIC WaitForVectorFromAIV1 配对。
-            if constexpr(g_coreType == AscendC::AIV) {
-                if (subBlockIdx_ == 1) {
-                    SyncFunc<AscendC::HardEvent::MTE3_V>();
-                    NotifyCube(WAVE_BARRIER_FLAG);
-                }
-            }
+            // [REMOVED] wave 末的 AIV1 发送端：原本配合 wave-start AIC WaitForVectorFromAIV1，
+            // 避免 cube GMM1 fixpipe 覆盖 sub1 combine 还没读完的 UB。sub0/sub1 UB 独立后不需要了。
+            // if constexpr(g_coreType == AscendC::AIV) {
+            //     if (subBlockIdx_ == 1) {
+            //         SyncFunc<AscendC::HardEvent::MTE3_V>();
+            //         NotifyCube(WAVE_BARRIER_FLAG);
+            //     }
+            // }
 
             // [TRACE] sp11: wave loop iteration 出口
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_END);
@@ -946,13 +950,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // [TRACE] expert loop 整体结束
     MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_EXPERT_LOOP_END);
 
-    // expert loop 结束后 drain：消费最后一发 wave-end 屏障 NotifyCube，与上面配对。
-    if (anyWaveDone_) {
-        if constexpr(g_coreType == AIC) {
-            constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
-            WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-        }
-    }
+    // [REMOVED] expert loop 出口的 drain：原本消费最后一发 NotifyCube。
+    // 现在 wave-end barrier 都关了，没有未消费 flag。
+    // if (anyWaveDone_) {
+    //     if constexpr(g_coreType == AIC) {
+    //         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
+    //         WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
+    //     }
+    // }
 
     if (subBlockIdx_ == 0) {
         PipeBarrier<PIPE_ALL>();
