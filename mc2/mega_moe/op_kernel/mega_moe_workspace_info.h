@@ -58,7 +58,7 @@ constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
-constexpr int64_t L1_TILE_M = 128LL;
+constexpr int64_t L1_TILE_M = 256LL;
 } // namespace
 
 struct WorkspaceInfo {

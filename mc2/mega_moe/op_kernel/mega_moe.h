@@ -382,14 +382,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndSync()
     if (vecSetSyncCom_ == 0) {
         return;
     }
+    // 与 impl.h GMM1 中的 kGmm1Pingpong 判定一致：UB 能塞下两块才走 pingpong drain
+    constexpr bool kGmm1Pingpong = IsInterleaved &&
+        (MegaMoeImpl::MAX_SINGLE_MN_ALIGN32_NUM * sizeof(float) * 2U <= MegaMoeImpl::UB_CAPACITY_BYTES);
     if constexpr(g_coreType == AIC) {
-        if constexpr (IsInterleaved) {
+        if constexpr (kGmm1Pingpong) {
             // 交织+pingpong 末尾仍有未消费 NotifyCube：
-            //   vecSetSyncCom_ == 1 → 仅 flag 0 留一发（iter 0 的 NotifyCube(0)）
-            //   vecSetSyncCom_ >= 2 → 两块 flag 各留一发，FIFO 中 head 的 flag = vecSetSyncCom_ % 2
-            //                          （循环结束时 pingpongIdx_after = N%2，head 就是它）
-            // CrossCoreWaitFlag 底层是 FIFO，wait 顺序必须按 NotifyCube 实际发出顺序，
-            // 否则 wait 头部不匹配的那一发会死等（参考老 GMM2 pingpong 写法）。
+            //   vecSetSyncCom_ == 1 → 仅 flag 0 留一发
+            //   vecSetSyncCom_ >= 2 → 两块 flag 各留一发，FIFO head 的 flag = vecSetSyncCom_ % 2
+            // CrossCoreWaitFlag 底层 FIFO，wait 顺序必须按 NotifyCube 发出顺序。
             if (vecSetSyncCom_ == 1) {
                 WaitForVector(0);
             } else {
@@ -398,6 +399,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndSync()
                 WaitForVector(static_cast<uint16_t>(1U - firstPendingIdx));
             }
         } else {
+            // 单 UB（非交织 或 交织+L1_TILE_M=256）：单通道，drain 一发
             WaitForVector();
         }
     }

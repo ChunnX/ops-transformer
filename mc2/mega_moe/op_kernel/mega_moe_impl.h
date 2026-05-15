@@ -36,14 +36,16 @@ using namespace AscendC;
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
 constexpr uint32_t ALIGN32 = 32U;
-constexpr uint32_t L1_TILE_M = 128;
+constexpr uint32_t L1_TILE_M = 256;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
 constexpr uint32_t SCALE_K_L1_RATE = 2;
 constexpr uint32_t SWIGLU_N_HALF = 2;
-constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
+constexpr uint32_t MAX_SINGLE_MN = L1_TILE_M * L1_TILE_N;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
+// UB 容量（Da Vinci AIV 每核 256KB），用于判断 GMM1 是否还能 pingpong（需要 2 块 UbFirst+UbSecond）。
+constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 // coreInGroup / coresPerWave 控制本核在当前 wave 内的分片任务；多组核之间并行处理不同的 wave。
@@ -122,11 +124,20 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
 
+    // GMM1 pingpong 开启条件：交织 + 两块 UbFirst/UbSecond 都能塞进 UB。
+    // L1_TILE_M=128 时 2 * 128*256*4 = 256KB ≤ UB ✓；L1_TILE_M=256 时 2 * 256*256*4 = 512KB ✗。
+    constexpr bool kGmm1Pingpong = IsInterleaved &&
+        (MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC) * 2U <= UB_CAPACITY_BYTES);
+
     int64_t ubOffset = 0;
     auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+    // 没启 pingpong 时 UbSecond 折叠到 0（与 UbFirst alias，永不访问），避免描述符越界
+    int64_t ubSecondOffsetBytes = kGmm1Pingpong
+        ? static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC))
+        : static_cast<int64_t>(0);
+    auto l0cOutUbSecond = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::UB, ElementC>(ubSecondOffsetBytes), layoutC);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -188,8 +199,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                               MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
             }
 
-            // 等 AIV 释放对应 pingpong 槽：交织+pingpong 第 3 次起才等；非交织从第 2 次起每次等
-            if constexpr (IsInterleaved) {
+            // 等 AIV 释放 UB 槽：
+            //   kGmm1Pingpong=true（L1_TILE_M=128）：第 3 次起才等（pingpong 流水填满后）
+            //   kGmm1Pingpong=false：每次都等（单 UB，cube 与 vec 串行）
+            if constexpr (kGmm1Pingpong) {
                 if (vecSetSyncCom >= 2) {
                     WaitForVector(pingpongIdx);
                 }
@@ -211,19 +224,26 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             if constexpr (IsInterleaved) {
-                // 交织+pingpong：1 次 mmad，目标 UB = ping(UbFirst) 或 pong(UbSecond)
-                auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
-                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                auto tensorBlockUb = (pingpongIdx == 0) ? tensorBlockUbFirst : tensorBlockUbSecond;
+                // 交织：1 次 mmad；pingpong 时 ping=UbFirst, pong=UbSecond 交替；
+                // 不 pingpong 时永远写 UbFirst（L1_TILE_M=256 即此分支）。
                 auto gmBlockB = gmB.Slice(
                     Te::MakeCoord(kLoc, nLoc),
                     Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 auto gmBlockScaleB = gmScaleB.Slice(
                     Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                     Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-                blockMmad(
-                    gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
-                    tensorBlockUb, singleShape);
+                if constexpr (kGmm1Pingpong) {
+                    auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
+                        Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                    auto tensorBlockUb = (pingpongIdx == 0) ? tensorBlockUbFirst : tensorBlockUbSecond;
+                    blockMmad(
+                        gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
+                        tensorBlockUb, singleShape);
+                } else {
+                    blockMmad(
+                        gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
+                        tensorBlockUbFirst, singleShape);
+                }
             } else {
                 // 非交织：2 次 mmad，分别取 B 的 gate 段（nLoc）和 up 段（nLoc + outputN），
                 // 输出到 UbFirst / UbSecond，swiglu 跨两个 UB 读。
@@ -242,7 +262,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 }
             }
 
-            if constexpr (IsInterleaved) {
+            if constexpr (kGmm1Pingpong) {
                 NotifyVector(pingpongIdx);
             } else {
                 NotifyVector();
@@ -259,8 +279,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             }
         }
 
-        // 计数器：交织模式下每 iter 递增（用于 EndSync 判断 drain 1 还是 2 个 NotifyCube）；非交织置 1
-        if constexpr (IsInterleaved) {
+        // 计数器：pingpong 模式每 iter 递增（用于 EndSync 判断 drain 1/2 个 NotifyCube）；
+        // 单 UB 模式（含非交织和交织+L1_TILE_M=256）置 1，EndSync 只 drain 一个。
+        if constexpr (kGmm1Pingpong) {
             vecSetSyncCom++;
         } else {
             vecSetSyncCom = 1;
@@ -286,9 +307,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
                     CeilDiv(swigluNLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
                 0, mLoc, 0, 0};
-            if constexpr (IsInterleaved) {
+            if constexpr (kGmm1Pingpong) {
                 WaitForCube(pingpongIdx);
-                // [TRACE] sp2: AIV0 第一个 tile WaitForCube 完成
                 if (isFirstTile) {
                     MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                                   MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
@@ -297,14 +317,20 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 epilogueOp(epilogueShape, epilogueOffset, pingpongIdx);
                 NotifyCube(pingpongIdx);
             } else {
+                // 单 UB（交织+L1_TILE_M=256 或 非交织）：单通道 cube↔vec sync
                 WaitForCube();
-                // [TRACE] sp2: AIV0 第一个 tile WaitForCube 完成
                 if (isFirstTile) {
                     MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                                   MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
                 }
                 AscendC::SetCtrlSpr<60, 60>(0);
-                epilogueOp(epilogueShape, epilogueOffset);
+                if constexpr (IsInterleaved) {
+                    // 交织：epi 只读 UbFirst，固定传 pingpongIdx=0
+                    epilogueOp(epilogueShape, epilogueOffset, static_cast<uint16_t>(0));
+                } else {
+                    // 非交织：epi 跨 UbFirst+UbSecond 读 gate/up
+                    epilogueOp(epilogueShape, epilogueOffset);
+                }
                 NotifyCube();
             }
 

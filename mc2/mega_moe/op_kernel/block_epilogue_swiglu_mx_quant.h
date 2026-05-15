@@ -48,7 +48,7 @@ constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
 constexpr uint32_t WAVE_IDX = 3;
 constexpr uint32_t BLOCK_SIZE = 32;
-constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
+constexpr uint32_t MAX_SINGLE_MN = 256 * 256;  // 与 mega_moe_impl.h L1_TILE_M * L1_TILE_N 保持一致
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
@@ -186,8 +186,15 @@ private:
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
-    AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, MAX_SINGLE_MN * sizeof(DataTypeIn),
-                                                     MAX_SINGLE_MN};
+    // l0cOutUbSecond_：仅在 GMM1 pingpong 启用（UbFirst+UbSecond 都 ≤ UB_CAPACITY）时真正占用 128KB。
+    // 当 MAX_SINGLE_MN * sizeof(DataTypeIn) * 2 > 256KB 时（L1_TILE_M=256），单块 UbFirst 已经占满整 UB，
+    // pingpong 关闭。这里把 UbSecond 的 offset 折叠到 0（与 UbFirst alias，绝不会被访问），
+    // 避免描述符越界。
+    static constexpr uint32_t kUbSecondOffset =
+        (MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U <= 256U * 1024U)
+            ? (MAX_SINGLE_MN * sizeof(DataTypeIn))
+            : 0U;
+    AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, kUbSecondOffset, MAX_SINGLE_MN};
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
     AscendC::LocalTensor<int8_t> quantScaleBlockOutput_;
