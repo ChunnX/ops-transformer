@@ -108,8 +108,8 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 
     // 示例：调用 GmmSwigluQuantMxVecCompute 进行 SwiGLU + MX 量化
         {
-            constexpr uint16_t exampleM = 8;
-            constexpr uint16_t exampleN = 8;
+            constexpr uint16_t exampleM = 128;
+            constexpr uint16_t exampleN = 128;
             constexpr uint64_t mxUbMaxSize = 244 * 1024;
 
             GmmSwigluQuantMxA8W4::GmmSwigluQuantMxVecCompute<float, fp8_e4m3fn_t, float> mxCompute;

@@ -47,8 +47,7 @@ constexpr uint32_t MXFP_MULTI_BASE_SIZE = 2;
 /*!
  * \brief UB buffer layout information for GmmSwigluQuantMxVecCompute.
  *
- * Defines fixed byte offsets and total sizes for each UB tensor,
- * aligned with SRS_GMMSQ.md section 8.1.
+ * Defines fixed byte offsets and total sizes for each UB tensor.
  */
 struct GmmSwigluQuantMxUbBufferInfo {
     uint64_t weight8BitOffset;
@@ -128,16 +127,6 @@ __aicore__ constexpr uint64_t ByteSizeToElementCount(uint64_t byteSize)
     GmmSwigluQuantMxVecCompute<DataTypeIn, DataTypeOut, ScaleType>
 
 GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_TEMPLATE_PARAM
-/*!
- * \brief Vector compute class for GMM SwiGLU + MX Quantization.
- *
- * Handles SwiGLU activation, max-exp extraction, scale computation,
- * and FP8/FP4 quantization on the Ascend NPU vector unit.
- *
- * \tparam DataTypeIn  Input data type (e.g., float, bfloat16_t).
- * \tparam DataTypeOut Output quantized data type (e.g., fp8_e4m3fn_t, fp4x2_e2m1_t).
- * \tparam ScaleType   Scale data type (not used directly in this class).
- */
 class GmmSwigluQuantMxVecCompute {
 public:
     __aicore__ inline GmmSwigluQuantMxVecCompute();
@@ -146,7 +135,7 @@ public:
     __aicore__ inline void UpdateOutputShape(int64_t n, int64_t scaleN);
     __aicore__ inline void VFDoSwigluAndQuantForMX(AscendC::LocalTensor<DataTypeIn> &l0cOutUbFirst,
                                                    AscendC::LocalTensor<DataTypeIn> &l0cOutUbSecond,
-                                                   uint16_t mSize, uint16_t nSize);
+                                                   uint16_t halfMSize, uint16_t halfNSize);
     __aicore__ inline void TransMxScaleLayoutVf(uint16_t mSize, uint16_t scaleBlockN);
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset);
     __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset);
@@ -185,7 +174,7 @@ __aicore__ inline GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::GmmSwigluQuantMxVecComp
 /*!
  * \brief Initializes UB tensor allocations and sets fpEmax_ based on output type.
  *
- * UB buffer layout follows SRS_GMMSQ.md section 8.1.
+ * UB buffer layout
  */
 GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::Init()
@@ -200,7 +189,6 @@ __aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::Init()
         fpEmax_ = FP4_E1M2_MAX_EXP;
     }
 
-    // UB buffer allocation follows SRS_GMMSQ.md section 8.1
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(
         AscendC::TPosition::VECCALC, UB_BUFFER_INFO.gluResInYF32Offset,
         ByteSizeToElementCount<bfloat16_t>(UB_BUFFER_INFO.gluResInYF32TotalSize));
@@ -329,15 +317,15 @@ __aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm
  * \brief Performs SwiGLU activation and MX quantization in one pipeline.
  * \param[in] l0cOutUbFirst  First L0C output tensor (Swish branch).
  * \param[in] l0cOutUbSecond Second L0C output tensor (Gate branch).
- * \param[in] mSize          M dimension size for this iteration.
- * \param[in] nSize          N dimension size for this iteration.
+ * \param[in] halfMSize      Half of the M dimension size of L0C output.
+ * \param[in] halfNSize      Half of the N dimension size of L0C output.
  */
 GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::VFDoSwigluAndQuantForMX(
     AscendC::LocalTensor<DataTypeIn> &l0cOutUbFirst, AscendC::LocalTensor<DataTypeIn> &l0cOutUbSecond,
-    uint16_t mSize, uint16_t nSize)
+    uint16_t halfMSize, uint16_t halfNSize)
 {
-    singleN_ = nSize;
+    singleN_ = halfNSize;
     scaleBlockN_ =
         CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
@@ -354,28 +342,27 @@ __aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::VFDoSwigluAndQuant
 
     // SwiGLU
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
-    GmmSwigluVf<DataTypeIn>(firstSrc, secondSrc, gluResAddr, mSize, singleN_,
+    GmmSwigluVf<DataTypeIn>(firstSrc, secondSrc, gluResAddr, halfMSize, singleN_,
                             nSrcUbAligned, nDstUbAligned, oneRowRepeatTimes, sizePerRepeat);
 
     // Quant
-    uint32_t totalDataInUb = mSize * nDstUbAligned;
+    uint32_t totalDataInUb = halfMSize * nDstUbAligned;
     uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;
-    uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2);
-    uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;
+    uint16_t loopDataNum = CeilDiv(static_cast<uint64_t>(totalDataInUb), static_cast<uint64_t>(vlForHalfNumber_ * 2));
+    uint16_t loopScaleNum = CeilDiv(static_cast<uint64_t>(totalScaleInUb), static_cast<uint64_t>(vlForHalfNumber_));
 
-    __ubuf__ bfloat16_t *gluResAddrForQuant = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
     __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr();
     __ubuf__ uint16_t *mxScaleLocalAddr = (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr();
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr();
     __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr();
-    ComputeMaxExpVf(gluResAddrForQuant, maxExpAddr, totalDataInUb, loopDataNum,
+    ComputeMaxExpVf(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum,
                     vlForHalfNumber_, elementAfterReduce_);
 
     ComputeScaleVf(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, totalScaleInUb, loopScaleNum,
                    vlForHalfNumber_, fpEmax_);
 
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
-        ComputeDataForQuantTargetFp8Vf<DataTypeOut>(gluResAddrForQuant, halfScaleLocalAddr, outLocalAddr,
+        ComputeDataForQuantTargetFp8Vf<DataTypeOut>(gluResAddr, halfScaleLocalAddr, outLocalAddr,
                                                      totalDataInUb, loopDataNum,
                                                      vlForHalfNumber_, elementAfterReduce_);
     }
