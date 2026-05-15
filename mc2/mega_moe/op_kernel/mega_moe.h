@@ -170,7 +170,6 @@ private:
     uint32_t coreInGroup_ = 0;
     uint32_t coreGroupId_ = 0;
     bool coreActive_ = true;
-    bool anyWaveDone_ = false;  // 本核是否做过任意 wave，决定 expert loop 结束后是否需消费最后一发 NotifyCube
 
     // [TRACE] 本核连续累计的 wave iteration 序号（跨 expert 累加），用于 RecordWavePoint。
     int waveTraceIdx_ = 0;
@@ -849,26 +848,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         //   - AIC      ：GMM1 mmad，GMM2 mmad
         //   - subBlock 0：GMM1 epilogue (swiglu+quant)
         //   - subBlock 1：dispatch（每 expert 一次，wave loop 之前）+ GMM2 combine（每 wave）
-        // 这样 GMM1 epilogue 和 GMM2 combine 跑在不同 vec subBlock，可以并行重叠。
-        //
-        // 同一核连续做相邻 wave 时，上一 wave subBlock 1 的 combine MTE3 (UB→远端 GM) 还没结束
-        // 时，AIC 已经开始下一 wave GMM1 mmad 的 fixpipe 写 UB，会与 combine 用的 UB 冲突。
-        // 在 wave 末做一次 cube↔vec 屏障：subBlock 1 combine MTE3 完成后 NotifyCube → AIC 进入
-        // 下一 wave GMM1 前 WaitForVectorFromAIV1。
-        //   - AIV1 端：SetFlag(AIV_SYNC_AIC_FLAG + WAVE_BARRIER_FLAG) = 7
-        //   - AIC 端：WaitFlag 必须用 7 + 16 = 23（AIV1→AIC 的 flag id 偏移 +16）
-        // 与 GMM1 epilogue(AIV0)→AIC 用的 flag 6 自动错开。
-        // 信号是 per-pair 的，不同 pair 之间天然隔离，所以 group 之间也无需再分 flag。
+        // GMM1 epilogue 和 GMM2 combine 跑在不同 vec subBlock，sub0/sub1 UB 物理上独立，
+        // wave 之间不需要 cube↔vec 屏障——cube/vec 可以跨 wave 直接流水。
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
-        constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
-            // wave 起点的 AIC 等待端：上一 wave subBlock1 combine MTE3 完成后才能复用 UB。
-            // [EXP-A] 之前为 timeline 实验注释过，但关掉会让 UB race 破坏精度 —— 现在恢复。
-            if (anyWaveDone_) {
-                if constexpr(g_coreType == AIC) {
-                    WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-                }
-            }
 
             // [TRACE] sp0: wave loop iteration 入口
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_ENTRY);
@@ -925,19 +908,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // [TRACE] sp10: GMM2 函数返回后
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM2_END);
 
-            // wave 末的 AIV1 发送端：等到 subBlock1 combine MTE3 完成才告诉 AIC 可以进下一 wave。
-            // 与上面 AIC WaitForVectorFromAIV1 配对。
-            if constexpr(g_coreType == AscendC::AIV) {
-                if (subBlockIdx_ == 1) {
-                    SyncFunc<AscendC::HardEvent::MTE3_V>();
-                    NotifyCube(WAVE_BARRIER_FLAG);
-                }
-            }
-
             // [TRACE] sp11: wave loop iteration 出口
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_END);
             waveTraceIdx_++;
-            anyWaveDone_ = true;
         }
 
         Get<M_VALUE>(problemShape_) = m_i;
@@ -945,14 +918,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // [TRACE] expert loop 整体结束
     MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_EXPERT_LOOP_END);
-
-    // expert loop 结束后 drain：消费最后一发 wave-end 屏障 NotifyCube，与上面配对。
-    if (anyWaveDone_) {
-        if constexpr(g_coreType == AIC) {
-            constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
-            WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-        }
-    }
 
     if (subBlockIdx_ == 0) {
         PipeBarrier<PIPE_ALL>();
@@ -969,19 +934,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<true>();
 
-    // [TRACE] 最终 SyncAll<true> 之后（最后一个时间戳）
+    // 最终 SyncAll<true> 之后打 P_PROCESS_END（trace 关时 inline 函数体为空，无开销）
     MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_PROCESS_END);
 
-    // [TRACE-DISABLE] 6. unpermute & 清理win区上放置token的位置
-    //   时间戳分析期间这些会写 y2GmAddr 覆盖打点数据，全部关掉。
-    //   恢复正常运行时把整段 if constexpr(AIV) {...} 解除注释、删掉本块上面的 P_PROCESS_END 打点。
+    // unpermute & 清理 win 区。开 trace 时 Unpermute 会覆盖 y 上的时间戳，所以跳过。
     if constexpr(g_coreType == AIV) {
         ArgSortExpandedRowIdx();
         TPipe secondPipe;
         SecondBuffInit(&secondPipe);
         ResetTokenPerExpert();
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        // Unpermute();
+        CrossRankSyncInWorldSize(); // 全卡软同步，确认 combine send 完成
+#ifndef MEGA_MOE_TRACE_ENABLE
+        Unpermute();
+#endif
         PipeBarrier<PIPE_ALL>();
         secondPipe.Destroy();
     }

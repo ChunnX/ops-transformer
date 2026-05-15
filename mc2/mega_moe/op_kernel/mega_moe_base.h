@@ -21,6 +21,17 @@
 #include "moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h"
 #include "mega_moe_workspace_info.h"
 
+// ============================================================================
+// MegaMoe trace 编译期开关
+// ============================================================================
+// 取消注释下一行（或者 -DMEGA_MOE_TRACE_ENABLE）启用 us 时间戳打点。启用后：
+//   1) kernel 用 y2GmAddr 前一段写 (cores × points × 8B) 个 uint64 时间戳；
+//   2) Process() 末尾自动跳过 Unpermute()（避免覆盖时间戳），其它 cleanup 保留；
+//   3) 精度对比会 FAIL（y 是 trace，不是 unpermute 结果）—— 这是预期行为；
+//   4) 时间戳解析在 scripts/parse_trace.py（CSV 持久化 + per-wave 表）。
+// 关闭时所有 Record* 函数变成空 inline，编译器完全消除调用 → 零开销。
+// #define MEGA_MOE_TRACE_ENABLE
+
 using namespace AscendC;
 
 struct Mc2MoeContext {
@@ -237,9 +248,10 @@ __aicore__ inline int GetGlobalCoreIdx()
 }
 
 // 核心写入函数：把当前时刻（单位 us）写到 y[globalCoreIdx * POINTS_PER_CORE + pointIndex]。
-//   PipeBarrier<PIPE_ALL> 保证 cycle 反映"前面工作真完成"的时刻。
+//   关闭 MEGA_MOE_TRACE_ENABLE 时函数体为空，inline 后调用被编译器消除，零运行开销。
 __aicore__ inline void RecordTimestampAt(GM_ADDR baseAddr, int pointIndex)
 {
+#ifdef MEGA_MOE_TRACE_ENABLE
     int globalCoreIdx = GetGlobalCoreIdx();
     if (globalCoreIdx < 0 || pointIndex < 0 || pointIndex >= POINTS_PER_CORE) {
         return;
@@ -251,14 +263,21 @@ __aicore__ inline void RecordTimestampAt(GM_ADDR baseAddr, int pointIndex)
     output.SetValue(static_cast<uint64_t>(globalCoreIdx) *
                     static_cast<uint64_t>(POINTS_PER_CORE) +
                     static_cast<uint64_t>(pointIndex), us);
+#else
+    (void)baseAddr; (void)pointIndex;
+#endif
 }
 
 // 便捷封装：dispatch begin / end，AIV1 (subBlock1) 上调用。
 __aicore__ inline void RecordDispatchPoint(GM_ADDR baseAddr, int expertIdx, bool isEnd)
 {
+#ifdef MEGA_MOE_TRACE_ENABLE
     if (expertIdx < 0 || expertIdx >= MAX_EXPERTS_TRACED) return;
     int idx = P_DISPATCH_BASE + expertIdx * DISPATCH_PTS_PER_EXPERT + (isEnd ? 1 : 0);
     RecordTimestampAt(baseAddr, idx);
+#else
+    (void)baseAddr; (void)expertIdx; (void)isEnd;
+#endif
 }
 
 // 便捷封装：wave-level / tile-level sub-point。
@@ -266,10 +285,14 @@ __aicore__ inline void RecordDispatchPoint(GM_ADDR baseAddr, int expertIdx, bool
 //   超过 MAX_WAVES_TRACED 的 wave 不打点（数据丢失，Python 端通过 0 值识别）。
 __aicore__ inline void RecordWavePoint(GM_ADDR baseAddr, int waveTraceIdx, int subPoint)
 {
+#ifdef MEGA_MOE_TRACE_ENABLE
     if (waveTraceIdx < 0 || waveTraceIdx >= MAX_WAVES_TRACED) return;
     if (subPoint < 0 || subPoint >= WAVE_POINTS_PER_ITER) return;
     int idx = P_WAVE_BASE + waveTraceIdx * WAVE_POINTS_PER_ITER + subPoint;
     RecordTimestampAt(baseAddr, idx);
+#else
+    (void)baseAddr; (void)waveTraceIdx; (void)subPoint;
+#endif
 }
 
 } // namespace MegaMoeTrace
