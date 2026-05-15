@@ -100,7 +100,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclRankGraphGetLayers), "HcclRankGraphGetLayers"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRankSizeByLayer), "HcclRankGraphGetRankSizeByLayer"},
         {reinterpret_cast<void **>(&HcclChannelAcquire), "HcclChannelAcquire"},
-        {reinterpret_cast<void **>(&HcclGetHcclBufferCleared), "HcclGetHcclBufferCleared"},
+        {reinterpret_cast<void **>(&HcclGetHcclBuffer), "HcclGetHcclBuffer"},
         {reinterpret_cast<void **>(&HcclChannelGetHcclBuffer), "HcclChannelGetHcclBuffer"},
         {reinterpret_cast<void **>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
         {reinterpret_cast<void **>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
@@ -332,7 +332,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
     OP_LOGD("Get rank size success, rankSize is: %u", epRankSize_);
 
     void *tempBuffer = nullptr;
-    hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize_);
+    hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Cleared failed");
         return ACLNN_ERR_INNER;
@@ -381,7 +381,7 @@ aclnnStatus Mc2Context::CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context)
 aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize)
 {
     void *tempBuffer = nullptr;
-    auto hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize);
+    auto hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Size failed");
         return ACLNN_ERR_INNER;
