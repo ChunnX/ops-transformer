@@ -1,148 +1,95 @@
-1845: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  1869: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  1894: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  1973: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  1997: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2022: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2101: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2125: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2150: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2229: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2253: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2278: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2357: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2381: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2406: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2431: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2458: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2483: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2613: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2637: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2662: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2680: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2704: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2729: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2869: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  2893: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  2918: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  2997: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3021: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3046: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3064: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3088: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3113: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3131: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3155: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3180: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3381: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3405: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3430: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3509: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3533: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3558: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3586: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3616: 61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3644: 47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3765: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3789: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3814: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  3888: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  3917: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  3942: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:54:47: error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'
-	行  4009: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4036: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:37:61: error: no member named 'value' in 'AscendC::Te::FixpipeTrait'
-	行  4069: error: In file included from no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4076: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4103:  In file included from In file included from error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h::no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'24struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {:
-	行  4125: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.h:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/blaze/block/block_mmad_mx.h :error: :44no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':
-	行  4157: 36In file included from :40/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:: 25error: :
-	行  4160: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4187: error: note: no member named 'value' in 'AscendC::Te::FixpipeTrait'in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested here
-	行  4204: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4248: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:40/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:: 51error:             auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, curTrait);:
-	行  4282:  In file included from error: no member named 'value' in 'AscendC::Te::FixpipeTrait'/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h
-	行  4289: :40: error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4322: error: In file included from ::In file included from  26note: :
-	行  4335: 36In file included from :40:/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.h :error: 27:
-	行  4349: In file included from :In file included from 40:/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h: 27:error: 24:
-	行  4363: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h36::3640::40 :error:  error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'
-	行  4388: 40/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.hIn file included from ::/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.h 51:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.h24/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_ae4b80aa26c770d624371d1c07639a23/kernel_meta/MegaMoe_ae4b80aa26c770d624371d1c07639a23_kernel.cppIn file included from error: :no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':::
-	行  4426: note: /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.cppin instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>' requested herenote: :in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>' requested here27/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.hIn file included from /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.h:error: 24 in instantiation of template class 'AscendC::Te::CopyAtom<AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>>' requested herenote: 
-	行  4472: In file included from /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_460eed24c10c52c8e76eb56c15a166a5/kernel_meta/MegaMoe_460eed24c10c52c8e76eb56c15a166a5_kernel.cpp :In file included from error: 6:
-	行  4497: :In file included from :/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.hIn file included from : /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.h26In file included from 24error: ::
-	行  4502: :/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h40::In file included from :In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h25 44error: ::
-	行  4515: 36In file included from ::40::/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h :272626error: :
-	行  4522: error: In file included from struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'                      ~~~~~~~~~~~~~~~~~^~~~~~~~~
-	行  4539:  :                      ~~~~~~~~~~~~~~~~~^~~~~~~~~ error: 
-	行  4540: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.herror: :struct CopyAtom<CopyTraits<Args...>>: CopyTraits<Args...>44no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':
-	行  4695:                                            ^: error: :In file included from 24/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.h::/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.hIn file included from /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_b451cbf5319b52e3620cab8948f049c3/kernel_meta/MegaMoe_b451cbf5319b52e3620cab8948f049c3_kernel.cpp/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h::625:
-	行  4699: 36error: no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':
-	行  4718: 262526/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.h:In file included from In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.h    using TraitType = typename Traits::TraitType;In file included from 40in instantiation of function template specialization 'AscendC::Te::MakeCopy<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>' requested hereerror: In file included from :
-	行  4732: In file included from /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.cpp:error:             auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, curTrait);6:
-	行  4745: :In file included from 26/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h:In file included from 40:error:  2536no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.h:error: ::24:
-	行  4759: In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h3625:error:  :no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {
-	行  4762: 40error: 26                                               ^    using TraitType = typename Traits::TraitType;
-	行  4777: 40In file included from 2648error: :/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.hno type named 'TraitType' in 'AscendC::Te::FixpipeTrait'/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.hnote: in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested here:                                           ^
-	行  4784: /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_47d60f8601fcfbd67081397f5daa22c8/kernel_meta/MegaMoe_47d60f8601fcfbd67081397f5daa22c8_kernel.cppIn file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.herror: :no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':    using TraitType = typename Traits::TraitType;/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:44in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested here:
-	行  4791:                       ~~~~~~~~~~~~~~~~~^~~~~~~~~    using TraitType = typename Traits::TraitType;struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {36error: note: in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested here40: :37In file included from ::
-	行  4798: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.h:note: in instantiation of static data member 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>::defaultTrait' requested here     using TraitType = typename Traits::TraitType;note: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.h /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.cpperror: :no member named 'value' in 'AscendC::Te::FixpipeTrait'17
-	行  4807:                                                ^ :error: 48
-	行  4866:                                                ^/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h :error: 26:
-	行  4870: :error: no member named 'value' in 'AscendC::Te::FixpipeTrait':                                      ^:                                               ^
-	行  4895: 12 error: struct CopyAtom<CopyTraits<Args...>>: CopyTraits<Args...>
-	行  4916: in instantiation of template class 'AscendC::Te::CopyAtom<AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>>' requested herein instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>' requested here12/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h:error:     return CopyAtom<CopyTraits<Args...>>{};no member named 'value' in 'AscendC::Te::FixpipeTrait'/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/blaze/block/block_mmad_mx.h            auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, curTrait);44note: :in instantiation of static data member 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>::defaultTrait' requested here
-	行  5000: 51error: :48no member named 'value' in 'AscendC::Te::FixpipeTrait': note: :
-	行  5144:  In file included from error: 25:
-	行  5164:  27error: :
-	行  5183: ::25/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.hIn file included from :                      ~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~25:61error: :
-	行  5190: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h::error: 61/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h:
-	行  5203: error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h:2637:
-	行  5205: /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_0ac943a163e8369ef5aac96938540fb6/kernel_meta/MegaMoe_0ac943a163e8369ef5aac96938540fb6_kernel.cpperror: 25no member named 'value' in 'AscendC::Te::FixpipeTrait':
-	行  5211: 6:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h 44error: 3725:
-	行  5213:     static constexpr const TraitType defaultTrait = Traits::value;error: 61/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h :In file included from 6:
-	行  5222: note: 61                                                    ~~~~~~~~^26::                                                    ~~~~~~~~^error: 45:
-	行  5225: error:     return CopyAtom<CopyTraits<Args...>>{};
-	行  5239: In file included from     static constexpr const TraitType defaultTrait = Traits::value;note:  note: :error: 61::
-	行  5250:  :error: 
-	行  5254: 45:12error: 61no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'    template <const TraitType& trait = defaultTrait, typename... Args>44struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {
-	行  5263: error: 
-	行  5286: :::4544:25error: no type named 'TraitType' in 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>'note: 48in instantiation of static data member 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>::defaultTrait' requested here            auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, curTrait);:
-	行  5320: 4440struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {                                               ^:struct CopyAtom<CopyTraits<Args...>>: CopyTraits<Args...>    return CopyAtom<CopyTraits<Args...>>{};error: :                                               ^
-	行  5328: in instantiation of template class 'AscendC::Te::CopyAtom<AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>>' requested herenote: 44in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested hereIn file included from :/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h error: 
-	行  5423:                                       ^/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.cpp:error:            ^:
-	行  5575: 62536error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h:In file included from 39In file included from :
-	行  5607: 40In file included from :: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.herror: :624no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':
-	行  5615: In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h:36:/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.h40:: In file included from 26error: :
-	行  5646: error: 26:/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.hno type named 'TraitType' in 'AscendC::Te::FixpipeTrait':
-	行  5653: 40In file included from ::/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.cpp44In file included from :26/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.h :error: :2748:
-	行  5666: note: 24:                                               ^error: 
-	行  5697: in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested hereerror: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.hin instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>' requested here/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h
-	行  5715: In file included from In file included from :                                               ^48: error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h::
-	行  5771: In file included from In file included from error: 44:26:
-	行  5853: /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_a05f2293001a6d5f33e4e08034f0cee9/kernel_meta/MegaMoe_a05f2293001a6d5f33e4e08034f0cee9_kernel.cpp::27:/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.cppnote: error: :
-	行  5898: In file included from :2640/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h44:25 note: error: 17::/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h:
-	行  5911:  25error: :In file included from :struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.h
-	行  5922: note: :In file included from /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.herror: :    using TraitType = typename Traits::TraitType;/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h17:
-	行  5925: :error: :
-	行  5972: 40:                      ~~~~~~~~~~~~~~~~~^~~~~~~~~/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.herror: ::/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.h                      ~~~~~~~~~~~~~~~~~^~~~~~~~~:
-	行  5974:             auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, curTrait);In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h::/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe.h:In file included from error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:::
-	行  5988: error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h :error: 27
-	行  6006: In file included from error:  no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'note: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:: ::
-	行  6013:                       ~~~~~~~~~~~~~~~~~^~~~~~~~~error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h
-	行  6021: In file included from In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h: :error: 26    using TraitType = typename Traits::TraitType;/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/tensor.h:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h25:
-	行  6041: error: In file included from :
-	行  6089: error: In file included from no member named 'value' in 'AscendC::Te::FixpipeTrait'/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h
-	行  6110: In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h                      ~~~~~~~~~~~~~~~~~^~~~~~~~~:48
-	行  6123: error: :40:in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested hereIn file included from  note: struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {                                               ^/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h
-	行  6136: :in instantiation of template class 'AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait, AscendC::Te::CopyL0C2UBWith, AscendC::Te::CopyL0C2UBTraitDefault>' requested here/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h error: :::
-	行  6139: :error: /home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/src/mega_moe/op_kernel/mega_moe_impl.h:
-	行  6141: error: :
-	行  6151:   In file included from In file included from /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h                                      ^25no type named 'TraitType' in 'AscendC::Te::FixpipeTrait':error: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_atom_impl.h:2545:
-	行  6155:  :/home/cxxxx/ops-transformer_megaMoeOpt/build/binary/ascend950/gen/kernel_meta_MegaMoe_74339adb89eb4dbb4506700f89d750e7/kernel_meta/MegaMoe_74339adb89eb4dbb4506700f89d750e7_kernel.cpp:      using TraitType = typename CopyTraitType::TraitType;error: struct CopyTraits<CopyL0C2UB, Traits> : public CopyTraits<CopyL0C2UB, Traits, CopyL0C2UBWith, CopyL0C2UBTraitDefault> {note: :
-	行  6157: :note: error: :/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h:
-	行  6166: /home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_gm2l1.h36:/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/include/tensor_api/algorithm/copy.h12::                      ~~~~~~~~~~~~~~~~~^~~~~~~~~error: 266:
-	行  6218:             auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, curTrait);                                                    ~~~~~~~~^                                       ^error:  no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'36:struct CopyAtom<CopyTraits<Args...>>: CopyTraits<Args...> :/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/copy_traits_impl.h39/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/atom/datamove/copy_l0c2ub.h36:
-	行  6221: 3724                                      ^::37:37error:                                                ^/home/cxxxx/ops-transformer_megaMoeOpt/mc2/mega_moe/op_host/../../3rd/tensor_api/impl/tensor_api/algorithm/copy_impl.h
-	行  6231: error: 
-	行  6240: in instantiation of template class 'AscendC::Te::CopyAtom<AscendC::Te::CopyTraits<AscendC::Te::CopyL0C2UB, AscendC::Te::FixpipeTrait>>' requested here                                               ^no type named 'TraitType' in 'AscendC::Te::FixpipeTrait'40                                      ^:44error: 48:36 444037:
-	行  6273:             ^error: 
+========== [rank 0] MegaMoe TIMESTAMPS (unit = us) ==========
+  active AIC : 32/36, active AIV0: 32/36, active AIV1: 32/36
+
+  --- [AIC] STAGE durations (per-core delta) ---
+    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=       0  avg=       0  max=       1  (us)
+    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=      76  avg=      77  max=      79  (us)  <-- HOT
+    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     940  avg=     949  max=     958  (us)  <-- HOT
+    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=       9  avg=      19  max=      22  (us)  <-- HOT
+
+  --- [AIV0] STAGE durations (per-core delta) ---
+    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=      71  avg=      71  max=      72  (us)  <-- HOT
+    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=       5  avg=       5  max=       5  (us)  <-- HOT
+    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     926  avg=     938  max=     950  (us)  <-- HOT
+    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=      31  avg=      42  max=      55  (us)  <-- HOT
+
+  --- [AIV1] STAGE durations (per-core delta) ---
+    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=      71  avg=      71  max=      72  (us)  <-- HOT
+    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=       5  avg=       5  max=       5  (us)  <-- HOT
+    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     949  avg=     968  max=     980  (us)  <-- HOT
+    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=       1  avg=      13  max=      33  (us)  <-- HOT
+
+  --- [AIV1] per-expert DISPATCH duration ---
+    expert[0] dispatch  n=  32  min=       5  avg=      15  max=      19  (us)  <-- HOT
+    expert[1] dispatch  n=  32  min=       5  avg=      12  max=      19  (us)  <-- HOT
+    expert[2] dispatch  n=  32  min=       6  avg=      13  max=      18  (us)  <-- HOT
+    expert[3] dispatch  n=  32  min=       6  avg=      13  max=      18  (us)  <-- HOT
+
+  --- [AIC] WAVE-by-WAVE  (us, avg across active cores) ---
+    exp  wave | entr->g1B |      wDsp |    g1Frst |     g1Mid |     g1Drn |    g12gap |      wSwi |    g2Frst |     g2Mid |     g2Drn |    g2->ex |     TOTAL
+    ---------------------------------------------------------------------------------------------------------------------------------------------------------
+      0     0 |         0 |        19 |        20 |         0 |         7 |         0 |         1 |        13 |         0 |         0 |         0 |        63
+      0     1 |         0 |         0 |        14 |         0 |         6 |         0 |         1 |         8 |         0 |         0 |         0 |        32
+      0     2 |         0 |         0 |        13 |         0 |         5 |         0 |         2 |         8 |         0 |         0 |         0 |        31
+      0     3 |         0 |         0 |        13 |         0 |         6 |         0 |         2 |         8 |         0 |         0 |         0 |        31
+      1     4 |         0 |        33 |        22 |         0 |         7 |         0 |         2 |        13 |         0 |         0 |         0 |        79
+      1     5 |         0 |         0 |        14 |         0 |         6 |         0 |         2 |         8 |         0 |         0 |         0 |        33
+      1     6 |         0 |         0 |        14 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        31
+      1     7 |         0 |         0 |        13 |         0 |         6 |         0 |         3 |         8 |         0 |         0 |         0 |        32
+      2     8 |         0 |        32 |        21 |         0 |         6 |         0 |         2 |        12 |         0 |         0 |         0 |        75
+      2     9 |         0 |         0 |        14 |         0 |         6 |         0 |         2 |         8 |         0 |         0 |         0 |        32
+      2    10 |         0 |         0 |        13 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        32
+      2    11 |         0 |         0 |        14 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        31
+      3    12 |         0 |        32 |        21 |         0 |         7 |         0 |         2 |        12 |         0 |         0 |         0 |        75
+      3    13 |         0 |         0 |        14 |         0 |         7 |         0 |         2 |         8 |         0 |         0 |         0 |        32
+      3    14 |         0 |         0 |        13 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        31
+      3    15 |         0 |         0 |        13 |         0 |         5 |         0 |         2 |         8 |         0 |         0 |         0 |        31
+    ---------------------------------------------------------------------------------------------------------------------------------------------------------
+          avg |         0 |         7 |        15 |         0 |         6 |         0 |         2 |         9 |         0 |         0 |         0 |        42
+          max |         1 |        59 |        24 |         1 |        10 |         1 |        20 |        14 |         1 |         1 |         1 |       103
+
+  --- [AIV0] WAVE-by-WAVE  (us, avg across active cores) ---
+    exp  wave | entr->g1B |      wCub |     epiFr |     epiMd |     epiDr |    g1->ex |     TOTAL
+    ---------------------------------------------------------------------------------------------
+      0     0 |         0 |        38 |         7 |         0 |         0 |         0 |        47
+      0     1 |         0 |        44 |         7 |         0 |         0 |         0 |        51
+      0     2 |         0 |        45 |         5 |         0 |         0 |         0 |        52
+      0     3 |         0 |        44 |         6 |         0 |         0 |         0 |        51
+      1     4 |         0 |        85 |         7 |         0 |         0 |         0 |        93
+      1     5 |         0 |        42 |         7 |         0 |         0 |         0 |        50
+      1     6 |         0 |        45 |         5 |         0 |         0 |         0 |        52
+      1     7 |         0 |        43 |         6 |         0 |         0 |         0 |        50
+      2     8 |         0 |        84 |         6 |         0 |         0 |         0 |        91
+      2     9 |         0 |        40 |         6 |         0 |         0 |         0 |        48
+      2    10 |         0 |        44 |         5 |         0 |         0 |         0 |        50
+      2    11 |         0 |        45 |         5 |         0 |         0 |         0 |        52
+      3    12 |         0 |        83 |         7 |         0 |         0 |         0 |        92
+      3    13 |         0 |        39 |         7 |         0 |         0 |         0 |        47
+      3    14 |         0 |        43 |         5 |         0 |         0 |         0 |        49
+      3    15 |         0 |        45 |         6 |         0 |         0 |         0 |        52
+    ---------------------------------------------------------------------------------------------
+          avg |         0 |        51 |         6 |         0 |         0 |         0 |        58
+          max |         1 |       113 |        10 |         1 |         1 |         1 |       121
+
+  --- [AIV1] WAVE-by-WAVE  (us, avg across active cores) ---
+    exp  wave | entr->g2B |     wRowR |      cbFr |      cbMd |     cbEnd |    g2->ex |     TOTAL
+    ---------------------------------------------------------------------------------------------
+      0     0 |         0 |        47 |        14 |         0 |         0 |         0 |        62
+      0     1 |         0 |        32 |        20 |         0 |         0 |         0 |        53
+      0     2 |         0 |        31 |        18 |         0 |         0 |         0 |        50
+      0     3 |         0 |        32 |        18 |         0 |         0 |         0 |        50
+      1     4 |         0 |        67 |        13 |         0 |         0 |         0 |        80
+      1     5 |         0 |        33 |        20 |         0 |         0 |         0 |        53
+      1     6 |         0 |        31 |        18 |         0 |         0 |         0 |        50
+      1     7 |         0 |        32 |        18 |         0 |         0 |         0 |        51
+      2     8 |         0 |        62 |        11 |         0 |         0 |         0 |        74
+      2     9 |         0 |        32 |        18 |         0 |         0 |         0 |        51
+      2    10 |         0 |        32 |        18 |         0 |         0 |         0 |        51
+      2    11 |         0 |        31 |        18 |         0 |         0 |         0 |        51
+      3    12 |         0 |        62 |        10 |         0 |         0 |         0 |        72
+      3    13 |         0 |        33 |        18 |         0 |         0 |         0 |        51
+      3    14 |         0 |        32 |        19 |         0 |         0 |         0 |        52
+      3    15 |         0 |        31 |        18 |         0 |         0 |         0 |        50
+    ---------------------------------------------------------------------------------------------
+          avg |         0 |        39 |        17 |         0 |         0 |         0 |        56
+          max |         1 |        94 |        30 |         1 |         1 |         1 |        95
