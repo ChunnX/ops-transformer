@@ -4145,14 +4145,15 @@ ge::graphStatus PromptFlashAttentionTilingArch38::DoSubOpTiling(PromptFlashAtten
 {
     uint64_t tilingKey = 7;
     uint32_t numBlocksToBeSet;
-    auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, numBlocksToBeSet, tilingData);
-    tilingKey += BENCHMARK_TILING_KEY;
-    context_->SetTilingKey(tilingKey);
-    context_->SetBlockDim(numBlocksToBeSet);
-    PromptFlashAttentionSetTilingData(context_, tilingData);
-    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    return ret;
+    return ge::GRAPH_FAILED;
+    // auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, numBlocksToBeSet, tilingData);
+    // tilingKey += BENCHMARK_TILING_KEY;
+    // context_->SetTilingKey(tilingKey);
+    // context_->SetBlockDim(numBlocksToBeSet);
+    // PromptFlashAttentionSetTilingData(context_, tilingData);
+    // // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
+    // context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
+    // return ret;
 }
 
 ge::graphStatus PromptFlashAttentionTilingArch38::DoOpTiling() 
