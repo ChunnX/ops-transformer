@@ -70,18 +70,30 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckOpInputInfo()
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attrs", "invalid",
+                        "Tiling check Attrs failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckX2Transpose(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check x2transpose failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transpose_x2", "false",
+                        "Tiling check x2transpose failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMxTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1, x2, y", "invalid",
+                        "Tiling check format failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMxQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "tiling check Dtype failed in mx quant matmul all to all."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, y", "invalid",
+                        "tiling check Dtype failed in mx quant matmul all to all"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMxQuantShapeInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check mx quant shape info failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y, x1scale, x2scale", "invalid",
+                        "Tiling check mx quant shape info failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMxQuantMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check mx quant matrix shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y", "invalid",
+                        "Tiling check mx quant matrix shape failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -96,22 +108,24 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxTensorFormat(const gert:
                                                                      const char *opName)
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1, x2, y", "invalid",
+                        "Tiling check format failed"),
+                    return ge::GRAPH_FAILED);
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x1Scale tensor should not be null in mx quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x1scale", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x1Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x1ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x1scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x2Scale tensor should not be null in mx quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x2scale", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x2Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x2ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x2scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -127,7 +141,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckX2Transpose(const gert::Ti
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
-    OP_TILING_CHECK(!(*isTransX2), OP_LOGE(opName, "the mx quant input x2Transpose must be true, but actual is false."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!(*isTransX2), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "transpose_x2", "false", "true"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -179,27 +195,28 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
     auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName, "the input x1 tensor is invalid."),
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "x1", "nullptr", "valid tensor"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE(opName, "the input x2 tensor is invalid."),
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "x2", "nullptr", "valid tensor"),
                     return ge::GRAPH_FAILED);
     // 获取数据类型并校验一致性与范围
     ge::DataType x1Dtype = x1TensorDesc->GetDataType();
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x1Dtype),
-                    OP_LOGE(opName,
-                            "The Input x1 Dtype should be in mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1), but x1 is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str()), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
+                        "FLOAT8_E4M3FN, FLOAT8_E5M2 or FLOAT4_E2M1"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x2Dtype),
-                    OP_LOGE(opName,
-                            "The Input x2 Dtype should be in mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1), but x2 is %s.",
-                            Ops::Base::ToString(x2Dtype).c_str()), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
+                        "FLOAT8_E4M3FN, FLOAT8_E5M2 or FLOAT4_E2M1"),
+                    return ge::GRAPH_FAILED);
     if (x1Dtype == ge::DataType::DT_FLOAT4_E2M1 || x2Dtype == ge::DataType::DT_FLOAT4_E2M1) {
         isMxfp4_ = true;
+        std::string dtypeMsg = Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype);
         OP_TILING_CHECK(x1Dtype != x2Dtype,
-                    OP_LOGE(opName,
-                            "In mxfp4 quant mode, the dtype of input x1 and x2 should be DT_FLOAT4_E2M1, but x1 dtype is %s, x2 dtype is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str()), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, "x1 and x2", dtypeMsg.c_str(),
+                        "In mxfp4 quant mode, the dtype of input x1 and x2 should be DT_FLOAT4_E2M1"),
+                    return ge::GRAPH_FAILED);
     }
     // 校验 bias 数据类型（如果存在）
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
@@ -207,19 +224,23 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         OP_TILING_CHECK(
             (biasDtype != ge::DT_FLOAT),
-            OP_LOGE(opName, "bias Dtype should be float, but bias is %s.", Ops::Base::ToString(biasDtype).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "FLOAT"),
             return ge::GRAPH_FAILED);
     }
     // 校验 x1Scale和x2Scale 数据类型
     OP_TILING_CHECK(CheckMxQuantScaleDataType(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check scale dtype failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1scale and x2scale", "invalid",
+                        "Tiling check scale dtype failed"),
+                    return ge::GRAPH_FAILED);
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE(opName, "output tensor y is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "y", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(MX_QUANT_Y_DTYPE_LIST, yDtype),
-                    OP_LOGE(opName, "output y Dtype should be float16, bfloat16 or float, but y is %s.",
-                            Ops::Base::ToString(yDtype).c_str()), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "y", Ops::Base::ToString(yDtype).c_str(),
+                        "FLOAT16, BF16 or FLOAT"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -238,18 +259,20 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleDataType(const
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x1scale tensors should not be null in mx quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x1scale", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::DataType x1scaleDtype = x1ScaleTensorDesc->GetDataType();
     OP_TILING_CHECK((x1scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
-                    OP_LOGE(opName, "x1scale dtype should be DT_FLOAT8_E8M0 in mx quant mode, but is %s.",
-                            Ops::Base::ToString(x1scaleDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1scale", Ops::Base::ToString(x1scaleDtype).c_str(),
+                        "FLOAT8_E8M0"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x2scale tensors should not be null in mx quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x2scale", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
     OP_TILING_CHECK((x2scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
-                    OP_LOGE(opName, "x2scale dtype should be DT_FLOAT8_E8M0 in mx quant mode, but is %s.",
-                            Ops::Base::ToString(x2scaleDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2scale", Ops::Base::ToString(x2scaleDtype).c_str(),
+                        "FLOAT8_E8M0"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -265,7 +288,10 @@ static ge::graphStatus CheckMxScaleShapeDimensions(const gert::StorageShape *sha
                                                  const char *opName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK((dimNum != 3), OP_LOGE(opName, "the %s dimNum should be three.", shapeName), return ge::GRAPH_FAILED);
+    std::string dimNumStr = std::to_string(dimNum);
+    OP_TILING_CHECK((dimNum != 3), 
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(opName, shapeName, dimNumStr.c_str(), "3D"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -279,7 +305,10 @@ static ge::graphStatus CheckMxScaleShapeDimensions(const gert::StorageShape *sha
 static ge::graphStatus CheckShapeDimensions(const gert::StorageShape *shape, const char *shapeName, const char *opName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK((dimNum != 2), OP_LOGE(opName, "The %s dimNum should be two.", shapeName), return ge::GRAPH_FAILED);
+    std::string dimNumStr = std::to_string(dimNum);
+    OP_TILING_CHECK((dimNum != 2), 
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(opName, shapeName, dimNumStr.c_str(), "2D"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -297,7 +326,9 @@ static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const 
     const gert::StorageShape *biasShape = context->GetOptionalInputShape(INPUT_BIAS_INDEX);
     if (biasShape != nullptr) {
         uint64_t biasShapeDimNum = biasShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK((biasShapeDimNum != 1), OP_LOGE(opName, "The input bias dimNum should be one."),
+        std::string biasDimNumStr = std::to_string(biasShapeDimNum);
+        OP_TILING_CHECK((biasShapeDimNum != 1), 
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "bias", biasDimNumStr.c_str(), "1D"),
                         return ge::GRAPH_FAILED);
         uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
         const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX);
@@ -313,8 +344,10 @@ static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const 
             x2TransFlag = *isTransX2;
         }
         uint64_t nAxis = (x2TransFlag) ? x2Dim0 : x2Dim1;
+        std::string biasDim0Str = std::to_string(biasDim0);
+        std::string nAxisStr = std::to_string(nAxis);
         OP_TILING_CHECK((biasDim0 != nAxis),
-                        OP_LOGE(opName, "The bias dimNum0 should be %lu, but actual value is %lu.", nAxis, biasDim0),
+                        OP_LOGE_FOR_INVALID_SHAPESIZE(opName, "bias", biasDim0Str.c_str(), nAxisStr.c_str()),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -348,17 +381,32 @@ static ge::graphStatus CheckShapeDimRange(const gert::TilingContext *context, co
     uint64_t nAxis = (x2TransFlag) ? x2Dim0 : x2Dim1;
     uint64_t kAxis = (x2TransFlag) ? x2Dim1 : x2Dim0;
     // 校验M,当前M为0的话，走公式化tiling切分实际是不支持的,后面可去除
-    OP_TILING_CHECK(x1Dim0 == 0, OP_LOGE(opName, "Invalid x1 shape: dim 0(m) cannot be 0."), return ge::GRAPH_FAILED);
+    std::string x1Dim0Str = std::to_string(x1Dim0);
+    OP_TILING_CHECK(x1Dim0 == 0, 
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "x1", x1Dim0Str.c_str(),
+                        "Invalid x1 shape: dim 0(m) cannot be 0"),
+                    return ge::GRAPH_FAILED);
     // 校验M不能大于int32的最大值
-    OP_TILING_CHECK(x1Dim0 > MAX_INT32_VALUE, OP_LOGE(opName, "X1 dim 0(m) exceeds INT32_MAX, got %lu.", x1Dim0),
+    OP_TILING_CHECK(x1Dim0 > MAX_INT32_VALUE, 
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "x1", x1Dim0Str.c_str(),
+                        "X1 dim 0(m) exceeds INT32_MAX"),
                     return ge::GRAPH_FAILED);
     // 校验K,K的范围应该在[1, 65535]
-    OP_TILING_CHECK(kAxis > K_MAX_VALUE, OP_LOGE(opName, "The k dim exceeds max value 65535, got %lu.", kAxis),
+    std::string kAxisStr = std::to_string(kAxis);
+    OP_TILING_CHECK(kAxis > K_MAX_VALUE, 
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "x2", kAxisStr.c_str(),
+                        "The k dim exceeds max value 65535"),
                     return ge::GRAPH_FAILED);
     // 校验N, N不为空
-    OP_TILING_CHECK(nAxis == 0, OP_LOGE(opName, "Invalid x2 shape: N cannot be 0."), return ge::GRAPH_FAILED);
+    std::string nAxisStr = std::to_string(nAxis);
+    OP_TILING_CHECK(nAxis == 0, 
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "x2", nAxisStr.c_str(),
+                        "Invalid x2 shape: N cannot be 0"),
+                    return ge::GRAPH_FAILED);
     // 校验N不能大雨int32的
-    OP_TILING_CHECK(nAxis > MAX_INT32_VALUE, OP_LOGE(opName, "N axis exceeds INT32_MAX, got %lu.", nAxis),
+    OP_TILING_CHECK(nAxis > MAX_INT32_VALUE, 
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "x2", nAxisStr.c_str(),
+                        "N axis exceeds INT32_MAX"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -399,7 +447,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantShapeInfo(const ger
         return status;
     // 校验输出
     const gert::StorageShape *yShape = context->GetOutputShape(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((yShape == nullptr), OP_LOGE(opName, "the yShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yShape == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "y", "nullptr", "valid shape"),
+                    return ge::GRAPH_FAILED);
     status = CheckShapeDimensions(yShape, "mx quant output y", opName);
     if (status != ge::GRAPH_SUCCESS) {
         return status;
@@ -430,11 +480,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantInputShapesValid(co
     const gert::StorageShape *x2Shape = context->GetInputShape(INPUT_X2_INDEX);
     const gert::StorageShape *x1ScaleShape = context->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
     const gert::StorageShape *x2ScaleShape = context->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
-    OP_TILING_CHECK((x1Shape == nullptr), OP_LOGE(opName, "the input x1 shape is invalid"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2Shape == nullptr), OP_LOGE(opName, "the input x2 shape is invalid"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x1ScaleShape == nullptr), OP_LOGE(opName, "the input x1Scale shape is invalid"),
+    OP_TILING_CHECK((x1Shape == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "x1", "nullptr", "valid shape"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleShape == nullptr), OP_LOGE(opName, "the input x2Scale shape is invalid"),
+    OP_TILING_CHECK((x2Shape == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "x2", "nullptr", "valid shape"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x1ScaleShape == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "x1scale", "nullptr", "valid shape"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2ScaleShape == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName, "x2scale", "nullptr", "valid shape"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -449,11 +501,17 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantInputShapesValid(co
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantMatrixMulShapes(const gert::TilingContext *context, const char *opName)
 {
     OP_TILING_CHECK(MatmulAllToAllTilingBase::Check2DMatrixMulShapes(context, opName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Mx quant tiling check x1 x2 and y shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2 and y", "invalid",
+                        "Mx quant tiling check x1 x2 and y shape failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckQuantGroupSize(context, opName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Mx quant tiling check groupSize failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "group_size", "invalid",
+                        "Mx quant tiling check groupSize failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMxQuantScaleShapes(context, opName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Mx quant tiling check scale shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1scale and x2scale", "invalid",
+                        "Mx quant tiling check scale shape failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -484,29 +542,26 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const g
     if (isMxfp4_) {
         uint64_t x1Dim1DivMxFp4Size = static_cast<uint64_t>(((static_cast<int64_t>(shapeInfo.x1Dim1) + 
                                                               MX_GROUP_SIZE_K - 1) / MX_GROUP_SIZE_K));
+        std::string kStr = std::to_string(shapeInfo.x1Dim1);
         OP_TILING_CHECK((shapeInfo.x1Dim1 % 2 != 0) || (x1Dim1DivMxFp4Size % 2 != 0), 
-                         OP_LOGE(opName, "In the dequant MXfp4 scenario, k=%lu ceil dev 32 must be even.", shapeInfo.x1Dim1), 
+                         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "x1", kStr.c_str(),
+                            "In the dequant MXfp4 scenario, k and ceil(k/32) must be even"),
                          return ge::GRAPH_FAILED);
     }
     OP_TILING_CHECK((x1ScaleDim0 != shapeInfo.x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),
-                    OP_LOGE(opName,
-                            "In the Non-Transposed Scenario, Wrong shape of x1Scale! "
-                            "x1scaleDim0 should be equal to x1Dim0(%lu), "
-                            "x1scaleDim1 should be equal to (x1Dim1(%lu) + MX_SCALE_OFFSET(%lu) - 1) / "
-                            "MX_SCALE_OFFSET(%lu), x1scaleDim2 should be equal to 2, "
-                            "Expected Shape of x1Scale = (%lu, %lu, %lu), Actual Shape of x1Scale = (%lu, %lu, %lu).",
-                            shapeInfo.x1Dim0, shapeInfo.x1Dim1, MX_SCALE_OFFSET, MX_SCALE_OFFSET, shapeInfo.x1Dim0,
-                            x1Dim1DivMxFp8Size, EVEN_ALIGN, x1ScaleDim0, x1ScaleDim1, x1ScaleDim2),
+                    std::string expectedShape = "(" + std::to_string(shapeInfo.x1Dim0) + ", " + 
+                        std::to_string(x1Dim1DivMxFp8Size) + ", " + std::to_string(EVEN_ALIGN) + ")";
+                    std::string actualShape = "(" + std::to_string(x1ScaleDim0) + ", " + 
+                        std::to_string(x1ScaleDim1) + ", " + std::to_string(x1ScaleDim2) + ")";
+                    OP_LOGE_FOR_INVALID_SHAPE(opName, "x1scale", actualShape.c_str(), expectedShape.c_str()),
                     return ge::GRAPH_FAILED);
     // Transposed Scenario
     OP_TILING_CHECK((x2ScaleDim0 != shapeInfo.x2Dim0) || (x2ScaleDim1 != x2Dim1DivMxFp8Size) || (x2ScaleDim2 != EVEN_ALIGN),
-                    OP_LOGE(opName_, "In the Transposed Scenario, Wrong shape of x2Scale! "
-                            "x2scaleDim0 should be equal to x2Dim0(%lu), "
-                            "x2scaleDim1 should be equal to (x2Dim1(%lu) + MX_SCALE_OFFSET(%lu) - 1) / "
-                            "MX_SCALE_OFFSET(%lu), x2scaleDim2 should be equal to 2, "
-                            "Expected Shape of x2Scale = (%lu, %lu, %lu), Actual Shape of x2Scale = (%lu, %lu, %lu).",
-                            shapeInfo.x2Dim0, shapeInfo.x2Dim1, MX_SCALE_OFFSET, MX_SCALE_OFFSET, shapeInfo.x2Dim0,
-                            x2Dim1DivMxFp8Size, EVEN_ALIGN, x2ScaleDim0, x2ScaleDim1, x2ScaleDim2),
+                    std::string expectedShape2 = "(" + std::to_string(shapeInfo.x2Dim0) + ", " + 
+                        std::to_string(x2Dim1DivMxFp8Size) + ", " + std::to_string(EVEN_ALIGN) + ")";
+                    std::string actualShape2 = "(" + std::to_string(x2ScaleDim0) + ", " + 
+                        std::to_string(x2ScaleDim1) + ", " + std::to_string(x2ScaleDim2) + ")";
+                    OP_LOGE_FOR_INVALID_SHAPE(opName, "x2scale", actualShape2.c_str(), expectedShape2.c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
