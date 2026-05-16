@@ -940,21 +940,32 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     int64_t lastBaseDimLen = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
     int64_t lastCoreDimLen = lastBaseDimLen + dimRemainderElems_;
 
+    // dim < 128 时 mainCoredimLen_=0，唯一的核就是 last core，但 batch 方向仍需区分主核/尾核
     if (mainCoredimLen_ == 0) {
+        // 1) batch 大核（main batch core）
         ComputeUbFor(lastCoreDimLen, mainCoreBatchNum_, availableUbSize,
             lastCoreubMainFactorDim_, ubMainFactorBS_,
             lastCoreloopNumDim_, loopNumBS_,
             lastCoreubTailFactorDim_, ubTailFactorBS_);
-        // 主核和尾核参数均复制 lastCore 参数（kernel 里这些核实际走 lastCore 分支）
         ubMainFactorDim_ = lastCoreubMainFactorDim_;
         ubTailFactorDim_ = lastCoreubTailFactorDim_;
         loopNumDim_      = lastCoreloopNumDim_;
-        tailBlockubFactorDim_     = lastCoreubMainFactorDim_;
-        tailBlockubTailFactorDim_ = lastCoreubTailFactorDim_;
-        tailBlockloopNumDim_      = lastCoreloopNumDim_;
-        tailBlockubFactorBS_      = ubMainFactorBS_;
-        tailBlockubTailFactorBS_  = ubTailFactorBS_;
-        tailBlockloopNumBS_       = loopNumBS_;
+        
+        // 2) batch 小核（tail batch core）—— 如果有的话，单独计算
+        if (batchTailCoreCnt_ > 0) {
+            ComputeUbFor(lastCoreDimLen, tailCoreBatchNum_, availableUbSize,
+                tailBlockubFactorDim_, tailBlockubFactorBS_,
+                tailBlockloopNumDim_, tailBlockloopNumBS_,
+                tailBlockubTailFactorDim_, tailBlockubTailFactorBS_);
+        } else {
+            // 无 batch 尾核，复制主核参数
+            tailBlockubFactorDim_     = ubMainFactorDim_;
+            tailBlockubTailFactorDim_ = ubTailFactorDim_;
+            tailBlockloopNumDim_      = loopNumDim_;
+            tailBlockubFactorBS_      = ubMainFactorBS_;
+            tailBlockubTailFactorBS_  = ubTailFactorBS_;
+            tailBlockloopNumBS_       = loopNumBS_;
+        }
         return ge::GRAPH_SUCCESS;
     }
 
@@ -1009,6 +1020,9 @@ int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNum()
 {
     // 只考虑 batch × dim 的数据量（不含 seqLen，因为 seqLen 较小且固定）
     int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
+    if(dim_ < 128) {
+        xSizeBytes = batchSize_ * DIM_ALIGN_ELEMENT * DTYPE_SIZE;
+    }
 
     // ceil(xSizeBytes / 256)，每 256 字节（128 元素）分配 1 核
     int64_t effectiveCoreNum = (xSizeBytes + DIM_ALIGN_SIZE - 1) / DIM_ALIGN_SIZE;
@@ -1412,10 +1426,12 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
     if (dimRemainderElems_ > 0) {
         int64_t lastBaseDimLen = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
         int64_t lastCoreDimLen = lastBaseDimLen + dimRemainderElems_;
+        // 用临时变量接收 batch 输出，避免覆盖 tailBlock* 参数
+        int64_t tmpUbBS = 0, tmpLoopBS = 0, tmpUbTailBS = 0;
         ComputeUbForCoarse(lastCoreDimLen, mainCoreBatchNum_, availableUbSize,
-            lastCoreubMainFactorDim_, tailBlockubFactorBS_,
-            lastCoreloopNumDim_, tailBlockloopNumBS_,
-            lastCoreubTailFactorDim_, tailBlockubTailFactorBS_);
+            lastCoreubMainFactorDim_, tmpUbBS,
+            lastCoreloopNumDim_, tmpLoopBS,
+            lastCoreubTailFactorDim_, tmpUbTailBS);
     } else {
         lastCoreloopNumDim_      = tailBlockloopNumDim_;
         lastCoreubMainFactorDim_ = tailBlockubFactorDim_;
