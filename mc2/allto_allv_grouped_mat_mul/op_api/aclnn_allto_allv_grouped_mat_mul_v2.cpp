@@ -14,7 +14,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
-#include "aclnnInner_allto_allv_grouped_mat_mul_v2.h"
+#include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include "mc2_comm_utils.h"
 
 #ifdef BUILD_OPEN_PROJECT
@@ -115,6 +115,24 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
     return ACLNN_SUCCESS;
 }
 
+extern "C" aclnnStatus InnerAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
+                                                        const aclTensor* sendCountsTensorOptional, 
+                                                        const aclTensor* recvCountsTensorOptional, 
+                                                        const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
+                                                        const char* group, const char* commMode, int64_t epWorldSize, 
+                                                        const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
+                                                        bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, 
+                                                        aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
+                                                        uint64_t* workspaceSize, aclOpExecutor** executor)
+{
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
+        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
+        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, const_cast<char *>(commMode), gmmY, mmYOptional, permuteOutOptional, workspaceSize,
+        executor);
+    OP_LOGD("AlltoAllvGroupedMatMul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    return ret;
+}
+
 aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
                                                         const aclTensor* sendCountsTensorOptional, 
                                                         const aclTensor* recvCountsTensorOptional, 
@@ -131,7 +149,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulV2GetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
+    aclnnStatus ret = InnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), const_cast<char *>(commMode), epWorldSize, sendCounts,
         recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
         executor);
@@ -178,7 +196,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
 aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                         aclrtStream stream)
 {
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulV2(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnInnerAlltoAllv interface call failed.");

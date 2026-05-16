@@ -13,8 +13,8 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
-#include "aclnn_grouped_mat_mul_allto_allv.h"
-#include "aclnnInner_grouped_mat_mul_allto_allv_v2.h"
+#include "aclnn_grouped_mat_mul_allto_allv_v2.h"
+#include "aclnnInner_grouped_mat_mul_allto_allv.h"
 #include "mc2_comm_utils.h"
 
 #ifdef BUILD_OPEN_PROJECT
@@ -123,6 +123,20 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
     return ACLNN_SUCCESS;
 }
 
+extern "C" aclnnStatus InnerGroupedMatMulAlltoAllvGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
+    const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
+    const char* group, const char* commMode, int64_t epWorldSize, const aclIntArray* sendCounts, const aclIntArray* recvCounts,
+    bool transGmmWeight, bool transMmWeight, aclTensor* y, aclTensor* mmYOptional, uint64_t* workspaceSize,
+    aclOpExecutor** executor)
+{
+    aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
+        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, const_cast<char *>(commMode),
+        y, mmYOptional, workspaceSize, executor);
+    OP_LOGD("GroupedMatMulAlltoAllv, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    return ret;
+}
+
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
     const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
@@ -137,7 +151,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvV2GetWorkspaceSize(
+    aclnnStatus ret = InnerGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
         const_cast<char *>(group), const_cast<char *>(commMode), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional,
         workspaceSize, executor);

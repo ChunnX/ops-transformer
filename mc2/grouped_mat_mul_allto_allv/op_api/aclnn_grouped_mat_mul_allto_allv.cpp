@@ -129,7 +129,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, "", y, mmYOptional,
         workspaceSize, executor);
     return ret;
 }
