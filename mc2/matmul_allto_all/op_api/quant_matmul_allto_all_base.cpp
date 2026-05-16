@@ -88,22 +88,22 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((mVal == ZERO), {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "QuantMatmulAlltoAllV2, x1 is empty tensor with zero dimM, which is unsupported.");
+                "QuantMatmulAlltoAllBase, x1 is empty tensor with zero dimM, which is unsupported.");
         return false;
     });
     OP_API_CHECK((kVal1 == ZERO), {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "QuantMatmulAlltoAllV2, x1 is empty tensor with zero dimK, which is unsupported.");
+                "QuantMatmulAlltoAllBase, x1 is empty tensor with zero dimK, which is unsupported.");
         return false;
     });
     OP_API_CHECK((kVal2 == ZERO), {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "QuantMatmulAlltoAllV2, x2 is empty tensor with zero dimK, which is unsupported.");
+                "QuantMatmulAlltoAllBase, x2 is empty tensor with zero dimK, which is unsupported.");
         return false;
     });
     OP_API_CHECK((nVal == ZERO), {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "QuantMatmulAlltoAllV2, x2 is empty tensor with zero dimN, which is unsupported.");
+                "QuantMatmulAlltoAllBase, x2 is empty tensor with zero dimN, which is unsupported.");
         return false;
     });
     return true;
@@ -313,38 +313,38 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllV2, x1 format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllBase, x1 format %s does not support private format.",
                 op::ToString(x1->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllV2, x2 format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllBase, x2 format %s does not support private format.",
                 op::ToString(x2->GetStorageFormat()).GetString());
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "aclnnQuantMatmulAlltoAllV2, biasOptional format %s does not support private format.",
+                    "aclnnQuantMatmulAlltoAllBase, biasOptional format %s does not support private format.",
                     op::ToString(biasOptional->GetStorageFormat()).GetString());
             return false;
         }
     }
     if (IsPrivateFormat(x1Scale->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAllV2, x1Scale format %s does not support private format.",
+                "aclnnQuantMatmulAlltoAllBase, x1Scale format %s does not support private format.",
                 op::ToString(x1Scale->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x2Scale->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAllV2, x2Scale format %s does not support private format.",
+                "aclnnQuantMatmulAlltoAllBase, x2Scale format %s does not support private format.",
                 op::ToString(x2Scale->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAllV2, output format %s does not support private format.",
+                "aclnnQuantMatmulAlltoAllBase, output format %s does not support private format.",
                 op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
@@ -424,7 +424,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
-    OP_LOGD("aclnnQuantMatmulAlltoAllV2 checkParams success");
+    OP_LOGD("aclnnQuantMatmulAlltoAllBase checkParams success");
     return ACLNN_SUCCESS;
 }
 } // namespace
@@ -543,7 +543,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
 
 
-    OP_LOGD("QuantMatmulAlltoAllV2, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("QuantMatmulAlltoAllBase, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnQuantMatmulAlltoAllGetWorkspaceSize interface call failed.");
@@ -569,10 +569,10 @@ aclnnStatus aclnnQuantMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize
             uint8_t commMode = static_cast<uint8_t>(handleVal);
 
             if (commMode == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("aclnnQuantMatmulAlltoAllV2: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+                OP_LOGD("aclnnQuantMatmulAlltoAllBase: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             } else {
-                OP_LOGD("aclnnQuantMatmulAlltoAllV2: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+                OP_LOGD("aclnnQuantMatmulAlltoAllBase: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
 
@@ -584,7 +584,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize
     aclnnStatus ret = aclnnInnerMatmulAlltoAll(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnQuantMatmulAlltoAllV2 interface call failed.");
+                "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBase interface call failed.");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;
