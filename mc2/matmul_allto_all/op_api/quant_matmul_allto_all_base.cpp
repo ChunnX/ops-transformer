@@ -31,14 +31,6 @@
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
-
 namespace {
 
 using namespace op;
@@ -505,36 +497,37 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         enumYDtype = 27;
     }
 
-    // 获取卡数
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
 
-    // 获取通信引擎参数
-    uint8_t commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commMode, "aicpu") == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (std::strcmp(commMode, "ccu") == 0) {
-        } else if (std::strcmp(commMode, "default") == 0) {
-            // default：小于等于8P走CCU，否则走AICPU
-            if (rankSize <= 8) {
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    } else {
-        // 910B和910_93只支持default
-        if (std::strcmp(commMode, "default") != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default'.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    uint8_t commModeEnum = 0;
+    CheckAndHandleCommMode(group,commMode,commModeEnum);
+    
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
@@ -542,19 +535,16 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
         transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
 
-
     OP_LOGD("QuantMatmulAlltoAllBase, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnQuantMatmulAlltoAllGetWorkspaceSize interface call failed.");
     }
 
-
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(executor, args);
     }
-
 
     return ret;
 }
