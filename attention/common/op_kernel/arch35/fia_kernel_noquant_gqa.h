@@ -889,7 +889,7 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        PRINTF("taskDealMode:%d, bN2Cur:%d, gS1Cur:%d, s2Cur:%d\n", static_cast<int>(taskDealMode), bN2Cur, gS1Cur, s2Cur);
+        PRINTF("taskDealMode:%d, bN2Cur:%d, gS1Cur:%d, s2Cur:%d, coreGS1Loops:%d, accGS1Loops:%d\n", static_cast<int>(taskDealMode), bN2Cur, gS1Cur, s2Cur, coreGS1Loops, accGS1Loops);
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
             s2Cur = curS2Start;
             return;
@@ -908,7 +908,9 @@ public:
                 accGS1Loops++;
                 createdTaskCount = executedTaskCount;
             }
+            PRINTF("bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
             S1OutSplitUpdatePos(bN2Cur, gS1Cur);
+            PRINTF("update bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
             return;
         }
 
