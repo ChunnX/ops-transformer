@@ -316,28 +316,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
             vecEventIdTransScaleMte3ToV_[i] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             SetFlag<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[i]);
         }
-        /*
-        transIdBuffer_.template ReinterpretCast<wType>()
-        // i=0 时，4 个 uint64_t 的基值（每列对应 j 的 4 个连续值）
-uint64_t base[4] = {
-    0x0180010000800000ULL,  // j=0,1,2,3
-    0x0380030002800200ULL,  // j=4,5,6,7
-    0x0580050004800400ULL,  // j=8,9,10,11
-    0x0780070006800600ULL,  // j=12,13,14,15
-};
 
-// 每行 i 增加 1，相当于 4 个 uint16 各加 1
-// 0x0001_0001_0001_0001 = 每个 uint16 分量 +1
-uint64_t inc = 0x0001000100010001ULL;
-
-for (uint64_t i = 0; i < 8; i++) {
-    uint64_t row = i * inc;
-    #pragma unroll
-    for (uint64_t c = 0; c < 4; c++) {
-        p[i * 4 + c] = base[c] + row;
-    }
-}
-    */
     } else {
         ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);
         uint64_t highBitOffset = UB_BUFFER_INFO.weightInputLowbitUbTotalSize;
