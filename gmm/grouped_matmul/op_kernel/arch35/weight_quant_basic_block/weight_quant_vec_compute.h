@@ -19,6 +19,7 @@
 #include "basic_block_vf_mx.h"
 #include "basic_block_vf_nd.h"
 #include "basic_block_vf_nz.h"
+#include "static_diag_constant.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -300,11 +301,15 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
         }
         uint64_t transIdOffset = currentOffset;
         transIdBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, transIdOffset, GetKBUnit<uint16_t>());
-        for (uint64_t i = 0; i < 8; i++) {
-            for(uint64_t j = 0; j < 16; j++){
-                transIdBuffer_.SetValue(i * 16 + j, i + j * 80);
-            }
-        }
+        GlobalTensor<uint16_t> transIdGm;
+        transIdGm.SetGlobalBuffer((__gm__ uint16_t *)(MX_TRANS_ID));
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+        AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(MX_TRANS_ID), 256);
+#endif
+        DataCopyParams dmaParams;
+        dmaParams.blockCount = 1;
+        dmaParams.blockLen = 8;
+        DataCopy(transIdBuffer_, transIdGm, dmaParams);
         uint64_t transScaleOffset = transIdOffset + GetKBUnit<uint16_t>();
         transScaleBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, transScaleOffset, DOUBLE_BUFFER_NUM * TRANS_SCALE_SINGLE_BUF_SIZE);
         for (uint16_t i = 0; i < DOUBLE_BUFFER_NUM; ++i) {
