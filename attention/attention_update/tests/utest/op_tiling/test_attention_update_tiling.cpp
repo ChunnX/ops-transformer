@@ -11,7 +11,6 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "op_log.h"
 
 #include "util/shape_util.h"
 #include "kernel_run_context_facker.h"
