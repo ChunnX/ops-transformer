@@ -101,6 +101,10 @@ protected:
     ge::graphStatus DoOpTilingKHFullLoad(int64_t rowOfFormerBlock, int64_t rowOfTailBlock);
     ge::graphStatus DoOpTilingHFullLoad(int64_t rowOfFormerBlock, int64_t rowOfTailBlock);
     ge::graphStatus DoOpTilingSplitH(int64_t rowOfFormerBlock, int64_t rowOfTailBlock);
+    ge::graphStatus CheckRange(int64_t start, int64_t end, const char *rangeName);
+    ge::graphStatus CheckRangeOverlap(int64_t start1, int64_t end1, int64_t start2, int64_t end2, const char *name1,
+                                      const char *name2);
+    ge::graphStatus CheckExpertRangeValidity();
 
     bool hasX1_{false};
     bool hasX2_{false};
@@ -454,6 +458,68 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetZeroShapeAttrsInfo(int64_t idx
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckRange(int64_t start, int64_t end, const char *rangeName)
+{
+    if (start == -1 && end == -1) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (e == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (!(0 <= start && start < end && end <= e)) {
+        OP_LOGE(context_->GetNodeName(), "%s range [%ld, %ld) is invalid, must satisfy 0 <= start < end < E(%ld).",
+                rangeName, start, end, e);
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckRangeOverlap(int64_t start1, int64_t end1, int64_t start2,
+                                                               int64_t end2, const char *name1, const char *name2)
+{
+    if (start1 == -1 || start2 == -1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (!(end1 <= start2 || end2 <= start1)) {
+        OP_LOGE(context_->GetNodeName(), "%s range [%ld, %ld) overlaps with %s range [%ld, %ld).", name1, start1, end1,
+                name2, start2, end2);
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckExpertRangeValidity()
+{
+    // 检查是否合法区间
+    if (CheckRange(zeroExpertStart, zeroExpertEnd, "zero expert") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckRange(copyExpertStart, copyExpertEnd, "copy expert") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckRange(constantExpertStart, constantExpertEnd, "constant expert") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 检查区间是否重叠
+    if (CheckRangeOverlap(zeroExpertStart, zeroExpertEnd, copyExpertStart, copyExpertEnd, "zero expert",
+                          "copy expert") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckRangeOverlap(zeroExpertStart, zeroExpertEnd, constantExpertStart, constantExpertEnd, "zero expert",
+                          "constant expert") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckRangeOverlap(copyExpertStart, copyExpertEnd, constantExpertStart, constantExpertEnd, "copy expert",
+                          "constant expert") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
 {
     // attr的实现
@@ -519,6 +585,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
     OP_CHECK_IF(
         CheckShapeAndDtypeIsValid() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "check shapes and dtype are invalid."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        CheckExpertRangeValidity() != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "check const/zero/copy expert range are invalid."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
