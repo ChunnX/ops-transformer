@@ -99,6 +99,7 @@ public:
     uint32_t executedTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
+    int64_t task_i_prev_ = 0;
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -364,23 +365,20 @@ public:
         }
     }
 
+    __aicore__ inline uint32_t ComputeFlatTaskIdx()
+    {
+        if (coreGS1Loops % 2 == 0) {
+            return coreGS1Loops * constInfo.coreNum + constInfo.aicIdx;
+        }
+        return (coreGS1Loops + 1) * constInfo.coreNum - constInfo.aicIdx - 1;
+    }
+
     __aicore__ inline bool SkipForS1OutSplit()
     {
         if (!enableS1OutSplit) {
             return false;
         }
-
-        if (coreGS1Loops % 2 == 0) {
-            if (coreGS1Loops * constInfo.coreNum + constInfo.aicIdx != accGS1Loops) {
-                return true;
-            }
-        } else {
-            if ((coreGS1Loops + 1) * constInfo.coreNum - constInfo.aicIdx - 1 != accGS1Loops) {
-                return true;
-            }
-        }
-
-        return false;
+        return (ComputeFlatTaskIdx() != accGS1Loops);
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -426,6 +424,7 @@ public:
 
         if (enableS1OutSplit) {
             ClacS1OutSplitLoopTimes();
+            task_i_prev_ = ComputeFlatTaskIdx();
         }
 
         bool shouldDispatchTask = true;
@@ -503,7 +502,7 @@ public:
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
-            return TASK_DEAL_MODE::SKIP_ZERO;
+            return TASK_DEAL_MODE::DEAL_ZERO;
         }
         // 对paddingSize设置不合理的任务结果置0
         if ((constInfo.isQHasLeftPadding && (actSeqLensQ + constInfo.queryRightPaddingSize > constInfo.s1Size)) ||
@@ -521,12 +520,16 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
+        if (curS2Start >= curS2End) {
+            return TASK_DEAL_MODE::SKIP;
         }
 
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
+        if (s2Cur < curS2Start) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
+
+        if (s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
         }
 
         if (SkipForS1OutSplit()) {
@@ -769,7 +772,12 @@ public:
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
-        if (!enableS1OutSplit && (constInfo.bN2Start == constInfo.bN2End && constInfo.gS1OStart == constInfo.gS1OEnd)) {
+        if (enableS1OutSplit) {
+            info.isS2SplitCore = false;
+            return;
+        }
+
+        if ((constInfo.bN2Start == constInfo.bN2End && constInfo.gS1OStart == constInfo.gS1OEnd)) {
             // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
         } else {
@@ -777,7 +785,7 @@ public:
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
             } else if (tailS2Split && (bN2Cur == constInfo.bN2End) &&
-                       (!enableS1OutSplit && gS1Cur == constInfo.gS1OEnd)) {
+                       (gS1Cur == constInfo.gS1OEnd)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
@@ -785,37 +793,113 @@ public:
         }
     }
 
+    __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
+    {
+        uint32_t task_i_curr = ComputeFlatTaskIdx();
+        int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
+        task_i_prev_ = task_i_curr;
+        if (gS1Skip <= 0) {
+            return;
+        }
+
+        uint32_t n2Size = constInfo.n2Size;
+        uint32_t bIdx = bN2Cur / n2Size;
+        uint32_t n2Idx = bN2Cur % n2Size;
+
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        if (gS1LoopTimes == 0) {
+            uint32_t gS1RemainN2 = n2Size - n2Idx - 1;
+            if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
+                bN2Cur = bIdx * n2Size + n2Idx + 1 + static_cast<uint32_t>(gS1Skip);
+                gS1Cur = 0;
+                return;
+            }
+            gS1Skip -= gS1RemainN2 + 1;
+        } else {
+            uint32_t gS1First = 0;
+            uint32_t gS1Last = gS1LoopTimes - 1;
+            uint32_t gS1Valid = gS1LoopTimes;
+
+            uint32_t gS1Remain = (gS1Cur < gS1Last) ? (gS1Last - gS1Cur) : 0;
+            if (static_cast<uint32_t>(gS1Skip) <= gS1Remain) {
+                gS1Cur += gS1Skip;
+                return;
+            }
+            gS1Skip -= gS1Remain;
+
+            uint32_t gS1RemainN2 = gS1Valid * (n2Size - n2Idx - 1);
+            if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
+                uint32_t n2IdxNew = n2Idx + 1 + static_cast<uint32_t>(gS1Skip) / gS1Valid;
+                gS1Cur = gS1First + static_cast<uint32_t>(gS1Skip) % gS1Valid;
+                bN2Cur = bIdx * n2Size + n2IdxNew;
+                return;
+            }
+            gS1Skip -= gS1RemainN2;
+        }
+
+        while (true) {
+            bIdx++;
+            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+            actSeqLensKv += constInfo.actualKVPrefixSize;
+            gS1Size = actSeqLensQ * constInfo.gSize;
+            gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+            uint32_t gS1RemainN2;
+            if (gS1LoopTimes == 0) {
+                gS1RemainN2 = n2Size;
+            } else {
+                gS1RemainN2 = gS1LoopTimes * n2Size;
+            }
+            if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
+                if (gS1LoopTimes == 0) {
+                    bN2Cur = bIdx * n2Size + static_cast<uint32_t>(gS1Skip);
+                    gS1Cur = 0;
+                } else {
+                    uint32_t gS1Valid = gS1LoopTimes;
+                    uint32_t n2IdxNew = static_cast<uint32_t>(gS1Skip) / gS1Valid;
+                    gS1Cur = static_cast<uint32_t>(gS1Skip) % gS1Valid;
+                    bN2Cur = bIdx * n2Size + n2IdxNew;
+                }
+                return;
+            }
+            gS1Skip -= gS1RemainN2;
+        }
+    }
+
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        } else if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
             s2Cur++;
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK ||
-            taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            if (!SkipForS1OutSplit()) {
-                coreGS1Loops++;
-            }
-            accGS1Loops++;
-        }
-
         // 当前BN2未处理完
         s2Cur = 0;
+        if (enableS1OutSplit) {
+            if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
+                accGS1Loops++;
+            } else {
+                coreGS1Loops++;
+                accGS1Loops++;
+            }
+            S1OutSplitUpdatePos(bN2Cur, gS1Cur);
+            return;
+        }
+
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;
         }
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO ||
-             taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+        if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
             if (!SkipForS1OutSplit()) {
                 coreGS1Loops++;
             }
