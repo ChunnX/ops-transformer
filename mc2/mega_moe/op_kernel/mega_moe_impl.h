@@ -211,7 +211,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupCnt, uint32_t expertIndex,
     uint16_t& pingpongIdx, int32_t rankId)
 {
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
@@ -357,7 +357,7 @@ __aicore__ inline void GroupMatmul2(
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+                mLoc, nLoc, n, groupCnt, expertIndex, rankId, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);
