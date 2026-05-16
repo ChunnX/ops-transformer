@@ -26,14 +26,37 @@ namespace ops {
 static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
-        } else {
+        ge::AscendString commMode = "default"; 
+        const char* serverType = nullptr; 
+        const char* streamType = nullptr;
+
+        bool result = context->GetStrAttrVal("comm_mode", commMode);
+        OPS_LOG_D(context->GetNodeName(), "=====AllGatherMatmulV2CalcOpParam===comm_mode===%s=", commMode);
+        if (commMode == "default") {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 default GenTask CalcOpParam");
+            int64_t rankSize = 0; 
+            result = context->GetIntAttrVal("rank_size", rankSize);
+            OPS_LOG_D(context->GetNodeName(), "===gentask rankSize %d", rankSize);
+            if (rankSize <= 8) {
+                serverType = "ccu server";
+                streamType = "ccu_stream";
+                OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
+            }else{
+                serverType = "aicpu kfc server";
+                streamType = "kfc_stream";
+                OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+            }
+        } else if (commMode == "ccu") {
+            serverType = "ccu server";
+            streamType = "ccu_stream";
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
-        }
+        }else {
+            serverType = "aicpu kfc server";
+            streamType = "kfc_stream";
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+        } 
+        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
+
     }
     OPS_LOG_D(context->GetNodeName(), "AICPU GenTask CalcOpParam");
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");

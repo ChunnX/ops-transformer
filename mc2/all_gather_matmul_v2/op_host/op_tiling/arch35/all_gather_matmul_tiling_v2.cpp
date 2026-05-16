@@ -214,6 +214,26 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMM_MODE_INDEX));
+    if (strcmp(commMode, "aicpu") == 0) {
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+    } else if (strcmp(commMode, "default") == 0) {
+        if (args_.rankDim > 8){
+            mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+        }
+        // uint32_t rankSize = 0; 
+        // HcclComm comm; 
+        // hcclRet = HcclGetRankSize(comm, &rankSize);
+        // if (hcclRet != HCCL_SUCCESS) {
+        //     OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
+        //     return ACLNN_ERR_INNER;
+        // }
+
+    }
+    // else if (strcmp(commMode, "ccu") == 0){
+    //     mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
+    // }
+    // 不设置SetCommEngine默认为CCU
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2CcTiling) != 0,
