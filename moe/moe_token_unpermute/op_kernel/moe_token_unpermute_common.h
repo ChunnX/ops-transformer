@@ -40,7 +40,6 @@ __aicore__ inline void DataCopyPadCustom(
     int64_t elem = tokenCopyParams.blockLen / sizeof(T);
     int64_t numPerBlock = BLOCK_BYTES / sizeof(T);
     int64_t alignElem = AlignUp(elem, numPerBlock);
-
     if (likely(alignElem == elem)) {
         DataCopyParams copyParams = {tokenCopyParams.blockCount, static_cast<uint16_t>(alignElem / numPerBlock), 0, 0};
         DataCopy(inLocal, srcGm, copyParams);
