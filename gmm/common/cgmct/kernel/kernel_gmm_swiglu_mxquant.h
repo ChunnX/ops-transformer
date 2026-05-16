@@ -107,6 +107,9 @@ public:
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
+    static constexpr bool IS_FP4 = AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> ||
+                                   AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>;
+    static constexpr int32_t c0Size = IS_FP4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, yscale
@@ -259,22 +262,26 @@ public:
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
         
-        if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+        if constexpr (IS_FP4) {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
         } else {
             Get<IDX_A_OFFSET>(baseOffset_) += m * k;
         }
 
         if constexpr (formatB == CubeFormat::NZ) {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+            int64_t nAlign = (n + c0Size - 1) & (~(c0Size - 1));
             int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
             if constexpr (transB) {
                 nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                kAlign = (k + c0Size - 1) & (~(c0Size - 1));
             }
-            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
+            if constexpr (IS_FP4) {
+                Get<IDX_B_OFFSET>(baseOffset_) = (nAlign * kAlign * static_cast<int64_t>(groupIdx)) >> 1;
+            } else {
+                Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
+            }
         } else {
-            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+            if constexpr (IS_FP4) {
                 Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
             } else {
                 Get<IDX_B_OFFSET>(baseOffset_) += n * k;
@@ -320,7 +327,7 @@ public:
 
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
-                bRightOffset += resN * MATMUL_MNK_ALIGN_INT8;
+                bRightOffset += resN * c0Size;
             } else {
                 bRightOffset += resN * CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
             }
@@ -356,7 +363,7 @@ public:
             // isMx = true
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
-                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
+                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
@@ -401,6 +408,13 @@ public:
         epilogueOp_.Init(params.epilogueParams);
         uint32_t groupNum = params.gmmParams.groupNum;
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
+            } else {
+                bs.SetTailAlign(1, c0Size);
+            }
+        }
         l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
         l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {

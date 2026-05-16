@@ -115,28 +115,32 @@ public:
 
     __aicore__ inline BlockMmadMx()
     {
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
-        AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
+        if ASCEND_IS_AIC {
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
+            AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
+        }
     }
 
     __aicore__ inline ~BlockMmadMx()
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
-        AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
+        if ASCEND_IS_AIC {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
+            AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
+        }
     }
 
 public:
@@ -558,6 +562,20 @@ public:
         AscendC::DataCopy(cGlobal, c1Local, intriParams);
     }
 
+    __aicore__ inline void CopyOut(const AscendC::LocalTensor<CType> &cLocal,
+                                   const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN)
+    {
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.mSize = static_cast<uint16_t>(Cgmct::Gemm::Align(baseM, EVEN_FACTOR));
+        fixpipeParams.nSize = static_cast<uint16_t>(baseN);
+        fixpipeParams.srcStride = static_cast<uint16_t>(Cgmct::Gemm::Align(baseM, AscendC::BLOCK_CUBE));
+        fixpipeParams.dstStride = baseN;
+        fixpipeParams.dualDstCtl = static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M);
+        fixpipeParams.subBlockId = 0;
+        fixpipeParams.unitFlag = FINAL_ACCUMULATION;
+        AscendC::Fixpipe<CType, CType, AscendC::Impl::CFG_ROW_MAJOR_UB>(cLocal, c1Local, fixpipeParams);
+    }
+
     __aicore__ inline void UpdateKAL1(TileL1L0Param &tileL1L0Param, uint64_t offsetKAL1)
     {
         tileL1L0Param.curGmAKL1 = Min(kAL1_, k_ - offsetKAL1);
@@ -762,6 +780,33 @@ public:
         }
     }
 
+    __aicore__ inline void run(const AscendC::GlobalTensor<AType> &aGlobal, const AscendC::GlobalTensor<BType> &bGlobal,
+                               const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
+                               const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
+                               const AscendC::GlobalTensor<BiasType> &biasGlobal,
+                               const AscendC::LocalTensor<CType> &cLocal, const BlockShape &singleShape)
+    {
+        TileL1L0Param tileL1L0Param;
+        tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);
+        tileL1L0Param.curN = Get<IDX_N_TILE_IDX>(singleShape);
+        GetAlignMN(tileL1L0Param);
+        AscendC::MmadParams mmParams;
+        mmParams.m = tileL1L0Param.curM;
+        mmParams.n = tileL1L0Param.curN;
+        mmParams.disableGemv = true;
+        uint64_t l0cOffset = (l0cPingPong_ & 1) * HALF_L0C_SIZE;
+        if (orderAL1BL1_) {
+            IterAL1BL1(tileL1L0Param, mmParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
+        } else {
+            IterBL1AL1(tileL1L0Param, mmParams, l0cOffset, aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal);
+        }
+        AscendC::LocalTensor<float> c1Local = c1Local_[l0cOffset];
+        CopyOut(cLocal, c1Local, mmParams.m, mmParams.n);
+        if (enableL0cPingPong_) {
+            l0cPingPong_++;
+        }
+    }
+
     __aicore__ inline void operator()(const AscendC::GlobalTensor<AType> &aGlobal,
                                       const AscendC::GlobalTensor<BType> &bGlobal,
                                       const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
@@ -780,6 +825,26 @@ public:
                                       const AscendC::GlobalTensor<CType> &cGlobal, const BlockShape &singleShape)
     {
         run(aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal, cGlobal, singleShape);
+    }
+
+    __aicore__ inline void operator()(const AscendC::GlobalTensor<AType> &aGlobal,
+                                      const AscendC::GlobalTensor<BType> &bGlobal,
+                                      const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
+                                      const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
+                                      const AscendC::LocalTensor<CType> &cLocal, const BlockShape &singleShape)
+    {
+        AscendC::GlobalTensor<BiasType> biasGlobal;
+        run(aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal, cLocal, singleShape);
+    }
+
+    __aicore__ inline void operator()(const AscendC::GlobalTensor<AType> &aGlobal,
+                                      const AscendC::GlobalTensor<BType> &bGlobal,
+                                      const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
+                                      const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
+                                      const AscendC::GlobalTensor<BiasType> &biasGlobal,
+                                      const AscendC::LocalTensor<CType> &cLocal, const BlockShape &singleShape)
+    {
+        run(aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, biasGlobal, cLocal, singleShape);
     }
 
 private:
