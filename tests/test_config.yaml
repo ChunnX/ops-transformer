@@ -492,7 +492,7 @@ gmm:
     options:
       - grouped_matmul_add
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_finalize_routing:
     module: True
