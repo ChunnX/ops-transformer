@@ -226,7 +226,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
-            if (t1Index >= validT1) {
+            if (!IS_BSND && t1Index >= validT1) {
                 break;
             }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
@@ -304,7 +304,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
-            if (t1Index >= validT1) {
+            if (!IS_BSND && t1Index >= validT1) {
                 break;
             }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
