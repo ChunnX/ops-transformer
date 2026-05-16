@@ -577,9 +577,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
             // 从窗口读取到UB
             LocalTensor<YType> tripleLocal = tripleQueue.AllocTensor<YType>();
             DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
-            PipeBarrier<PIPE_V>;
-            DumpTensor(tripleLocal, 1, 8);
-            PipeBarrier<PIPE_V>;
+            // PipeBarrier<PIPE_V>;
+            // DumpTensor(tripleLocal, 1, 8);
+            // PipeBarrier<PIPE_V>;
             tripleQueue.EnQue(tripleLocal);
             tripleLocal = tripleQueue.DeQue<YType>();
 
