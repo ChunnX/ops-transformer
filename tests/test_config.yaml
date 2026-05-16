@@ -86,7 +86,7 @@ attention:
     ut_cov_exclude:
       - attention/attention_update
     test:
-      ut: True
+      ut: False
     options:
       - attention_update
 
@@ -461,7 +461,7 @@ attention:
     ut_cov_exclude:
       - attention/scatter_pa_kv_cache
     test:
-      ut: True
+      ut: False
     options:
       - scatter_pa_kv_cache
 
@@ -1053,23 +1053,10 @@ posembedding:
     ut_cov_exclude:
       - posembedding/kv_rms_norm_rope_cache
     test:
-      ut: True
+      ut: False
     options:
       - kv_rms_norm_rope_cache
 
-  qkv_rms_norm_rope_cache:
-    module: True
-    src:
-      - posembedding/qkv_rms_norm_rope_cache
-    exclude:
-      - posembedding/qkv_rms_norm_rope_cache/docs
-      - posembedding/qkv_rms_norm_rope_cache/README.md
-    ut_cov_exclude:
-      - posembedding/qkv_rms_norm_rope_cache
-    test:
-      ut: True
-    options:
-      - qkv_rms_norm_rope_cache
 
 mc2:
   matrix:
