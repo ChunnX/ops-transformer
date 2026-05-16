@@ -103,10 +103,13 @@ TEST_P(FusedInferAttentionScoreInferDTypeTest, param)
     }
 }
 
+std::filesystem::path dtypeTestFile(__FILE__);
+std::filesystem::path dtypeTestDir = dtypeTestFile.parent_file();
+const char* dtypeTestFilePath = (dtypeTestDir/dtypeTestFile).string().c_str();
 INSTANTIATE_TEST_SUITE_P(
     FusedInferAttentionScore,
     FusedInferAttentionScoreInferDTypeTest,
-    testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionInferDTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionInferDTypeUtParam>(ReplaceFileExtension2Csv(dtypeTestFilePath))),
     PrintCaseInfoString<FusedInferAttentionInferDTypeUtParam>
 );
 
