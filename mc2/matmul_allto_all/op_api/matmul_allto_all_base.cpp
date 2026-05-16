@@ -31,6 +31,14 @@
 #include "aclnn_kernels/transdata.h"
 #include "mc2_comm_utils.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
+
 namespace {
 
 using namespace op;
@@ -265,12 +273,11 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerMatmulAlltoAllGetWorkspaceSize完成默认值传参和调用L0层接口
-extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                           const aclTensor *biasOptional,
-                                                           const aclIntArray *alltoAllAxesOptional, const char *group,
-                                                           bool transposeX1, bool transposeX2, const char *commMode,
-                                                           const aclTensor *output, uint64_t *workspaceSize,
-                                                           aclOpExecutor **executor)
+aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                                const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                bool transposeX1, bool transposeX2, const char *commMode,
+                                                const aclTensor *output, uint64_t *workspaceSize,
+                                                aclOpExecutor **executor)
 {
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值，因此此处使用的枚举值为28
     const int64_t GE_UNDEFINED = 28;
@@ -299,11 +306,12 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
 }
 
 // 两段式接口
-extern "C" aclnnStatus
-aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                        const aclIntArray *alltoAllAxesOptional, const char *group,
-                                        const char *commMode, bool transposeX1, bool transposeX2,
-                                        const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                    const aclTensor *biasOptional,
+                                                    const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                    const char *commMode, bool transposeX1, bool transposeX2,
+                                                    const aclTensor *output, uint64_t *workspaceSize,
+                                                    aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
@@ -392,8 +400,8 @@ aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2
     return ret;
 }
 
-extern "C" aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                               aclrtStream stream)
+aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                    aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
