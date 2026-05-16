@@ -97,10 +97,13 @@ TEST_P(FusedInferAttentionScoreInferShapeTest, param)
     ExecuteTestCase(infershapeContextPara, param.expectResult, param.expectOutputShape);
 }
 
+std::filesystem::path shapeTestFile(__FILE__);
+std::filesystem::path shapeTestDir = shapeTestFile.parent_path();
 INSTANTIATE_TEST_SUITE_P(
     FusedInferAttentionScore,
     FusedInferAttentionScoreInferShapeTest,
-    testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionInferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionInferShapeUtParam>(
+        ReplaceFileExtension2Csv((shapeTestDir/shapeTestFile).string().c_str()))),
     PrintCaseInfoString<FusedInferAttentionInferShapeUtParam>
 );
 
