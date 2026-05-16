@@ -486,6 +486,8 @@ public:
     {
         if constexpr (GM_FORMAT == GmFormat::NTGD) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
+        } else if (GM_FORMAT == GmFormat::TNGD) {
+            ProcessS1(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
@@ -509,6 +511,19 @@ private:
     
         CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[queryScaleGmbaseOffset], gmCoord.dDealSize,
                                 gmCoord.gS1DealSize, gmCoord.dDealSize, gmCoord.dDealSize);
+    }
+
+    __aicore__ inline void ProcessS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
+                                      FaGmTensor<Q_SCALE_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    {
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
+        uint64_t queryScaleGmbaseOffset =
+            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
+
+        CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[queryScaleGmbaseOffset], gmCoord.dDealSize,
+                                gmCoord.gS1DealSize, gmCoord.dDealSize * offsetCalculator.GetDimN2(),
+                                gmCoord.dDealSize);
     }
 
     __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
