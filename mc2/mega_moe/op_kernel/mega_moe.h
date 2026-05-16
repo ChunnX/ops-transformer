@@ -332,14 +332,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags(
         if (aivCoreIdx_ != 0) {
             return;
         }
-        GlobalTensor<int32_t> rowReadyFlags;
-        rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
-
         // 对齐到32B（8个int32_t）
         int32_t blockNumAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8));
         LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
         Duplicate(initTensor, 0, blockNumAlign);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
+
+        GlobalTensor<int32_t> rowReadyFlags;
+        rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
         DataCopy(rowReadyFlags, initTensor, blockNumAlign);
     }
 }
@@ -625,6 +625,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             Get<IDX_C_SCALE_OFFSET>(baseOffset_) + waveRowOffset * static_cast<int64_t>(scaleOutputN),
             Get<IDX_FLAG_OFFSET>(baseOffset_) + static_cast<int64_t>(waveIdx), 0L, 0L, 0L};
         epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        // ★ GMM1 HBM 输出地址（float）：每行 n 个 float
+        //   按 expert 间 IDX_C_OFFSET（覆盖 m*outputN）+ 当前 wave 在 expert 内的行偏移切片。
+        //   IDX_C_OFFSET 走的是 swiglu 输出空间步进 (m * outputN)，这里 gmm1Out 走 m*n 空间，
+        //   所以需要按 baseOffset 的 m 维进度（IDX_M_OFFSET）+ wave 内行偏移 * n 重算。
+        int64_t gmm1RowBase = Get<IDX_M_OFFSET>(baseOffset_) + waveRowOffset;
+        gmmAddrInfo.gmm1OutGlobal = params_.workspaceInfo.ptrGmm1Out +
+            gmm1RowBase * static_cast<int64_t>(n) * sizeof(float);
         if constexpr(g_coreType == AIC) {
             gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(QuantOutType);
             gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) *
@@ -964,7 +971,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                     epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
                     vecSetSyncCom_, waveTraceIdx_);
             }
-            EndSync();
+            // EndSync 已废：GMM1 cube/vec 通过 HBM + atomic 通信，无需 drain cube↔vec UB flag。
+            // GMM1→GMM2 的边界由 GMM2 内部 while-poll groupFlagListGm (swiglu→gmm2 flag) 保证。
             vecSetSyncCom_ = 0;
 
             // [TRACE] sp5: GMM1 + EndSync 完成

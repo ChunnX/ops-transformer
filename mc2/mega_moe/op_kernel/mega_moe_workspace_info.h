@@ -75,6 +75,11 @@ struct WorkspaceInfo {
     GM_ADDR ptrFlagDispatchToGmm1;
     GM_ADDR ptrGmmOut;
     GM_ADDR ptrGmm2RowReady;
+    // === GMM1 解耦：cube fixpipe 直接写 HBM，再 NotifyVector 通知同 pair 的 vec ===
+    // ptrGmm1Out: float mmad 输出，m × n × sizeof(float)，按 wave_offset 切片
+    //   cube/vec 1:1 强关系，sync 走 cube↔vec flag 指令（NotifyVector/WaitForCube），
+    //   不需要 GM 上的 rowReady 计数器。
+    GM_ADDR ptrGmm1Out;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -114,6 +119,12 @@ struct WorkspaceInfo {
         ptrGmm2RowReady = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->blockNum), ALIGN_128);
+        // ★ GMM1 HBM 输出区：4 byte/elem (float) × m × n
+        //   不同 wave 写不同 row range（waveIdx × L1_TILE_M），同 wave 的 cube tile 也按 nLoc 切片
+        ptrGmm1Out = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(4 * tilingData->maxOutputSize * tilingData->n),
+            ALIGN_512);
         expandedRowIdxGather = ptrA;
     }
 };
