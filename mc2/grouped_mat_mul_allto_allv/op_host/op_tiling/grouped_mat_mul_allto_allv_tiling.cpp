@@ -52,6 +52,7 @@ constexpr uint32_t ATTR_SEND_COUNTS_INDEX = 2;
 constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
 constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
+constexpr uint32_t ATTR_COMM_MODE_INDEX = 6;
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
 constexpr uint32_t HCCL_CMD_ALLTOALLV = 8;
@@ -726,9 +727,17 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint64_t epWorldSize = tilingData->commonTilingInfo.epWorldSize;
+    auto commMode = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(context->GetNodeName(), "commMode is null!"), return ge::GRAPH_FAILED);
     OP_LOGD(context->GetNodeName(), "GmmAlltoAllv tiling: commMode=%u", commMode);
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    if (commMode == "aicpu") {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commMode == "ccu") {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+    } if (epWorldSize <= 8) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+    } else {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
