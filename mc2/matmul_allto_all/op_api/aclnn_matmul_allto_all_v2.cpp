@@ -253,7 +253,7 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t worksp
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerMatmulAlltoAllGetWorkspaceSize完成默认值传参和调用L0层接口
-extern "C" aclnnStatus InnerMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
                                                            const aclTensor *biasOptional,
                                                            const aclIntArray *alltoAllAxesOptional, const char *group,
                                                            bool transposeX1, bool transposeX2, const char *commMode,
