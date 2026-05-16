@@ -918,10 +918,11 @@ public:
         s2Cur = 0;
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-                accGS1Loops++;
+                accGS1Loops = ComputeFlatTaskIdx();
             } else {
                 coreGS1Loops++;
                 accGS1Loops++;
+                createdTaskCount = executedTaskCount;
             }
             S1OutSplitUpdatePos(bN2Cur, gS1Cur);
             return;
