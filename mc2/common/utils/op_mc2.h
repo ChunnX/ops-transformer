@@ -236,7 +236,8 @@ enum class AlltoAllvGroupedMatMulAttrIdx : size_t {
     K_RECV_COUNTS,
     K_TRANS_GMM_WEIGHT,
     K_TRANS_MM_WEIGHT,
-    K_PERMUTE_OUT_FLAG
+    K_PERMUTE_OUT_FLAG,
+    K_COMM_MODE
 };
 
 enum class GroupedMatMulAlltoAllvInputIdx : size_t {
@@ -259,7 +260,8 @@ enum class GroupedMatMulAlltoAllvAttrIdx : size_t {
     K_SEND_COUNTS,
     K_RECV_COUNTS,
     K_TRANS_GMM_WEIGHT,
-    K_TRANS_MM_WEIGHT
+    K_TRANS_MM_WEIGHT,
+    K_COMM_MODE
 };
 }  // namespace ops
 
