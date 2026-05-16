@@ -434,8 +434,8 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit()
 {
     // 重新初始化缓冲区，用于WaitDispatch阶段
-    tpipe_->Reset();
-    totalUsedUB_ = 0U;
+    // tpipe_->Reset();
+    // totalUsedUB_ = 0U;
     uint32_t waitStatusBufSize = (((recStatusNumPerCore_ * UB_ALIGN) > 256) ? (recStatusNumPerCore_ * UB_ALIGN) : 256);
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     totalUsedUB_ += waitStatusBufSize;
@@ -446,12 +446,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit(
 
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2);
     totalUsedUB_ += UB_ALIGN * 2;
-
-    // tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_);
-    // totalUsedUB_ += BUFFER_NUM * hOutAlignUbSize_;
-
-    // tpipe_->InitBuffer(tokenNumBuf_, UB_ALIGN);
-    // totalUsedUB_ += UB_ALIGN;
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -611,8 +605,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
-            // WaitDispatch();      // 步骤3: 等待所有rank完成发送
-            // LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
+            WaitDispatch();      // 步骤3: 等待所有rank完成发送
+            LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();
