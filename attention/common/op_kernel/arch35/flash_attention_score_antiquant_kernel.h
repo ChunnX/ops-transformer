@@ -654,7 +654,8 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     }
     if (constInfo.isFd) {
         int64_t s2InCurrentBatch = GetS2CurrentBatch();
-        this->vecBlock.FlashDecode(this->constInfo, this->actualSeqQlenAddr, this->actualSeqKvlenAddr, s2InCurrentBatch);
+        this->vecBlock.FlashDecode(this->constInfo,
+                                   this->actualSeqQlenAddr, this->actualSeqKvlenAddr, s2InCurrentBatch);
     }
 }
 
