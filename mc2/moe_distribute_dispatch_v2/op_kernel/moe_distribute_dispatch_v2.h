@@ -378,7 +378,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
     PRINTF("dispatch dataState_ is: %u\n", dataState_);
-    if (dataState_!= 0 && dataState_!=1) {
+    if (dataState_ != 0 && dataState_ != 1) {
         for (uint32_t i=0;i < 128; i++) {
             PRINTF("dispatch value is: %u\n", selfDataStatusGMTensor_.GetValue(i));
         }
