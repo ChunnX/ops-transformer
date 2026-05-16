@@ -855,6 +855,9 @@ public:
 
         while (true) {
             bIdx++;
+            if (bIdx >= constInfo.bSize) {
+                return;
+            }
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv += constInfo.actualKVPrefixSize;
