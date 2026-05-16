@@ -10,7 +10,7 @@
 
 #include "aclnn_quant_matmul_allto_all_v2.h"
 #include "quant_matmul_allto_all_base.h"
-// #include "securec.h"
+#include "securec.h"
 // #include "matmul_allto_all_util.h"
 // #include "common/utils/op_mc2.h"
 // #include "acl/acl.h"
@@ -22,7 +22,7 @@
 // #include "opdev/op_dfx.h"
 // #include "opdev/platform.h"
 // #include "opdev/op_executor.h"
-// #include "opdev/op_log.h"
+#include "opdev/op_log.h"
 // #include "opdev/format_utils.h"
 // #include "aclnn_kernels/transdata.h"
 // #include "common/utils/hccl_util.h"
