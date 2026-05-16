@@ -92,8 +92,8 @@
       <tr>
         <td>x</td>
         <td>输入</td>
-        <td>MOE的输入，即token特征输入，对应公式中x。仅quantMode=6时支持输入类型为HIFLOAT8。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT4_E2M1。</td>
+        <td>MOE的输入，即token特征输入，对应公式中x。</td>
+        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2。</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -106,7 +106,7 @@
       <tr>
         <td>scaleOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale，仅quantMode=-1且x的数据类型为FLOAT4_E2M1时scale数据类型支持FLOAT8_E8M0。</td>
+        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• 仅quantMode=-1且x的数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，scale数据类型支持FLOAT8_E8M0。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
@@ -184,7 +184,7 @@
         <td>expandedXOut</td>
         <td>输出</td>
         <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -204,7 +204,7 @@
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。quantMode为2、3、9时数据类型支持FLOAT8_E8M0, 其余场景数据类型支持FLOAT32。</td>
+        <td>输出量化计算过程中scaleOptional的中间值。<br>• 非量化场景下为可选输入, 如果输入则要求为1D的Tensor, 类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时, 如果输入则要求3D的Tensor, 类型为FLOAT8_E8M0。<br>• quantMode为2、3、9时, 数据类型支持FLOAT8_E8M0。<br>• 其余场景数据类型支持FLOAT32。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>

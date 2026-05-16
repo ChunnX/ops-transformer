@@ -31,13 +31,15 @@
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
-template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, bool basedA2aRsAg>
-class MatmulAllReduceQuantPerToken : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg>
+template <typename XType, typename WType, typename YType,
+            class MmType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
+class MatmulAllReduceQuantPerToken : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceQuantPerToken(
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
-        : MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+        : MatmulAllReduceBase<
+            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
         mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingDataA5*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
@@ -91,7 +93,8 @@ private:
     Mc2Tiling::QuantMatmulAllReduceTilingDataA5* mc2TilingData_;
 };
 
-#define INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_IMPL(templateClass, coreType, basedA2aRsAg, scaleType, isATrans, isBTrans, ...) \
+#define INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_IMPL(                                                                       \
+    templateClass, coreType, basedA2aRsAg, commMode, scaleType, isATrans, isBTrans, ...)                               \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);                \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
@@ -99,7 +102,7 @@ private:
         using OpType = templateClass<                                                                                  \
             DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, float, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, isATrans, isBTrans, \
             DTYPE_LOC_LOCAL, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>;            \
-        MatmulAllReduceQuantPerToken<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg> op(                     \
+        MatmulAllReduceQuantPerToken<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg, commMode> op(        \
             &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe);                                      \
         op.Init();                                                                                                     \
         op.Process();                                                                                                  \

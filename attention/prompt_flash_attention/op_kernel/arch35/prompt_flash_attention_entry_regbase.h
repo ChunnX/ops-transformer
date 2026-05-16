@@ -15,7 +15,6 @@
 
 #ifndef PROMPT_FLASH_ATTENTION_ENTRY_310_H_
 #define PROMPT_FLASH_ATTENTION_ENTRY_310_H_
-#include "matmul_modules/pfa_policy_data.h"
 #include "prompt_flash_attention_zero_output.h"
 #include "prompt_flash_attention_tiling_regbase.h"
 #include "prompt_flash_attention_template_tiling_key_enum.h"

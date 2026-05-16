@@ -275,7 +275,7 @@ int main()
     std::vector<int64_t> alpha_shape = {3};
     std::vector<int64_t> bias_shape = {hc_mix};
 
-    std::vector<int64_t> hin_shape = {bs, seq_len, n, c};
+    std::vector<int64_t> hin_shape = {bs, seq_len, c};
     std::vector<int64_t> h_post_shape = {bs, seq_len, n};
     std::vector<int64_t> h_res_shape = {bs, seq_len, n * n};
     std::vector<int64_t> h_pre_shape = {bs, seq_len, n};
@@ -319,19 +319,6 @@ int main()
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed\n"); return -1);
 
     LOG_PRINT("MhcPreSinkhorn compute success!\n");
-    LOG_PRINT("Required outputs:\n");
-    PrintTensorDataBfloat16(hin_shape, tensors.hin_addr);
-    PrintTensorDataFloat(h_post_shape, tensors.h_post_addr);
-    PrintTensorDataFloat(h_res_shape, tensors.h_res_addr);
-
-    if (need_backward) {
-        LOG_PRINT("Optional outputs (needBackward=true):\n");
-        PrintTensorDataFloat(h_pre_shape, tensors.h_pre_addr);
-        PrintTensorDataFloat(hc_before_norm_shape, tensors.hc_before_norm_addr);
-        PrintTensorDataFloat(inv_rms_shape, tensors.inv_rms_addr);
-        PrintTensorDataFloat(sum_out_shape, tensors.sum_out_addr);
-        PrintTensorDataFloat(norm_out_shape, tensors.norm_out_addr);
-    }
 
     DestroyTensors(tensors);
     FreeDeviceMemory(tensors);

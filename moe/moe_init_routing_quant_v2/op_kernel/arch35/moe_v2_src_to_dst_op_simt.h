@@ -16,6 +16,7 @@
 #define MOE_V2_SRC_TO_DST_SIMT_H
 
 #include "moe_v2_common.h"
+#include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
@@ -77,8 +78,8 @@ __aicore__ inline void MoeV2SrcToDstOpSimt::Init(
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeSimt(
     int64_t coreRows, int64_t startIndex, __gm__ int32_t* expandDstToSrcRowGm, __gm__ int32_t* expandedRowIdxGm)
 {
-    for (int32_t index = static_cast<int32_t>(Simt::GetThreadIdx()); index < static_cast<int32_t>(coreRows);
-         index += static_cast<int32_t>(Simt::GetThreadNum())) {
+    for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
+         index += static_cast<int32_t>(blockDim.x)) {
         int64_t srcIndex = index + startIndex;
         int64_t dstIndex = expandDstToSrcRowGm[srcIndex];
         expandedRowIdxGm[dstIndex] = srcIndex;
@@ -88,8 +89,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeSimt(
 __aicore__ inline void MoeV2SrcToDstOpSimt::Process()
 {
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
-        Simt::VF_CALL<ComputeSimt>(
-            Simt::Dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_, this->startIndex_,
+        asc_vf_call<ComputeSimt>(
+            dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_, this->startIndex_,
             expandDstToSrcRowGm_, expandedRowIdxGm_);
     }
     this->SyncAll();

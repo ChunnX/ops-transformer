@@ -153,8 +153,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
     }
-    aclnnStatus getWorkspaceSizesRes;
-    aclnnStatus ret;
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
             expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
@@ -169,8 +168,8 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_dispatch_combine_v2";
-        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
             mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,

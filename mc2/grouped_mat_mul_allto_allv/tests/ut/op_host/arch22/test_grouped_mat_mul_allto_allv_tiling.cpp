@@ -148,7 +148,7 @@ TEST_P(GroupedMatMulAlltoAllvArch22TilingTest, ShapeSize)
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", tilingParams.epWorldSize}};
-        uint64_t expectTilingKey = 1UL;
+        uint64_t expectTilingKey = 9UL;
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }

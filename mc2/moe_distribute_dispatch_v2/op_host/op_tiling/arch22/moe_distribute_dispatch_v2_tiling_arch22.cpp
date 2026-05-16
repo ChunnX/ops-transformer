@@ -67,11 +67,11 @@ const char *K_INNER_DEBUG = "MoeDistributeDispatchV2 Tiling Debug";
 constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 constexpr uint32_t BLOCK_SIZE_A2 = 32;
 constexpr uint32_t MAX_K_VALUE_A2 = 16;
-constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 7168;
-constexpr uint32_t LAYERED_MAX_HIDDEN_SIZE_A2 = 10240;
+constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 10240;
 constexpr int32_t MAX_EP_WORLD_SIZE_A2 = 384;
 constexpr int32_t MAX_EP_WORLD_SIZE_A2_LAYERED = 64;
-constexpr int32_t MAX_MOE_EXPERT_NUMS_A2 = 512;
+constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_FULLMESH = 1024;
+constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_HIERARCHY = 512;
 constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
 constexpr uint32_t LAYERED_MAX_BATCH_SIZE_A2 = 512;
 constexpr size_t USER_WORKSPACE_A2 = 1UL * 1024UL * 1024UL; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
@@ -249,8 +249,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
         OP_LOGE(K_INNER_DEBUG, "epWorldSize is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
         OP_LOGE(K_INNER_DEBUG, "epRankId is invalid."), return GRAPH_FAILED);
+    int32_t maxMoeExpertNums = isLayered ? MAX_MOE_EXPERT_NUMS_A2_HIERARCHY : MAX_MOE_EXPERT_NUMS_A2_FULLMESH;
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr % *epWorldSizePtr != 0 ||
-        *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2,
+        *moeExpertNumPtr <= 0 || *moeExpertNumPtr > maxMoeExpertNums,
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return GRAPH_FAILED);
@@ -297,7 +298,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
     info.quantMode = *quantModePtr;
-    info.maxMoeExpertNum = MAX_MOE_EXPERT_NUMS_A2;
+    info.maxMoeExpertNum = maxMoeExpertNums;
 
     if (*globalBsPtr == 0) {
         info.globalBs = *epWorldSizePtr * bs;
@@ -363,8 +364,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-    uint32_t maxHiddenSizeA2 = isLayered ? LAYERED_MAX_HIDDEN_SIZE_A2 : MAX_HIDDEN_SIZE_A2;
-    OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > maxHiddenSizeA2,
+    OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > MAX_HIDDEN_SIZE_A2,
         OP_LOGE(K_INNER_DEBUG, "hiddensize is invalid."), return GRAPH_FAILED);
     uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
     OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,

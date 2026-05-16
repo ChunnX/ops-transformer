@@ -33,15 +33,15 @@ constexpr uint32_t ALIGN_SIZE_KN = 32; // K/N alignment requirement for MX-A8W4 
 constexpr int64_t MX_INNER_DIM = 2;
 constexpr int64_t MIN_KN_SIZE = 32;       // Minimum K or N dimension size for MX-A8W4 weight quant
 constexpr uint32_t DIM_NUM_WEIGHT_NZ = 5; // FRACTAL_NZ format: [E, K/32, N/16, 16, 32]
-enum DataSize GetSizeByDataType(ge::DataType dType)
+DataSize GetSizeByDataType(ge::DataType dType)
 {
     if (dType == ge::DT_FLOAT4_E2M1 || dType == ge::DT_FLOAT4_E1M2 || dType == ge::DT_INT4) {
-        return B4_DATA_SIZE;
+        return DataSize::B4_DATA_SIZE;
     }
-    if (ge::GetSizeByDataType(dType) == B8_DATA_SIZE) {
-        return B8_DATA_SIZE;
+    if (ge::GetSizeByDataType(dType) == static_cast<int>(DataSize::B8_DATA_SIZE)) {
+        return DataSize::B8_DATA_SIZE;
     }
-    return RESERVED;
+    return DataSize::RESERVED;
 }
 
 bool GMMFRWeightQuantTiling::IsCapable()
@@ -51,6 +51,22 @@ bool GMMFRWeightQuantTiling::IsCapable()
 }
 
 
+bool GMMFRWeightQuantTiling::CheckCoreNum() const
+{
+    OP_CHECK_IF(coreNum_ <= 0 || aivNum_ <= 0,
+                OP_LOGE(context_->GetNodeName(), "Invalid aicNum[%ld] or aivNum[%ld], expect greater than 0", coreNum_,
+                        aivNum_),
+                return false);
+
+    OP_CHECK_IF(coreNum_ * static_cast<int64_t>(AIC_AIV_CORE_RATIO) != aivNum_,
+                OP_LOGE(context_->GetNodeName(),
+                        "Invalid cube/vector core ratio. Expected cube:vector = 1:2, "
+                        "but got cube=%ld, vector=%ld",
+                        coreNum_, aivNum_),
+                return false);
+    return true;
+}
+
 ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
 {
     auto compileInfoPtr = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
@@ -58,10 +74,17 @@ ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
                 OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
                 return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
+    coreNum_ = static_cast<int64_t>(compileInfoPtr_->aicNum);
+    aivNum_ = static_cast<int64_t>(compileInfoPtr_->aivNum);
 
-    OP_LOGI(context_, "Compile info: aicNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
-            compileInfoPtr_->aicNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size, compileInfoPtr_->l0ASize,
-            compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
+    OP_LOGI(context_,
+            "Compile info: aicNum(%lu) aivNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
+            compileInfoPtr_->aicNum, compileInfoPtr_->aivNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size,
+            compileInfoPtr_->l0ASize, compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
+
+    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(context_->GetNodeName(), "Invalid core number ratio"),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -324,14 +347,14 @@ static bool ValidateWShape(gert::TilingContext *contex, ge::Format wFormat, int6
                     return false);
         const gert::Shape &wOriginShape = wShape->GetOriginShape();
         nSize = wOriginShape.GetDim(1);
-        kFromW = wOriginShape.GetDim(2);
+        kFromW = wOriginShape.GetDim(2); // w origin shape is [E, N, K], dim 2 is K axis
     } else {
         OP_CHECK_IF(wStorageDimNum != DIM_NUM_WEIGHT,
                     OP_LOGE(contex->GetNodeName(), "The dimension of w must be %u, actual is %zu", DIM_NUM_WEIGHT,
                             wStorageDimNum),
                     return false);
         nSize = wStorageShape.GetDim(1);
-        kFromW = wStorageShape.GetDim(2);
+        kFromW = wStorageShape.GetDim(2); // w storage shape is [E, N, K], dim 2 is K axis
     }
     eFromW = wStorageShape.GetDim(0);
     return true;

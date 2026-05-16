@@ -15,6 +15,7 @@
 #include "opdev/common_types.h"
 #include "aclnn_grouped_mat_mul_allto_allv.h"
 #include "aclnnInner_grouped_mat_mul_allto_allv.h"
+#include "mc2_comm_utils.h"
 
 using namespace op;
 
@@ -138,7 +139,14 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize,
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("GroupedMatMulAlltoAllv", "Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                OP_LOGD("GroupedMatMulAlltoAllv", "Arch35 platform, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
         }
     }
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);

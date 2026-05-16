@@ -29,8 +29,8 @@ namespace l0op {
 OP_TYPE_REGISTER(MhcPreSinkhorn);
 
 static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                             const aclTensor *bias, int64_t hcMult, int64_t numIters, float hcEps,
-                                             float normEps, bool needBackward,
+                                             const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                             double normEps, bool needBackward,
                                              aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                              aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
                                              aclTensor *sumOut, aclTensor *normOut,
@@ -43,7 +43,7 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
         MhcPreSinkhorn,
         OP_INPUT(x, phi, alpha, bias),
         OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut),
-        OP_ATTR(hcMult, numIters, hcEps, normEps, needBackward));
+        OP_ATTR(hcMult, numIters,  static_cast<float>(hcEps),  static_cast<float>(normEps), needBackward));
     
     OP_CHECK(ret == ACLNN_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MhcPreSinkhorn ADD_TO_LAUNCHER_LIST_AICORE failed."),
@@ -52,8 +52,8 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
 }
 
 const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                const aclTensor *bias, int64_t hcMult, int64_t numIters, float hcEps,
-                                float normEps, bool needBackward,
+                                const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                double normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
                                 aclTensor *sumOut, aclTensor *normOut,
