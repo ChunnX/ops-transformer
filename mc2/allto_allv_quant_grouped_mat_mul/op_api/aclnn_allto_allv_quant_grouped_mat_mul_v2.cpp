@@ -26,6 +26,13 @@
 #include "opdev/make_op_executor.h"
 #include "aclnn_allto_allv_quant_grouped_mat_mul_v2.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
 namespace {
 using namespace op;
 
