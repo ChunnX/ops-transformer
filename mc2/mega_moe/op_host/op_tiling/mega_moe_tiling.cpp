@@ -251,16 +251,14 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
 
 void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 {
-    OP_LOGD(nodeName, "ptrA:                        %ld\n", info->ptrA);
-    OP_LOGD(nodeName, "ptrAScale:                   %ld\n", info->ptrAScale);
-    OP_LOGD(nodeName, "ptrA2:                       %ld\n", info->ptrA2);
-    OP_LOGD(nodeName, "ptrA2Scale:                  %ld\n", info->ptrA2Scale);
-    OP_LOGD(nodeName, "ptrcumsumMM:                 %ld\n", info->ptrcumsumMM);
-    OP_LOGD(nodeName, "expandedRowIdx:              %ld\n", info->expandedRowIdx);
-    OP_LOGD(nodeName, "ptrSumBeforeRank:            %ld\n", info->ptrSumBeforeRank);
-    OP_LOGD(nodeName, "ptrFlagSwiGluToGmm2:         %ld\n", info->ptrFlagSwiGluToGmm2);
-    OP_LOGD(nodeName, "ptrFlagDispatchToGmm1:       %ld\n", info->ptrFlagDispatchToGmm1);
-    OP_LOGD(nodeName, "workspaceSize:               %ld\n", info->workspaceSize);
+    OP_LOGD(nodeName, "dispatchRevDataPtr:         %ld\n", info->dispatchRevDataPtr);
+    OP_LOGD(nodeName, "dispatchRevScalePtr:        %ld\n", info->dispatchRevScalePtr);
+    OP_LOGD(nodeName, "swigluQuantDataPtr:         %ld\n", info->swigluQuantDataPtr);
+    OP_LOGD(nodeName, "swigluQuantScalePtr:        %ld\n", info->swigluQuantScalePtr);
+    OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
+    OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
+    OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
+    OP_LOGD(nodeName, "workspaceSize:              %ld\n", info->workspaceSize);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -1513,6 +1511,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    tilingData->aicNum = aicNum;
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE(nodeName, "aivNum(%u) or aicNum(%u) less than or equal 0.", aivNum, aicNum),
         return ge::GRAPH_FAILED);
