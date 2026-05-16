@@ -267,7 +267,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
   - 确定性说明：aclnnQuantGroupedMatmulInplaceAdd默认确定性实现。
   - x1和x2的每一维大小在32字节对齐后都应小于int32的最大值2147483647，且内轴大小需小于2097152。
-    - 动态量化（T-C量化）场景支持的输入类型为：
+    - 动态量化（T-T/T-C量化）场景支持的输入类型为：
       - 不为空的参数支持的数据类型组合要满足下表：
 
         | x1       | x2  | scale2 | scale1Optional |yRef     |

@@ -265,7 +265,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
                     keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim),
                 return ge::GRAPH_FAILED);
         }
-    } else {
+    } else if (inputLayout == "BSND") {
         keyRopeS = keyRopeShape.GetDim(DIM_NUM_1);
         keyRopeN = keyRopeShape.GetDim(DIM_NUM_2);
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {

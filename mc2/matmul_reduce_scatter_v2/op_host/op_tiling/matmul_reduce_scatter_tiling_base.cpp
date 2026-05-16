@@ -28,6 +28,7 @@
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
+#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
@@ -247,7 +248,8 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     }
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
-        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
+        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg, \
+        Mc2Comm::GetCommModeFromEnv());
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;

@@ -237,7 +237,7 @@ private:
     void LogExpertTokensCountTilingData();
     void LogGatherOutTilingData();
 
-    bool isMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype)
+    bool isMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype) const
     {
         return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
                xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT4_E2M1);
@@ -245,8 +245,8 @@ private:
 
     bool IsSupportFullloadQuantMode() const
     {
-        return (quantMode_ == QUANT_MODE_UNQUANT) || (quantMode_ == QUANT_MODE_STATIC) ||
-                (quantMode_ == QUANT_MODE_DYNAMIC);
+        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
+                (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
     }
 
     // 辅助工具函数

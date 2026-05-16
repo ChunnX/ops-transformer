@@ -450,9 +450,6 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
                                 Ops::Base::ToString(x1ScaleDtype).c_str(), Ops::Base::ToString(x2ScaleDtype).c_str()),
                         return ge::GRAPH_FAILED);
 
-        if (biasTensorDesc->GetDataType() == ge::DT_BF16) {
-            isQuantBF16 = true;
-        }
         OP_TILING_CHECK(
             (quantType != SUPPORT_QUANT_MODE),
             OP_LOGE(opName_,
@@ -465,6 +462,13 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
     if (biasTensorDesc != nullptr) {
         hasBias = true;
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
+        if (biasDtype == ge::DT_FLOAT16) {
+            quantBiasType = TILINGKEY_TPL_FP16;
+        } else if (biasDtype == ge::DT_FLOAT) {
+            quantBiasType = TILINGKEY_TPL_FP32;
+        } else if (biasDtype == ge::DT_BF16) {
+            quantBiasType = TILINGKEY_TPL_BF16;
+        }
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, biasDtype, yDtype};
 
         for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITH_BIAS.size(); kindsId++) {
@@ -769,7 +773,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
 
 void MatmulAlltoAllTiling910B::SetTilingKey()
 {
-    tilingKey_ = GET_TPL_TILING_KEY(needTransX2, hasBias, isQuantBF16, 0, SOC_ASCEND910B);
+    tilingKey_ = GET_TPL_TILING_KEY(needTransX2, hasBias, quantBiasType, SOC_ASCEND910B);
 }
 
 /**
