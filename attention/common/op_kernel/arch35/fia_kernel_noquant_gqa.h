@@ -856,6 +856,8 @@ public:
         while (true) {
             bIdx++;
             if (bIdx >= constInfo.bSize) {
+                bN2Cur = constInfo.bSize * n2Size;
+                gS1Cur = 0;
                 return;
             }
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
