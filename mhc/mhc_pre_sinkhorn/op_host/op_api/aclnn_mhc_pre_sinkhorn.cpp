@@ -36,7 +36,7 @@ using namespace op;
 extern "C" {
 #endif
 
-static const std::initializer_list<op::DataType> DTYPE_X_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> DTYPE_X_SUPPORT_LIST = {op::DataType::DT_BF16, op::DataType::DT_FLOAT16};
 static const std::initializer_list<op::DataType> DTYPE_OTHER_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
 static bool CheckNotNull(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
@@ -94,6 +94,12 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     int64_t n = xShape.GetDim(2);
     int64_t c = xShape.GetDim(3);
     int64_t hcMix = n * n + 2 * n;
+
+    if (hcMult != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "hcMult must be in range [4], but got hcMult = %ld.", hcMult);
+        return false;
+    }
     
     if (n != hcMult) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -277,9 +283,6 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
         xContiguous, phiContiguous, alphaContiguous, biasContiguous, hcMult, numIters, hcEps, normEps, needBackward,
         hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, uniqueExecutor.get());
     CHECK_RET(kernelOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    auto viewCopyResult = l0op::ViewCopy(kernelOut, hin, uniqueExecutor.get());
-    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
