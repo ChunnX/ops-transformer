@@ -56,6 +56,44 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndValidateRankSize(const gert::Til
 }
 
 /**
+ * @brief 从参数中获取通信引擎
+ *
+ * @param context 框架根据input，output，attrs等信息生成tiling需要的context
+ * @param opName 算子名称
+ * @param contextInfo 存储了tiling的过程信息
+ * @param commMode 返回通信引擎模式
+ * @return ge::graphStatus
+ */
+ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
+                                                                const TilingContextInfo &contextInfo, uint8_t &commMode)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
+                    return ge::GRAPH_FAILED);
+
+    if (std::strcmp(commModeStr, "aicpu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (std::strcmp(commModeStr, "default") == 0) {
+        uint32_t rankDim = contextInfo.args_.rankDim;
+        if (rankDim <= 8) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE(opName, "The input attr comm_mode only support 'default', 'aicpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
  * @brief 设置二维输入输出的shape信息, 仅支持x1,x2,output都是二维的情况
  *
  * @param context 上下文信息
