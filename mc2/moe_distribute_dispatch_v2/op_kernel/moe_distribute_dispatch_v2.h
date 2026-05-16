@@ -379,7 +379,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
     PRINTF("dispatch dataState_ is: %u\n", dataState_);
     for (uint32_t i =0; i< epWorldSizeHccl; i++) {
-        PRINTF("dispatch hccl rank id is: %u, buffer addr is: %p\n", i, (GM_ADDR)(mc2Context_->epHcclBuffer_[i]);
+        PRINTF("dispatch hccl rank id is: %u, buffer addr is: %p\n", i, (GM_ADDR)(mc2Context_->epHcclBuffer_[i]));
     }
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(performanceInfo));
