@@ -38,7 +38,7 @@
                                  const LIGTilingData *__restrict orgTilingData, __gm__ uint8_t *actualSeqLengthsQ);
      __aicore__ inline void Process();
      __aicore__ inline void SyncALLCores();
-     __aicore__ inline void DoSplitOnGM(uint32_t coreNum, uint32_t cBlockIdx, uint32_t gmSize, 
+     __aicore__ inline void DoSplitOnGM(uint32_t coreNum, uint32_t gmSize, 
                                      uint32_t &PreBlockTotal, int64_t &initSize, int64_t &Offset);
      
      using D_T = typename LIGT::dataType;
@@ -70,7 +70,7 @@
  
  
  template <typename LIGT>
- __aicore__ inline void LIGVectorPre<LIGT>::DoSplitOnGM(uint32_t coreNum, uint32_t cBlockIdx, uint32_t gmSize, 
+ __aicore__ inline void LIGVectorPre<LIGT>::DoSplitOnGM(uint32_t coreNum, uint32_t gmSize, 
                                                      uint32_t &PreBlockTotal, int64_t &initSize, int64_t &Offset)
  {
      uint32_t PreBlockFactor = (gmSize + coreNum - 1) / coreNum;
@@ -94,15 +94,7 @@
      // Init workspace to store per-core dKey partial results.
      dkCoreWorkspaceGM.SetGlobalBuffer((__gm__ float *)workspace + tilingData->dkCoreWorkspaceOffset / sizeof(float));
  
-     DoSplitOnGM(tilingData->usedCoreNum, cBlockIdx, tilingData->dkSize, kPreBlockTotal, initdkSize, dkOffset);
-     // uint32_t coreNum = tilingData->usedCoreNum;
-     // kPreBlockFactor = (tilingData->dkSize + coreNum - 1) / coreNum;
-     // kPreBlockTotal = (tilingData->dkSize + kPreBlockFactor - 1) / kPreBlockFactor;
-     // int64_t kPreTailNumTmp = tilingData->dkSize % kPreBlockFactor;
-     // kPreBlockTail = kPreTailNumTmp == 0 ? kPreBlockFactor : kPreTailNumTmp;
- 
-     // initdkSize = cBlockIdx == kPreBlockTotal - 1 ? kPreBlockTail : kPreBlockFactor;
-     // dkOffset = ((int64_t)cBlockIdx) * kPreBlockFactor;
+     DoSplitOnGM(tilingData->usedCoreNum, tilingData->dkSize, kPreBlockTotal, initdkSize, dkOffset);
  
      if (LIGT::layout == LIG_LAYOUT::TND) {
          dqGm.SetGlobalBuffer((__gm__ D_T *)dq);
@@ -114,9 +106,9 @@
          if (tilingData->batch > 0) {actualSeqTotalLenQ = actualSeqLengthsGmQ.GetValue(tilingData->batch - 1);}
          uint32_t dqPaddingSize = (tilingData->seqlenQ - actualSeqTotalLenQ) * tilingData->headNumQ * tilingData->headDim;
          uint32_t dwPaddingSize = (tilingData->seqlenQ - actualSeqTotalLenQ) * tilingData->headNumQ;
-         DoSplitOnGM(tilingData->usedCoreNum, cBlockIdx, dqPaddingSize, qPreBlockTotal, initdqSize, dqOffset);
+         DoSplitOnGM(tilingData->usedCoreNum, dqPaddingSize, qPreBlockTotal, initdqSize, dqOffset);
          dqOffset += actualSeqTotalLenQ * tilingData->headNumQ * tilingData->headDim;
-         DoSplitOnGM(tilingData->usedCoreNum, cBlockIdx, dwPaddingSize, wPreBlockTotal, initdwSize, dwOffset);
+         DoSplitOnGM(tilingData->usedCoreNum, dwPaddingSize, wPreBlockTotal, initdwSize, dwOffset);
          dwOffset += actualSeqTotalLenQ * tilingData->headNumQ;
      }
  }
