@@ -7,6 +7,18 @@
 - host 侧 chunk size 固定在 `op_host/chunk_gated_delta_rule_neumann_tiling.cpp` 的 `STAGE_ONE_CHUNK_SIZE = 64`。
 - 阶段证据保留在 `docs/2026-05-15/` 和 `SKILL/kernel-optimization-discipline/references/chunk_gdr_tail_padding_a131_case.md`；下一步从官方 Stage1 文件继续，仍按 tail smoke + aligned smoke + full compare gate 推进。
 
+## 2026-05-16 BF16 隔离树验证
+
+- 隔离 worktree：`/mnt/workspace/gitCode/cann/ops-transformer-bf16-l0layout`，detached `HEAD b57d9db4992e2968fa032419dc1aedcf173f0e1a`。主共享工作区 `/mnt/workspace/gitCode/cann/ops-transformer` 仍是脏工作区，不在其上做 BF16 验证归因。
+- BF16 入参对齐 GDR 口径来自 tracked HEAD：`CGDR<bfloat16_t, float>`，op_host/op_graph/aclnn dtype 为 `DT_BF16`，`compare_chunk_gdr_three_way.py` 默认输入为 `torch.bfloat16`。
+- 最终修复仍只改 `op_kernel/chunk_gated_delta_rule_neumann_stage1.h`，范围限 Stage1 inverse/one-shot：新增 `L0MatrixBlockOffset()`；strict one-shot 主链保持 `InvertPacked64DiagonalNeumannToResult()` -> `ComposeOddEvenLower16To32AccumFull64()` -> `ComposeOddEvenLower32To64AccumFull64()`；first-layer 结果写 `aicHalfL1PackedInv64_`，second-layer 再读 `PackedInv64` 写 resident，不再靠 direct overlay 兜底。
+- 根因是 16->32 compose 的 lower16 在 full64 L0 中目的位置错误：`LoadOddLowerBlocksToFull64L0A()` / `LoadOddLowerTmpBlocksToFull64L0B()` 原来用 `RAW_HALF_FRACTAL_ELEMS`，实际应对齐 C128 pass 写法用 `C64_L0_ROW1_COL0_OFFSET = C64_PACKED_BLOCK_COUNT * RAW_HALF_FRACTAL_ELEMS`。旧写法把 lower16 塞到 fractal 1，而正确 row1/col0 block 是 fractal 4；这会污染 first-layer lower16，表现为 Neumann out `1e-2` 级失败但 state 仍过。
+- full `INVInit` load、PackedInv64/no-overlay 顺序对齐后仍失败：`S=64` Neumann out `max_abs=3.819533e-02`，state `max_abs=5.276948e-04`。加上 `C64_L0_ROW1_COL0_OFFSET` 后 `S=64` 严格双 `0.005` PASS：Neumann out `max_abs=3.173694e-03`，state `max_abs=5.276948e-04`。
+- DB/prefetch 未删除：`FusedRhsAICProcess()`、`PrepareRhsPackedHalfL1TileNoWait()`、`NextRawL0AbDbIdx()`、`ReleaseRawL0AbDbEvents()`、`aicHalfL1RhsPrefetchGbk_`、`aicHalfL1RhsPrefetchVBeta_` 均仍在 BF16 Stage1 中；本次改动未触碰 RHS DB/prefetch 数据流。
+- cleanup 已完成：`aicHalfL1P3Result_` 改名为 `aicHalfL1PackedInv64_`；删除 stale selected invinit/lower-pair helper、P3 GM 诊断写回、unused overlay/direct-to-resident helper、旧 raw-MMAD wrapper、unused copy/load helper；RHS DB/prefetch 未回退。
+- build/install 已完成。source/installed Stage1 SHA256 `80a030254fe88883ae9429d651d0e083952f09fdeffd976f986f19643fd0c38b`；package SHA256 `b4de24ae1d3313589baa140330e2463c2619ca6ce780c9da882d1dbed055e75a`；installed opapi SHA256 `da5230a4bd4253552d4b9e8d7702b8d3d469c63697d4323f21ca868cb420a94d`；installed Neumann object SHA256 `f4369723985019f2b8483963186431a63d42ddb45596a27e1a03ac75de56d6cd`；installed JSON SHA256 `01c959039b036def3623b948849a1aca35635e69237019d840a483af05a9d226`。
+- 严格双 `0.005` full compare PASS：`16 passed in 41.15s`。全部 enabled case 的 normal out/state、Neumann out/state、normal-vs-Neumann out/state 均 PASS。
+
 ## 下一步
 
 - [x] A122: AIV gamma half-broadcast。参考 `chunk_gated_delta_rule_C128`，把 Neumann Stage1 的 `GammaCompute()` 从每个 AIV 计算完整 `64x64` broadcast 改为按 `subBlockIdx_` 只计算本核负责的 `halfChunkSize_ x chunkSize_` 半块。该 phase 只改 AIV 侧 gamma/broadcast buffer 口径与消费偏移，不叠加 RHS prefetch 或 L1->L0 搬运修改。Gate PASS：build/install、`S=64/256/1024`、full compare `16 passed in 6.43s`。性能结果：`S=64/512/2048/10240` neumann/normal = `0.938 / 0.846 / 0.859 / 0.847`；相对 A121 绝对 Neumann task time = `1.043 / 1.056 / 0.981 / 0.982`，长序列改善但小/中序列回退。已保存 correctness-safe/large-shape-improved baseline。
@@ -26,16 +38,16 @@
 
 ## 当前状态
 
-- Current live source after A131:
-  - active Stage1 path `op_kernel/chunk_gated_delta_rule_neumann_stage1.h`.
-  - pre-cleanup A131 source SHA256 `966465538bf97e8a6f3966b1f59d341195d948f177197bc9a57b89fbad8f4c0f`; after cleanup the code is merged into the official Stage1 file and duplicate baseline headers are removed.
-  - official Stage1 SHA256 after cleanup `8d4932568da50f3118e3e496dd2508c79cd2d10951d7af53fed6165e12440984`.
-  - cleanup rebuild package SHA256 `f36da5e37df82acf4e1da9c0c05172265e0933bd9c7ca70c462fd1f69afded0a`.
-  - installed opapi SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`; installed Neumann object SHA256 `45cb88e35547cd0d5181c21b26e85625160abe45ef027e80b5a9728ba17c70f6`; installed JSON SHA256 `4436e86e9abe9ef5f5c328323e04e676bcf8bbfbf80e2b4da757c162104ad4a0`.
-  - gate PASS: build/install, tail/boundary smokes `S=5/16/31/32/33/34/48/49/63/65/129`, aligned smokes `S=64/256/1024`, full compare `30 passed in 6.79s`.
-  - A131 msprof: `tests/pytest/prof_out/packed64_phaseA131_tail_padding_duplicate_20260515_8shapes/performance_compare.csv`, SHA256 `7d18ff50b66c660ffa66cb2764ddee12956b9a9c9a37141f9646d82a0957d33f`; raw CSV SHA256 `13a73b00e08578679b7d04ccc20b38474bce177eb94d66a35ca8a116342d758f`.
-  - A131 ratios: `S=64/65/512/513/2048/2049/10240/10241 = 0.811 / 0.812 / 0.793 / 0.793 / 0.836 / 0.832 / 0.840 / 0.845`.
-  - Compared with tailpad-disabled diagnostic absolute Neumann task time, A131 = `0.982 / 1.005 / 1.004 / 0.998 / 0.986 / 0.992 / 0.999 / 0.993`; accept as active continuation because it removes tail scalar loop cost without losing correctness.
+- Current BF16 isolated live source after PackedInv64 cleanup:
+  - active worktree: `/mnt/workspace/gitCode/cann/ops-transformer-bf16-l0layout`；主共享树未用于本轮归因。
+  - active Stage1 path `op_kernel/chunk_gated_delta_rule_neumann_stage1.h`。
+  - current strict no-overlay algorithm: `InvertPacked64DiagonalNeumannToResult()` -> `ComposeOddEvenLower16To32AccumFull64()` -> `ComposeOddEvenLower32To64AccumFull64()`；second-layer 从 `aicHalfL1PackedInv64_` 读取 first-layer 结果后写 resident。
+  - source/installed Stage1 SHA256 `80a030254fe88883ae9429d651d0e083952f09fdeffd976f986f19643fd0c38b`；package SHA256 `b4de24ae1d3313589baa140330e2463c2619ca6ce780c9da882d1dbed055e75a`。
+  - installed opapi SHA256 `da5230a4bd4253552d4b9e8d7702b8d3d469c63697d4323f21ca868cb420a94d`；installed Neumann object SHA256 `f4369723985019f2b8483963186431a63d42ddb45596a27e1a03ac75de56d6cd`；installed JSON SHA256 `01c959039b036def3623b948849a1aca35635e69237019d840a483af05a9d226`。
+  - gate PASS: `git diff --check` PASS；build/install PASS；`S=64` strict `--atol 0.005 --rtol 0.005` PASS，Neumann out `max_abs=3.173694e-03`，state `max_abs=5.276948e-04`；full compare `16 passed in 41.15s`。
+  - 8-shape msprof result: `tests/pytest/prof_out/bf16_packedinv64_cleanup_20260516_8shapes/performance_compare.csv`, SHA256 `72396770fe73b6e076dcbd3d8655333d383696d3d9c18c95638c56887e2175b1`; raw CSV SHA256 `9822d017509c258c578265db9d9bd580b416706c499e0ceb38e2c3e408fd0338`。
+  - Neumann/normal task ratios for `S=64/65/512/513/2048/2049/10240/10241`: `0.866 / 0.820 / 0.815 / 0.808 / 0.834 / 0.849 / 0.837 / 0.842`。
+  - absolute task duration normal us: `667.78 / 815.30 / 1642.16 / 1755.28 / 5058.36 / 5125.80 / 24287.92 / 24717.30`；Neumann us: `578.28 / 668.36 / 1337.96 / 1418.26 / 4217.74 / 4351.36 / 20335.30 / 20809.00`。
 - Current live source after A130:
   - active Stage1 SHA256 `2b493db26bc6fb0ae52838847ce1dc94db8a37061520cbfe6433711b8deb9043`.
   - saved A130 baseline `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA130_selected_invinit_selectedlayout_lowerpair_baseline.h`, same SHA256 `2b493db26bc6fb0ae52838847ce1dc94db8a37061520cbfe6433711b8deb9043`.
