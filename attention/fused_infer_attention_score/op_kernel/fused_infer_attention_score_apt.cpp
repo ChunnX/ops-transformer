@@ -57,7 +57,8 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
 {
     if (quantMode >= FullQuantTiling) {
         //pfa 模板
-        prompt_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, emptyTensor, enableKVPrefix, enableS1OutSplit,isReconstructTemp>(
+        prompt_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope,
+            KvLayoutType, emptyTensor, enableKVPrefix, enableS1OutSplit, isReconstructTemp>(
                                     query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,                                    
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,                                    
@@ -65,7 +66,8 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
                                     dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
     } else {
         //ifa 模板
-        incre_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+        incre_flash_attention_FIAS_regbase<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope,
+            KvLayoutType, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                                     query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV, deq_scale1, quant_scale1,
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize,
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, keySharedPrefix,

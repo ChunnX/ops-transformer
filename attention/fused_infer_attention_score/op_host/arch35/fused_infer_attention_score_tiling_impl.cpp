@@ -2022,7 +2022,8 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "isPostQuantPerChnl:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantPerChnl());
     OP_LOGD(fiaInfo.opName, "isPostQuantBF16:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantBF16());
     OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantPageAttentionFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPageAttentionFlag());
+    OP_LOGD(fiaInfo.opName, "antiquantPageAttentionFlag:%d",
+        faRunTilingAdapter_.inputParamsRegbase.get_antiquantPageAttentionFlag());
     OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
     OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 
