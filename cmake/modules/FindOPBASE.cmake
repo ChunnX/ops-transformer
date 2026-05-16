@@ -44,8 +44,8 @@ if(OPBASE_FOUND)
     ${OPBASE_INC_DIR}/op_common
     ${OPBASE_INC_DIR}/op_common/op_host
     ${OPBASE_INC_DIR}/../pkg_inc
-    ${OPBASE_INC_DIR}/../pkg_inc/op_common
-    ${OPBASE_INC_DIR}/../pkg_inc/op_common/op_host
+    ${OPBASE_INC_DIR}/../include/op_common
+    ${OPBASE_INC_DIR}/../include/op_common/op_host
     ${OPBASE_INC_DIR}/op_common/atvoss
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc
   )
