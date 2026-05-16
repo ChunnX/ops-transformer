@@ -279,6 +279,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
     bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
     tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+
+    dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
+    subExpIdTensor_ = subExpBuf_.Get<int32_t>();
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -434,8 +437,8 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit()
 {
     // 重新初始化缓冲区，用于WaitDispatch阶段
-    // tpipe_->Reset();
-    // totalUsedUB_ = 0U;
+    tpipe_->Reset();
+    totalUsedUB_ = 0U;
     uint32_t waitStatusBufSize = (((recStatusNumPerCore_ * UB_ALIGN) > 256) ? (recStatusNumPerCore_ * UB_ALIGN) : 256);
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     totalUsedUB_ += waitStatusBufSize;
@@ -577,9 +580,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
             // 从窗口读取到UB
             LocalTensor<YType> tripleLocal = tripleQueue.AllocTensor<YType>();
             DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
-            // PipeBarrier<PIPE_V>;
-            // DumpTensor(tripleLocal, 1, 8);
-            // PipeBarrier<PIPE_V>;
             tripleQueue.EnQue(tripleLocal);
             tripleLocal = tripleQueue.DeQue<YType>();
 
