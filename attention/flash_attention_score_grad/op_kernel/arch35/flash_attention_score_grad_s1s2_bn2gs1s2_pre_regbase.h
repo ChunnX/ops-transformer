@@ -278,6 +278,6 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNC
 FAG_PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNCTION_PARAMS_TEMPLATE>::SyncALLCores()
 {
-    SyncAll<false>();
+    SyncAll<true>();
 }
 #endif // _FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_PRE_KERNEL_REGBASE_H_
