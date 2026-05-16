@@ -811,12 +811,16 @@ public:
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                           LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 gS1Offset = static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
+                if (gS1Cur < gS1Offset) {
+                    gS1Cur = gS1Offset;
+                }
             } else {
                 gS1Offset = static_cast<uint32_t>(nextTokensError / mBaseSize);
-            }
-
-            if (gS1Cur < gS1Offset) {
-                gS1Cur = gS1Offset;
+                uint32_t gS1PerGroup = (static_cast<uint32_t>(rawQLen) + mBaseSize - 1) / mBaseSize;
+                uint32_t gS1CurInGroup = gS1Cur % gS1PerGroup;
+                if (gS1CurInGroup < gS1Offset) {
+                    gS1Cur = (gS1Cur / gS1PerGroup) * gS1PerGroup + gS1Offset;
+                }
             }
             return;
         }
