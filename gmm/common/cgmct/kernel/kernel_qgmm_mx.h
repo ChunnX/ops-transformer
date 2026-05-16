@@ -267,7 +267,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDi
                                                                                              int64_t baseN)
 {
     // Mirrors `QuantMmBatchMX::SetL2Cache` in kernel_qbmm_mx.h (FormatB / transB branches).
-    if constexpr (formatB != CubeFormat::ND) {
+    if constexpr (transA) {
         if (curBaseM >= mSize) {
             bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
