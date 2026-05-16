@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_infershape.cpp
+ * \file sparse_lightning_indexer_klloss_grad_infershape.cpp
  * \brief
  */
 
@@ -108,5 +108,5 @@ ge::graphStatus InferDataTypeSparseLightningIndexerGrad(gert::InferDataTypeConte
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseLightningIndexerGrad).InferShape(InferShapeSparseLightningIndexerGrad).InferDataType(InferDataTypeSparseLightningIndexerGrad);
+IMPL_OP_INFERSHAPE(SparseLightningIndexerKLLossGrad).InferShape(InferShapeSparseLightningIndexerKLLossGrad).InferDataType(InferDataTypeSparseLightningIndexerKLLossGrad);
 } // namespace ops

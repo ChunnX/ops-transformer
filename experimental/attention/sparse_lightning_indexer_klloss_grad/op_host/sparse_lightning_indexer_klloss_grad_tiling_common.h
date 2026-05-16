@@ -33,7 +33,7 @@ constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
 constexpr uint32_t WEIGHT_INPUT_INDEX = 2;
 constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
-constexpr uint32_t ATTN_SOFTMAX_L1_INPUT_INDEX = 4;
+constexpr uint32_t ATTN_SOFTMAX_L1_NORM_INPUT_INDEX = 4;
 // Optional Inputs Index
 constexpr uint32_t CU_SEQLENS_Q_INPUT_INDEX = 5;
 constexpr uint32_t CU_SEQLENS_K_INPUT_INDEX = 6;
