@@ -30,6 +30,7 @@ static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *co
         const char* streamType = nullptr;
 
         bool result = context->GetStrAttrVal("comm_mode", commMode);
+        OPS_LOG_D(context->GetNodeName(), "=====AllGatherMatmulV2CalcOpParam===comm_mode===%s=", commMode);
         if (commMode == "default") {
             OPS_LOG_D(context->GetNodeName(), "Do A5 default GenTask CalcOpParam");
             int64_t rankSize = 0; 
