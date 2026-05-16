@@ -15,6 +15,7 @@
 #ifndef OP_API_INC_MATMUL_ALL_TO_ALL_BASE_
 #define OP_API_INC_MATMUL_ALL_TO_ALL_BASE_
 
+#include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 
 ACLNN_API aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
