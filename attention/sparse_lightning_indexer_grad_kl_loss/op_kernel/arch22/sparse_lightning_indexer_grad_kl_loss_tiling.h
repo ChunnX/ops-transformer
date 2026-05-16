@@ -32,6 +32,9 @@ public:
     int32_t gSizeQueryIndex;
     int32_t s1Size;
     int32_t s2Size;
+    int64_t t1Size;
+    int64_t t2Size;
+    int32_t totalAivNum;
     int32_t dSizeQuery;
     int32_t dSizeQueryIndex;
     int32_t kSize;
@@ -58,6 +61,15 @@ public:
 
     int32_t get_s2Size() const {return s2Size;}
     void set_s2Size(int32_t s2SizeParam) {this->s2Size = s2SizeParam;}
+
+    int64_t get_t1Size() const {return t1Size;}
+    void set_t1Size(int32_t t1SizeParam) {this->t1Size = t1SizeParam;}
+
+    int64_t get_t2Size() const {return t2Size;}
+    void set_t2Size(int32_t t2SizeParam) {this->t2Size = t2SizeParam;}
+
+    int32_t get_totalAivNum() const {return totalAivNum;}
+    void set_totalAivNum(int32_t totalAivNumParam) {this->totalAivNum = totalAivNumParam;}
 
     int32_t get_dSizeQuery() const {return dSizeQuery;}
     void set_dSizeQuery(int32_t dSizeQueryParam) {this->dSizeQuery = dSizeQueryParam;}
