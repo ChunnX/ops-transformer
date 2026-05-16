@@ -380,7 +380,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     PRINTF("dispatch dataState_ is: %u\n", dataState_);
     if (dataState_ != 0 && dataState_ != 1) {
         for (uint32_t i=0;i < 128; i++) {
-            PRINTF("dispatch value is: %u\n", selfDataStatusGMTensor_.GetValue(i));
+            PRINTF("dispatch i is %u, value is: %u\n", i , selfDataStatusGMTensor_.GetValue(i));
         }
         dataState_ = 0;
     }
