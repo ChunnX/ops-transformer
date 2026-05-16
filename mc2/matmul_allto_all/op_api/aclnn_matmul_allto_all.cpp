@@ -246,8 +246,8 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(
     const aclTensor *x2ScaleOptional, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
     const aclTensor *x2OffsetOptional, char *group, int64_t worldSize, const aclIntArray *all2allAxesOptional,
     int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype,
-    bool transposeX1, bool transposeX2, int64_t groupSize, const aclTensor *out, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    bool transposeX1, bool transposeX2, int64_t groupSize, char *commModeOptional, const aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                 aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
@@ -256,8 +256,9 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
                                                            const aclTensor *biasOptional,
                                                            const aclIntArray *alltoAllAxesOptional, const char *group,
-                                                           bool transposeX1, bool transposeX2, const aclTensor *output,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                           bool transposeX1, bool transposeX2, const char *commMode,
+                                                           const aclTensor *output, uint64_t *workspaceSize,
+                                                           aclOpExecutor **executor)
 {
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值，因此此处使用的枚举值为28
     const int64_t GE_UNDEFINED = 28;
@@ -276,10 +277,11 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
     int64_t commQuantMode = 0;
     int64_t commQuantDtype = GE_UNDEFINED;
     int64_t groupSize = 0;
+    char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
         str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
-        transposeX1, transposeX2, groupSize, out, workspaceSize, executor);
+        transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     return ret;
 }
@@ -326,8 +328,16 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
     if (x1->GetViewShape().GetDim(0) == 0 && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         return DealWithEmptyTensor(workspaceSize, executor);
     }
-    aclnnStatus ret = InnerMatmulAlltoAllGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group,
-                                                          transposeX1, transposeX2, output, workspaceSize, executor);
+
+    aclnnStatus ret = ACLNN_ERR_INNER;
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        ret = InnerMatmulAlltoAllGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1,
+                                                  transposeX2, "ccu", output, workspaceSize, executor);
+    } else {
+        ret = InnerMatmulAlltoAllGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1,
+                                                  transposeX2, "default", output, workspaceSize, executor);
+    }
+
     OP_LOGD("MatmulAlltoAll, end ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
