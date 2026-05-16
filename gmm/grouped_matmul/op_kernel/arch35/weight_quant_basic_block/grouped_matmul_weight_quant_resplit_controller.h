@@ -283,6 +283,9 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
     if ASCEND_IS_AIV {
         return;
     }
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        return;
+    }
     /*
      * 准入条件：
      * 1. m <= 512
@@ -291,7 +294,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
      */
 
     uint64_t aSize = mSize * kSize * sizeof(xType);
-    constexpr static uint64_t MAX_L1_PREFETCH_SIZE = IsMxA8W4<xType, wqmmConfig.antiQuantType>() ? MX_A8W4_L1_PREFETCH_SIZE_KB * 1024 : A_L1_MAX_SIZE_WITH_BIAS_QUANT;
+    constexpr static uint64_t MAX_L1_PREFETCH_SIZE = A_L1_MAX_SIZE_WITH_BIAS_QUANT;
     if (mSize <= PREFETCH_A_MAX_M_SIZE && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * MAX_L1_PREFETCH_SIZE &&
         (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
