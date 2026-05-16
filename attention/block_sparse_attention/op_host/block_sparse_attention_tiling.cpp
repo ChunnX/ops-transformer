@@ -707,8 +707,8 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
-    CheckAllInputInfo(bsaContext);
     if (socVer_ == SOC_VER_950_CODE) {
+        CheckAllInputInfo(bsaContext);
         printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||

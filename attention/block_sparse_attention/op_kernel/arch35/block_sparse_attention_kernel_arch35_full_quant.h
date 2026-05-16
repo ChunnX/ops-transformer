@@ -330,12 +330,12 @@ public:
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
-                    AscendC::printf("tkd print ubSTensorTla (S matrix)\n");
-                    AscendC::DumpTensor(ubSTensorTla, 0, 128);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
 #endif
+                    AscendC::printf("tkd print ubSTensor[ubSBufId] (S matrix)\n");
+                    AscendC::DumpTensor(ubSTensor[ubSBufId], 0, 128);
                     // SM
                     uint32_t l1PBufId = gatheredKvSTileIdx % pL1BufNum_;
                     uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
@@ -354,8 +354,8 @@ public:
                         l1PBufId,
                         mm1ToSmFlag,
                         smToMm2Flag);
-                    AscendC::printf("tkd print l1PTensorTla (P matrix)\n");
-                    AscendC::DumpTensor(l1PTensorTla, 0, 128);
+                    // AscendC::printf("tkd print l1PTensor[l1PBufId] (P matrix)\n");
+                    // AscendC::DumpTensor(l1PTensor[l1PBufId], 0, 128);
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
@@ -386,9 +386,9 @@ public:
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
                                 gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag);
-                    AscendC::printf("tkd print ubOTmpTensorTla (OTmp matrix, PV matrix)\n");
-                    AscendC::DumpTensor(ubOTmpTensorTla, 0, 128);
 #endif
+                    // AscendC::printf("tkd print ubOTmpTensor[ubOTmpBufId] (OTmp matrix, PV matrix)\n");
+                    // AscendC::DumpTensor(ubOTmpTensor[ubOTmpBufId], 0, 128);
 #ifdef __DAV_VEC__
                     // rescale O
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
@@ -414,8 +414,8 @@ public:
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
                         mm2ToReFlag,
                         deqScalar);
-                    AscendC::printf("tkd print gmOTensorTla (O matrix, final result)\n");
-                    AscendC::DumpTensor(gmOTensorTla, 0, 128);
+                    AscendC::printf("tkd print gO[gmOffsetO] (O matrix, final result)\n");
+                    AscendC::DumpTensor(gO[gmOffsetO], 0, 128);
 #endif
                 }
             }
