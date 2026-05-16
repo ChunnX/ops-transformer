@@ -256,19 +256,8 @@ __aicore__ inline void VecOp<SFAGT>::InitParams(const TILING_CLASS *__restrict o
     }
 
     if constexpr (IS_BSND == false) {
-        for (int64_t i = 0; i < dimB; i++) {
-            int64_t seqS1Len = 0;
-            int64_t seqS2Len = 0;
-            if (unlikely(i == 0)) {
-                seqS1Len = ((__gm__ int32_t *)actual_seq_qlen)[i];
-                seqS2Len = ((__gm__ int32_t *)actual_seq_kvlen)[i];
-            } else {
-                seqS1Len = ((__gm__ int32_t *)actual_seq_qlen)[i] - ((__gm__ int32_t *)actual_seq_qlen)[i - 1];
-                seqS2Len = ((__gm__ int32_t *)actual_seq_kvlen)[i] - ((__gm__ int32_t *)actual_seq_kvlen)[i - 1];
-            }
-            dimTq += (int64_t)seqS1Len;
-            dimTkv += (int64_t)seqS2Len;
-        }
+        dimTq = dimS1;
+        dimTkv = dimS2;
     } else {
         dimTq = dimB * dimS1;
         dimTkv = dimB * dimS2;
