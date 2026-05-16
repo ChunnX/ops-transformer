@@ -497,38 +497,9 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         enumYDtype = 27;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     uint8_t commModeEnum = 0;
-    CheckAndHandleCommMode(group,commMode,commModeEnum);
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, str_group,

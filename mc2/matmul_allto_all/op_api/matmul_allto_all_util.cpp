@@ -240,6 +240,8 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
+
+    return ACLNN_SUCCESS;
 }
 
 // 检查是否有alltoallout输出
