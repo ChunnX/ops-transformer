@@ -35,17 +35,6 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         drop_and_pad = input_data.kwargs["padded_mode"]
         num_out_tokens = input_data.kwargs["permutedTokenOutputGrad"].shape[0]
         self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
-        # num_tokens = 1024
-        # hidden_size = 1024
-        # num_experts = 256
-        # capacity = 8
-        # topK = 1
-        # drop_and_pad = False
-        # if drop_and_pad:
-        #     num_out_tokens = num_experts *  capacity
-        # else:
-        #     num_out_tokens = num_tokens *  topK
-        # self.torch_type = torch.float16
         input_data.kwargs['tokensNum'] = num_tokens
         input_data.kwargs["padded_mode"] = drop_and_pad
         input_data.kwargs["numExperts"] = num_experts
@@ -53,24 +42,34 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         case_id = self.task_result.case_config.id
         
         OpsDataset.seed_everything(case_id)
-        prob_is_none_list = [True,False]
-        self.prob_is_none = prob_is_none_list[case_id%2]
-        # self.prob_is_none = False
+        prob_is_none_list = [True, False]
+        self.prob_is_none = prob_is_none_list[case_id % 2]
 
         routing_map = None
         if drop_and_pad:
             capacity = num_out_tokens // num_experts
-            
-            routing_map = self.generate_routing_map_drop_pad_true(capacity,num_tokens,num_experts)
+            routing_map = self.generate_routing_map_drop_pad_true(capacity, num_tokens, num_experts)
         else:
-            topK =  num_out_tokens // num_tokens
-            
-            routing_map = self.generate_routing_map_drop_pad_false(topK,num_tokens,num_experts)
+            topK = num_out_tokens // num_tokens
+            routing_map = self.generate_routing_map_drop_pad_false(topK, num_tokens, num_experts)
         tokens = self.generate_tensor((num_tokens, hidden_size), torch.bfloat16, 5)
         probs = None
         if not self.prob_is_none:
             probs = self.generate_tensor((num_tokens, num_experts), torch.bfloat16, 5)
-        permuted_tokens, permuted_probs, sorted_indices = self.permute(tokens, routing_map, probs, num_out_tokens, False, drop_and_pad)
+        permuted_tokens, permuted_probs, sorted_indices = self.permute(
+            tokens, routing_map, probs, num_out_tokens, False, drop_and_pad)
+        if not drop_and_pad:
+            topK = num_out_tokens // num_tokens
+            padded_sorted_indices = torch.full((num_tokens * topK,), -1, dtype=sorted_indices.dtype)
+            sorted_vals, sort_idx = torch.sort(sorted_indices, stable=True)
+            group_starts = torch.searchsorted(sorted_vals, torch.arange(num_tokens, dtype=sorted_vals.dtype))
+            within_offsets = torch.arange(len(sorted_vals), dtype=torch.long) - group_starts[sorted_vals.long()]
+            target_pos = sorted_vals.long() * topK + within_offsets
+            padded_sorted_indices.scatter_(0, target_pos, sort_idx)
+            padded_permuted_tokens = torch.zeros((num_tokens * topK, hidden_size), dtype=permuted_tokens.dtype)
+            padded_permuted_tokens[target_pos] = permuted_tokens
+            sorted_indices = padded_sorted_indices
+            permuted_tokens = padded_permuted_tokens
         sorted_indices = sorted_indices.to(torch.int32)
         
         if self.device == "pyaclnn":
@@ -90,36 +89,34 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
             input_data.kwargs['sortedIndices'] = sorted_indices
             input_data.kwargs['routingMapOptional'] = routing_map
 
-    def generate_routing_map_drop_pad_false(self,topk,num_tokens,num_experts):
+    def generate_routing_map_drop_pad_false(self, topk, num_tokens, num_experts):
         tensor = torch.zeros((num_tokens, num_experts), dtype=torch.bool)
         for i in range(num_tokens):
-            indices = torch.randperm(num_experts)[:topk]
+            true_num = random.randint(1, topk)
+            indices = torch.randperm(num_experts)[:true_num]
             tensor[i, indices] = True
         return tensor
     
-    def generate_routing_map_drop_pad_true(self,capacity,num_tokens,num_experts):
+    def generate_routing_map_drop_pad_true(self, capacity, num_tokens, num_experts):
         tensor = torch.zeros((num_tokens, num_experts), dtype=torch.bool)
         for i in range(num_experts):
             indices = torch.randperm(num_tokens)[:capacity]
             tensor[indices, i] = True
         return tensor
 
-    # 生成值域在 [-data_max，data_max]之间，数据类型为data_type的torch tensor
-    def generate_tensor(self,shape, data_type, data_max):
+    def generate_tensor(self, shape, data_type, data_max):
         tensor = torch.rand(shape) * (data_max * 2) - data_max
         return tensor.to(data_type)
 
     def permute(
         self,
-        tokens, # [num_tokens, hidden]
-        routing_map, # [num_tokens, num_experts], bool
+        tokens,
+        routing_map,
         probs: Optional[torch.Tensor] = None,
         num_out_tokens: Optional[int] = None,
         fused: bool = False,
         drop_and_pad: bool = False,
     ):
-        
-        
         num_tokens, hidden = tokens.shape
         num_experts = routing_map.shape[1]
         if drop_and_pad and not (num_out_tokens is None):
@@ -153,15 +150,14 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         hidden,
         topK
     ):
-        # sorted_index, sorted_indices1 = sorted_indices.sort(dim=-1, descending=False)  # 升序排序
         output_tokens = torch.zeros(
-            (num_tokens,hidden), dtype=torch.float32, device=permuted_tokens.device
+            (num_tokens, hidden), dtype=torch.float32, device=permuted_tokens.device
         )
         for i in range(sorted_indices.size(-1)):
-            output_tokens[i // topK] += permuted_tokens[sorted_indices[i]]
-            
-        
+            if sorted_indices[i] >= 0:
+                output_tokens[i // topK] += permuted_tokens[sorted_indices[i]]
         return output_tokens.to(dtype=permuted_tokens.dtype)
+
     def permute_grad_with_routing_map_drop(
         self,
         permuted_tokens,
@@ -185,12 +181,11 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         sortedIndices = input_data.kwargs["sortedIndices"]
         routingMapOptional = input_data.kwargs["routingMapOptional"]
         num_experts = input_data.kwargs["numExperts"]
-        # self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
         num_tokens = input_data.kwargs['tokensNum']
         hidden_size = input_data.kwargs['permutedTokenOutputGrad'].shape[1]
         num_experts = input_data.kwargs["numExperts"]
         drop_and_pad = input_data.kwargs["padded_mode"]
-        num_out_tokens = input_data.kwargs["permutedTokenOutputGrad"].shape[0]
+        num_out_tokens = input_data.kwargs['permutedTokenOutputGrad'].shape[0]
         self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
         
         if self.device == "npu":
@@ -198,48 +193,36 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
             permutedProbsOutputGradOptional = permutedProbsOutputGradOptional.npu()
             sortedIndices = sortedIndices.npu()
             routingMapOptional = routingMapOptional.npu()
-        # num_tokens = 1024
-        # hidden_size = 1024
-        # num_experts = 256
-        # capacity = 8
-        # topK = 1
-        # drop_and_pad = False
-        # if drop_and_pad:
-        #     num_out_tokens = num_experts *  capacity
-        # else:
-        #     num_out_tokens = num_tokens *  topK
-        # self.torch_type = torch.float16
         if drop_and_pad is False:
-            topK = num_out_tokens // num_tokens
+            topK = sortedIndices.shape[0] // num_tokens
 
-            permuted_tokens_grad = self.permute_grad_with_routing_map(permutedTokenOutputGrad,sortedIndices,num_tokens,hidden_size, topK)
+            permuted_tokens_grad = self.permute_grad_with_routing_map(permutedTokenOutputGrad, sortedIndices, num_tokens, hidden_size, topK)
             if not self.prob_is_none:
                 probs_grad_permute = torch.zeros((num_experts, num_tokens), dtype=self.torch_type)
                 probs_grad_permute.masked_scatter_(routingMapOptional.T, permutedProbsOutputGradOptional)
                 probs_grad_permute = probs_grad_permute.T
-                return permuted_tokens_grad,probs_grad_permute
+                return permuted_tokens_grad, probs_grad_permute
             else:
-                return permuted_tokens_grad,torch.tensor([0])
+                return permuted_tokens_grad, torch.tensor([0])
         else:
             capacity = num_out_tokens // num_experts
-            permuted_tokens_grad = self.permute_grad_with_routing_map_drop(permutedTokenOutputGrad,sortedIndices,num_tokens,hidden_size, capacity)
+            permuted_tokens_grad = self.permute_grad_with_routing_map_drop(permutedTokenOutputGrad, sortedIndices, num_tokens, hidden_size, capacity)
             if not self.prob_is_none:
                 probs_grad_permute = torch.zeros((num_tokens, num_experts), dtype=self.torch_type)
                 for i in range(num_experts * capacity):
                     dim0 = i // capacity
                     dim1 = sortedIndices[i]
                     probs_grad_permute[dim1, dim0] = permutedProbsOutputGradOptional[i]
-                return permuted_tokens_grad,probs_grad_permute
+                return permuted_tokens_grad, probs_grad_permute
             else:
-                return permuted_tokens_grad,torch.tensor([0])
+                return permuted_tokens_grad, torch.tensor([0])
 
 @register("AclnnBaseApi_aclnn_moe_token_permute_with_routing_map_grad")
 class AclnnMoeTokenPermuteWithRoutingMapGradApi(AclnnBaseApi):
     def after_call(self, output_packages):
         case_id = self.task_result.case_config.id
-        prob_is_none_list = [True,False]
-        self.prob_is_none = prob_is_none_list[case_id%2]
-        # self.prob_is_none = False
+        prob_is_none_list = [True, False]
+        self.prob_is_none = prob_is_none_list[case_id % 2]
         output = []
         torch_tensor = self.acl_tensor_to_torch(output_packages[0])
         output.append(torch_tensor)
