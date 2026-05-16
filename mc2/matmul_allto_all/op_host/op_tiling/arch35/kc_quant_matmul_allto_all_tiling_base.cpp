@@ -48,17 +48,24 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckOpInputInfo()
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attrs", "invalid", "Tiling check Attrs failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckKcTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check format failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "tiling check Dtype failed in kc quant matmul all to all."),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, y", "invalid",
+                        "tiling check Dtype failed in kc quant matmul all to all"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckKcQuantShapeInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check kc quant shape info failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y, x1scale, x2scale", "invalid",
+                        "Tiling check kc quant shape info failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckKcQuantMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check kc quant matrix shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y", "invalid",
+                        "Tiling check kc quant matrix shape failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -73,22 +80,23 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckKcTensorFormat(const gert:
                                                                      const char *opName)
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check format failed"),
+                    return ge::GRAPH_FAILED);
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x1Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x1scale", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x1Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x1ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x1scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x2Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x2scale", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x2Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x2ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x2scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -153,7 +161,9 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType).
         withCommEngine(engineType).build();
     if (!allToAllBuilder.isSuccess()) {
-        OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
+        std::string errorMsg = allToAllBuilder.errorMsg();
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hccl tiling config", "failed",
+            "Build hccl tiling config failed: " + errorMsg);
         return ge::GRAPH_FAILED;
     }
     allToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
@@ -424,15 +434,20 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::PostTiling()
     SetTilingInfo(localTilingData_.quantMatmulAlltoAllTilingInfo);
     QuantMatmulAlltoAllTilingData *outTilingData = context_->GetTilingData<QuantMatmulAlltoAllTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "failed to get tiling data from context"),
+    OP_TILING_CHECK((outTilingData == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "tilingData", "nullptr", "valid pointer"),
                     return ge::GRAPH_FAILED);
+    std::string tilingBufCapStr = std::to_string(tilingBufCap);
+    std::string localTilingDataSizeStr = std::to_string(sizeof(localTilingData_));
     OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
-                    OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
-                            sizeof(localTilingData_)),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "tilingBuffer", tilingBufCapStr.c_str(),
+                        "TilingBuffer capacity too small, need " + localTilingDataSizeStr),
                     return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
-        OP_LOGE(opName_, "MatmulAlltoAll postTiling: memcpy_s tiling data failed, ret=%d.", ret);
+        std::string retStr = std::to_string(ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tilingData", retStr.c_str(),
+            "MatmulAlltoAll postTiling: memcpy_s tiling data failed");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(QuantMatmulAlltoAllTilingData),

@@ -39,7 +39,9 @@ namespace MC2Tiling {
 bool FpMatmulAllToAllTilingBaseA3::IsCapable()
 {
     fe::PlatFormInfos *platformInfoPtr = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(opName_, "fail to get platform info"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfoPtr == nullptr, 
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "platformInfo", "nullptr", "valid pointer"),
+                    return ge::GRAPH_FAILED);
     fe::PlatFormInfos &platformInfo = *platformInfoPtr;
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersionStr_);
     OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr_.c_str());
@@ -76,21 +78,24 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckA3NonQuantTensorDataType(cons
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName, "The input tensor x1 is invalid."),
+    OP_TILING_CHECK((x1TensorDesc == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x1", "nullptr", "valid tensor"),
                     return ge::GRAPH_FAILED);
     auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE(opName, "The input tensor x2 is invalid."),
+    OP_TILING_CHECK((x2TensorDesc == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x2", "nullptr", "valid tensor"),
                     return ge::GRAPH_FAILED);
     ge::DataType x1Dtype = x1TensorDesc->GetDataType();
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     OP_TILING_CHECK((x1Dtype != x2Dtype),
-                    OP_LOGE(opName, "The Input x1 and x2 Dtype should be same, but x1 is %s, x2 is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1, x2",
+                        (Ops::Base::ToString(x1Dtype) + ", " + Ops::Base::ToString(x2Dtype)).c_str(),
+                        "same dtype"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
-                    OP_LOGE(opName,
-                            "The Input x Dtype should be in non-quant range (float16/bf16), but x1 is %s, x2 is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1, x2",
+                        (Ops::Base::ToString(x1Dtype) + ", " + Ops::Base::ToString(x2Dtype)).c_str(),
+                        "FLOAT16 or BF16"),
                     return ge::GRAPH_FAILED);
     // 校验 bias 数据类型（如果存在
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
@@ -98,34 +103,31 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckA3NonQuantTensorDataType(cons
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         if (x1Dtype == ge::DT_BF16) {
             OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
-                            OP_LOGE(opName, "When x1 Dtype is FP16, bias Dtype must be FLOAT32 DType, but bias is %s.",
-                                    Ops::Base::ToString(biasDtype).c_str()),
+                            OP_LOGE_FOR_INVALID_DTYPE(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "FLOAT"),
                             return ge::GRAPH_FAILED);
         } else if (x1Dtype == ge::DT_FLOAT16) {
             OP_TILING_CHECK((x1Dtype != biasDtype),
-                            OP_LOGE(opName,
-                                    "When x1 Dtype is FLOAT16, bias Dtype should be same as x Dtype, but bias is %s.",
-                                    Ops::Base::ToString(biasDtype).c_str()),
+                            OP_LOGE_FOR_INVALID_DTYPE(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "FLOAT16"),
                             return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(opName,
-                    "The non-quantized scene bias Dtype currently only supports FLOAT16 and FP16, but bias is %s.",
-                    Ops::Base::ToString(biasDtype).c_str());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
+                "The non-quantized scene bias Dtype currently only supports FLOAT16 and FP16");
             return ge::GRAPH_FAILED;
         }
     }
-    // 校验 scale 张量为空（非量化场景
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
-                    OP_LOGE(opName, "Scale tensors should be null in non-quant mode."), return ge::GRAPH_FAILED);
-    // 校验输出张量数据类型
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x1scale, x2scale", "non-null", "null"),
+                    return ge::GRAPH_FAILED);
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE(opName, "Output tensor y is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yDesc == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "y", "nullptr", "valid tensor"),
+                    return ge::GRAPH_FAILED);
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK((yDtype != x1Dtype),
-                    OP_LOGE(opName, "Output y Dtype should be same as input x Dtype, but y is %s.",
-                            Ops::Base::ToString(yDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "y", Ops::Base::ToString(yDtype).c_str(),
+                        Ops::Base::ToString(x1Dtype).c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -139,18 +141,24 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckOpInputInfo()
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attrs", "invalid", "Tiling check Attrs failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check format failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckA3NonQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check Dtype failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check shape failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(Check2DMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check shape failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckBsRankSizeRange() != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check BS*rankSize range failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BS*rankSize", "invalid", "Tiling check BS*rankSize range failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -163,15 +171,19 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckBsRankSizeRange()
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     int64_t rankSize = 0;
     if (worldSize == nullptr || *worldSize == RANK_DEFAULT_NUM) {
-        OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankSize), OP_LOGE(opName_, "GetRankSize failed."),
+        OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankSize), 
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankSize", "failed", "GetRankSize failed"),
                         return ge::GRAPH_FAILED);
     } else {
         rankSize = *worldSize;
     }
     uint64_t bsRankProduct = x1Dim0 * static_cast<uint64_t>(rankSize);
+    std::string x1Dim0Str = std::to_string(x1Dim0);
+    std::string rankSizeStr = std::to_string(rankSize);
+    std::string bsRankProductStr = std::to_string(bsRankProduct);
     OP_TILING_CHECK(bsRankProduct > MAX_INT32_VALUE,
-                    OP_LOGE(opName_, "BS*rankSize exceeds INT32_MAX, BS=%lu, rankSize=%ld, product=%lu.",
-                            x1Dim0, rankSize, bsRankProduct),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BS*rankSize", bsRankProductStr.c_str(),
+                        "BS*rankSize exceeds INT32_MAX, BS=" + x1Dim0Str + ", rankSize=" + rankSizeStr),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -239,11 +251,12 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::SetHcclTiling()
 {
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                            static_cast<int32_t>(contextInfo.args_.geCType)),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hcclDataType", "reserved",
+                        "Cannot find HcclDataType according to ge datatype"),
                     return ge::GRAPH_FAILED;);
     auto group = context_->GetAttrs()->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-    OP_TILING_CHECK(group == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_GROUP_INDEX failed"),
+    OP_TILING_CHECK(group == nullptr, 
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "group", "nullptr", "valid pointer"),
                     return ge::GRAPH_FAILED);
     uint32_t optype = HcclCMDType::HCCL_CMD_ALLTOALL;
     std::string algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
@@ -252,13 +265,16 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::SetHcclTiling()
 
     OP_TILING_CHECK(mc2CcTilingConfig.SetSkipBufferWindowCopy(
                         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT)) != 0,
-                    OP_LOGE(context_->GetNodeName(), "mc2CcTilingConfig setSkipBufferWindowCopy failed"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "skipBufferWindowCopy", "failed",
+                        "mc2CcTilingConfig setSkipBufferWindowCopy failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(localTilingData_.mc2InitTiling) != 0,
-                    OP_LOGE(context_->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mc2InitTiling", "failed",
+                        "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(localTilingData_.mc2CcTiling) != 0,
-                    OP_LOGE(context_->GetNodeName(), "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mc2CcTiling", "failed",
+                        "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -382,7 +398,9 @@ void FpMatmulAllToAllTilingBaseA3::SetUserWorkSpace()
 ge::graphStatus FpMatmulAllToAllTilingBaseA3::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workspaces == nullptr, 
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "workspaces", "nullptr", "valid pointer"),
+                    return ge::GRAPH_FAILED);
     SetUserWorkSpace();
     uint64_t workspaceSize_ =
         libApiWorkSpaceSize_ + inferredInfo.mmResultLen + inferredInfo.permuteLen + inferredInfo.biasLen;
@@ -402,16 +420,21 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::PostTiling()
     SetTilingInfo(localTilingData_.matmulAlltoAllTilingInfo);
     MatmulAlltoAllTilingDataA3 *outTilingData = context_->GetTilingData<MatmulAlltoAllTilingDataA3>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Failed to get tiling data from context"),
+    OP_TILING_CHECK((outTilingData == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "tilingData", "nullptr", "valid pointer"),
                     return ge::GRAPH_FAILED);
+    std::string tilingBufCapStr = std::to_string(tilingBufCap);
+    std::string localTilingDataSizeStr = std::to_string(sizeof(localTilingData_));
     OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
-                    OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
-                            sizeof(localTilingData_)),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "tilingBuffer", tilingBufCapStr.c_str(),
+                        "TilingBuffer capacity too small, need " + localTilingDataSizeStr),
                     return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
-        OP_LOGE(opName_, "MatmulAlltoAll postTiling: memcpy_s tiling data failed, ret=%d.", ret);
+        std::string retStr = std::to_string(ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tilingData", retStr.c_str(),
+            "MatmulAlltoAll postTiling: memcpy_s tiling data failed");
         return ge::GRAPH_FAILED;
     }
 
