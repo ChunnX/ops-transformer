@@ -117,10 +117,12 @@ TEST_P(FusedInferAttentionScoreArch22TilingTest, param)
         {}, 0, true);
 }
 
+std::filesystem::path fiaTestFile(__FILE__);
+char* fiaTestDir = fiaTestFile.parent_path().string().c_str();
 INSTANTIATE_TEST_SUITE_P(
     FusedInferAttentionScore,
     FusedInferAttentionScoreArch22TilingTest,
-    testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionTilingUtParam>(ReplaceFileExtension2Csv(fiaTestDir))),
     PrintCaseInfoString<FusedInferAttentionTilingUtParam>
 );
 
