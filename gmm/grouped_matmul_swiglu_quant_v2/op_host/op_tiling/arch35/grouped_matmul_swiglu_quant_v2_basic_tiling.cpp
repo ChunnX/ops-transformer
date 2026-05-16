@@ -118,13 +118,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrs()
     const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     OP_CHECK_IF(quantDtypePtr == nullptr, OP_LOGE(context_->GetNodeName(), "The quantDtypePtr is nullptr."),
                 return false);
-    ge::DataType quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
-    OP_CHECK_IF(std::find(quantDtypeSupportList.begin(), quantDtypeSupportList.end(), quantDtype) ==
-                    quantDtypeSupportList.end(),
-                OP_LOGE(inputParams_.opName,
-                        "In mx quant mode, quantDtype should be in {FLOAT8_E4M3,"
-                        " FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2}, but actual value is %s.",
-                        ge::TypeUtils::DataTypeToSerialString(quantDtype).c_str()), return false);
     // gmm quant tiling need groupType to calculate L1 tiling 
   	inputParams_.groupType = SPLIT_M;
     return true;
@@ -189,10 +182,46 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
             return false;
         }
     }
+
+    OP_CHECK_IF(!CheckWeightNdDtype(),
+                OP_LOGE(context_->GetNodeName(), "CheckWeightNdDtype failed."),
+                return false);
+
+    const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+    if (quantDtypePtr != nullptr) {
+        ge::DataType quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
+        OP_CHECK_IF(!CheckQuantDtypeByFormat(quantDtype, weightFormat),
+                    OP_LOGE(context_->GetNodeName(), "CheckQuantDtypeByFormat failed."), return false);
+    }
+    
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return CheckDtypePertoken();
     }
     return CheckDtype();
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat)
+{
+    if (IsMxFp4WeightNz()) {
+        // 仅 NZ+MXFP4 场景：支持 FLOAT4_E1M2
+        OP_CHECK_IF(std::find(quantDtypeMxFp4NzSupportList.begin(), quantDtypeMxFp4NzSupportList.end(), quantDtype) ==
+                        quantDtypeMxFp4NzSupportList.end(),
+                    OP_LOGE(inputParams_.opName,
+                            "When x and weight are FLOAT4 and weight is NZ, quantDtype should be in "
+                            "{FLOAT8_E4M3, FLOAT4_E2M1, FLOAT4_E1M2}, but actual value is %s.",
+                            ge::TypeUtils::DataTypeToSerialString(quantDtype).c_str()),
+                    return false);
+    } else {
+        // 其他所有场景（ND/FP8等）：不支持 FLOAT4_E1M2
+        OP_CHECK_IF(std::find(quantDtypeSupportList.begin(), quantDtypeSupportList.end(), quantDtype) ==
+                        quantDtypeSupportList.end(),
+                    OP_LOGE(inputParams_.opName,
+                            "quantDtype should be in {FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}, "
+                            "but actual value is %s.",
+                            ge::TypeUtils::DataTypeToSerialString(quantDtype).c_str()),
+                    return false);
+    }
+    return true;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsFp4(ge::DataType dtype) const
@@ -230,6 +259,15 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Sh
                         "MXFP4 weight NZ requires the last two dimensions of weight origin shape not to be 1, "
                         "but got %ld and %ld.",
                         weightLastSecondDim, weightLastDim),
+                return false);
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNdDtype()
+{
+    OP_CHECK_IF(inputParams_.bFormat == ge::FORMAT_ND && inputParams_.bDtype == ge::DT_FLOAT4_E1M2,
+                OP_LOGE(context_->GetNodeName(),
+                        "When weight is ND format, weight dtype cannot be FLOAT4_E1M2."),
                 return false);
     return true;
 }
