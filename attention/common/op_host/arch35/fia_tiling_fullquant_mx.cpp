@@ -352,8 +352,8 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
         if (actualSeqLengthsTmp == 0 || actualSeqLengthsKV_[bIdx] == 0) {
             outerBlockNums = fiaInfo_->n2Size;
         }
-        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
-               "actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
+        OP_LOGD(fiaInfo_->opName, "bIdx:%d, sOuterSize:%d, actualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
+               "actualSeqLengthsTmp:%d, outerBlockNums:%d",
                bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp,
                outerBlockNums);
         totalSize += outerBlockNums;
@@ -363,9 +363,9 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    printf("actualUsedCoreNum:%d\n", actualUsedCoreNum);
-    printf("totalSize:%d\n", totalSize);
-    printf("zzyzzy gqa enableS1OutSplit\n");
+    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%d", actualUsedCoreNum);
+    OP_LOGD(fiaInfo_->opName, "totalSize:%d", totalSize);
+    OP_LOGD(fiaInfo_->opName, "zzyzzy gqa enableS1OutSplit");
 }
 
 bool FiaTilingFullQuantMxArch35::CheckEnableDN()
