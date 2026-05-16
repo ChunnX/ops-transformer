@@ -87,6 +87,7 @@ attention:
       - attention/flash_attention_score
     test:
       ut: True
+      examples: True
     options:
       - flash_attention_score
 
@@ -99,6 +100,7 @@ attention:
       - attention/flash_attention_score_grad/README.md
     test:
       ut: True
+      examples: True
     ut_cov_exclude:
       - attention/flash_attention_score_grad
     options:
