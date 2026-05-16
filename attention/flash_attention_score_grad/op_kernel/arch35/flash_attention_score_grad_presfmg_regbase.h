@@ -519,6 +519,6 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
 PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::SyncALLCores()
 {
-    SyncAll<false>();
+    SyncAll<true>();
 }
 #endif // _FLASH_ATTENTION_SCORE_GRAD_PRE_SFMG_KERNEL_REGBASE_H_
