@@ -433,9 +433,11 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
         }
         userWorkSpaceSize += info.bAlignSize;
     }
+
+    info.accumWorkSpacePingPong = false;
     if (info.quantFlag) {
-        info.accumWorkSpacePingPong = (info.M < MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue);
-        int32_t workspaceM = info.accumWorkSpacePingPong ? info.M : MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue;
+        info.accumWorkSpacePingPong = (info.M >= MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue);
+        int32_t workspaceM = info.accumWorkSpacePingPong ? MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue : info.M;
         userWorkSpaceSize += static_cast<uint64_t>(workspaceM * info.N * rankSize * sizeof(int32_t));
     }
     if (info.dequantType == DequantType::PER_TOKEN) {
