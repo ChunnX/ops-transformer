@@ -42,7 +42,13 @@ inline std::vector<int64_t> GetShapeArr(const std::string& shapeArrStr)
 
 inline std::string ReplaceFileExtension2Csv(const char* file)
 {
-    return std::filesystem::path(file).replace_extension("csv").string();
+    // 1. 获取当前源文件（比如当前写代码的这个 cpp 文件）的绝对路径
+    std::filesystem::path current_file(file); 
+
+    // 2. 获取该文件所在的目录
+    std::filesystem::path current_dir = current_file.parent_path();
+
+    return std::filesystem::path((current_dir/current_file).string().c_str()).replace_extension("csv").string();
 }
 
 template<typename T> // T 需要支持 T(const csv_map&) 构造函数
