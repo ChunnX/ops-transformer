@@ -37,20 +37,20 @@ __aicore__ inline void CombineTokens(
         uint32_t toRankId = DecodeTripletRank(packedTriplet);
         uint32_t tokenId = DecodeTripletToken(packedTriplet);
         uint32_t topkId = DecodeTripletTopk(packedTriplet);
-        if (rankId < 2 && groupIdx < 2 && mLoc + tileRow < 8) {
-            PRINTF("[AIV CombineTriplet] rank=%d group=%d tripletRow=%d packed=%d toRank=%d token=%d topk=%d mLoc=%d tileRow=%d\n",
-                rankId, groupIdx, tripletRow, packedTriplet, toRankId, tokenId, topkId, mLoc, tileRow);
-        }
+        // if (rankId < 2 && groupIdx < 2 && mLoc + tileRow < 8) {
+        //     PRINTF("[AIV CombineTriplet] rank=%d group=%d tripletRow=%d packed=%d toRank=%d token=%d topk=%d mLoc=%d tileRow=%d\n",
+        //         rankId, groupIdx, tripletRow, packedTriplet, toRankId, tokenId, topkId, mLoc, tileRow);
+        // }
 
         AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
         uint64_t gmDstOffset = (tokenId * params.tilingData->topK + topkId) * n + nLoc;
         auto gmRowD = gmRemoteD[gmDstOffset];
-        if (rankId < 2 && groupIdx < 2 && mLoc + tileRow < 8) {
-            PRINTF("[AIV CombineWrite] rank=%d group=%d toRank=%d token=%d topk=%d gmDstOffset=%lu nLoc=%d blockLen=%d\n",
-                rankId, groupIdx, toRankId, tokenId, topkId, gmDstOffset, nLoc, ub2GmParams.blockLen);
-        }
+        // if (rankId < 2 && groupIdx < 2 && mLoc + tileRow < 8) {
+        //     PRINTF("[AIV CombineWrite] rank=%d group=%d toRank=%d token=%d topk=%d gmDstOffset=%lu nLoc=%d blockLen=%d\n",
+        //         rankId, groupIdx, toRankId, tokenId, topkId, gmDstOffset, nLoc, ub2GmParams.blockLen);
+        // }
         AscendC::DataCopyPad(gmRowD, l0cOutUbGMM2[tileRow * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
         DataSyncBarrier<MemDsbT::DDR>();
         DataCacheCleanAndInvalid<ElementMMadOut2, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(gmRemoteD);
