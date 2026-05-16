@@ -223,6 +223,12 @@ if(UT_TEST_ALL
         endif()
         file(GLOB OPHOST_TILING_CASES_SRC ${MODULE_DIR}/test_*_tiling.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_TILING_CASES_SRC})
+        # copy csv files to build directory
+        file(GLOB OPHOST_TILING_CSV_FILES ${MODULE_DIR}/test_*_tiling.csv)
+        foreach(csv_file ${OPHOST_TILING_CSV_FILES})
+          get_filename_component(csv_name ${csv_file} NAME)
+          configure_file(${csv_file} ${CMAKE_CURRENT_BINARY_DIR}/${csv_name} COPYONLY)
+        endforeach()
       endif()
 
       if("${MODULE_UT_NAME}" STREQUAL "${OP_INFERSHAPE_MODULE_NAME}")
@@ -242,6 +248,12 @@ if(UT_TEST_ALL
         endif()
         file(GLOB OPHOST_INFERSHAPE_CASES_SRC ${MODULE_DIR}/test_*_infershape.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_INFERSHAPE_CASES_SRC})
+        # copy csv files to build directory
+        file(GLOB OPHOST_INFERSHAPE_CSV_FILES ${MODULE_DIR}/test_*_infershape.csv)
+        foreach(csv_file ${OPHOST_INFERSHAPE_CSV_FILES})
+          get_filename_component(csv_name ${csv_file} NAME)
+          configure_file(${csv_file} ${CMAKE_CURRENT_BINARY_DIR}/${csv_name} COPYONLY)
+        endforeach()
       endif()
     endif()
 
@@ -271,6 +283,12 @@ if(UT_TEST_ALL
         endif()
         file(GLOB OPHOST_TILING_CASES_SRC ${MODULE_DIR}/test_*_tiling.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_TILING_CASES_SRC})
+        # copy csv files to build directory
+        file(GLOB OPHOST_TILING_CSV_FILES ${MODULE_DIR}/test_*_tiling.csv)
+        foreach(csv_file ${OPHOST_TILING_CSV_FILES})
+          get_filename_component(csv_name ${csv_file} NAME)
+          configure_file(${csv_file} ${CMAKE_CURRENT_BINARY_DIR}/${csv_name} COPYONLY)
+        endforeach()
       endif()
 
       if("${MODULE_UT_NAME}" STREQUAL "${OP_INFERSHAPE_MODULE_NAME}")
@@ -292,6 +310,12 @@ if(UT_TEST_ALL
         endif()
         file(GLOB OPHOST_INFERSHAPE_CASES_SRC ${MODULE_DIR}/test_*_infershape.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_INFERSHAPE_CASES_SRC})
+        # copy csv files to build directory
+        file(GLOB OPHOST_INFERSHAPE_CSV_FILES ${MODULE_DIR}/test_*_infershape.csv)
+        foreach(csv_file ${OPHOST_INFERSHAPE_CSV_FILES})
+          get_filename_component(csv_name ${csv_file} NAME)
+          configure_file(${csv_file} ${CMAKE_CURRENT_BINARY_DIR}/${csv_name} COPYONLY)
+        endforeach()
       endif()
     endif()
 
