@@ -10,7 +10,7 @@
 
 #include "aclnn_quant_matmul_allto_all.h"
 #include "quant_matmul_allto_all_base.h"
-// #include "securec.h"
+#include "securec.h"
 // #include "matmul_allto_all_util.h"
 // #include "common/utils/op_mc2.h"
 // #include "acl/acl.h"
@@ -20,9 +20,9 @@
 // #include "opdev/make_op_executor.h"
 // #include "aclnn_kernels/common/op_error_check.h"
 // #include "opdev/op_dfx.h"
-// #include "opdev/platform.h"
+#include "opdev/platform.h"
 // #include "opdev/op_executor.h"
-// #include "opdev/op_log.h"
+#include "opdev/op_log.h"
 // #include "opdev/format_utils.h"
 // #include "aclnn_kernels/transdata.h"
 // #include "common/utils/hccl_util.h"
@@ -38,7 +38,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(
 {
     OP_LOGD("aclnnQuantMatmulAlltoAllGetWorkspaceSize start");
 
-    const char *commMode = (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "default";
+    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "default";
 
     return aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         x1, x2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
