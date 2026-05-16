@@ -73,9 +73,15 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     epilogueOp.UpdateNextProblem({m, outputN, k, 0});
 
     uint32_t dispatchBlockNumPerEP = params.tilingData->blockNumPerEP;
+    // 绝对的 cube 核 id，用于 gmm1RowReady 这种逐核计数器（与 GMM2 一致）
+    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
 
     GlobalTensor<int32_t> groupFlagListGm2;
     groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList2);
+
+    // ★ GMM1 rowReady：cube 每 tile fixpipe→GM 后 atomic_add(1)，vec poll >0 后 atomic_sub 处理
+    GlobalTensor<int32_t> gmm1RowReadyFlags;
+    gmm1RowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrGmm1RowReady);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
@@ -107,7 +113,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1u, n); // block mmad需要传入bias
-    auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+    // layoutC：cube fixpipe 直写 GM 时按整 (m, n) 视图，blockMmad 内部 Slice 到 tile
+    auto layoutC = MakeLayoutC{}(m, n);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -129,15 +136,23 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     constexpr bool kGmm1Pingpong = IsInterleaved &&
         (MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC) * 2U <= UB_CAPACITY_BYTES);
 
+    // ★ vec 端 staging UB 视图：cube 写 GM，vec MTE2 加载到这里再调 epilogueOp。
+    //   epilogueOp 内部按 UB[0..MAX_SINGLE_MN*sizeof(float)] 读 mmad 结果（与原 l0cOutUbFirst_ 等价位置）。
+    auto ubLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>{}(L1_TILE_M, L1_TILE_N);
     int64_t ubOffset = 0;
-    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), ubLayoutC);
 
     // 没启 pingpong 时 UbSecond 折叠到 0（与 UbFirst alias，永不访问），避免描述符越界
     int64_t ubSecondOffsetBytes = kGmm1Pingpong
         ? static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC))
         : static_cast<int64_t>(0);
     auto l0cOutUbSecond = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::UB, ElementC>(ubSecondOffsetBytes), layoutC);
+        Te::MakeMemPtr<Te::Location::UB, ElementC>(ubSecondOffsetBytes), ubLayoutC);
+
+    // ★ GMM1 输出 GM 视图（float），cube fixpipe 直接写这里。每个 tile 通过 Slice 切到对应位置。
+    auto gmGmm1Out = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm1OutGlobal)),
+        layoutC);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -199,18 +214,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                               MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
             }
 
-            // 等 AIV 释放 UB 槽：
-            //   kGmm1Pingpong=true（L1_TILE_M=128）：第 3 次起才等（pingpong 流水填满后）
-            //   kGmm1Pingpong=false：每次都等（单 UB，cube 与 vec 串行）
-            if constexpr (kGmm1Pingpong) {
-                if (vecSetSyncCom >= 2) {
-                    WaitForVector(pingpongIdx);
-                }
-            } else {
-                if (vecSetSyncCom) {
-                    WaitForVector();
-                }
-            }
+            // === GMM1 解耦：cube fixpipe 直接写 HBM (gmGmm1Out)，去掉 cube↔vec UB 同步 ===
+            // 不再需要 WaitForVector / NotifyVector：cube 写 GM 不与 vec 共享 UB，
+            // vec 端通过 gmm1RowReady atomic 计数器知道何时可读。
 
             auto gmBlockA = gmA.Slice(
                 Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
@@ -218,37 +224,24 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
 
-            auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
-                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             if constexpr (IsInterleaved) {
-                // 交织：1 次 mmad；pingpong 时 ping=UbFirst, pong=UbSecond 交替；
-                // 不 pingpong 时永远写 UbFirst（L1_TILE_M=256 即此分支）。
+                // 交织：1 次 mmad，目标 GM = gmGmm1Out[mLoc..mLoc+M, nLoc..nLoc+N]
                 auto gmBlockB = gmB.Slice(
                     Te::MakeCoord(kLoc, nLoc),
                     Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 auto gmBlockScaleB = gmScaleB.Slice(
                     Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                     Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-                if constexpr (kGmm1Pingpong) {
-                    auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
-                        Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                    auto tensorBlockUb = (pingpongIdx == 0) ? tensorBlockUbFirst : tensorBlockUbSecond;
-                    blockMmad(
-                        gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
-                        tensorBlockUb, singleShape);
-                } else {
-                    blockMmad(
-                        gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
-                        tensorBlockUbFirst, singleShape);
-                }
+                auto gmBlockGmm1Out = gmGmm1Out.Slice(
+                    Te::MakeCoord(mLoc, nLoc),
+                    Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                blockMmad(
+                    gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
+                    gmBlockGmm1Out, singleShape);
             } else {
-                // 非交织：2 次 mmad，分别取 B 的 gate 段（nLoc）和 up 段（nLoc + outputN），
-                // 输出到 UbFirst / UbSecond，swiglu 跨两个 UB 读。
-                auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
-                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                // 非交织：2 次 mmad，输出到 gmGmm1Out 的 [nLoc] 和 [nLoc + outputN] 两段
                 for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
                     auto gmBlockB = gmB.Slice(
                         Te::MakeCoord(kLoc, nLoc + weightBlock * outputN),
@@ -256,19 +249,22 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                     auto gmBlockScaleB = gmScaleB.Slice(
                         Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * outputN),
                         Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+                    auto gmBlockGmm1Out = gmGmm1Out.Slice(
+                        Te::MakeCoord(mLoc, nLoc + weightBlock * outputN),
+                        Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                     blockMmad(
                         gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
-                        weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                        gmBlockGmm1Out, singleShape);
                 }
             }
 
-            if constexpr (kGmm1Pingpong) {
-                NotifyVector(pingpongIdx);
-            } else {
-                NotifyVector();
-            }
+            // 等 fixpipe 完，再 atomic_add 通知 vec 可以 MTE2 加载这块 tile
+            event_t eventIdFIX_S = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_S>());
+            SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
+            WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
+            AscendC::AtomicAdd((__gm__ int32_t*)gmm1RowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
 
-            // [TRACE] sp3 / sp4: AIC GMM1 first / last tile 完成（mmad+NotifyVector 后）
+            // [TRACE] sp3 / sp4: AIC GMM1 first / last tile 完成（mmad+atomic_add 后）
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                               MegaMoeTrace::SP_GMM1_FIRST_TILE_DONE);
@@ -279,13 +275,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             }
         }
 
-        // 计数器：pingpong 模式每 iter 递增（用于 EndSync 判断 drain 1/2 个 NotifyCube）；
-        // 单 UB 模式（含非交织和交织+L1_TILE_M=256）置 1，EndSync 只 drain 一个。
-        if constexpr (kGmm1Pingpong) {
-            vecSetSyncCom++;
-        } else {
-            vecSetSyncCom = 1;
-        }
+        // 计数器 vecSetSyncCom 已废（cube/vec UB 不再共享），但 EndSync 还在用所以保留 0 占位
+        vecSetSyncCom = 0;
 
         if constexpr (g_coreType == AscendC::AIV) {
             // 非交织：scheduler nLoc 已经走 swiglu 输出坐标，单 tile swiglu 输出宽 = L1_TILE_N (256)
@@ -307,34 +298,70 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
                     CeilDiv(swigluNLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
                 0, mLoc, 0, 0};
-            if constexpr (kGmm1Pingpong) {
-                WaitForCube(pingpongIdx);
-                if (isFirstTile) {
-                    MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-                                                  MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
-                }
-                AscendC::SetCtrlSpr<60, 60>(0);
-                epilogueOp(epilogueShape, epilogueOffset, pingpongIdx);
-                NotifyCube(pingpongIdx);
-            } else {
-                // 单 UB（交织+L1_TILE_M=256 或 非交织）：单通道 cube↔vec sync
-                WaitForCube();
-                if (isFirstTile) {
-                    MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-                                                  MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
-                }
-                AscendC::SetCtrlSpr<60, 60>(0);
-                if constexpr (IsInterleaved) {
-                    // 交织：epi 只读 UbFirst，固定传 pingpongIdx=0
-                    epilogueOp(epilogueShape, epilogueOffset, static_cast<uint16_t>(0));
-                } else {
-                    // 非交织：epi 跨 UbFirst+UbSecond 读 gate/up
-                    epilogueOp(epilogueShape, epilogueOffset);
-                }
-                NotifyCube();
+
+            // === GMM1 解耦：vec 端 poll gmm1RowReady → MTE2 GM→UB → 调 epi ===
+            // 1) poll 当前 pair 的 cube 写了 ≥1 个 tile
+            __gm__ int32_t* gmm1FlagAddr =
+                (__gm__ int32_t*)gmm1RowReadyFlags.GetPhyAddr() + blockIdx;
+            while (ReadGmByPassDCache(gmm1FlagAddr) < 1) {
+                int64_t st = GetSystemCycle();
+                while (GetSystemCycle() - st < 100) {}
+            }
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
+            }
+            AscendC::AtomicAdd(gmm1FlagAddr, int32_t(-1));
+
+            // 2) MTE2 GM → UB[0..MAX_SINGLE_MN*sizeof(float)] = l0cOutUbFirst_ 同位置
+            //    每个 tile 大小 = M_actual × N_actual 个 float
+            //    交织：tile = (M, L1_TILE_N)；非交织：cube 已经写了 2 段 (gate 段 + up 段)，
+            //          总占 M × n bytes，需要把 nLoc 起 N=outputN 宽的数据(gate)和 nLoc+outputN 起的 up 段
+            //          都拷过来，按原 UbFirst/UbSecond 布局放。
+            int64_t copyM = Get<M_VALUE>(actualShape);
+            int64_t copyN = Get<N_VALUE>(actualShape);  // 交织: L1_TILE_N; 非交织: L1_TILE_N
+            LocalTensor<float> ubFirstFloat(TPosition::VECIN, 0, MAX_SINGLE_MN_ALIGN32_NUM);
+            // GM 上 tile 起点的字节偏移：(mLoc * n + nLoc) * sizeof(float)
+            int64_t srcByteOffset = (static_cast<int64_t>(mLoc) * static_cast<int64_t>(n) +
+                                     static_cast<int64_t>(nLoc)) * static_cast<int64_t>(sizeof(float));
+            GlobalTensor<float> srcGm;
+            srcGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+                gmmAddrInfo.gmm1OutGlobal + srcByteOffset));
+            // DataCopy 用 DataCopyPad 走 stride（GM 行跨度 n，UB 行连续 L1_TILE_N=copyN）
+            DataCopyExtParams copyParams{
+                static_cast<uint16_t>(copyM),
+                static_cast<uint32_t>(copyN * sizeof(float)),
+                static_cast<uint32_t>((static_cast<int64_t>(n) - copyN) * sizeof(float)),
+                0U, 0U};
+            DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0.0f};
+            DataCopyPad(ubFirstFloat, srcGm, copyParams, copyPadParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+
+            if constexpr (!IsInterleaved) {
+                // 非交织：还要把 up 段（nLoc + outputN）加载到 l0cOutUbSecond_ 位置
+                LocalTensor<float> ubSecondFloat(
+                    TPosition::VECIN,
+                    static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM * sizeof(float)),
+                    MAX_SINGLE_MN_ALIGN32_NUM);
+                int64_t srcByteOffsetUp = (static_cast<int64_t>(mLoc) * static_cast<int64_t>(n) +
+                                           static_cast<int64_t>(nLoc + outputN)) *
+                                          static_cast<int64_t>(sizeof(float));
+                GlobalTensor<float> srcGmUp;
+                srcGmUp.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(
+                    gmmAddrInfo.gmm1OutGlobal + srcByteOffsetUp));
+                DataCopyPad(ubSecondFloat, srcGmUp, copyParams, copyPadParams);
+                SyncFunc<AscendC::HardEvent::MTE2_V>();
             }
 
-            // [TRACE] sp3 / sp4: AIV0 GMM1 epi first / last tile 完成（epi+NotifyCube 后）
+            // 3) 调 epi（API 完全不变；UB 内容已经准备好）
+            AscendC::SetCtrlSpr<60, 60>(0);
+            if constexpr (IsInterleaved) {
+                epilogueOp(epilogueShape, epilogueOffset, static_cast<uint16_t>(0));
+            } else {
+                epilogueOp(epilogueShape, epilogueOffset);
+            }
+
+            // [TRACE] sp3 / sp4: AIV0 GMM1 epi first / last tile 完成
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                               MegaMoeTrace::SP_GMM1_FIRST_TILE_DONE);
@@ -345,7 +372,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             }
         }
 
-        // 切换 ping/pong（仅交织模式有意义；非交织无影响）
+        // ★ pingpongIdx 已不再实际使用，保留 inc 给后续若想恢复 pingpong 路径
         pingpongIdx = 1U - pingpongIdx;
     }
 }
