@@ -33,7 +33,7 @@ class FlashAttenOpBuilder(OpBuilder):
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1," \
             "int max_seqlen_q=-1, int max_seqlen_kv=-1," \
             "str layout_q=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\"," \
-            "int return_softmax_lse=0, int deterministic=0)->(Tensor, Tensor)"
+            "int return_softmax_lse=0)->(Tensor, Tensor)"
 
     def register_meta(self):
         """
@@ -47,7 +47,7 @@ class FlashAttenOpBuilder(OpBuilder):
                                 softmax_scale=1.0, mask_mode=0, win_left=-1, win_right=-1,
                                 max_seqlen_q=-1, max_seqlen_kv=-1,
                                 layout_q="BSND", layout_kv="BSND", layout_out="BSND",
-                                return_softmax_lse=0, deterministic=0):
+                                return_softmax_lse=0):
             print("meta entrance ========================\n")
             if layout_q == "TND":
                 tSize = q.size(0)
@@ -105,7 +105,7 @@ def npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None,
                                 softmax_scale=1.0, mask_mode=0, win_left=-1, win_right=-1,
                                 max_seqlen_q=-1, max_seqlen_kv=-1,
                                 layout_q="BSND", layout_kv="BSND", layout_out="BSND",
-                                return_softmax_lse=0, deterministic=0):
+                                return_softmax_lse=0):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
@@ -116,4 +116,4 @@ def npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None,
                                     softmax_scale, mask_mode, win_left, win_right,
                                     max_seqlen_q, max_seqlen_kv,
                                     layout_q, layout_kv, layout_out,
-                                    return_softmax_lse, deterministic)
+                                    return_softmax_lse)
