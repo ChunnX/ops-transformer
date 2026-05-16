@@ -20,10 +20,10 @@
 // #include "opdev/common_types.h"
 // #include "opdev/make_op_executor.h"
 // #include "opdev/op_dfx.h"
-// #include "opdev/op_log.h"
+#include "opdev/op_log.h"
 // #include "opdev/op_executor.h"
 // #include "common/utils/hccl_util.h"
-// #include "opdev/platform.h"
+#include "opdev/platform.h"
 // #include "opdev/format_utils.h"
 // #include "aclnn_kernels/transdata.h"
 // #include "mc2_comm_utils.h"
@@ -39,15 +39,13 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
 
     const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "default";
 
-    return aclnnMatmulAlltoAllBaseGetWorkspaceSize(
-        x1, x2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        alltoAllAxesOptional, group, commMode, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, groupSize,
-        transposeX1, transposeX2, output, workspaceSize, executor);
+    return aclnnMatmulAlltoAllBaseGetWorkspaceSize(x1, x2, biasOptional, alltoAllAxesOptional, group, commMode,
+                                                   transposeX1, transposeX2, output, workspaceSize, executor);
 }
 
 extern "C" aclnnStatus aclnnMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            aclrtStream stream)
 {
-    OP_LOGD("aclnnQuantMatmulAlltoAll start");
-    return aclnnQuantMatmulAlltoAllBase(workspace, workspaceSize, executor, stream);
+    OP_LOGD("aclnnMatmulAlltoAll start");
+    return aclnnMatmulAlltoAllBase(workspace, workspaceSize, executor, stream);
 }

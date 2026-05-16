@@ -30,16 +30,15 @@
 
 // 两段式接口
 extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                           const aclTensor *biasOptional,
-                                                           const aclIntArray *alltoAllAxesOptional, const char *group,
-                                                           const char *commMode, bool transposeX1, bool transposeX2, const aclTensor *output,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                             const aclTensor *biasOptional,
+                                                             const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                             const char *commMode, bool transposeX1, bool transposeX2,
+                                                             const aclTensor *output, uint64_t *workspaceSize,
+                                                             aclOpExecutor **executor)
 {
     OP_LOGD("aclnnMatmulAlltoAllV2GetWorkspaceSize start");
-    return aclnnMatmulAlltoAllBaseGetWorkspaceSize(
-        x1, x2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        alltoAllAxesOptional, group, commMode, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, groupSize,
-        transposeX1, transposeX2, output, workspaceSize, executor);
+    return aclnnMatmulAlltoAllBaseGetWorkspaceSize(x1, x2, biasOptional, alltoAllAxesOptional, group, commMode,
+                                                   transposeX1, transposeX2, output, workspaceSize, executor);
 }
 
 extern "C" aclnnStatus aclnnMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
