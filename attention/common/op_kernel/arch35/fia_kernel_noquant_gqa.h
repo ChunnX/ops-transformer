@@ -790,28 +790,6 @@ public:
         }
     }
 
-    __aicore__ inline void GetSparseAdjustedQLen(int64_t rawQLen, int64_t rawKVLen, uint64_t &gS1LoopTimes,
-                                                  uint32_t &gS1Offset)
-    {
-        if (rawQLen <= 0) {
-            gS1LoopTimes = 0;
-            gS1Offset = 0;
-            return;
-        }
-
-        int64_t preTokenLeftUp = 0;
-        int64_t nextTokenLeftUp = 0;
-        GetPreNextTokenLeftUp(rawQLen, rawKVLen, preTokenLeftUp, nextTokenLeftUp);
-
-        int64_t nextTokensError = (nextTokenLeftUp < 0) ? -nextTokenLeftUp : 0;
-        nextTokensError = nextTokensError > rawQLen ? rawQLen : nextTokensError;
-
-        gS1Offset = static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
-
-        uint64_t rawGLoopTimes = (static_cast<uint64_t>(rawQLen) * constInfo.gSize + mBaseSize - 1) / mBaseSize;
-        gS1LoopTimes = (rawGLoopTimes > gS1Offset) ? (rawGLoopTimes - gS1Offset) : 0;
-    }
-
     __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
     {
         uint32_t task_i_curr = ComputeFlatTaskIdx();
@@ -825,21 +803,8 @@ public:
         uint32_t bIdx = bN2Cur / n2Size;
         uint32_t n2Idx = bN2Cur % n2Size;
 
-        uint64_t gS1LoopTimes;
-        uint32_t gS1Offset;
-        GetSparseAdjustedQLen(static_cast<int64_t>(actSeqLensQ), static_cast<int64_t>(actSeqLensKv),
-                              gS1LoopTimes, gS1Offset);
-
-        if (gS1Cur < gS1Offset) {
-            uint32_t invalidPrefixRemain = gS1Offset - gS1Cur;
-            if (static_cast<uint32_t>(gS1Skip) <= invalidPrefixRemain) {
-                gS1Cur += static_cast<uint32_t>(gS1Skip);
-                return;
-            }
-            gS1Skip -= invalidPrefixRemain;
-            gS1Cur = gS1Offset;
-        }
-
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         if (gS1LoopTimes == 0) {
             uint32_t gS1RemainN2 = n2Size - n2Idx - 1;
             if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
@@ -849,13 +814,13 @@ public:
             }
             gS1Skip -= gS1RemainN2 + 1;
         } else {
-            uint32_t gS1First = gS1Offset;
-            uint32_t gS1Last = gS1Offset + gS1LoopTimes - 1;
+            uint32_t gS1First = 0;
+            uint32_t gS1Last = gS1LoopTimes - 1;
             uint32_t gS1Valid = gS1LoopTimes;
 
             uint32_t gS1Remain = (gS1Cur < gS1Last) ? (gS1Last - gS1Cur) : 0;
             if (static_cast<uint32_t>(gS1Skip) <= gS1Remain) {
-                gS1Cur += static_cast<uint32_t>(gS1Skip);
+                gS1Cur += gS1Skip;
                 return;
             }
             gS1Skip -= gS1Remain;
@@ -876,9 +841,8 @@ public:
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv += constInfo.actualKVPrefixSize;
-
-            GetSparseAdjustedQLen(static_cast<int64_t>(actSeqLensQ), static_cast<int64_t>(actSeqLensKv),
-                                  gS1LoopTimes, gS1Offset);
+            gS1Size = actSeqLensQ * constInfo.gSize;
+            gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
             uint32_t gS1RemainN2;
             if (gS1LoopTimes == 0) {
                 gS1RemainN2 = n2Size;
@@ -891,10 +855,9 @@ public:
                     bN2Cur = bIdx * n2Size + pos;
                     gS1Cur = 0;
                 } else {
-                    uint32_t gS1First = gS1Offset;
                     uint32_t gS1Valid = gS1LoopTimes;
                     uint32_t n2IdxNew = pos / gS1Valid;
-                    gS1Cur = gS1First + pos % gS1Valid;
+                    gS1Cur = pos % gS1Valid;
                     bN2Cur = bIdx * n2Size + n2IdxNew;
                 }
                 return;
