@@ -60,6 +60,7 @@ constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
 constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
 constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
+constexpr uint32_t ATTR_COMM_MODE_INDEX = 7;
 
 constexpr int64_t BEST_L1_PARTA = 256 * 1024;
 constexpr int64_t BEST_L1_PARTB = 128 * 1024;
@@ -701,16 +702,30 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
         commMode = Mc2Comm::GetCommModeFromEnv();
+        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        }
+    } else {
+        auto commMode = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+        OP_TILING_CHECK(commMode == nullptr, OP_LOGE(A_INNER_DEBUG, "commMode is null!"), return ge::GRAPH_FAILED);
+        uint64_t epWorldSize = tilingData->commonTilingInfo.epWorldSize;
+        OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u", commMode);
+        if (commMode == "aicpu") {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        } else if (commMode == "ccu") {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        } if (epWorldSize <= 8) {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        } else {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        }
     }
-    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u", commMode);
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    }
+
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig GetTiling hcclInitTiling failed"),
         return ge::GRAPH_FAILED);
