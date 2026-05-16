@@ -791,21 +791,56 @@ public:
         }
     }
 
+    __aicore__ inline void GetSparseInfo(uint64_t &gS1LoopTimes, uint32_t &gS1Offset)
+    {
+        int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
+        if (rawQLen <= 0) {
+            gS1LoopTimes = 0;
+            gS1Offset = 0;
+            return;
+        }
+
+        int64_t preTokenLeftUp = 0;
+        int64_t nextTokenLeftUp = 0;
+        GetPreNextTokenLeftUp(rawQLen, static_cast<int64_t>(actSeqLensKv), preTokenLeftUp, nextTokenLeftUp);
+
+        int64_t nextTokensError = (nextTokenLeftUp < 0) ? -nextTokenLeftUp : 0;
+        nextTokensError = nextTokensError > rawQLen ? rawQLen : nextTokensError;
+
+        gS1Offset = static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
+
+        uint64_t rawGLoopTimes = (static_cast<uint64_t>(rawQLen) * constInfo.gSize + mBaseSize - 1) / mBaseSize;
+        gS1LoopTimes = (rawGLoopTimes > gS1Offset) ? (rawGLoopTimes - gS1Offset) : 0;
+    }
+
     __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
     {
         uint32_t task_i_curr = ComputeFlatTaskIdx();
         int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
         task_i_prev_ = task_i_curr;
-        if (gS1Skip <= 0) {
-            return;
-        }
 
         uint32_t n2Size = constInfo.n2Size;
         uint32_t bIdx = bN2Cur / n2Size;
         uint32_t n2Idx = bN2Cur % n2Size;
 
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t gS1LoopTimes;
+        uint32_t gS1Offset;
+        GetSparseInfo(gS1LoopTimes, gS1Offset);
+
+        if (gS1Cur < gS1Offset) {
+            uint32_t invalidPrefixRemain = gS1Offset - gS1Cur;
+            if (static_cast<uint32_t>(gS1Skip) <= invalidPrefixRemain) {
+                gS1Cur += static_cast<uint32_t>(gS1Skip);
+                return;
+            }
+            gS1Skip -= invalidPrefixRemain;
+            gS1Cur = gS1Offset;
+        }
+
+        if (gS1Skip <= 0) {
+            return;
+        }
+
         if (gS1LoopTimes == 0) {
             uint32_t gS1RemainN2 = n2Size - n2Idx - 1;
             if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
@@ -815,13 +850,13 @@ public:
             }
             gS1Skip -= gS1RemainN2 + 1;
         } else {
-            uint32_t gS1First = 0;
-            uint32_t gS1Last = gS1LoopTimes - 1;
+            uint32_t gS1First = gS1Offset;
+            uint32_t gS1Last = gS1Offset + gS1LoopTimes - 1;
             uint32_t gS1Valid = gS1LoopTimes;
 
             uint32_t gS1Remain = (gS1Cur < gS1Last) ? (gS1Last - gS1Cur) : 0;
             if (static_cast<uint32_t>(gS1Skip) <= gS1Remain) {
-                gS1Cur += gS1Skip;
+                gS1Cur += static_cast<uint32_t>(gS1Skip);
                 return;
             }
             gS1Skip -= gS1Remain;
@@ -839,11 +874,14 @@ public:
 
         while (true) {
             bIdx++;
+            if (bIdx >= constInfo.bSize) {
+                return;
+            }
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv += constInfo.actualKVPrefixSize;
-            gS1Size = actSeqLensQ * constInfo.gSize;
-            gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+
+            GetSparseInfo(gS1LoopTimes, gS1Offset);
             uint32_t gS1RemainN2;
             if (gS1LoopTimes == 0) {
                 gS1RemainN2 = n2Size;
@@ -856,9 +894,10 @@ public:
                     bN2Cur = bIdx * n2Size + pos;
                     gS1Cur = 0;
                 } else {
+                    uint32_t gS1First = gS1Offset;
                     uint32_t gS1Valid = gS1LoopTimes;
                     uint32_t n2IdxNew = pos / gS1Valid;
-                    gS1Cur = pos % gS1Valid;
+                    gS1Cur = gS1First + pos % gS1Valid;
                     bN2Cur = bIdx * n2Size + n2IdxNew;
                 }
                 return;
@@ -883,6 +922,8 @@ public:
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
+            } else if (taskDealMode == TASK_DEAL_MODE::SKIP) {
+                // sparse-invalid: skip prefix handled by S1OutSplitUpdatePos, no loop consumed
             } else {
                 coreGS1Loops++;
                 accGS1Loops++;
