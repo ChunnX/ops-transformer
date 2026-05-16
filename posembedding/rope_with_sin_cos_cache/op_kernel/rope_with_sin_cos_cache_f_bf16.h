@@ -74,6 +74,7 @@ __aicore__ inline void RopeWithSinCosCacheFP16<T>::Init(
     GM_ADDR position_id, GM_ADDR query_in, GM_ADDR key_in, GM_ADDR cos_sin_cache, GM_ADDR query_out, GM_ADDR key_out,
     const RopeWithSinCosCacheTilingData& tiling_data, TPipe* pipe)
 {
+    
     this->InitData(tiling_data);
     headBlockLen = static_cast<uint16_t>(this->head_size / ELE_NUM_FP32);
     rotaryBlockLen = static_cast<uint16_t>(this->rotary_dim / ELE_NUM_FP32);

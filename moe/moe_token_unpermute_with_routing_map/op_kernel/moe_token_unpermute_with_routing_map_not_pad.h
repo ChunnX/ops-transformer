@@ -86,7 +86,6 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMap<T1, T2, T3, PROBS>:
   this->tokens_splited_length = tiling_data->tokens_splited_length;
   this->tokens_splited_num = tiling_data->tokens_splited_num;
   this->tokens_splited_remain = tiling_data->tokens_splited_remain;
-
   //core
   this->usedCoreNum = tiling_data->used_core_num;
 
