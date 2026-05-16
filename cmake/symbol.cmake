@@ -218,7 +218,7 @@ function(gen_cust_optiling_symbol)
     tiling_api
     -Wl,--no-as-needed
     register
-    ops_base
+    $<$<TARGET_EXISTS:opsbase>:opsbase>
     -Wl,--as-needed
     -Wl,--whole-archive
     rt2_registry_static

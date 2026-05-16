@@ -126,7 +126,7 @@ if (BUILD_OPEN_PROJECT)
             graph
             graph_base
             register
-            $<$<TARGET_EXISTS:opsbase>:opsbase>
+            ops_base
             ascendalog
             error_manager
             platform
