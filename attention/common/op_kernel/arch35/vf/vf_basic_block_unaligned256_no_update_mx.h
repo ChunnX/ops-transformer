@@ -735,9 +735,13 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
     Gather(vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0, vreg_exp_merge_f8e4m3_indexes);
-    for (uint16_t i = 0; i < 4; ++i) {
-        StoreAlign<fp8_e8m0_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, blockStride, repeatStride, preg_all_b8_8);
+    uint32_t copyNum = 16 * 2;
+    for (uint16_t j = 0; j < 4; ++j) {
+        StoreUnAlign<fp8_e8m0_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, ureg_max, copyNum);
+    }
+    Duplicate(vreg_p_scale_f8e8m0_0, 0x7f);
+    for (uint16_t j = 0; j < 4; ++j) {
+        StoreUnAlign<fp8_e8m0_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, ureg_max, copyNum);
     }
 }
 

@@ -576,7 +576,7 @@ public:
                                        HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                         stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                         pseUb, dropMaskUb, pScaleSubLoop0Tensor, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
-                        runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift,
+                        runInfo.actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
                         deSCaleKValue, pScaleValue);
                 }
@@ -609,7 +609,7 @@ public:
                                        HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                         stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                         pseUb, dropMaskUb, pScaleSubLoop0Tensor, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
-                        runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift,
+                        runInfo.actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
                         deSCaleKValue, pScaleValue);
                 }
@@ -624,15 +624,13 @@ public:
         if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
             this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
             this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-            uint32_t pScaleL1Offset = mBaseSize * s2BaseSizeCur; // PScale在L1P的偏移量（单位：元素）
+            uint32_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
             LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
             mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
-            int64_t dstOffset =
-                constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * (runInfo.actMSize - runInfo.actVecMSize) +
-                s2BaseSizeCur * mBaseSize * subLoop;
+            uint16_t copyBlockCount = runInfo.actMSizeAlign16 * s2BaseSizeCur / 32 / blockBytes;
+            uint64_t dstOffset = constInfo.subBlockIdx * runInfo.actMSizeAlign16 * s2BaseSizeCur / 32;
             DataCopy(mm2AScaleL1Tensor[dstOffset], pScaleSubLoop0Tensor,
-                        {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSize,
-                        (uint16_t)(vec1Srcstride - runInfo.actVecMSize), (uint16_t)(mBaseSize - runInfo.actVecMSize)}); // todo pscale打印看搬运偏移
+                    {s2BaseSize / s2BaseSizeCur, copyBlockCount, 0, copyBlockCount}); // todo pscale打印看搬运偏移
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
         
