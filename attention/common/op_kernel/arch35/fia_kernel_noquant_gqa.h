@@ -795,8 +795,24 @@ public:
     {
         uint32_t task_i_curr = ComputeFlatTaskIdx();
         int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
+        PRINTF("task_i_curr:%d, task_i_prev_:%d\n", task_i_curr, task_i_prev_);
         task_i_prev_ = task_i_curr;
         if (gS1Skip <= 0) {
+            int64_t preTokenLeftUp = 0;
+            int64_t nextTokenLeftUp = 0;
+            GetPreNextTokenLeftUp(static_cast<int64_t>(actSeqLensQ), static_cast<int64_t>(actSeqLensKv),
+                                  preTokenLeftUp, nextTokenLeftUp);
+
+            int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
+            int64_t nextTokensError = (nextTokenLeftUp < 0) ? -nextTokenLeftUp : 0;
+            nextTokensError = nextTokensError > rawQLen ? rawQLen : nextTokensError;
+
+            uint32_t gS1Offset =
+                static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
+
+            if (gS1Cur < gS1Offset) {
+                gS1Cur = gS1Offset;
+            }
             return;
         }
 
@@ -870,6 +886,7 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
+        PRINTF("taskDealMode:%d, bN2Cur:%d, gS1Cur:%d, s2Cur:%d\n", static_cast<int>(taskDealMode), bN2Cur, gS1Cur, s2Cur);
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
             s2Cur = curS2Start;
             return;
@@ -883,7 +900,7 @@ public:
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
-            } else {
+            } else if(taskDealMode != TASK_DEAL_MODE::SKIP) {
                 coreGS1Loops++;
                 accGS1Loops++;
                 createdTaskCount = executedTaskCount;
