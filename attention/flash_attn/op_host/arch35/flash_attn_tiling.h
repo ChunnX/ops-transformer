@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn_tiling_impl.h
+ * \file flash_attn_tiling.h
  * \brief
  */
 #ifndef FLASH_ATTN_TILING_IMPL_H_
@@ -17,14 +17,13 @@
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include "../fa_tiling_base.h"
 #include "../fa_tiling_info.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/arch35/flash_attn_tiling_data.h"
-#include "../fa_split_core_v2.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
 
 namespace optiling {
+namespace flash_attn {
 
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
@@ -56,18 +55,17 @@ struct FaPlatFormInfo {
     uint64_t defaultSysWorkspaceSize = 0;
 };
 
-class FlashAttnTilingImpl : public FaTilingBase {
+class FlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FaTilingBase(context)
+    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
     {
     }
     ~FlashAttnTilingImpl() override = default;
 
-// protected:
-    void InitTilingInfo(TilingInfo *tilingInfo) {}
-    bool IsCapable() {}
-    ge::graphStatus DoOpTiling() {}
-    ge::graphStatus DoOpTiling(const FaTilingInfo *faInfo);
+    // protected:
+    void InitTilingInfo(TilingInfo *tilingInfo) override;
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
 
 private:
     ge::graphStatus SetPlatMemoryInfo();
@@ -79,24 +77,21 @@ private:
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
-    // void UpdateTilingKeyPseMode();
-    // void UpdateTilingKeyQuantMode();
-    // void UpdateTilingKeyHasRope();
+    void UpdateTilingKeyKvLayout();
     void UpdateTilingKeyMaskMode();
     void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
     void GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                                int64_t &winRightsLeftUp);
+                            int64_t &winRightsLeftUp);
     void FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
                                 int64_t &winRightsLeftUp);
     void InitImplParam();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
-    void CreateSplitInput(fa_split_core_v2::BaseInfo &baseInfo, fa_split_core_v2::SplitParam &splitParam);
-    void SetSplitOutput(const fa_split_core_v2::FAMetaData &splitRes);
+
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
     ge::graphStatus SetTilingData(FlashAttnTilingData &tilingData);
@@ -110,6 +105,8 @@ private:
     bool dnFlag_ = false;
     bool cuSeqLenQFlag_ = false;
     bool cuSeqLenKVFlag_ = false;
+    bool seqUsedQFlag_ = false;
+    bool seqUsedKvFlag_ = false;
     std::vector<int64_t> cuSeqLengthsQ_ = {};
     std::vector<int64_t> cuSeqLengthsKV_ = {};
     bool needInit_ = false;
@@ -122,5 +119,6 @@ private:
     FaTilingInfo *faInfo_ = nullptr;
 };
 
+} // namespace flash_attn
 } // namespace optiling
 #endif // FLASH_ATTN_TILING_IMPL_H_

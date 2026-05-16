@@ -1,17 +1,17 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file seq_len_checker.h
- * \brief
-*/
+ * \file actual_seq_len_checker.cpp
+ * \brief Checker for cu_seqlens_q/kv (B+1) and seqused_q/kv (B) parameters
+ */
 
 #include <map>
 #include <numeric>
@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "../flash_attn_tiling_constants.h"
+#include "../fa_tiling_info.h"
 #include "seq_len_checker.h"
 
 namespace optiling {
@@ -39,10 +39,6 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
     }
 
     const gert::CompileTimeTensorDesc *sequsedQDesc = faInfo.opParamInfo.sequsedQ.desc;
-    OP_CHECK_IF(sequsedQDesc != nullptr && sequsedQDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "seqused_q dtype must be INT32, but got %s",
-                        DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(sequsedQDesc, SEQUSED_Q_NAME)) {
         return ge::GRAPH_FAILED;
@@ -55,7 +51,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
     uint32_t sequsedQShapeSize = sequsedQTensor->GetShapeSize();
     OP_CHECK_IF(
         sequsedQShapeSize != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "seqused_q shape(%u) should be equal to batch(%ld).", sequsedQShapeSize, faInfo.bSize),
+        OP_LOGE(faInfo.opName, "seqused_q shape(%u) should be equal to batch(%d).", sequsedQShapeSize, faInfo.bSize),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -68,10 +64,6 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
     }
 
     const gert::CompileTimeTensorDesc *sequsedKvDesc = faInfo.opParamInfo.sequsedKv.desc;
-    OP_CHECK_IF(sequsedKvDesc != nullptr && sequsedKvDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "seqused_kv dtype must be INT32, but got %s",
-                        DataTypeToSerialString(sequsedKvDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(sequsedKvDesc, SEQUSED_KV_NAME)) {
         return ge::GRAPH_FAILED;
@@ -85,7 +77,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
     uint32_t sequsedKvShapeSize = sequsedKvTensor->GetShapeSize();
     OP_CHECK_IF(
         sequsedKvShapeSize != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "seqused_kv shape(%u) should be equal to batch(%ld).", sequsedKvShapeSize, faInfo.bSize),
+        OP_LOGE(faInfo.opName, "seqused_kv shape(%u) should be equal to batch(%d).", sequsedKvShapeSize, faInfo.bSize),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -99,10 +91,6 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
     }
 
     const gert::CompileTimeTensorDesc *cuSeqlensQDesc = faInfo.opParamInfo.cuSeqlensQ.desc;
-    OP_CHECK_IF(cuSeqlensQDesc != nullptr && cuSeqlensQDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "cu_seqlens_q dtype must be INT32, but got %s",
-                        DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(cuSeqlensQDesc, CU_SEQLENS_Q_NAME)) {
         return ge::GRAPH_FAILED;
@@ -115,7 +103,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
 
     uint32_t cuSeqlensQShapeSize = cuSeqlensQTensor->GetShapeSize();
     OP_CHECK_IF(cuSeqlensQShapeSize != faInfo.bSize + 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_q shape(%u) should be equal to batch + 1(%ld).", cuSeqlensQShapeSize,
+                OP_LOGE(faInfo.opName, "cu_seqlens_q shape(%u) should be equal to batch + 1(%d).", cuSeqlensQShapeSize,
                         faInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
 
@@ -130,10 +118,6 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
     }
 
     const gert::CompileTimeTensorDesc *cuSeqlensKvDesc = faInfo.opParamInfo.cuSeqlensKv.desc;
-    OP_CHECK_IF(cuSeqlensKvDesc != nullptr && cuSeqlensKvDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv dtype must be INT32, but got %s",
-                        DataTypeToSerialString(cuSeqlensKvDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(cuSeqlensKvDesc, CU_SEQLENS_KV_NAME)) {
         return ge::GRAPH_FAILED;
@@ -146,7 +130,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
     uint32_t cuSeqlensKvShapeSize = cuSeqlensKvTensor->GetShapeSize();
     OP_CHECK_IF(cuSeqlensKvShapeSize != faInfo.bSize + 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv shape(%u) should be equal to batch + 1(%ld).",
+                OP_LOGE(faInfo.opName, "cu_seqlens_kv shape(%u) should be equal to batch + 1(%d).",
                         cuSeqlensKvShapeSize, faInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
 
@@ -155,39 +139,19 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo)
 {
-    // if (faInfo.qLayout != FaLayout::TND) {
-    //     OP_CHECK_IF(faInfo.maxSeqQ != -1,
-    //                 OP_LOGE(faInfo.opName,
-    //                         "max_seqlen_q(%ld) is not supported when layout_q is %s, only supported in TND layout. "
-    //                         "In non-TND layout, max_seqlen_q must be -1 (default).",
-    //                         faInfo.maxSeqQ, LayoutToSerialString(faInfo.qLayout).c_str()),
-    //                 return ge::GRAPH_FAILED);
-    // } else {
-    //     OP_CHECK_IF(
-    //         faInfo.maxSeqQ != -1 && faInfo.maxSeqQ < 0,
-    //         OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqQ),
-    //         return ge::GRAPH_FAILED);
-    // }
-
+    OP_CHECK_IF(
+        faInfo.maxSeqQ != -1,
+        OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqQ),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo)
 {
-    // if (faInfo.kvLayout != FaLayout::TND) {
-    //     OP_CHECK_IF(faInfo.maxSeqKv != -1,
-    //                 OP_LOGE(faInfo.opName,
-    //                         "max_seqlen_kv(%ld) is not supported when layout_kv is %s, only supported in TND layout. "
-    //                         "In non-TND layout, max_seqlen_kv must be -1 (default).",
-    //                         faInfo.maxSeqKv, LayoutToSerialString(faInfo.kvLayout).c_str()),
-    //                 return ge::GRAPH_FAILED);
-    // } else {
-    //     OP_CHECK_IF(
-    //         faInfo.maxSeqKv != -1 && faInfo.maxSeqKv < 0,
-    //         OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqKv),
-    //         return ge::GRAPH_FAILED);
-    // }
-
+    OP_CHECK_IF(
+        faInfo.maxSeqKv != -1,
+        OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqKv),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -230,12 +194,6 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FaTilingInfo &faIn
         OP_CHECK_IF(cuSeqlensKvTensor == nullptr,
                     OP_LOGE(faInfo.opName, "cu_seqlens_kv must be provided when layout_kv is TND."),
                     return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(cuSeqlensKvTensor != nullptr,
-                    OP_LOGE(faInfo.opName,
-                            "cu_seqlens_kv should not be provided when layout_kv is %s, only supported in TND layout.",
-                            LayoutToSerialString(faInfo.kvLayout).c_str()),
-                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -251,14 +209,10 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     auto &cuSeqlensQTensor = faInfo.opParamInfo.cuSeqlensQ.tensor;
     if (cuSeqlensQTensor != nullptr && faInfo.qLayout == FaLayout::TND) {
-        // 文档要求：cu_seqlens_q第一个元素为0、最后一个元素等于Q_T、其值应非递减排列
-        // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
 
     auto &cuSeqlensKvTensor = faInfo.opParamInfo.cuSeqlensKv.tensor;
     if (cuSeqlensKvTensor != nullptr && faInfo.kvLayout == FaLayout::TND) {
-        // 文档要求：cu_seqlens_kv第一个元素为0、最后一个元素等于KV_T、其值应非递减排列
-        // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
     return ge::GRAPH_SUCCESS;
 }
