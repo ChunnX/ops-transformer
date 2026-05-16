@@ -104,6 +104,7 @@ private:
     static constexpr uint32_t PRELOAD_NUM = 2;
     static constexpr uint32_t N_BUFFER_M_BASIC_SIZE = 256;
     static constexpr uint32_t SAS_PRELOAD_TASK_CACHE_SIZE = 3;
+    static constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3;
 
     static constexpr uint32_t SYNC_V0_C1_FLAG = 6;
     static constexpr uint32_t SYNC_C1_V1_FLAG = 7;
@@ -468,11 +469,12 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
         (__gm__ T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T);
 
-    kvMergeGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + aiCoreIdx * 512 * 512 * 4 * sizeof(KV_T)));
+    kvMergeGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + \
+        aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
     offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
 
     kvValidSizeGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(workspace + offset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
+        (__gm__ int32_t *)(workspace + offset + (aiCoreIdx * 2) * 128 * MERGE_CACHE_GM_BUF_NUM * sizeof(int32_t)));
 
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
@@ -574,7 +576,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::CalcParams(uint32_t loop, u
 
     if (s2LoopIdx < tempLoopInfo.oriLoopTimes) {
         // S2首次循环只能在ori_kv
-        info.isOri = true;
+        info.isOriOnly = true;
         info.relativeS2Idx = 0;
         uint64_t s2Offset = info.s2Idx * constInfo.s2BaseSize;
         if (s2LoopIdx + 1 == tempLoopInfo.oriLoopTimes) {
@@ -585,7 +587,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::CalcParams(uint32_t loop, u
         info.s2StartPoint = tempLoopInfo.oriMaskLeft;
         info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
     } else {
-        info.isOri = false;
+        info.isOriOnly = false;
         info.relativeS2Idx = info.s2Idx - tempLoopInfo.oriLoopTimes;
         uint64_t s2Offset = (info.s2Idx - tempLoopInfo.oriLoopTimes) * constInfo.s2BaseSize;
         if (s2LoopIdx + 1 == tempLoopInfo.s2LoopTimes) {
@@ -598,7 +600,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::CalcParams(uint32_t loop, u
     }
 
     info.actualSingleProcessSInnerSizeAlign = SASAlign(info.actualSingleProcessSInnerSize, SASVectorBlock<SAST>::BYTE_BLOCK);
-    if (info.isOri) {
+    if (info.isOriOnly) {
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
     } else {
@@ -793,7 +795,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::PreloadPipeline(uint32_t lo
     CalcParams(loop, cmpLoop, s2Start, s2LoopIdx, extraInfo0);
     if (extraInfo0.isValid) {
         if ASCEND_IS_AIC {
-            if (!extraInfo0.isOri) {
+            if (!extraInfo0.isOriOnly) {
                 CrossCoreWaitFlag(constInfo.syncV0C1);
             }
             ComputeMm1(extraInfo0);
@@ -802,7 +804,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::PreloadPipeline(uint32_t lo
                 CrossCoreWaitFlag(3);
             }
             vectorBlock.ProcessVec0L(extraInfo0);
-            if (!extraInfo0.isOri) {
+            if (!extraInfo0.isOriOnly) {
                 CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
             }
         }
