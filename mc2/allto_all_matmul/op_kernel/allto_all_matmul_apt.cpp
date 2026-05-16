@@ -31,9 +31,9 @@ using MC2KernelTemplate::MC2AlltoAllContext;
 using MC2KernelTemplate::MC2AlltoAllPrimitives;
 
 #ifndef ALLTO_ALL_MATMUL_APT_FP_IMPL
-#define ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe)                                                                 \
+#define ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe, hcclServerType)                                                 \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext,                                   \
                                           AlltoAllMatmulTilingData, MC2AlltoAllPrimitives, 0, 1, CommunicationType);   \
         CommunicationType commImplName(&tilingData);                                                                   \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_X1, TransposeType);                                            \
@@ -53,9 +53,9 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef ALLTO_ALL_KC_QUANT_MATMUL_IMPL
-#define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, MMDataTypeX1, isSmallK)                                       \
+#define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, MMDataTypeX1, isSmallK)                       \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext,                                   \
                                           AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
@@ -76,9 +76,9 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef ALLTO_ALL_MX_QUANT_MATMUL_IMPL
-#define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, commDataTypeX1, isMxFp4)                                      \
+#define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, commDataTypeX1, isMxFp4)                      \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext,                                   \
                                           AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
@@ -102,13 +102,15 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
     } while (0)
 #endif
 
-template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK = false>
+template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
+    constexpr HcclServerType hcclServerType = COMMTYPE == ALL2ALL_COMM_TYPE_CCU ?
+        HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
@@ -116,10 +118,10 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {
         using DtypeBias = DTYPE_X1;
-        ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe);
+        ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe, hcclServerType);
     } else if constexpr (DTYPEBIAS == DTYPE_BIAS_FP32) {
         using DtypeBias = float;
-        ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe);
+        ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe, hcclServerType);
     }
 
 #else
@@ -127,14 +129,14 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&\
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, DTYPE_X1, false);
+    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, DTYPE_X1, false);
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, uint8_t, true);
+    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, uint8_t, true);
 #else
     if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
-        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e5m2_t, ISSMALLK);
+        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, float8_e5m2_t, ISSMALLK);
     } else if constexpr (QUANTMODE == KC_QUANT_FP8E4M3_MODE) {
-        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e4m3_t, ISSMALLK);
+        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, float8_e4m3_t, ISSMALLK);
     }
 #endif
 #endif

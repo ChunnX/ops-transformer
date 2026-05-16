@@ -27,7 +27,7 @@
 #include "platform/platform_infos_def.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 #include "../../op_kernel/moe_distribute_dispatch_tiling_key.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
 
 namespace optiling {

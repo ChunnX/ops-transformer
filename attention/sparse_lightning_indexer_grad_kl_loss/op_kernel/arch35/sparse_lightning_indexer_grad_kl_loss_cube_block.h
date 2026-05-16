@@ -20,7 +20,6 @@
 #include "sparse_lightning_indexer_grad_kl_loss_regbase_common.h"
 namespace SligKlLoss {
 using T = float;
-
 TEMPLATES_DEF
 class SligKlLossBlockCube {
 public:
@@ -303,7 +302,8 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<Bu
         // 右矩阵
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[syRunInfo.kTaskIdMod2]);
         LocalTensor<INPUT_T> gatherL1Tensor = gatherResL1Buf.GetTensor<INPUT_T>();
-        uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE * constInfo.gSizeQueryIndex;
+        uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE *
+                             AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
         MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
             sYQL1Tensor, gatherL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[syRunInfo.kTaskIdMod2]);

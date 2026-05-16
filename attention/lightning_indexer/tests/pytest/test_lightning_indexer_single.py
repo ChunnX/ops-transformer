@@ -16,6 +16,7 @@ import torch_npu
 from test_lightning_indexer_paramset import ENABLED_PARAMS
 import result_compare_method
 import lightning_indexer_golden
+import lightning_indexer_acl_graph
 import pytest
 
 for _, params in enumerate(ENABLED_PARAMS):
@@ -91,6 +92,8 @@ for _, params in enumerate(ENABLED_PARAMS):
 
         # 获得cpu结果(真值)和算子结果（测试值）
         cpu_result, npu_result, topk_value = lightning_indexer_golden.li_output_single(test_data)
+        # acl_graph
+        # cpu_result, npu_result, topk_value = lightning_indexer_acl_graph.li_output_acl_graph(test_data)
         # 结果精度对比
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
         print("result", result)

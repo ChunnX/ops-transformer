@@ -609,10 +609,10 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     constInfo.scaleValue = baseInfo.scaleValue;
     constInfo.sparseBlockSize = 1;
     constInfo.gatherKBaseSize = 128; // gather每次处理的行数(v0+v1)
-    constInfo.syKBaseSize = 16384 / (constInfo.n2Size * constInfo.gSizeQueryIndex);
-    constInfo.pKBaseSize = 16384 / (constInfo.n2Size * constInfo.gSizeQuery);
+    constInfo.syKBaseSize = tilingData->multiCoreParams.syKTotalSize / (constInfo.n2Size * constInfo.gSizeQueryIndex);
+    constInfo.pKBaseSize = tilingData->multiCoreParams.pKTotalSize / (constInfo.n2Size * constInfo.gSizeQuery);
     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
-    constInfo.pKBaseSize = Min(1024, constInfo.pKBaseSize);
+    constInfo.pKBaseSize = Min(256, constInfo.pKBaseSize);
     constInfo.pScaler = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
     if constexpr (IS_DETER) {
         constInfo.bmm3BaseOffset = constInfo.aicIdx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
@@ -632,6 +632,7 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitMMR
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[1]);
+        CrossCoreSetFlag<1, PIPE_MTE2>(SYNC_AIV_INNER_FLAG2);
         if constexpr (!IS_DETER) {
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
@@ -651,6 +652,7 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::FreeBuf
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[1]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
+        CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG2);
     } else if ASCEND_IS_AIC {
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);

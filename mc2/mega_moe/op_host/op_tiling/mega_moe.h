@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 namespace optiling {
 
@@ -35,8 +35,8 @@ struct MegaMoeConfig {
     uint32_t weightScalesTwoIndex = 7U;
     uint32_t xActiveMaskIndex = 8U;
     uint32_t scalesIndex = 9U;
-    uint32_t yIndex = 10U;
-    uint32_t expertTokenNumsIndex = 11U;
+    uint32_t yIndex = 0U;
+    uint32_t expertTokenNumsIndex = 1U;
     uint32_t attrMoeExpertNumIndex = 0U;
     uint32_t attrEpWorldSizeIndex = 1U;
     uint32_t attrCclBufferSizeIndex = 2U;

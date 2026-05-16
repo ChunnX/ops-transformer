@@ -566,7 +566,11 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
             return;
         }
         actualSeqQlen = actualSeqQlenAddr[boIdx] - actualSeqQlenAddr[boIdx - 1];
-        actualSeqKvlen = actualSeqKvlenAddr[boIdx] - actualSeqKvlenAddr[boIdx - 1];
+        if constexpr (isInfer && isPa) {
+            actualSeqKvlen = actualSeqKvlenAddr[boIdx];
+        } else {
+            actualSeqKvlen = actualSeqKvlenAddr[boIdx] - actualSeqKvlenAddr[boIdx - 1];
+        }
         return;
     }
     if constexpr (isInfer) {

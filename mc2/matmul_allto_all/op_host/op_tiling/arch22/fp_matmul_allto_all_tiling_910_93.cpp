@@ -23,6 +23,7 @@
 using namespace Mc2Log;
 using namespace AscendC;
 using namespace Mc2Tiling;
+using namespace matmul_allto_all_910b_tiling_key;
 
 namespace {
 constexpr uint32_t ATTR_GROUP_INDEX = 0;
@@ -148,6 +149,30 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckOpInputInfo()
                     OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(Check2DMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckBsRankSizeRange() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check BS*rankSize range failed."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckBsRankSizeRange()
+{
+    const gert::StorageShape *x1Shape = context_->GetInputShape(INPUT_X1_INDEX);
+    uint64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    const int64_t *worldSize = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
+    const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    int64_t rankSize = 0;
+    if (worldSize == nullptr || *worldSize == RANK_DEFAULT_NUM) {
+        OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankSize), OP_LOGE(opName_, "GetRankSize failed."),
+                        return ge::GRAPH_FAILED);
+    } else {
+        rankSize = *worldSize;
+    }
+    uint64_t bsRankProduct = x1Dim0 * static_cast<uint64_t>(rankSize);
+    OP_TILING_CHECK(bsRankProduct > MAX_INT32_VALUE,
+                    OP_LOGE(opName_, "BS*rankSize exceeds INT32_MAX, BS=%lu, rankSize=%ld, product=%lu.",
+                            x1Dim0, rankSize, bsRankProduct),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -318,14 +343,15 @@ uint64_t FpMatmulAllToAllTilingBaseA3::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
-    // 0代表数据类型和x一致(FP16 OR BF16)，1代表FP32
-    uint32_t biasDType = DTYPE_BIAS_SAME_WITH_X;
+    // 0代表数据类型为FP16，1代表FP32
+    uint32_t biasDType = TILINGKEY_TPL_FP16;
     if (contextInfo.args_.geBiasType != contextInfo.args_.geAType) {
-        biasDType = DTYPE_BIAS_FP32;
+        biasDType = TILINGKEY_TPL_FP32;
     }
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", NON_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        x2TransposeFlag, contextInfo.args_.isBias, biasDType, SOC_ASCEND910_93);
+    OP_LOGD(opName_, "x2TransposeFlag,hasBias,biasDtype is: [%d,%d,%d], and tilingKey is [%lu].",
+        x2TransposeFlag, contextInfo.args_.isBias, biasDType, tilingKey);
     return tilingKey;
 }
 

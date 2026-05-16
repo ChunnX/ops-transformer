@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file prompt_flash_attention_tiling_v2.cpp
+ * \file prompt_flash_attention_tiling_arch38.cpp
  * \brief
  */
 #include "prompt_flash_attention_tiling_arch38.h"
@@ -17,7 +17,7 @@
 
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_host/data_copy_transpose_tiling.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 
@@ -1832,9 +1832,7 @@ bool PromptFlashAttentionTilingArch38::CheckInnerPrecise(ContextParamsForPFATili
     // Determine the bit0 bit of innerPrecise, high-performance or high-precision mode.
     innerPrecise = HIGH_PRECISION; // High-precision contains high-performance and high-precision mode.
 
-    if (contextKeyParams.compileInfoPtr->socShortName == platform_ascendc::SocVersion::MC62CM12A) {
-        innerPrecise = HIGH_PERFORMANCE;
-    }
+    innerPrecise = HIGH_PERFORMANCE;
 
     // FP16 pse is forced to enter high-precision mode.
     if ((contextKeyParams.pseShift != nullptr) && (inputType == ge::DT_FLOAT16) && (innerPrecise == HIGH_PERFORMANCE)) {
@@ -2338,7 +2336,7 @@ void PromptFlashAttentionTilingArch38::GetEnableDN(PromptFlashAttentionTilingDat
     constexpr uint32_t dLimitDN = 128;
     constexpr uint32_t vecCoreNum = 2;
     constexpr uint32_t sOuterLimitDN = 64;
-    enableDN = (queryShapeInfo.d == 128) && !enableIFA && !enableMask; // pfa d=128 使能dn
+    enableDN = (AlignUp(queryShapeInfo.d, sOuterLimitDN) == 128) && !enableIFA && !enableMask; // pfa d=128 使能dn
     for (uint32_t i = LOOP_BEGIN_NUM; i < queryShapeInfo.b; i++) {
         if ((actualSeqLengths[i] % 32 > 0) || (actualSeqLengthsKV[i] <= 128)) { // 32: 只针对对齐场景修改基本快大小; 128: 扩大sInner的KV_S限制
             isQKVActualSeqLengthsRight = false;
@@ -2441,10 +2439,7 @@ void PromptFlashAttentionTilingArch38::InferTilingMod(const ContextParamsForPFAT
 
 void PromptFlashAttentionTilingArch38::InferSplitCoreMode() 
 {
-    splitCoreMode = SplitCoreMode::SPLIT_NBS_CUBE;
-    if (ascendPlatformInfo.socVersion == platform_ascendc::SocVersion::MC62CM12A) {
-        splitCoreMode = SplitCoreMode::SPLIT_NBS_VECTOR;
-    }
+    splitCoreMode = SplitCoreMode::SPLIT_NBS_VECTOR;
 }
 
 void PromptFlashAttentionTilingArch38::InferConstantization() 
@@ -2630,7 +2625,7 @@ bool PromptFlashAttentionTilingArch38::AdjustCVTilingCVDiff(const ContextParamsF
 
     if (tilingData.promptAttentionBaseParams.get_vHeadSize() <= 128 && !enablePFAMLA) { // 128 for D size
         bool checkDtype = contextKeyParams.inputDataType == ge::DT_FLOAT16 || contextKeyParams.inputDataType == ge::DT_BF16;
-        bool checkQueryAndValueS = queryShapeInfo.s <= SOUTER_FACTOR_DEFAULT && S2 >= SINNER_FACTOR_DEFAULT;
+        bool checkQueryAndValueS = queryShapeInfo.s <= SOUTER_FACTOR_DEFAULT;
         uint32_t sparseMode = tilingData.promptAttentionBaseParams.get_sparseMode();
         int32_t preTokens = tilingData.promptAttentionBaseParams.get_preTokens();
         int32_t nextTokens = tilingData.promptAttentionBaseParams.get_nextTokens();
@@ -2667,9 +2662,7 @@ bool PromptFlashAttentionTilingArch38::AdjustCVTilingCVDiff(const ContextParamsF
         softmaxSOuterFactor = SOUTER_FACTOR_SUB;
     }
 
-    if (compileInfoPtr->socShortName == platform_ascendc::SocVersion::MC62CM12A) {
-        minFactor *= 2; // 2 for cv ratio equals 1:1, previous calculation based on cv ratio equals 1:2
-    }
+    minFactor *= 2; // 2 for cv ratio equals 1:1, previous calculation based on cv ratio equals 1:2
 
     sOuterFactor = minFactor;
     sInnerFactor = rectangleFactor;
@@ -2899,22 +2892,11 @@ void PromptFlashAttentionTilingArch38::UpdateTilingKeySOuterConst(PromptFlashAtt
     if (!isConstantization) {
         return;
     }
-    if (ascendPlatformInfo.socVersion == platform_ascendc::SocVersion::MC62CM12A) {
-        if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 64) {  // 64:souter32
-            tilingKey += tilingKeySOuterConstValue64;
-        } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 96) {  // 96:souter48*2
-            tilingKey += tilingKeySOuterConstValue96;
-        } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 128) {  // 128:souter64*2
-            tilingKey += tilingKeySOuterConstValue128;
-        }
-        return;
-    }
-    // SAMEAB calculates the souter from the cube kernel perspective, which is twice the souter from the vector kernel perspective.
-    if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() * 2 == 64) { // 64: souter32
+    if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 64) {  // 64:souter32
         tilingKey += tilingKeySOuterConstValue64;
-    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() * 2 == 96) { // 96: souter48*2
+    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 96) {  // 96:souter48*2
         tilingKey += tilingKeySOuterConstValue96;
-    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() * 2 == 128) { // 128: souter64*2
+    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 128) {  // 128:souter64*2
         tilingKey += tilingKeySOuterConstValue128;
     }
 }
@@ -3249,10 +3231,6 @@ bool PromptFlashAttentionTilingArch38::TilingGetTilingKeyAttentionAscendC(uint64
         tilingKey += static_cast<uint64_t>(3e7); // 3e7: the situation of IFA MLA
     }
 
-    if (enablePFARope) {
-        tilingKey += static_cast<uint64_t>(7e7); // 7e7: the situation of PFA MLA Rope
-    }
-
     if (enableDN) {
         tilingKey += static_cast<uint64_t>(4e7); // 4e7: the situation of DN
     }
@@ -3366,9 +3344,7 @@ ge::graphStatus PromptFlashAttentionTilingArch38::SetPlatMemoryInfo(ContextParam
     OP_LOGI(contextKeyParams.opName, "ascendPlatformInfo:aivNum = %u, aicNum = %u, l1Size = %lu, l0CSize = %lu,"
         "l0ASize = %lu, l0BSize = %lu, ubSize = %lu!", aivNum, aicNum, compileInfoPtr->l1Size, compileInfoPtr->l0CSize,
         compileInfoPtr->l0ASize, compileInfoPtr->l0BSize, compileInfoPtr->ubSize);
-    if (ascendPlatformInfo.socVersion == platform_ascendc::SocVersion::MC62CM12A) {
-        CV_RATIO = 1U; // Vector : Cube
-    }
+    CV_RATIO = 1U; // Vector : Cube
     return ge::GRAPH_SUCCESS;
 }
 
@@ -3470,10 +3446,6 @@ ge::graphStatus PromptFlashAttentionTilingArch38::SetAttributeInfo(ContextParams
         }else{
             enablePertensorQuant = true;
         }
-    }
-
-    if (enablePertensorQuant && contextKeyParams.compileInfoPtr->socShortName != platform_ascendc::SocVersion::MC62CM12A) {
-        faRunFlag_ = false;
     }
 
     return ge::GRAPH_SUCCESS;

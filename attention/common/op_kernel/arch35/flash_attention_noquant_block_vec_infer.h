@@ -494,8 +494,12 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::GetActualSeqLenKV(
     if (constInfo.isActualLenDimsKVNull) {
         actualSeqLen = s2InCurrentBatch;
     } else {
-        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] :
-                                                             actualSeqKvlenAddr[boIdx];
+        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
+        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) && (!isPa)) {
+            if (boIdx > 0) {
+                actualSeqLen -= actualSeqKvlenAddr[boIdx - 1];
+            }
+        }
     }
     if (constInfo.isKVHasLeftPadding) {
         int64_t kvLeftPaddingSize = constInfo.s2Size - actualSeqLen - constInfo.kvRightPaddingSize;
@@ -516,7 +520,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
     // 处理第一个S
     uint32_t headS1 = 0;
     uint32_t needDealHeadS1 = 0;
-    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, gIdxStart, s1IdxStart, 
+    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, runInfo.halfS1RealSize, gIdxStart, s1IdxStart,
         gIdxEnd, s1IdxEnd, headS1, needDealHeadS1);
                                        
     int64_t startOffset = 0;             // gm起始位置偏移
@@ -539,8 +543,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
             startOffsetOfUb += constInfo.s1Size * 8; // 8：fp32对齐
             dealedCount += constInfo.s1Size;
         }
-        if (runInfo.vec2S1RealSize - dealedCount > 0) {
-            int64_t tmpBlockCount = runInfo.vec2S1RealSize - dealedCount;
+        if (runInfo.halfS1RealSize - dealedCount > 0) {
+            int64_t tmpBlockCount = runInfo.halfS1RealSize - dealedCount;
             tmpBlockCount = tmpBlockCount < runInfo.actualSeqLengthOfMlaPerBatch ?
                 tmpBlockCount : runInfo.actualSeqLengthOfMlaPerBatch;
             if (tmpBlockCount > 0) {
@@ -606,7 +610,19 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
         if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BNSD && !constInfo.isActualLenDimsNull) {
             MlaBnsdWithActqLseCopyOut(lseUb, runInfo, constInfo, intriParams1);
         } else {
-            DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+            if (constInfo.isPfaGS1Merge && (layout == LayOutTypeEnum::LAYOUT_BSH ||
+                layout == LayOutTypeEnum::LAYOUT_TND)) {
+                for (int64_t i = 0; i < runInfo.halfS1RealSize / constInfo.gSize; i++) {
+                    int64_t lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
+                    int64_t lseUboffset = i * constInfo.gSize * 8; // 8：fp32对齐
+                    intriParams1.blockCount = constInfo.gSize;
+                    intriParams1.dstStride = 0;
+                    DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + lseGmOffset],
+                        lseUb[lseUboffset], intriParams1);
+                }
+            } else {
+                DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+            }
         }
     }
     softmaxLseQueue.FreeTensor(lseUb);
