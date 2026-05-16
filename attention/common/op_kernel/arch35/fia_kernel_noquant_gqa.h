@@ -798,12 +798,16 @@ public:
         // PRINTF("task_i_curr:%d, task_i_prev_:%d\n", task_i_curr, task_i_prev_);
         task_i_prev_ = task_i_curr;
         if (gS1Skip <= 0) {
+            int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
+            if (rawQLen <= 0) {
+                return;
+            }
+
             int64_t preTokenLeftUp = 0;
             int64_t nextTokenLeftUp = 0;
-            GetPreNextTokenLeftUp(static_cast<int64_t>(actSeqLensQ), static_cast<int64_t>(actSeqLensKv),
+            GetPreNextTokenLeftUp(rawQLen, static_cast<int64_t>(actSeqLensKv),
                                   preTokenLeftUp, nextTokenLeftUp);
 
-            int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
             int64_t nextTokensError = (nextTokenLeftUp < 0) ? -nextTokenLeftUp : 0;
             nextTokensError = nextTokensError > rawQLen ? rawQLen : nextTokensError;
 
