@@ -368,5 +368,3 @@ __aicore__ inline void GroupMatmul2(
 }
 
 } // namespace MegaMoeImpl
-
-#endif
