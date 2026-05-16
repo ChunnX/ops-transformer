@@ -10,23 +10,8 @@
 
 #include "aclnn_quant_matmul_allto_all.h"
 #include "quant_matmul_allto_all_base.h"
-#include "securec.h"
-// #include "matmul_allto_all_util.h"
-// #include "common/utils/op_mc2.h"
-// #include "acl/acl.h"
-// #include "common/utils/op_mc2_def.h"
-// #include "common/op_api/mc2_aclnn_util.h"
-// #include "opdev/common_types.h"
-// #include "opdev/make_op_executor.h"
-// #include "aclnn_kernels/common/op_error_check.h"
-// #include "opdev/op_dfx.h"
 #include "opdev/platform.h"
-// #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
-// #include "opdev/format_utils.h"
-// #include "aclnn_kernels/transdata.h"
-// #include "common/utils/hccl_util.h"
-// #include "mc2_comm_utils.h"
 
 // 两段式接口
 extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(
