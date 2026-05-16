@@ -1,0 +1,2 @@
+testcase_name,api_name,tensor_view_shapes,tensor_dtypes,attributes,output_tensor_indexes
+aclnn_moe_init_routing_v2_cust_2,aclnnMoeInitRoutingV2,"((20971, 64), (20971, 20), (64, 6553, 64), (419420,), (64,), (64,))","('bfloat16', 'int32', 'bfloat16', 'int32', 'int32', 'int32')","{'activeNumOptional': 0, 'expertCapacityOptional': 6553, 'expertNumOptional': 64, 'dropPadModeOptional': 1, 'expertTokensCountOrCumsumFlagOptional': 0, 'expertTokensBeforeCapacityFlagOptional': False}","(2,3,4,5)"

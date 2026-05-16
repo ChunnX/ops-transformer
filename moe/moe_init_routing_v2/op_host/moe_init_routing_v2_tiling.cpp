@@ -335,7 +335,7 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
     OP_LOGI(
         opName,
             "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
+            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld, gatherMode:%ld",
             moeInitRoutingTilingData.gatherOutComputeParamsOp.get_needCoreNum(),
             moeInitRoutingTilingData.gatherOutComputeParamsOp.get_activateRows(),
             moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreRows(),
@@ -343,7 +343,9 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
             moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreLastLoopRows(),
             moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
             moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows());
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows())
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_gatherMode(),
+            ;
 }
 
 ge::graphStatus MoeInitRoutingV2TilingBase::DoOpTiling()
@@ -668,7 +670,8 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     // 向下对齐，确保不超出 ubSize
     ubRows = ubRows / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
 
-    bool useGatherMode = (cols * inuptXDtypeSize_ < ubRowsThreshold) && (ubRows >= NUM_TWO);
+    bool useGatherMode = (cols * inuptXDtypeSize_ < ubRowsThreshold) && (ubRows >= NUM_TWO) && (dropPadMode != 1) &&
+                         (moeInitRoutingTilingData.get_k() <= 6);
 
     if (useGatherMode) {
         tilingData->set_gatherMode(1);

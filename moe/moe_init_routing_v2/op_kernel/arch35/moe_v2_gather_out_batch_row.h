@@ -37,7 +37,6 @@ private:
     __aicore__ inline void GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows, int64_t indexOffset,
                                              LocalTensor<int32_t> &dstToSrcLocal);
     __aicore__ inline void GatherOut(int64_t progress);
-    __aicore__ inline void CopyOutZero(int64_t progress, LocalTensor<int32_t> &dstToSrcLocal);
 
 private:
     TPipe *pipe;
@@ -58,7 +57,6 @@ private:
     int64_t expertNum;
     int64_t totalLength;
     int64_t activateRows;
-    int64_t dropPadMode;
 
     int64_t ubRowsPerLoop;
 
@@ -86,13 +84,10 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 {
     LocalTensor<T> outRowsLocal = outputRowsQueue.AllocTensor<T>();
 
-    Duplicate(outRowsLocal, static_cast<T>(0), outPosRows * this->cols);
-
     for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
         int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffset + outPosIdx);
 
-        if (expandedTokenIdx < 0 || expandedTokenIdx >= this->totalLength ||
-            (this->dropPadMode == DROPLESS_MODE && expandedTokenIdx >= this->activateRows)) {
+        if (expandedTokenIdx < 0 || expandedTokenIdx >= this->totalLength || expandedTokenIdx >= this->activateRows) {
             continue;
         }
 
@@ -126,10 +121,6 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOut(int64_t progress)
     LocalTensor<int32_t> dstToSrcLocal = dstToSrcIndexQueue.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
-    if (this->dropPadMode == DROP_PAD_MODE) {
-        CopyOutZero(progress, dstToSrcLocal);
-    }
-
     int64_t outPosStart = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
     int64_t totalOutPosRows = this->currentLoopRows;
     int64_t ubRowsLoops = Ceil(totalOutPosRows, this->ubRowsPerLoop);
@@ -150,26 +141,6 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOut(int64_t progress)
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyOutZero(int64_t progress, LocalTensor<int32_t> &dstToSrcLocal)
-{
-    LocalTensor<T> zeroTensor = outputRowsQueue.AllocTensor<T>();
-
-    int64_t outPosStart = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
-
-    for (int64_t i = 0; i < currentLoopRows; i++) {
-        int32_t expandedTokenIdx = dstToSrcLocal.GetValue(i);
-        int64_t outPos = outPosStart + i;
-
-        if (expandedTokenIdx == -1 && outPos < activateRows) {
-            InitGmValue(expandedXGm[outPos * cols], zeroTensor, cols, static_cast<T>(0));
-        }
-    }
-
-    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-    outputRowsQueue.FreeTensor(zeroTensor);
-}
-
-template <typename T>
 __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                                        GM_ADDR workspace, const MoeInitRoutingV2TilingData *tilingData,
                                                        TPipe *tPipe)
@@ -184,12 +155,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
     this->n = tilingData->n;
     this->k = tilingData->k;
     this->expertNum = tilingData->expertNum;
-    this->dropPadMode = tilingData->dropPadMode;
     this->totalLength = tilingData->n * tilingData->k;
-
-    if (this->dropPadMode == DROP_PAD_MODE) {
-        this->activateRows = tilingData->expertCapacity * tilingData->expertNum;
-    }
 
     if (this->blockIdx == this->gatherOutTilingData->needCoreNum - 1) {
         this->coreRows = this->gatherOutTilingData->lastCoreRows;
