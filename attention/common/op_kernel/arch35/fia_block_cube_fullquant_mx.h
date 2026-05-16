@@ -80,8 +80,7 @@ public:
     static constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
     static constexpr uint32_t MXFP_MULTI_BASE_SIZE = 2U;
     static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool isPa = (KvLayoutType > 0);
-    static constexpr bool PAGE_ATTENTION = isPa;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
@@ -89,10 +88,10 @@ public:
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, BMM2_TOUB};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, isPa>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
     static constexpr GmFormat Q_SCALE_FORMAT = GetQueryScaleGmFormat<layout, USE_DN>();
-    static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KvLayoutType, isPa>();
-    static constexpr GmFormat V_SCALE_FORMAT = GetValueScaleGmFormat<layout, KvLayoutType, isPa>();
+    static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
+    static constexpr GmFormat V_SCALE_FORMAT = GetValueScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
     using ROPE_T = INPUT_T;
     using Q_T = INPUT_T;
@@ -229,7 +228,7 @@ public:
         if (constInfo.actualSeqLenKVSize != 0) {
             actualSeqLengthsGmKv.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
         }
-        if constexpr (isPa) {
+        if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
@@ -1022,6 +1021,40 @@ public:
         outputBuf.SetCrossCore();
     }
 }; // FAFullQuantMxBlockCube
+
+template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
+          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FAFullQuantMxBlockCubeDummy {
+public:
+    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    static constexpr LayOutTypeEnum LAYOUT = layout;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    static constexpr bool HAS_ROPE = hasRope;
+    static constexpr bool HAS_PREFIX = enableKVPrefix;
+    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
+    static constexpr bool USE_DN = useDn;
+
+    using ROPE_T = INPUT_T;
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+
+    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo) {};
+};
 } // namespace BaseApi
 
 #endif // FIA_BLOCK_CUBE_FULLQUANT_MX_H_

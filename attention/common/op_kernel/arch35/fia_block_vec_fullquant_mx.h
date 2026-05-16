@@ -1143,5 +1143,21 @@ public:
         }
     }
 };
+
+template <
+    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
+    DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
+    bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+    bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FAFullQuantMxBlockVecDummy {
+public:
+    static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool FLASH_DECODE = isFd;
+    using OUT_T = OUTPUT_T;
+    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    __aicore__ inline FAFullQuantMxBlockVecDummy(ConstInfoX &constInfo) {};
+};
 } // namespace BaseApi
 #endif // FIA_BLOCK_VEC_FULLQUANT_MX_H_
