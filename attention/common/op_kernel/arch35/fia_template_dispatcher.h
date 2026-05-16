@@ -124,13 +124,15 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     using VecFaBlockNormal = BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode),
         hasAttenMask, false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using VecFaBlockDummy = BaseApi::FAFullQuantMxBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+    using VecFaBlockDummy = BaseApi::FAFullQuantMxBlockVecDummy<
+        INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
         false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
 
     // VecFdBlockType
-    using VecFdBlockNormal = BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+    using VecFdBlockNormal = BaseApi::FiaBlockVecFlashDecodeFullQuant<
+        INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
         false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFdBlockDummy = BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T,
