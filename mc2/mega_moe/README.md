@@ -1,95 +1,59 @@
-========== [rank 0] MegaMoe TIMESTAMPS (unit = us) ==========
+========== [rank 3] MegaMoe TIMESTAMPS (unit = us) ==========
   active AIC : 32/36, active AIV0: 32/36, active AIV1: 32/36
 
   --- [AIC] STAGE durations (per-core delta) ---
     KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=       0  avg=       0  max=       1  (us)
-    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=      76  avg=      77  max=      79  (us)  <-- HOT
-    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     940  avg=     949  max=     958  (us)  <-- HOT
-    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=       9  avg=      19  max=      22  (us)  <-- HOT
+    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=      74  avg=      75  max=      77  (us)  <-- HOT
+    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     387  avg=     399  max=     421  (us)  <-- HOT
+    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=       0  avg=       0  max=       1  (us)
 
   --- [AIV0] STAGE durations (per-core delta) ---
-    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=      71  avg=      71  max=      72  (us)  <-- HOT
-    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=       5  avg=       5  max=       5  (us)  <-- HOT
-    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     926  avg=     938  max=     950  (us)  <-- HOT
-    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=      31  avg=      42  max=      55  (us)  <-- HOT
+    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=      68  avg=      68  max=      69  (us)  <-- HOT
+    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=       6  avg=       6  max=       7  (us)  <-- HOT
+    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     355  avg=     363  max=     381  (us)  <-- HOT
+    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=      57  avg=      74  max=      83  (us)  <-- HOT
 
   --- [AIV1] STAGE durations (per-core delta) ---
-    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=      71  avg=      71  max=      72  (us)  <-- HOT
-    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=       5  avg=       5  max=       5  (us)  <-- HOT
-    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     949  avg=     968  max=     980  (us)  <-- HOT
-    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=       1  avg=      13  max=      33  (us)  <-- HOT
+    KERNEL_ENTRY -> ROUTING_DONE          n=  32  min=      68  avg=      68  max=      69  (us)  <-- HOT
+    ROUTING_DONE -> CROSSRANK_DONE        n=  32  min=       6  avg=       6  max=       7  (us)  <-- HOT
+    CROSSRANK_DONE -> EXPERT_LOOP_END       n=  32  min=     392  avg=     412  max=     438  (us)  <-- HOT
+    EXPERT_LOOP_END -> PROCESS_END           n=  32  min=       0  avg=      25  max=      46  (us)  <-- HOT
 
   --- [AIV1] per-expert DISPATCH duration ---
-    expert[0] dispatch  n=  32  min=       5  avg=      15  max=      19  (us)  <-- HOT
-    expert[1] dispatch  n=  32  min=       5  avg=      12  max=      19  (us)  <-- HOT
-    expert[2] dispatch  n=  32  min=       6  avg=      13  max=      18  (us)  <-- HOT
-    expert[3] dispatch  n=  32  min=       6  avg=      13  max=      18  (us)  <-- HOT
+    expert[0] dispatch  n=  32  min=       4  avg=      15  max=      19  (us)  <-- HOT
+    expert[1] dispatch  n=  32  min=       4  avg=      14  max=      17  (us)  <-- HOT
+    expert[2] dispatch  n=  32  min=       7  avg=      15  max=      26  (us)  <-- HOT
+    expert[3] dispatch  n=  32  min=       8  avg=      16  max=      27  (us)  <-- HOT
 
   --- [AIC] WAVE-by-WAVE  (us, avg across active cores) ---
     exp  wave | entr->g1B |      wDsp |    g1Frst |     g1Mid |     g1Drn |    g12gap |      wSwi |    g2Frst |     g2Mid |     g2Drn |    g2->ex |     TOTAL
     ---------------------------------------------------------------------------------------------------------------------------------------------------------
-      0     0 |         0 |        19 |        20 |         0 |         7 |         0 |         1 |        13 |         0 |         0 |         0 |        63
-      0     1 |         0 |         0 |        14 |         0 |         6 |         0 |         1 |         8 |         0 |         0 |         0 |        32
-      0     2 |         0 |         0 |        13 |         0 |         5 |         0 |         2 |         8 |         0 |         0 |         0 |        31
-      0     3 |         0 |         0 |        13 |         0 |         6 |         0 |         2 |         8 |         0 |         0 |         0 |        31
-      1     4 |         0 |        33 |        22 |         0 |         7 |         0 |         2 |        13 |         0 |         0 |         0 |        79
-      1     5 |         0 |         0 |        14 |         0 |         6 |         0 |         2 |         8 |         0 |         0 |         0 |        33
-      1     6 |         0 |         0 |        14 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        31
-      1     7 |         0 |         0 |        13 |         0 |         6 |         0 |         3 |         8 |         0 |         0 |         0 |        32
-      2     8 |         0 |        32 |        21 |         0 |         6 |         0 |         2 |        12 |         0 |         0 |         0 |        75
-      2     9 |         0 |         0 |        14 |         0 |         6 |         0 |         2 |         8 |         0 |         0 |         0 |        32
-      2    10 |         0 |         0 |        13 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        32
-      2    11 |         0 |         0 |        14 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        31
-      3    12 |         0 |        32 |        21 |         0 |         7 |         0 |         2 |        12 |         0 |         0 |         0 |        75
-      3    13 |         0 |         0 |        14 |         0 |         7 |         0 |         2 |         8 |         0 |         0 |         0 |        32
-      3    14 |         0 |         0 |        13 |         0 |         5 |         0 |         3 |         8 |         0 |         0 |         0 |        31
-      3    15 |         0 |         0 |        13 |         0 |         5 |         0 |         2 |         8 |         0 |         0 |         0 |        31
+      1     0 |         0 |        19 |        24 |        23 |        10 |         0 |         2 |        15 |        20 |         0 |         0 |       115
+      2     1 |         0 |         0 |        24 |        23 |        10 |         0 |         1 |        14 |        19 |         0 |         0 |        94
+      3     2 |         0 |         0 |        24 |        23 |        10 |         0 |         1 |        15 |        19 |         0 |         0 |        94
+      3     3 |         0 |         0 |        23 |        22 |        10 |         0 |         1 |        14 |        19 |         0 |         0 |        93
     ---------------------------------------------------------------------------------------------------------------------------------------------------------
-          avg |         0 |         7 |        15 |         0 |         6 |         0 |         2 |         9 |         0 |         0 |         0 |        42
-          max |         1 |        59 |        24 |         1 |        10 |         1 |        20 |        14 |         1 |         1 |         1 |       103
+          avg |         0 |         4 |        24 |        23 |        10 |         0 |         1 |        15 |        19 |         0 |         0 |        99
+          max |         1 |        19 |        26 |        25 |        11 |         1 |         7 |        17 |        30 |         1 |         1 |       122
 
   --- [AIV0] WAVE-by-WAVE  (us, avg across active cores) ---
     exp  wave | entr->g1B |      wCub |     epiFr |     epiMd |     epiDr |    g1->ex |     TOTAL
     ---------------------------------------------------------------------------------------------
-      0     0 |         0 |        38 |         7 |         0 |         0 |         0 |        47
-      0     1 |         0 |        44 |         7 |         0 |         0 |         0 |        51
-      0     2 |         0 |        45 |         5 |         0 |         0 |         0 |        52
-      0     3 |         0 |        44 |         6 |         0 |         0 |         0 |        51
-      1     4 |         0 |        85 |         7 |         0 |         0 |         0 |        93
-      1     5 |         0 |        42 |         7 |         0 |         0 |         0 |        50
-      1     6 |         0 |        45 |         5 |         0 |         0 |         0 |        52
-      1     7 |         0 |        43 |         6 |         0 |         0 |         0 |        50
-      2     8 |         0 |        84 |         6 |         0 |         0 |         0 |        91
-      2     9 |         0 |        40 |         6 |         0 |         0 |         0 |        48
-      2    10 |         0 |        44 |         5 |         0 |         0 |         0 |        50
-      2    11 |         0 |        45 |         5 |         0 |         0 |         0 |        52
-      3    12 |         0 |        83 |         7 |         0 |         0 |         0 |        92
-      3    13 |         0 |        39 |         7 |         0 |         0 |         0 |        47
-      3    14 |         0 |        43 |         5 |         0 |         0 |         0 |        49
-      3    15 |         0 |        45 |         6 |         0 |         0 |         0 |        52
+      1     0 |         0 |        41 |        10 |        22 |         0 |         0 |        75
+      2     1 |         0 |        61 |        11 |        22 |         0 |         0 |        95
+      3     2 |         0 |        60 |        10 |        22 |         0 |         0 |        94
+      3     3 |         0 |        60 |        10 |        22 |         0 |         0 |        94
     ---------------------------------------------------------------------------------------------
-          avg |         0 |        51 |         6 |         0 |         0 |         0 |        58
-          max |         1 |       113 |        10 |         1 |         1 |         1 |       121
+          avg |         0 |        56 |        10 |        22 |         0 |         0 |        89
+          max |         1 |        73 |        12 |        24 |         1 |         1 |       106
 
   --- [AIV1] WAVE-by-WAVE  (us, avg across active cores) ---
     exp  wave | entr->g2B |     wRowR |      cbFr |      cbMd |     cbEnd |    g2->ex |     TOTAL
     ---------------------------------------------------------------------------------------------
-      0     0 |         0 |        47 |        14 |         0 |         0 |         0 |        62
-      0     1 |         0 |        32 |        20 |         0 |         0 |         0 |        53
-      0     2 |         0 |        31 |        18 |         0 |         0 |         0 |        50
-      0     3 |         0 |        32 |        18 |         0 |         0 |         0 |        50
-      1     4 |         0 |        67 |        13 |         0 |         0 |         0 |        80
-      1     5 |         0 |        33 |        20 |         0 |         0 |         0 |        53
-      1     6 |         0 |        31 |        18 |         0 |         0 |         0 |        50
-      1     7 |         0 |        32 |        18 |         0 |         0 |         0 |        51
-      2     8 |         0 |        62 |        11 |         0 |         0 |         0 |        74
-      2     9 |         0 |        32 |        18 |         0 |         0 |         0 |        51
-      2    10 |         0 |        32 |        18 |         0 |         0 |         0 |        51
-      2    11 |         0 |        31 |        18 |         0 |         0 |         0 |        51
-      3    12 |         0 |        62 |        10 |         0 |         0 |         0 |        72
-      3    13 |         0 |        33 |        18 |         0 |         0 |         0 |        51
-      3    14 |         0 |        32 |        19 |         0 |         0 |         0 |        52
-      3    15 |         0 |        31 |        18 |         0 |         0 |         0 |        50
+      1     0 |         0 |        64 |        18 |        23 |         0 |         0 |       106
+      2     1 |         0 |        37 |        18 |        19 |         0 |         0 |        75
+      3     2 |         0 |        40 |        16 |        17 |         0 |         0 |        74
+      3     3 |         0 |        59 |        16 |        14 |         0 |         0 |        90
     ---------------------------------------------------------------------------------------------
-          avg |         0 |        39 |        17 |         0 |         0 |         0 |        56
-          max |         1 |        94 |        30 |         1 |         1 |         1 |        95
+          avg |         0 |        50 |        17 |        18 |         0 |         0 |        86
+          max |         1 |        86 |        31 |        31 |         1 |         1 |       118
