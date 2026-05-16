@@ -1,18 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co.,
-    Ltd.
- * This program is free software,
-    you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS,
-    WITHOUT WARRANTIES OF ANY KIND,
-    EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-    MERCHANTABILITY,
-    OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attn_common_def.h
@@ -127,6 +121,12 @@ static constexpr  inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] ={
 #define InOutLayoutType_TND_TND 2
 #define InOutLayoutType_BNSD_BSND 3
 #define InOutLayoutType_NTD_NTD 4
+
+// KvLayoutType
+#define KvLayoutType_NO_PA 0
+#define KvLayoutType_PA_BBH 1
+#define KvLayoutType_PA_BNBD 2
+#define KvLayoutType_PA_NZ 3
 
 struct ConfigParams {
     inferS1TemplateType s1;
@@ -305,8 +305,10 @@ struct CommonConstInfo {
     uint32_t n2Size;
     uint64_t s1Size; /* s1总大小 */
     uint64_t s2Size; /* s2总大小 */
-    uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
-    uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
+    uint64_t cuSeqLensQSize;     /* 用户输入的actualseq的长度 */
+    uint64_t cuSeqLensKVSize;    /* 用户输入的actualseq_kv的长度 */
+    uint64_t seqUsedQSize;       /* 用户输入的seq used q的长度 */
+    uint64_t seqUsedKvSize;      /* 用户输入的seq used kv的长度 */
 
     /* FA kernel meta */
     uint32_t bN2Start;
@@ -323,7 +325,6 @@ struct CommonConstInfo {
     uint32_t attenMaskS2Size;
     int64_t preTokens;
     int64_t nextTokens;
-    bool isRowInvalidOpen;
     bool isExistRowInvalid;
     float scaleValue;
 
