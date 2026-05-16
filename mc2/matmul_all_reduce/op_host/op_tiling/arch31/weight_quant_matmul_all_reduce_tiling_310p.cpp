@@ -154,7 +154,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&weightQuantMatmulAllReduceTilingData_), tilingDataSize);
     if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
         return ge::GRAPH_FAILED;
     }
     if (MutableRCSTilingData().rankID == 0) {

@@ -43,7 +43,7 @@ ge::graphStatus WeightQuantTilingTransferHelperA5::GetShapeAttrsInfo()
     try {
         matmulInfoPtr_ = std::make_unique<Mc2WeightQuantBatchMatmulInfo>();
     } catch (const std::bad_alloc& e) {
-        OP_LOGE(opName_, "Failed to create matmul info.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmul info", "invalid", "failed to create matmul info");
         return ge::GRAPH_FAILED;
     }
     matmulInfoPtr_->transA = tilingArgs.isATrans;
@@ -90,7 +90,7 @@ ge::graphStatus WeightQuantAsTilingTransferHelper::GetShapeAttrsInfo()
     try {
         matmulInfoPtr_ = std::make_unique<Mc2WeightQuantBatchMatmulInfo>();
     } catch (const std::bad_alloc& e) {
-        OP_LOGE(opName_, "Failed to create matmul info.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmul info", "invalid", "failed to create matmul info");
         return ge::GRAPH_FAILED;
     }
     matmulInfoPtr_->transA = fp8Hif8TilingArgs.isATrans;
@@ -274,7 +274,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
         if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
             OP_TILING_CHECK(
                 GetWorkspaceSizeForA2ARSAG() != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeForA2ARSAG failed."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "workspace size", "invalid", "GetWorkspaceSizeForA2ARSAG failed"),
                 return ge::GRAPH_FAILED);
         }
         myWorkSpaceSize_ += workspaceSize_;
@@ -360,14 +361,16 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::PostTiling()
         errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
             reinterpret_cast<void *>(&weightQuantMatmulAllReduceA5Fp8TilingData_), dataSize);
         if (ret != EOK) {
-            OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d", ret);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
             return ge::GRAPH_FAILED;
         }
     } else {
         errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
             reinterpret_cast<void *>(&weightQuantMatmulAllReduceA5TilingData_), dataSize);
         if (ret != EOK) {
-            OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d", ret);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
             return ge::GRAPH_FAILED;
         }
     }
@@ -388,20 +391,24 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const c
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5Fp8TilingData_.mc2InitTiling) != 0,
-            OP_LOGE(opName_, "Get mc2InitTiling from weightQuantMatmulAllReduceA5Fp8TilingData failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "mc2InitTiling", "invalid", "failed to get tiling from weightQuantMatmulAllReduceA5Fp8TilingData"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5Fp8TilingData_.mc2CcTiling) != 0,
-            OP_LOGE(opName_, "Get mc2CcTiling from weightQuantMatmulAllReduceA5Fp8TilingData failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "mc2CcTiling", "invalid", "failed to get tiling from weightQuantMatmulAllReduceA5Fp8TilingData"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5TilingData_.mc2InitTiling) != 0,
-            OP_LOGE(opName_, "Get mc2InitTiling from weightQuantMatmulAllReduceA5Fp8TilingData failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "mc2InitTiling", "invalid", "failed to get tiling from weightQuantMatmulAllReduceA5TilingData"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5TilingData_.mc2CcTiling) != 0,
-            OP_LOGE(opName_, "Get mc2CcTiling from weightQuantMatmulAllReduceA5Fp8TilingData failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "mc2CcTiling", "invalid", "failed to get tiling from weightQuantMatmulAllReduceA5TilingData"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -418,11 +425,11 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const cha
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5Fp8TilingData_.mc2InitTiling),
-            OP_LOGE(opName_, "Get mc2InitTiling from weightQuantMatmulAllReduceA5Fp8TilingData_ failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5Fp8TilingData_.mc2CcTiling),
-            OP_LOGE(opName_, "Get mc2CcTiling from weightQuantMatmulAllReduceA5Fp8TilingData_ failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
         mc2CcTilingConfig.SetGroupName(groupName);
         mc2CcTilingConfig.SetOpType(opType2);
@@ -430,16 +437,16 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const cha
         mc2CcTilingConfig.SetReduceType(reduceType, dataType, dataType);
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5Fp8TilingData_.mc2CcTilingComm),
-            OP_LOGE(opName_, "Get mc2CcTilingComm from weightQuantMatmulAllReduceA5Fp8TilingData_ failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTilingComm", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5TilingData_.mc2InitTiling),
-            OP_LOGE(opName_, "Get mc2InitTiling from weightQuantMatmulAllReduceA5TilingData_ failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5TilingData_.mc2CcTiling),
-            OP_LOGE(opName_, "Get mc2CcTiling from weightQuantMatmulAllReduceA5TilingData_ failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
         mc2CcTilingConfig.SetGroupName(groupName);
         mc2CcTilingConfig.SetOpType(opType2);
@@ -447,7 +454,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const cha
         mc2CcTilingConfig.SetReduceType(reduceType, dataType, dataType);
         OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(weightQuantMatmulAllReduceA5TilingData_.mc2CcTilingComm),
-            OP_LOGE(opName_, "Get mc2CcTilingComm from weightQuantMatmulAllReduceA5TilingData_ failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTilingComm", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -460,19 +467,20 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
         VECTOR_INNER_ERR_REPORT_TILING(
             opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+                    return ge::GRAPH_FAILED);
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     if (isUseA2APath) {
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "WeightQuantMatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             SetMc2HcommAllReduce(groupName, reduceType) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "WeightQuantMatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommAllReduce failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommAllReduce failed"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -521,8 +529,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
         n > static_cast<uint64_t>(UINT16_MAX),
-        OP_LOGE(context_->GetNodeName(), "The size of n-axis=%lu exceeds the upper limit=%d.",
-                                        n, UINT16_MAX),
+        OP_LOGE_FOR_INVALID_SHAPESIZE(
+            context_->GetNodeName(), "n-axis", std::to_string(n), std::to_string(UINT16_MAX)),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         isA16W8_ && (antiQuantType_ == AntiQuantType::PER_GROUP) && ((n % alignDim != 0) || (k % alignDim != 0)),
