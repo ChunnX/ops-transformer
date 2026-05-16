@@ -69,18 +69,9 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 // Attr — SinglePara
 // ============================================================================
 
-ge::graphStatus CommonChecker::CheckSingleParaDeterministic(const FaTilingInfo &faInfo)
-{
-    OP_CHECK_IF(faInfo.deterministicFlag,
-                OP_LOGE(faInfo.opName, "deterministic currently only supports 0, but got non-zero"),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CommonChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
-    if (CheckSingleParaLayout(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckSingleParaDeterministic(faInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckSingleParaLayout(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
