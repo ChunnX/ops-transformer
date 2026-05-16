@@ -22,6 +22,11 @@ using namespace op;
 using namespace gmm_dsq;
 using namespace gmm_dsq_base;
 
+namespace {
+constexpr size_t WEIGHT_VIEW_LAST_SECOND_DIM_INDEX = 1UL;
+constexpr size_t WEIGHT_VIEW_LAST_DIM_INDEX = 2UL;
+} // namespace
+
 class GmmDsqHandlerFactory {
 private:
     std::unordered_map<NpuArch, std::unique_ptr<GroupedMatmulSwigluQuantHandler>> handlers_;
@@ -57,6 +62,23 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
     }
 
     return ACLNN_ERR_PARAM_INVALID;
+}
+
+static aclnnStatus CheckMxfp4WeightNzViewShape(const aclTensor *weight, const op::Shape &viewShape)
+{
+    if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
+        return ACLNN_SUCCESS;
+    }
+    CHECK_COND((viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
+               "When weight dtype is DT_FLOAT4, the dimnum of weight viewShape should be 3, but got %lu.",
+               viewShape.GetDimNum());
+    int64_t lastSecondDim = viewShape.GetDim(WEIGHT_VIEW_LAST_SECOND_DIM_INDEX);
+    int64_t lastDim = viewShape.GetDim(WEIGHT_VIEW_LAST_DIM_INDEX);
+    CHECK_COND((lastSecondDim != 1 && lastDim != 1), ACLNN_ERR_PARAM_INVALID,
+               "When weight dtype is DT_FLOAT4, the last two dimensions of weight should not be 1, but got "
+               "%ld and %ld.",
+               lastSecondDim, lastDim);
+    return ACLNN_SUCCESS;
 }
 
 #ifdef __cplusplus
@@ -122,6 +144,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
                    "aclnnGroupedMatmulSwigluQuantWeightNzV2, The dimnum of storageShape for second input (weight)"
                  "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
                    op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
+        CHECK_RET(CheckMxfp4WeightNzViewShape(w, viewShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
