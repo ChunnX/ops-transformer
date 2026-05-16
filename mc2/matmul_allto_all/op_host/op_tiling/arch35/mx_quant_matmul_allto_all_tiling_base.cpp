@@ -668,7 +668,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
             .withCommEngine(engineType)
             .build();
     if (!matmulAllToAllBuilder.isSuccess()) {
-        OP_LOGE(opName_, "Mx quant matmul allto all build hccl tiling config failed: %s", matmulAllToAllBuilder.errorMsg().c_str());
+        std::string errorMsg = matmulAllToAllBuilder.errorMsg();
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hccl tiling config", "failed",
+            "Mx quant matmul allto all build hccl tiling config failed: " + errorMsg);
         return ge::GRAPH_FAILED;
     }
     matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
@@ -936,14 +938,20 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::PostTiling()
     SetTilingInfo(localTilingData_.quantMatmulAlltoAllTilingInfo);
     QuantMatmulAlltoAllTilingData *outTilingData = context_->GetTilingData<QuantMatmulAlltoAllTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Failed to get tiling data from context"),
+    OP_TILING_CHECK((outTilingData == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "tilingData", "nullptr", "valid pointer"),
                     return ge::GRAPH_FAILED);
+    std::string tilingBufCapStr = std::to_string(tilingBufCap);
+    std::string localTilingDataSizeStr = std::to_string(sizeof(localTilingData_));
     OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
-                    OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", 
-                        tilingBufCap, sizeof(localTilingData_)), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "tilingBuffer", tilingBufCapStr.c_str(),
+                        "TilingBuffer capacity too small, need " + localTilingDataSizeStr),
+                    return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
-        OP_LOGE(opName_, "MatmulAlltoAll postTiling: memcpy_s tiling data failed, ret=%d.", ret);
+        std::string retStr = std::to_string(ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tilingData", retStr.c_str(),
+            "MatmulAlltoAll postTiling: memcpy_s tiling data failed");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(QuantMatmulAlltoAllTilingData),

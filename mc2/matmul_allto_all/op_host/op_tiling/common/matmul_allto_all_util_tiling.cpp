@@ -44,7 +44,8 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndValidateRankSize(const gert::Til
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const int64_t *worldSize = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     if ((worldSize == nullptr) || (*worldSize == RANK_DEFAULT_NUM)) {
-        OP_TILING_CHECK(!mc2tiling::GetRankSize(opName, group, rankDim), OP_LOGE(opName, "GetRankSize failed."),
+        OP_TILING_CHECK(!mc2tiling::GetRankSize(opName, group, rankDim), 
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", "failed", "GetRankSize failed"),
                         return ge::GRAPH_FAILED);
     } else {
         rankDim = *worldSize;

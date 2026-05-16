@@ -49,16 +49,21 @@ ge::graphStatus FpMatmulAllToAllTilingBase::CheckOpInputInfo()
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attrs", "invalid", "Tiling check Attrs failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);              
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check format failed"),
+                    return ge::GRAPH_FAILED);              
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check Dtype failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check shape failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(Check2DMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x1, x2, y", "invalid", "Tiling check shape failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -107,7 +112,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::DoMMTiling()
     // 非空校验已在GetPlatformInfo校验过
     fe::PlatFormInfos *platformInfo = context_->GetPlatformInfo();
     if (mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(opName_, "Fail to Init CompileInfo!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "compileInfo", "failed", "Fail to Init CompileInfo");
         return ge::GRAPH_FAILED;
     }
 
@@ -152,7 +157,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::DoMatmulV3Tiling(Mc2MatmulHelper::Mc
     tilingCfg.SetRankDim(contextInfo.args_.rankDim);
     tilingCfg.SetMatMulV3TilingData(tilingData);
     if (Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(opName_, "DoMatmulV3Tiling failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmulV3Tiling", "failed", "DoMatmulV3Tiling failed");
         return ge::GRAPH_FAILED;
     }
 
@@ -184,7 +189,9 @@ ge::graphStatus FpMatmulAllToAllTilingBase::SetHcclTiling()
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(engineType).
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType).build();
     if (!allToAllBuilder.isSuccess()) {
-        OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
+        std::string errorMsg = allToAllBuilder.errorMsg();
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hccl tiling config", "failed",
+            "Build hccl tiling config failed: " + errorMsg);
         return ge::GRAPH_FAILED;
     }
     allToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
@@ -288,16 +295,21 @@ ge::graphStatus FpMatmulAllToAllTilingBase::PostTiling()
     SetTilingInfo(localTilingData_.matmulAlltoAllTilingInfo);
     MatmulAlltoAllTilingData *outTilingData = context_->GetTilingData<MatmulAlltoAllTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Failed to get tiling data from context"),
+    OP_TILING_CHECK((outTilingData == nullptr), 
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "tilingData", "nullptr", "valid pointer"),
                     return ge::GRAPH_FAILED);
+    std::string tilingBufCapStr = std::to_string(tilingBufCap);
+    std::string localTilingDataSizeStr = std::to_string(sizeof(localTilingData_));
     OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
-                    OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
-                            sizeof(localTilingData_)),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "tilingBuffer", tilingBufCapStr.c_str(),
+                        "TilingBuffer capacity too small, need " + localTilingDataSizeStr),
                     return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
-        OP_LOGE(opName_, "MatmulAlltoAll postTiling: memcpy_s tiling data failed, ret=%d.", ret);
+        std::string retStr = std::to_string(ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tilingData", retStr.c_str(),
+            "MatmulAlltoAll postTiling: memcpy_s tiling data failed");
         return ge::GRAPH_FAILED;
     }
 
