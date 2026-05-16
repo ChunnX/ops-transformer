@@ -807,8 +807,13 @@ public:
             int64_t nextTokensError = (nextTokenLeftUp < 0) ? -nextTokenLeftUp : 0;
             nextTokensError = nextTokensError > rawQLen ? rawQLen : nextTokensError;
 
-            uint32_t gS1Offset =
-                static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
+            uint32_t gS1Offset;
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                          LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                gS1Offset = static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
+            } else {
+                gS1Offset = static_cast<uint32_t>(nextTokensError / mBaseSize);
+            }
 
             if (gS1Cur < gS1Offset) {
                 gS1Cur = gS1Offset;
