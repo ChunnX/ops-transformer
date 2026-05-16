@@ -140,25 +140,25 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAll, x1 format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnMatmulAlltoAll, x1 format %s does not support private format.",
                 op::ToString(x1->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAll, x2 format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnMatmulAlltoAll, x2 format %s does not support private format.",
                 op::ToString(x2->GetStorageFormat()).GetString());
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "aclnnQuantMatmulAlltoAll, biasOptional format %s does not support private format.",
+                    "aclnnMatmulAlltoAll, biasOptional format %s does not support private format.",
                     op::ToString(biasOptional->GetStorageFormat()).GetString());
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAll, output format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnMatmulAlltoAll, output format %s does not support private format.",
                 op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
