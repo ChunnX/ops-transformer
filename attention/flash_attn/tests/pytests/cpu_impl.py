@@ -102,7 +102,6 @@ def _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, ac
 
 def tforward_tnd(q, k, v, **kwargs):
     cu_q = kwargs["cu_seqlens_q"]
-    cu_kv = kwargs["cu_seqlens_kv"]
     seqused_q = kwargs["seqused_q"]
     seqused_kv = kwargs["seqused_kv"]
     b = len(cu_q) - 1
@@ -112,6 +111,11 @@ def tforward_tnd(q, k, v, **kwargs):
     d = kwargs.get("D")
     d_v = kwargs.get("DV", d)
     s1_total = cu_q[-1]
+
+    layout_kv = kwargs.get("layout_kv", None)
+    is_pa = layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ")
+    if not is_pa:
+        cu_kv = kwargs["cu_seqlens_kv"]
 
     sparse_mode = kwargs.get("sparse_mode", None)
     pre_tokens  = kwargs.get("pre_tokens", 2147483647)
@@ -142,7 +146,7 @@ def tforward_tnd(q, k, v, **kwargs):
             continue
 
         q_start = cu_q[i]
-        kv_start = cu_kv[i]
+        kv_start = sum(seqused_kv[:i]) if is_pa else cu_kv[i]
 
         qi = q[:, :, q_start:q_start + act_q_len]
         ki = k[:, :, kv_start:kv_start + act_kv_len]
