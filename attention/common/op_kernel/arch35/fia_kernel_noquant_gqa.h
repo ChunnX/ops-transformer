@@ -829,11 +829,13 @@ public:
 
         if (gS1Cur < gS1Offset) {
             uint32_t invalidPrefixRemain = gS1Offset - gS1Cur;
-            if (static_cast<uint32_t>(gS1Skip) <= invalidPrefixRemain) {
+            if (gS1Skip > 0 && static_cast<uint32_t>(gS1Skip) <= invalidPrefixRemain) {
                 gS1Cur += static_cast<uint32_t>(gS1Skip);
                 return;
             }
-            gS1Skip -= invalidPrefixRemain;
+            if (gS1Skip > static_cast<int64_t>(invalidPrefixRemain)) {
+                gS1Skip -= invalidPrefixRemain;
+            }
             gS1Cur = gS1Offset;
         }
 
