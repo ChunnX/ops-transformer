@@ -24,6 +24,7 @@ constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
+constexpr uint64_t BUG_OFFSET = 1UL * 1024UL *1024UL;
 } // namespace
 
 namespace Mc2Aclnn {
@@ -299,7 +300,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             return ACLNN_ERR_INNER;
         }
 
-        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
+        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) - BUG_OFFSET;
     }
     OP_LOGI("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
@@ -338,7 +339,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Cleared failed");
         return ACLNN_ERR_INNER;
     }
-    mc2ContextStruct->epHcclBuffer_[mc2ContextStruct->epRankId] = reinterpret_cast<uint64_t>(tempBuffer);
+    mc2ContextStruct->epHcclBuffer_[mc2ContextStruct->epRankId] = reinterpret_cast<uint64_t>(tempBuffer) - BUG_OFFSET;
     OP_LOGI("Get HCCL Buffer Cleared success, hcclBuffSize is: %u", hcclBuffSize_);
 
     auto ret = GetHcclCommResource(hcclHandle, engine, protocol, mc2ContextStruct);
@@ -354,7 +355,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         return ACLNN_ERR_INNER;
     }
     OP_LOGI("Copy context from host to device success");
-    hcclBuffSize = hcclBuffSize_;
+    hcclBuffSize = hcclBuffSize_ - BUG_OFFSET;
     return ACLNN_SUCCESS;
 }
 
@@ -533,6 +534,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     if (hcclBuffSize != 0) { // 找到缓存，直接返回
         aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+        hcclBuffSize = hcclBuffSize - BUG_OFFSET;
         OP_LOGI("Found context cache, Get Mc2MoeContext Tensor Success");
         return ACLNN_SUCCESS;
     }
