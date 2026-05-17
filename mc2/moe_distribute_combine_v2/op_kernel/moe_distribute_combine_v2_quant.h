@@ -265,7 +265,7 @@ public:
         #endif
     }
     __aicore__ inline void DeQuantProcess(LocalTensor<XType>& inLocal, LocalTensor<XType>& outLocal,
-        LocalTensor<float>& sumTensor)
+        LocalTensor<float>& sumTensor, LocalTensor<float>& sumFinalTensor, float scaleVal)
     {
         if constexpr (QuantMode == INT8_COMM_QUANT) {
             Int8DequantProcess(inLocal, outLocal);
