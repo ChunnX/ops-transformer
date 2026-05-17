@@ -155,6 +155,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     }
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     if (true) {
+        OP_LOGI("old combine v2 workspace size");
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
             expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,

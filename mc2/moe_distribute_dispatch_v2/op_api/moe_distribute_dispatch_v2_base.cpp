@@ -158,6 +158,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     int64_t ydtype = expandXOut->GetDataType();
     if (true) { // ccu暂时不支持新方案
+        OP_LOGI("old dispatch v2 workspace size");
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
