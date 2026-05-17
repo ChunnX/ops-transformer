@@ -47,6 +47,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     } else {
         PRINTF("InitWinState dataState %d is not 0 or 1", dataState);
         selfDataStatusGMTensor.SetValue(ZERONE_STATE_POS, 1);
+        return 1;
     }
     // dataStateLocalTensor.SetValue(ZERONE_STATE_POS, dataState == 0 ? 1 : 0);
     // // dataStateLocalTensor.SetValue(OPOSITION_POS, 1);
