@@ -874,7 +874,7 @@ public:
         // mm2AScale.Wait<HardEvent::MTE2_MTE1>();
 
         constexpr uint32_t baseK = s2SplitSize;
-        uint64_t l1BaseKOffset = baseK * mBaseSize;
+        uint64_t l1BaseKOffset = baseK * (mBaseSize + 31) >> 5 << 5;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
@@ -892,7 +892,7 @@ public:
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
+            MMParam param = MakeMMParam((uint32_t)((mBaseSize + 31) >> 5 << 5), (uint32_t)constInfo.dSizeV,
                                         (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE,
                                         false, false, k == 0, k == 0);
             if constexpr (!USE_DN) {
@@ -904,7 +904,7 @@ public:
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm2ResL0C.GetTensor<T>(),
                 param,
-                mm2AScaleFakeTensor, mm2BScaleTensor);
+                mm2AScaleFakeTensor[k * l1BaseKOffset / 32], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
         // if (unlikely(runInfo.isLastS2Loop)) {
