@@ -565,6 +565,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(sync_flag_id_ % VALID_EVENT_FLAG_NUM);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(sync_flag_id_ % VALID_EVENT_FLAG_NUM);
     DataCopy(dstWinGMTensor, outTensor_[(sync_flag_id_ % VALID_EVENT_FLAG_NUM) * axisHCommu_], axisHCommu_);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(sync_flag_id_ % VALID_EVENT_FLAG_NUM);
     sync_flag_id_ ++;
 }
 
