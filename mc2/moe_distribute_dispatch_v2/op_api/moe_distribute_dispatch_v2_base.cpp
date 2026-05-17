@@ -157,7 +157,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
-    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
+    if (true) { // ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,

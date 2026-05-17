@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
         performanceInfoOptionalCombineV2Temp = nullptr;
     }
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
-    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
+    if (true) {
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
             expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
