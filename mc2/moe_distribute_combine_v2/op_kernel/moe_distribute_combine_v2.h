@@ -442,6 +442,14 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
+    PRINTF("Combine dataState is %u\n", dataState_);
+    for (uint32_t i=0;i < 10; i++) {
+        PRINTF("Combine i is %u, value is: %u\n", i , selfDataStatusGMTensor_.GetValue(i));
+    }
+    GlobalTensor<uint64_t> opcntTensor;
+    opcntTensor.SetGlobalBuffer((__gm__ uint64_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
+    PRINTF("Combine opcnt  is: %u\n", opcntTensor.GetValue(3));
+
     if (hasElasticInfoFlag_) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(elasticInfoGM_);
         isScalingDownFlag_ = elasticInfoGM_.GetValue(0);
@@ -1511,6 +1519,12 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
         PipeBarrier<PIPE_ALL>(); // AlltoAllBuffInitAndMaskCal中包含reset操作，需确保前面操作完成
         AlltoAllBuffInitAndMaskCal();
         LocalWindowCopy();
+        for (uint32_t i=0;i < 10; i++) {
+            PRINTF("Combine i end is %u, value is: %u\n", i , selfDataStatusGMTensor_.GetValue(i));
+        }
+        GlobalTensor<uint64_t> opcntTensor;
+        opcntTensor.SetGlobalBuffer((__gm__ uint64_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
+        PRINTF("Combine opcnt  is: %u\n", opcntTensor.GetValue(3));
     }
 }
 
