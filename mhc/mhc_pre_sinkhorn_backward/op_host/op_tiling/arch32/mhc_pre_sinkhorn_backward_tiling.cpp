@@ -331,7 +331,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     auto xShape = xShapePtr->GetStorageShape();
     OP_CHECK_IF(xShape.GetDimNum() != 4,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                    "xShape verify failed, x must be 4D, but got %lu dims", xShape.GetDimNum()),
+                                            "xShape verify failed, x must be 4D, but got %lu dims", xShape.GetDimNum()),
                 return ge::GRAPH_FAILED);
     auto attrsPtr = context->GetAttrs();
     if (attrsPtr == nullptr) {
@@ -364,14 +364,14 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     auto sumOutShape = sumOutPtr->GetStorageShape();
     int64_t skIterCount = sumOutShape.GetDim(0) / C_V_RATIO;
 
-    OP_CHECK_IF(skIterCount != 20,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "sk_iter_count must be 20, but got %ld", skIterCount),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        skIterCount != 20,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "sk_iter_count must be 20, but got %ld", skIterCount),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
-                OPS_REPORT_VECTOR_INNER_ERR(
-                    context->GetNodeName(),
-                    "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
                 return ge::GRAPH_FAILED);
 
     int64_t mm1K = n * n + 2 * n;
@@ -445,7 +445,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     }
 
     auto isDeterministic = (context->GetDeterministic() == 1);
-    
+
     context->SetScheduleMode(1); // 1: batchmode模式
     context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
     if (isDeterministic) {
