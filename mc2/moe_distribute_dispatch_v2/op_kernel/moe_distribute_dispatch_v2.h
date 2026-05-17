@@ -379,6 +379,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
     PRINTF("dispatch totalWinSizeEp_ is: %u\n", totalWinSizeEp_);
     PRINTF("dispatch BS is: %u, H is: %u, K is: %u\n", axisBS_, axisH_, axisK_);
+    PRINTF("dispatch MOEExpertNum_ is: %u, sharedExpertRankNum_ is: %u\n", moeExpertNum_, sharedExpertRankNum_);
     PRINTF("dispatch dataState_ is: %u\n", dataState_);
     if (dataState_ != 0 && dataState_ != 1) {
         for (uint32_t i=0;i < 128; i++) {
