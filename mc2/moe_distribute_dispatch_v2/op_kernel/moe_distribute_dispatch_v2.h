@@ -348,6 +348,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     globalBS_ = tilingData->moeDistributeDispatchV2Info.globalBs;
     scaleInBytes_ = tilingData->moeDistributeDispatchV2Info.scalesCol * tilingData->moeDistributeDispatchV2Info.scalesTypeSize;
     scalesCount_ = tilingData->moeDistributeDispatchV2Info.scalesCount;
+    axisK_ = tilingData->moeDistributeDispatchV2Info.k;
 
     copyInAxisH_ = axisH_;
     copyOutAxisH_ = axisH_;
@@ -416,7 +417,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     tpGatherRankId_ = ((tpRankId_ == 0) ? 1 : 0);
     isTokenMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isTokenMask;
     isExpertMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isExpertMask;
-    axisK_ = tilingData->moeDistributeDispatchV2Info.k;
     aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
     tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
     xGMTensor_.SetGlobalBuffer((__gm__ XInType*)x);
