@@ -2,16 +2,14 @@
 
 ## 产品支持情况
 
-
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term> |      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -20,7 +18,7 @@
 - **计算公式**：
 
 ### 第一部分计算H_res_grad
-设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{grad}_{\text{output}}$，共进行 $\mathbf{num\_iters}$ 次迭代。
+设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{gradHRes}$（`gradHRes` 为输入参数，即正向输出 `h_res` 的梯度），共进行 $\mathbf{num\_iters}$（Sinkhorn迭代次数，对应`sk_iter_count`，当前仅支持20）次迭代。
 
 #### 前 $\mathbf{num\_iters} - 1$ 次迭代
 
@@ -28,49 +26,54 @@
 
 $$
 \begin{aligned}
-    \mathbf{dot\_prod}_{2i+1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{2i+1} \right) \\
+    \mathbf{dotProd}_{2i+1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{2i+1} \right) \\
     \\
-    \mathbf{grad}_{\text{curr}} &\gets \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{2i+1}} { \mathbf{sum\_out}_{2i+1} }, \\
+    \mathbf{grad}_{\text{curr}} &\gets \frac{\mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{2i+1}}{\mathbf{sumOut}_{2i+1}}, \\
     \\
-    \mathbf{dot\_prod}_{2i} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{num\_out}_{2i} \right), \\
+    \mathbf{dotProd}_{2i} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{2i} \right), \\
     \\
-    \mathbf{grad}_{\text{curr}}  &\gets  \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{2i}} { \mathbf{sum\_out}_{2i} }, \\
+    \mathbf{grad}_{\text{curr}} &\gets \frac{\mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{2i}}{\mathbf{sumOut}_{2i}}, \\
 \end{aligned}
 $$
+
+其中 $\mathbf{sumOut}$（对应输入参数 `sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数 `normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）。
 
 #### 最后一次迭代
 
 $$
 \begin{aligned}
-    \mathbf{dot\_prod}_{1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{norm\_out}_{1} \right), \\
+    \mathbf{dotProd}_{1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{1} \right), \\
     \\
-    \mathbf{grad}_{\text{curr}} &\gets \frac{{ \mathbf{grad}_{\text{curr}}} - \mathbf{dot\_prod}_{1}} { \mathbf{sum\_out}_{1} }, \\
+    \mathbf{grad}_{\text{curr}} &\gets \frac{\mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{1}}{\mathbf{sumOut}_{1}}, \\
     \\
-    \mathbf{dot\_prod}_{0} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{num\_out}_{0} \right), \\
+    \mathbf{dotProd}_{0} &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{0} \right), \\
     \\
-    \mathbf{{H\_res\_grad}}  &\gets  \left( \mathbf{grad}_{\text{curr}} -  \mathbf{dot\_prod}_{0} \right) \cdot { \mathbf{norm\_out}_{0} }, \\
+    \mathbf{HResGrad} &\gets \left( \mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{0} \right) \cdot \mathbf{normOut}_{0}, \\
 \end{aligned}
 $$
+
 ### 输入
 
-
-  $gamma\_grad ∈ [N, D]$
+$\mathbf{gradHin} \in [B, S, C]$（`gradHin` 为输入参数，即输出 `h_in` 的梯度）
 
 ### 输出组合梯度计算
 
 - 正向公式：
 
   $$
-  H\_in = \sum_{i=1}^{N} x[{B,S,i,:}] · H\_pre_n[B,S,i]
+  \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
   $$
+
+  其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（当前仅支持4）。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-H\_pre\_grad &= \text{Reduce}\left(H\_in\_grad.\text{unsqueeze}(-2) \odot x, \text{dim}=-1\right) \quad ([B,S,N]) \\
-x\_grad\_vec3 &= H\_in\_grad \times H\_pre \quad ([B,S,N,D])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{HPreGrad} &= \text{Reduce}\left(\mathbf{gradHin}.\text{unsqueeze}(-2) \odot \mathbf{x}, \text{dim}=-1\right) \quad ([B,S,N]) \\
+  \mathbf{xGradVec3} &= \mathbf{gradHin} \times \mathbf{hPre} \quad ([B,S,N,C])
+  \end{aligned}
+  $$
 
 ### 门控激活层梯度计算
 
@@ -79,55 +82,66 @@ $$
 - 正向公式：
 
   $$
-  H\_pre = \text{Sigmoid}(\alpha\_pre * H\_pre\_1 + bias\_pre) + hc\_eps
+  \mathbf{hPre} = \text{Sigmoid}(\mathbf{alphaPre} \cdot \mathbf{hPre1} + \mathbf{biasPre}) + \mathbf{hcEps}
   $$
+
+  其中 $\mathbf{alphaPre}$ 为输入参数 `alpha` 的第一个元素（对应H_pre的缩放系数），$\mathbf{biasPre}$ 为输入参数 `bias` 的前N个元素，$\mathbf{hcEps}$ 为输入参数 `hcEps`（数值稳定性参数）。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-s &= H\_pre - hc\_eps \\
-H\_pre\_2\_grad &= H\_pre\_grad \odot s \odot (1 - s) \\
-H\_pre\_1\_grad &= H\_pre\_2\_grad \cdot \alpha\_pre \\
-\alpha\_pre\_grad &= \sum_{b,s,n}^{B,S,N} \left(H\_pre\_2\_grad \cdot H\_pre\_1\right) \\
-bias\_pre\_grad &= \sum_{b,s}^{B,S} H\_pre\_2\_grad \quad ([N])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{s} &= \mathbf{hPre} - \mathbf{hcEps} \\
+  \mathbf{HPre2Grad} &= \mathbf{HPreGrad} \odot \mathbf{s} \odot (1 - \mathbf{s}) \\
+  \mathbf{HPre1Grad} &= \mathbf{HPre2Grad} \cdot \mathbf{alphaPre} \\
+  \mathbf{alphaPreGrad} &= \sum_{b,s,n}^{B,S,N} \left(\mathbf{HPre2Grad} \cdot \mathbf{hPre1}\right) \\
+  \mathbf{biasPreGrad} &= \sum_{b,s}^{B,S} \mathbf{HPre2Grad} \quad ([N])
+  \end{aligned}
+  $$"
 
 #### Sigmoid门控反向（H_post）
 
 - 正向公式：
 
   $$
-  H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2
+  \mathbf{hPost} = \text{Sigmoid}(\mathbf{alphaPost} \cdot \mathbf{hPost1} + \mathbf{biasPost}) \times 2
   $$
+
+  其中 $\mathbf{alphaPost}$ 为输入参数 `alpha` 的第二个元素，$\mathbf{biasPost}$ 为输入参数 `bias` 的中间N个元素。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-H\_post\_2\_grad &= H\_post\_grad \odot \left(H\_post \cdot \left(1 - \frac{H\_post}{2}\right)\right) \\
-H\_post\_1\_grad &= H\_post\_2\_grad \cdot \alpha_{post} \\
-\alpha_{post\_grad} &= \sum_{b,s,n}^{B,S,N} \left(H\_post\_2\_grad \cdot H_{post\_1}\right) \\
-bias\_post\_grad &= \sum_{b,s}^{B,S} H\_post\_2\_grad \quad ([N])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{HPost2Grad} &= \mathbf{gradHPost} \odot \left(\mathbf{hPost} \cdot \left(1 - \frac{\mathbf{hPost}}{2}\right)\right) \\
+  \mathbf{HPost1Grad} &= \mathbf{HPost2Grad} \cdot \mathbf{alphaPost} \\
+  \mathbf{alphaPostGrad} &= \sum_{b,s,n}^{B,S,N} \left(\mathbf{HPost2Grad} \cdot \mathbf{hPost1}\right) \\
+  \mathbf{biasPostGrad} &= \sum_{b,s}^{B,S} \mathbf{HPost2Grad} \quad ([N])
+  \end{aligned}
+  $$
+
+  其中 $\mathbf{gradHPost}$ 为输入参数（输出 `h_post` 的梯度）。
 
 #### 残差连接反向（H_res）
 
 - 正向公式：
 
   $$
-  H\_res = \alpha\_res * H\_res\_1 + bias\_res
+  \mathbf{hRes} = \mathbf{alphaRes} \cdot \mathbf{hRes1} + \mathbf{biasRes}
   $$
+
+  其中 $\mathbf{alphaRes}$ 为输入参数 `alpha` 的第三个元素，$\mathbf{biasRes}$ 为输入参数 `bias` 的后 $N^2$ 个元素。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-H\_res\_2\_grad &= H\_res\_grad \cdot \alpha_{res} \quad ([B,S,N,N]) \\
-\alpha\_res\_grad &= \sum_{b,s,i,j}^{B,S,N,N} \left(H\_res\_grad \cdot H\_res\_2\right) \\
-bias\_res\_grad &= \sum_{b,s}^{B,S} H\_res\_grad \quad ([N,N]) \\
-H\_res\_1\_grad &= \text{Reshape}(H\_res\_2\_grad) \quad ([B,S,N^2])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{HRes2Grad} &= \mathbf{HResGrad} \cdot \mathbf{alphaRes} \quad ([B,S,N,N]) \\
+  \mathbf{alphaResGrad} &= \sum_{b,s,i,j}^{B,S,N,N} \left(\mathbf{HResGrad} \cdot \mathbf{hRes2}\right) \\
+  \mathbf{biasResGrad} &= \sum_{b,s}^{B,S} \mathbf{HResGrad} \quad ([N,N]) \\
+  \mathbf{HRes1Grad} &= \text{Reshape}(\mathbf{HRes2Grad}) \quad ([B,S,N^2])
+  \end{aligned}
+  $$
 
 ### RMS归一化融合反向
 
@@ -136,17 +150,20 @@ $$
 - 正向公式：
 
   $$
-  H\_mix\_tmp = H\_mix * inv\_rms
+  \mathbf{hMixTmp} = \mathbf{hMix} \cdot \mathbf{invRms}
   $$
+
+  其中 $\mathbf{hMix}$ 为线性投影层输出，$\mathbf{invRms}$ 为输入参数（前向保存的中间结果inv_rms）。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-H\_mix\_tmp\_grad &= \text{Concat}(H\_pre\_1\_grad, H\_post\_1\_grad, H\_res\_1\_grad) \quad ([B,S,2N+N^2]) \\
-H\_mix\_grad &= H\_mix\_tmp\_grad \cdot inv\_rms \\
-inv\_rms_{grad} &= \sum_{\text{last\_dim}} \left(H\_mix\_tmp\_grad \cdot H\_mix\right) \quad ([B,S,1])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{hMixTmpGrad} &= \text{Concat}(\mathbf{HPre1Grad}, \mathbf{HPost1Grad}, \mathbf{HRes1Grad}) \quad ([B,S,2N+N^2]) \\
+  \mathbf{hMixGrad} &= \mathbf{hMixTmpGrad} \cdot \mathbf{invRms} \\
+  \mathbf{invRmsGrad} &= \sum_{\text{last\_dim}} \left(\mathbf{hMixTmpGrad} \cdot \mathbf{hMix}\right) \quad ([B,S,1])
+  \end{aligned}
+  $$
 
 ### 线性投影层梯度计算
 
@@ -155,74 +172,93 @@ $$
 - 正向公式：
 
   $$
-  H\_mix = x\_rs @ phi^T
+  \mathbf{hMix} = \mathbf{xRs} @ \mathbf{phi}^T
   $$
 
   $$
-  x\_rs = x * gamma
+  \mathbf{xRs} = \mathbf{x} \cdot \mathbf{gamma}
   $$
+
+  其中 $\mathbf{phi}$ 为输入参数（前向参数phi），$\mathbf{gamma}$ 为RMS归一化的缩放参数（由输入 $\mathbf{x}$ 计算得到）。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-x\_rs\_grad &= H\_mix\_grad @ phi \quad ([B,S,ND]) \\
-X &= \text{Reshape}(x\_rs, [B\cdot S, ND]) \\
-G &= \text{Reshape}(H\_mix\_grad, [B\cdot S, 2N+N^2]) \\
-phi_{grad} &= G^T @ X \quad ([2N+N^2, ND])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{xRsGrad} &= \mathbf{hMixGrad} @ \mathbf{phi} \quad ([B,S,NC]) \\
+  \mathbf{X} &= \text{Reshape}(\mathbf{xRs}, [B \cdot S, NC]) \\
+  \mathbf{G} &= \text{Reshape}(\mathbf{hMixGrad}, [B \cdot S, 2N+N^2]) \\
+  \mathbf{phiGrad} &= \mathbf{G}^T @ \mathbf{X} \quad ([2N+N^2, NC])
+  \end{aligned}
+  $$
 
 #### 特征缩放反向
 
 - 正向公式：
 
   $$
-  x\_rs = x * gamma
+  \mathbf{xRs} = \mathbf{x} \cdot \mathbf{gamma}
   $$
+
 - 反向计算：
 
-$$
-\begin{aligned}
-x\_grad\_mm &= x\_rs\_grad * gamma \\
-gamma\_grad &= \sum_{b=1}^{B}\sum_{s=1}^{S} (x * x\_rs\_grad)\quad ([N,D])
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{xGradMm} &= \mathbf{xRsGrad} \cdot \mathbf{gamma} \\
+  \mathbf{gammaGrad} &= \sum_{b=1}^{B}\sum_{s=1}^{S} (\mathbf{x} \cdot \mathbf{xRsGrad}) \quad ([N,C])
+  \end{aligned}
+  $$
 
 ### RMS归一化梯度计算
 
 - 正向公式：
 
   $$
-  inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D
+  \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad 其中\ n = N \times C
   $$
+
+  其中 $\mathbf{eps}$ 为RMS归一化的数值稳定性参数。
+
 - 反向计算：
 
-$$
-\begin{aligned}
-x\_rs\_grad\_inv &= - \left(\frac{inv\_rms\_grad \cdot {inv\_rms}^3}{N*D}\right) \cdot x\_rs \\
-x\_rs\_grad &= x\_grad\_mm + x\_rs\_grad\_inv \\
-x\_grad\_vec1 &= \text{Reshape}(x\_rs\_grad, [B,S,N,D]) \\
-x\_grad &= x\_grad\_vec3 + x\_grad\_vec1
-\end{aligned}
-$$
+  $$
+  \begin{aligned}
+  \mathbf{xRsGradInv} &= - \left(\frac{\mathbf{invRmsGrad} \cdot \mathbf{invRms}^3}{N \times C}\right) \cdot \mathbf{xRs} \\
+  \mathbf{xRsGrad} &= \mathbf{xGradMm} + \mathbf{xRsGradInv} \\
+  \mathbf{xGradVec1} &= \text{Reshape}(\mathbf{xRsGrad}, [B,S,N,C]) \\
+  \mathbf{xGrad} &= \mathbf{xGradVec3} + \mathbf{xGradVec1}
+  \end{aligned}
+  $$
 
 ### 符号说明
 
 | 符号 | 含义 |
 |------|------|
 | $\mathbf{grad}_{\text{curr}}$ | 当前梯度（迭代中间变量） |
-| $\mathbf{grad}_{\text{input}}$ | 最终输入梯度（输出） |
-| $\mathbf{num\_out}_k$ | 第 $k$ 个归一化方向向量（对应 `norm_out[k]`） |
-| $\mathbf{sum\_out}_k$ | 对应的缩放系数（对应 `sum_out[k]`） |
-| $\cdot$ | 点积（内积） |
+| $\mathbf{sumOut}_k$ | 第 $k$ 次迭代的sum结果（对应输入参数 `sumOut`） |
+| $\mathbf{normOut}_k$ | 第 $k$ 次迭代的norm结果（对应输入参数 `normOut`） |
+| $\mathbf{dotProd}_k$ | 第 $k$ 次点积计算结果（中间变量） |
+| $\mathbf{gradHin}$ | 输出 `h_in` 的梯度（输入参数） |
+| $\mathbf{gradHPost}$ | 输出 `h_post` 的梯度（输入参数） |
+| $\mathbf{gradHRes}$ | 输出 `h_res` 的梯度（输入参数） |
+| $\mathbf{x}$ | 前向输入x（输入参数） |
+| $\mathbf{hPre}$ | 前向保存的中间结果h_pre（输入参数） |
+| $\mathbf{hMix}$ | 线性投影层输出（中间变量） |
+| $\mathbf{hMixTmp}$ | RMS归一化后的输出（中间变量） |
+| $\mathbf{invRms}$ | 前向保存的中间结果inv_rms（输入参数） |
+| $\mathbf{phi}$ | 前向参数phi（输入参数） |
+| $\mathbf{alpha}$ | 前向参数alpha（输入参数，包含3个元素分别对应H_pre、H_post、H_res的缩放系数） |
+| $\mathbf{bias}$ | 前向参数bias（输入参数，包含2N+N^2个元素） |
+| $\mathbf{hcEps}$ | 数值稳定性参数（输入参数） |
+| $B, S, N, C$ | 分别为batch size、sequence length、专家数、特征维度 |
+| $\cdot$ | 点积（内积）或逐元素乘法 |
+| $\odot$ | 逐元素乘法 |
 | $\sum_{\dim=d,\text{keepdim}=\text{True}}$ | 在指定维度上求和并保持维度 |
-
-
 
 ## 函数原型
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
 
-```c++
+```cpp
 aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
     const aclTensor *gradHin,
     const aclTensor *gradHPost,
@@ -245,7 +281,7 @@ aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
     aclOpExecutor **executor)
 ```
 
-```c++
+```cpp
 aclnnStatus aclnnMhcPreSinkhornBackward(
     void *workspace,
     uint64_t workspaceSize,
@@ -287,7 +323,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
             <td>不支持空Tensor。</td>
             <td>BFLOAT16 </td>
             <td>ND</td>
-            <td>(B,S,D)</td>
+            <td>(B,S,C)</td>
             <td>√</td>
         </tr>
         <tr>
@@ -455,7 +491,8 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
 第一段接口完成入参校验，出现以下场景时报错：
 
 <table style="undefined;table-layout: fixed;width: 1180px"><colgroup>
@@ -477,7 +514,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>gradY、x、hcFn等输入变量的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
          <tr>
         <td rowspan="3">ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -534,26 +571,27 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
 ## 约束说明
 
-- 确定性计算：
+- **确定性计算**：
 
-- aclnnMhcPreSinkhornBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+aclnnMhcPreSinkhornBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
-- 规格约束
+- **规格约束**
 
 | 规格项 | 规格 | 规格说明 |
-|:--- |:--- |:--- |
+| :--- | :--- | :--- |
 | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
 | N | 4 | 输入Tensor中N维度的大小仅支持4。 |
-| C |  | 大于0 小于 100000 且可以被128整除。|
+| C | - | 大于0、小于100000且可以被128整除。 |
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```c++
+```cpp
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
