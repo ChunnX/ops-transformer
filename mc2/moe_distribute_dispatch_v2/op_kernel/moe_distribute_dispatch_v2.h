@@ -388,6 +388,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     }
     //dataState_ = 1;
     //}
+    dataState_ = 0;
     
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(performanceInfo));
@@ -1601,6 +1602,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
             AllgatherProcessOut();	 
             AllGatherSetExpertTokenNumsAndTpRecvCount(); 
         }
+        SyncAll<true>();
     }
 }
 } // MoeDistributeDispatchV2Impl
