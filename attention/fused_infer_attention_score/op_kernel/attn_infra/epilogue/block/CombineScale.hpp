@@ -77,7 +77,9 @@ public:
         AscendC::GlobalTensor<ElementLse> oCoreTmpGmTensor,
         AscendC::GlobalTensor<ElementOutput> oGmTensor,
         AscendC::GlobalTensor<int64_t> gActualQseqlen,
-        bool inputLayoutTND = true
+        bool inputLayoutTND = true,
+        bool outputLse = false,
+        AscendC::GlobalTensor<ElementLse> oLseGmTensor = AscendC::GlobalTensor<ElementLse>()
     ) {
         AscendC::SetAtomicNone();
         AscendC::SetMaskNorm();
@@ -187,9 +189,49 @@ public:
             AscendC::Ln(rsUbTensor, rsUbTensor, lnCount);
             AscendC::PipeBarrier<PIPE_V>();
 
-            // logf(lse_sum) + lse_max
+            // logf(lse_sum) + lse_max   --> tsUbTensor[0..lseBlock-1] 即为最终合并后的 LSE
             AscendC::Add(tsUbTensor, rsUbTensor, lmUbTensor, lnCount);
             AscendC::PipeBarrier<PIPE_V>();
+
+            // 将最终 LSE 写回用户 gLse（FD + lseFlag 场景），布局与 O 同源：
+            //   - q_len == 1: 全部 lseBlock 个值在同一 q 行的连续头位，单次 DataCopyPad 完成
+            //   - q_len  > 1: q_len/2 行 × n_len 头，按行 stride=qHeads 逐行写出
+            // 与 O 的 vectorsubBlockID 划分保持一致：
+            //   - q_len == 1: 后半 sub-block 在头维偏移 sum_former
+            //   - q_len  > 1: 后半 sub-block 在 q 维偏移 q_len/2 行（即 q_half * qHeads 个 float）
+            if (outputLse) {
+                uint32_t baseGmOffsetLse =
+                    prevQSeqlenSum * qHeads + qStartIndx * qHeads + headStartIndx;
+                uint32_t gmLseScalar = 0;
+                if (q_len == 1) {
+                    gmLseScalar = (vectorsubBlockID == 0) ? baseGmOffsetLse
+                                                          : baseGmOffsetLse + sum_former;
+                } else {
+                    uint32_t q_half = q_len / 2;
+                    gmLseScalar = (vectorsubBlockID == 0) ? baseGmOffsetLse
+                                                          : baseGmOffsetLse + q_half * qHeads;
+                }
+
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+
+                if (q_len == 1) {
+                    AscendC::DataCopyPad(
+                        oLseGmTensor[gmLseScalar], tsUbTensor,
+                        AscendC::DataCopyExtParams(1, lseBlock * sizeof(float), 0, 0, 0));
+                } else {
+                    uint32_t qTile = lseBlock / n_len;
+                    for (uint32_t qi = 0; qi < qTile; ++qi) {
+                        AscendC::DataCopyPad(
+                            oLseGmTensor[gmLseScalar + qi * qHeads],
+                            tsUbTensor[qi * n_len],
+                            AscendC::DataCopyExtParams(1, n_len * sizeof(float), 0, 0, 0));
+                    }
+                }
+
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+            }
 
             // Broadcast scale
             AscendC::BroadCast<float, 2, 0>(broadCastScaleTensor, tsUbTensor, dstShapeBroadcast, srcShapeBroadcast, tempReduceSum);

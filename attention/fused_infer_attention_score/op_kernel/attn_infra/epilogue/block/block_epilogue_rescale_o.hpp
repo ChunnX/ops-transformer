@@ -697,6 +697,10 @@ public:
                     qSThisSubBlock, embedV, embedRoundV, oHiddenSize);
             }
 
+            // 统一 LSE 输出分支：
+            //  - 非 FD + OUT_ONLY: 直接把最终 LSE 写到用户 gLse
+            //  - FD (isSplitkv=true): 只把 partial LSE 写到 workspace 的 gCombineLse，
+            //    用户 gLse 在 CombineScale 阶段合并后再统一写出
             if constexpr (LSE_MODE_ == LseMode::OUT_ONLY) {
                 if (isLastRowLoop) {
                     AscendC::PipeBarrier<PIPE_V>();
@@ -721,37 +725,44 @@ public:
                         lse32_ubuf_tensor.ReinterpretCast<uint32_t>(),
                         NpuArch::Detail::Alignment::CeilDiv(totalRowNum, FLOAT_BLOCK_SIZE),
                         AscendC::BrcbRepeatParams(1, 8));
-                    InvalidLineLSEProcess(qNThisSubBlock, delStartRow, qSBlockIdx,
-                            inRowOffsetThisSubBlock, totalRowNum, delEndRow, qSeqlen, qSThisSubBlock);
-                    AscendC::PipeBarrier<PIPE_V>();
+                    // 非 FD 路径：对无效行做 +inf 标记后直接出 user gLse；
+                    // FD 路径：partial LSE 不标记，invalid 行会经过 CombineScale 的
+                    // ReduceMax/Sub/Exp 自然带过去，避免 +inf 在 sub 后变 NaN 污染合并。
+                    if (!splitParams.isSplitkv) {
+                        InvalidLineLSEProcess(qNThisSubBlock, delStartRow, qSBlockIdx,
+                                inRowOffsetThisSubBlock, totalRowNum, delEndRow, qSeqlen, qSThisSubBlock);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
-                    
+
                     if (qNThisSubBlock == 0U) {
                         if (splitParams.isSplitkv) {
                             AscendC::DataCopyPad(
                                 splitParams.gCombineLse, tvUbTensor,
                                 AscendC::DataCopyExtParams(
                                     totalRowNum, sizeof(float), 0, (qHeads_gmlse - 1) * sizeof(float), 0));
+                        } else {
+                            AscendC::DataCopyPad(
+                                gLse, tvUbTensor,
+                                AscendC::DataCopyExtParams(
+                                    totalRowNum, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                         }
-                        AscendC::DataCopyPad(
-                            gLse, tvUbTensor,
-                            AscendC::DataCopyExtParams(
-                                totalRowNum, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                     } else {
                         for (uint32_t qNIdx = 0; qNIdx < qNThisSubBlock; qNIdx++) {
                             if (splitParams.isSplitkv) {
                                 AscendC::DataCopyPad(
-                                    splitParams.gCombineLse[qNIdx], 
+                                    splitParams.gCombineLse[qNIdx],
                                     tvUbTensor[qNIdx * qSBlockSize * FLOAT_BLOCK_SIZE],
                                     AscendC::DataCopyExtParams(
                                         qSBlockSize, sizeof(float), 0, (qHeads_gmlse - 1) * sizeof(float), 0));
+                            } else {
+                                AscendC::DataCopyPad(
+                                    gLse[qNIdx],
+                                    tvUbTensor[qNIdx * qSBlockSize * FLOAT_BLOCK_SIZE],
+                                    AscendC::DataCopyExtParams(
+                                        qSBlockSize, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                             }
-                            AscendC::DataCopyPad(
-                                gLse[qNIdx],
-                                tvUbTensor[qNIdx * qSBlockSize * FLOAT_BLOCK_SIZE],
-                                AscendC::DataCopyExtParams(
-                                    qSBlockSize, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                         }
                     }
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
