@@ -39,11 +39,14 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     //Duplicate<uint32_t>(dataStateLocalTensor, 0, UB_ALIGN / sizeof(uint32_t));
     DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint32_t dataState = dataStateLocalTensor.GetValue(ZERONE_STATE_POS);
+    uint32_t dataState = selfDataStatusGMTensor.GetValue(ZERONE_STATE_POS);
     if (dataState == 0) {
         selfDataStatusGMTensor.SetValue(ZERONE_STATE_POS, 1);
-    } else {
+    } else  if (dataState == 1) {
         selfDataStatusGMTensor.SetValue(ZERONE_STATE_POS, 0);
+    } else {
+        PRINT_ERROR("InitWinState dataState %d is not 0 or 1", dataState);
+        selfDataStatusGMTensor.SetValue(ZERONE_STATE_POS, 1);
     }
     // dataStateLocalTensor.SetValue(ZERONE_STATE_POS, dataState == 0 ? 1 : 0);
     // // dataStateLocalTensor.SetValue(OPOSITION_POS, 1);
