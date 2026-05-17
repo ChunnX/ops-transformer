@@ -759,7 +759,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
         dstWinGMTensor.SetGlobalBuffer((__gm__ ExpandXOutType*)(GetWindAddrByRankId(expertId / moeExpertNumPerRank_) 
             + expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ + expertId % moeExpertNumPerRank_) + dstTokenIdx * hCommuSize_));        // PipeBarrier<PIPE_ALL>(); 
-        if constexpr (QuantMode > UNQUANT) {
+        if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
             uint32_t quantExpertIdx = expertId + sharedExpertNum_;
             TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topKId, quantExpertIdx);
             // DataCopy(dstWinGMTensor, outTensor_, axisHCommu_);
