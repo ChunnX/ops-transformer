@@ -36,29 +36,38 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
 {
     LocalTensor<uint64_t> dataStateLocalTensor64 = dataStateBuf.Get<uint64_t>();
     LocalTensor<uint32_t> dataStateLocalTensor = dataStateBuf.Get<uint32_t>();
+    //Duplicate<uint32_t>(dataStateLocalTensor, 0, UB_ALIGN / sizeof(uint32_t));
     DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint32_t dataState = dataStateLocalTensor.GetValue(ZERONE_STATE_POS);
-    dataStateLocalTensor.SetValue(ZERONE_STATE_POS, dataState == 0 ? 1 : 0);
-    dataStateLocalTensor.SetValue(OPOSITION_POS, 1);
-    dataStateLocalTensor.SetValue(TILING_EPRANKID_POS, epRankIdOriginal);
-    dataStateLocalTensor.SetValue(MOE_NUM_POS, moeExpertNum);
-    dataStateLocalTensor.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
-    dataStateLocalTensor.SetValue(GLOBALBS_POS, globalBS);
-    uint32_t opCnt = dataStateLocalTensor64.GetValue(OP_CNT_POSUL);
-    opCnt = opCnt + 1;
-    dataStateLocalTensor64.SetValue(OP_CNT_POSUL, opCnt);
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy(selfDataStatusGMTensor, dataStateLocalTensor, UB_ALIGN / sizeof(uint32_t));
-
-    if ((epRankIdOriginal != epRankIdHccl) || (epWorldSizeOriginal != epWorldSizeHccl)) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        DataCopyParams hcclDatacopyParams{1U, HCCL_DFX_NUM * sizeof(uint32_t), 0U, 0U};
-        dataStateLocalTensor.SetValue(HCCL_EPRANKId_POS, epRankIdHccl);
-        dataStateLocalTensor.SetValue(HCCL_WORLDSIZE_POS, epWorldSizeHccl);
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyPad(selfDataStatusGMTensor[HCCL_DFX_POS], dataStateLocalTensor, hcclDatacopyParams);
+    if (dataState == 0) {
+        selfDataStatusGMTensor.SetValue(ZERONE_STATE_POS, 1);
+    } else {
+        selfDataStatusGMTensor.SetValue(ZERONE_STATE_POS, 0);
     }
+    // dataStateLocalTensor.SetValue(ZERONE_STATE_POS, dataState == 0 ? 1 : 0);
+    // // dataStateLocalTensor.SetValue(OPOSITION_POS, 1);
+    // // dataStateLocalTensor.SetValue(TILING_EPRANKID_POS, epRankIdOriginal);
+    // // dataStateLocalTensor.SetValue(MOE_NUM_POS, moeExpertNum);
+    // // dataStateLocalTensor.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
+    // // dataStateLocalTensor.SetValue(GLOBALBS_POS, globalBS);
+    uint32_t opCnt = selfDataStatusGMTensor.GetValue(OP_CNT_POSUL);
+    opCnt = opCnt + 1;
+    selfDataStatusGMTensor.SetValue(OP_CNT_POSUL, opCnt);
+    
+    // dataStateLocalTensor64.SetValue(OP_CNT_POSUL, opCnt);
+    // SyncFunc<AscendC::HardEvent::S_MTE3>();
+    // DataCopy(selfDataStatusGMTensor, dataStateLocalTensor, UB_ALIGN / sizeof(uint32_t));
+
+    // if ((epRankIdOriginal != epRankIdHccl) || (epWorldSizeOriginal != epWorldSizeHccl)) {
+    //     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    //     DataCopyParams hcclDatacopyParams{1U, HCCL_DFX_NUM * sizeof(uint32_t), 0U, 0U};
+    //     dataStateLocalTensor.SetValue(HCCL_EPRANKId_POS, epRankIdHccl);
+    //     dataStateLocalTensor.SetValue(HCCL_WORLDSIZE_POS, epWorldSizeHccl);
+    //     SyncFunc<AscendC::HardEvent::S_MTE3>();
+    //     DataCopyPad(selfDataStatusGMTensor[HCCL_DFX_POS], dataStateLocalTensor, hcclDatacopyParams);
+    // }
+    PipeBarrier<PIPE_ALL>();
     return dataState;
 }
 

@@ -382,12 +382,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     PRINTF("dispatch BS is: %u, H is: %u, K is: %u\n", axisBS_, axisH_, axisK_);
     PRINTF("dispatch MOEExpertNum_ is: %u, sharedExpertRankNum_ is: %u, EPWorldSize_ is: %u\n", moeExpertNum_, sharedExpertRankNum_, epWorldSizeOriginal_);
     PRINTF("dispatch dataState_ is: %u\n", dataState_);
-    if (dataState_ != 0 && dataState_ != 1) {
-        for (uint32_t i=0;i < 128; i++) {
-            PRINTF("dispatch i is %u, value is: %u\n", i , selfDataStatusGMTensor_.GetValue(i));
-        }
-        dataState_ = 1;
+    //if (dataState_ != 0 && dataState_ != 1) {
+    for (uint32_t i=0;i < 128; i++) {
+        PRINTF("dispatch i is %u, value is: %u\n", i , selfDataStatusGMTensor_.GetValue(i));
     }
+    //dataState_ = 1;
+    //}
     
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(performanceInfo));
