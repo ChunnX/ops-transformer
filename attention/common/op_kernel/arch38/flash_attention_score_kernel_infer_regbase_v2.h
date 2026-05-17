@@ -199,8 +199,8 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
             }
 
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                bool oneLoop =
-                    (bnEndIdx - bnStartIdx == 1) && (runParam.s1LoopTimes - gS1StartIdx == 1) && (s2LoopLimit == 0);
+                bool oneLoop = (bnEndIdx - bnStartIdx == 1) &&
+                               (runParam.s1LoopTimes - gS1StartIdx == 1) && (runParam.s2LoopEndIdx == 1);
                 if (notLastThreeLoop) {
                     RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
