@@ -386,9 +386,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         for (uint32_t i=0;i < 128; i++) {
             PRINTF("dispatch i is %u, value is: %u\n", i , selfDataStatusGMTensor_.GetValue(i));
         }
-        dataState_ = 1;
     }
-    
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(performanceInfo));
     elasticInst_.SetElasticInitParams(tpipe_, elasticInfoGMTensor_);
