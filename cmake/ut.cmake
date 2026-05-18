@@ -363,7 +363,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       else()
         return()
       endif()    
-    # op_kernel/arch20/arch22/arch32/arch38
+    # op_kernel/arch20/arch22/arch38
     else()
       list(FIND ARCH_DIRECTORY "arch35" INDEX)
       if(INDEX EQUAL -1)
