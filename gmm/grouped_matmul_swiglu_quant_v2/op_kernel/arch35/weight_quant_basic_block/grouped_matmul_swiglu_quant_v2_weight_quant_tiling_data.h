@@ -29,7 +29,6 @@ struct GMMSQWeightQuantTilingData {
 
     uint32_t groupNum = 0;
     uint32_t coreNum = 0;
-    uint32_t outputBs = 0;
     uint32_t groupSize = 0;
 
     uint64_t kSize = 0;

@@ -48,6 +48,18 @@ static constexpr MicroAPI::CastTrait CAST_B16_TO_B32_TRAIT = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
+static constexpr MicroAPI::CastTrait CAST_FP32_TO_FP8_TRAIT = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
+
+static constexpr MicroAPI::CastTrait CAST_FP16_TO_FP8_TRAIT = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
+
+static constexpr MicroAPI::CastTrait CAST_U32_TO_FP16_TRAIT = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_TRUNC};
+
 template <typename biasType>
 __simd_callee__ inline void FrMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ biasType *biasInUbAddr,
                                                 __ubuf__ biasType *biasOutUbAddr)
@@ -107,144 +119,50 @@ __simd_vf__ inline void FrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, bia
 
 __simd_vf__ inline void SwiGLUVf(uint16_t mSize, uint16_t nHalfSize, __ubuf__ float *yF32Addr)
 {
-    MicroAPI::RegTensor<float> swishVreg, gateVreg, negSwishVreg, expVreg, oneVreg, denomVreg, recipVreg, sigmoidVreg,
-        resultVreg;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::Duplicate(oneVreg, 1.0f, maskAll);
-
-    uint64_t rowStride = nHalfSize * 2;
-    for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-        uint64_t nLoopCnt = nHalfSize / VEC_MAX_ELEM_B32;
-        for (uint16_t nLoopIdx = 0; nLoopIdx < nLoopCnt; ++nLoopIdx) {
-            __ubuf__ float *swishAddr = yF32Addr + mIdx * rowStride + nLoopIdx * VEC_MAX_ELEM_B32;
-            __ubuf__ float *gateAddr = swishAddr + nHalfSize;
-
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(swishVreg, swishAddr);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gateVreg, gateAddr);
-
-            MicroAPI::Muls(negSwishVreg, swishVreg, -1.0f, maskAll);
-
-            MicroAPI::Exp(expVreg, negSwishVreg, maskAll);
-
-            MicroAPI::Add(denomVreg, oneVreg, expVreg, maskAll);
-
-            MicroAPI::Div(recipVreg, oneVreg, denomVreg, maskAll);
-
-            MicroAPI::Mul(sigmoidVreg, swishVreg, recipVreg, maskAll);
-
-            MicroAPI::Mul(resultVreg, sigmoidVreg, gateVreg, maskAll);
-
-            MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<float>(mIdx, rowStride, nLoopIdx, VEC_MAX_ELEM_B32);
-            MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(yF32Addr, resultVreg, outAddrReg, maskAll);
-        }
-    }
+    // TODO: SwiGLU VF implementation - owned by another team.
+    // Swish(yF32[:, 0:N/2]) * yF32[:, N/2:N], result written back to yF32[:, 0:N/2].
+    // Swish(x) = x / (1 + exp(-x)).
+    (void)mSize;
+    (void)nHalfSize;
+    (void)yF32Addr;
 }
 
 __simd_vf__ inline void ComputeMaxExpVf(uint16_t mSize, uint16_t nGroupCount, __ubuf__ float *yF32Addr,
                                         __ubuf__ half *maxB16Addr)
 {
-    MicroAPI::RegTensor<float> dataVreg, absVreg;
-    MicroAPI::RegTensor<uint32_t> bitsVreg, expBitsVreg, maxExpVreg;
-    MicroAPI::RegTensor<half> maxHalfVreg;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg maskU32All = MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    static constexpr uint32_t EXP_MASK = 0x7F800000;
-    static constexpr uint32_t EXP_SHIFT = 23;
-
-    MicroAPI::Duplicate<uint32_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(expBitsVreg, EXP_MASK, maskU32All);
-    MicroAPI::Duplicate<uint32_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(maxExpVreg, 0, maskU32All);
-
-    uint64_t rowFloatStride = nGroupCount * MX_GROUPSIZE;
-    for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-        __ubuf__ float *rowAddr = yF32Addr + mIdx * rowFloatStride;
-        __ubuf__ half *outAddr = maxB16Addr + mIdx * nGroupCount;
-
-        for (uint16_t groupIdx = 0; groupIdx < nGroupCount; ++groupIdx) {
-            __ubuf__ float *groupAddr = rowAddr + groupIdx * MX_GROUPSIZE;
-
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dataVreg, groupAddr);
-
-            MicroAPI::Abs(absVreg, dataVreg, maskAll);
-
-            MicroAPI::Cast<uint32_t, float, CAST_B16_TO_B32_TRAIT>(bitsVreg, (MicroAPI::RegTensor<float> &)absVreg, maskU32All);
-
-            MicroAPI::And(expBitsVreg, bitsVreg, expBitsVreg, maskU32All);
-
-            MicroAPI::ShiftRight(maxExpVreg, expBitsVreg, EXP_SHIFT, maskU32All);
-
-            MicroAPI::Cast<half, uint32_t, CAST_B16_TO_B32_TRAIT>(maxHalfVreg, maxExpVreg, maskAll);
-
-            MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<half>(mIdx, nGroupCount, groupIdx, 1);
-            MicroAPI::StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>(outAddr, maxHalfVreg, outAddrReg, maskAll);
-        }
-    }
+    // TODO: ComputeMaxExp VF implementation - owned by another team.
+    // For each group of 32 elements, compute max(|abs(exponent)|) and store as half.
+    // Input: yF32[M, N/2], Output: maxB16[M, ceil(N/2/32)].
+    (void)mSize;
+    (void)nGroupCount;
+    (void)yF32Addr;
+    (void)maxB16Addr;
 }
 
 __simd_vf__ inline void ComputeScaleVf(uint16_t mSize, uint16_t nGroupCount, __ubuf__ half *maxB16Addr,
                                        __ubuf__ fp8_e8m0_t *scaleE8M0Addr)
 {
-    MicroAPI::RegTensor<half> maxHalfVreg, scaleHalfVreg, emaxVreg;
-    MicroAPI::RegTensor<fp8_e8m0_t> scaleE8M0Vreg;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<half, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    static constexpr half FP8_E4M3FN_EMAX = static_cast<half>(8.0f);
-    MicroAPI::Duplicate<half, AscendC::MicroAPI::MaskMergeMode::ZEROING>(emaxVreg, FP8_E4M3FN_EMAX, maskAll);
-
-    for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-        __ubuf__ half *rowMaxAddr = maxB16Addr + mIdx * nGroupCount;
-        __ubuf__ fp8_e8m0_t *rowScaleAddr = scaleE8M0Addr + mIdx * nGroupCount;
-
-        uint64_t loopCnt = nGroupCount / VEC_MAX_ELEM_B16;
-        for (uint16_t loopIdx = 0; loopIdx < loopCnt; ++loopIdx) {
-            MicroAPI::LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(maxHalfVreg, rowMaxAddr + loopIdx * VEC_MAX_ELEM_B16);
-
-            MicroAPI::Sub(scaleHalfVreg, maxHalfVreg, emaxVreg, maskAll);
-
-            MicroAPI::Cast<fp8_e8m0_t, half, CAST_B16_TO_B32_TRAIT>(scaleE8M0Vreg, scaleHalfVreg, maskAll);
-
-            MicroAPI::AddrReg outAddrReg =
-                MicroAPI::CreateAddrReg<fp8_e8m0_t>(mIdx, nGroupCount, loopIdx, VEC_MAX_ELEM_B16);
-            MicroAPI::StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM>(
-                rowScaleAddr, scaleE8M0Vreg, outAddrReg, maskAll);
-        }
-    }
+    // TODO: ComputeScale VF implementation - owned by another team.
+    // shared_exp = maxExp - emax (emax=8 for FP8_E4M3FN), encode as E8M0.
+    // Input: maxB16[M, nGroupCount], Output: scaleE8M0[M, nGroupCount].
+    (void)mSize;
+    (void)nGroupCount;
+    (void)maxB16Addr;
+    (void)scaleE8M0Addr;
 }
 
 __simd_vf__ inline void ComputeDataForQuantTargetFp8Vf(uint16_t mSize, uint16_t nHalfSize, __ubuf__ float *yF32Addr,
                                                        __ubuf__ fp8_e8m0_t *scaleE8M0Addr,
                                                        __ubuf__ fp8_e4m3fn_t *yFp8Addr)
 {
-    MicroAPI::RegTensor<float> dataVreg, scaleF32Vreg, scaledVreg;
-    MicroAPI::RegTensor<fp8_e4m3fn_t> fp8Vreg;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-
-    static constexpr uint16_t MX_GROUPSIZE_U16 = static_cast<uint16_t>(MX_GROUPSIZE);
-    uint16_t nGroupCount = (nHalfSize + MX_GROUPSIZE - 1) / MX_GROUPSIZE;
-
-    for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-        __ubuf__ float *rowDataAddr = yF32Addr + mIdx * nHalfSize;
-        __ubuf__ fp8_e8m0_t *rowScaleAddr = scaleE8M0Addr + mIdx * nGroupCount;
-        __ubuf__ fp8_e4m3fn_t *rowFp8Addr = yFp8Addr + mIdx * nHalfSize;
-
-        for (uint16_t groupIdx = 0; groupIdx < nGroupCount; ++groupIdx) {
-            MicroAPI::LoadAlign<fp8_e8m0_t, MicroAPI::LoadDist::DIST_BRC_B8>(
-                (MicroAPI::RegTensor<fp8_e8m0_t> &)scaleF32Vreg, rowScaleAddr + groupIdx);
-
-            __ubuf__ float *groupDataAddr = rowDataAddr + groupIdx * MX_GROUPSIZE;
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dataVreg, groupDataAddr);
-
-            MicroAPI::Div(scaledVreg, dataVreg, scaleF32Vreg, maskAll);
-
-            MicroAPI::Cast<fp8_e4m3fn_t, float, CAST_B16_TO_B32_TRAIT>(fp8Vreg, scaledVreg, maskAll);
-
-            MicroAPI::AddrReg outAddrReg =
-                MicroAPI::CreateAddrReg<fp8_e4m3fn_t>(mIdx, nHalfSize, groupIdx, MX_GROUPSIZE_U16);
-            MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_NORM>(rowFp8Addr, fp8Vreg, outAddrReg,
-                                                                                  maskAll);
-        }
-    }
+    // TODO: ComputeDataForQuantTargetFp8 VF implementation - owned by another team.
+    // yF32[m, n] /= 2^scaleE8M0[m, n/32], then quantize to FP8_E4M3FN.
+    // Input: yF32[M, N/2], scaleE8M0[M, ceil(N/2/32)], Output: yFp8[M, N/2].
+    (void)mSize;
+    (void)nHalfSize;
+    (void)yF32Addr;
+    (void)scaleE8M0Addr;
+    (void)yFp8Addr;
 }
 
 } // namespace WeightQuantBatchMatmulV2::Arch35

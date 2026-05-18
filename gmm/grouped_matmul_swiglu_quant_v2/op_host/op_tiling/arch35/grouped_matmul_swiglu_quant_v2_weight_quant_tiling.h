@@ -32,17 +32,17 @@ using namespace Ops::Transformer::OpTiling;
 
 struct GMMSQWeightQuantInputParams {
     std::string opName;
-    ge::DataType xDtype = ge::DT_INT8;
-    ge::DataType wDtype = ge::DT_INT8;
-    ge::Format wFormat = ge::FORMAT_ND;
-    bool xTrans = false;
     bool wTrans = false;
+    ge::Format wFormat;
+    int64_t groupListType = -1;
+    int64_t dequantMode = -1;
+    int64_t dequantDtype = -1;
+    int64_t quantMode = -1;
+    int64_t quantDtype = -1;
     int64_t mSize = -1;
     int64_t kSize = -1;
     int64_t nSize = -1;
-    int64_t groupListType = -1;
     int64_t groupNum = -1;
-    int64_t outputBS = -1;
 };
 
 class GroupedMatmulSwigluQuantV2WeightQuantTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -75,25 +75,7 @@ protected:
 
 private:
     const GMMSwigluV2CompileInfo *compileInfoPtr_;
-    std::vector<std::function<bool(gert::TilingContext *context)>> checkConditionFuncs_;
-    std::vector<std::function<void(gert::TilingContext *context, GMMSQWeightQuantInputParams &inputParams_)>>
-        SetInputFuncs_;
     GMMSQArch35Tiling::GMMSQWeightQuantTilingData tilingData_;
-
-    void RunSetInputFunc();
-    bool SetMxA8W4NzInputFunc();
-    bool SetMxA8W4NzConditionFunc();
-    bool RunCheckFunc();
-    bool InferScenario();
-    bool AnalyzeAttrs();
-    bool AnalyzeDtype();
-    bool AnalyzeInputs();
-    bool CheckBiasEmpty();
-    bool CheckGroupNum();
-    bool CheckScaleShapes();
-    bool CheckShapeForMxQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
-
-    int64_t coreNum_ = 0;
 };
 } // namespace optiling
 

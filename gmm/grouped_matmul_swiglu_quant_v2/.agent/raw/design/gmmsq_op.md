@@ -55,13 +55,13 @@ GroupedMatmulSwigluQuantV2（GMMSQ）融合算子支持MxA8W4伪量化数据流�
 | 参数名 | 必选/可选 | dtype | format | shape | 说明 |
 | ------ | --------- | ----- | ------ | ----- | ---- |
 | x | 必选 | float8_e4m3fn | ND | (m, k) | 左矩阵（激活），固定不转置 |
+| xScale | 必选 | float8_e8m0 | ND | (m, ceil(k/64), 2) | MX x 反量化缩放因子 |
+| groupList | 必选 | int64 | ND | (e,) | 分组列表，表示各专家的token分布 |
 | weight | 必选 | float4_e2m1 | [^1] FRACTAL_NZ_C0_32 | viewShape=(e, n, k)</br>oriShape=(e, ceil(k, 32), ceil(n, 16), 16, 32) | 右矩阵（权重），固定转置 |
 | weightScale | 必选 | float8_e8m0 | ND | (e, n, ceil(k/64), 2) | MX weight 反量化缩放因子 |
 | weightAssistMatrix | 不使用 | - | - | - | MxA8W4场景为null |
 | bias | 不使用 | - | - | - | MxA8W4场景为null |
-| xScale | 必选 | float8_e8m0 | ND | (m, ceil(k/64), 2) | MX x 反量化缩放因子 |
 | smoothScale | 不使用 | - | - | - | MxA8W4场景为null |
-| groupList | 必选 | int64 | ND | (e,) | 分组列表，表示各专家的token分布 |
 
 [^1]: 注意weight的format格式为FRACTAL_NZ_C0_32而不是FRACTAL_NZ_C0_64，原因是weight以float4_e2m1类型加载权重，但类型转换为float8_e4m3进行计算，所以实际C0_SIZE以float8_e4m3进行计算，得到 `32B / sizeof(float8_e4m3) = 32` ，所以format格式为FRACTAL_NZ_C0_32。
 
@@ -72,6 +72,8 @@ GroupedMatmulSwigluQuantV2（GMMSQ）融合算子支持MxA8W4伪量化数据流�
 | dequantMode | int64 | {2} | 反量化计算类型，固定为2（MX量化） |
 | dequantDtype | int64 | {0} | 中间计算数据类型，固定为0（DT_FLOAT） |
 | quantMode | int64 | {2} | 量化计算类型，固定为2（MX量化） |
+| quantDtype | int64 | {36} | 输出量化类型，固定为36（y量化为DT_FLOAT8_E4M3FN） |
+| transposeWeight | bool | {true} | weight是否转置，固定为转置 |
 | groupListType | int64 | {0, 1} | 0: cumsum模式, 1: count模式 [^1] |
 | tuningConfig | int64数组 | - | 调优参数，可选，MxA8W4场景传入空指针 |
 
