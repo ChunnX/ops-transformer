@@ -65,7 +65,7 @@ protected:
                                         LocalTensor<CmpT> &sin, uint32_t calcLength);
     __aicore__ inline void RBroadCast(LocalTensor<CmpT> &cos, LocalTensor<CmpT> &sin, uint32_t broadcastLines);
     __aicore__ inline void XNewCopy(LocalTensor<CmpT> &x, LocalTensor<CmpT> &xNew, uint16_t sLines);
-    __aicore__ inline void FullLoadXDInit(const AiInfraRotaryPositionEmbeddingTilingData &tilingData);
+    __aicore__ inline void FullLoadXDInit(const RotaryPositionEmbeddingTilingData &tilingData);
 
     bool isAligned;
     uint16_t layout;
@@ -166,9 +166,9 @@ __aicore__ inline void RotateHalfBase<OriT, CmpT>::BaseMemberInit(const RotaryPo
 // FullLoadXD: initData
 template <typename OriT, typename CmpT>
 __aicore__ inline void RotateHalfBase<OriT, CmpT>::FullLoadXDInit(
-    const AiInfraRotaryPositionEmbeddingTilingData &tilingData)
+    const RotaryPositionEmbeddingTilingData &tilingData)
 {
-    const AiInfraRotateHalfParams &tiling = tilingData.rotateHalfParams;
+    const RotateHalfParams &tiling = tilingData.rotateHalfParams;
 
     formerCoreNum = tiling.formerCoreNum;
     uint64_t ubLoopPerCore = tiling.formerUbLoop;
