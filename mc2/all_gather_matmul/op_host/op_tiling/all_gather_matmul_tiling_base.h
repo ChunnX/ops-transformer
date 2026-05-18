@@ -37,7 +37,7 @@ public:
                               mc2tiling::TilingArgs& args);
     ge::graphStatus GetAllGatherFormulateTileCnt(const gert::TilingContext* ctx,
         Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args);
-    ge::graphStatus InitHcclParam(gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData,
+    ge::graphStatus InitHcclParam(const gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData,
                                   const char* group);
     virtual CutResult GetCutResult(Mc2Tiling::AllGatherMatmulTilingData& tilingData,
                                    mc2tiling::TilingArgs& args) = 0;
