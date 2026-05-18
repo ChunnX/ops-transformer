@@ -35,6 +35,7 @@ ge::graphStatus MatmulAllReduceTiling910::DoOpTiling()
 {
     GE_ASSERT_GRAPH_SUCCESS(CheckA16W16());
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    GE_ASSERT_GRAPH_SUCCESS(CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     if (!isKZero_) {
