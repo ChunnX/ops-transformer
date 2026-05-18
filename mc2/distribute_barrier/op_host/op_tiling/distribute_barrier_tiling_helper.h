@@ -21,9 +21,10 @@
 #include "graph/utils/type_utils.h"
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
-using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+using namespace Ops::Transformer::OpTiling;
+
 constexpr uint64_t INIT_TILINGKEY = 10000UL;
 
 constexpr uint32_t INPUT_CONTEXT_EXTEND_INDEX = 0U;
