@@ -29,6 +29,7 @@ constexpr int32_t LAYOUT_INDEX_ABSENT = -1;
 // ========== 量化模式枚举 ==========
 enum class QuantMode : uint32_t {
     UNQUANT = 0,
+    NON_QUANT = 0,  // 别名，向后兼容
     STATIC_QUANT = 1,
     PERTOKEN_DYNAMIC_QUANT = 2,
     PERGROUP_DYNAMIC_QUANT = 3,
@@ -90,6 +91,15 @@ constexpr int64_t MAX_MOE_EXPERT_NUM = 512;
 constexpr int64_t MAX_MOE_EXPERT_NUM_V2 = 1024;
 constexpr int64_t MAX_MOE_EXPERT_NUM_LAYERED = 512;
 constexpr int64_t MAX_LOCAL_EXPERT_NUM = 2048;
+
+// ========== A2 架构特化常量（值与公共常量不同）==========
+constexpr int64_t MAX_MOE_EXPERT_NUM_A2 = 512;
+constexpr int64_t MAX_H_A2 = 7168;
+constexpr int64_t MAX_H_A2_LAYERED = 10240;
+constexpr int64_t MAX_BS_A2 = 256;
+constexpr int64_t MAX_BS_A2_LAYERED = 512;
+constexpr int64_t MAX_EP_WORLD_SIZE_A2 = 384;
+constexpr int64_t MAX_EP_WORLD_SIZE_A2_LAYERED = 64;
 
 // ========== 别名常量（兼容算子层命名）==========
 constexpr int64_t H_MIN = MIN_H_DEFAULT;         // h 最小值

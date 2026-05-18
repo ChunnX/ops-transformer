@@ -43,9 +43,10 @@
 using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
+using namespace moe_dispatch_defs;  // 公共层常量命名空间
 
 namespace {
-constexpr int64_t MAX_TP_WORLD_SIZE = 2;
+// MAX_TP_WORLD_SIZE 已在 defs.h 中定义，不再重复定义
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 13;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
@@ -66,7 +67,13 @@ constexpr uint32_t ELASTIC_INFO_INDEX = 5U;
 constexpr uint32_t PERFORMANCE_INFO_INDEX = 6U;
 constexpr uint32_t OUTPUT_EXPAND_SCALES_INDEX = 6U;
 
-// A2特化常量（与公共层 defs.h 不同的部分）
+// A2特化常量（defs.h 中未定义的部分）
+// 注：以下常量已使用公共层 defs.h 定义，不再重复定义：
+//     - MAX_H_A2, MAX_H_A2_LAYERED (原 MAX_HIDDEN_SIZE_A2)
+//     - MAX_BS_A2, MAX_BS_A2_LAYERED (原 MAX_BATCH_SIZE_A2)
+//     - MAX_MOE_EXPERT_NUM_A2 (原 MAX_MOE_EXPERT_NUMS_A2)
+//     - MAX_EP_WORLD_SIZE_A2, MAX_EP_WORLD_SIZE_A2_LAYERED
+//     - MAX_K_DEFAULT (原 MAX_K_DEFAULT)
 const char *K_INNER_DEBUG = "MoeDistributeDispatchV2 Tiling Debug";
 constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 constexpr uint32_t BLOCK_SIZE_A2 = 32;
@@ -255,7 +262,11 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
         OP_LOGE(K_INNER_DEBUG, "epRankId is invalid."), return GRAPH_FAILED);
     int32_t maxMoeExpertNums = isLayered ? MAX_MOE_EXPERT_NUMS_A2_HIERARCHY : MAX_MOE_EXPERT_NUMS_A2_FULLMESH;
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr % *epWorldSizePtr != 0 ||
+<<<<<<< HEAD
         *moeExpertNumPtr <= 0 || *moeExpertNumPtr > maxMoeExpertNums,
+=======
+        *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUM_A2,
+>>>>>>> f1e3625e5 (refactor(dispatch_v2): 使用公共层组件优化 tiling 代码)
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return GRAPH_FAILED);
@@ -302,7 +313,11 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
     info.quantMode = *quantModePtr;
+<<<<<<< HEAD
     info.maxMoeExpertNum = maxMoeExpertNums;
+=======
+    info.maxMoeExpertNum = MAX_MOE_EXPERT_NUM_A2;
+>>>>>>> f1e3625e5 (refactor(dispatch_v2): 使用公共层组件优化 tiling 代码)
 
     if (*globalBsPtr == 0) {
         info.globalBs = *epWorldSizePtr * bs;
@@ -368,9 +383,14 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
+<<<<<<< HEAD
     OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > MAX_HIDDEN_SIZE_A2,
+=======
+    uint32_t maxHiddenSizeA2 = isLayered ? MAX_H_A2_LAYERED : MAX_H_A2;
+    OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > maxHiddenSizeA2,
+>>>>>>> f1e3625e5 (refactor(dispatch_v2): 使用公共层组件优化 tiling 代码)
         OP_LOGE(K_INNER_DEBUG, "hiddensize is invalid."), return GRAPH_FAILED);
-    uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
+    uint32_t maxBatchSizeA2 = isLayered ? MAX_BS_A2_LAYERED : MAX_BS_A2;
     OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,
         OP_LOGE(K_INNER_DEBUG, "batchsize is invalid."), return GRAPH_FAILED);
 
@@ -383,7 +403,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     int32_t copyExpertNum = static_cast<int32_t>(*copyExpertNumPtr);
     int32_t constExpertNum = 0;
     int32_t zeroComputeExpertNum = zeroExpertNum + copyExpertNum + constExpertNum;
-    OP_TILING_CHECK(k == 0 || k > MAX_K_VALUE_A2 || k > moeExpertNum + zeroComputeExpertNum,
+    OP_TILING_CHECK(k == 0 || k > MAX_K_DEFAULT || k > moeExpertNum + zeroComputeExpertNum,
         OP_LOGE(K_INNER_DEBUG, "k is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(*quantModePtr == static_cast<uint64_t>(moe_dispatch_defs::QuantMode::UNQUANT) && isScales,
         OP_LOGE(K_INNER_DEBUG, "scales should be null when quantMode is unQuant."), return GRAPH_FAILED);
@@ -436,12 +456,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
 static ge::graphStatus MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(
     const gert::TilingContext *context, MoeDistributeDispatchA2Info& info)
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint64_t ubSize = 0U;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    info.aivNum = aivNum;
-    info.totalUbSize = ubSize;
+    auto platformInfo = moe_dispatch_utils::GetPlatformInfo(context);
+    info.aivNum = platformInfo.aivNum;
+    info.totalUbSize = platformInfo.ubSize;
 
     OP_LOGD(K_INNER_DEBUG, "aivNum=%d", info.aivNum);
     OP_LOGD(K_INNER_DEBUG, "ubSize=%lu", info.totalUbSize);
@@ -509,9 +526,9 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchTili
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeDispatchA2 CheckWinSize Failed"),
         return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    auto platformInfo = moe_dispatch_utils::GetPlatformInfo(context);
+    uint32_t aivNum = platformInfo.aivNum;
+    uint32_t numBlocks = platformInfo.blockDim;
     context->SetBlockDim(numBlocks);
     uint32_t aicpuBlockDim = info.epWorldSize > RANK_NUM_PER_NODE_A2 ? mc2tiling::AICPU_NUM_BLOCKS_A2 : 1;
     context->SetAicpuBlockDim(aicpuBlockDim);

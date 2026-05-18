@@ -109,4 +109,46 @@ ge::graphStatus CheckAttrRules(
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckTensorFormatRules(
+    gert::TilingContext* ctx, const TensorFormatRule* rules, uint32_t count, const char* nodeName) {
+    if (ctx == nullptr || rules == nullptr) {
+        OPS_LOG_E("CheckTensorFormatRules", "invalid params: ctx or rules is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+
+    for (uint32_t i = 0U; i < count; ++i) {
+        const TensorFormatRule& rule = rules[i];
+
+        // 获取 tensor desc
+        const ge::TensorDesc* desc = nullptr;
+        if (rule.type == moe_dispatch_defs::TensorType::INPUT ||
+            rule.type == moe_dispatch_defs::TensorType::OPTIONAL_INPUT) {
+            desc = ctx->GetInputDesc(rule.index);
+        } else if (rule.type == moe_dispatch_defs::TensorType::OUTPUT) {
+            desc = ctx->GetOutputDesc(rule.index);
+        }
+
+        // 检查 desc 是否为空
+        if (desc == nullptr) {
+            OPS_LOG_E(nodeName, "tensor %s desc is nullptr.", rule.name);
+            return ge::GRAPH_FAILED;
+        }
+
+        // 获取 format
+        ge::Format format = desc->GetStorageFormat();
+        if (rule.checkPrimary) {
+            format = static_cast<ge::Format>(ge::GetPrimaryFormat(format));
+        }
+
+        // 检查 format
+        if (format != rule.expectedFormat) {
+            OPS_LOG_E(nodeName, "tensor %s format is invalid, expected %d, got %d.",
+                      rule.name, static_cast<int32_t>(rule.expectedFormat), static_cast<int32_t>(format));
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 } // namespace moe_dispatch_utils
