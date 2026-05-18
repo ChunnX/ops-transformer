@@ -75,7 +75,22 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused_kv")
+        this->Input("seqused_ori_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("seqused_cmp_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("ori_topk_length")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("cmp_topk_length")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -95,11 +110,10 @@ public:
             .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("kv_quant_mode").AttrType(REQUIRED).Int(1);
-        this->Attr("tile_size").AttrType(OPTIONAL).Int(64); // tile_size默认值64
+        this->Attr("quant_mode").AttrType(REQUIRED).Int(1);
         this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // rope_head_dim默认值64
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(1);
@@ -109,8 +123,7 @@ public:
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_ND");
-        this->Attr("ori_kv_stride0").AttrType(OPTIONAL).Int(0);
-        this->Attr("cmp_kv_stride0").AttrType(OPTIONAL).Int(0);
+        this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config;
