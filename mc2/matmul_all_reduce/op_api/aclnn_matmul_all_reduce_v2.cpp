@@ -48,7 +48,7 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
-        const_cast<char*>(group), const_cast<char*>(reduceOp),
+        const_cast<char*>(group), const_cast<char*>(reduceOp), "ccu",
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
