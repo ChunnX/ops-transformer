@@ -14,6 +14,7 @@
  */
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
+#include "mc2_comm_utils.h"
 #include "kc_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
 
@@ -142,10 +143,15 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
+
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    // 0代表默认走调度模式
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : Mc2Comm::ENGINE_AICPU;
+
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType).
-        withCommEngine(0).build();
+        withCommEngine(engineType).build();
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
@@ -473,9 +479,12 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
+    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
+            x2TransposeFlag, biasDType, commMode, tilingKey);
     return tilingKey;
 }
 

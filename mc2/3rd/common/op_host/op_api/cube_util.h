@@ -11,7 +11,7 @@
 #define MATMUL_COMMON_OP_API_CUBE_UTIL_H_
 
 #include "aclnn/aclnn_base.h"
-#include "common/op_api_def.h"
+#include "op_api/op_api_def.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 
