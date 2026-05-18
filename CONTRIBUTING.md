@@ -9,11 +9,11 @@ toekn
 
 开发者贡献场景主要包括：
 
-## 一、贡献新算子
+### 一、贡献新算子
 
 算子开发贡献流程如下：
 
-![算子开发贡献流程](./docs/zh/figures/算子开发贡献流程.png "算子开发贡献流程图")
+![算子开发贡献流程](./docs/zh/fisgures/算子开发贡献流程.png "算子开发贡献流程图")
 
 如果您有全新的算子希望基于NPU进行设计与实现，欢迎在Issue中提出您的想法与设计方案。完整的贡献过程如下：
 
@@ -53,7 +53,7 @@ PR上库要求：
 - 文档交付件：算子README文档为必选，其余文档可视情况提供。文档写作模板和规范参考[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
 - 精度要求：新贡献算子需满足精度标准，具体请参见[生态算子开源精度标准](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)。
 - 合规检查：
-  - 代码是否符合《[C++ 编程规范](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)》
+  - 代码是否符合《[C++ 编程规范](https://gitcodse.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)》
   - 代码是否编译通过
   - Markdown文档语法是否符合规范
   - 使用git进行代码提交前，可以参考[pre-commit工具使用说明](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/develop/pre-commit_guide.md)来使您的代码提交更合规高效。
@@ -73,7 +73,7 @@ PR上库要求：
 
 门禁通过后，请在关联的Issue中@指派的Committer。
 
-### 5. Committer检视
+#### 5. Committer检视
 
 Committer检视后将反馈检视意见，请根据意见修改，完成后@指派的Committer。
 
@@ -128,7 +128,7 @@ ${op_class}                                          # 算子分类
 ```
 
 PR上库要求：
-
+toekn
 - 代码交付件：需提供op_host算子Tiling实现、op_kernel算子Kernel实现、算子UT测试文件，开发过程请参考[算子开发指南](docs/zh/develop/aicore_develop_guide.md)。
 - 文档交付件：算子README文档为必选，其余文档可视情况提供。文档写作模板和规范请参见[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
 - 合规检查：
