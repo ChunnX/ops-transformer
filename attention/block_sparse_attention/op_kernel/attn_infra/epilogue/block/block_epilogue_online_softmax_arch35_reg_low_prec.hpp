@@ -493,6 +493,7 @@ private:
             Sub(expDstVreg1, expVreg1, maxVreg, pregTailN);
             Exp(expDstVreg0, expDstVreg0, pregFull);
             Exp(expDstVreg1, expDstVreg1, pregTailN);
+            Duplicate(expDstVregResult, 0);
             Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVregResult, expDstVreg0, pregFull);
             Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVregResult, expDstVreg1, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
