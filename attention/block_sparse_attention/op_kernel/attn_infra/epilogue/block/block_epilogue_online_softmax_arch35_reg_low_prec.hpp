@@ -197,14 +197,33 @@ public:
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxAddr, lastMaxAddr, mLoops, tailM);
         }
+        AscendC::printf("tkd inital lpUbTensor\n");
+        AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
+        AscendC::printf("tkd initial max\n");
+        AscendC::DumpTensor(lmUbTensor, 0, 32);
+        AscendC::printf("tkd initial sum\n");
+        AscendC::DumpTensor(llUbTensor, 0, 32);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         if (kvBaseTileRegStages == 1) {
             ComputeExpSubSum16<KvBaseTileRegSplitStages::ONE>(
                 pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN, blockStride, nRound);
+            AscendC::printf("tkd after ONE lpUbTensor\n");
+            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
+            AscendC::printf("tkd after ONE max\n");
+            AscendC::DumpTensor(lmUbTensor, 1, 32);
+            AscendC::printf("tkd after ONE sum\n");
+            AscendC::DumpTensor(llUbTensor, 1, 32);
+
         } else if (kvBaseTileRegStages == 2) {
             ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(
                 pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN, blockStride, nRound);
+            AscendC::printf("tkd after TWO lpUbTensor\n");
+            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
+            AscendC::printf("tkd after TOW max\n");
+            AscendC::DumpTensor(lmUbTensor, 1, 32);
+            AscendC::printf("tkd after TWO sum\n");
+            AscendC::DumpTensor(llUbTensor, 1, 32);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -420,7 +439,6 @@ private:
             Exp(expDstVregResult, expDstVreg, pregTailN);
             Exp(expDstVreg, expDstVreg, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                // AscendC::printf("tkd ComputeExpSubSum16 STAGE ONE\n");
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
                 Cast<ElementOutput, ElementInput, castTraitZero>(pVreg, expDstVreg, pregTailN);
@@ -475,9 +493,9 @@ private:
             Sub(expDstVreg1, expVreg1, maxVreg, pregTailN);
             Exp(expDstVreg0, expDstVreg0, pregFull);
             Exp(expDstVreg1, expDstVreg1, pregTailN);
-            Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVreg0, expDstVreg1, pregTailN);
+            Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVregResult, expDstVreg0, pregFull);
+            Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVregResult, expDstVreg1, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                // AscendC::printf("tkd ComputeExpSubSum16 STAGE TWO\n");
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg0, expDstVreg0, staticScale, pregFull);
                 Muls(expDstVreg1, expDstVreg1, staticScale, pregTailN);
