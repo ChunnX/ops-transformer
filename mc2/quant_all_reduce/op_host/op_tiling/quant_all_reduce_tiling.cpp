@@ -67,7 +67,8 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllR
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
+static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData &tilingData,
+                          const QuantReduceScatterConfig& config)
 {
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -75,14 +76,14 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
     tilingData.quantAllReduceTilingInfo.aivNum = aivNum;
-    uint64_t xValueBS = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    uint64_t scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    uint64_t xValueBS = context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    uint64_t xValueH = context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    uint64_t scalesValueH = context->GetInputShape(config.SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     // context->GetInputShape在函数CheckInputTensorDim中已经校验
-    if (context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum() == THREE_DIMS) {
-        xValueBS = xValueBS * context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-        xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-        scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
+    if (context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDimNum() == THREE_DIMS) {
+        xValueBS = xValueBS * context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+        xValueH = context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
+        scalesValueH = context->GetInputShape(config.SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
     }
     tilingData.quantAllReduceTilingInfo.bs = xValueBS;
     tilingData.quantAllReduceTilingInfo.hiddenSize = xValueH;
@@ -140,12 +141,13 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
     TilingRunInfo runInfo = {};
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
  	                OP_LOGE(nodeName, "NpuArch is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
+    QuantReduceScatterConfig config;
+    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE, config) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    SetTilingData(context, *tilingData);
+    SetTilingData(context, *tilingData, config);
     SetXPerBlock(*tilingData);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
