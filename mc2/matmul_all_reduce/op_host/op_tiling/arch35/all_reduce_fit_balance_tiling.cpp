@@ -64,6 +64,16 @@ void MMAllReduceFitBalanceTiling::SetCommBoundTile()
     tilingM_.cutRes.numShortTile = 1U;
     tilingM_.cutRes.numLongTile = 1U;
     tilingM_.cutRes.longTileLen = mmInfo_.mValue - alignedTileLen;
+
+    // Ensure longTileLen is aligned to baseM (128 or 256 depending on socVersion)
+    uint64_t baseM = matmulPerf_.GetBaseM();
+    tilingM_.cutRes.longTileLen = (tilingM_.cutRes.longTileLen + baseM - 1) / baseM * baseM;
+    // Clamp longTileLen to valid range [baseM, mValue - minLen]
+    tilingM_.cutRes.longTileLen = std::min(tilingM_.cutRes.longTileLen, mmInfo_.mValue - tilingM_.GetMinLen());
+    tilingM_.cutRes.longTileLen = std::max(tilingM_.cutRes.longTileLen, baseM);
+    tilingM_.cutRes.shortTileLen = mmInfo_.mValue - tilingM_.cutRes.longTileLen;
+    OP_LOGD("MMAllReduceFitBalanceTiling", "SetCommBoundTile: aligned longTileLen %lu, shortTileLen %lu",
+            tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen);
 }
 
 void MMAllReduceFitBalanceTiling::SetShortTileLen()
@@ -100,6 +110,16 @@ void MMAllReduceFitBalanceTiling::SetLongTileLen()
         tilingM_.SetMinLenByMax(tilingM_.GetMinLen() * TWO);
         OP_LOGD("MMAllReduceFitBalanceTiling", "adjust longTileLen %lu", tilingM_.cutRes.longTileLen);
     }
+
+    // Ensure longTileLen is aligned to baseM (128 or 256 depending on socVersion)
+    uint64_t baseM = matmulPerf_.GetBaseM();
+    tilingM_.cutRes.longTileLen = (tilingM_.cutRes.longTileLen + baseM - 1) / baseM * baseM;
+    // Clamp longTileLen to valid range [baseM, mValue - minLen]
+    tilingM_.cutRes.longTileLen = std::min(tilingM_.cutRes.longTileLen, mmInfo_.mValue - tilingM_.GetMinLen());
+    tilingM_.cutRes.longTileLen = std::max(tilingM_.cutRes.longTileLen, baseM);
+    tilingM_.cutRes.shortTileLen = mmInfo_.mValue - tilingM_.cutRes.longTileLen;
+    OP_LOGD("MMAllReduceFitBalanceTiling", "aligned longTileLen %lu, shortTileLen %lu",
+            tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen);
 }
 
 void MMAllReduceFitBalanceTiling::AdjustLongShortTileLen()
