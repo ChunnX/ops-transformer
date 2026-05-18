@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_tiling_general_regbase.cpp
+ * \file sparse_lightning_indexer_klloss_grad_tiling_general_regbase.cpp
  * \brief
  */
 
-#include "sparse_lightning_indexer_grad_tiling_general_regbase.h"
+#include "sparse_lightning_indexer_klloss_grad_tiling_general_regbase.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include <tiling/tiling_api.h>
 
@@ -122,7 +122,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutShape(gert:
     if (layoutQuery[DIM_NUM_0] == 'T' && layoutQuery[DIM_NUM_1] == 'N' && layoutQuery[DIM_NUM_2] == 'D') {
         if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) || inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) 
             || inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2)) {
-            OP_LOGE(context_, "SparseLightningIndexerGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
+            OP_LOGE(context_, "SparseLightningIndexerKllossGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
                 inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2),
                 inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2));
             return ge::GRAPH_FAILED;
@@ -130,7 +130,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutShape(gert:
     } else {
         if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) || inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) 
             || inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2) || inputshape.GetDim(DIM_NUM_3) != outputshape.GetDim(DIM_NUM_3)){
-            OP_LOGE(context_, "SparseLightningIndexerGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
+            OP_LOGE(context_, "SparseLightningIndexerKllossGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
                 inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2), inputshape.GetDim(DIM_NUM_3),
                 inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2), outputshape.GetDim(DIM_NUM_3));
             return ge::GRAPH_FAILED;
@@ -147,7 +147,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutPut()
     auto keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
     auto weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX)->GetStorageShape();
     auto topKShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
-    auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_INPUT_INDEX)->GetStorageShape();
+    auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX)->GetStorageShape();
     auto dQueryIndexShape = context_->GetOutputShape(D_QUERY_OUTPUT_INDEX)->GetStorageShape();
     auto dKeyIndexShape = context_->GetOutputShape(D_KEY_OUTPUT_INDEX)->GetStorageShape();
     auto dWeightsShape = context_->GetOutputShape(D_WEIGHTS_OUTPUT_INDEX)->GetStorageShape();
@@ -167,7 +167,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutPut()
     if (status == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    status = CheckOutShape(attnSoftmaxL1Shape, "attn_softmax_l1", softmaxOutShape);
+    status = CheckOutShape(attnSoftmaxL1Shape, "attn_softmax_l1_norm", softmaxOutShape);
     if (status == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
@@ -213,7 +213,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckContext()
     auto keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX);
     auto weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX);
     auto sparseIndicesShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
-    auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_INPUT_INDEX);
+    auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX);
     // 可选输入shape验证
     auto metadataShape = context_->GetOptionalInputShape(METADATA_INPUT_INDEX);
     // 输出shape验证
@@ -362,7 +362,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeDtype()
     auto keyDesc = context_->GetInputDesc(KEY_INPUT_INDEX);
     auto weightsDesc = context_->GetInputDesc(WEIGHT_INPUT_INDEX);
     auto sparseIndicesDesc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
-    auto attnSoftmaxL1Desc = context_->GetInputDesc(ATTN_SOFTMAX_L1_INPUT_INDEX);
+    auto attnSoftmaxL1Desc = context_->GetInputDesc(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, queryDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, keyDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightsDesc);
@@ -415,7 +415,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
     auto keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
     auto weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX)->GetStorageShape();
     auto sparseIndicesShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
-    auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_INPUT_INDEX)->GetStorageShape();
+    auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX)->GetStorageShape();
     // 下面数字对应shape输入位置
     if (layoutQuery[0] == 'T' && layoutQuery[1] == 'N' && layoutQuery[2] == 'D') {
         int64_t t1Len = queryIndexShape[0];
@@ -424,7 +424,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         int64_t n2Len = keyIndexShape[1];
         // 验证T1
         OP_CHECK_IF(weightsShape[0] != t1Len || sparseIndicesShape[0] != t1Len || attnSoftmaxL1Shape[0] != t1Len,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify T1 is failed, the value of query_index[0], weights[0], sparse_indices[0] and attn_softmax_l1[0] \
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify T1 is failed, the value of query_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0] \
                     are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.", queryIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]), return false);
         // 验证N Query数字是否正确
         OP_CHECK_IF(queryIndexShape[1] < NQUERYINDEX_SIZE_1 && queryIndexShape[1] > NQUERYINDEX_SIZE_64,
@@ -438,10 +438,10 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         OP_CHECK_IF(sparseIndicesShape[1] != NKEYINDEX_SIZE_1,
                     OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of sparse_indices[1] is (%ld).", sparseIndicesShape[1]), return false);
         OP_CHECK_IF(attnSoftmaxL1Shape[1] != NKEYINDEX_SIZE_1,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1[1] is (%ld).", attnSoftmaxL1Shape[1]), return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1_norm[1] is (%ld).", attnSoftmaxL1Shape[1]), return false);
         // 验证N2
         OP_CHECK_IF(sparseIndicesShape[1] != keyIndexShape[1] || attnSoftmaxL1Shape[1] != keyIndexShape[1],
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N2 is failed, the value of key_index[1], sparse_indices[1] and attn_softmax_l1[1] are respectively (%ld), (%ld), (%ld). Their values should be equal.",
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N2 is failed, the value of key_index[1], sparse_indices[1] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld). Their values should be equal.",
                     keyIndexShape[1], sparseIndicesShape[1], attnSoftmaxL1Shape[1]), return false);
         // 验证D 数字是否正确
         OP_CHECK_IF(queryIndexShape[2] != DINDEX_SIZE_128,
@@ -454,7 +454,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
                     return false);
         // 验证K
         OP_CHECK_IF(sparseIndicesShape[2] != attnSoftmaxL1Shape[2],
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape K of sparse_indices and attn_softmax_l1 must be equal, but the value of sparse_indices[2] and attn_softmax_l1[2] are respectively (%ld), (%ld).",
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape K of sparse_indices and attn_softmax_l1_norm must be equal, but the value of sparse_indices[2] and attn_softmax_l1_norm[2] are respectively (%ld), (%ld).",
                                                 sparseIndicesShape[2], attnSoftmaxL1Shape[2]),
                     return false);
     } else if (layoutQuery[0] == 'B' && layoutQuery[1] == 'S' && layoutQuery[2] == 'N' && layoutQuery[3] == 'D') {
@@ -466,11 +466,11 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         
         // 验证B
         OP_CHECK_IF(keyIndexShape[0] != bLen || weightsShape[0] != bLen || sparseIndicesShape[0] != bLen || attnSoftmaxL1Shape[0] != bLen,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify shape B is failed, the value of query_index[0], key_index[0], weights[0], sparse_indices[0] and attn_softmax_l1[0] are respectively (%ld), (%ld), (%ld), (%ld), (%ld).\
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify shape B is failed, the value of query_index[0], key_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0] are respectively (%ld), (%ld), (%ld), (%ld), (%ld).\
                     Their values should be equal.", bLen, keyIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]), return false);
         // 验证s1
         OP_CHECK_IF(weightsShape[1] != s1Len || sparseIndicesShape[1] != s1Len || attnSoftmaxL1Shape[1] != s1Len,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1], sparse_indices[1] and attn_softmax_l1[1] are respectively (%ld), (%ld), (%ld), (%ld).\
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1], sparse_indices[1] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld).\
                     Their values should be equal.", s1Len, weightsShape[1], sparseIndicesShape[1], attnSoftmaxL1Shape[1]), return false);
         // 验证N Query数字是否正确
         OP_CHECK_IF(n1Len < NQUERYINDEX_SIZE_1 && n1Len > NQUERYINDEX_SIZE_64,
@@ -484,10 +484,10 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         OP_CHECK_IF(sparseIndicesShape[2] != NKEYINDEX_SIZE_1,
                     OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of sparse_indices[2] is (%ld).", sparseIndicesShape[2]), return false);
         OP_CHECK_IF(attnSoftmaxL1Shape[2] != NKEYINDEX_SIZE_1, 
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1[2] is (%ld).", attnSoftmaxL1Shape[2]), return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, N2 must be 1, but the value of attn_softmax_l1_norm[2] is (%ld).", attnSoftmaxL1Shape[2]), return false);
         // 验证N2
         OP_CHECK_IF(sparseIndicesShape[2] != n2Len || attnSoftmaxL1Shape[2] != n2Len,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N2 is failed, the value of key_index[2], sparse_indices[2] and attn_softmax_l1[2] are respectively (%ld), (%ld), (%ld). Their values should be equal.",
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify N2 is failed, the value of key_index[2], sparse_indices[2] and attn_softmax_l1_norm[2] are respectively (%ld), (%ld), (%ld). Their values should be equal.",
                     n2Len, sparseIndicesShape[2], attnSoftmaxL1Shape[2]), return false);
         // 验证D 数字是否正确
         OP_CHECK_IF(queryIndexShape[3] != DINDEX_SIZE_128,
@@ -499,7 +499,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
                     OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify query_index-key_index shape D is failed, the value of query_index[3] and key_index[3] are respectively (%ld), (%ld). Their values should be equal.", queryIndexShape[3], keyIndexShape[3]), return false);
         // 验证K
         OP_CHECK_IF(sparseIndicesShape[3] != attnSoftmaxL1Shape[3],
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape K of sparse_indices and attn_softmax_l1 must be equal, but the value of sparse_indices[2] and attn_softmax_l1[2] are respectively (%ld), (%ld).",
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape K of sparse_indices and attn_softmax_l1_norm must be equal, but the value of sparse_indices[2] and attn_softmax_l1_norm[2] are respectively (%ld), (%ld).",
                                                 sparseIndicesShape[3], attnSoftmaxL1Shape[3]),
                     return false);    
     }
@@ -512,7 +512,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeLayout()
     auto &keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
     auto &weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX)->GetStorageShape();
     auto &topKShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
-    auto &attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_INPUT_INDEX)->GetStorageShape();
+    auto &attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX)->GetStorageShape();
 
     size_t layoutLen = strlen(layoutQuery);
     OP_CHECK_IF(!CrossShapeVerify(), OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify Failed"), return false);    
@@ -1056,5 +1056,5 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerGrad, SparseLightningIndexerGradTilingBaseRegbase, static_cast<int32_t>(NpuArch::DAV_3510), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerKllossGrad, SparseLightningIndexerGradTilingBaseRegbase, static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace optiling

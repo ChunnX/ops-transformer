@@ -11,15 +11,15 @@ add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
-        sparse_lightning_indexer_grad_def.cpp
+        sparse_lightning_indexer_klloss_grad_def.cpp
     )
 endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(sparse_lightning_indexer_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_lightning_indexer_grad")
+    set(sparse_lightning_indexer_klloss_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_lightning_indexer_klloss_grad")
     add_ops_compile_options(
-        OP_NAME SparseLightningIndexerGrad
+        OP_NAME SparseLightningIndexerKllossGrad
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
@@ -28,20 +28,20 @@ endif()
 
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
-            OP_NAME SparseLightningIndexerGrad
+            OP_NAME SparseLightningIndexerKllossGrad
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
     )
 else()
     add_ops_compile_options(
-            OP_NAME SparseLightningIndexerGrad
+            OP_NAME SparseLightningIndexerKllossGrad
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
     )
     add_modules_sources(
-        OPTYPE sparse_lightning_indexer_grad 
+        OPTYPE sparse_lightning_indexer_klloss_grad 
         ACLNNTYPE aclnn
     )
 endif()
@@ -51,7 +51,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
         # ./arch32/sparse_lightning_indexer_grad_tiling_general.cpp
         # ./arch32/sparse_lightning_indexer_grad_tiling_general.h
-        ./arch35/sparse_lightning_indexer_grad_tiling_general_regbase.cpp
-        ./arch35/sparse_lightning_indexer_grad_tiling_general_regbase.h
+        ./arch35/sparse_lightning_indexer_klloss_grad_tiling_general_regbase.cpp
+        ./arch35/sparse_lightning_indexer_klloss_grad_tiling_general_regbase.h
     )
 endif()

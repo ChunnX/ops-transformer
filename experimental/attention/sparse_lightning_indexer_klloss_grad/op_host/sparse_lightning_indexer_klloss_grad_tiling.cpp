@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_tiling.cpp
+ * \file sparse_lightning_indexer_klloss_grad_tiling.cpp
  * \brief
  */
 
@@ -21,7 +21,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "sparse_lightning_indexer_grad_tiling_common.h"
+#include "sparse_lightning_indexer_klloss_grad_tiling_common.h"
 
 using std::map;
 using std::string;
@@ -35,7 +35,7 @@ constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 
-ge::graphStatus TilingSparseLightningIndexerGrad(gert::TilingContext *context)
+ge::graphStatus TilingSparseLightningIndexerKllossGrad(gert::TilingContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -47,7 +47,7 @@ ge::graphStatus TilingSparseLightningIndexerGrad(gert::TilingContext *context)
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingPrepareForSparseLightningIndexerGrad(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForSparseLightningIndexerKllossGrad(gert::TilingParseContext *context)
 {
     OP_LOGW(context, "Start registering tiling.");
     auto compileInfoPtr = context->GetCompiledInfo<SparseLightningIndexerGradCompileInfo>();
@@ -58,7 +58,7 @@ ge::graphStatus TilingPrepareForSparseLightningIndexerGrad(gert::TilingParseCont
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(SparseLightningIndexerGrad)
-    .Tiling(TilingSparseLightningIndexerGrad)
-    .TilingParse<SparseLightningIndexerGradCompileInfo>(TilingPrepareForSparseLightningIndexerGrad);
+IMPL_OP_OPTILING(SparseLightningIndexerKllossGrad)
+    .Tiling(TilingSparseLightningIndexerKllossGrad)
+    .TilingParse<SparseLightningIndexerGradCompileInfo>(TilingPrepareForSparseLightningIndexerKllossGrad);
 } // namespace optiling

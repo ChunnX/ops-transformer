@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_cube_block.h
+ * \file sparse_lightning_indexer_klloss_grad_cube_block.h
  * \brief
  */
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_CUBE_BLOCK_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_CUBE_BLOCK_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_CUBE_BLOCK_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_CUBE_BLOCK_H
 
 #include "../../../../../../attention/common/op_kernel/matmul.h"
 #include "../../../../../../attention/common/op_kernel/FixpipeOut.h"
-#include "sparse_lightning_indexer_grad_regbase_common.h"
+#include "sparse_lightning_indexer_klloss_grad_regbase_common.h"
 namespace Slig {
 using T = float;
 

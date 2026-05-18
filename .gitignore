@@ -37,3 +37,5 @@ MANIFEST.in
 
 # third_party
 third_party/
+# OpenCode 配置
+.opencode/

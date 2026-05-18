@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_template_tiling_key_regbase.h
+ * \file sparse_lightning_indexer_klloss_grad_template_tiling_key_regbase.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TEMPLATE_TILING_KEY_REGBASE_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -34,7 +34,7 @@ enum class TopKRangeRegbase  : uint8_t {
 #define ASCENDC_TPL_4_BW 4
 
 // 模板参数支持的范围定义
-ASCENDC_TPL_ARGS_DECL(SparseLightningIndexerGrad, // 算子OpType
+ASCENDC_TPL_ARGS_DECL(SparseLightningIndexerKllossGrad, // 算子OpType
     ASCENDC_TPL_UINT_DECL(TOPK_RANGE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     ASCENDC_TPL_UINT_DECL(LAYOUT_Q, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1), // 0为BSND 1为TND
     ASCENDC_TPL_UINT_DECL(LAYOUT_KT, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),

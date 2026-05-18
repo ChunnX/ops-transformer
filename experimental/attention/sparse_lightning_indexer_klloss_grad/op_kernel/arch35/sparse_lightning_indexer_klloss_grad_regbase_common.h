@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_regbase_common.h
+ * \file sparse_lightning_indexer_klloss_grad_regbase_common.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_REGBASE_COMMON_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_REGBASE_COMMON_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_REGBASE_COMMON_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_REGBASE_COMMON_H
 
 #include "../../../../../../attention/common/op_kernel/buffers_policy.h"
 using namespace fa_base_matmul;

@@ -9,16 +9,16 @@
  */
  
 /*!
- * \file sparse_lightning_indexer_grad_def.cpp
+ * \file sparse_lightning_indexer_klloss_grad_def.cpp
  * \brief
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-class SparseLightningIndexerGrad : public OpDef {
+class SparseLightningIndexerKllossGrad : public OpDef {
 public:
-    explicit SparseLightningIndexerGrad(const char *name) : OpDef(name)
+    explicit SparseLightningIndexerKllossGrad(const char *name) : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
@@ -40,7 +40,7 @@ public:
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("attn_softmax_l1")
+        this->Input("attn_softmax_l1_norm")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
@@ -103,9 +103,11 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("opFile.value", "sparse_lightning_indexer_klloss_grad")
+            .ExtendCfgInfo("opInterface.value", "sparse_lightning_indexer_klloss_grad")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };
-OP_ADD(SparseLightningIndexerGrad);
+OP_ADD(SparseLightningIndexerKllossGrad);
 } // namespace ops

@@ -9,20 +9,20 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_tiling_general_regbase.h
+ * \file sparse_lightning_indexer_klloss_grad_tiling_general_regbase.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_TILING_GENERAL_REGBASE_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_TILING_GENERAL_REGBASE_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_GENERAL_REGBASE_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_GENERAL_REGBASE_H
 
 #include <numeric>
 #include <algorithm>
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_type.h"
-#include "../sparse_lightning_indexer_grad_tiling_common.h"
-#include "../../op_kernel/arch35/sparse_lightning_indexer_grad_template_tiling_key_regbase.h"
-#include "../../op_kernel/arch35/sparse_lightning_indexer_grad_tiling_regbase.h"
+#include "../sparse_lightning_indexer_klloss_grad_tiling_common.h"
+#include "../../op_kernel/arch35/sparse_lightning_indexer_klloss_grad_template_tiling_key_regbase.h"
+#include "../../op_kernel/arch35/sparse_lightning_indexer_klloss_grad_tiling_regbase.h"
 #include "err/ops_err.h"
 
 using namespace ge;

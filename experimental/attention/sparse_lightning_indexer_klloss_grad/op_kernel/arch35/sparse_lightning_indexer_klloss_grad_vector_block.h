@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_vector_block.h
+ * \file sparse_lightning_indexer_klloss_grad_vector_block.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_VECTOR_BLOCK_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_VECTOR_BLOCK_H 
-#include "sparse_lightning_indexer_grad_regbase_common.h"
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_VECTOR_BLOCK_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_VECTOR_BLOCK_H 
+#include "sparse_lightning_indexer_klloss_grad_regbase_common.h"
 #include "vf/vf_process_vec0.h"
 #include "vf/vf_process_vec1.h"
 #include "vf/vf_process_vec2.h"

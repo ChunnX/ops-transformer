@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_infershape.cpp
+ * \file sparse_lightning_indexer_klloss_grad_infershape.cpp
  * \brief
  */
 
@@ -44,9 +44,9 @@ enum OutputIdx {
     softmaxOutEnum
 };
 
-ge::graphStatus InferShapeSparseLightningIndexerGrad(gert::InferShapeContext *context)
+ge::graphStatus InferShapeSparseLightningIndexerKllossGrad(gert::InferShapeContext *context)
 {
-    OP_LOGI(context, "Start enter ShapeSparseLightningIndexerGrad runtime infershape impl.");
+    OP_LOGI(context, "Start enter ShapeSparseLightningIndexerKllossGrad runtime infershape impl.");
     if (context == nullptr){
         return ge::GRAPH_FAILED;
     }
@@ -70,7 +70,7 @@ ge::graphStatus InferShapeSparseLightningIndexerGrad(gert::InferShapeContext *co
         c = toupper(c);
     }
     if (inputLayoutSlig != "BSND" && inputLayoutSlig != "TND") {
-        OP_LOGE(context, "The SparseLightningIndexerGrad inputLayout should be BSND/TND, but got %s.",
+        OP_LOGE(context, "The SparseLightningIndexerKllossGrad inputLayout should be BSND/TND, but got %s.",
                   inputLayoutSlig.c_str());
         return GRAPH_FAILED;
     }
@@ -92,9 +92,9 @@ ge::graphStatus InferShapeSparseLightningIndexerGrad(gert::InferShapeContext *co
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeSparseLightningIndexerGrad(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeSparseLightningIndexerKllossGrad(gert::InferDataTypeContext *context)
 {
-    OP_LOGI(context, "Start enter ShapeSparseLightningIndexerGrad runtime infershape impl.");
+    OP_LOGI(context, "Start enter ShapeSparseLightningIndexerKllossGrad runtime infershape impl.");
     if (context == nullptr){
         return ge::GRAPH_FAILED;
     } 
@@ -108,5 +108,5 @@ ge::graphStatus InferDataTypeSparseLightningIndexerGrad(gert::InferDataTypeConte
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseLightningIndexerGrad).InferShape(InferShapeSparseLightningIndexerGrad).InferDataType(InferDataTypeSparseLightningIndexerGrad);
+IMPL_OP_INFERSHAPE(SparseLightningIndexerKllossGrad).InferShape(InferShapeSparseLightningIndexerKllossGrad).InferDataType(InferDataTypeSparseLightningIndexerKllossGrad);
 } // namespace ops
