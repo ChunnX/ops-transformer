@@ -1028,7 +1028,8 @@ mc2:
         - mc2/all_gather_matmul/docs
         - mc2/all_gather_matmul/README.md
       ut_cov_exclude:
-        - mc2/all_gather_matmul
+        - mc2/all_gather_matmul/op_graph
+        - mc2/all_gather_matmul/op_kernel
       test:
         examples: False
       options:
@@ -1271,7 +1272,8 @@ mc2:
         - mc2/matmul_allto_all/docs
         - mc2/matmul_allto_all/README.md
       ut_cov_exclude:
-        - mc2/matmul_allto_all
+        - mc2/matmul_allto_all/op_graph
+        - mc2/matmul_allto_all/op_kernel
       test:
         examples: False
       options:
@@ -1454,7 +1456,6 @@ mc2:
         - mc2/moe_distribute_combine_add_rms_norm/docs
         - mc2/moe_distribute_combine_add_rms_norm/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_add_rms_norm/op_api
         - mc2/moe_distribute_combine_add_rms_norm/op_graph
         - mc2/moe_distribute_combine_add_rms_norm/op_kernel
       test:
@@ -1476,7 +1477,6 @@ mc2:
         - mc2/moe_distribute_combine_setup/docs
         - mc2/moe_distribute_combine_setup/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_setup/op_api
         - mc2/moe_distribute_combine_setup/op_graph
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
@@ -1494,7 +1494,6 @@ mc2:
         - mc2/moe_distribute_combine_teardown/docs
         - mc2/moe_distribute_combine_teardown/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_teardown/op_api
         - mc2/moe_distribute_combine_teardown/op_graph
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:
