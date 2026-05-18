@@ -2101,25 +2101,28 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           } else {
             workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
           }
-          // --------------计算最小所需空间------------
-          //矩阵空间
-          uint64_t preProcessWorkspaceSize = (uint64_t)AlignUp(m, WS_ALIGN_8) * k * sizeof(int8_t) ;
 
-          tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
-                    (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
+          // --------------nz前处理优化------------
+          if (a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT || a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT){
+            uint64_t preProcessWorkspaceSize = (uint64_t)AlignUp(m, WS_ALIGN_8) * k * sizeof(int8_t) ;
 
-          bool isWorkspaceValid = 
-              (static_cast<int64_t>(preProcessWorkspaceSize) + workspaces[0] <= tuningConfigWorkspace_) || 
-              (tuningConfigWorkspace_ == TUNINGCONFIG_WORKSPACE_UNLIMIT);
-          // 空间足够 → 开启前处理 反之走原路径
-          uint32_t isA8W4MSDPreNZ = 0;
+            tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
+                      (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
 
-          // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
-          if (isWorkspaceValid && k % kNZInt4Alignment  == 0) {
-              isA8W4MSDPreNZ = 1;
-              workspaces[0] += preProcessWorkspaceSize ;                
+            bool isWorkspaceValid = 
+                (static_cast<int64_t>(preProcessWorkspaceSize) + workspaces[0] <= tuningConfigWorkspace_) || 
+                (tuningConfigWorkspace_ == TUNINGCONFIG_WORKSPACE_UNLIMIT);
+            // 空间足够 → 开启前处理 反之走原路径
+            uint32_t isA8W4MSDPreNZ = 0;
+
+            // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
+            if (isWorkspaceValid && k % kNZInt4Alignment  == 0) {
+                isA8W4MSDPreNZ = 1;
+                workspaces[0] += preProcessWorkspaceSize ;                
+            }
+            tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
           }
-          tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
+
           tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
           context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
           return ge::GRAPH_SUCCESS;
