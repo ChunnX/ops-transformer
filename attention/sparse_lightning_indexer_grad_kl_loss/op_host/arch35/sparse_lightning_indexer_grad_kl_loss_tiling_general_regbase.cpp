@@ -353,11 +353,6 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
                 OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.", kSize),
                 return false);
             topKRange = (kSize <= BUFFER_SIZE_BYTE_2K) ? TopKRangeRegbase::RANGE_0_2K : TopKRangeRegbase::RANGE_2K_8K;
-            OP_CHECK_IF((gSizeQuery == NQUERY_SIZE_32 && gSizeQueryIndex != NQUERYINDEX_SIZE_16) ||
-                        (gSizeQueryIndex == NQUERYINDEX_SIZE_16 && gSizeQuery != NQUERY_SIZE_32),
-                OP_LOGE(opName, "Invalid parameter combination: gSizeQuery=%d and gSizeQueryIndex=%d. "
-                        "Expected only pair(32, 16).", gSizeQuery, gSizeQueryIndex),
-                return false);
             OP_CHECK_IF((gSizeQuery == NQUERY_SIZE_48 && gSizeQueryIndex != NQUERYINDEX_SIZE_24) ||
                         (gSizeQueryIndex == NQUERYINDEX_SIZE_24 && gSizeQuery != NQUERY_SIZE_48),
                 OP_LOGE(opName, "Invalid parameter combination: gSizeQuery=%d and gSizeQueryIndex=%d. "
@@ -403,11 +398,6 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
                 OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.", kSize),
                 return false);
             topKRange = (kSize <= BUFFER_SIZE_BYTE_2K) ? TopKRangeRegbase::RANGE_0_2K : TopKRangeRegbase::RANGE_2K_8K;
-            OP_CHECK_IF((gSizeQuery == NQUERY_SIZE_32 && gSizeQueryIndex != NQUERYINDEX_SIZE_16) ||
-                        (gSizeQueryIndex == NQUERYINDEX_SIZE_16 && gSizeQuery != NQUERY_SIZE_32),
-                OP_LOGE(opName, "Invalid parameter combination: gSizeQuery=%d and gSizeQueryIndex=%d. "
-                        "Expected only pair(32, 16).", gSizeQuery, gSizeQueryIndex),
-                return false);
             OP_CHECK_IF((gSizeQuery == NQUERY_SIZE_48 && gSizeQueryIndex != NQUERYINDEX_SIZE_24) ||
                         (gSizeQueryIndex == NQUERYINDEX_SIZE_24 && gSizeQuery != NQUERY_SIZE_48),
                 OP_LOGE(opName, "Invalid parameter combination: gSizeQuery=%d and gSizeQueryIndex=%d. "
@@ -464,37 +454,46 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDtype()
     bool same16 = false; // 判断输入为fp16或者部分16的是否一致
     bool same32 = false; // 判断输入为int32或者fp32的类型是否正确
     if (queryDtype == ge::DT_FLOAT16 && keyDtype == ge::DT_FLOAT16 && queryIndexDtype == ge::DT_FLOAT16 && 
-                            keyIndexDtype == ge::DT_FLOAT16 && weightsDtype == ge::DT_FLOAT16) {
+        keyIndexDtype == ge::DT_FLOAT16 && (weightsDtype == ge::DT_FLOAT16 || weightsDtype == ge::DT_FLOAT)) {
         same16 = true;
     } else if (queryDtype == ge::DT_BF16 && keyDtype == ge::DT_BF16 && queryIndexDtype == ge::DT_BF16 && 
-                            keyIndexDtype == ge::DT_BF16 && weightsDtype == ge::DT_BF16) {
+               keyIndexDtype == ge::DT_BF16 && (weightsDtype == ge::DT_BF16 || weightsDtype == ge::DT_FLOAT)) {
         same16 = true;
     } else {
-        OP_LOGW(context_, "InputDtype is not same.: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], keyIndexDtype[%s], weightsDtype[%s]",
-            ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
+        OP_LOGW(context_, "InputDtype is not same.: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], \
+                keyIndexDtype[%s], weightsDtype[%s]",
+                ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
         same16 = false;
     } 
     if (sparseIndicesDtype == ge::DT_INT32 && softmaxMaxDtype == ge::DT_FLOAT && softmaxSumDtype == ge::DT_FLOAT) {
         same32 = true;
     } else {
-        OP_LOGW(context_, "InputDtype is fault: sparseIndicesDtype must be int32, but[%s]; softmaxMaxDtype must be float32, but[%s]; softmaxSumDtype must be float32, but[%s].",
-            ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
+        OP_LOGW(context_, "InputDtype is fault: sparseIndicesDtype must be int32, but[%s]; softmaxMaxDtype must be \
+                float32, but[%s]; softmaxSumDtype must be float32, but[%s].",
+                ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
         same32 = false;
     }
     // 所有类型不满足返回false
     if(same16 == false || same32 == false) {
         return false;
     }
-    OP_LOGW(context_, "InputDtype: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], keyIndexDtype[%s], weightsDtype[%s],",
-        ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
+    OP_LOGW(context_, "InputDtype: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], keyIndexDtype[%s], \
+            weightsDtype[%s].",
+            ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
     OP_LOGW(context_, "sparseIndicesDtype[%s], softmaxMaxDtype[%s], softmaxSumDtype[%s].",
-        ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
+            ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
     return true;
 }
 
@@ -530,15 +529,17 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
                 "CrossShapeVerify failed, shape N of query must be one of the {32, 48, 64, 128}, "
                 "but the value of query[1] is (%ld)", queryShape[1]), return false);
         // 验证N Index数字是否正确
-        OP_CHECK_IF(queryIndexShape[1] != NQUERYINDEX_SIZE_16 && queryIndexShape[1] != NQUERYINDEX_SIZE_24 &&
-                    queryIndexShape[1] != NQUERYINDEX_SIZE_32 && queryIndexShape[1] != NQUERYINDEX_SIZE_64,
+        OP_CHECK_IF(queryIndexShape[1] != NQUERYINDEX_SIZE_8 && queryIndexShape[1] != NQUERYINDEX_SIZE_16 &&
+                    queryIndexShape[1] != NQUERYINDEX_SIZE_24 && queryIndexShape[1] != NQUERYINDEX_SIZE_32 &&
+                    queryIndexShape[1] != NQUERYINDEX_SIZE_64,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-                "CrossShapeVerify failed, shape N of query_index must be one of the {16, 24, 32, 64}, "
+                "CrossShapeVerify failed, shape N of query_index must be one of the {8, 16, 24, 32, 64}, "
                 "but the value of query_index[1] is (%ld).", queryIndexShape[1]), return false);
-        OP_CHECK_IF(weightsShape[1] != NQUERYINDEX_SIZE_16 && weightsShape[1] != NQUERYINDEX_SIZE_24 &&
-                    weightsShape[1] != NQUERYINDEX_SIZE_32 && weightsShape[1] != NQUERYINDEX_SIZE_64,
+        OP_CHECK_IF(weightsShape[1] != NQUERYINDEX_SIZE_8 && weightsShape[1] != NQUERYINDEX_SIZE_16 &&
+                    weightsShape[1] != NQUERYINDEX_SIZE_24 && weightsShape[1] != NQUERYINDEX_SIZE_32 &&
+                    weightsShape[1] != NQUERYINDEX_SIZE_64,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-                "CrossShapeVerify failed, shape N of weights must be one of the {16, 24, 32, 64}, "
+                "CrossShapeVerify failed, shape N of weights must be one of the {8, 16, 24, 32, 64}, "
                 "but the value of weights[1] is (%ld).", weightsShape[1]), return false);
         // 验证N Index
         OP_CHECK_IF(queryIndexShape[1] != weightsShape[1],
@@ -621,15 +622,17 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
                 "CrossShapeVerify failed, shape N of query must be one of the {32, 48, 64, 128}, "
                 "but the value of query[2] is (%ld)", queryShape[2]), return false);
         // 验证N Index数字是否正确
-        OP_CHECK_IF(queryIndexShape[2] != NQUERYINDEX_SIZE_16 && queryIndexShape[2] != NQUERYINDEX_SIZE_24 &&
-                    queryIndexShape[2] != NQUERYINDEX_SIZE_32 && queryIndexShape[2] != NQUERYINDEX_SIZE_64,
+        OP_CHECK_IF(queryIndexShape[2] != NQUERYINDEX_SIZE_8 && queryIndexShape[2] != NQUERYINDEX_SIZE_16 &&
+                    queryIndexShape[2] != NQUERYINDEX_SIZE_24 && queryIndexShape[2] != NQUERYINDEX_SIZE_32 &&
+                    queryIndexShape[2] != NQUERYINDEX_SIZE_64,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-                "CrossShapeVerify failed, shape N of query_index must be one of the {16, 24, 32, 64}, "
+                "CrossShapeVerify failed, shape N of query_index must be one of the {8, 16, 24, 32, 64}, "
                 "but the value of query_index[2] is (%ld).", queryIndexShape[2]), return false);
-        OP_CHECK_IF(weightsShape[2] != NQUERYINDEX_SIZE_16 && weightsShape[2] != NQUERYINDEX_SIZE_24 &&
-                    weightsShape[2] != NQUERYINDEX_SIZE_32 && weightsShape[2] != NQUERYINDEX_SIZE_64,
+        OP_CHECK_IF(weightsShape[2] != NQUERYINDEX_SIZE_8 && weightsShape[2] != NQUERYINDEX_SIZE_16 &&
+                    weightsShape[2] != NQUERYINDEX_SIZE_24 && weightsShape[2] != NQUERYINDEX_SIZE_32 &&
+                    weightsShape[2] != NQUERYINDEX_SIZE_64,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-                "CrossShapeVerify failed, shape N of weights must be one of the {16, 24, 32, 64}, "
+                "CrossShapeVerify failed, shape N of weights must be one of the {8, 16, 24, 32, 64}, "
                 "but the value of weights[2] is (%ld).", weightsShape[2]), return false);
         // 验证N Index
         OP_CHECK_IF(queryIndexShape[2] != weightsShape[2],

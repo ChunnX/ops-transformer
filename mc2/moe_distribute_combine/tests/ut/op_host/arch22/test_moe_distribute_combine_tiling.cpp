@@ -64,7 +64,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test0)
             {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         },
         &compileInfo,
-        "Ascend910_93", coreNum, ubSize);;
+        "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 32UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -760,6 +760,617 @@ TEST_F(MoeDistributeCombineArch22TilingTest, A2InvalidCommQuantMode)
         },
         &compileInfo, "Ascend910B", coreNum, ubSize);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// ==========================================
+// 补充测试用例 - 提升 moe_distribute_combine_tiling.cpp 覆盖率
+// 目标覆盖: SetHCommCfg 的 TP 分支 (line 471-478),
+//           CheckWinSize 的 TP 分支 (line 507-519)
+// ==========================================
+
+// A5 模板成功路径: tpWorldSize=2, 覆盖 SetHCommCfg TP 分支和 CheckWinSize TP 分支
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize2_Success)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 288;
+    int64_t tpWorldSize = 2;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 32;
+    int64_t moeExpertNum = 256;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{32*8, 7168}, {32*8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{32, 8}, {32, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{288*2}, {288*2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{32, 7168}, {32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板: commQuantMode=2 (INT8 通信量化), tpWorldSize=1
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_Int8CommQuant)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 288;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 2;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 32;
+    int64_t moeExpertNum = 256;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{32*8, 7168}, {32*8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{32, 8}, {32, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{32, 7168}, {32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板: globalBs 非零值, 覆盖 CheckBatchAttrs 中 globalBs != 0 的分支
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_GlobalBsNonZero)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 8;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 1;
+    int64_t moeExpertNum = 7;
+    int64_t globalBs = 64;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板: epWorldSize=4, sharedExpertRankNum=2, 覆盖 A5 CheckEpWorldSize 中 epWorldSize 为 2 的倍数的路径
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_EpWorldSize4)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 4;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 2;
+    int64_t moeExpertNum = 2;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{8*2, 7168}, {8*2, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 2}, {8, 2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8*2}, {8*2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 2}, {8, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: epWorldSize 不是 2 的倍数
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_EpWorldSizeOdd)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 7;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 1;
+    int64_t moeExpertNum = 6;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7}, {7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: epWorldSize 不在合法列表中 (不满足 256%epWorldSize==0 且不满足 epWorldSize%144==0)
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_EpWorldSizeInvalid)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 6;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 1;
+    int64_t moeExpertNum = 5;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: expandX 数据类型为 DT_INT32
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_ExpandXInt32DataType)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 8;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 1;
+    int64_t moeExpertNum = 7;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: tpWorldSize > 1 时 commQuantMode != 0
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize2WithInvalidCommQuantMode)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 288;
+    int64_t tpWorldSize = 2;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 2;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 32;
+    int64_t moeExpertNum = 256;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{576, 7168}, {576, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{32, 8}, {32, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{288*2}, {288*2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{32, 7168}, {32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: sharedExpertNum != 1
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_InvalidSharedExpertNum)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 8;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 0;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 1;
+    int64_t moeExpertNum = 7;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: expertShardType != 0
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_InvalidExpertShardType)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 8;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 1;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 1;
+    int64_t moeExpertNum = 7;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+// A5 模板错误路径: sharedExpertRankNum >= epWorldSize
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_SharedExpertRankNumTooLarge)
+{
+    struct MoeDistributeCombineCompileInfo {};
+    MoeDistributeCombineCompileInfo compileInfo;
+    std::string epGroup("epGroup");
+    std::string tpGroup("tpGroup");
+    int64_t epWorldSize = 8;
+    int64_t tpWorldSize = 1;
+    int64_t epRankId = 0;
+    int64_t tpRankId = 0;
+    int64_t expertShardType = 0;
+    int64_t sharedExpertNum = 1;
+    int64_t outDtype = 0;
+    int64_t commQuantMode = 0;
+    int64_t groupListType = 0;
+    int64_t sharedExpertRankNum = 10;
+    int64_t moeExpertNum = 7;
+    int64_t globalBs = 0;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("MoeDistributeCombine",
+        {
+            {{{64, 7168}, {64, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(epGroup)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tpGroup)},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epWorldSize)},
+            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpWorldSize)},
+            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(epRankId)},
+            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tpRankId)},
+            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertShardType)},
+            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertNum)},
+            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedExpertRankNum)},
+            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(moeExpertNum)},
+            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(globalBs)},
+            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outDtype)},
+            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(commQuantMode)},
+            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}
+        },
+        &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
