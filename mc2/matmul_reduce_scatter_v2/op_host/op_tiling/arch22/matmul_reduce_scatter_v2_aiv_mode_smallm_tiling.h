@@ -105,23 +105,23 @@ inline int TraverseDecisionTree(const DecisionNode (&decision_rules)[N], int m, 
 
 namespace Tiling_Rank2_A2 {
 const DecisionNode m0Rule[] = {
-    // ====================== 层级0 (索引0-0) ======================
+    // --- 层级0 (索引0-0) ---
     {FeatureType::RETURN_VALUE, {.return_value = 128}}, // 索引0
 };
 
 // swizzlCount优化参数的决策树规则（使用特征：m, k, n, m_div_n, m_mul_n, world_mul_k, mn_div_k）
 const DecisionNode swizzlcountRule[] = {
-    // ====================== 层级0 (索引0-0) ======================
+    // === 层级0 (索引0-0) ===
     {FeatureType::M_VALUE, {.threshold = 1536.0f}}, // 索引0
-    // ====================== 层级1 (索引1-2) ======================
+    // ----- 层级1 (索引1-2) -----
     {FeatureType::M_VALUE, {.threshold = 768.0f}},  // 索引1
     {FeatureType::M_VALUE, {.threshold = 3072.0f}}, // 索引2
-    // ====================== 层级2 (索引3-6) ======================
+    // ~~~~~ 层级2 (索引3-6) ~~~~~
     {FeatureType::M_VALUE, {.threshold = 384.0f}},         // 索引3
     {FeatureType::M_DIV_N, {.threshold = 1.500000f}},      // 索引4
     {FeatureType::MN_DIV_K, {.threshold = 24576.000000f}}, // 索引5
     {FeatureType::M_VALUE, {.threshold = 6144.0f}},        // 索引6
-    // ====================== 层级3 (索引7-14) ======================
+    // >>>>> 层级3 (索引7-14) >>>>>
     {FeatureType::M_VALUE, {.threshold = 192.0f}},         // 索引7
     {FeatureType::MN_DIV_K, {.threshold = 48.000000f}},    // 索引8
     {FeatureType::WORLD_MUL_K, {.threshold = 3072.0f}},    // 索引9
@@ -130,7 +130,7 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::MN_DIV_K, {.threshold = 49152.000000f}}, // 索引12
     {FeatureType::N_VALUE, {.threshold = 384.0f}},         // 索引13
     {FeatureType::K_VALUE, {.threshold = 6144.0f}},        // 索引14
-    // ====================== 层级4 (索引15-30) ======================
+    // :::::: 层级4 (索引15-30) ::::::
     {FeatureType::MN_DIV_K, {.threshold = 384.000000f}},   // 索引15
     {FeatureType::M_DIV_N, {.threshold = 0.093750f}},      // 索引16
     {FeatureType::MN_DIV_K, {.threshold = 24.000000f}},    // 索引17
@@ -147,7 +147,7 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::M_DIV_N, {.threshold = 0.750000f}},      // 索引28
     {FeatureType::MN_DIV_K, {.threshold = 49152.000000f}}, // 索引29
     {FeatureType::M_DIV_N, {.threshold = 24.000000f}},     // 索引30
-    // ====================== 层级5 (索引31-62) ======================
+    // <<<<< 层级5 (索引31-62) <<<<<
     {FeatureType::MN_DIV_K, {.threshold = 48.000000f}},    // 索引31
     {FeatureType::K_VALUE, {.threshold = 384.0f}},         // 索引32
     {FeatureType::WORLD_MUL_K, {.threshold = 3072.0f}},    // 索引33
@@ -168,10 +168,10 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::K_VALUE, {.threshold = 384.0f}},         // 索引48
     {FeatureType::RETURN_VALUE, {.return_value = 3}},      // 索引49
     {FeatureType::K_VALUE, {.threshold = 3072.0f}},        // 索引50
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引51: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引52: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引53: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引54: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引51: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引52: 占位符
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引53: 空节点
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},       // 索引54: 未定义
     {FeatureType::RETURN_VALUE, {.return_value = 3}},      // 索引55
     {FeatureType::MN_DIV_K, {.threshold = 768.000000f}},   // 索引56
     {FeatureType::WORLD_MUL_K, {.threshold = 1536.0f}},    // 索引57
@@ -180,7 +180,7 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::MN_DIV_K, {.threshold = 98304.000000f}}, // 索引60
     {FeatureType::M_DIV_N, {.threshold = 1.500000f}},      // 索引61
     {FeatureType::RETURN_VALUE, {.return_value = 64}},     // 索引62
-    // ====================== 层级6 (索引63-126) ======================
+    // ++++++ 层级6 (索引63-126) ++++++
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引63
     {FeatureType::RETURN_VALUE, {.return_value = 1}},  // 索引64
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引65
@@ -189,20 +189,20 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::RETURN_VALUE, {.return_value = 2}},  // 索引68
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引69
     {FeatureType::RETURN_VALUE, {.return_value = 2}},  // 索引70
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引71: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引72: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引73: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引74: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引71: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引72: 占位符
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引73: 空节点
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引74: 未定义
     {FeatureType::RETURN_VALUE, {.return_value = 4}},  // 索引75
     {FeatureType::RETURN_VALUE, {.return_value = 4}},  // 索引76
     {FeatureType::RETURN_VALUE, {.return_value = 4}},  // 索引77
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引78
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引79: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引80: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引79: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引80: 占位符
     {FeatureType::RETURN_VALUE, {.return_value = 8}},  // 索引81
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引82
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引83: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引84: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引83: 空节点
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引84: 未定义
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引85
     {FeatureType::RETURN_VALUE, {.return_value = 8}},  // 索引86
     {FeatureType::RETURN_VALUE, {.return_value = 8}},  // 索引87
@@ -217,20 +217,20 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::RETURN_VALUE, {.return_value = 16}}, // 索引96
     {FeatureType::RETURN_VALUE, {.return_value = 16}}, // 索引97
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引98
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引99: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引100: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引99: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引100: 占位符
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引101
     {FeatureType::RETURN_VALUE, {.return_value = 16}}, // 索引102
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引103: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引104: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引105: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引106: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引107: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引108: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引109: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引110: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引111: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引112: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引103: 空节点
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引104: 未定义
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引105: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引106: 占位符
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引107: 空节点
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引108: 未定义
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引109: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引110: 占位符
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引111: 空节点
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引112: 未定义
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引113
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引114
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引115
@@ -243,32 +243,32 @@ const DecisionNode swizzlcountRule[] = {
     {FeatureType::RETURN_VALUE, {.return_value = 6}},  // 索引122
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引123
     {FeatureType::RETURN_VALUE, {.return_value = 3}},  // 索引124
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引125: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引126: 占位
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引125: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},   // 索引126: 占位符
 };
 
 // swizzlDirect优化参数的决策树规则（使用特征：m, k, n, m_div_n, m_mul_n, world_mul_k, mn_div_k）
 const DecisionNode swizzldirectRule[] = {
-    // ====================== 层级0 (索引0-0) ======================
+    // -*- 层级0 (索引0-0) -*-
     {FeatureType::M_MUL_N, {.threshold = 25165824.0f}}, // 索引0
-    // ====================== 层级1 (索引1-2) ======================
+    // ====== 层级1 (索引1-2) ======
     {FeatureType::M_MUL_N, {.threshold = 786432.0f}}, // 索引1
     {FeatureType::N_VALUE, {.threshold = 6144.0f}},   // 索引2
-    // ====================== 层级2 (索引3-6) ======================
+    // #### 层级2 (索引3-6) ####
     {FeatureType::M_DIV_N, {.threshold = 6.000000f}}, // 索引3
     {FeatureType::N_VALUE, {.threshold = 384.0f}},    // 索引4
     {FeatureType::K_VALUE, {.threshold = 6144.0f}},   // 索引5
     {FeatureType::RETURN_VALUE, {.return_value = 1}}, // 索引6
-    // ====================== 层级3 (索引7-14) ======================
+    // *** 层级3 (索引7-14) ***
     {FeatureType::MN_DIV_K, {.threshold = 48.000000f}}, // 索引7
     {FeatureType::K_VALUE, {.threshold = 1536.0f}},     // 索引8
     {FeatureType::M_VALUE, {.threshold = 6144.0f}},     // 索引9
     {FeatureType::N_VALUE, {.threshold = 6144.0f}},     // 索引10
     {FeatureType::WORLD_MUL_K, {.threshold = 1536.0f}}, // 索引11
     {FeatureType::RETURN_VALUE, {.return_value = 1}},   // 索引12
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},    // 索引13: 占位
-    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},    // 索引14: 占位
-    // ====================== 层级4 (索引15-30) ======================
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},    // 索引13: placeholder
+    {FeatureType::PLACEHOLDER, {.threshold = 0.0f}},    // 索引14: 占位符
+    // >>> 层级4 (索引15-30) >>>
     {FeatureType::M_VALUE, {.threshold = 192.0f}},      // 索引15
     {FeatureType::K_VALUE, {.threshold = 3072.0f}},     // 索引16
     {FeatureType::RETURN_VALUE, {.return_value = 0}},   // 索引17

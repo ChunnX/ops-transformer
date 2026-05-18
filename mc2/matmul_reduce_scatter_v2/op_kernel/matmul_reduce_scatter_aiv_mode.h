@@ -207,17 +207,17 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             LayoutNZ layoutBNZ = LayoutNZ::template MakeLayout<ElementB>(layout_b_row, layout_b_col);
 
             struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, void> {
-                using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, void>;
-                using ElementA = typename Base::ElementA;
-                using ElementB = typename Base::ElementB;
-                using ElementAccumulator = typename Base::ElementAccumulator;
-                using CopyGmToL1A = typename Base::CopyGmToL1A;
-                using CopyGmToL1B = typename Base::CopyGmToL1B;
+                using BaseClass = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, void>;
+                using ElemA = typename BaseClass::ElementA;
+                using ElemB = typename BaseClass::ElementB;
+                using AccumType = typename BaseClass::ElementAccumulator;
+                using G2L1CopyA = typename BaseClass::CopyGmToL1A;
+                using G2L1CopyB = typename BaseClass::CopyGmToL1B;
 
-                using CopyL1ToL0A = typename Base::CopyL1ToL0A;
-                using CopyL1ToL0B = typename Base::CopyL1ToL0B;
+                using L1ToL0CopyA = typename BaseClass::CopyL1ToL0A;
+                using L1ToL0CopyB = typename BaseClass::CopyL1ToL0B;
 
-                using CopyL0CToGm = typename Base::CopyL0CToGm;
+                using L0ToGmCopyC = typename BaseClass::CopyL0CToGm;
             };
             using TileCopy = TileCopyOpt;
 
@@ -227,7 +227,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                 using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
                                  L1TileShape, L0TileShape, AType_, BType_, CType_, void, TileCopy>;
                 using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                typename MatmulKernel::Params kernelParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
                                                      layoutBNZ,     reinterpret_cast<GM_ADDR>(cGM_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
@@ -237,15 +237,15 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
-                matmul_op(params);
+                MatmulKernel mmOperator;
+                mmOperator(kernelParams);
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
                 using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
                                     L1TileShape, L0TileShape, AType_, BType_, CType_, void, TileCopy>;
                 using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                typename MatmulKernel::Params matmulParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
                                                      layoutBNZ,     reinterpret_cast<GM_ADDR>(cGM_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
@@ -255,8 +255,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
-                matmul_op(params);
+                MatmulKernel matmulKernel;
+                matmulKernel(matmulParams);
             }
         } else {
             // B矩阵ND格式
@@ -265,21 +265,21 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             using BType_ = Gemm::GemmType<ElementB, LayoutB>;
 
             struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, void> {
-                using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, void>;
-                using ElementA = typename Base::ElementA;
-                using ElementB = typename Base::ElementB;
-                using ElementAccumulator = typename Base::ElementAccumulator;
+                using BaseT = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, void>;
+                using ElementA_t = typename BaseT::ElementA;
+                using ElementB_t = typename BaseT::ElementB;
+                using ElementAccum_t = typename BaseT::ElementAccumulator;
 
                 // When matrix A is row-major, if the number of rows in matrix A is less than 16,
                 // using the CopyGmToL1IntervalDataCopy method can improve the transfer efficiency.
                 // The situation is similar for matrix B. If the above conditions are met,
                 // please uncomment the following and comment out the original matrix A transfer method
 
-                using CopyGmToL1A = typename Base::CopyGmToL1A;
-                using CopyGmToL1B = typename Base::CopyGmToL1B;
-                using CopyL1ToL0A = typename Base::CopyL1ToL0A;
-                using CopyL1ToL0B = typename Base::CopyL1ToL0B;
-                using CopyL0CToGm = typename Base::CopyL0CToGm;
+                using GmToL1CopyA = typename BaseT::CopyGmToL1A;
+                using GmToL1CopyB = typename BaseT::CopyGmToL1B;
+                using L1ToL0CpyA = typename BaseT::CopyL1ToL0A;
+                using L1ToL0CpyB = typename BaseT::CopyL1ToL0B;
+                using L0ToGmCpyC = typename BaseT::CopyL0CToGm;
             };
             using TileCopy = TileCopyOpt;
             if (m0 == TILE_SHAPE_128) {
@@ -288,7 +288,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                 using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
                                         L1TileShape, L0TileShape, AType_, BType_, CType_, void, TileCopy>;
                 using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                typename MatmulKernel::Params mmParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
                                                      layoutB,       reinterpret_cast<GM_ADDR>(cGM_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
@@ -298,15 +298,15 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
-                matmul_op(params);
+                MatmulKernel mmOp;
+                mmOp(mmParams);
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
                 using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
                                     L1TileShape, L0TileShape, AType_, BType_, CType_, void, TileCopy>;
                 using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                typename MatmulKernel::Params matmulArgs{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
                                                      layoutB,       reinterpret_cast<GM_ADDR>(cGM_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
@@ -316,8 +316,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
-                matmul_op(params);
+                MatmulKernel matmulOpInst;
+                matmulOpInst(matmulArgs);
             }
         }
     }
@@ -337,17 +337,17 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 
     uint32_t pingpongSt = flagIdx * gm_c_pingpong_size;
 
-    uint32_t rowNum = m;
-    uint32_t colNum = n;
-    uint32_t tileM0 = m0;
-    uint32_t tileN0 = n0;
-    uint32_t coreIdx = core_idx;
-    uint32_t coreNum = core_num;
-    uint32_t rankIdx = rank;
-    uint32_t rankSize = rank_size;
-    uint32_t pValue = p_value;
-    uint32_t swizzlDirect = swizzl_direct;
-    uint32_t swizzlCount = swizzl_count;
+    uint32_t rowCnt = m;
+    uint32_t colCnt = n;
+    uint32_t tileM = m0;
+    uint32_t tileN = n0;
+    uint32_t coreId = core_idx;
+    uint32_t totalCores = core_num;
+    uint32_t rankId = rank;
+    uint32_t totalRanks = rank_size;
+    uint32_t pVal = p_value;
+    uint32_t swizzleDir = swizzl_direct;
+    uint32_t swizzleCnt = swizzl_count;
     __gm__ float32_t *perChannelScale = needPerChannel ?
         reinterpret_cast<__gm__ float32_t *>(perChannelScaleGM_) : nullptr;
     __gm__ float32_t *perTokenScale = needPerToken ?
@@ -369,22 +369,22 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishPadding);
         return;
     }
-    bool transA = TA; // 当前暂未支持A矩阵转置
-    bool transB = TB;
-    bool alignedA = aligned_a;
-    bool alignedB = aligned_b;
-    uint32_t matrixAM = m;
-    uint32_t matrixAK = k;
-    uint32_t matrixBK = k;
-    uint32_t matrixBN = n;
-    uint32_t matrixAMAlign = static_cast<uint32_t>(m_align);
-    uint32_t matrixAKAlign = static_cast<uint32_t>(k_align);
-    uint32_t matrixBKAlign = static_cast<uint32_t>(k_align);
-    uint32_t matrixBNAlign = static_cast<uint32_t>(n_align);
-    GM_ADDR gmA = reinterpret_cast<GM_ADDR>(aGM_);
-    GM_ADDR gmB = reinterpret_cast<GM_ADDR>(bGM_);
-    GM_ADDR gmAAlign = reinterpret_cast<GM_ADDR>(gm_a_align);
-    GM_ADDR gmBAlign = reinterpret_cast<GM_ADDR>(gm_b_align);
+    bool isTransA = TA; // 当前暂未支持A矩阵转置
+    bool isTransB = TB;
+    bool isAlignedA = aligned_a;
+    bool isAlignedB = aligned_b;
+    uint32_t matARows = m;
+    uint32_t matACols = k;
+    uint32_t matBCols = k;
+    uint32_t matBRows = n;
+    uint32_t matARowsAlign = static_cast<uint32_t>(m_align);
+    uint32_t matAColsAlign = static_cast<uint32_t>(k_align);
+    uint32_t matBColsAlign = static_cast<uint32_t>(k_align);
+    uint32_t matBRowsAlign = static_cast<uint32_t>(n_align);
+    GM_ADDR gmMatA = reinterpret_cast<GM_ADDR>(aGM_);
+    GM_ADDR gmMatB = reinterpret_cast<GM_ADDR>(bGM_);
+    GM_ADDR gmMatAAligned = reinterpret_cast<GM_ADDR>(gm_a_align);
+    GM_ADDR gmMatBAligned = reinterpret_cast<GM_ADDR>(gm_b_align);
     PaddingRunner<AType, BType> padding_runner;
     padding_runner.Run(PADDING_ARGS_CALL());
 }
@@ -394,16 +394,16 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 {
     SetAtomicAdd<cType>();
     PipeBarrier<PIPE_ALL>();
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0); // MTE2等MTE3
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1); // MTE2等MTE3
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0); // MTE2 waits for MTE3
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1); // MTE2 waits for MTE3
 }
 
 template <TemplateMMReduceScatterV2Class, typename Derived>
 __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func, Derived>::EndFirstStep()
 {
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0); // MTE2等MTE3
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1); // MTE2等MTE3
-    SetFlag<HardEvent::MTE3_S>(EVENT_ID0);     // Scalar等MTE3
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0); // MTE2 waits for MTE3
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1); // MTE2 waits for MTE3
+    SetFlag<HardEvent::MTE3_S>(EVENT_ID0);     // Scalar waits for MTE3
     WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
     SetAtomicNone();
     PipeBarrier<PIPE_ALL>();
