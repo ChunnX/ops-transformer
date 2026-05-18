@@ -472,6 +472,11 @@ __aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
     return (GM_ADDR)(winContext->windowsIn[winContext->rankId] + winContext->rankId * EP_RANK_OFFSET_STEP);
 }
 
+__aicore__ inline GM_ADDR GetStatusDataSpaceGm2(__gm__ HcclOpParam * winContext)
+{
+    return (GM_ADDR)(winContext->windowsOut[winContext->rankId]);
+}
+
 __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
 {
     return (GM_ADDR)(winContext->windowsIn[rankId] + A5_MTE_STATE_WIN_SIZE + rankId * EP_RANK_OFFSET_STEP);
