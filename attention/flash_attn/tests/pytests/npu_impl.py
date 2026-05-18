@@ -19,6 +19,8 @@ import npu_ops_transformer
 from npu_ops_transformer.ops import npu_flash_attn
 from npu_ops_transformer.ops import npu_flash_attn_metadata
 from test_utils import trans_bnsd_to_layout
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
 
 def _is_small_1d_int_tensor(x):
     return torch.is_tensor(x) and x.dim() == 1 and x.numel() <= 64 and x.dtype in (torch.int64, torch.int32)
@@ -420,5 +422,242 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         return_softmax_lse = lse_flag,
         deterministic = 0,
     )
+    torch.npu.synchronize()
+    return out.cpu(), lse_out.cpu()
+
+
+class FlashAttnGraphNetwork(torch.nn.Module):
+    def __init__(self):
+        super(FlashAttnGraphNetwork, self).__init__()
+
+    def forward(self, q, k, v, block_table, attn_mask, metadata,
+                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                softmax_scale, mask_mode, win_left, win_right,
+                max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
+                return_softmax_lse, deterministic):
+        out, lse_out = npu_flash_attn(
+            q, k, v,
+            block_table   = block_table,
+            sinks         = None,
+            attn_mask     = attn_mask,
+            metadata      = metadata,
+            cu_seqlens_q  = cu_seqlens_q,
+            cu_seqlens_kv = cu_seqlens_kv,
+            seqused_q     = seqused_q,
+            seqused_kv    = seqused_kv,
+            softmax_scale = softmax_scale,
+            mask_mode     = mask_mode,
+            win_left      = win_left,
+            win_right     = win_right,
+            max_seqlen_q  = max_seqlen_q,
+            max_seqlen_kv = max_seqlen_kv,
+            layout_q      = layout_q,
+            layout_kv     = layout_kv,
+            layout_out    = layout_out,
+            return_softmax_lse = return_softmax_lse,
+            deterministic = deterministic,
+        )
+        return out, lse_out
+
+
+def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
+    input_layout        = kwargs.get("input_layout", "BNSD")
+    layout_q            = kwargs.get("layout_q",   input_layout)
+    layout_kv           = kwargs.get("layout_kv",  input_layout)
+    layout_out          = kwargs.get("layout_out", input_layout)
+    n1                  = kwargs.get("N1")
+    n2                  = kwargs.get("N2", n1)
+    b                   = kwargs.get("B",  1)
+    d                   = kwargs.get("D")
+    sq                  = kwargs.get("S1", None)
+    skv                 = kwargs.get("S2", sq)
+    d_rope              = kwargs.get("DRope", 0)
+    sparse_mode         = kwargs.get("sparse_mode", 0)
+    pre_tokens          = kwargs.get("pre_tokens", 2147483647)
+    next_tokens         = kwargs.get("next_tokens", 2147483647)
+    if sparse_mode in (0, 3):
+        pre_tokens = -1
+        next_tokens = -1
+    actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
+    actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
+    cu_q       = kwargs.get("cu_seqlens_q", None)
+    cu_kv      = kwargs.get("cu_seqlens_kv", None)
+    seqused_q  = kwargs.get("seqused_q", actual_seq_qlen)
+    seqused_kv = kwargs.get("seqused_kv", actual_seq_kvlen)
+    scale = kwargs.get("scale", 1 / (d ** 0.5))
+    keep_prob = kwargs.get("keep_prob", 1)
+    seed = kwargs.get("seed", 0)
+    lse_flag = kwargs.get("return_softmax_lse", 0)
+    block_table         = kwargs.get("block_table")
+
+    q1 = trans_bnsd_to_layout(q, layout_q, **kwargs).contiguous().to(device)
+    k1 = trans_bnsd_to_layout(k, layout_kv, **kwargs).contiguous().to(device)
+    v1 = trans_bnsd_to_layout(v, layout_kv, **kwargs).contiguous().to(device)
+
+    if d_rope != 0:
+        query_rope = trans_bnsd_to_layout(q_rope, layout_q, **kwargs).contiguous().to(device)
+        key_rope   = trans_bnsd_to_layout(k_rope, layout_kv, **kwargs).contiguous().to(device)
+    else:
+        query_rope = None
+        key_rope   = None
+    pse1        = pse.to(device)        if pse        is not None else None
+    atten_mask1 = atten_mask.to(device) if atten_mask is not None else None
+
+    torch.npu.manual_seed(seed)
+
+    def _to_u32_tensor(v):
+        if v is None:
+            return None
+        if torch.is_tensor(v):
+            return v.to(dtype=torch.int32, device=device).contiguous()
+        return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
+
+    cu_q_meta       = _to_u32_tensor(cu_q)
+    cu_kv_meta      = _to_u32_tensor(cu_kv)
+    seqused_q_meta  = _to_u32_tensor(seqused_q)
+    seqused_kv_meta = _to_u32_tensor(seqused_kv)
+
+    if layout_q == "BNSD":
+        batch_size    = q1.shape[0]
+        num_heads_q   = q1.shape[1]
+        max_seqlen_q  = q1.shape[2]
+        head_dim      = q1.shape[3]
+        num_heads_kv  = k1.shape[1]
+        max_seqlen_kv = k1.shape[2]
+    elif layout_q == "BSND":
+        batch_size    = q1.shape[0]
+        num_heads_q   = q1.shape[2]
+        max_seqlen_q  = q1.shape[1]
+        head_dim      = q1.shape[3]
+        num_heads_kv  = k1.shape[2]
+        max_seqlen_kv = k1.shape[1]
+    elif layout_q == "TND":
+        if cu_q_meta is not None and hasattr(cu_q_meta, 'shape'):
+            batch_size = cu_q_meta.shape[0] - 1
+        elif seqused_q_meta is not None and hasattr(seqused_q_meta, 'shape'):
+            batch_size = seqused_q_meta.shape[0]
+        else:
+            batch_size = b
+        num_heads_q   = q1.shape[1]
+        head_dim      = q1.shape[2]
+        num_heads_kv  = k1.shape[1]
+        max_seqlen_q  = sq  if sq  is not None else q1.shape[0]
+        max_seqlen_kv = skv if skv is not None else k1.shape[0]
+    else:
+        batch_size    = q1.shape[0]
+        num_heads_q   = n1
+        num_heads_kv  = n2
+        head_dim      = d
+        max_seqlen_q  = q1.shape[1]
+        max_seqlen_kv = k1.shape[1]
+
+    block_table_ = None
+    if layout_kv in ["PA_BBND", "PA_BNBD", "PA_NZ"]:
+        block_table_  = block_table.to(device)
+        num_heads_kv  = kwargs.get("N2")
+        head_dim      = d
+        max_seqlen_kv = max(seqused_kv)
+
+    _print_args("Call npu_flash_attn_metadata (graph mode)", {
+        "cu_seqlens_q": cu_q_meta,
+        "cu_seqlens_kv": cu_kv_meta,
+        "seqused_q": seqused_q_meta,
+        "seqused_kv": seqused_kv_meta,
+        "num_heads_q": num_heads_q,
+        "num_heads_kv": num_heads_kv,
+        "head_dim": head_dim,
+        "batch_size": batch_size,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "mask_mode": sparse_mode,
+        "win_left": pre_tokens,
+        "win_right": next_tokens,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+    })
+
+    metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
+        cu_seqlens_q  = cu_q_meta,
+        cu_seqlens_kv = cu_kv_meta,
+        seqused_q     = seqused_q_meta,
+        seqused_kv    = seqused_kv_meta,
+        num_heads_q   = num_heads_q,
+        num_heads_kv  = num_heads_kv,
+        head_dim      = head_dim,
+        batch_size    = batch_size,
+        max_seqlen_q  = max_seqlen_q,
+        max_seqlen_kv = max_seqlen_kv,
+        mask_mode     = sparse_mode,
+        win_left      = pre_tokens,
+        win_right     = next_tokens,
+        layout_q      = layout_q,
+        layout_kv     = layout_kv,
+        layout_out    = layout_out,
+    )
+    print_metadata(metadata)
+
+    max_seqlen_q  = -1
+    max_seqlen_kv = -1
+    atten_mask1 = atten_mask1 if sparse_mode != 0 else None
+    if atten_mask1 is not None and sparse_mode in (3, 4):
+        atten_mask1 = atten_mask1.to(dtype=torch.int8)
+
+    _print_args("Call npu_flash_attn (graph mode)", {
+        "q": q1,
+        "k": k1,
+        "v": v1,
+        "block_table": block_table_,
+        "attn_mask": atten_mask1,
+        "metadata": metadata,
+        "cu_seqlens_q": cu_q_meta,
+        "cu_seqlens_kv": cu_kv_meta,
+        "seqused_q": seqused_q_meta,
+        "seqused_kv": seqused_kv_meta,
+        "softmax_scale": scale,
+        "mask_mode": sparse_mode,
+        "win_left": pre_tokens,
+        "win_right": next_tokens,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+    })
+
+    torch._dynamo.reset()
+    npu_mode = FlashAttnGraphNetwork().npu()
+    config = CompilerConfig()
+    config.mode = "reduce-overhead"
+    config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+    config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
+    config.experimental_config.frozen_parameter = True
+    config.experimental_config.tiling_schedule_optimize = True
+    config.experimental_config.topology_sorting_strategy = "StableRDFS"
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    npu_mode = torch.compile(npu_mode, fullgraph=False, backend=npu_backend, dynamic=False)
+
+    out, lse_out = npu_mode(
+        q1, k1, v1,
+        block_table_,
+        atten_mask1,
+        metadata,
+        cu_q_meta,
+        cu_kv_meta,
+        seqused_q_meta,
+        seqused_kv_meta,
+        scale,
+        sparse_mode,
+        pre_tokens,
+        next_tokens,
+        max_seqlen_q,
+        max_seqlen_kv,
+        layout_q,
+        layout_kv,
+        layout_out,
+        lse_flag,
+        0,
+    )
+
     torch.npu.synchronize()
     return out.cpu(), lse_out.cpu()
