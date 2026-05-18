@@ -112,6 +112,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::DoOpTiling()
 {
     GE_ASSERT_GRAPH_SUCCESS(CheckA16W8());
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    GE_ASSERT_GRAPH_SUCCESS(CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
