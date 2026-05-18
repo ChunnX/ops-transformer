@@ -206,6 +206,8 @@ public:
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxFloatAddr, lastMaxAddr, mLoops, tailM);
         }
+        AscendC::printf("tkd S matrix\n");
+        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         AscendC::printf("tkd inital lpUbTensor\n");
         AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         AscendC::printf("tkd initial max\n");
