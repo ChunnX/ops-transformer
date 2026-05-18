@@ -559,7 +559,6 @@ aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
     OP_LOGI("Get rank size success, rankSize is: %u", rankSize);
     return ACLNN_SUCCESS;
 }
-
 // 模板函数显式实例化
 template void *Mc2Context::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
