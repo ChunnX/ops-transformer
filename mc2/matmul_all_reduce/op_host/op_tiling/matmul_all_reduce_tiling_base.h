@@ -271,6 +271,8 @@ protected:
     MMRCtxInfo& mmrCtxInfo_;
     Mc2Tiling::MatmulAllReduceTilingData tilingDataSelf_{};
     Mc2Tiling::MatmulAllReduceTilingData& tilingData_;
+    ge::graphStatus GetAndConvertCommMode(uint8_t &commMode) const;
+    uint8_t GetCommMode(const uint32_t rankDim) const;
 };
 } // namespace optiling
 #endif // MC2_MM_ALLREDUCE_TILING_ARCH35_H
