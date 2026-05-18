@@ -334,8 +334,8 @@ public:
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
 #endif
-                    AscendC::printf("tkd print ubSTensor[ubSBufId] (S matrix)\n");
-                    AscendC::DumpTensor(ubSTensor[ubSBufId], 0, 128);
+                    // AscendC::printf("tkd print ubSTensor[ubSBufId] (S matrix)\n");
+                    // AscendC::DumpTensor(ubSTensor[ubSBufId], 0, 128);
                     // SM
                     uint32_t l1PBufId = gatheredKvSTileIdx % pL1BufNum_;
                     uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
@@ -415,7 +415,7 @@ public:
                         mm2ToReFlag,
                         deqScalar);
                     AscendC::printf("tkd print gO[gmOffsetO] (O matrix, final result)\n");
-                    AscendC::DumpTensor(gO[gmOffsetO], 0, 128);
+                    AscendC::DumpTensor(gO[gmOffsetO], 0, 32);
 #endif
                 }
             }

@@ -230,7 +230,7 @@ public:
                 pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
             AscendC::printf("tkd after TWO lpUbTensor\n");
             AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
-            AscendC::printf("tkd after TOW max\n");
+            AscendC::printf("tkd after TWO max\n");
             AscendC::DumpTensor(lmUbTensor, 1, 32);
             AscendC::printf("tkd after TWO sum\n");
             AscendC::DumpTensor(llUbTensor, 1, 32);
