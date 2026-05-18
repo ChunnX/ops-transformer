@@ -1,152 +1,102 @@
-# aclnnMoeGatingTopK
+# aclnnMoeGatingTopKBackward
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_gating_top_k)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_gating_top_k_backward)
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>    |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------- | ------|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
 
-- 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
-- 计算公式：                                                                                                                           
-   
-  **Step 1: 归一化**                                                                                                                 
-                
-  根据 normType 对输入 x 做归一化：
-
+- 接口功能：完成MoE（Mixture of Experts）门控Top-K选择的反向梯度计算。该算子是aclnnMoeGatingTopK的反向算子，根据前向算子输出的归一化得分（xNorm）、上游梯度（gradY）和专家索引（expertIdx），计算输入得分矩阵的梯度（gradX）。支持sigmoid模式（normType=1）。
+- 计算公式（sigmoid模式，normType=1）：
+  
+  步骤1：缩放梯度
+  
   $$
-  normOut = \begin{cases}
-      SoftMax(x), & normType = 0 \\
-      Sigmoid(x), & normType = 1
-  \end{cases}
+  gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
   $$
-
-  **Step 2: 加偏置**
-
-  若 bias 不为空，加偏置得到用于选择的值：
-
+  
+  步骤2：正向renorm的反向传播
+  
   $$
-  normValue = normOut + bias
+  wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
   $$
-
-  否则 $normValue = normOut$。
-
-  **Step 3: 分组筛选**（仅 groupCount > 1 时执行）
-
-  将 normValue 按 groupCount 分组，根据 groupSelectMode 计算每组得分：
-
+  
   $$
-  groupedValue = Reshape(normValue,\ [batch,\ groupCount,\ -1])
+  D_i = \sum_{p} wPrime_{ip} + eps
   $$
-
+  
   $$
-  groupScore = \begin{cases}
-      ReduceMax(groupedValue,\ dim=-1), & groupSelectMode = 0 \\
-      ReduceSum(TopK(groupedValue,\ k=2,\ dim=-1),\ dim=-1), & groupSelectMode = 1
-  \end{cases}
+  w_{ip} = \frac{wPrime_{ip}}{D_i}
   $$
-
-  选取得分最高的 kGroup 个组，将未选中组的对应位置置为 $-\infty$：
-
+  
   $$
-  groupIdx = TopK(groupScore,\ k=kGroup).indices
+  beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
   $$
-
+  
   $$
-  normValue = Mask(groupedValue,\ groupIdx,\ fillValue=-\infty)
+  gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
   $$
-
-  **Step 4: Top-K 专家选择**
-
-  对 normValue 取 Top-K 得到专家索引，这里只需要expertIdxOut：
-
+  
+  步骤3：散射到完整维度
+  
   $$
-  y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
+  gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
   $$
-
-  **Step 5: Renorm 与缩放**
-
-  根据 expertIdxOut 从 normOut 中取出对应的 k 个专家得分：
-
+  
+  步骤4：Sigmoid反向传播
+  
   $$
-  gathered = normOut[\text{expertIdxOut}]
+  gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
   $$
-
-  normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
-
-  $$
-  if\ (normType = 1)\ or\ (normType = 0\ and\ renorm = 1):
-  $$
-
-  $$
-  \quad yOut = \frac{gathered}{ReduceSum(normOut,\ dim=-1) + eps}
-  $$
-
-  否则 $yOut = gathered$
-
-  最终输出：
-
-  $$
-  yOut = yOut \times routedScalingFactor
-  $$
-
-  **Step 6: 可选输出**
-
-  若 outFlag 为 True，第三个输出为 normOut；否则为空。
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnMoeGatingTopKGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopK”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMoeGatingTopKBackwardGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMoeGatingTopKBackward"接口执行计算。
 
-```Cpp
-aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *biasOptional, 
-  int64_t          k, 
-  int64_t          kGroup, 
-  int64_t          groupCount, 
-  int64_t          groupSelectMode, 
-  int64_t          renorm, 
-  int64_t          normType, 
-  bool             outFlag, 
-  double           routedScalingFactor, 
-  double           eps, 
-  const aclTensor *yOut, 
-  const aclTensor *expertIdxOut, 
-  const aclTensor *outOut, 
-  uint64_t        *workspaceSize, 
-  aclOpExecutor  **executor)
+```cpp
+aclnnStatus aclnnMoeGatingTopKBackwardGetWorkspaceSize(
+  const aclTensor  *xNorm,
+  const aclTensor  *gradY,
+  const aclTensor  *expertIdx,
+  int64_t           renorm,
+  int64_t           normType,
+  double            routedScalingFactor,
+  double            eps,
+  const aclTensor  *gradX,
+  uint64_t         *workspaceSize,
+  aclOpExecutor   **executor)
 ```
 
-```Cpp
-aclnnStatus aclnnMoeGatingTopK(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
-  aclrtStream    stream)
+```cpp
+aclnnStatus aclnnMoeGatingTopKBackward(
+  void           *workspace,
+  uint64_t        workspaceSize,
+  aclOpExecutor  *executor,
+  aclrtStream     stream)
 ```
 
-## aclnnMoeGatingTopKGetWorkspaceSize
+## aclnnMoeGatingTopKBackwardGetWorkspaceSize
 
-- **参数说明：**
-
-  <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 110px">
-  <col style="width: 301px">
-  <col style="width: 219px">
-  <col style="width: 328px">
-  <col style="width: 101px">
-  <col style="width: 143px">
-  <col style="width: 146px">
+- **参数说明**
+  
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+   <col style="width: 230px">
+  <col style="width: 120px">
+  <col style="width: 230px">
+  <col style="width: 330px">
+  <col style="width: 210px">
+  <col style="width: 100px">
+  <col style="width: 140px">
+  <col style="width: 140px">
   </colgroup>
   <thead>
     <tr>
@@ -161,147 +111,87 @@ aclnnStatus aclnnMoeGatingTopK(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>xNorm（aclTensor*）</td>
       <td>输入</td>
-      <td>待计算入参，对应公式中的x。</td>
-      <td>无</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>0-8</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>biasOptional</td>
-      <td>输入</td>
-      <td>与输入x进行计算的bias值，对应公式中的`bias`。</td>
-      <td>shape值与x最后一维相等。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>0-8</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>k</td>
-      <td>输入</td>
-      <td>topk的k值，对应公式中的`k`。</td>
-      <td>无</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>kGroup</td>
-      <td>输入</td>
-      <td>分组排序后取的group个数，对应公式中的`kGroup`。</td>
-      <td>无</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>groupCount</td>
-      <td>输入</td>
-      <td>分组的总个数，对应公式中的`groupCount`</td>
-      <td>无</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>groupSelectMode</td>
-      <td>输入</td>
-      <td>分组排序方式。</td>
-      <td>无</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>renorm</td>
-      <td>输入</td>
-      <td>renorm标记。</td>
-      <td>无</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>normType</td>
-      <td>输入</td>
-      <td>norm函数类型。</td>
-      <td>无</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>outFlag</td>
-      <td>输入</td>
-      <td>表示是否输出norm操作结果。</td>
-      <td>无</td>
-      <td>BOOL</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>routedScalingFactor</td>
-      <td>输入</td>
-      <td>计算yOut使用的routedScalingFactor系数，对应公式中的`routedScalingFactor`。</td>
-      <td>无</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>eps</td>
-      <td>输入</td>
-      <td>用于计算yOut使用的eps系数，对应公式中的`eps`。</td>
-      <td>无</td>
-      <td>DOUBLE</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>yOut</td>
-      <td>输出</td>
-      <td>对x做norm、分组排序topk后计算的结果，对应公式中的`yOut`。</td>
-      <td>数据类型与x需要保持一致。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>0-8</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>expertIdxOut</td>
-      <td>输出</td>
-      <td>对x做norm、分组排序topk后的索引，对应公式中的`expertIdxOut`。</td>
-      <td>shape要求与yOut一致。</td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>0-8</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>outOut</td>
-      <td>输出</td>
-      <td>norm计算的输出结果，对应公式中的`normOut`。</td>
-      <td>shape要求与x保持一致。</td>
+      <td>计算的输入，对应公式中的xNorm。</td>
+      <td><ul><li>不支持空Tensor。</li><li>要求是一个2D的Tensor，维度为[M,N]。</li><li>最后一维（专家数N）要求不大于2048。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>gradY（aclTensor*）</td>
+      <td>输入</td>
+      <td>表示前向算子输出yOut的上游梯度，对应公式中的gradY。</td>
+      <td><ul><li>不支持空Tensor。</li><li>要求是一个2D的Tensor，维度为[M,K]。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>expertIdx（aclTensor*）</td>
+      <td>输入</td>
+      <td>表示前向算子输出的top-k专家索引，对应公式中的expertIdx。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape要求与gradY一致，维度为[M,K]。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>renorm（int64_t）</td>
+      <td>输入</td>
+      <td>表示前向算子在softmax模式下renorm标记。</td>
+      <td>0：需要做renorm；1：不做renorm；预留参数，当前仅支持sigmoid模式，不管renorm为0还是1，正向都需要renorm。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>normType（int64_t）</td>
+      <td>输入</td>
+      <td>表示norm函数类型。</td>
+      <td>1表示使用Sigmoid函数，0表示Softmax函数。当前仅支持1。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>routedScalingFactor（double）</td>
+      <td>输入</td>
+      <td>表示计算yOut使用的routed_scaling_factor系数，对应公式中的routedScalingFactor。</td>
+      <td></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>eps（double）</td>
+      <td>输入</td>
+      <td>表示前向计算使用的防除零常数，对应公式中的eps。</td>
+      <td></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>gradX（aclTensor*）</td>
+      <td>输出</td>
+      <td>表示前向算子输入参数x的梯度，对应公式中的gradX。</td>
+      <td><ul><li>不支持空Tensor。</li><li>数据类型与gradY需要保持一致。</li><li>shape与xNorm需要一致，维度为[M,N]。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -311,7 +201,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -320,19 +210,16 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>-</td>
       <td>-</td>
     </tr>
-  </tbody>
-  </table>  
-
-- **返回值：**
-
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
+  </tbody></table>
+- **返回值**
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  
   第一段接口完成入参校验，出现以下场景时报错：
-
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  
+  <table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
+  <col style="width: 300px">
+  <col style="width: 150px">
+  <col style="width: 650px">
   </colgroup>
   <thead>
     <tr>
@@ -343,263 +230,213 @@ aclnnStatus aclnnMoeGatingTopK(
   </thead>
   <tbody>
     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>计算输入和计算输出是空指针。</td>
+      <td> ACLNN_ERR_PARAM_NULLPTR </td>
+      <td> 161001 </td>
+      <td>xNorm、gradY、expertIdx、gradX存在空指针。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161002</td>
-      <td>输入和输出的数据类型不在支持的范围内。</td>
+      <td rowspan="5"> ACLNN_ERR_PARAM_INVALID </td>
+      <td rowspan="5"> 161002 </td>
+      <td>xNorm、gradY或expertIdx的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-      <td>561002</td>
-      <td>
-      x的shape不满足要求。<br />
-      x和biasOptional的shape不匹配。<br />
-      k的大小不在1到x_shape[-1] / groupCount * kGroup之间。<br />
-      kGroup的大小不在1到groupCount之间。<br />
-      每个group的专家数按32对齐之后<br />
-      计算输入参数的值不满足要求。<br />
-      </td>
+      <td>gradX的数据类型与xNorm不一致。</td>
     </tr>
-  </tbody></table>  
+    <tr>
+      <td>xNorm、gradY或expertIdx的shape维度不在支持的范围之内。</td>
+    </tr>
+    <tr>
+      <td>gradY与expertIdx的shape不一致。</td>
+    </tr>
+    <tr>
+      <td>gradX与xNorm的shape不一致。</td>
+    </tr>
+  </tbody></table>
 
-## aclnnMoeGatingTopK
+## aclnnMoeGatingTopKBackward
 
-- **参数说明：**
-
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-  <col style="width: 173px">
-  <col style="width: 112px">
-  <col style="width: 668px">
+- **参数说明**
+  
+  <table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
+   <col style="width: 200px">
+   <col style="width: 130px">
+   <col style="width: 770px">
   </colgroup>
   <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
-
-- **返回值：**
-
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+            <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
+            <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKBackwardGetWorkspaceSize获取。</td></tr>
+            <tr><td>executor</td><td>输入</td><td>op执行器，包含了算子计算流程。</td></tr>
+            <tr><td>stream</td><td>输入</td><td>指定执行任务的Stream。</td></tr>
+        </tbody>
+    </table>
+- **返回值**
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMoeGatingTopK默认确定性实现。
-
-* 输入shape限制：
-    * x最后一维（即专家数）要求不大于2048。 
-* 输入值域限制：
-    * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
-    * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
-    * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-* 其他限制：
-    * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
-    * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
-    * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
-    * outFlag取值true和false，true表示输出，false表示不输出。
+  - aclnnMoeGatingTopKBackward默认确定性实现。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  
 ```Cpp
-#include "acl/acl.h"
-#include "aclnnop/aclnn_moe_gating_top_k.h"
 #include <iostream>
 #include <vector>
-#include <random>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_moe_gating_top_k_backward.h"
 
-#define CHECK_RET(cond, return_expr) \
-  do {                               \
-    if (!(cond)) {                   \
-      return_expr;                   \
-    }                                \
-  } while (0)
+#define CHECK_RET(cond, return_expr)                                                                                  \
+    do {                                                                                                              \
+        if (!(cond)) {                                                                                                \
+            return_expr;                                                                                              \
+        }                                                                                                             \
+    } while (0)
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
+#define LOG_PRINT(message, ...)                                                                                       \
+    do {                                                                                                              \
+        printf(message, ##__VA_ARGS__);                                                                               \
+    } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape) {
-  int64_t shape_size = 1;
-  for (auto i : shape) {
-    shape_size *= i;
-  }
-  return shape_size;
-}
-
-std::vector<float> GenerateRandomFloats(int64_t count) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dist(0.0f, 10.0f);
-
-    std::vector<float> result(count);
-    for (auto& num : result) {
-        num = dist(gen);
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
     }
-    return result;
+    return shapeSize;
 }
-int Init(int32_t deviceId, aclrtStream* stream) {
-  // 固定写法，资源初始化
-  auto  ret = aclInit(nullptr);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtSetDevice(deviceId);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtCreateStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
-  return 0;
+
+int Init(int32_t deviceId, aclrtStream *stream)
+{
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return 0;
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor) {
-  auto size = GetShapeSize(shape) * sizeof(T);
-  // 调用aclrtMalloc申请device侧内存
-  auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-  // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-  ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-  // 计算连续tensor的strides
-  std::vector<int64_t> strides(shape.size(), 1);
-  for (int64_t i = shape.size() - 2; i >= 0; i--) {
-    strides[i] = shape[i + 1] * strides[i + 1];
-  }
-  // 调用aclCreateTensor接口创建aclTensor
-  *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
-  return 0;
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
+    return 0;
 }
 
-int main() {
-  // 1. （固定写法）device/stream初始化, 参考AscendCL对外接口列表
-  // 根据自己的实际device填写deviceId
-  int32_t deviceId = 0;
-  aclrtStream stream;
-  auto ret = Init(deviceId, &stream);
-  // check根据自己的需要处理
-  CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+int main()
+{
+    // 1.device/stream初始化
+    int32_t deviceId = 0;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+    CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // 2. 构造输入与输出，需要根据API的接口自定义构造
-  std::vector<int64_t> inputShape = {3, 256};
-  std::vector<int64_t> biasShape = {256};
-  std::vector<int64_t> outShape = {3, 8};
-  std::vector<int64_t> expertIdOutShape = {3, 8};
-  std::vector<int64_t> normOutShape = {3, 256};
+    // 2.构造输入与输出
+    // xNorm: [M, N] = [4, 8], float32, sigmoid输出值在(0,1)之间
+    std::vector<int64_t> xNormShape = {4, 8};
+    std::vector<float> xNormHostData = {0.5f, 0.7f, 0.3f, 0.8f, 0.2f, 0.6f, 0.9f, 0.4f, 0.6f, 0.4f, 0.8f,
+                                        0.1f, 0.7f, 0.5f, 0.3f, 0.9f, 0.2f, 0.9f, 0.5f, 0.6f, 0.8f, 0.3f,
+                                        0.7f, 0.4f, 0.8f, 0.3f, 0.6f, 0.5f, 0.4f, 0.7f, 0.2f, 0.9f};
+    // gradY: [M, K] = [4, 2], float32
+    std::vector<int64_t> gradYShape = {4, 2};
+    std::vector<float> gradYHostData = {1.0f, 0.5f, 0.8f, 0.3f, 0.6f, 0.9f, 0.4f, 0.7f};
+    // expertIdx: [M, K] = [4, 2], int32
+    std::vector<int64_t> expertIdxShape = {4, 2};
+    std::vector<int32_t> expertIdxHostData = {3, 6, 2, 7, 1, 4, 0, 7};
+    // gradX: [M, N] = [4, 8], float32
+    std::vector<int64_t> gradXShape = {4, 8};
+    std::vector<float> gradXHostData(32, 0);
 
-  void* inputAddr = nullptr;
-  void* biasAddr = nullptr;
-  void* outAddr = nullptr;
-  void* expertIdOutAddr = nullptr;
-  void* normOutAddr = nullptr;
-  
-  aclTensor* input = nullptr;
-  aclTensor* bias = nullptr;
-  aclTensor* out = nullptr;
-  aclTensor* expertIdOut = nullptr;
-  aclTensor* normOut = nullptr;
-  
-  std::vector<float> inputHostData = GenerateRandomFloats(GetShapeSize(inputShape));
-  std::vector<float> biasHostData = GenerateRandomFloats(GetShapeSize(biasShape));
-  std::vector<float> outHostData(GetShapeSize(outShape));
-  std::vector<int32_t> expertIdOutHostData(GetShapeSize(expertIdOutShape));
-  std::vector<float> normOutHostData(GetShapeSize(normOutShape));
+    void *xNormDeviceAddr = nullptr;
+    void *gradYDeviceAddr = nullptr;
+    void *expertIdxDeviceAddr = nullptr;
+    void *gradXDeviceAddr = nullptr;
+    aclTensor *xNorm = nullptr;
+    aclTensor *gradY = nullptr;
+    aclTensor *expertIdx = nullptr;
+    aclTensor *gradX = nullptr;
 
-  // 创建expandedPermutedRows aclTensor
-  ret = CreateAclTensor(inputHostData, inputShape, &inputAddr, aclDataType::ACL_FLOAT, &input);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expandedPermutedRows aclTensor
-  ret = CreateAclTensor(biasHostData, biasShape, &biasAddr, aclDataType::ACL_FLOAT, &bias);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expertForSourceRow aclTensor
-  ret = CreateAclTensor(outHostData, outShape, &outAddr, aclDataType::ACL_FLOAT, &out);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expandedSrcToDstRow aclTensor
-  ret = CreateAclTensor(expertIdOutHostData, expertIdOutShape, &expertIdOutAddr, aclDataType::ACL_INT32, &expertIdOut);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  // 创建expandedSrcToDstRow aclTensor
-  ret = CreateAclTensor(normOutHostData, normOutShape, &normOutAddr, aclDataType::ACL_FLOAT, &normOut);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(xNormHostData, xNormShape, &xNormDeviceAddr, aclDataType::ACL_FLOAT, &xNorm);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT, &gradY);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expertIdxHostData, expertIdxShape, &expertIdxDeviceAddr, aclDataType::ACL_INT32, &expertIdx);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT, &gradX);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  // 3.调用CANN算子库API，需要修改为具体的算子接口
-  uint64_t workspaceSize = 0;
-  aclOpExecutor* executor;
+    // 3.调用aclnnMoeGatingTopKBackward
+    int64_t renorm = 0;
+    int64_t normType = 1; // sigmoid模式
+    double routedScalingFactor = 2.5;
+    double eps = 1e-20;
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor;
 
-  // 调用aclnnMoeGatingTopK第一段接口
-  ret = aclnnMoeGatingTopKGetWorkspaceSize(input, bias, 8, 4, 8, 1, 0, 1, false, 1, 1, out, expertIdOut, normOut, &workspaceSize, &executor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  // 根据第一段接口计算出的workspaceSize申请device内存
-  void* workspaceAddr = nullptr;
-  if (workspaceSize > 0) {
-    ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
-  }
-  // 调用aclnnMoeGatingTopK第二段接口
-  ret = aclnnMoeGatingTopK(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopK failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnMoeGatingTopKBackwardGetWorkspaceSize(xNorm, gradY, expertIdx, renorm, normType, routedScalingFactor,
+                                                     eps, gradX, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKBackwardGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
-  // 4.（ 固定写法）同步等待任务执行结束
-  ret = aclrtSynchronizeStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    void *workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
+    }
 
-  // 5. 获取输出的值，将device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
-  auto size = GetShapeSize(outShape);
-  std::vector<float> resultData(size, 0.0f);
-  ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                    outAddr, size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-  for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
-  }
+    ret = aclnnMoeGatingTopKBackward(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKBackward failed. ERROR: %d\n", ret); return ret);
 
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-  aclDestroyTensor(input);
-  aclDestroyTensor(bias);
-  aclDestroyTensor(out);
-  aclDestroyTensor(expertIdOut);
-  aclDestroyTensor(normOut);
+    // 4.同步等待任务执行结束
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-  // 7. 释放device资源，需要根据具体API的接口定义修改
-  aclrtFree(inputAddr);
-  aclrtFree(biasAddr);
-  aclrtFree(outAddr);
-  aclrtFree(normOutAddr);
-  aclrtFree(expertIdOutAddr);
-  if (workspaceSize > 0) {
-    aclrtFree(workspaceAddr);
-  }
-  aclrtDestroyStream(stream);
-  aclrtResetDevice(deviceId);
-  aclFinalize();
-  return 0;
+    // 5.获取输出的值
+    auto size = GetShapeSize(gradXShape);
+    std::vector<float> resultData(size, 0);
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), gradXDeviceAddr,
+                      size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+    for (int64_t i = 0; i < size; i++) {
+        LOG_PRINT("gradX[%ld] is: %f\n", i, resultData[i]);
+    }
+
+    // 6.释放aclTensor
+    aclDestroyTensor(xNorm);
+    aclDestroyTensor(gradY);
+    aclDestroyTensor(expertIdx);
+    aclDestroyTensor(gradX);
+
+    // 7.释放device资源
+    aclrtFree(xNormDeviceAddr);
+    aclrtFree(gradYDeviceAddr);
+    aclrtFree(expertIdxDeviceAddr);
+    aclrtFree(gradXDeviceAddr);
+    if (workspaceSize > 0) {
+        aclrtFree(workspaceAddr);
+    }
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+    return 0;
 }
 ```
