@@ -939,7 +939,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                     LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
                     dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
                     dequantScaleQueryShape.GetDim(DIM_NUM_3), dequantScaleQueryShape.GetDim(DIM_NUM_4),
-                    *fiaInfo.opParamInfo.kvHeadNums, queryInputShape.GetDim(DIM_NUM_0), fiaInfo.gSize, 
+                    *fiaInfo.opParamInfo.kvHeadNums, queryInputShape.GetDim(DIM_NUM_0), fiaInfo.gSize,
                     CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
                 return ge::GRAPH_FAILED);
     }
