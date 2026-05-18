@@ -551,8 +551,8 @@ struct CopyL0CToUBTla<
         intriParams1.quantPre = quantPre;
         intriParams1.reluEn = reluEn;
         intriParams1.unitFlag = unitFlag;
-        intriParams0.dualDstCtl = 0;
-        intriParams0.subBlockId = 1;
+        intriParams1.dualDstCtl = 0;
+        intriParams1.subBlockId = 1;
 
         // --- execute dual fixpipe for sub-core 0 and sub-core 1 ---
         auto dstOffset0 = dstSub0.layout()(dstSub0.coord());
