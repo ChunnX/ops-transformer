@@ -28,22 +28,8 @@ using AscendC::GlobalTensor;
 using AscendC::IsSameType;
 using AscendC::SyncAll;
 using GMMSQArch35Tiling::GMMSQWeightQuantTilingData;
-using WeightQuantBatchMatmulV2::Arch35::BASIC_BLOCK_PROCESS_NUM;
-using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
-using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CeilAlign;
-using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
-using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
-using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
-using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::QuantType;
-using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
-using GMMSQ::GMMSQWeightQuantVcvBasicBlock;
-using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
-using WeightQuantBatchMatmulV2::Arch35::K_ALIGNMENT64;
 
-namespace GMMSQ {
+namespace GMMSQWeightQuant {
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM \
     template <typename xType, typename wType, typename weightScaleType, \
               typename xScaleType, typename biasType, \
@@ -257,6 +243,6 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::GetSwitchedProcessId(const BasicBlockControlP
     return 1 - ctrlParam.processId;
 }
 
-} // namespace GMMSQ
+} // namespace GMMSQWeightQuant
 
 #endif // GMMSQ_WEIGHT_QUANT_RESPLIT_CONTROLLER_H
