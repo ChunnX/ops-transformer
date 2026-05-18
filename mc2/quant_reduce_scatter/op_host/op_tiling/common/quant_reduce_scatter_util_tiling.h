@@ -22,8 +22,13 @@ using namespace ge;
 using namespace gert;
 
 // input index
-constexpr size_t X_INDEX = 0;
-constexpr size_t SCALES_INDEX = 1;
+struct QuantReduceScatterIdx {
+    uint64_t CONTEXT_INDEX = 0;
+    uint64_t X_INDEX = 0;
+    uint64_t SCALES_INDEX = 1;
+};
+// constexpr size_t X_INDEX = 0;
+// constexpr size_t SCALES_INDEX = 1;
 // output index
 constexpr size_t OUTPUT_INDEX = 0;
 // attr index
@@ -85,7 +90,8 @@ struct TilingRunInfo {
 class QuantReduceScatterUtilTiling {
 public:
     static ge::graphStatus CheckNpuArch(const gert::TilingContext *context);
-    static ge::graphStatus CheckTilingFunc(gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType);
+    static ge::graphStatus CheckTilingFunc(gert::TilingContext *context, TilingRunInfo &runInfo,
+                                           const OpType opType, const QuantReduceScatterIdx& config);
 };
 
 }; // namespace MC2Tiling
