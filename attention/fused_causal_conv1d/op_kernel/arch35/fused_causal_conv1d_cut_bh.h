@@ -623,7 +623,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
 
         // ========== F1: 计算 conv_states 读取偏移 ==========
         int32_t acceptToken = acceptTokenLocal.GetValue(curBatchIdx);
-        int32_t numComputed = hasNumComputedTokens_ ? numComputedTokensLocal.GetValue(curBatchIdx) : 0;
+        int32_t numComputed = hasNumComputedTokens_ ? numComputedTokensLocal.GetValue(curBatchIdx) : -1;
         int32_t offset = 0;
 
         if (hasAcceptTokenNum_) {
@@ -670,7 +670,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         // ========== F1: APC prefix cache 写入 ==========
         // convStatesLocalOut（convStatesLocalIn 的副本）在 FreeTensor 前仍有效，可安全传入
         // 传入从 offset 处切片的视图，WriteApcPrefixCache 内部直接用 boundaryIdx 索引
-        if (apcEnable_) {
+        if (apcEnable_ && hasNumComputedTokens_) {
             LocalTensor<T> convStatesLocalOutSlice = convStatesLocalOut[offset * dimSizeInLoop_];
             WriteApcPrefixCache(xLocal, convStatesLocalOutSlice, indicesQueueLocal, blockIdxFirstLocal,
                             blockIdxLastLocal, curBatchIdx, curBatchUbOffset, curBatchSeq, numComputed);
@@ -699,7 +699,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         }
 
         // ========== F3 convMode: Pangu v2 前 width-1 token 置零 ==========
-        if (convMode_ == 1) {
+        if (convMode_ == 1 && hasNumComputedTokens_) {
             int32_t lastResetIdx = (kernelSize_ - 1) - numComputed;
             if (lastResetIdx > 0) {
                 lastResetIdx = lastResetIdx < curBatchSeq ? lastResetIdx : curBatchSeq;

@@ -998,10 +998,12 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     // dimRemainderElems_>0：lastCoreDimLen = 基础块 + 余数，需单独计算
     // dimRemainderElems_=0：最后一个 dim 核与普通尾核参数相同
     if (dimRemainderElems_ > 0) {
+        // 用临时变量接收 batch 输出，避免覆盖 tailBlock* 参数
+        int64_t tmpUbBS = 0, tmpLoopBS = 0, tmpUbTailBS = 0;
         ComputeUbFor(lastCoreDimLen, mainCoreBatchNum_, availableUbSize,
-            lastCoreubMainFactorDim_, tailBlockubFactorBS_,
-            lastCoreloopNumDim_, tailBlockloopNumBS_,
-            lastCoreubTailFactorDim_, tailBlockubTailFactorBS_);
+            lastCoreubMainFactorDim_, tmpUbBS,
+            lastCoreloopNumDim_, tmpLoopBS,
+            lastCoreubTailFactorDim_, tmpUbTailBS);
     } else {
         lastCoreloopNumDim_      = tailBlockloopNumDim_;
         lastCoreubMainFactorDim_ = tailBlockubFactorDim_;
