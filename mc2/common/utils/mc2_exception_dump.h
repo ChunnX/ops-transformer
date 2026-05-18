@@ -251,7 +251,7 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
     return 0;
 }
 
-inline int ProcessArgs910B(const char* groupName, std::vector<uint8_t> &winBuf)
+inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
 {
     if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
         strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
@@ -335,7 +335,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         }
     } else if (std::strstr(socName, "Ascend910B") != nullptr) {
         const char *groupName = MC2GroupNameManager::GetInstance().GetGroupNameFor910B();
-        if (ProcessArgs910B(groupName, winContent) != 0) {
+        if (ProcessArgsForA2(groupName, winContent) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }
