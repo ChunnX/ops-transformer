@@ -12,7 +12,7 @@
  * \file fused_causal_conv1d_cut_bsh.h
  * \brief BSH kernel — simplified rewrite with CopyIn/Compute separation,
  *        unified metadata (PrepareBatchMeta), unified cache writeback (WriteCacheToStates),
- *        batch-level sync, and simplified cross-core coordination.
+ *        batch-level sync, and distributed APC fill from xLocal (UB).
  */
 
 #ifndef FUSED_CAUSAL_CONV1D_CUT_BSH_H
@@ -71,11 +71,19 @@ private:
     // Reads cache prefix from GM and x suffix from GM.
     __aicore__ inline void WriteDeferredCacheSimple();
 
-    // ---- APC prefix fill ----
-    __aicore__ inline void FillApcBlockCaches();
+    // ---- Distributed APC prefix fill ----
+    // x-suffix chunks (boundaryIdx >= K-1): written from xLocal (UB) every chunk iteration.
+    // Only fills chunks whose boundary x-offset lies within [curBsStart, curBsStart+curBS).
+    __aicore__ inline void FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt, uint32_t batchLen,
+                                                uint32_t curBsStart, uint32_t curBS,
+                                                LocalTensor<T> &xLocal, uint32_t dimStart, uint32_t dimSize,
+                                                uint32_t dimBlocks, uint32_t cacheSkip);
+    // cache-prefix + collision-deferred chunks: handled once pre-SyncAll.
+    // O(1) early-exit when neither cache-prefix nor collision exists.
+    __aicore__ inline void FillApcCachePrefixChunks();
 
     // ---- inplace finalize: copy y from workspace back to xGM_ ----
-    //  仅 inplace_==true 时调用，在 FillApcBlockCaches 之后执行。
+    //  仅 inplace_==true 时调用，在 FillApcCachePrefixChunks 之后执行。
     //  按本核 BS/Dim 切分遍历自己的 y 输出范围，借用 xQueue_ 做 UB 中转搬运。
     __aicore__ inline void CopyYToX();
 
@@ -112,6 +120,10 @@ private:
             cacheIndices2DGM_.GetValue(static_cast<uint64_t>(batchIdx) * maxNumBlocks_ + blockIdx));
     }
 
+    // Cache batch-invariant APC params (firstBlk/lastBlk/numComputed/lastFull/readCIdx).
+    // Called at the start of FillApcChunksInRange; no-op when curBatch == cached.
+    __aicore__ inline void RefreshApcState(uint32_t curBatch, uint32_t batchLen);
+
     // ---- Helpers: dim-core 参数 ----
     // v2.1：三级 dim 核（主核/尾核/last core）的 dim 起点、dim 长度、UB 主块 dim 大小统一封装。
     //   调用前置条件：bsIdx_/dimIdx_ 已赋值，且三个核分类成员（isBsTailCore_/isDimTailCore_/
@@ -124,25 +136,23 @@ private:
         if (dimIdx_ < dimRemainderCores_) {
             return dimIdx_ * dimBlockFactor_;
         }
-        return dimRemainderCores_ * dimBlockFactor_ + (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
+        return dimRemainderCores_ * dimBlockFactor_
+             + (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
     }
 
     // GetDimTotal：本核负责的 dim 总长度（元素单位）。last core 额外承担 dimRemainderElems_。
     __aicore__ inline uint32_t GetDimTotal() const
     {
         uint32_t dimSize = isDimTailCore_ ? dimBlockTailFactor_ : dimBlockFactor_;
-        if (isLastDimCore_)
-            dimSize += dimRemainderElems_;
+        if (isLastDimCore_) dimSize += dimRemainderElems_;
         return dimSize;
     }
 
     // GetMaxUbDim：本核的 UB 主块 dim 大小（用于 buffer 容量与 UB 循环切分）。
     __aicore__ inline uint32_t GetMaxUbDim() const
     {
-        if (isLastDimCore_)
-            return lastCoreubFactorDim_;
-        if (isDimTailCore_)
-            return tailBlockubFactorDim_;
+        if (isLastDimCore_) return lastCoreubFactorDim_;
+        if (isDimTailCore_) return tailBlockubFactorDim_;
         return ubFactorDim_;
     }
 
@@ -256,6 +266,18 @@ private:
     LocalTensor<int32_t> blockIdxLastLocal_;
     LocalTensor<int32_t> initialStateIdxLocal_;
 
+    // ---- Per-batch APC state cache (avoids redundant TBuf reads + scalar math) ----
+    // All values are batch-invariant.  Cache populated on first access for a batch,
+    // reused until curBatch changes.
+    struct BatchApcState {
+        uint32_t batchIdx;
+        int32_t  firstBlk;
+        int32_t  lastBlk;
+        int32_t  nBlockToFill;
+        int32_t  lastFull;
+        int64_t  readCIdx;
+    } apcState_;
+
     // ---- Cross-core state (simplified: 1 struct instead of 4 vars) ----
     struct DeferredWriteState {
         bool active;
@@ -336,7 +358,7 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
                                  GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
                                  GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling)
 {
-    (void)y; // y may be unused when inplace_==true; suppress warning
+    (void)y;  // y may be unused when inplace_==true; suppress warning
     ParseTiling(tiling);
 
     uint32_t blockIdx = GetBlockIdx();
@@ -345,7 +367,7 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     dimIdx_ = blockIdx - bsIdx_ * dimCN;
 
     // v2.1：三级 dim 核分类一次性计算，供 InitQueues/Process/WriteDeferred/FillApc/CopyYToX 共用
-    isBsTailCore_ = (bsIdx_ >= bsRemainderCores_);
+    isBsTailCore_  = (bsIdx_ >= bsRemainderCores_);
     isDimTailCore_ = (dimIdx_ >= dimRemainderCores_);
     isLastDimCore_ = (dimIdx_ == dimCoreNum_ - 1) && (dimRemainderElems_ > 0);
 
@@ -360,7 +382,7 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     // inplace=true: yGM_ 指向 workspace 上的 y backup 区（避免污染 xGM_）。
     //   入口已通过 GetUserWorkspace() 转成 user 区起点，这里直接用 workspace
     //   作为基地址（无需再加 SYS_WORKSPACE_SIZE 偏移）。
-    //   SyncAll 后 WriteDeferredCacheSimple/FillApcBlockCaches 读 xGM_ 得到原始 x，
+    //   SyncAll 后 WriteDeferredCacheSimple 读 xGM_ 得到原始 x，
     //   最后由 CopyYToX 把 y backup 搬回 xGM_ 完成 inplace 语义。
     // inplace=false: yGM_ 指向 y 参数原地址，走旧路径。
     uint64_t yStride = inplace_ ? static_cast<uint64_t>(xStride_) : static_cast<uint64_t>(dim_);
@@ -403,6 +425,7 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     deferred_.writeCIdx = 0;
     lastBatchIdx_ = 0;
     firstBatchIdx_ = 0;
+    apcState_.batchIdx = 0xFFFFFFFF;   // sentinel: APC state not cached
 }
 
 // ============================================================================
@@ -744,17 +767,19 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
         iStart = K - 1; // subsequent BS blocks always start with K-1 overlap
     }
 
+    // Fill cache-prefix APC chunks (boundaryIdx < K-1) pre-SyncAll.
+    // x-suffix chunks (boundaryIdx >= K-1) are already filled in Compute via
+    // FillApcChunksInRange, using xLocal (UB) data — zero xGM reads.
+    FillApcCachePrefixChunks();
+
     SyncAll();
 
     WriteDeferredCacheSimple();
-    FillApcBlockCaches();
 
     // inplace=true：把 y workspace 搬回 xGM_ 完成 inplace 语义。
-    // 必须放在 WriteDeferredCacheSimple / FillApcBlockCaches 之后，保证它们读到
-    // 的仍是原始 x。
     //
-    // 额外的 SyncAll：CopyYToX 会对 xGM_ 做 MTE3 写，而 FillApc/WriteDeferred
-    // 对 xGM_ 做 MTE2 读。这两条是独立流水，若只靠程序顺序发射，MTE3 写可能
+    // 额外的 SyncAll：CopyYToX 会对 xGM_ 做 MTE3 写，而 FillApcCachePrefixChunks
+    // 可能对 xGM_ 做 MTE2 读。这两条是独立流水，若只靠程序顺序发射，MTE3 写可能
     // 抢在 MTE2 读完成之前（跨函数 WAR hazard），导致上游读到 y 值写入
     // cacheStatesGM_（output 0 错）。SyncAll 同时排空本核所有已发射指令，
     // 消除此 hazard。PipeBarrier<PIPE_ALL> 不保证已发射未完成指令落地，
@@ -959,7 +984,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                 Conv1dNoStateDoubleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
             } else {
                 Conv1dNoStateSingleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
-            }
+            }   
         }
 
         // ---- conv_mode==1 zero fill (partial, non-useZeroCache case) ----
@@ -979,6 +1004,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 
         // ---- Cache writeback ----
         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
         if (isBatchEnd) {
             // Full cache writeback at batch boundary.
             // Skip if batch is cross-core (next core will defer-write it) or
@@ -1053,6 +1079,17 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
         DataCopyExtParams ycp{static_cast<uint16_t>(yOutOff), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
                               ySkip * ALIGN_BYTES, 0};
         DataCopyPad(yGM_[yGmOff], yLocal, ycp);
+    }
+
+    // ---- Distributed APC fill (after V, while xLocal is still valid) ----
+    // Moved here from inside the while loop to eliminate register pressure
+    // on the V pipeline during conv computation.
+    if (apcEnabled_ && blockSize_ > 0) {
+        for (uint32_t b = batchIdx; b <= curBatch && b < batchSize_; b++) {
+            uint64_t bSt = (uint64_t)seqStartLocal_.GetValue(b);
+            uint32_t bLen = (uint32_t)((uint64_t)seqStartLocal_.GetValue(b + 1) - bSt);
+            FillApcChunksInRange(b, bSt, bLen, curBsStart, curBS, xLocal, dimStart, dimSize, dimBlocks, cacheSkip);
+        }
     }
 
     weightQueue_.FreeTensor(weightLocal);
@@ -1163,7 +1200,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
     int64_t writeCIdx = deferred_.writeCIdx;
 
     uint32_t dimStart = GetDimStart();
-    uint32_t dimSize = GetDimTotal();
+    uint32_t dimSize  = GetDimTotal();
 
     uint64_t bSt = (uint64_t)seqStartLocal_.GetValue(batchIdx);
     uint64_t bEnd = (uint64_t)seqStartLocal_.GetValue(batchIdx + 1);
@@ -1231,11 +1268,143 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
 }
 
 // ============================================================================
-// FillApcBlockCaches — APC prefix fill (dimIdx_==0 only to avoid duplication).
-// Writes APC block cache lines using padded_input data from GM.
+// FillApcChunksInRange — distributed APC fill for x-suffix chunks.
+//
+// Called from Compute on every chunk iteration.  For the current batch, iterates
+// over all APC chunks and writes those whose global x-offset falls within
+// [curBsStart, curBsStart+curBS).  Data is read directly from xLocal (UB),
+// eliminating redundant xGM reads.
+//
+// Cache-prefix chunks (boundaryIdx < K-1) are skipped here; they are handled
+// once per batch by FillApcCachePrefixChunks.
+// ============================================================================
+
+// ============================================================================
+// RefreshApcState — populate batchApcState cache (batch-invariant APC params)
 // ============================================================================
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curBatch, uint32_t batchLen)
+{
+    if (apcState_.batchIdx == curBatch)
+        return;
+
+    apcState_.batchIdx = curBatch;
+    apcState_.firstBlk = blockIdxFirstLocal_.GetValue(curBatch);
+    apcState_.lastBlk  = blockIdxLastLocal_.GetValue(curBatch);
+    apcState_.nBlockToFill = apcState_.lastBlk - apcState_.firstBlk;
+
+    int32_t numComputed = 0;
+    if (hasNumComputedTokens_)
+        numComputed = numComputedLocal_.GetValue(curBatch);
+
+    int32_t B = static_cast<int32_t>(blockSize_);
+    uint32_t seqCompletedOffsetToken =
+        (numComputed >= 0) ? static_cast<uint32_t>(numComputed % B) : 0;
+    uint32_t seqCompletedOffset = static_cast<uint32_t>(B) - seqCompletedOffsetToken;
+
+    int32_t seqEndOffsetRaw = static_cast<int32_t>(batchLen) - static_cast<int32_t>(seqCompletedOffset);
+    uint32_t seqEndOffset = static_cast<uint32_t>(
+        (seqEndOffsetRaw % B + B) % B);
+
+    apcState_.lastFull = static_cast<int32_t>(batchLen) - static_cast<int32_t>(seqEndOffset);
+    if (seqEndOffset == 0 && batchLen >= seqCompletedOffset)
+        apcState_.lastFull -= B;
+
+    int32_t initIdx = initialStateIdxLocal_.GetValue(curBatch);
+    apcState_.readCIdx = GetApcCacheLine(curBatch, static_cast<uint32_t>(initIdx));
+}
+
+// ============================================================================
+// FillApcChunksInRange — distributed APC fill for x-suffix chunks.
+//
+// Called from Compute on every chunk iteration.  Uses apcState_ cache to avoid
+// redundant TBuf reads and scalar math: per-batch params are computed only once
+// (on first access for a batch), subsequent iterations are cache-hit.
+// ============================================================================
+template <typename T>
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt,
+                                                                        uint32_t batchLen, uint32_t curBsStart,
+                                                                        uint32_t curBS, LocalTensor<T> &xLocal,
+                                                                        uint32_t dimStart, uint32_t dimSize,
+                                                                        uint32_t dimBlocks, uint32_t cacheSkip)
+{
+    if (!apcEnabled_ || blockSize_ == 0)
+        return;
+
+    RefreshApcState(curBatch, batchLen);
+    if (apcState_.nBlockToFill == 0)
+        return;
+
+    uint32_t K = kernelWidth_;
+    int32_t  BSize = static_cast<int32_t>(blockSize_);
+
+    // ---- Range-bounded iteration (int32_t only) ----
+    // boundaryIdx(chunk) = lastFull - (nB-1-chunk)*B  →  monotonically increases with chunk.
+    // firstBdy = lastFull - (nB-1)*B  (chunk 0),  lastBdy = lastFull (chunk nB-1).
+    // We only need chunks where boundaryIdx ∈ [minBdy, xEnd):
+    //   minBdy = max( curBsStart - batchSt + K-1,  K-1,  1 )
+    //   xEnd   = curBsStart - batchSt + curBS + 1
+    // Compute skip = ceil((minBdy - firstBdy) / B) via int32_t ceiling formula.
+    int32_t baseOff = static_cast<int32_t>(curBsStart) - static_cast<int32_t>(batchSt);
+    int32_t minBdy = baseOff + static_cast<int32_t>(K - 1);
+    if (minBdy < static_cast<int32_t>(K - 1)) minBdy = static_cast<int32_t>(K - 1);
+    if (minBdy < 1)                           minBdy = 1;
+    int32_t xEnd   = baseOff + static_cast<int32_t>(curBS) + 1;
+
+    int32_t firstBdy = apcState_.lastFull - (apcState_.nBlockToFill - 1) * BSize;
+    int32_t chunkSkip = 0;
+    if (firstBdy < minBdy) {
+        int32_t gap = minBdy - firstBdy;               // gap > 0 guaranteed here
+        chunkSkip = (gap + BSize - 1) / BSize;         // ceiling(gap / B)
+        if (chunkSkip >= apcState_.nBlockToFill) return;
+    }
+
+    uint32_t rowBlocks = dimSize * sizeof(T) / ALIGN_BYTES;
+    for (int32_t chunk = chunkSkip; chunk < apcState_.nBlockToFill; chunk++) {
+        int32_t boundaryIdx = apcState_.lastFull - (apcState_.nBlockToFill - chunk - 1) * BSize;
+        if (boundaryIdx >= xEnd) break;                // past range
+        if (boundaryIdx <= 0) continue;
+
+        int32_t blkId = apcState_.firstBlk + chunk;
+        int64_t cLine = GetApcCacheLine(curBatch, static_cast<uint32_t>(blkId));
+        if (cLine == padSlotId_ || cLine == apcState_.readCIdx)
+            continue;
+
+        uint32_t chunkLen = K - 1;
+        uint32_t maxAvail = (K - 1) + batchLen - static_cast<uint32_t>(boundaryIdx);
+        if (chunkLen > maxAvail)
+            chunkLen = maxAvail;
+        if (chunkLen == 0)
+            continue;
+
+        // Write chunkLen rows from xLocal directly to APC cache line.
+        uint32_t srcOffset = static_cast<uint32_t>(boundaryIdx) - (K - 1);
+        uint32_t globalPos = static_cast<uint32_t>(batchSt) + srcOffset;
+        uint32_t localPos = globalPos - curBsStart;
+        uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
+        uint64_t csDst =
+            (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
+        DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen),
+                              static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+                              cacheSkip * ALIGN_BYTES, 0};
+        DataCopyPad(cacheStatesGM_[csDst], xLocal[localPos * dimSize], wcp);
+    }
+}
+
+// ============================================================================
+// FillApcCachePrefixChunks — fills APC chunks whose boundary falls inside the
+// cache-prefix region (boundaryIdx < K-1) of padded_input.
+//
+// These are rare: typically 0–1 chunks per batch (only when the very first APC
+// boundary lands before the x-data starts).  Because the cache-prefix data is
+// NOT in xLocal, this function reads from cacheStatesGM_ (readCIdx line) for
+// the cache rows and from xGM_ for any trailing x rows.
+//
+// Called pre-SyncAll in Process().  All dim-cores participate, each writing its
+// own [dimStart, dimStart+dimSize) slice of each APC cache line.
+// ============================================================================
+template <typename T>
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
 {
     if (!apcEnabled_)
         return;
@@ -1244,10 +1413,9 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
 
     uint32_t K = kernelWidth_;
 
-    // ---- Compute this core's BS ownership range [coreBsStart, coreBsEnd) ----
-    // Each batch's APC prefix cache must be written by exactly one core to avoid
-    // cross-core race on the same cache_indices line. Ownership is defined by
-    // which core's BS range contains the batch's global start offset.
+    // BS ownership: same as the old FillApcBlockCaches — the core whose BS range
+    // contains the batch's global start offset owns the cache-prefix fill for
+    // this batch.
     uint32_t dimCN = (dimCoreNum_ == 0) ? 1 : dimCoreNum_;
     uint32_t bsCoreNum = realCoreNum_ / dimCN;
 
@@ -1257,7 +1425,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
     } else {
         uint64_t effStepMain = bsBlockFactor_ - (K - 1);
         uint64_t effStepTail = bsBlockTailFactor_ - (K - 1);
-        coreBsStart = (uint64_t)bsRemainderCores_ * effStepMain + (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
+        coreBsStart =
+            (uint64_t)bsRemainderCores_ * effStepMain + (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
     }
 
     uint64_t coreBsEnd;
@@ -1268,8 +1437,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
         } else {
             uint64_t effStepMain = bsBlockFactor_ - (K - 1);
             uint64_t effStepTail = bsBlockTailFactor_ - (K - 1);
-            coreBsEnd =
-                (uint64_t)bsRemainderCores_ * effStepMain + (uint64_t)(nextBsIdx - bsRemainderCores_) * effStepTail;
+            coreBsEnd = (uint64_t)bsRemainderCores_ * effStepMain
+                      + (uint64_t)(nextBsIdx - bsRemainderCores_) * effStepTail;
         }
     } else {
         coreBsEnd = (uint64_t)seqStartLocal_.GetValue(batchSize_);
@@ -1292,14 +1461,11 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
         if (lastBlk <= firstBlk)
             continue;
 
-        // BS ownership dedup: only the core whose BS range contains the batch's
-        // global start offset writes this batch's APC prefix cache. This avoids
-        // cross-core race on the same cache_indices line.
         uint64_t batchSt = (uint64_t)seqStartLocal_.GetValue(b);
         if (!(batchSt >= coreBsStart && batchSt < coreBsEnd))
             continue;
 
-        uint32_t seqLen = static_cast<uint32_t>(seqStartLocal_.GetValue(b + 1) - seqStartLocal_.GetValue(b));
+        uint32_t seqLen = static_cast<uint32_t>(seqStartLocal_.GetValue(b + 1) - batchSt);
 
         BatchMeta m;
         PrepareBatchMeta(b, 0, m);
@@ -1309,58 +1475,56 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
             numComputed = numComputedLocal_.GetValue(b);
         }
 
+        int32_t B = static_cast<int32_t>(blockSize_);
         uint32_t seqCompletedOffsetToken =
-            (numComputed >= 0) ? static_cast<uint32_t>(numComputed % static_cast<int32_t>(blockSize_)) : 0;
-        uint32_t seqCompletedOffset = blockSize_ - seqCompletedOffsetToken;
-
+            (numComputed >= 0) ? static_cast<uint32_t>(numComputed % B) : 0;
+        uint32_t seqCompletedOffset = static_cast<uint32_t>(B) - seqCompletedOffsetToken;
         int32_t seqEndOffsetRaw = static_cast<int32_t>(seqLen) - static_cast<int32_t>(seqCompletedOffset);
-        uint32_t seqEndOffset = static_cast<uint32_t>(
-            (seqEndOffsetRaw % static_cast<int32_t>(blockSize_) + static_cast<int32_t>(blockSize_)) %
-            static_cast<int32_t>(blockSize_));
-
-        int32_t lastFullBlockTokenIndexRaw = static_cast<int32_t>(seqLen) - static_cast<int32_t>(seqEndOffset);
-        if (seqEndOffset == 0 && seqLen >= seqCompletedOffset) {
-            lastFullBlockTokenIndexRaw -= static_cast<int32_t>(blockSize_);
-        }
-
+        uint32_t seqEndOffset = static_cast<uint32_t>((seqEndOffsetRaw % B + B) % B);
+        int32_t lastFull = static_cast<int32_t>(seqLen) - static_cast<int32_t>(seqEndOffset);
+        if (seqEndOffset == 0 && seqLen >= seqCompletedOffset)
+            lastFull -= B;
         int32_t nBlockToFill = lastBlk - firstBlk;
 
-        for (int32_t chunk = 0; chunk < nBlockToFill; chunk++) {
-            int32_t blkId = firstBlk + chunk;
-            int64_t cLine = GetApcCacheLine(b, static_cast<uint32_t>(blkId));
-            if (cLine == padSlotId_)
-                continue;
+        // ---- Early-exit: O(1) check whether this batch needs any work ----
+        // Cache-prefix: only when first boundaryIdx < K-1 (and > 0).
+        // Collision:    only when initial_state_idx falls inside [firstBlk, lastBlk)
+        //               → readCIdx == cache_indices[b][initial_state_idx] IS an
+        //               APC target, needing GM-based fill to avoid UB race.
+        // If neither: skip the O(nBlockToFill) loop entirely — saves ~1024 GM
+        // GetValue calls + scalar math per batch.
+        int32_t BCP = static_cast<int32_t>(blockSize_);
+        int32_t firstBdy = lastFull - (nBlockToFill - 1) * BCP;
+        bool hasCachePrefix = (firstBdy > 0 && firstBdy < static_cast<int32_t>(K - 1));
 
-            int32_t boundaryIdxRaw =
-                lastFullBlockTokenIndexRaw - (nBlockToFill - chunk - 1) * static_cast<int32_t>(blockSize_);
-            if (boundaryIdxRaw <= 0)
-                continue;
-            uint32_t boundaryIdx = static_cast<uint32_t>(boundaryIdxRaw);
+        int32_t initIdx = initialStateIdxLocal_.GetValue(b);
+        bool hasCollision = (!hasCachePrefix && initIdx >= firstBlk && initIdx < lastBlk);
+        int32_t collisionChunk = hasCollision ? (initIdx - firstBlk) : -1;
 
-            // padded_input = [cached_state(K-1), seq_x(seqLen)] (post-offset)
-            uint64_t srcOffset;
-            bool fromCache;
-            if (boundaryIdx < (K - 1)) {
-                fromCache = true;
-                srcOffset = m.mtpOffset + boundaryIdx;
-            } else {
-                fromCache = false;
-                srcOffset = boundaryIdx - (K - 1);
-            }
+        if (!hasCachePrefix && !hasCollision)
+            continue;  // nothing to do for this batch
 
-            uint32_t chunkLen = K - 1;
-            uint32_t maxAvail = (K - 1) + seqLen - boundaryIdx;
-            if (chunkLen > maxAvail)
-                chunkLen = maxAvail;
-            if (chunkLen == 0)
-                continue;
+        // ---- Targeted processing: only handle chunks that actually need work ----
+        // Cache-prefix: iterate until boundaryIdx >= K-1 (at most 1-2 chunks).
+        // Collision:    process exactly collisionChunk (1 iteration, no loop).
+        if (hasCachePrefix) {
+            for (int32_t chunk = 0; chunk < nBlockToFill; chunk++) {
+                int32_t boundaryIdx = lastFull - (nBlockToFill - chunk - 1) * BCP;
+                if (boundaryIdx >= static_cast<int32_t>(K - 1)) break;  // past cache-prefix
+                if (boundaryIdx <= 0) continue;
 
-            LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
+                int32_t blkId = firstBlk + chunk;
+                int64_t cLine = GetApcCacheLine(b, static_cast<uint32_t>(blkId));
+                if (cLine == padSlotId_) continue;
 
-            if (fromCache) {
-                uint32_t cacheRows = (K - 1) - boundaryIdx;
-                if (cacheRows > chunkLen)
-                    cacheRows = chunkLen;
+                uint32_t chunkLen = K - 1;
+                uint32_t maxAvail = (K - 1) + seqLen - static_cast<uint32_t>(boundaryIdx);
+                if (chunkLen > maxAvail) chunkLen = maxAvail;
+                if (chunkLen == 0) continue;
+
+                LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
+                uint32_t cacheRows = (K - 1) - static_cast<uint32_t>(boundaryIdx);
+                if (cacheRows > chunkLen) cacheRows = chunkLen;
                 uint32_t xRows = chunkLen - cacheRows;
 
                 if (m.useZeroCache) {
@@ -1369,50 +1533,77 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
                     } else {
                         Duplicate(tmpBuf, (T)0, cacheRows * dimSize);
                         SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
-                        uint64_t bStart = (uint64_t)seqStartLocal_.GetValue(b);
-                        uint64_t xSrcOff = bStart * xStride_ + dimStart;
+                        uint64_t xSrcOff = batchSt * xStride_ + dimStart;
                         DataCopyExtParams xrcp{static_cast<uint16_t>(xRows),
-                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), xSkip * ALIGN_BYTES, 0,
-                                               0};
+                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                               xSkip * ALIGN_BYTES, 0, 0};
                         DataCopyPad(tmpBuf[cacheRows * dimSize], xGM_[xSrcOff], xrcp, padParams);
                     }
                 } else {
-                    int32_t initIdx = initialStateIdxLocal_.GetValue(b);
                     int64_t readCIdx = GetApcCacheLine(b, static_cast<uint32_t>(initIdx));
                     if (cacheRows > 0) {
+                        uint64_t srcOff = m.mtpOffset + static_cast<uint32_t>(boundaryIdx);
                         uint64_t cacheSrcOff =
-                            (uint64_t)readCIdx * cacheStride0_ + (uint64_t)srcOffset * cacheStride1_ + dimStart;
+                            (uint64_t)readCIdx * cacheStride0_ + srcOff * cacheStride1_ + dimStart;
                         DataCopyExtParams crcp{static_cast<uint16_t>(cacheRows),
-                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), cacheSkip * ALIGN_BYTES,
-                                               0, 0};
+                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                               cacheSkip * ALIGN_BYTES, 0, 0};
                         DataCopyPad(tmpBuf, cacheStatesGM_[cacheSrcOff], crcp, padParams);
                     }
                     if (xRows > 0) {
-                        uint64_t bStart = (uint64_t)seqStartLocal_.GetValue(b);
-                        uint64_t xSrcOff = bStart * xStride_ + dimStart;
+                        uint64_t xSrcOff = batchSt * xStride_ + dimStart;
                         DataCopyExtParams xrcp{static_cast<uint16_t>(xRows),
-                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), xSkip * ALIGN_BYTES, 0,
-                                               0};
+                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                               xSkip * ALIGN_BYTES, 0, 0};
                         DataCopyPad(tmpBuf[cacheRows * dimSize], xGM_[xSrcOff], xrcp, padParams);
                     }
                 }
-            } else {
-                uint64_t bStart = (uint64_t)seqStartLocal_.GetValue(b);
-                uint64_t xSrcOff = (bStart + srcOffset) * xStride_ + dimStart;
-                DataCopyExtParams rcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                                      xSkip * ALIGN_BYTES, 0, 0};
-                DataCopyPad(tmpBuf, xGM_[xSrcOff], rcp, padParams);
+
+                xQueue_.EnQue(tmpBuf);
+                tmpBuf = xQueue_.DeQue<T>();
+                uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
+                uint64_t csDst =
+                    (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
+                DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen),
+                                      static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+                                      cacheSkip * ALIGN_BYTES, 0};
+                DataCopyPad(cacheStatesGM_[csDst], tmpBuf, wcp);
+                xQueue_.FreeTensor(tmpBuf);
             }
+        }
+
+        if (hasCollision) {
+            int32_t chunk = collisionChunk;
+            int32_t boundaryIdx = lastFull - (nBlockToFill - chunk - 1) * BCP;
+            if (boundaryIdx <= 0) continue;
+
+            // x-suffix chunk deferred due to readCIdx collision
+            uint32_t chunkLen = K - 1;
+            uint32_t maxAvail = (K - 1) + seqLen - static_cast<uint32_t>(boundaryIdx);
+            if (chunkLen > maxAvail) chunkLen = maxAvail;
+            if (chunkLen == 0) continue;
+
+            int32_t blkId = firstBlk + chunk;
+            int64_t cLine = GetApcCacheLine(b, static_cast<uint32_t>(blkId));
+            if (cLine == padSlotId_) continue;
+
+            LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
+            uint32_t srcOffset = static_cast<uint32_t>(boundaryIdx) - (K - 1);
+            uint64_t xSrcOff = (batchSt + srcOffset) * xStride_ + dimStart;
+            DataCopyExtParams rcp{static_cast<uint16_t>(chunkLen),
+                                  static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                  xSkip * ALIGN_BYTES, 0, 0};
+            DataCopyPad(tmpBuf, xGM_[xSrcOff], rcp, padParams);
 
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
-
             uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
-            uint64_t csDst = (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
-            DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+            uint64_t csDst =
+                (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
+            DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen),
+                                  static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
                                   cacheSkip * ALIGN_BYTES, 0};
             DataCopyPad(cacheStatesGM_[csDst], tmpBuf, wcp);
-
             xQueue_.FreeTensor(tmpBuf);
         }
     }
@@ -1421,7 +1612,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
 // ============================================================================
 // CopyYToX — inplace finalize: copy y from workspace back to xGM_
 //
-// 仅 inplace_==true 时调用，在 FillApcBlockCaches 之后执行。
+// 仅 inplace_==true 时调用，在 FillApcCachePrefixChunks 之后执行。
 //
 // 关键约束：xQueue_ 的 UB 容量按 maxUbBS × maxUbDim × sizeof(T) 初始化
 //   （见 Init 中 xBufBytes），因此搬运必须按 (BS, Dim) 二维切片，
@@ -1452,26 +1643,24 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
     } else {
         uint64_t effStepMain = bsBlockFactor_ - (K - 1);
         uint64_t effStepTail = bsBlockTailFactor_ - (K - 1);
-        bsStart = (uint64_t)bsRemainderCores_ * effStepMain + (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
+        bsStart = (uint64_t)bsRemainderCores_ * effStepMain +
+                  (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
     }
 
     uint32_t bsFactor = isBsTailCore_ ? bsBlockTailFactor_ : bsBlockFactor_;
     uint32_t iStart = isBsFirstCore ? 0 : (K - 1);
-    if (bsFactor <= iStart)
-        return;
+    if (bsFactor <= iStart) return;
     uint32_t validRows = bsFactor - iStart;
     uint64_t bsBase = bsStart + iStart;
 
     // ---- 本核 Dim 起点与长度 ----
     uint32_t dimStart = GetDimStart();
     uint32_t dimTotal = GetDimTotal();
-    if (dimTotal == 0)
-        return;
+    if (dimTotal == 0) return;
 
-    uint32_t maxUbBS = isBsTailCore_ ? tailBlockubFactorBS_ : ubFactorBS_;
+    uint32_t maxUbBS  = isBsTailCore_ ? tailBlockubFactorBS_ : ubFactorBS_;
     uint32_t maxUbDim = GetMaxUbDim();
-    if (maxUbBS == 0 || maxUbDim == 0)
-        return;
+    if (maxUbBS == 0 || maxUbDim == 0) return;
 
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
@@ -1484,17 +1673,21 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
         while (dimDone < dimTotal) {
             uint32_t dimChunk = (dimTotal - dimDone > maxUbDim) ? maxUbDim : (dimTotal - dimDone);
             uint32_t skipBlocks = (xStride_ - dimChunk) * sizeof(T) / ALIGN_BYTES;
-            uint32_t lineBytes = dimChunk * sizeof(T);
+            uint32_t lineBytes  = dimChunk * sizeof(T);
             uint64_t gmOff = rowBase * (uint64_t)xStride_ + dimStart + dimDone;
 
             LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
-            DataCopyExtParams rcp{static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes),
-                                  skipBlocks * ALIGN_BYTES, 0, 0};
+            DataCopyExtParams rcp{static_cast<uint16_t>(bsChunk),
+                                  static_cast<uint16_t>(lineBytes),
+                                  skipBlocks * ALIGN_BYTES,
+                                  0, 0};
             DataCopyPad(tmpBuf, yGM_[gmOff], rcp, padParams);
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
 
-            DataCopyExtParams wcp{static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes), 0,
+            DataCopyExtParams wcp{static_cast<uint16_t>(bsChunk),
+                                  static_cast<uint16_t>(lineBytes),
+                                  0,
                                   skipBlocks * ALIGN_BYTES, 0};
             DataCopyPad(xGM_[gmOff], tmpBuf, wcp);
             xQueue_.FreeTensor(tmpBuf);
