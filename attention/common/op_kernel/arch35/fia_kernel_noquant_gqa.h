@@ -415,7 +415,7 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
