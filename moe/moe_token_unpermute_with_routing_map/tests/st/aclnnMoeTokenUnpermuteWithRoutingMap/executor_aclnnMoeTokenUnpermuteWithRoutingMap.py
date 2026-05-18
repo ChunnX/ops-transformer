@@ -46,15 +46,34 @@ def generate_tensor(shape, data_type, data_max=5):
 def has_special_values(tensor):
     if tensor is None:
         return False
+    if tensor.device.type != "cpu":
+        return False
     return torch.any(torch.isinf(tensor)) or torch.any(torch.isnan(tensor))
 
 
 def generate_routing_map_padded(capacity, num_tokens, num_experts):
     routing_map = torch.zeros((num_tokens, num_experts), dtype=torch.bool)
+    if capacity <= 0 or num_tokens <= 0 or num_experts <= 0:
+        return routing_map
+
+    flat_indices = torch.arange(num_experts * capacity, dtype=torch.long) % num_tokens
     for expert_idx in range(num_experts):
-        indices = torch.randperm(num_tokens)[:capacity]
+        start = expert_idx * capacity
+        indices = flat_indices[start:start + capacity]
         routing_map[indices, expert_idx] = True
     return routing_map
+
+
+def mask_first_route_per_token(routing_map, dtype):
+    effective_mask = torch.zeros_like(routing_map, dtype=torch.bool)
+    has_route = routing_map.any(dim=1)
+    if not torch.any(has_route):
+        return effective_mask.to(dtype)
+
+    first_expert = routing_map.to(torch.int32).argmax(dim=1)
+    token_indices = torch.arange(routing_map.shape[0], dtype=torch.long)[has_route]
+    effective_mask[token_indices, first_expert[has_route].to(torch.long)] = True
+    return effective_mask.to(dtype)
 
 
 def generate_non_padded_case(num_tokens, num_experts, topk, prob_dtype, with_minus_one):
@@ -136,19 +155,42 @@ def unpermute_non_padded(permuted_tokens, sorted_indices, routing_map, probs, re
     num_tokens = restore_shape[0]
     topk = safe_div(sorted_indices.numel(), num_tokens)
     compute_dtype = torch.float32 if permuted_tokens.dtype in (torch.float16, torch.bfloat16) else permuted_tokens.dtype
-    output_tokens = torch.zeros(restore_shape, dtype=compute_dtype, device=permuted_tokens.device)
-
     permute_probs = probs.masked_select(routing_map.to(torch.bool)).to(compute_dtype)
-    for token_idx in range(num_tokens):
-        for topk_idx in range(topk):
-            slot = token_idx * topk + topk_idx
-            permuted_idx = int(sorted_indices[slot].item())
-            if permuted_idx < 0 or permuted_idx >= permuted_tokens.shape[0]:
-                continue
-            output_tokens[token_idx] += permuted_tokens[permuted_idx].to(compute_dtype) * permute_probs[slot]
+
+    if num_tokens == 0 or topk == 0 or permuted_tokens.numel() == 0:
+        output_tokens = torch.zeros(restore_shape, dtype=compute_dtype, device=permuted_tokens.device)
+        dummy_index = torch.tensor([1], dtype=sorted_indices.dtype, device=sorted_indices.device)
+        return output_tokens.to(permuted_tokens.dtype), dummy_index, dummy_index, permute_probs.to(probs.dtype)
+
+    expected_probs = num_tokens * topk
+    if permute_probs.numel() < expected_probs:
+        pad = torch.zeros(
+            (expected_probs - permute_probs.numel(),),
+            dtype=permute_probs.dtype,
+            device=permute_probs.device,
+        )
+        permute_probs = torch.cat((permute_probs, pad), dim=0)
+    elif permute_probs.numel() > expected_probs:
+        permute_probs = permute_probs[:expected_probs]
+
+    valid_mask = (sorted_indices >= 0) & (sorted_indices < permuted_tokens.shape[0])
+    safe_indices = sorted_indices.clamp(0, permuted_tokens.shape[0] - 1).to(torch.long)
+    gathered_tokens = permuted_tokens.index_select(0, safe_indices).reshape(num_tokens, topk, permuted_tokens.shape[1])
+    weights = permute_probs.reshape(num_tokens, topk).to(compute_dtype)
+    valid_weights = valid_mask.reshape(num_tokens, topk).to(compute_dtype)
+    weighted_tokens = gathered_tokens.to(compute_dtype) * weights.unsqueeze(-1) * valid_weights.unsqueeze(-1)
+    output_tokens = weighted_tokens.sum(dim=1)
 
     dummy_index = torch.tensor([1], dtype=sorted_indices.dtype, device=permuted_tokens.device)
     return output_tokens.to(permuted_tokens.dtype), dummy_index, dummy_index, permute_probs.to(probs.dtype)
+
+
+def get_init_device(api):
+    if api.device in ("pyaclnn", "npu"):
+        return f"npu:{api.device_id}"
+    if api.device == "gpu":
+        return f"cuda:{api.device_id}"
+    return None
 
 
 @register("ascend_function_moe_token_unpermute_with_routing_map")
@@ -202,17 +244,19 @@ class FunctionMoeTokenUnpermuteWithRoutingMapApi(BaseApi):
                 torch.float32 if self.is_mixed else prob_dtype,
                 data_max=1.0,
             )
+            probs = probs * mask_first_route_per_token(routing_map, probs.dtype)
             permuted_tokens, _, sorted_indices, routing_map = permute_for_padded(
                 original_tokens, routing_map, probs, num_out_tokens
             )
             restore_shape = [num_tokens, hidden_size]
 
         probs_dtype_for_acl = torch.float32 if self.is_mixed else token_dtype
-        if self.device == "pyaclnn":
-            input_data.kwargs["permutedTokens"] = permuted_tokens.to(token_dtype).npu()
-            input_data.kwargs["sortedIndices"] = sorted_indices.to(torch.int32).npu()
-            input_data.kwargs["routingMapOptional"] = routing_map.npu()
-            input_data.kwargs["probsOptional"] = probs.to(probs_dtype_for_acl).npu()
+        init_device = get_init_device(self)
+        if init_device is not None:
+            input_data.kwargs["permutedTokens"] = permuted_tokens.to(device=init_device, dtype=token_dtype)
+            input_data.kwargs["sortedIndices"] = sorted_indices.to(device=init_device, dtype=torch.int32)
+            input_data.kwargs["routingMapOptional"] = routing_map.to(device=init_device)
+            input_data.kwargs["probsOptional"] = probs.to(device=init_device, dtype=probs_dtype_for_acl)
         else:
             input_data.kwargs["permutedTokens"] = permuted_tokens.to(token_dtype)
             input_data.kwargs["sortedIndices"] = sorted_indices.to(torch.int32)
@@ -244,11 +288,12 @@ class FunctionMoeTokenUnpermuteWithRoutingMapApi(BaseApi):
         permuted_tokens = generate_tensor((num_out_tokens, hidden_size), token_dtype, data_max=5)
         restore_shape = [num_tokens, hidden_size]
 
-        if self.device == "pyaclnn":
-            input_data.kwargs["permutedTokens"] = permuted_tokens.npu()
-            input_data.kwargs["sortedIndices"] = sorted_indices.npu()
-            input_data.kwargs["routingMapOptional"] = routing_map.to(routing_dtype).npu()
-            input_data.kwargs["probsOptional"] = probs.npu()
+        init_device = get_init_device(self)
+        if init_device is not None:
+            input_data.kwargs["permutedTokens"] = permuted_tokens.to(device=init_device)
+            input_data.kwargs["sortedIndices"] = sorted_indices.to(device=init_device)
+            input_data.kwargs["routingMapOptional"] = routing_map.to(device=init_device, dtype=routing_dtype)
+            input_data.kwargs["probsOptional"] = probs.to(device=init_device)
         else:
             input_data.kwargs["permutedTokens"] = permuted_tokens
             input_data.kwargs["sortedIndices"] = sorted_indices
