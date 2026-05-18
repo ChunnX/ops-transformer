@@ -76,6 +76,7 @@ struct Params {
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
+    mutable uint64_t timeCombineTokens;
 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
