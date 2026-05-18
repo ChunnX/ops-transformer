@@ -129,6 +129,30 @@ function(gen_aclnn_with_opdef)
   gen_aclnn_classify(${OPHOST_NAME}_opdef_aclnn_exclude_obj aclnnExc "${opbuild_out_srcs}" "${opbuild_out_headers}"
     opbuild_out_srcs opbuild_out_headers)
 
+  set(filtered_opbuild_out_headers)
+  foreach(header_file ${opbuild_out_headers})
+    set(skip_this_header FALSE)
+
+    get_filename_component(header_name ${header_file} NAME)
+    if(header_name MATCHES "aclnn_([^.]+)\\.h")
+      set(op_name ${CMAKE_MATCH_1})
+      string(TOUPPER ${op_name} op_name_upper)
+      string(REPLACE "-" "_" op_name_upper ${op_name_upper})
+
+      set(skip_var_name "${op_name_upper}_SKIP_HEADER")
+      if(DEFINED ${skip_var_name} AND ${skip_var_name})
+        message(STATUS "Skipping header packaging for operator: ${op_name}")
+        set(skip_this_header TRUE)
+      endif()
+    endif()
+
+    if(NOT skip_this_header)
+      list(APPEND filtered_opbuild_out_headers ${header_file})
+    endif()
+  endforeach()
+
+  set(opbuild_out_headers ${filtered_opbuild_out_headers})
+
   # 创建汇总头文件
   if(NOT ENABLE_BUILT_IN)
     set(aclnn_master_header_name "aclnn_ops_transformer_${VENDOR_NAME}")
@@ -149,6 +173,24 @@ function(gen_aclnn_with_opdef)
     list(APPEND mc2_aclnn_master_headers ${matching_file})
   endif()
 
+  # 读取 level2_ops_list 文件
+  set(level2_ops_list_file "${CMAKE_CURRENT_LIST_DIR}/cmake/level2_ops_list")
+  if(EXISTS ${level2_ops_list_file})
+    file(STRINGS ${level2_ops_list_file} level2_ops_list)
+  else()
+    set(level2_ops_list "")
+  endif()
+
+  # 过滤 mc2 头文件：只在 level2_ops_list 中的才安装到 level2
+  set(mc2_level2_headers "")
+  foreach(header_file ${mc2_aclnn_master_headers})
+    get_filename_component(header_name ${header_file} NAME)
+    list(FIND level2_ops_list "${header_name}" idx)
+    if(NOT idx EQUAL -1)
+      list(APPEND mc2_level2_headers ${header_file})
+    endif()
+  endforeach()
+
   # 将头文件安装到packages/vendors/vendor_name/op_api/include
   if (NOT ENABLE_BUILT_IN)
     install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
@@ -163,7 +205,7 @@ function(gen_aclnn_with_opdef)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
     if (BUILD_OPEN_PROJECT)
       install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
-      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+      install(FILES ${mc2_level2_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
     endif()
   endif()
 
@@ -174,7 +216,7 @@ function(gen_aclnn_with_opdef)
     install(FILES ${aclnn_master_header} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
     if (BUILD_OPEN_PROJECT)
       install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop OPTIONAL)
-      install(FILES ${mc2_aclnn_master_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
+      install(FILES ${mc2_level2_headers} DESTINATION ${CMAKE_BINARY_DIR}/static_library_files/include/aclnnop/level2 OPTIONAL)
     endif()
   endif()
 
@@ -207,6 +249,44 @@ function(gen_aclnn_with_opdef)
       ${OPAPI_INCLUDE}
     )
   endif()
+endfunction()
+
+function(gen_aicpu_ini_from_opdef)
+  message(STATUS "Opbuild generating AICPU ini/json from OpDef")
+  cmake_parse_arguments(OPBUILD "" "OUT_DIR;PROJECT_NAME;ACCESS_PREFIX;ENABLE_SOURCE" "OPS_SRC" ${ARGN})
+  if(NOT OPBUILD_OPS_SRC)
+    message(STATUS "No AICPU OpDef sources, skip.")
+    return()
+  endif()
+
+  file(MAKE_DIRECTORY ${OPBUILD_OUT_DIR})
+
+  set(AICPU_OPDEF_SO ${OPBUILD_OUT_DIR}/libaicpu_ops.so)
+  set(AICPU_INI ${OPBUILD_OUT_DIR}/aicpu_kernel.ini)
+  set(opbuild_env "")
+  if(NOT "${OPBUILD_PROJECT_NAME}x" STREQUAL "x")
+    list(APPEND opbuild_env "OPS_PROJECT_NAME=${OPBUILD_PROJECT_NAME}")
+  endif()
+  if(NOT "${OPBUILD_ACCESS_PREFIX}x" STREQUAL "x")
+    list(APPEND opbuild_env "OPS_DIRECT_ACCESS_PREFIX=${OPBUILD_ACCESS_PREFIX}")
+  endif()
+
+  add_custom_command(
+    OUTPUT ${AICPU_INI}
+    COMMAND ${CMAKE_CXX_COMPILER} -g -fPIC -shared -std=c++11 ${OPBUILD_OPS_SRC} -D_GLIBCXX_USE_CXX11_ABI=0
+            -I ${ASCEND_CANN_PACKAGE_PATH}/include
+            -I ${CMAKE_SOURCE_DIR}/common/include
+            -L ${ASCEND_CANN_PACKAGE_PATH}/lib64
+            -lexe_graph -lregister -ltiling_api
+            -o ${AICPU_OPDEF_SO}
+    COMMAND ${CMAKE_COMMAND} -E env ENABLE_SOURCE_PACKAGE=${OPBUILD_ENABLE_SOURCE} ${opbuild_env}
+            ${OP_BUILD_TOOL} ${AICPU_OPDEF_SO} ${OPBUILD_OUT_DIR} --aicpu
+    DEPENDS ${OPBUILD_OPS_SRC}
+    COMMENT "Generating aicpu_kernel.ini from *_aicpu_def.cpp"
+    VERBATIM
+  )
+
+  message(STATUS "Opbuild generating AICPU ini/json from OpDef - done")
 endfunction()
 
 function(merge_graph_headers)

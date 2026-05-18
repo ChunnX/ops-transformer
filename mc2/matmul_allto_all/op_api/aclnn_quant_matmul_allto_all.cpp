@@ -14,6 +14,7 @@
 #include "common/utils/op_mc2.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2_def.h"
+#include "common/op_api/mc2_aclnn_util.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -24,6 +25,7 @@
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
+#include "mc2_comm_utils.h"
 
 namespace {
 
@@ -96,8 +98,8 @@ static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool t
 // 校验Scale为1D时的shape（KC量化）
 static bool Check1DScaleShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale,
                               const aclTensor* x2Scale, bool transposeX2) {
-    OP_CHECK_WRONG_DIMENSION(x1Scale, ONE_DIM, return false);
-    OP_CHECK_WRONG_DIMENSION(x2Scale, ONE_DIM, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x1Scale, ONE_DIM, KC_SCENE, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x2Scale, ONE_DIM, KC_SCENE, return false);
     auto mVal = x1->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x1ScaleDim = x1Scale->GetViewShape().GetDim(0);
@@ -118,8 +120,8 @@ static bool Check1DScaleShape(const aclTensor* x1, const aclTensor* x2, const ac
 // 校验Scale为3D时的shape（MX量化）
 static bool Check3DScaleShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale,
                               const aclTensor* x2Scale, bool transposeX2) {
-    OP_CHECK_WRONG_DIMENSION(x1Scale, THREE_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2Scale, THREE_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x1Scale, THREE_DIMS, MX_SCENE, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x2Scale, THREE_DIMS, MX_SCENE, return false);
     auto mVal = x1->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x1ScaleMVal = x1Scale->GetViewShape().GetDim(0);
@@ -230,16 +232,17 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST_A5 = 
 
 // KC量化场景下，校验所有输入的参数类型是否正确(A5)
 static bool CheckKCQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2,
-                               		  const aclTensor* x1Scale, const aclTensor* x2Scale,
-                               		  const aclTensor* biasOptional, const aclTensor* output) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, return false);
+                                	  const aclTensor* x1Scale, const aclTensor* x2Scale,
+                                	  const aclTensor* biasOptional, const aclTensor* output) {
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1, X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2, X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5,
+            KC_SCENE, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
     return true;
 }
 
@@ -247,17 +250,21 @@ static bool CheckKCQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2,
 static bool CheckMXQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2,
                                		  const aclTensor* x1Scale, const aclTensor* x2Scale,
                                		  const aclTensor* biasOptional, const aclTensor* output) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
-    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    if (x1->GetDataType() != x2->GetDataType() &&
+        (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "In mxquant scenario, x1 and x2 must have same dtype when one is fp4_e2m1, but found x1: %s, x2: %s.",
+            op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
+        return false;
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     return true;
 }
 
@@ -371,10 +378,8 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTen
 }
 
 static aclnnStatus CheckAndHandleParams(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
-                                        const aclTensor* x1Scale, const aclTensor* x2Scale, const aclTensor* commScaleOptional,
-                                        const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional, const char* group,
+                                        const aclTensor* x1Scale, const aclTensor* x2Scale, const char* group,
                                         const aclIntArray* alltoAllAxesOptional, int64_t x1QuantMode, int64_t x2QuantMode,
-                                        int64_t commQuantMode, int64_t commQuantDtype,
                                         bool transposeX1, bool transposeX2, const aclTensor* output)
 {
     // 检查参数是否为空指针
@@ -396,8 +401,6 @@ static aclnnStatus CheckAndHandleParams(const aclTensor* x1, const aclTensor* x2
     CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 检查group长度是否小于等于128
     CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
-    // 检查预留参数，不影响场景
-    CheckReservedParams(commScaleOptional, x1OffsetOptional, x2OffsetOptional, commQuantMode, commQuantDtype);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("aclnnQuantMatmulAlltoAll checkParams success");
     return ACLNN_SUCCESS;
@@ -430,25 +433,35 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
                                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_INVALID);	// 先检查x2是否合法，避免访问空指针等等非法操作
-    bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;    // 复制一个x2
-    OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
-    if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
-        return ACLNN_ERR_PARAM_INVALID;
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
+        bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+        OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
+        if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (notContiguous) {
+            transposeX2 = true;
+            // 把非连续x2转成连续
+            transX2 = TransX2Tensor(x2);
+            CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+            OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. "
+                    "After processing, transX2 dim0 is %ld, and dim1 is %ld.",
+                    x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1),
+                    transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
+        }
+    } else {
+        // 对于 A2 和 A3，非连续则报错
+        OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The x2 must be contiguous, but it is non-contiguous.");
+            return ACLNN_ERR_PARAM_INVALID;});
     }
-    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
-        transposeX2 = true;
-        // 把非连续x2转成连续
-        transX2 = TransX2Tensor(x2);
-        CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After processing, transX2 dim0 is %ld, and dim1 is %ld.",
-            x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
-    }
-    aclnnStatus retParam = CheckAndHandleParams(
-        x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group, alltoAllAxesOptional,
-        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, transposeX1, transposeX2, output);
+    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group,
+        alltoAllAxesOptional, x1QuantMode, x2QuantMode, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
     const aclTensor* out = output;
@@ -482,7 +495,14 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAll(void *workspace, uint64_t worksp
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_CCU) {
+                OP_LOGD("aclnnQuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            } else {
+                OP_LOGD("aclnnQuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            }
         } else {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }

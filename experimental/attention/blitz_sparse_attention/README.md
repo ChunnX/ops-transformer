@@ -28,12 +28,15 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 
 ## Quick test and benchmark in python:
 build the kernel as a custom experimental package, install it, then install our "torch_bsa" torch interface package
+
 ```shell
 bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention
 ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
 (cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
 ```
+
 test and benchmark run times:
+
 ```shell
 cd experimental/attention/blitz_sparse_attention/benchmark
 pytest test_attn.py # attention_out correctness tests for sequence lengths 10k-30k 1-4 attention heads, compares our block-sparse BSA against npu_fusion_attention kernel and our own python implementation
@@ -134,7 +137,9 @@ A plain, pure C++, example is provided in examples subdirectory. Run it using:
 ```shell
 bash build.sh --experimental --run_example blitz_sparse_attention eager cust --soc=ascend910b --vendor_name=custom
 ```
+
 the output should be:
+
 ``` shell
 [2026-03-16 15:14:17] Warning: The current environment is configured for ascend910b, Please use Atlas A2 series hardware for optimal performance.
 [2026-03-16 15:14:17] [2026-03-16 15:14:17] Start to run example,name:blitz_sparse_attention mode:eager
@@ -186,7 +191,6 @@ It is common to select which of the variants to compile by passing --op-variant=
 |:----------------------------|:-----------:|
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
-
 
 ## 功能说明
 

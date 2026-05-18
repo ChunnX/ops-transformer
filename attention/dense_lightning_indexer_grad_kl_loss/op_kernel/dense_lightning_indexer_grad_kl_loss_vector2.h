@@ -127,14 +127,20 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
 
     uint32_t loopTimes = CeilDiv(constInfo.dKeySingleCoreSize, DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K);
 
+    DataCopyParams dataCopyOutParams;
+    dataCopyOutParams.blockCount = 1;
+    dataCopyOutParams.dstStride = 0;
+    dataCopyOutParams.srcStride = 0;
+
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int64_t loopIdx = 0; loopIdx < loopTimes; loopIdx++) {
         uint32_t dKeyGmOffsetCur = constInfo.dKeyGmOffset + loopIdx * DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K;
         uint32_t processNum = DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K;
+        uint32_t processNumPad = processNum;
         if (loopIdx == loopTimes - 1) {
             processNum = constInfo.dKeySingleCoreSize - DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K * loopIdx;
-            processNum = (processNum + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
+            processNumPad = (processNum + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
         }
 
         eventId = pingPongFlag ? EVENT_ID1 : EVENT_ID0;
@@ -143,15 +149,16 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
         LocalTensor<OUT_T> dKeyIndexUbOut = pingPongFlag ? ubOutHalfPong_ : ubOutHalfPing_;
 
         WaitFlag<HardEvent::MTE3_MTE2>(eventId);
-        DataCopy(dKeyIndexUbIn, dKeyIndexGmIn[dKeyGmOffsetCur], processNum);
+        DataCopy(dKeyIndexUbIn, dKeyIndexGmIn[dKeyGmOffsetCur], processNumPad);
         SetFlag<HardEvent::MTE2_V>(eventId);
 
         WaitFlag<HardEvent::MTE2_V>(eventId);
-        Cast(dKeyIndexUbOut, dKeyIndexUbIn, RoundMode::CAST_ROUND, processNum);
+        Cast(dKeyIndexUbOut, dKeyIndexUbIn, RoundMode::CAST_ROUND, processNumPad);
         SetFlag<HardEvent::V_MTE3>(eventId);
 
         WaitFlag<HardEvent::V_MTE3>(eventId);
-        DataCopy(dKeyIndexGmOut[dKeyGmOffsetCur], dKeyIndexUbOut, processNum);
+        dataCopyOutParams.blockLen = processNum * sizeof(OUT_T);
+        DataCopyPad(dKeyIndexGmOut[dKeyGmOffsetCur], dKeyIndexUbOut, dataCopyOutParams);
         SetFlag<HardEvent::MTE3_MTE2>(eventId);
         
         pingPongFlag = 1 - pingPongFlag;
@@ -166,6 +173,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
     if (constInfo.aivIdx == 0) {
         event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
         event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
+        event_t mte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
 
         int64_t count = constInfo.aivNum;
         int64_t countAlign = BlockAlign<T>(count);
@@ -189,15 +197,19 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
 
         AscendC::Sum(ubLossOut_, ubLossIn_, tmpUb_, sumParams);
 
-        SetFlag<HardEvent::MTE2_V>(vToMte3);
-        WaitFlag<HardEvent::MTE2_V>(vToMte3);
+        SetFlag<HardEvent::V_MTE3>(vToMte3);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3);
 
         AscendC::DataCopyPad(lossGm, ubLossOut_,
             {static_cast<uint32_t>(1), static_cast<uint32_t>(sizeof(float)),
             static_cast<uint32_t>(0), static_cast<uint32_t>(0)});
+
+        SetFlag<HardEvent::MTE3_V>(mte3ToV);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToV);
         
         GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
         GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
+        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(mte3ToV);
     }
 }
 

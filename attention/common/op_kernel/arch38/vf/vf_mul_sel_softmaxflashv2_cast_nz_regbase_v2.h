@@ -25,6 +25,10 @@ namespace FaVectorApi {
  * only 128*128 support
  * only high performance support (expSum expMax use fp32)************************************************************************************************* */
 // originN = 128, No update
+constexpr uint32_t floatRepSize = 64;
+constexpr uint32_t halfRepSize = 128;
+constexpr uint32_t blockBytesU8 = 32;
+
 template <typename T, typename T2, uint8_t mode = 0, uint32_t sOuter = 0, uint32_t sInner = 0>
 __aicore__ inline void SoftmaxFlashV510NoUpdateImpl128(
     const LocalTensor<T2>& dstTensor, const LocalTensor<float>& expSumTensor,

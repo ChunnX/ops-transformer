@@ -16,21 +16,21 @@
 #define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H
 
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
-namespace optiling {
+namespace Mc2Tiling {
 enum GmmA2AvInputTensorIndex : uint32_t {
     GMM_X_INDEX = 0,
     GMM_WEIGHT_INDEX,
+    GMM_X_SCALE_INDEX,
+    GMM_WEIGHT_SCALE_INDEX,
     SEND_COUNTS_TENSOR_OPTIONAL_INDEX,
-    RECV_COUNTS_TENSOR_OPTIONAL_INDEX,
+    RECV_COUNTS_TENSOR_OPTIONAL_INDEX = 5,
     MM_X_OPTIONAL_INDEX,
-    MM_WEIGHT_OPTIONAL_INDEX = 5,
-    GMM_X_SCALE_OPTIONAL_INDEX,
-    GMM_WEIGHT_SCALE_OPTIONAL_INDEX,
+    MM_WEIGHT_OPTIONAL_INDEX,
     MM_X_SCALE_OPTIONAL_INDEX,
     MM_WEIGHT_SCALE_OPTIONAL_INDEX,
     COMM_QUANT_SCALE_OPTIONAL_INDEX
@@ -46,17 +46,17 @@ enum GmmA2AvAttrIndex : uint32_t {
     ATTR_EP_WORLD_SIZE_INDEX,
     ATTR_SEND_COUNTS_INDEX,
     ATTR_RECV_COUNTS_INDEX,
-    ATTR_TRANS_GMM_WEIGHT_INDEX,
-    ATTR_TRANS_MM_WEIGHT_INDEX = 5,
     ATTR_GMM_X_QUANT_MODE_INDEX,
-    ATTR_GMM_WEIGHT_QUANT_MODE_INDEX,
+    ATTR_GMM_WEIGHT_QUANT_MODE_INDEX = 5,
+    ATTR_TRANS_GMM_WEIGHT_INDEX,
+    ATTR_TRANS_MM_WEIGHT_INDEX,
     ATTR_MM_X_QUANT_MODE_INDEX,
     ATTR_MM_WEIGHT_QUANT_MODE_INDEX,
     ATTR_COMM_QUANT_MODE_INDEX = 10,
     ATTR_GROUP_SIZE_OPTIONAL_INDEX,
-    ATTR_COMM_QUANT_DTYPE_INDEX,
     ATTR_Y_DTYPE,
-    ATTR_MM_Y_DTYPE
+    ATTR_MM_Y_DTYPE,
+    ATTR_COMM_QUANT_DTYPE_INDEX
 };
 
 enum QuantizationMode {
@@ -74,6 +74,7 @@ enum QuantModePair {
     QUANT_PAIR_NONE = 0,   // 不量化
     QUANT_PAIR_TT = 1,     // pertensor - pertensor
     QUANT_PAIR_KC = 2,     // pertoken - perchannel
+    QUANT_PAIR_MX = 6,     // mxfp8
     QUANT_PAIR_ERROR = 255
 };
 
@@ -92,6 +93,7 @@ constexpr uint32_t DIM_ZERO = 0;
 constexpr uint32_t DIM_ONE = 1;
 constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
+constexpr uint32_t DIM_FOUR = 4;
 
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
@@ -108,6 +110,8 @@ constexpr int64_t BEST_BASEN = 256;
 constexpr int64_t BEST_L1_PARTA = 256 * 1024;
 constexpr int64_t BEST_L1_PARTB = 128 * 1024;
 
+constexpr uint64_t MX_SCALE_GROUP = 64;
+constexpr uint64_t EVEN_ALIGN = 2;
 constexpr uint64_t DOUBLE_BUFFER_L0A_L0B = 2;
 constexpr uint64_t DOUBLE_BUFFER_STEPKA_STEPKB = 2;
 constexpr uint32_t UB_DIVIDE_NUM = 2;
@@ -128,10 +132,11 @@ constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
 constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
 
-class QuantGmmAlltoAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
+class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
-    explicit QuantGmmAlltoAllvTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext* context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -145,6 +150,6 @@ protected:
 
     NpuArch npuArch_;
 };
-} // namespace optiling
+} // namespace Mc2Tiling
 
 #endif // MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H

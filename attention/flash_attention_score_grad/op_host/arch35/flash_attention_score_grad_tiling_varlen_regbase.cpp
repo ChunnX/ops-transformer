@@ -29,9 +29,6 @@ public:
 protected:
     bool IsCapable() override
     {
-        const char *tndSoftmaxIn = context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN) ? context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN)) : "";
-        if (strcmp(tndSoftmaxIn, "") != 0) return false;
-
         auto actualSeqQLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
         OP_LOGD(context_, "coreNum is %lu", fBaseParams.coreNum);
         if (npuArch == NpuArch::DAV_3510 && actualSeqQLenTensor != nullptr &&
@@ -63,6 +60,25 @@ protected:
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
     }
 
+    void CalcTNDSwizzleParam()
+    {
+        if (fBaseParams.b >= TND_SWIZZLE_PREFIX_NUM) {
+            return;
+        }
+        for (int64_t bIdx = 0; bIdx < fBaseParams.b; bIdx++) {
+            int64_t s1OuterTmp = (fBaseParams.actualSeqQlen[bIdx] + fBaseParams.s1Inner * S1CV_RATIO_DEFAULT - 1) /
+                                 (fBaseParams.s1Inner * S1CV_RATIO_DEFAULT);
+            int64_t s2OuterTmp = (fBaseParams.actualSeqKvlen[bIdx] + fBaseParams.s2Inner * S2CV_RATIO_DEFAULT - 1) /
+                                 (fBaseParams.s2Inner * S2CV_RATIO_DEFAULT);
+            tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] =
+                tndBaseInfo.tndS2BlockPrefixSum[bIdx] +
+                CeilDivideBy(fBaseParams.n2 * fBaseParams.g * s2OuterTmp, static_cast<int64_t>(fBaseParams.aicNum)) *
+                    s1OuterTmp;
+            OP_LOGD("CalcTNDSwizzleParam", " bIdx = %ld: tndS2BlockPrefixSum = %ld", bIdx + 1,
+                    tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1]);
+        }
+    }
+
     void CalcleTNDDenseDeterParam()
     {
         if (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) {
@@ -88,11 +104,8 @@ protected:
             deterPrefixData.nNewList.push_back(actualS2Outer);
         }
         int64_t totalArea = deterPrefixData.prefix1.back() * fBaseParams.n1;
-        if (fBaseParams.g == 1) {
-            fBaseParams.deterMaxRound = std::max(CeilDivideBy(totalArea, static_cast<int64_t>(fBaseParams.aicNum)), s1Max);
-        } else {
-            fBaseParams.deterMaxRound = std::max({CeilDivideBy(totalArea, static_cast<int64_t>(fBaseParams.aicNum)), s1Max * fBaseParams.g, s2Max});
-        }
+        fBaseParams.deterMaxRound =
+            std::max({CeilDivideBy(totalArea, static_cast<int64_t>(fBaseParams.aicNum)), s1Max * fBaseParams.g, s2Max});
 
         deterPrefixData.prefix0 = SliceVector(deterPrefixData.prefix1, fBaseParams.deterPrefixStep);
         deterPrefixData.deterPrefix = SliceVector(deterPrefixData.deterPrefix, fBaseParams.deterPrefixStep);
@@ -214,7 +227,7 @@ protected:
             if (N12 > 0) {
                 deterPrefixData.prefix1.push_back(deterPrefixData.prefix1.back() +
                                         (actualS1Outer - (actualS2Outer + 1) / NUM_TWO + 1) * (actualS2Outer / NUM_TWO));
-                if (actualS2Outer >= NUM_TWO && fBaseParams.g != 1) {
+                if (fBaseParams.g == 1 || (actualS2Outer >= NUM_TWO && fBaseParams.g != 1)) {
                     m1Max = std::max(m1Max, fBaseParams.g * (actualS1Outer - (actualS2Outer + 1) / NUM_TWO + 1));
                 }
 

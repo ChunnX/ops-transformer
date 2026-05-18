@@ -14,8 +14,10 @@
  */
 #include "aclnn_quant_matmul_all_reduce_v4.h"
 
+#include "aclnnInner_matmul_all_reduce.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "matmul_all_reduce_util.h"
+#include "mc2_comm_utils.h"
 
 using namespace op;
 
@@ -23,16 +25,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
-    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
-    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
-    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
-
-extern aclnnStatus aclnnInnerMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
@@ -299,7 +291,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, transX2, biasOptional, x3Optional, scale, offset, transX2Scale, x1ScaleOptional, commQuantScale1Optional,
-        commQuantScale2Optional, group, reduceOp, transposeX1, transposeX2, commTurn, antiquantGroupSize, groupSize,
+        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, groupSize,
         yDtype, commQuantMode, output, workspaceSize, executor);
 
     OP_LOGI(
@@ -315,7 +308,12 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);

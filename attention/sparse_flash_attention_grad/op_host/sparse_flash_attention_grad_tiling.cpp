@@ -15,8 +15,8 @@
 
 #include "sparse_flash_attention_grad_tiling.h"
 #include <register/op_impl_registry.h>
-#include "tiling_base/data_copy_transpose_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/data_copy_transpose_tiling.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
 #include "../op_kernel/arch35/sparse_flash_attention_grad_template_tiling_key.h"
 
@@ -40,7 +40,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingCont
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "context is null."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttentionGrad", "context is null."), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null."), return ge::GRAPH_FAILED);
 

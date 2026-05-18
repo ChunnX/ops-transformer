@@ -48,6 +48,8 @@ static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE = 3;
 static constexpr int64_t MOE_INIT_ROUTING_V3_EXPERT_END_BOUND = 10240;
 static constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2;
 static constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
+static constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
+static constexpr int64_t SCALE_THIRD_DIM_SIZE = 2;
 
 enum DropPadMode : int8_t {
     NO_DROP_PAD = 0,
@@ -62,7 +64,8 @@ enum QuantMode : int8_t {
     MXQUANT_FP8_E4M3FN = 3,
     HIF8_CAST = 6,
     HIF8_PERTENSOR = 7,
-    HIF8_PERTOKEN = 8
+    HIF8_PERTOKEN = 8,
+    MXQUANT_FP4_E2M1 = 9
 };
 
 const std::set<int64_t> validQuantModes = {
@@ -73,7 +76,8 @@ const std::set<int64_t> validQuantModes = {
     QuantMode::MXQUANT_FP8_E4M3FN,
     QuantMode::HIF8_CAST,
     QuantMode::HIF8_PERTENSOR,
-    QuantMode::HIF8_PERTOKEN
+    QuantMode::HIF8_PERTOKEN,
+    QuantMode::MXQUANT_FP4_E2M1
 };
 
 enum ExpertTokenNumType : int8_t {
@@ -252,9 +256,10 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
     }
     quantMode = *quantModePtr;
     if (validQuantModes.count(quantMode) == 0) {
-        OP_LOGE(context, "The quant_mode should be in [%d, %d], %d, %d or %d. But it is %d.", QuantMode::NON_QUANT,
-                QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
-                QuantMode::HIF8_PERTOKEN, quantMode);
+        OP_LOGE(context, "The quant_mode should be in [%d, %d], %d, %d, %d or %d. But it is %d.",
+                QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST,
+                QuantMode::HIF8_PERTENSOR, QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1,
+                quantMode);
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context, "End to do GetAndCheckQuantMode.");
@@ -301,28 +306,69 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                 OP_LOGE(context, "The scale cannot be none when quant_mode is %ld.", quantMode),
                 return ge::GRAPH_FAILED);
 
-    //  When quant_mode is NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN/HIF8_CAST/HIF8_PERTOKEN, scale can be none.
+    /*
+        When quant_mode is:
+            NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN/HIF8_CAST/HIF8_PERTOKEN/MXQUANT_FP4_E2M1
+        scale can be none.
+    */
     OP_CHECK_IF((nullptr == scaleShape &&
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                   QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
-                  QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode)),
+                  QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode ||
+                  QuantMode::MXQUANT_FP4_E2M1 == quantMode)),
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
         if (scaleShape->GetDimNum() == DIM_ONE) {
             OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
                         OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in dynamic graph, The shape of scale should be (-1) or (-2), current shape is (%s).",
+                                "When quant_mode is %ld and use scale in dynamic shape, The shape of scale should be "
+                                "(-1) or (-2), current shape is (%s).",
                                 quantMode, Ops::Base::ToString(*scaleShape).c_str()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
                         OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static graph, The shape of scale should be (%ld,), current shape is (%s).",
+                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).",
                                 quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
                         return ge::GRAPH_FAILED);
+        } else if (scaleShape->GetDimNum() == DIM_THREE) {
+            OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
+                        scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
+                        scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
+                        OP_LOGE(context,
+                                "When quant_mode is %ld and use scale in dynamic shape, each dim shape of scale "
+                                "should be (-1), current shape is (%s).",
+                                quantMode, Ops::Base::ToString(*scaleShape).c_str()),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(scaleShape->GetDim(0) > 0 && xShape->GetDim(0) > 0 &&
+                            !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
+                        OP_LOGE(context,
+                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).",
+                                quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(scaleShape->GetDim(1) > 0 && xShape->GetDimNum() > 2 && xShape->GetDim(1) > 0 &&
+                            !isSameDim(scaleShape->GetDim(1),
+                                Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
+                        OP_LOGE(context,
+                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).",
+                                quantMode, Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE),
+                                Ops::Base::ToString(*scaleShape).c_str()),
+                        return ge::GRAPH_FAILED);
+             OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !isSameDim(scaleShape->GetDim(DIM_TWO),
+                                                                       SCALE_THIRD_DIM_SIZE),
+                        OP_LOGE(context,
+                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).",
+                                quantMode, SCALE_THIRD_DIM_SIZE, Ops::Base::ToString(*scaleShape).c_str()),
+                        return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(context, "When quant_mode is %ld, The dimNum of scale should be 1, current shape is (%ld).", quantMode,
-                    scaleShape->GetDimNum());
+            OP_LOGE(
+                context,
+                "When quant_mode is %ld, The dimNum of scale should be 1 or 3, current shape is (%ld).",
+                quantMode, scaleShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::STATIC_QUANT == quantMode) {
@@ -336,18 +382,21 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                     quantMode, Ops::Base::ToString(*scaleShape).c_str()),
                 return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(context, "When quant_mode is %ld, the dimNum of scale should be (1,), current shape is (%ld).",
-                    quantMode, scaleShape->GetDimNum());
+            OP_LOGE(
+                context,
+                "When quant_mode is %ld, the dimNum of scale should be (1,), current shape is (%ld).",
+                quantMode, scaleShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::DYNAMIC_QUANT == quantMode) {
         int64_t activeExpertRange = expertEnd - expertStart;
         if (scaleShape->GetDimNum() == DIM_ONE) {
             OP_CHECK_IF(scaleShape->GetDim(0) != NEG_TWO,
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and scale dim is 1 in dynamic graph, the first dim of scale should be -2, but "
-                                "its shape is (%ld).",
-                                quantMode, scaleShape->GetDim(0)),
+                        OP_LOGE(
+                            context,
+                            "When quant_mode is %ld and scale dim is 1 in dynamic shape, the first dim of scale should be -2, but "
+                            "its shape is (%ld).",
+                            quantMode, scaleShape->GetDim(0)),
                         return ge::GRAPH_FAILED);
         } else if (scaleShape->GetDimNum() == DIM_TWO) {
             if (scaleShape->GetDim(0) > 0) {
@@ -355,28 +404,29 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                     !isSameDim(scaleShape->GetDim(0), activeExpertRange) && !isSameDim(scaleShape->GetDim(0), DIM_ONE),
                     OP_LOGE(
                         context,
-                        "When quant_mode is %ld in static graph, the first dim of scale should be 1 or %ld, but its shape is (%ld).",
+                        "When quant_mode is %ld in static shape, the first dim of scale should be 1 or %ld, but its shape is (%ld).",
                         quantMode, activeExpertRange, scaleShape->GetDim(0)),
                     return ge::GRAPH_FAILED);
                 OP_CHECK_IF(
                     !isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
                     OP_LOGE(
                         context,
-                        "When quant_mode is %ld in static graph, the second dim of scale should or %ld, but its shape is (%ld).",
-                        quantMode, xShape->GetDim(1), scaleShape->GetDim(0)),
+                        "When quant_mode is %ld in static shape, the second dim of scale should be %ld, but its shape is (%ld).",
+                        quantMode, xShape->GetDim(1), scaleShape->GetDim(1)),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(
                     scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
-                    OP_LOGE(context,
-                            "When quant_mode is %ld and scale dim is 2 in dynamic graph, the shape of scale should be (-1, -1) or (-1, %d), but its shape is (%s).",
-                            quantMode, xShape->GetDim(1), Ops::Base::ToString(*scaleShape).c_str()),
+                    OP_LOGE(
+                        context,
+                        "When quant_mode is %ld and scale dim is 2 in dynamic shape, the shape of scale should be (-1, -1) or (-1, %d), but its shape is (%s).",
+                        quantMode, xShape->GetDim(1), Ops::Base::ToString(*scaleShape).c_str()),
                     return ge::GRAPH_FAILED);
             }
         } else {
             OP_LOGE(
                 context,
-                "When quant_mode is %ld, the dimNum of scale should be 1(dynamic graph) or 2, but its shape is (%ld).",
+                "When quant_mode is %ld, the dimNum of scale should be 1(dynamic shape) or 2, but its shape is (%ld).",
                 scaleShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
@@ -677,7 +727,15 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
 
     //  3.5 Set output expanded_scale shape
     //  When scale_shape=(b*s) and non-quant, or it is dynamic quant mode, the shape of expanded_scale should be (b*s*k)
-    if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
+    if (QuantMode::NON_QUANT == quantMode && scaleShape && scaleShape->GetDimNum() == DIM_THREE ||
+        QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
+        expandedScaleShape->SetDimNum(DIM_THREE);
+        expandedScaleShape->SetDim(0U, xOutNum);
+        int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE :
+                       Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE);
+        expandedScaleShape->SetDim(1U, dim1);
+        expandedScaleShape->SetDim(2U, 2);
+    } else if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);
         if (dropPadMode == DropPadMode::NO_DROP_PAD) {
             expandedScaleShape->SetDim(0U, xOutNum);
@@ -713,16 +771,19 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     int64_t quantMode = static_cast<int64_t>(-1);
     const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
     if (nullptr == quantModePtr) {
-        OP_LOGE(context, "The quant_mode should be in range [%d, %d], %d, %d or %d. But it is none.",
+        OP_LOGE(context, "The quant_mode should be in range [%d, %d], %d, %d, %d or %d. But it is none.",
             QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
-                QuantMode::HIF8_PERTOKEN);
+                QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1);
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
     // Infer output dtype according quant_mode
     auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_X);
     auto expandedXDtype = xDtype;           // default same as dtype(x)
-    auto expandedScaleDtype = ge::DT_FLOAT; // default float32
+    auto expandedScaleDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_SCALE);
+    if (expandedScaleDtype == ge::DT_UNDEFINED) {
+        expandedScaleDtype = ge::DT_FLOAT; // default float32
+    }
     if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         if (ge::DT_INT8 == xDtype) {
             OP_LOGE(context, "When quant_mode=%ld, xDtype cannot be int_8.", quantMode);
@@ -731,6 +792,14 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
         || QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode
         || QuantMode::HIF8_PERTENSOR == quantMode) {
+        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
+            OP_LOGE(
+                context,
+                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
+                quantMode, xDtype);
+            return ge::GRAPH_FAILED;
+        }
+    } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
             OP_LOGE(
                 context,
@@ -747,6 +816,12 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
+    } else if (QuantMode::NON_QUANT == quantMode && (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN ||
+                xDtype == ge::DT_FLOAT4_E2M1)) {
+        expandedScaleDtype = ge::DT_FLOAT8_E8M0;
+    } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
+        expandedXDtype = ge::DT_FLOAT4_E2M1;
+        expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     }
 
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X, expandedXDtype);
@@ -816,22 +891,26 @@ static ge::graphStatus InferShapeRange4MoeInitRoutingV3(gert::InferShapeRangeCon
 
     if (expanded_scale->GetMin() != nullptr && expanded_scale->GetMax() != nullptr) {
         const auto *attrsPtr = context->GetAttrs();
+        auto scale = context->GetInputShapeRange(MOE_INIT_ROUTING_V3_INPUT_SCALE);
         OP_CHECK_NULL_WITH_CONTEXT(context, attrsPtr);
         const int64_t *quantModePtr = attrsPtr->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
         OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
         int64_t quantMode = *quantModePtr;
-        if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
-            expanded_scale->GetMin()->SetDimNum(DIM_TWO);
-            expanded_scale->GetMax()->SetDimNum(DIM_TWO);
-            for (size_t i = 0; i < DIM_TWO; i++) {
-                expanded_scale->GetMin()->SetDim(i, 0);
-                expanded_scale->GetMax()->SetDim(i, -1);
-            }
-        } else {
-            expanded_scale->GetMin()->SetDimNum(DIM_ONE);
-            expanded_scale->GetMax()->SetDimNum(DIM_ONE);
-            expanded_scale->GetMin()->SetDim(0, 0);
-            expanded_scale->GetMax()->SetDim(0, -1);
+
+        size_t dimNum = DIM_ONE;
+        if (quantMode == QuantMode::MXQUANT_FP4_E2M1) {
+            dimNum = DIM_THREE;
+        } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
+            dimNum = DIM_TWO;
+        } else if (quantMode == QuantMode::NON_QUANT && scale && scale->GetMin()
+                   && scale->GetMin()->GetDimNum() == DIM_THREE) {
+            dimNum = DIM_THREE;
+        }
+        expanded_scale->GetMin()->SetDimNum(dimNum);
+        expanded_scale->GetMax()->SetDimNum(dimNum);
+        for (size_t i = 0; i < dimNum; i++) {
+            expanded_scale->GetMin()->SetDim(i, 0);
+            expanded_scale->GetMax()->SetDim(i, -1);
         }
     }
 

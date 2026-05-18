@@ -2,7 +2,7 @@
 
 ## 概述
 
-BlockSparseAttention是一个基于CATLASS模板库实现的高性能稀疏注意力算子,支持灵活的块级稀疏模式。
+BlockSparseAttention是一个基于CATLASS模板库实现的高性能稀疏注意力算子，支持灵活的块级稀疏模式。
 
 ## 功能特性
 
@@ -38,8 +38,8 @@ aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
     int64_t preTokens,                              // 滑窗参数 (当前不支持)
     int64_t nextTokens,                             // 滑窗参数 (当前不支持)
     int64_t softmaxLseFlag,                         // 是否输出LSE
-    const aclTensor *attentionOut,                  // 输出tensor
-    const aclTensor *softmaxLse,                    // Softmax LSE输出 (可选)
+    aclTensor *attentionOut,                        // 输出tensor
+    aclTensor *softmaxLseOptional,                  // Softmax LSE输出 (可选)
     uint64_t *workspaceSize,                        // 返回workspace大小
     aclOpExecutor **executor);                      // 返回executor
 ```
@@ -119,6 +119,7 @@ if (ret == ACLNN_SUCCESS) {
     aclrtFree(workspace);
 }
 ```
+
 ## 稀疏模式说明
 
 ### BlockSparseMask稀疏pattern
@@ -137,7 +138,7 @@ BlockSparseAttention使用blockSparseMask稀疏pattern,不需要selectIdx索引�
 Q方向: ceil(512/128)=4块 [0, 1, 2, 3]
 KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 
-每个Q块可以选择任意KV块组合:
+每个Q块可以选择任意KV块组合：
 - Q块0选择的KV块: [0, 2, 5]
 - Q块1选择的KV块: [1, 3, 6]
 - Q块2选择的KV块: [0, 4, 7]

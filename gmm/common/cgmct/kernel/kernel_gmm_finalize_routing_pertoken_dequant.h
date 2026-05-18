@@ -50,15 +50,15 @@ constexpr uint64_t IDX_M_TILEIDXS = 0UL;
 constexpr uint64_t IDX_N_TILEIDXS = 1UL;
 constexpr uint64_t IDX_M_TAIL_SPLIT_TILEIDXS = 2UL;
 constexpr uint64_t IDX_N_TAIL_SPLIT_TILEIDXS = 3UL;
-constexpr uint8_t SYNC_AIC_AIV_MODES = 4;
-constexpr uint16_t FLAG_ID_MAXS = 16;
-constexpr uint16_t AIC_SYNC_AIV_FLAGS = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAGS = 6;
-constexpr uint32_t WEIGHT_TILE_K_SMALL = 16;
-constexpr uint32_t WEIGHT_TILE_N_SMALL = 16;
-constexpr uint32_t WEIGHT_TILE_K_LARGE = 32;
-constexpr uint32_t WEIGHT_TILE_N_LARGE = 32;
-constexpr uint32_t WEIGHT_TILE_CAPACITY = 512;
+constexpr uint8_t SYNC_AIC_AIV_MODES = 4U;
+constexpr uint16_t FLAG_ID_MAXS = 16U;
+constexpr uint16_t AIC_SYNC_AIV_FLAGS = 4U;
+constexpr uint16_t AIV_SYNC_AIC_FLAGS = 6U;
+constexpr uint32_t WEIGHT_TILE_K_SMALL = 16U;
+constexpr uint32_t WEIGHT_TILE_N_SMALL = 16U;
+constexpr uint32_t WEIGHT_TILE_K_LARGE = 32U;
+constexpr uint32_t WEIGHT_TILE_N_LARGE = 32U;
+constexpr uint32_t WEIGHT_TILE_CAPACITY = 512U;
 } // namespace
 
 using namespace AscendC;
@@ -244,11 +244,13 @@ public:
         Get<IDX_A_OFFSETS>(baseOffset_) = Get<IDX_A_OFFSETS>(baseOffset_) + m * k;
         // bBaseOffset += n * k
         if constexpr (formatB == CubeFormat::NZ) {
-            Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
-                                              CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
-        } else if constexpr (formatB == CubeFormat::ZN) {
-            Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
+            if (transB) {
+                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
                                               CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL) * WEIGHT_TILE_CAPACITY;
+            } else {
+                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
+                                              CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
+            }
         } else {
             Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) + n * k;
         }
@@ -344,10 +346,12 @@ public:
             epilogueDequantOp_.Init(params.epilogueParams);
         }
         uint32_t groupNum = params.gmmParams.groupNum;
-        if constexpr (formatB == CubeFormat::ZN) {
-            bs.SetTailAlign(1, MATMUL_MNK_ALIGN);
-        } else if constexpr (formatB == CubeFormat::NZ) {
-            bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                bs.SetTailAlign(1, MATMUL_MNK_ALIGN);
+            } else {
+                bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+            }
         }
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {

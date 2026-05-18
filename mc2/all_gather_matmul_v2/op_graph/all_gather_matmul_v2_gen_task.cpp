@@ -14,65 +14,47 @@
  */
 #include <vector>
 
-
-#ifdef BUILD_OPEN_PROJECT
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
-#else
-#include "ops_error.h"
-#include "op_graph/mc2_gen_task_utils.h"
-#include "op_graph/mc2_a5_gen_task_utils.h"
-#include "register/op_ct_impl_registry.h"
-#endif
+#include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
-#ifdef BUILD_OPEN_PROJECT
+
 static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+        } else {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        }
     }
-    OPS_LOG_E(context->GetNodeName(), "Only support A5");
-    return ge::GRAPH_FAILED;
+    OPS_LOG_D(context->GetNodeName(), "AICPU GenTask CalcOpParam");
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
 }
 
 static ge::Status AllGatherMatmulV2GenTask(const gert::ExeResGenerationContext *context,
                                            std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
+        } else {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
+            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        }
     }
-    OPS_LOG_E(context->GetNodeName(), "Only support A5");
-    return ge::GRAPH_FAILED;
+    OPS_LOG_D(context->GetNodeName(), "AICPU GenTaskFunc");
+    return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
 }
 
 IMPL_OP(AllGatherMatmulV2).CalcOpParam(AllGatherMatmulV2CalcOpParam).GenerateTask(AllGatherMatmulV2GenTask);
-#else // mc2 gen task utils
-static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
-{
-    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParam");
-        return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
-    }
-    OPS_LOG_E(context->GetNodeName(), "Only support A5");
-    return ge::GRAPH_FAILED;
-}
-
-static ge::Status AllGatherMatmulV2GenTask(const gert::ExeResGenerationContext *context,
-                                           std::vector<std::vector<uint8_t>> &tasks)
-{
-    if (Mc2A5GenTaskUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask");
-        return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2A5GenTaskUtils::Mc2GenTaskCallBack910A5);
-    }
-    OPS_LOG_E(context->GetNodeName(), "Only support A5");
-    return ge::GRAPH_FAILED;
-}
-
-IMPL_OP_CT(AllGatherMatmulV2).CalcOpParam(AllGatherMatmulV2CalcOpParam).GenerateTask(AllGatherMatmulV2GenTask);
-#endif
 } // namespace ops

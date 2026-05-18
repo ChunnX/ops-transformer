@@ -40,6 +40,7 @@ aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```c++
 aclnnStatus aclnnGroupedMatmulAdd(
     void            *workspace,
@@ -112,7 +113,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>2<sup>1</sup>、3</td>
+        <td>2、3</td>
         <td>×</td>
       </tr>
       <tr>
@@ -169,7 +170,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    - 上表维度列中的角标“1”代表该系列不支持的数据类型。
+    - yRef的shape不支持2维。
 
 - **返回值：**
 
@@ -185,17 +186,17 @@ aclnnStatus aclnnGroupedMatmulAdd(
         <th>返回值</th>
         <th>错误码</th>
         <th>描述</th>
-      </tr><thead>
+      </tr></thead>
     <tbody>
       <tr>
         <td>ACLNN_ERR_PARAM_NULLPTR</td>
         <td>161001</td>
-        <td>传入的x、weight、groupList、y、yRef是空指针。</td>
+        <td>传入的x、weight、groupList、yRef是空指针。</td>
       </tr>
       <tr>
         <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
         <td rowspan="2">161002</td>
-        <td>x、weight、groupList、y、yRef的数据类型或数据格式不在支持的范围之内。</td>
+        <td>x、weight、groupList、yRef的数据类型或数据格式不在支持的范围之内。</td>
       </tr>
       <tr>
         <td>x与weight的数据类型不一致。</td>
@@ -203,11 +204,10 @@ aclnnStatus aclnnGroupedMatmulAdd(
       <tr>
         <td>ACLNN_ERR_INNER_TILING_ERROR</td>
         <td>561002</td>
-        <td>x、weight、y、yRef的shape不满足矩阵乘限制要求。</td>
+        <td>x、weight、yRef的shape不满足矩阵乘限制要求。</td>
       </tr>
     </tbody>
     </table>
-
 
 ## aclnnGroupedMatmulAdd
 
@@ -217,6 +217,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     <col style="width: 150px">
     <col style="width: 100px">
     <col style="width: 900px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -246,7 +247,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 

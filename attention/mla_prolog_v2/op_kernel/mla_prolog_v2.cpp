@@ -14,12 +14,20 @@
  */
 
 #define MLA_PROLOG_VERSION 2
-#if __has_include("../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h")
-#include "../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h"
-#else
-#include "../mla_prolog/kernel_mla_prolog_split_n.h"
-#endif
 
+#if __CCE_AICORE__ == 310
+#if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h")
+#include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h"
+#else
+#include "../mla_prolog/arch35/kernel_mla_prolog_split_n.h"
+#endif
+#else
+#if __has_include("../../mla_prolog/op_kernel/arch22/kernel_mla_prolog_split_n.h")
+#include "../../mla_prolog/op_kernel/arch22/kernel_mla_prolog_split_n.h"
+#else
+#include "../mla_prolog/arch22/kernel_mla_prolog_split_n.h"
+#endif
+#endif
 using namespace MlaProlog;
 
 template<uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode,
@@ -72,7 +80,7 @@ mla_prolog_v2(
 
     TPipe pipe;
     if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, float, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -83,7 +91,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, bfloat16_t, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, bfloat16_t, float, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -94,7 +102,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL) {
-        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, int8_t, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, int8_t, float, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -105,7 +113,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::FULL_QUANT_KV_NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, bfloat16_t, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, bfloat16_t, float, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -116,7 +124,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR) {
-        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, float, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,

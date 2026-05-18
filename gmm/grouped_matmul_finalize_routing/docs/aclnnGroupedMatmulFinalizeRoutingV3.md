@@ -43,7 +43,7 @@
     $$
     y [rowIndex[i],:] = y[rowIndex[i],:] + sharedInputWeight \times sharedInput[j, :]
     $$
-  - 4.共享专家输出融合:最终输出结果是所有专家输出与共享专家输出，按照rowIndex所有进行合并的结果，计算过程如下：
+  - 4.共享专家输出融合：最终输出结果是所有专家输出与共享专家输出，按照rowIndex所有进行合并的结果，计算过程如下：
 
     $$
     y[rowIndex[i],:] = \sum_{i \in \mathcal{E}[j]} y_i [j - start_i] + sharedInputWeight \times sharedInput[j, :]
@@ -138,7 +138,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     <tr>
       <td>scaleOptional</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，perchannel量化参数。</td>
+      <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
       <td>INT64，FLOAT8_E8M0</td>
       <td>ND</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     <tr>
       <td>transposeX2</td>
       <td>输入</td>
-      <td>右矩阵是否转置，仅支持false。</td>
+      <td>右矩阵是否转置。</td>
       <td></td>
       <td>BOOL</td>
       <td></td>
@@ -337,31 +337,33 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     </tr>
   </tbody>
   </table>
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-  - x1仅支持INT8。维度为(m, k)，维度m的取值范围为[1,16\*1024\*8]，k支持2048;
-  - x2仅支持INT4。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。
-  - scaleOptional支持INT64。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
-  - biasOptional支持FLOAT32。e、n和w的e、n一致。
-  - offsetOptional支持FLOAT32。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
-  - perTokenScaleOptional支持FLOAT32。支持一维，维度为(m)，m和x的m一致。
-  - groupListOptional支持e和w的e一致。
-  - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和w的n一致。
-  - logitOptional支持m和x的m一致。
-  - rowIndexOptional支持m和x的m一致。
-  - x1、x2、groupListOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、biasOptional，sharedInputOptional是可选参数。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  - x1不支持INT8。
-  - x2不支持INT4。维度为(e,k,n)，转置情况下维度为(e,n,k)，e取值范围[1,1024]。
-  - scaleOptional支持FLOAT8_E8M0。shape支持四维，维度为(e,n,Ceil(k/64),2) 并且数据类型只支持FLOAT8_E8M0，转置属性必须和x2保持一致。
-  - biasOptional支持BF16。
-  - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
-  - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
-  - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。所有参数均不支持空tensor。
-  - out的第一维bacth、sharedInputOffset必须大于等于0。
-  - x1支持M为0的空Tensor。
-  - x2支持N为0的空Tensor。
+    - x1仅支持INT8。维度为(m, k)，维度m的取值范围为[1,16\*1024\*8]，k支持2048;
+    - x2仅支持INT4。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。仅支持非转置，即transposeX2必须为false。
+    - scaleOptional支持INT64。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
+    - biasOptional支持FLOAT32。e、n和w的e、n一致。
+    - offsetOptional支持FLOAT32。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
+    - perTokenScaleOptional支持FLOAT32。支持一维，维度为(m)，m和x的m一致。
+    - groupListOptional支持e和w的e一致。
+    - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和w的n一致。
+    - logitOptional支持m和x的m一致。
+    - rowIndexOptional支持m和x的m一致。
+    - x1、x2、groupListOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、biasOptional，sharedInputOptional是可选参数。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - x1不支持INT8。
+    - x2不支持INT4。维度为(e,k,n)，转置情况下维度为(e,n,k)，e取值范围[1,1024]。
+    - scaleOptional支持FLOAT8_E8M0。shape支持四维。x2非转置时维度为(e,Ceil(k/64),n,2)，x2转置时维度为(e,n,Ceil(k/64),2)。数据类型只支持FLOAT8_E8M0，转置属性必须和x2保持一致。
+    - biasOptional支持BF16。
+    - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
+    - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
+    - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。所有参数均不支持空tensor。
+    - out的第一维batch、sharedInputOffset必须大于等于0。
+    - x1支持M为0的空Tensor。
+    - x2支持N为0的空Tensor。
+
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -437,6 +439,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       </tr>
     </tbody>
     </table>
+    
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -456,7 +459,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     | INT8 | INT4 | INT64         | FLOAT32      | FLOAT32        | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT32 |
     | INT8 | INT4 | INT64         | FLOAT32      | null           | null                   | null                    | FLOAT32               | INT64             | BFLOAT16            | FLOAT32       | INT64            | FLOAT32 |
 
-
   - 在该场景中，scaleOptional代表per-channel和per-group离线融合的结果。
   - 在该场景中，biasOptional代表离线计算的辅助结果，值要求为$8 \times w \times scaleOptional$，并在第一维累加。
   - 该场景支持对称量化和非对称量化。在对称量化时，offsetOptional需要设置为空；在非对称量化时，offsetOptional代表离线计算的辅助结果，即为$antiquantOffsetOptional \times   scaleOptional$的结果。
@@ -465,13 +467,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 - <term>Ascend 950PR/Ascend 950DT</term>：仅支持MX全量化场景。
   
   - 输入和输出支持以下数据类型组合：
+  
     | MX量化场景 | x1                        | x2                         | scaleOptional | biasOptional  | pertokenScaleOptional | groupListOptional | sharedInputOptional | logitOptional | rowIndexOptional | out     |
     | ---------- | ------------------------- | -------------------------- | ------------- | ------------- | --------------------- | ----------------- | ------------------- | ------------- | ---------------- | ------- |
     | MXFP8      | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E4M3FN / FLOAT8_E5M2 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16  / null    | FLOAT32       | INT64            | FLOAT32 |
     | MXFP4      | FLOAT4_E2M1  | FLOAT4_E2M1 | FLOAT8_E8M0   | BFLOAT16 / null | FLOAT8_E8M0           | INT64             | BFLOAT16 / null     | FLOAT32       | INT64            | FLOAT32 |
 
   - 在MXFP4/MXFP8场景中，offsetOptional、antiquantScaleOptional、antiquantOffsetOptional必须设置为空。
-  - 在MXFP4场景中，必须满足k必须为偶数的约束。在x2非转置的情况下，n必须为偶数。
+  - 在MXFP4场景中，必须满足k为偶数的约束。在x2非转置的情况下，n必须为偶数。
   - 在MXFP4/MXFP8场景中，支持x2转置或者非转置。x2与scale的转置属性必须保持一致。
   - e 必须小于等于1024。
   - 在MXFP4场景中，k不能为2。
@@ -481,6 +484,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+
   ```Cpp
     #include <iostream>
     #include <memory>
@@ -605,7 +609,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         int64_t bsdp = 1;
         int64_t dtype = 0;
         float shareInputWeight = 1.0;
-        int64_t shareInputOffest = 0;
+        int64_t sharedInputOffset = 0;
         bool transposeX = false;
         bool transposeW = false;
         int64_t groupListType = 1;
@@ -657,7 +661,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
         std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
         std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
-        std::vector<float> outHostData(GetShapeSize(outShape));  // 实际上是float16半精度方式
+        std::vector<float> outHostData(GetShapeSize(outShape));
         // 对groupList赋值
         groupListHostData[0] = 8;
         // 创建x aclTensor
@@ -725,7 +729,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
         // 调用aclnnGroupedMatmulFinalizeRoutingV3第一段接口
         workspaceSize = 0;
-        ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, offset, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffest, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
+        ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, offset, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, tuningConfig, out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize failed. ERROR: %d\n", ret);
                   return ret);
         // 根据第一段接口计算出的workspaceSize申请device内存
@@ -749,7 +753,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                   return ret);
         for (int64_t i = 0; i < size; i++) {
-            LOG_PRINT("result[%ld] is: %u\n", i, resultData[i]);
+            LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
         }
 
         // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
@@ -917,7 +921,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       int64_t bsdp = 1;
       int64_t dtype = 0;
       float shareInputWeight = 1.0;
-      int64_t shareInputOffest = 0;
+      int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
@@ -1044,7 +1048,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       void *workspaceAddr = nullptr;
 
       // 调用aclnnGroupedMatmulFinalizeRoutingV3第一段接口
-      ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, shareInputOffest, transposeX, transposeW, groupListType, nullptr, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(x, w, scale, bias, nullptr, nullptr, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, nullptr, out, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
@@ -1068,7 +1072,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                 return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
       }
 
       // 6. 释放aclTensor和aclTensor，需要根据具体API的接口定义修改

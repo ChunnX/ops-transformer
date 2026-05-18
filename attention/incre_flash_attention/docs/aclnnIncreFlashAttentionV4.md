@@ -1,8 +1,9 @@
-#   aclnnIncreFlashAttentionV4
+# aclnnIncreFlashAttentionV4
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/incre_flash_attention)
 
 ## 产品支持情况
+
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
@@ -12,7 +13,7 @@
 |<term>Atlas 推理系列产品</term>|      √     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-##  功能说明
+## 功能说明
 
 - 接口功能：兼容（[aclnnIncreFlashAttentionV3](aclnnIncreFlashAttentionV3.md)）接口功能，在其基础上新增**kv左Padding特性。**
 
@@ -20,41 +21,29 @@
 
   相比全量场景的FlashAttention算子（[PromptFlashAttention](../../prompt_flash_attention/README.md)），增量推理的流程与正常全量推理并不完全等价，不过增量推理的精度并无明显劣化。
   
-  
-  
   **说明：**
   
   KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为KV缓存（KV Cache）。
   
 - 计算公式：
 
-  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n$d的矩阵。
-
-  
+  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*$d的矩阵。
 
     self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。
-
-  
 
   $$
      Attention(Q,K,V)=Score(Q,K)V
   $$
 
-  
-
     本算子中Score函数采用Softmax函数，self-attention计算公式为：
-
-  
 
   $$
   Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
   $$
 
-  
-
     其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-##  函数原型
+## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnIncreFlashAttentionV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttentionV4”接口执行计算。
 
@@ -297,7 +286,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>输入</td>
         <td>标识输入query、key、value的数据排布格式。</td>
         <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -365,11 +354,8 @@ aclnnStatus aclnnIncreFlashAttentionV4(
     </tbody></table>
     </div>
 
-
-
 - **返回值**
   
-
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
@@ -447,7 +433,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-##   约束说明
+## 约束说明
 
 - 确定性计算：
   - aclnnIncreFlashAttentionV4默认确定性实现。
@@ -464,7 +450,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
   - dequantScale1、quantScale1、dequantScale2、quantScale2和quantOffset2仅支持nullptr。
   - numKeyValueHeads仅支持取值0。
 - 非连续场景下，参数key、value的tensorlist中tensor的个数等于query的B(由于tensorlist限制，非连续场景下B需要小于等于256)。shape除S外需要完全一致，且batch只能为1。
--  query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
 - query、key、value输入均为INT8的场景暂不支持。
 - query、key、value输入为FLOAT16，输出为INT8的场景：入参quantScale2必填，quantOffset2可选，不能传入dequantScale1、quantScale1、dequantScale2（即为nullptr）参数。
@@ -589,13 +575,13 @@ int InitializeTensors(TensorResources& resources) {
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
     int64_t valueShapeSize = GetShapeSize(valueShape);
-    int64_t attenyShapeSize = GetShapeSize(attenShape);
+    int64_t attenShapeSize = GetShapeSize(attenShape);
     int64_t outShapeSize = GetShapeSize(outShape);
     
     std::vector<float> queryHostData(queryShapeSize, 1);
     std::vector<float> keyHostData(keyShapeSize, 1);
     std::vector<float> valueHostData(valueShapeSize, 1);
-    std::vector<int8_t> attenHostData(attenyShapeSize, 1);
+    std::vector<int8_t> attenHostData(attenShapeSize, 1);
     std::vector<float> outHostData(outShapeSize, 1);
 
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
@@ -803,4 +789,3 @@ int main() {
     return 0;
 }
 ```
-

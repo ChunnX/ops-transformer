@@ -45,7 +45,7 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
     OP_CHECK_NULL_WITH_CONTEXT(context, headNum);
     const char *inputLayout = attrs->GetAttrPointer<char>(5);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayout);
-    std::string inputLayoutStr = std::string(inputLayout);
+    std::string inputLayoutStr = std::string(inputLayout) == "" ? "empty" : std::string(inputLayout);
     for (auto &c : inputLayoutStr) {
         c = toupper(c);
     }

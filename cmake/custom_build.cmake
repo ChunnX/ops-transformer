@@ -87,6 +87,7 @@ if (BUILD_OPEN_PROJECT)
             -Wl,--no-whole-archive
         #     -lopapi
             nnopbase
+            -Wl,-Bsymbolic
             profapi
             ge_common_base
             ascend_dump
@@ -290,16 +291,6 @@ else()
     add_subdirectory(mhc)
 endif()
 
-if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
-        add_subdirectory(tests/ut/framework_normal)
-endif()
-
-# 编译AICPU算子
-if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler")	 
-     add_subdirectory(examples/add_example)	 
-     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})	 
-endif()
-
 # 编译examples目录下算子
 foreach(EXAMPLES_OP_NAME ${ASCEND_OP_NAME})
     set(EXAMPLES_DIR "${OPS_TRANSFORMER_DIR}/examples/${EXAMPLES_OP_NAME}")
@@ -315,6 +306,10 @@ endforeach()
 
 list(APPEND OP_LIST ${COMPILED_OPS})
 list(APPEND OP_DIR_LIST ${COMPILED_OP_DIRS})
+
+if (UT_TEST_ALL OR OP_HOST_UT OR OP_API_UT OR OP_KERNEL_UT OR OP_GRAPH_UT)
+        add_subdirectory(tests/ut/framework_normal)
+endif()
 
 if(ENABLE_TEST)
     foreach (OP_DIR ${OP_DIR_LIST})
@@ -549,30 +544,11 @@ if (BUILD_OPEN_PROJECT)
     endif()
 
     if(NOT ENABLE_BUILT_IN)
-        # op dir to be updated
-        set(FILTER_OP_DIR
-            "mc2"
-        )
         set(update_proto_srcs)
-        
         foreach(OP_DIR ${OP_DIR_LIST})
-            # filter op dir to be updated
-            set(need_update_proto FALSE)
-            foreach(filter_op_frag ${FILTER_OP_DIR})
-                if(${OP_DIR} MATCHES ".*${filter_op_frag}.*")
-                    set(need_update_proto TRUE)
-                    break()
-                endif()        
-            endforeach()
-            if(NOT need_update_proto)
-                message(STATUS "Skip proto update: ${OP_DIR}")
-                continue()
-            endif()
-
             # copy updated proto cpps to autogen
             file(GLOB OP_PROTO_HEADER ${OP_DIR}/op_graph/*_proto.h)
-            if(OP_PROTO_HEADER)
-                list(GET OP_PROTO_HEADER 0 proto_header)
+            foreach(proto_header ${OP_PROTO_HEADER})
                 message(STATUS "Update proto header path: ${proto_header}")
                 set(TARGET_PROTO_DIR ${generate_proto_dir}/updateproto/)
                 file(MAKE_DIRECTORY ${TARGET_PROTO_DIR})
@@ -593,7 +569,7 @@ if (BUILD_OPEN_PROJECT)
 
                 # append updated proto cpps to list
                 list(APPEND update_proto_srcs ${proto_cpp})
-            endif()
+            endforeach()
         endforeach()
 
         # filter same src filename, remove those in generate_proto_srcs, then replace them with updated ones
@@ -632,7 +608,7 @@ if (BUILD_OPEN_PROJECT)
 
         set(generate_proto_srcs ${generate_proto_srcs_filtered})
     endif()
-    
+
     set_source_files_properties(${generate_proto_srcs}
             PROPERTIES GENERATED TRUE
     )
@@ -711,19 +687,72 @@ target_link_libraries(
     PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
 )
 
-target_link_libraries(
-    cust_opmaster
-    PUBLIC ${OPHOST_NAME}_tiling_obj
-    PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
-    PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
-)
+if (NOT ENABLE_AICPU_KERNEL)
+    target_link_libraries(
+        cust_opmaster
+        PUBLIC ${OPHOST_NAME}_tiling_obj
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:${COMMON_NAME}_fallback_obj>
+        PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:${OPGRAPH_NAME}_fallback_obj>
+        PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
+    )
+else()
+    target_link_libraries(
+        cust_opmaster
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+        PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
+    )
+endif()
 
 target_link_libraries(
     cust_proto
     PUBLIC ${OPHOST_NAME}_infer_obj
     PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:${OPGRAPH_NAME}_gentask_obj>
 )
+
+function(filter_aclnn_headers_by_skip_flag input_headers output_headers)
+    set(filtered_headers)
+    foreach(header_file ${input_headers})
+        set(skip_this_header FALSE)
+
+        get_filename_component(header_name ${header_file} NAME)
+
+        if(header_name MATCHES "aclnn_([^.]+)\\.h$")
+            set(op_name ${CMAKE_MATCH_1})
+            string(TOUPPER ${op_name} op_name_upper)
+            string(REPLACE "-" "_" op_name_upper ${op_name_upper})
+
+            set(skip_var_name "${op_name_upper}_SKIP_HEADER")
+            if(DEFINED ${skip_var_name} AND ${skip_var_name})
+                message(STATUS "Skipping header packaging for operator: ${op_name}")
+                set(skip_this_header TRUE)
+            endif()
+        endif()
+
+        if(NOT skip_this_header AND header_name MATCHES "aclnn_([^_]+)_v[0-9]+\\.h$")
+            set(op_name ${CMAKE_MATCH_1})
+            string(TOUPPER ${op_name} op_name_upper)
+            string(REPLACE "-" "_" op_name_upper ${op_name_upper})
+
+            set(skip_var_name "${op_name_upper}_SKIP_HEADER")
+            if(DEFINED ${skip_var_name} AND ${skip_var_name})
+                message(STATUS "Skipping header packaging for operator: ${op_name}")
+                set(skip_this_header TRUE)
+            endif()
+        endif()
+
+        if(NOT skip_this_header)
+            list(APPEND filtered_headers ${header_file})
+        endif()
+    endforeach()
+
+    set(${output_headers} ${filtered_headers} PARENT_SCOPE)
+endfunction()
+
 if (generate_aclnn_headers)
+    filter_aclnn_headers_by_skip_flag("${generate_aclnn_headers}" filtered_generate_aclnn_headers)
+    set(generate_aclnn_headers ${filtered_generate_aclnn_headers})
+
     install(FILES ${generate_aclnn_headers}
             DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL
     )
@@ -771,6 +800,19 @@ if (NOT BUILD_OPEN_PROJECT)
 endif ()
 
 # ------------------------------------------------ opbuild ------------------------------------------------
+if(ENABLE_ASAN)
+    execute_process(
+        COMMAND ${CMAKE_C_COMPILER} -print-file-name=libasan.so
+        OUTPUT_VARIABLE LIBASAN_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE result
+    )
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "compiler not support asan, please disable asan")
+    endif()
+endif()
+message("LIBASAN_PATH = ${LIBASAN_PATH}")
+
 if (BUILD_OPEN_PROJECT)
     string(REPLACE ";" "\;" OPS_PRODUCT_NAME "${ASCEND_COMPUTE_UNIT}")
     if (generate_aclnn_srcs)
@@ -780,6 +822,7 @@ if (BUILD_OPEN_PROJECT)
                 OPS_ACLNN_GEN=1
                 OPS_PROJECT_NAME=aclnn
                 OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
+                env LD_PRELOAD=${LIBASAN_PATH}
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnn>
                 ${base_aclnn_binary_dir}
@@ -797,6 +840,7 @@ if (BUILD_OPEN_PROJECT)
                 OPS_ACLNN_GEN=1
                 OPS_PROJECT_NAME=aclnnInner
                 OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
+                env LD_PRELOAD=${LIBASAN_PATH}
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnnInner>
                 ${base_aclnn_binary_dir}/inner
@@ -814,6 +858,7 @@ if (BUILD_OPEN_PROJECT)
                 OPS_ACLNN_GEN=0
                 OPS_PROJECT_NAME=aclnnExc
                 OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
+                env LD_PRELOAD=${LIBASAN_PATH}
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnnExc>
                 ${base_aclnn_binary_dir}/exc
@@ -870,22 +915,28 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
         if(GRAPH_SOURCE)
             message(STATUS "custom Graph Plugin Source to add es to obj")
             add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+                build_es_math
                 build_es_transformer_cust
             )
             target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
-                PRIVATE es_transformer_cust
+                PRIVATE
+                es_math
+                es_transformer_cust
             )
         endif()
-    else()
-        # proto -> es transformer -> cust proto
-        message(STATUS "custom cust proto to es")
-        add_dependencies(cust_proto
-            build_es_transformer_cust
-        )
-        target_link_libraries(cust_proto
-            PRIVATE es_transformer_cust
-        )
     endif()
+    # directly link es to opsproto
+    add_dependencies(cust_proto
+        build_es_math
+        build_es_transformer_cust
+    )
+    target_link_libraries(cust_proto
+        PRIVATE
+        -Wl,--no-as-needed
+        es_math
+        es_transformer_cust
+        -Wl,--as-needed
+    )
     target_link_directories(
         cust_proto PRIVATE
         ${CMAKE_BINARY_DIR}/es_packages/lib64
@@ -894,99 +945,171 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
 endif()
 
 # ------------------------------------------------ generate adapt py ------------------------------------------------
-add_custom_target(generate_transformer_adapt_py
-        COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
-        \"\"
-        \"\"
-        \"\"
-        \"\"
-        ${ASCEND_IMPL_OUT_DIR}
-        ${ASCEND_AUTOGEN_DIR}
-        --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
-)
+if (NOT ENABLE_AICPU_KERNEL)
+    add_custom_target(generate_transformer_adapt_py
+            COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
+            \"\"
+            \"\"
+            \"\"
+            \"\"
+            ${ASCEND_IMPL_OUT_DIR}
+            ${ASCEND_AUTOGEN_DIR}
+            --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
+    )
 
-add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
+    add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
-foreach (_op_name ${OP_LIST})
-    install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+    foreach (_op_name ${OP_LIST})
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
             DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
             OPTIONAL
-    )
-    install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
-        DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
-        OPTIONAL
-    )
-endforeach ()
-
-install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-
-install(DIRECTORY ${OPS_ADV_DIR}/mc2/3rd/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd
-)
-
-install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-)
-        
-foreach (op_dir ${OP_DIR_LIST})
-    get_filename_component(_op_name "${op_dir}" NAME)
-    set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
-    file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
-    filter_copy_files(SELECTED_FILES SELECTED_DIRS)
-    install(FILES ${SELECTED_FILES}
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
-        OPTIONAL
-    )
-    install(DIRECTORY ${SELECTED_DIRS}
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
-        OPTIONAL
-    )
-
-    foreach (op_depend_dir ${${_op_name}_depends})
-        set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
-        file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
-        get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
-        filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
-        install(FILES ${SELECTED_DEPEND_FILES}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                OPTIONAL
-        )
-        install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                OPTIONAL
         )
     endforeach ()
-endforeach ()
+
+    install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+
+    install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+    install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+
+    file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
+foreach(_3rd_op_dir ${_3rd_op_dirs})
+    if(IS_DIRECTORY "${_3rd_op_dir}")
+        if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
+            get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
+            install(DIRECTORY ${_3rd_op_dir}/op_kernel
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
+            )
+        endif()
+    endif()
+endforeach(    )
+
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+
+    foreach (op_dir ${OP_DIR_LIST})
+        get_filename_component(_op_name "${op_dir}" NAME)
+        set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
+        file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
+        filter_copy_files(SELECTED_FILES SELECTED_DIRS)
+        install(FILES ${SELECTED_FILES}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
+        )
+        install(DIRECTORY ${SELECTED_DIRS}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
+        )
+
+        foreach (op_depend_dir ${${_op_name}_depends})
+            set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
+            file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
+            install(FILES ${SELECTED_DEPEND_FILES}
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                    OPTIONAL
+            )
+            install(DIRECTORY ${SELECTED_DEPEND_DIRS}
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                    OPTIONAL
+            )
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_apt_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+    endforeach ()
+endif()
+
+if (ALL_COMMON_SRC_DIRS)
+    list(REMOVE_DUPLICATES ALL_COMMON_SRC_DIRS)
+
+    set(_COMMON_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
+    set(_COMMON_OUT_SRC_DIR ${ASCEND_BINARY_OUT_DIR}/${_COMMON_COMPUTE_UNIT}/src/common)
+
+    set(ALL_COMMON_FILES "")
+    set(COMMON_COPY_COMMANDS "")
+    foreach (SRC_DIR ${ALL_COMMON_SRC_DIRS})
+        file(GLOB_RECURSE DIR_FILES CONFIGURE_DEPENDS ${SRC_DIR}/*)
+        list(APPEND ALL_COMMON_FILES ${DIR_FILES})
+        list(APPEND COMMON_COPY_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
+        )
+        if (SRC_DIR MATCHES "mc2/common$" AND NOT ENABLE_EXPERIMENTAL)
+            list(APPEND COMMON_COPY_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
+            )
+        endif()
+    endforeach()
+
+    if(NOT TARGET common_src_copy)
+        set(ALL_COMMON_COPY_STAMP "${_COMMON_OUT_SRC_DIR}/.all_common_copy.stamp")
+        add_custom_command(OUTPUT ${ALL_COMMON_COPY_STAMP}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_COMMON_OUT_SRC_DIR}
+            ${COMMON_COPY_COMMANDS}
+            COMMAND ${CMAKE_COMMAND} -E touch ${ALL_COMMON_COPY_STAMP}
+            DEPENDS ${ALL_COMMON_FILES}
+            VERBATIM
+            COMMAND_EXPAND_LISTS
+        )
+        add_custom_target(common_src_copy ALL
+            DEPENDS ${ALL_COMMON_COPY_STAMP}
+        )
+    endif()
+endif()
 
 # ------------------------------------------------ generate compile cmd ------------------------------------------------
 if (BUILD_OPEN_PROJECT)
     add_custom_target(prepare_build ALL)
     add_custom_target(generate_compile_cmd ALL)
     add_custom_target(generate_ops_info ALL)
-    add_dependencies(prepare_build generate_transformer_adapt_py generate_compile_cmd)
+    if (NOT ENABLE_AICPU_KERNEL)
+        add_dependencies(prepare_build generate_transformer_adapt_py generate_compile_cmd)
 
-    foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
-        add_compile_cmd_target(
-                COMPUTE_UNIT ${compute_unit}
-        )
+        foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
+            add_compile_cmd_target(
+                    COMPUTE_UNIT ${compute_unit}
+            )
 
-        add_ops_info_target(
-                COMPUTE_UNIT ${compute_unit}
-        )
-    endforeach ()
-else()
+            add_ops_info_target(
+                    COMPUTE_UNIT ${compute_unit}
+            )
+        endforeach ()
+    endif()
+elseif(NOT ENABLE_AICPU_KERNEL)
     add_dependencies(tbe_ops_json_info generate_transformer_adapt_py)
 endif ()
 
@@ -995,8 +1118,9 @@ if (ENABLE_OPS_KERNEL)
     add_custom_target(ops_transformer_kernel ALL)
     add_custom_target(ops_transformer_config ALL)
     add_dependencies(ops_transformer_kernel ops_transformer_config)
-    add_dependencies(ops_transformer_kernel generate_compile_cmd)
-
+    if (NOT ENABLE_AICPU_KERNEL)
+        add_dependencies(ops_transformer_kernel generate_transformer_adapt_py generate_compile_cmd)
+    endif()
     foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
         add_bin_compile_target(
                 COMPUTE_UNIT
@@ -1064,13 +1188,10 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     set(CPACK_GENERATOR External)
     set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
     set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
+    
     if (ENABLE_BUILD_PKG)
-      if (EXISTS ${ASCEND_CMAKE_DIR}/makeself.cmake)
-        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_CMAKE_DIR}/makeself.cmake)
-      else()
         set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
-        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${CMAKE_SOURCE_DIR}/cmake/makeself_custom.cmake)
-      endif()
+        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_PROJECT_DIR}/fwk_modules/makeself.cmake)
     endif()
     set(CPACK_EXTERNAL_BUILT_PACKAGES ${CPACK_PACKAGE_DIRECTORY}/_CPack_Packages/Linux/External/${CPACK_PACKAGE_FILE_NAME}/${CPACK_PACKAGE_FILE_NAME})
     include(CPack)

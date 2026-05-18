@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 #include <limits>
 
 #include "../../attn_infra/detail/macros.hpp"
+#include "../../tla/numeric/integral_constant.hpp"
 
 template <uint32_t ALIGN, typename T>
 HOST_DEVICE
@@ -23,14 +24,20 @@ constexpr T RoundDown(const T val)
     return val / ALIGN * ALIGN;
 }
 
-template <class T>
+template <class T, class U>
 HOST_DEVICE
-constexpr T RoundDown(const T val, const T align)
+constexpr auto RoundDown(T const &val, U const &align)
 {
-    if (align == 0) {
-        return val;
+    if constexpr (tla::is_static<T>::value && tla::is_static<U>::value) { // Int, Int
+        constexpr uint32_t res = T::value / U::value * U::value;
+        return tla::Int<res>{};
+    } else if constexpr (tla::is_static<T>::value) { // Int, int
+        return T::value / align * align;
+    } else if constexpr (tla::is_static<U>::value) { // int, Int
+        return val / U::value * U::value;
+    } else { // int, int
+        return val / align * align;
     }
-    return val / align * align;
 }
 
 template <uint32_t ALIGN, typename T = uint32_t>
@@ -45,14 +52,20 @@ constexpr T RoundUp(const T val)
     return (val + align - 1) / align * align;
 }
 
-template <class T>
+template <class T, class U>
 HOST_DEVICE
-constexpr T RoundUp(const T val, const T align)
+constexpr auto RoundUp(T const &val, U const &align)
 {
-    if (align == 0 || val + align - 1 < val) {
-        return val;
+    if constexpr (tla::is_static<T>::value && tla::is_static<U>::value) { // Int, Int
+        constexpr uint32_t res = (T::value + U::value - 1) / U::value * U::value;
+        return tla::Int<res>{};
+    } else if constexpr (tla::is_static<T>::value) { // Int, int
+        return (T::value + align - 1) / align * align;
+    } else if constexpr (tla::is_static<U>::value) { // int, Int
+        return (val + U::value - 1) / U::value * U::value;
+    } else { // int, int
+        return (val + align - 1) / align * align;
     }
-    return (val + align - 1) / align * align;
 }
 
 template <uint32_t DIVISOR, typename T = uint32_t>
@@ -75,6 +88,42 @@ constexpr T CeilDiv(const T dividend, const T divisor)
         return std::numeric_limits<T>::max();
     }
     return (dividend + divisor - 1) / divisor;
+}
+
+template <class T, class U>
+HOST_DEVICE
+constexpr auto CeilDiv(T const &dividend, U const &divisor)
+{
+    if constexpr (tla::is_static<T>::value && tla::is_static<U>::value) { // Int, Int
+        constexpr uint32_t res = (T::value + U::value - 1) / U::value;
+        return tla::Int<res>{};
+    } else if constexpr (tla::is_static<T>::value) { // Int, int
+        return (T::value + divisor - 1) / divisor;
+    } else if constexpr (tla::is_static<U>::value) { // int, Int
+        return (dividend + U::value - 1) / U::value;
+    } else { // int, int
+        return (dividend + divisor - 1) / divisor;
+    }
+}
+
+template <class T, class U>
+HOST_DEVICE
+constexpr auto Max(T const &a, U const &b) {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+template <class T, class U>
+HOST_DEVICE
+constexpr auto Min(T const &a, U const &b) {
+    if (a < b) {
+        return a;
+    } else {
+        return b;
+    }
 }
 
 #endif  // ALIGNMENT_HPP

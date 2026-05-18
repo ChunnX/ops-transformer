@@ -11,6 +11,7 @@
 #ifndef OP_HOST_CSV_CASE_LOADER_H
 #define OP_HOST_CSV_CASE_LOADER_H
 
+#include <algorithm>
 #include "csv_case_load_utils.h"
 #include "tiling_context_faker.h"
 #include "infer_shape_context_faker.h"
@@ -118,6 +119,13 @@ inline ge::DataType Str2DTypeGE(const std::string& dtypeStr)
     return ReadMap(GE_DTYPE, dtypeStr, ge::DT_UNDEFINED);
 }
 
+inline bool StrToBoolIgnoreCase(const std::string& str)
+{
+    std::string lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+    return lowerStr == "true" || lowerStr == "1";
+}
+
 inline ge::graphStatus Str2StatusGE(const std::string& statusStr)
 {
     return statusStr == "SUCCESS" ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
@@ -143,6 +151,10 @@ inline gert::StorageShape GetStorageShape(const std::string& shapeArrStr)
         case 4:
             shape = gert::StorageShape({shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3]},
                 {shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3]});
+            break;
+        case 5:
+            shape = gert::StorageShape({shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4]},
+                {shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4]});
             break;
         default:
             std::cout << "[ERROR] Shape " << shapeArr.size() << " not support!" << std::endl;
@@ -176,6 +188,24 @@ inline int GetDataTypeGE(const csv_map& csvMap, const std::string& dtypeKey, ge:
 
     out = Str2DTypeGE(dtypeStr);
     return 1;
+}
+
+struct HostUtParamBase {
+    std::string case_name;
+    ge::graphStatus expectResult;
+    std::vector<uint32_t> inputInstance;
+    std::vector<uint32_t> outputInstance;
+
+    HostUtParamBase(const csv_map& csvMap)
+    {
+        this->case_name = ReadMap(csvMap, "case_name");
+        this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectResult"));
+    }
+};
+
+inline std::ostream& operator<<(std::ostream& os, const HostUtParamBase& param)
+{
+    return os << param.case_name;
 }
 
 #endif // OP_HOST_CSV_CASE_LOADER_H

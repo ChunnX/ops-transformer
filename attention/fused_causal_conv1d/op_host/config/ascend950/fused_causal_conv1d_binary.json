@@ -1,0 +1,264 @@
+{
+    "op_type": "FusedCausalConv1d",
+    "optional_input_mode": "gen_placeholder",
+    "op_list": [
+        {
+            "bin_filename": "FusedCausalConv1d_fp16",
+            "inputs": [
+                {
+                    "name": "x",
+                    "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "weight",
+                    "index": 1,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "convStates",
+                    "index": 2,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "queryStartLoc",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "cacheIndices",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "initialStateMode",
+                    "index": 5,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "bias",
+                    "index": 6,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "numAcceptedToken",
+                    "index": 7,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "activationMode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "padSlotId",
+                    "dtype": "int",
+                    "value": -1
+                },
+                {
+                    "name": "runMode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "residualConnection",
+                    "dtype": "int",
+                    "value": 0
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "convStates",
+                    "index": 1,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ]
+        },
+        {
+            "bin_filename": "FusedCausalConv1d_bf16",
+            "inputs": [
+                {
+                    "name": "x",
+                    "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "weight",
+                    "index": 1,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "convStates",
+                    "index": 2,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "queryStartLoc",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "cacheIndices",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "initialStateMode",
+                    "index": 5,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "bias",
+                    "index": 6,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "numAcceptedToken",
+                    "index": 7,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "activationMode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "padSlotId",
+                    "dtype": "int",
+                    "value": -1
+                },
+                {
+                    "name": "runMode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "residualConnection",
+                    "dtype": "int",
+                    "value": 0
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "convStates",
+                    "index": 1,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                }
+            ]
+        }
+    ]
+}

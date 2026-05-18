@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 
 #define RFA_BASE_TILING 9000000000000000
 
+#if (__CCE_AICORE__ == 220)
 // FP16, Q=TND, KV=TND, No PagedCache, Float Softmax, No Mask
 #define QF16_KVF16_TND_TND_NOCACHE_FLOATSM_NOMASK_RFA_TILING 9000000030000002
 
@@ -64,5 +65,15 @@
 // BF16, Q=BNSD, KV=BNSD, No PagedCache, Float Softmax, No Mask, LSE Output
 #define QBF16_KVBF16_BNSD_BNSD_NOCACHE_FLOATSM_NOMASK_RFA_TILING_LSE_OUT 9000000150022223
 
+#endif
+
+#if (__CCE_AICORE__ == 310)
+
+#define QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY 9050000030400002
+#define QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY 9050000030422222
+#define QF16_KVF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY 9050000050400003
+#define QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY 9050000050422223
+
+#endif
 #endif  // BLOCK_SPARSE_ATTENTION_TILINGKEY_H_
 

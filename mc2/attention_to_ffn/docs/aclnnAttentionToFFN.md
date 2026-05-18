@@ -15,7 +15,6 @@
 
 将Attention节点上token数据发往FFN节点。
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAttentionToFFNGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnAttentionToFFN”接口执行计算。
@@ -42,6 +41,7 @@ aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
     uint64_t           *workspaceSize,
     aclOpExecutor     **executor)
 ```
+
 ```c++
 aclnnStatus aclnnAttentionToFFN(
     void            *workspace,
@@ -237,7 +237,7 @@ aclnnStatus aclnnAttentionToFFN(
         <td>-</td>
       </tr>
       <tr>
-        <td>ffnStartrankId</td>
+        <td>ffnStartRankId</td>
         <td>输入</td>
         <td>表示FFN节点的起始ID。</td>
         <td>取值范围为[0, worldSize)。</td>
@@ -283,7 +283,7 @@ aclnnStatus aclnnAttentionToFFN(
         <th>返回值</th>
         <th>错误码</th>
         <th>描述</th>
-      </tr><thead>
+      </tr></thead>
     <tbody>
       <tr>
         <td>ACLNN_ERR_PARAM_NULLPTR</td>
@@ -306,7 +306,6 @@ aclnnStatus aclnnAttentionToFFN(
     </tbody>
     </table>
 
-
 ## aclnnAttentionToFFN
 
 - **参数说明：**
@@ -315,6 +314,7 @@ aclnnStatus aclnnAttentionToFFN(
     <col style="width: 150px">
     <col style="width: 100px">
     <col style="width: 900px"> 
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -344,7 +344,7 @@ aclnnStatus aclnnAttentionToFFN(
     </tr>
     </tbody></table>
 
--   **返回值：**
+- **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -354,7 +354,7 @@ aclnnStatus aclnnAttentionToFFN(
   - `aclnnAttentionToFFN`默认确定性实现。
 
 - **参数一致性约束**：
-  - 调用接口过程中使用的`group`、`worldsize`、`moeExpertNum`、`ffnTokenInfoTableShape`、`ffnTokenDataShape`、`ffnStartRankId`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和分离场景系列算子对应参数也保持一致。
+  - 调用接口过程中使用的`group`、`worldSize`、`moeExpertNum`、`ffnTokenInfoTableShape`、`ffnTokenDataShape`、`ffnStartRankId`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和分离场景系列算子对应参数也保持一致。
 
 - **产品特定约束**：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
@@ -382,7 +382,6 @@ aclnnStatus aclnnAttentionToFFN(
 - **通信域使用约束**：
   - AttentionToFFN算子的通信域中不允许有其他算子。
   
-
 ## 调用示例
 
 文件准备：

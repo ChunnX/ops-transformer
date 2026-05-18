@@ -13,7 +13,7 @@
  * \brief
  */
 #include "moe_finalize_routing_v2_grad_tiling.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 constexpr int64_t TILING_KEY_WITH_SCALE_CUT_H_WITHOUT_BIAS = 20012;
@@ -154,7 +154,7 @@ ge::graphStatus MoeFinalizeRoutingV2GradRegbaseSplitH::CalcTilingKey()
     foldFactor_ = mainFactor_ / TWO;
     foldBlockNum_ = Ops::Base::FloorDiv(foldLen, mainFactor_) * TWO;
     foldTailLen_ = foldLen - foldBlockNum_ * foldFactor_;
-    foldTailBlockNum_ = foldTailLen_ > foldFactor_ ? TWO : 1;
+    foldTailBlockNum_ = foldTailLen_ > foldFactor_ ? TWO : (foldTailLen_ > 0 ? 1 : 0);
 
     tilingKey_ = isBiasExist_ ? TILING_KEY_WITH_SCALE_CUT_H_WITH_BIAS : TILING_KEY_WITH_SCALE_CUT_H_WITHOUT_BIAS;
 

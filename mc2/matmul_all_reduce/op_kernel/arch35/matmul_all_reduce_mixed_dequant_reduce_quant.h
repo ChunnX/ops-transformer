@@ -231,7 +231,7 @@ public:
         LocalTensor<float> tempScale = tempScaleBuf_.Get<float>();
         Cast(dequantOut, tilesLocal, RoundMode::CAST_NONE, padCalCnt);
         Broadcast<float, BROADCAST_DIM, 1, false>(tempScale, scalesLocal, broadCastDst, broadCastSrc);
-        Div(dequantOut, dequantOut, tempScale, padCalCnt);
+        Mul(dequantOut, dequantOut, tempScale, padCalCnt);
     }
 
     __aicore__ inline void ProcessQuant(uint64_t innerIdx, uint64_t curRows, uint32_t tileN, uint32_t outputNandSLen,

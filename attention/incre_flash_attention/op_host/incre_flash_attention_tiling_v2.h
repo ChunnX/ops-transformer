@@ -19,7 +19,7 @@
 #include <map>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_host/data_copy_transpose_tiling.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
 #include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
@@ -104,9 +104,8 @@ protected:
     void UpdateTilingKeyIsPa();
     void UpdateTilingKeyIsFd();
     void UpdateTilingKeyEmptyTensor();
-    void UpdateTilingKeyPFAMask();
-    void UpdateTilingKeyPFAMatMulType();
     void UpdateTilingKeyEnableKVPrefix();
+    void UpdateTilingKeySplitCoreMode();
 public:
     uint8_t inOutLayoutType = 0;
     uint16_t config = 0;
@@ -117,9 +116,8 @@ public:
     bool isPa = false;
     bool isFd = false;
     bool emptyTensor = false;
-    uint8_t PFAMask = 0;
-    uint8_t pFAMatMulType = 0;
     bool enableKVPrefix = false;
+    bool enableS1OutSplit = false;
 private:
   ge::graphStatus GetNpuInfo();
   ge::graphStatus PreProcess();
@@ -401,7 +399,7 @@ private:
   uint32_t startIdxEachCore_[MAX_CORE_NUM_REGBASE] = {};
   uint32_t coreSposStart_[MAX_CORE_NUM_REGBASE] = {};
   IncreFlashAttentionContext* ifaContext_ = nullptr;
-  IncreFlashAttentionTilingData* tilingData_ = nullptr;
+  IncreFlashAttentionTilingDataRegbase* tilingData_ = nullptr;
   bool isMaxWorkspace_ = false;
   
   uint32_t formerCoreNum_ = 0;

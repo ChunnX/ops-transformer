@@ -374,7 +374,7 @@ int main() {
   //wdqkv转为NZ
   ret = CreateAclTensorNZ(wdqkvShape, &wdqkvDeviceAddr, &wdqkvHostAddr, aclDataType::ACL_INT8, &wdqkv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  //fp16输入，则这里转int64
+  //fp16输入，则这里转为int64
   ret = CreateAclTensorND(deScale0Shape, &deScale0DeviceAddr, &deScale0HostAddr, aclDataType::ACL_INT64, &deScale0);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(bias0Shape, &bias0DeviceAddr, &bias0HostAddr, aclDataType::ACL_INT32, &bias0);
@@ -390,7 +390,7 @@ int main() {
   //wuq转为NZ
   ret = CreateAclTensorNZ(wuqShape, &wuqDeviceAddr, &wuqHostAddr, aclDataType::ACL_INT8, &wuq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  //fp16输入，则这里转int64
+  //fp16输入，则这里转为int64
   ret = CreateAclTensorND(deScale1Shape, &deScale1DeviceAddr, &deScale1HostAddr, aclDataType::ACL_INT64, &deScale1);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(bias1Shape, &bias1DeviceAddr, &bias1HostAddr, aclDataType::ACL_INT32, &bias1);

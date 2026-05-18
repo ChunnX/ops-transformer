@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef ATTENTION_UPDATE_BASE_REGBASE_H_
 #define ATTENTION_UPDATE_BASE_REGBASE_H_
 
+#include <limits>
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "op_kernel/load_store_utils.h"
@@ -26,6 +27,8 @@ using namespace AscendC;
 
 static constexpr uint32_t UNROLL_NUM = 2;
 static constexpr uint32_t BUFFER_NUM = 2;
+static constexpr float POS_INF = std::numeric_limits<float>::infinity();
+static constexpr float NEG_INF = -std::numeric_limits<float>::infinity();
 static constexpr uint32_t UB_BLOCK_SIZE = Ops::Base::GetUbBlockSize();
 static constexpr uint32_t VREG_SIZE = Ops::Base::GetVRegSize();
 

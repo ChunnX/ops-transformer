@@ -13,11 +13,10 @@
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
-
 ## 功能说明
 
--  接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
--  计算公式：
+- 接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
+- 计算公式：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
@@ -203,7 +202,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
       <td>-</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>3或4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -213,7 +212,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
       <td>与 dy 数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>3或4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -223,7 +222,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
       <td>与 dy 数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>3或4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -233,7 +232,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
       <td>与 dy 数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>3或4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -330,7 +329,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>传入的输入dy、cos、sin、xOptinal和输出dxOut、dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
+      <td>传入的输入dy、cos、sin、xOptional和输出dxOut、dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -391,13 +390,11 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 - 确定性计算：
   - aclnnRotaryPositionEmbeddingGrad默认确定性实现。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-
-    输入张量x共有四维，各参数的shape约束可以描述如下：
-    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
-
+    输入张量dy支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
+    - 输入张量dy、cos、sin及输出张量dx的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
+    - 输入张量dy和输出张量dx的shape必须完全相同。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与dy满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于dy的shape。
+    - 当dy为TND时，cos、sin支持T1D、TND。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     - 输入张量dy支持BNSD、BSND、SBND、TND排布。

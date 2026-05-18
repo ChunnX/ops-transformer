@@ -17,8 +17,8 @@
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_KV_RMS_NORM_ROPE_CACHE_H_
 
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 using namespace Ops::Base;
@@ -279,6 +279,8 @@ protected:
         const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t cacheLen, int64_t headSize);
     bool CheckVCacheValid(
         const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t cacheLen, int64_t headSize);
+    bool CheckCacheValid(const gert::TilingContext* context, int64_t batchSize, int64_t numHead,
+        int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char* cacheName);
     bool CheckKCacheValidPA(const gert::TilingContext* context, int64_t numHead, int64_t headSize);
     bool CheckVCacheValidPA(const gert::TilingContext* context, int64_t numHead, int64_t headSize);
     bool CheckIndexValid(

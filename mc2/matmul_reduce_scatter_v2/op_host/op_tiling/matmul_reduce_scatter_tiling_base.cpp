@@ -25,10 +25,10 @@
 #include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "reduce_scatter_formulaic_tiling.h"
-#include "arch35/reduce_scatter_fit_balance_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
+#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
@@ -71,15 +71,10 @@ uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingAr
 
 CutResult MatmulReduceScatterTilingBase::GetTilingResult()
 {
-    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
-        MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL);
-        return scatterTiling.GetTiling();
-    } else {
-        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
-        scatterTiling.GetTiling();
-        return scatterTiling.tilingM_.cutRes;
-    }
+    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+    MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+    scatterTiling.GetTiling();
+    return scatterTiling.tilingM_.cutRes;
 }
 
 void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcsCfg)
@@ -128,7 +123,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 
 ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
 {
-    if (tileMValue_ * args_.mValue * ge::GetSizeByDataType(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
+    if (tileMValue_ * args_.nValue * ge::GetSizeByDataType(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;
     }
     OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
@@ -192,10 +187,10 @@ void MatmulReduceScatterTilingBase::SetStorageAWorkSpaceSize(Mc2Tiling::RCSTilin
         mmResultLen_ = static_cast<uint64_t>(rcsCfg.rankM) * static_cast<uint64_t>(rcsCfg.rankN) *
                                              static_cast<uint64_t>(args_.outputDtypeSize);
         mmResultLen_ = mc2tiling::AlignUp<uint64_t>(mmResultLen_, 512); // 512 is used to get gm
-        OP_LOGD("MatmulReduceScatter", " reduce scatter gmcFloat size %lu", mmResultLen_);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter gmcFloat size %lu", mmResultLen_);
         rcsCfg.nd2NzWorkLen = 0;
         rcsCfg.cToFloatLen = mmResultLen_;
-        OP_LOGD("MatmulReduceScatter", " reduce scatter storage_a size %lu", mmResultLen_);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter storage_a size %lu", mmResultLen_);
     }
 
     rcsCfg.biasLen = 0;
@@ -253,7 +248,8 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     }
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
-        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
+        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg, \
+        Mc2Comm::GetCommModeFromEnv());
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;
@@ -273,7 +269,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    isA2APath_ = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_); // 判断是否走标卡4p路径： (All2All + Vec Reduce)
+    isA2APath_ = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_); // 判断是否走 All2All + Vec Reduce 通路（4P 或 8P）
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 };
@@ -365,15 +361,15 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         VECTOR_INNER_ERR_REPORT_TILING(
             opName_, "world_size should be 2 or 4 or 8 or 16 or 32 or 64, but the actual value is %ld.", rankSize_),
         return false);
-    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int>(COMMTURN_INDEX);
+    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMMTURN_INDEX);
     OP_TILING_CHECK(
         commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %d.", commTurn),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %ld.", commTurn),
         return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int>(BLOCKSIZE_INDEX);
+    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
     OP_TILING_CHECK(
         blockSize != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %d.", blockSize),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %ld.", blockSize),
         return false);
     return CheckInputScale();
 }
@@ -499,7 +495,7 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsBasicInfo()
 {
     auto isTransA = context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
-    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int>(COMM_TURN);
+    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMM_TURN);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     auto coreNum = ascendcPlatform.GetCoreNumAic();
 

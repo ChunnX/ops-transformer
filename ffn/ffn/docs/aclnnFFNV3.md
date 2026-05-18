@@ -13,7 +13,6 @@
 |<term>Atlas 推理系列加速卡产品</term>|      √     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：该FFN算子提供MoeFFN和FFN的计算功能。在没有专家分组（expertTokens为空）时是FFN，有专家分组时是MoeFFN，统称为FFN，属于Moe结构。MoE（Mixture-of-Experts，混合专家系统）是一种用于训练万亿参数量级模型的技术。MoE将预测建模任务分解为若干子任务，在每个子任务上训练一个专家模型（Expert Model），开发一个门控模型（Gating Model），该模型会根据输入数据分配一个或多个专家，最终综合多个专家计算结果作为预测结果。Mixture-of-Experts结构的模型是将输入数据分配给最相关的一个或者多个专家，综合涉及的所有专家的计算结果来确定最终结果。
@@ -44,7 +43,6 @@
   **说明：**
 
   FFN在无专家或单个专家场景是否有性能收益需要根据实际测试情况判断，当整网中FFN结构对应的小算子vector耗时超过30us，且在FFN结构中占比10%以上时，可以尝试使用该融合算子，若实际测试性能劣化则不使用。
-
 
 ## 函数原型
 
@@ -85,7 +83,7 @@ aclnnStatus aclnnFFNV3(
 ## aclnnFFNV3GetWorkspaceSize
 
 **说明：** 下述参数说明中涉及到的变量说明  
-  M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小。  
+  M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小。   
   S：Seq-Length，表示输入样本序列长度）。  
   K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）。  
   N1表示第一个matmul的输出通道数。  
@@ -490,7 +488,7 @@ aclnnStatus aclnnFFNV3(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 含BFLOAT16数据类型的场景仅支持Atlas 800I A2推理产品。
   - 有专家时，专家数据的总数需要与x的M保持一致。
-  - 激活层为geglu/swiglu/reglu时，仅支持无专家分组时的FLOAT16高性能场景（FLOAT16场景指类型为aclTensor的必选参数数据类型都为FLOAT16的场景），且N1=2\*K2。
+  - 激活层为geglu/swiglu/reglu时，仅支持无专家分组时的FLOAT16高性能场景（FLOAT16场景指类型为aclTensor的必选参数数据类型都为FLOAT16的场景），且N1=2*K2。
   - 激活层为gelu/fastgelu/relu/silu时，支持有专家或无专家分组的FLOAT16高精度及高性能场景、BFLOAT16场景、量化场景及伪量化场景，且N1=K2。
   - 非量化场景不能输入量化参数和伪量化参数，量化场景不能输入伪量化参数，伪量化场景不能输入量化参数。
   - 量化场景参数类型：x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为FLOAT32、offsetOptional为FLOAT32，其余参数类型根据y不同分两种情况：
@@ -512,7 +510,6 @@ aclnnStatus aclnnFFNV3(
 - <term>Atlas 推理系列加速卡产品</term>：
   - 只支持无专家场景。
   - 需满足N1=K2。
-
 
 ## 调用示例
 

@@ -42,6 +42,7 @@ aclnnStatus aclnnMatmulAllReduceV2GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnMatmulAllReduceV2(
     void              *workspace,
@@ -233,6 +234,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -262,7 +264,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -297,6 +299,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
     #include <vector>
     #include <thread>
     #include "hccl/hccl.h"
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_all_reduce_v2.h"
 
     int ndev = 2;
@@ -386,11 +389,11 @@ aclnnStatus aclnnMatmulAllReduceV2(
         long long biasShapeSize = GetShapeSize(biasShape);
         long long x3ShapeSize = GetShapeSize(x3Shape);
         long long outShapeSize = GetShapeSize(outShape);
-        std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-        std::vector<int16_t> biasHostData(biasShapeSize, 1);
-        std::vector<int16_t> x3HostData(x3ShapeSize, 1);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+        std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建 tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);

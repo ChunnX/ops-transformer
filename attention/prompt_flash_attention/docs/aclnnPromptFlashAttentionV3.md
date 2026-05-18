@@ -17,7 +17,7 @@
 
 - 接口功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
 
--   计算公式：
+- 计算公式：
 
     self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
@@ -158,7 +158,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
         <td>标识输入query、key、value的数据排布格式。</td>
         <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
             <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -346,8 +346,6 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     </tbody></table>
     </div>
     
-  
-  
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -423,8 +421,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   </tbody>
   </table>
 
-
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -645,7 +642,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   - 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
 
 - 当输出为INT8，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在PFA接口外部做后量化操作，不在PFA接口内部使能）:
-    - parseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths - actualSeqLengthsKV - preTokens > 0 或 nextTokens < 0 时，满足拦截条件。
+    - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths - actualSeqLengthsKV - preTokens > 0 或 nextTokens < 0 时，满足拦截条件。
     - sparseMode = 1 或 2，不会出现满足拦截条件的情况。
     - sparseMode = 3，每个batch actualSeqLengthsKV - actualSeqLengths < 0，满足拦截条件。
     - sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV - actualSeqLengths < 0 时，满足拦截条件。

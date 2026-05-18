@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 * 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**跟[aclnnFlashAttentionVarLenScoreV3](./aclnnFlashAttentionVarLenScoreV3.md)接口的区别是：增加`sinkInOptional`可选输入,保留了[aclnnFlashAttentionVarLenScoreV4](./aclnnFlashAttentionVarLenScoreV4.md)的`softmaxOutLayout`可选输入。**
@@ -27,19 +26,17 @@
 
   其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
 
-$$
-S = Q * K^{T}
-$$
+  $$
+  S = Q * K^{T}
+  $$
 
-$$
-m = max(sink, max(S))
-$$
+  $$
+  m = max(sink, max(S))
+  $$
 
-$$
-Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + S^{sink - m}}
-$$
-
-
+  $$
+  Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
+  $$
 
 ## 函数原型
 
@@ -79,6 +76,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   void              *workspace,
@@ -86,7 +84,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   aclOpExecutor     *executor,
   const aclrtStream  stream)
 ```
-
 
 ## aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize
 
@@ -171,7 +168,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>与queryRope、keyRope不兼容。不用rope时，数据类型和query一致，需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[pseTotalLen]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -186,7 +183,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -226,7 +223,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的query的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -236,7 +233,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的key/value的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -386,7 +383,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       </tr>
       <tr>
         <td>softmaxOutOut</td>
-        <td>输入</td>
+        <td>输出</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -466,8 +463,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </tbody>
   </table>
 
-
-
 ## aclnnFlashAttentionVarLenScoreV5
 
 - **参数说明**
@@ -507,8 +502,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </tbody>
   </table>
 
-
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -532,6 +526,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
 - realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - innerPrecise：当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
@@ -551,7 +546,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
 - attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional，假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
-
 
 ## 调用示例
 

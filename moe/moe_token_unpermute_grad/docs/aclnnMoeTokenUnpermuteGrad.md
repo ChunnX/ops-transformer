@@ -2,7 +2,6 @@
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute_grad)
 
-
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
@@ -13,7 +12,6 @@
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
-
 
 ## 功能说明
 
@@ -101,7 +99,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
     </tr></thead>
   <tbody>
     <tr>
-      <td>permutedTokens</td>
+      <td>permutedTokens（aclTensor）</td>
       <td>输入</td>
       <td>表示输入token。</td>
       <td>-</td>
@@ -111,7 +109,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>unpermutedTokensGrad</td>
+      <td>unpermutedTokensGrad（aclTensor）</td>
       <td>输入</td>
       <td>unpermutedTokens的梯度。</td>
       <td>-</td>
@@ -121,17 +119,17 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>sortedIndices</td>
+      <td>sortedIndices（aclTensor）</td>
       <td>输入</td>
       <td>表示输入输出梯度的映射关系。</td>
-      <td>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</td>
+      <td>取值范围为[0, tokens_num * topK_num - 1]，且索引值不重复。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(tokens_num * topK_num)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>probsOptional</td>
+      <td>probsOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示token选择指定专家的权重。</td>
       <td>当probsOptional不为空时，topK_num等于probsOptional第2维；当probsOptional为空时，topK_num=1。</td>
@@ -141,7 +139,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>paddedMode</td>
+      <td>paddedMode（bool）</td>
       <td>输入</td>
       <td>true表示开启paddedMode，false表示关闭paddedMode。</td>
       <td>目前仅支持false。</td>
@@ -151,7 +149,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>restoreShapeOptional</td>
+      <td>restoreShapeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>当paddedMode为true后生效，否则不会对其进行操作。当paddedMode为true时，此为unpermutedTokens的shape。</td>
       <td>当前仅支持nullptr。</td>
@@ -161,7 +159,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>permutedTokensGradOut</td>
+      <td>permutedTokensGradOut（aclTensor）</td>
       <td>输出</td>
       <td>permutedTokens的梯度。</td>
       <td>-</td>
@@ -171,7 +169,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>probsGradOut</td>
+      <td>probsGradOut（aclTensor）</td>
       <td>输出</td>
       <td>probs的梯度。</td>
       <td>-</td>
@@ -181,7 +179,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -191,7 +189,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -236,6 +234,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
   </table>
 
 ## aclnnMoeTokenUnpermuteGrad
+
 - **参数说明**
   
   <table>
@@ -253,7 +252,6 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
 
 ## 约束说明
 

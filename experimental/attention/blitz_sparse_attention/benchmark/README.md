@@ -383,6 +383,7 @@ For H>1 shapes FIAS cannot be used directly (its `sparse_mode=1` requires a `[B,
 float16 is excluded from sparse tests: FIAS processes `-inf`-masked tiles through its flash-attention tiling while BSA skips them entirely; the resulting LSE divergence exceeds any reasonable tolerance at high sparsity.
 
 ## Test setup
+
 ```
 Host CPU: aarch64
 Device: Ascend 910B2

@@ -22,7 +22,7 @@
 #include "../../grouped_matmul_swiglu_quant_v2_host_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
 
 namespace optiling {
@@ -42,6 +42,8 @@ public:
     }
 
 protected:
+    // 0、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 2、计算高阶API的TilingData

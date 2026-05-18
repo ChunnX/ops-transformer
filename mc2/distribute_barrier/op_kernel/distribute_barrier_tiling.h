@@ -25,6 +25,8 @@ struct DistributeBarrierInfo {
     uint64_t totalWinSize;
     bool isInputTimeOut;
     bool isInputElasticInfo;
+    bool isMc2Context;
+    bool reserved1;
 };
 
 struct DistributeBarrierTilingData {

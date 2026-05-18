@@ -16,17 +16,17 @@
 #ifndef CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_HPP
 #define CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_HPP
 
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/tile_copy.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/tile_mmad.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "block_mmad_preload_fixpipe.h"
@@ -175,7 +175,7 @@ public:
                     break;
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
-                int32_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
                 int32_t inRankIdx = loopIdx / params.rankSize;
                 GemmCoord blockIdxCoord = GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops,
                     params.swizzlDirect, params.swizzlCount);
@@ -219,7 +219,7 @@ public:
                     nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
                         finalM, nLoops, params.problemShape.n(), params.problemShape.k());
                 }
-                int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                int64_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                 int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
@@ -265,7 +265,7 @@ public:
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
                 int32_t inRankIdx = loopIdx / params.rankSize;
-                int32_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
                 GemmCoord blockIdxCoord =
                     GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
@@ -314,7 +314,7 @@ public:
                     nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank, finalM,
                         nLoops, params.problemShape.n(), params.problemShape.k());
                 }
-                int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                int64_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);

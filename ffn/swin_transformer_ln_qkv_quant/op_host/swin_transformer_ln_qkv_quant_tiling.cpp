@@ -18,8 +18,8 @@
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
 #include "log/log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
 #include "util/math_util.h"
 
 using namespace std;
@@ -265,13 +265,13 @@ ge::graphStatus SwinTransformerLnQkvQuantTilingCompute::GetBaseParams(gert::Tili
                     "The attrs param is null!"),
                     return ge::GRAPH_FAILED);
     size_t idx = 0;
-    headNum = *attrs->GetAttrPointer<int>(idx++);
-    auto seqLength = attrs->GetAttrPointer<int>(idx++);
+    headNum = *attrs->GetAttrPointer<int64_t>(idx++);
+    auto seqLength = attrs->GetAttrPointer<int64_t>(idx++);
     auto epsilonOpt = attrs->GetAttrPointer<float>(idx++);
-    oriHeight = *attrs->GetAttrPointer<int>(idx++);
-    oriWeight = *attrs->GetAttrPointer<int>(idx++);
-    hWinSize = *attrs->GetAttrPointer<int>(idx++);
-    wWinSize = *attrs->GetAttrPointer<int>(idx++);
+    oriHeight = *attrs->GetAttrPointer<int64_t>(idx++);
+    oriWeight = *attrs->GetAttrPointer<int64_t>(idx++);
+    hWinSize = *attrs->GetAttrPointer<int64_t>(idx++);
+    wWinSize = *attrs->GetAttrPointer<int64_t>(idx++);
     bTransOpt = *attrs->GetAttrPointer<bool>(idx++);
     sizePerHead = (seqLength != nullptr) ? (*seqLength) : sizePerHead;
     transposeB = bTransOpt;

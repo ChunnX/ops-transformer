@@ -18,7 +18,7 @@
 #include "register/op_impl_registry.h"
 #include "tiling/tiling_api.h"
 #include "log/log.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "moe_init_routing_v2_tiling_util.h"
 using namespace Ops::Transformer::OpTiling;
 
@@ -82,7 +82,10 @@ TILING_DATA_FIELD_DEF_STRUCT(MoeV2GatherOutComputeTilingData, srcToDstCapacityCo
 TILING_DATA_FIELD_DEF_STRUCT(MoeV2GatherOutComputeTilingData, gatherOutComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2, MoeInitRoutingV2TilingData)
-struct MoeInitRoutingV2CompileInfo {};
+struct MoeInitRoutingV2CompileInfo {
+    int32_t aivNum = 0;
+    uint64_t ubSize = 0;
+};
 
 class MoeInitRoutingV2TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:

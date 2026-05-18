@@ -71,7 +71,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         this->isLastLoop = (blockInnerIdx == -1);
         if (taskId > 0) {
             prevRunInfo = runInfos[(taskId + 1) & 1];
-            this->vecBlock.ProcessVec1(this->constInfo, prevRunInfo); // v1: softmaxGrad
+            if (likely(!this->constInfo.enablePreSfmg)) {
+                this->vecBlock.ProcessVec1(this->constInfo, prevRunInfo); // v1: softmaxGrad
+            }
             // wait mm1 and mm2 result
             if ASCEND_IS_AIV {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
@@ -128,6 +130,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             mm2ResTensor =
                 this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
             this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo, prevRunInfo); // v2: pse + attenMask + simpleSoftmax
+            if (unlikely(this->constInfo.isSink && !IS_DROP)) {
+                this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, prevRunInfo);
+            }
             if ASCEND_IS_AIV {
                 if (needSyncDkMM) {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
@@ -137,6 +142,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
             this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
                                        prevRunInfo); // v3: dropout + cast + nd2nz
+            if (unlikely(this->constInfo.isSink && IS_DROP)) {
+                this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, prevRunInfo);
+            }
             if ASCEND_IS_AIV {
                 if (needSyncDkMM) {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C5_TO_V4_FLAG);
@@ -156,7 +164,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V4_TO_C5_FLAG);
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V4_TO_C5_FLAG);
             }
- 
+
             if constexpr (SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) {
                 // compute dq
                 if constexpr (BaseClass::IS_DQ_WRITE_UB) {
@@ -399,6 +407,5 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
 } 
 } // namespace FagBaseApi
- 
- 
+
 #endif

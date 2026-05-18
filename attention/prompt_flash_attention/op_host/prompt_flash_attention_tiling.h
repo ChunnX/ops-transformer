@@ -15,8 +15,8 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_PROMPTFLASHATTENTION_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_PROMPTFLASHATTENTION_H_
 #include "exe_graph/runtime/tiling_context.h"
-#include "tiling_base/data_copy_transpose_tiling_def.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "register/op_def_registry.h"
@@ -615,7 +615,7 @@ protected:
     bool checkPAKeyValueDimsWhenBBH(ContextParamsForPFATiling& contextKeyParams, int32_t keyDim1, int32_t keyDim2, int32_t keyDim3, int64_t blockNumValid,
         const int32_t* curBlockSize, int64_t h, int64_t headNumRatio);
     bool checkPAKeyValueDimsWhenBNBD(ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* keyShape, const gert::StorageShape* valueShape, int32_t keyDim1, 
-                                int32_t keyDim2, int32_t keyDim3, int64_t blockNumValid, const int32_t* curBlockSize, int64_t h, int64_t n, int64_t headNumRatio);
+                                int32_t keyDim2, int32_t keyDim3, int64_t blockNumValid, const int32_t* curBlockSize, int64_t n, int64_t h, int64_t headNumRatio);
     bool checkPAKeyValueDimsWhenNZ(ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* keyShape, const gert::StorageShape* valueShape, int32_t keyDim1, 
                                 int32_t keyDim2, int32_t keyDim3, int64_t blockNumValid, const int32_t* curBlockSize, int64_t h, int64_t n, int64_t headNumRatio);
     bool checkPABlockSizeAndBlockTable(ContextParamsForPFATiling& contextKeyParams, const gert::Tensor* actualSeqLenKV, const int32_t* curBlockSize, int64_t b);
@@ -629,7 +629,7 @@ protected:
     bool CheckPATypeAndShape(ContextParamsForPFATiling& contextKeyParams, const gert::Tensor* actualSeqLenKV,
                                    int32_t b, int64_t n, int64_t h, int64_t headNumRatio);
     bool CheckAttenMaskShape(ContextParamsForPFATiling& contextKeyParams, const int32_t* sparseMode, const gert::StorageShape* attenMaskShape,
-                             uint64_t sQ, uint64_t sK, uint32_t batchSize);
+                             const uint64_t sQ, const uint64_t sK, const uint32_t batchSize);
     bool CheckPAAntiquantSupportScenarios(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingData& tilingData);
     bool CheckPerchannelAntiquantParamsShape(ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* antiquantScaleShape, const gert::StorageShape* antiquantOffsetShape, 
                                              const uint64_t n, const uint32_t d, const uint64_t h, uint32_t paramFirstDim) const;
@@ -653,7 +653,7 @@ protected:
         int64_t ubSize, uint32_t typeByteSize, uint32_t maskTypeSize);
     void InferTilingMod(const ContextParamsForPFATiling& contextKeyParams, const std::vector<int64_t>& actualSeqLengths, const std::vector<int64_t>& actualSeqLengthsKV,
         uint32_t actualSeqArrayLen, uint32_t hDivN, uint32_t seqInnerSize, int32_t sparseModeVal);
-    ge::graphStatus AdjustCVTiling(uint64_t hDivN, uint64_t n, int64_t middle_actualSeqLengths,
+    ge::graphStatus AdjustCVTiling(uint64_t hDivN, uint64_t n, int64_t middleActualSeqLengths,
         int64_t ubSize, int64_t l1Size, int64_t l0CSize, uint32_t maskElemSize,
         uint32_t& sOuterFactor, uint32_t& sInnerFactor, PromptFlashAttentionTilingData& tilingData);
     ge::graphStatus AdjustCVTilingCVDiff(int64_t ubSize, int64_t l1Size, int64_t l0CSize,

@@ -32,6 +32,7 @@
      int64_t s2;
      int64_t d;
      int64_t d1;
+     int64_t totalSize;
      int64_t selectedBlockCount;
      int64_t usedCoreNum;
      int64_t formerCoreNum;
@@ -51,6 +52,7 @@
      int64_t get_s2() const {return s2;}
      int64_t get_d() const {return d;}
      int64_t get_d1() const {return d1;}
+    int64_t get_totalSize() const {return totalSize;}
      int64_t get_selectedBlockCount() const {return selectedBlockCount;}
      int64_t get_usedCoreNum() const {return usedCoreNum;}
      int64_t get_formerCoreNum() const {return formerCoreNum;}
@@ -70,6 +72,7 @@
      void set_s2(int64_t s2Param) { this->s2 = s2Param; }
      void set_d(int64_t dParam) { this->d = dParam; }
      void set_d1(int64_t d1Param) { this->d1 = d1Param; }
+    void set_totalSize(int64_t totalSizeParam) { this->totalSize = totalSizeParam; }
      void set_selectedBlockCount(int64_t selectedBlockCountParam) { this->selectedBlockCount = selectedBlockCountParam; }
      void set_usedCoreNum(int64_t usedCoreNumParam) { this->usedCoreNum = usedCoreNumParam; }
      void set_formerCoreNum(int64_t formerCoreNumParam) { this->formerCoreNum = formerCoreNumParam; }

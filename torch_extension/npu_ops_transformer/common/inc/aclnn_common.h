@@ -16,6 +16,9 @@
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
 #include <vector>
+#include <string>
+#include <sstream>
+#include <cstdlib>
 #include <functional>
 #include <type_traits>
 #include <ATen/Tensor.h>
@@ -28,7 +31,7 @@
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
-    #include "torch_npu/csrc/flopcount/FlopCount.h"
+#include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
 #define NPU_NAME_SPACE at_npu::native
 
@@ -41,7 +44,7 @@ using aclBoolArray = struct aclBoolArray;
 using aclTensorList = struct aclTensorList;
 
 using _aclCreateTensor = aclTensor *(*)(const int64_t *view_dims, uint64_t view_dims_num, aclDataType data_type,
-    const int64_t *stride, int64_t offset, aclFormat format, const int64_t *storage_dims, uint64_t storage_dims_num,
+                                        const int64_t *stride, int64_t offset, aclFormat format, const int64_t *storage_dims, uint64_t storage_dims_num,
     void *tensor_data);
 using _aclCreateScalar = aclScalar *(*)(void *value, aclDataType data_type);
 using _aclCreateIntArray = aclIntArray *(*)(const int64_t *value, uint64_t size);
@@ -60,34 +63,163 @@ constexpr int kHashBufSize = 8192;
 constexpr int kHashBufMaxSize = kHashBufSize + 1024;
 extern thread_local char g_hashBuf[kHashBufSize];
 extern thread_local int g_hashOffset;
+constexpr int64_t MAX_DIM_NUM = 5;
+constexpr int64_t FP4_IN_INT8 = 2;
+constexpr int64_t PENULTIMATE_DIM = 2;
+const int g_toAclOffset = 256;
 
-#define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)  \
-    _(at::ScalarType::Byte, ACL_UINT8)               \
-    _(at::ScalarType::Char, ACL_INT8)                \
-    _(at::ScalarType::Short, ACL_INT16)              \
-    _(at::ScalarType::Int, ACL_INT32)                \
-    _(at::ScalarType::Long, ACL_INT64)               \
-    _(at::ScalarType::Half, ACL_FLOAT16)             \
-    _(at::ScalarType::Float, ACL_FLOAT)              \
-    _(at::ScalarType::Double, ACL_DOUBLE)            \
-    _(at::ScalarType::ComplexHalf, ACL_DT_UNDEFINED) \
-    _(at::ScalarType::ComplexFloat, ACL_COMPLEX64)   \
-    _(at::ScalarType::ComplexDouble, ACL_COMPLEX128) \
-    _(at::ScalarType::Bool, ACL_BOOL)                \
-    _(at::ScalarType::QInt8, ACL_DT_UNDEFINED)       \
-    _(at::ScalarType::QUInt8, ACL_DT_UNDEFINED)      \
-    _(at::ScalarType::QInt32, ACL_DT_UNDEFINED)      \
-    _(at::ScalarType::BFloat16, ACL_BF16)            \
-    _(at::ScalarType::QUInt4x2, ACL_DT_UNDEFINED)    \
-    _(at::ScalarType::QUInt2x4, ACL_DT_UNDEFINED)    \
-    _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)   \
+#define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)                                                                    \
+    _(at::ScalarType::Byte, ACL_UINT8)                                                                                 \
+    _(at::ScalarType::Char, ACL_INT8)                                                                                  \
+    _(at::ScalarType::Short, ACL_INT16)                                                                                \
+    _(at::ScalarType::Int, ACL_INT32)                                                                                  \
+    _(at::ScalarType::Long, ACL_INT64)                                                                                 \
+    _(at::ScalarType::Half, ACL_FLOAT16)                                                                               \
+    _(at::ScalarType::Float, ACL_FLOAT)                                                                                \
+    _(at::ScalarType::Double, ACL_DOUBLE)                                                                              \
+    _(at::ScalarType::ComplexHalf, ACL_COMPLEX32)                                                                      \
+    _(at::ScalarType::ComplexFloat, ACL_COMPLEX64)                                                                     \
+    _(at::ScalarType::ComplexDouble, ACL_COMPLEX128)                                                                   \
+    _(at::ScalarType::Bool, ACL_BOOL)                                                                                  \
+    _(at::ScalarType::QInt8, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::QUInt8, ACL_DT_UNDEFINED)                                                                        \
+    _(at::ScalarType::QInt32, ACL_DT_UNDEFINED)                                                                        \
+    _(at::ScalarType::BFloat16, ACL_BF16)                                                                              \
+    _(at::ScalarType::QUInt4x2, ACL_DT_UNDEFINED)                                                                      \
+    _(at::ScalarType::QUInt2x4, ACL_DT_UNDEFINED)                                                                      \
+    _(at::ScalarType::Bits1x8, ACL_DT_UNDEFINED)                                                                       \
+    _(at::ScalarType::Bits2x4, ACL_DT_UNDEFINED)                                                                       \
+    _(at::ScalarType::Bits4x2, ACL_DT_UNDEFINED)                                                                       \
+    _(at::ScalarType::Bits8, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::Bits16, ACL_DT_UNDEFINED)                                                                        \
+    _(at::ScalarType::Float8_e5m2, ACL_FLOAT8_E5M2)                                                                    \
+    _(at::ScalarType::Float8_e4m3fn, ACL_FLOAT8_E4M3FN)                                                                \
+    _(at::ScalarType::Float8_e5m2fnuz, ACL_DT_UNDEFINED)                                                               \
+    _(at::ScalarType::Float8_e4m3fnuz, ACL_DT_UNDEFINED)                                                               \
+    _(at::ScalarType::UInt16, ACL_UINT16)                                                                              \
+    _(at::ScalarType::UInt32, ACL_UINT32)                                                                              \
+    _(at::ScalarType::UInt64, ACL_UINT64)                                                                              \
+    _(at::ScalarType::UInt1, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::UInt2, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::UInt3, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::UInt4, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::UInt5, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::UInt6, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::UInt7, ACL_DT_UNDEFINED)                                                                         \
+    _(at::ScalarType::Int1, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Int2, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Int3, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Int4, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Int5, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
+    _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
 };
+
+#define ENUM_OFFSET(new_name, old_name) new_name = static_cast<int>(old_name) + g_toAclOffset,
+
+enum class DType {
+    UNDEFINED = -1,
+    ENUM_OFFSET(FLOAT, ACL_FLOAT)
+    ENUM_OFFSET(FLOAT16, ACL_FLOAT16)
+    ENUM_OFFSET(INT8, ACL_INT8)
+    ENUM_OFFSET(INT32, ACL_INT32)
+    ENUM_OFFSET(UINT8, ACL_UINT8)
+    ENUM_OFFSET(INT16, ACL_INT16)
+    ENUM_OFFSET(UINT16, ACL_UINT16)
+    ENUM_OFFSET(UINT32, ACL_UINT32)
+    ENUM_OFFSET(INT64, ACL_INT64)
+    ENUM_OFFSET(UINT64, ACL_UINT64)
+    ENUM_OFFSET(DOUBLE, ACL_DOUBLE)
+    ENUM_OFFSET(BOOL, ACL_BOOL)
+    ENUM_OFFSET(STRING, ACL_STRING)
+    ENUM_OFFSET(COMPLEX64, ACL_COMPLEX64)
+    ENUM_OFFSET(COMPLEX128, ACL_COMPLEX128)
+    ENUM_OFFSET(BF16, ACL_BF16)
+    ENUM_OFFSET(INT4, ACL_INT4)
+    ENUM_OFFSET(UINT1, ACL_UINT1)
+    ENUM_OFFSET(COMPLEX32, ACL_COMPLEX32)
+    ENUM_OFFSET(HIFLOAT8, ACL_HIFLOAT8)
+    ENUM_OFFSET(FLOAT8_E5M2, ACL_FLOAT8_E5M2)
+    ENUM_OFFSET(FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN)
+    ENUM_OFFSET(FLOAT8_E8M0, ACL_FLOAT8_E8M0)
+    ENUM_OFFSET(FLOAT6_E3M2, ACL_FLOAT6_E3M2)
+    ENUM_OFFSET(FLOAT6_E2M3, ACL_FLOAT6_E2M3)
+    ENUM_OFFSET(FLOAT4_E2M1, ACL_FLOAT4_E2M1)
+    ENUM_OFFSET(FLOAT4_E1M2, ACL_FLOAT4_E1M2)
+};
+
+namespace op_infer {
+const int N = 32;
+const int SIZE = 8;
+
+inline c10::SmallVector<int64_t, SIZE> array_to_small_vector(c10::IntArrayRef shape)
+{
+    c10::SmallVector<int64_t, SIZE> shape_small_vec;
+    for (uint64_t i = 0; i < shape.size(); i++) {
+        shape_small_vec.emplace_back(shape[i]);
+    }
+    return shape_small_vec;
+}
+}
+
+typedef struct {
+    const at::Tensor& tensor_;
+    aclDataType dtype;
+} TensorWrapper;
+
+typedef struct {
+    const at::TensorList& tensor_list_;
+    aclDataType dtype;
+} TensorListWrapper;
+
+inline bool Is4BitDtype(const aclDataType acl_data_type)
+{
+    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+}
+
+
+inline void CollectB4ShapeInfo(const at::Tensor &at_tensor,
+                               c10::SmallVector<int64_t, MAX_DIM_NUM>& wrapperStride,
+                               c10::SmallVector<int64_t, MAX_DIM_NUM>& wrapperShape)
+{
+    int64_t nDim = at_tensor.sizes().size();
+    if (nDim == 1) {
+        wrapperShape[0] = wrapperShape[0] * FP4_IN_INT8;
+    } else if (nDim > 1) {
+        if (wrapperStride[nDim - 1] == 1 && wrapperStride[nDim - PENULTIMATE_DIM] == 1) {
+            if (wrapperShape[nDim - PENULTIMATE_DIM] == 1) {
+                wrapperStride[nDim - 1] = wrapperStride[nDim - 1] * FP4_IN_INT8;
+                wrapperShape[nDim - PENULTIMATE_DIM] = wrapperShape[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+            } else if (wrapperShape[nDim - 1] == 1) {
+                wrapperStride[nDim - PENULTIMATE_DIM] = wrapperStride[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+                wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * FP4_IN_INT8;
+            }
+        } else if (wrapperStride[nDim - 1] == 1) {
+            wrapperStride[nDim - PENULTIMATE_DIM] =
+                wrapperStride[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+            wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * FP4_IN_INT8;
+        } else if (wrapperStride[nDim - PENULTIMATE_DIM] == 1) {
+            wrapperStride[nDim - 1] =
+                wrapperStride[nDim - 1] * FP4_IN_INT8;
+            wrapperShape[nDim - PENULTIMATE_DIM] =
+                wrapperShape[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+        }
+
+        for (auto i = 0; i < nDim - PENULTIMATE_DIM; i++) {
+            wrapperStride[i] = wrapperStride[i] * FP4_IN_INT8;
+        }
+    } else {
+        TORCH_CHECK(false, "unsupported tensor size() in 4-bit dtype.");
+    }
+}
 
 enum QuantMode {
     QUANT_MODE_NO_QUANT = 0,
@@ -107,6 +239,30 @@ enum QuantMode {
     auto ret = memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression); \
     TORCH_CHECK(ret == 0, "memcpy_s failed, error:", ret);                               \
     g_hashOffset += size_expression;
+
+aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
+{
+    int64_t dtype_index = static_cast<int64_t>(data_type);
+    TORCH_CHECK(dtype_index >= 0 && dtype_index < static_cast<int64_t>(at::ScalarType::NumOptions) + 1,
+                "data_type enum value (",
+                dtype_index,
+                ") is out of range: [0, ",
+                static_cast<int64_t>(at::ScalarType::NumOptions),
+                "]")
+    auto acl_dtype = kATenScalarTypeToAclDataTypeTable[dtype_index];
+    TORCH_CHECK(acl_dtype != ACL_DT_UNDEFINED,
+                std::string(c10::toString(data_type)) + " has not been supported")
+    return acl_dtype;
+}
+
+inline aclDataType GetAclDataType(int64_t t)
+{
+    if (t >= g_toAclOffset) {
+        return static_cast<aclDataType>(t - g_toAclOffset);
+    }
+    return ConvertToAclDataType(
+        static_cast<at::ScalarType>(t));
+}
 
 inline const char *GetOpApiLibName(void)
 {
@@ -136,11 +292,41 @@ inline void *GetOpApiLibHandler(const char *libName)
     return handler;
 }
 
+inline std::vector<void *> GetCustOpApiHandlers()
+{
+    std::vector<void *> handlers;
+    const char *env = std::getenv("ASCEND_CUSTOM_OPP_PATH");
+    if (env != nullptr) {
+        std::string envStr(env);
+        std::istringstream iss(envStr);
+        std::string path;
+        while (std::getline(iss, path, ':')) {
+            if (path.empty()) {
+                continue;
+            }
+            std::string soPath = path + "/op_api/lib/" + GetCustOpApiLibName();
+            auto handler = dlopen(soPath.c_str(), RTLD_LAZY);
+            if (handler != nullptr) {
+                handlers.push_back(handler);
+            } else {
+                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath.c_str(), dlerror());
+            }
+        }
+    }
+    if (handlers.empty()) {
+        auto handler = GetOpApiLibHandler(GetCustOpApiLibName());
+        if (handler != nullptr) {
+            handlers.push_back(handler);
+        }
+    }
+    return handlers;
+}
+
 inline void *GetOpApiFuncAddr(const char *apiName)
 {
-    static auto custOpApiHandler = GetOpApiLibHandler(GetCustOpApiLibName());
-    if (custOpApiHandler != nullptr) {
-        auto funcAddr = GetOpApiFuncAddrInLib(custOpApiHandler, GetCustOpApiLibName(), apiName);
+    static auto custHandlers = GetCustOpApiHandlers();
+    for (auto handler : custHandlers) {
+        auto funcAddr = GetOpApiFuncAddrInLib(handler, GetCustOpApiLibName(), apiName);
         if (funcAddr != nullptr) {
             return funcAddr;
         }
@@ -259,11 +445,11 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return aclCreateTensor(aclInput.sizes().data(),
             aclInput.sizes().size(),
             acl_data_type,
-            aclInput.strides().data(),
+                               aclInput.strides().data(),
             aclInput.storage_offset(),
             format,
             storageDims.data(),
-            storageDims.size(),
+                               storageDims.size(),
             const_cast<void *>(aclInput.storage().data()));
     }
 
@@ -271,11 +457,11 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         at_tensor.sizes().size(),
         acl_data_type,
         at_tensor.strides().data(),
-        at_tensor.storage_offset(),
+                        at_tensor.storage_offset(),
         format,
         storageDims.data(),
         storageDims.size(),
-        const_cast<void *>(at_tensor.storage().data()));
+                        const_cast<void *>(at_tensor.storage().data()));
     return acl_tensor;
 }
 
@@ -293,25 +479,25 @@ inline aclScalar *ConvertType(const at::Scalar &at_scalar)
     aclScalar *acl_scalar = nullptr;
     switch (scalar_data_type) {
         case at::ScalarType::Double: {
-            double value = at_scalar.toDouble();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                double value = at_scalar.toDouble();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         case at::ScalarType::Long: {
-            int64_t value = at_scalar.toLong();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                int64_t value = at_scalar.toLong();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         case at::ScalarType::Bool: {
-            bool value = at_scalar.toBool();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                bool value = at_scalar.toBool();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         case at::ScalarType::ComplexDouble: {
-            auto value = at_scalar.toComplexDouble();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                auto value = at_scalar.toComplexDouble();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         default:
             acl_scalar = nullptr;
             break;
@@ -354,6 +540,9 @@ inline aclBoolArray *ConvertType(const at::ArrayRef<bool> &value)
 
 inline aclTensorList *ConvertType(const at::TensorList &at_tensor_list)
 {
+    if (at_tensor_list.size() == 0) {
+        return nullptr;
+    }
     static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
     if (aclCreateTensorList == nullptr) {
         return nullptr;
@@ -394,6 +583,81 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
     return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
+}
+
+inline const char* ConvertType(const string& str)
+{
+    return str.c_str();
+}
+
+aclTensor *ConvertType(const TensorWrapper &tensor_r)
+{
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    if (aclCreateTensor == nullptr) {
+        return nullptr;
+    }
+
+    const at::Tensor &at_tensor = tensor_r.tensor_;
+
+    if (!at_tensor.defined()) {
+        return nullptr;
+    }
+
+    aclDataType acl_data_type = tensor_r.dtype;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
+
+    const auto dimNum = at_tensor.sizes().size();
+    aclFormat format = ACL_FORMAT_ND;
+    switch (dimNum) {
+        case 3:
+            format = ACL_FORMAT_NCL;
+            break;
+        case 4:
+            format = ACL_FORMAT_NCHW;
+            break;
+        case 5:
+            format = ACL_FORMAT_NCDHW;
+            break;
+        default:
+            format = ACL_FORMAT_ND;
+    }
+    // if acl_data_type is ACL_STRING, storageDims is empty.
+    if (acl_data_type != ACL_STRING) {
+        TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
+        if (Is4BitDtype(acl_data_type)) {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize() * FP4_IN_INT8);
+            CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
+        } else {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+        }
+    }
+
+    auto acl_tensor =
+        aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type, wrapperStride.data(),
+                        at_tensor.storage_offset(), format, storageDims.data(), storageDims.size(),
+                        const_cast<void *>(at_tensor.storage().data()));
+    return acl_tensor;
+}
+
+aclTensorList *ConvertType(const TensorListWrapper &tensor_list_wrapper)
+{
+    if (tensor_list_wrapper.tensor_list_.size() == 0) {
+        return nullptr;
+    }
+    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
+    if (aclCreateTensorList == nullptr) {
+        return nullptr;
+    }
+
+    std::vector<const aclTensor *> tensor_list(tensor_list_wrapper.tensor_list_.size());
+    for (size_t i = 0; i < tensor_list.size(); i++) {
+        tensor_list[i] = ConvertType(TensorWrapper{
+            tensor_list_wrapper.tensor_list_[i], tensor_list_wrapper.dtype});
+    }
+    auto acl_tensor_list = aclCreateTensorList(tensor_list.data(), tensor_list.size());
+    return acl_tensor_list;
 }
 
 template <typename T>
@@ -564,7 +828,7 @@ template <std::size_t I = 0, typename...Ts>
 typename std::enable_if<I == sizeof...(Ts), void>::type GetFirstTensor(const std::tuple<Ts...>& t, at::Tensor& res) {}
 
 template <std::size_t I = 0, typename... Ts>
-typename std::enable_if < I<sizeof...(Ts), void>::type GetFirstTensor(const std::tuple<Ts...> &t, at::Tensor &res)
+    typename std::enable_if < I<sizeof...(Ts), void>::type GetFirstTensor(const std::tuple<Ts...> &t, at::Tensor &res)
 {
     if constexpr (is_at_tensor<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
         res = std::get<I>(t);
@@ -620,10 +884,11 @@ auto DecodeDevice(Ts&... args) -> at::Device
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);  \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params);                               \
         TORCH_CHECK(workspace_status == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg());    \
+        at::Tensor workspace_tensor;                                                              \
         void *workspace_addr = nullptr;                                                                     \
         if (workspace_size != 0) {                                                                          \
             at::TensorOptions options = at::TensorOptions(torch_npu::utils::get_npu_device_type());         \
-            auto workspace_tensor = at::empty({workspace_size}, options.dtype(at::kByte));                  \
+            workspace_tensor = at::empty({workspace_size}, options.dtype(at::kByte));                       \
             workspace_addr = const_cast<void *>(workspace_tensor.storage().data());                         \
         }                                                                                                   \
         auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]() -> int { \
@@ -644,5 +909,5 @@ auto DecodeDevice(Ts&... args) -> at::Device
         cmd.Run();                                                                                          \
         if (unInitMemFunc) {                                                                                \
             unInitMemFunc(nullptr, false);                                                                  \
-        }                                                                                                   \
+        }                                                                                                   \ 
     } while (false)

@@ -21,7 +21,7 @@
   $$
   expertid=expertIdx[i,k]
   $$
-  
+   
   $$
   out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
   $$
@@ -233,8 +233,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
     </tr>
     <tr>
-    <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-    <td rowspan="2"> 561002 </td>
+    <td rowspan="2"> ACLNN_ERR_INNER_NULLPTR </td>
+    <td rowspan="2"> 561103 </td>
     <td>多个输入tensor之间的shape信息不匹配。</td>
     </tr>
     <tr>
@@ -250,6 +250,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   <col style="width: 169px">
   <col style="width: 130px">
   <col style="width: 880px">
+  </colgroup>
   <thead>
   <tr>
     <th>参数名</th>
@@ -312,6 +313,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2.h"
@@ -503,4 +505,3 @@ int main() {
   return 0;
 }
 ```
-

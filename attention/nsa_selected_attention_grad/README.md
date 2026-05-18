@@ -8,7 +8,6 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
@@ -35,9 +34,6 @@
     $$
     K=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
-
-
-
 
 ## 参数说明
 
@@ -74,8 +70,8 @@
   - S：取值范围为1\~128K。对于key、value的S 必须大于等于selectedBlockSize * selectedBlockCount, 且必须为selectedBlockSize的整数倍。
   - D：取值范围为192或128，支持K和V的D(HeadDim)不相等。
   - selectedBlockSize支持<=128且满足16的整数倍。
-  - selectBlockCount：支持[1~128]。 总计选择的大小`selectBlockCount * selctBlockSize` < 128*64(8K)
-  - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectBlockCount * selctBlockSize`
+  - selectBlockCount：支持[1~128]。 总计选择的大小`selectBlockCount * selectBlockSize` < 128*64(8K)
+  - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectBlockCount * selectBlockSize`
 - 关于softmaxMax与softmaxSum参数shape的约束：\[T1, N1, 8\]。
 - 关于topkIndices参数shape的约束：[T1, N2, selectedBlockCount]。
 

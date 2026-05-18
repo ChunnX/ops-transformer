@@ -9,12 +9,16 @@
 # -----------------------------------------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
-
+include(cmake/fetch_cann_cmake.cmake)
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
+init_cann_project()
+if(NOT ASCEND_INSTALL_PATH AND DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_INSTALL_PATH $ENV{ASCEND_HOME_PATH})
+endif()
 
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
@@ -43,9 +47,11 @@ set(ARCH_DIRECTORY                ""                           CACHE   STRING   
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
 set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
 
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch22,kirin9030:arch22
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
+set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
+set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 
 # 获取基础 CANN 路径
 if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
@@ -65,9 +71,9 @@ include(cmake/func.cmake)
 
 include(version.cmake)
 if (BUILD_OPEN_PROJECT)
-    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
+    check_cann_pkg_build_deps(${CANN_VERSION_PACKAGES})
 endif()
-add_version_info_targets()
+add_cann_version_info_targets()
 
 foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   list(FIND SOC_VERSION_LIST ${SOC_VERSION} INDEX)
@@ -83,11 +89,6 @@ foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
     endif()
   endif()
 endforeach()
-
-list(FIND ARCH_DIRECTORY "arch32" INDXE)
-if(NOT INDEX EQUAL -1)
-    list(APPEND ARCH_DIRECTORY "arch22")
-endif()
 
 if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   message(STATUS "compile project with library")
@@ -127,6 +128,8 @@ include(cmake/third_party/opbase.cmake)
 include(cmake/config.cmake)
 include(cmake/third_party/json.cmake)
 if (ENABLE_TEST)
+    set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
+    set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
@@ -147,7 +150,6 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/third_party/abseil-cpp.cmake)
         include(cmake/third_party/ascend_protobuf.cmake)
 
-        include(cmake/third_party/makeself-fetch.cmake)
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)
@@ -339,11 +341,6 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
         add_subdirectory(${OP_DEPEND_DIR})
     endif()
 endforeach ()
-
-install(DIRECTORY ${OPS_CGMCT}/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/cgmct
-)
-
 
 if (BUILD_OPS_RTY_KERNEL)
     get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)
@@ -583,7 +580,7 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        install(DIRECTORY ${op_dir}/arch32
+        install(DIRECTORY ${op_dir}/arch22
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
             OPTIONAL
         )

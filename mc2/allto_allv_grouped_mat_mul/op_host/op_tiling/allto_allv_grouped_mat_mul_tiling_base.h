@@ -17,13 +17,33 @@
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace optiling {
+
+// 定义参数结构体
+struct SetMMTilingParams {
+    matmul_tiling::DataType matmulDtype;
+    int32_t curMaxM;
+    int32_t curMaxK;
+    int32_t curMaxN;
+    int32_t curBaseM;
+    int32_t curBaseN;
+    int32_t type;
+};
+
+struct MMTilingParams {
+    int32_t curMaxM;
+    int32_t curMaxK;
+    int32_t curMaxN;
+    int32_t* curBaseM;
+    int32_t* curBaseK;
+    int32_t* curBaseN;
+};
 
 class AlltoAllvGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
@@ -38,6 +58,12 @@ protected:
     ge::graphStatus GetPlatformInfo() override;
 
     NpuArch npuArch_;
+};
+
+class AlltoAllvGmmTilingCommon
+{
+public:
+    virtual ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) = 0;
 };
 } // namespace optiling
 

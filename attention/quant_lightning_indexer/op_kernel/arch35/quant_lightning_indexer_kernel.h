@@ -87,7 +87,7 @@ public:
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
-    static constexpr uint32_t WS_DOBULE = 2;
+    static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
     TPipe *pipe = nullptr;
@@ -157,6 +157,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.kCacheBlockSize = tilingData->blockSize;
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
     constInfo.sparseCount = tilingData->sparseCount;
+    constInfo.keyStride0 = tilingData->keyStride0;
+    constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;

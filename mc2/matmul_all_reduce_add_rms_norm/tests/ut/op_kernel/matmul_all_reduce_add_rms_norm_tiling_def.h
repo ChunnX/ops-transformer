@@ -70,7 +70,7 @@ struct AddRMSNormTilingData {
 #endif
 
 #ifdef __CCE_KT_TEST__
-#include "kernel_log.h"
+#include "kernel_operator.h"
 #endif
 
 constexpr uint16_t MAX_TENSOR_CONT = 256;

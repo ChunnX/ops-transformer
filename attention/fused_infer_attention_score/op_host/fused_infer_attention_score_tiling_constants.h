@@ -45,6 +45,7 @@ constexpr uint32_t DIM_NUM_5 = 5;
 // PA
 constexpr uint32_t BLOCK_SIZE_MAX = 512;
 constexpr uint32_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
+constexpr uint32_t BLOCK_SIZE_FOR_MXFP8 = 512;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
 
@@ -57,6 +58,7 @@ constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
 constexpr uint32_t SPARSE_OPTIMIZE_ATTENTION_SIZE = 2048;
 
 // mask
+constexpr uint32_t MASK_DIM_S = 1;
 constexpr uint32_t MASK_DIM_SS = 2;
 constexpr uint32_t MASK_DIM_BSS = 3;
 constexpr uint32_t MASK_DIM_B1SS = 4;
@@ -70,6 +72,7 @@ constexpr uint32_t PER_TOKEN_PA_MODE = 4;
 constexpr uint32_t PER_TOKEN_HEAD_PA_MODE = 5;
 constexpr uint32_t PER_TOKEN_GROUP_MODE = 6;
 constexpr uint32_t PER_BLOCK_MODE = 7;
+constexpr uint32_t PER_CHANNEL_GROUP_MODE = 8;
 
 // ROPE MLA
 constexpr uint32_t MLA_QKD_SIZE = 192;
@@ -100,6 +103,7 @@ constexpr uint32_t SOUTER_128 = 128;
 constexpr uint32_t SINNER_64 = 64;
 constexpr uint32_t SINNER_128 = 128;
 constexpr uint32_t SINNER_256 = 256;
+constexpr uint32_t SINNER_512 = 512;
 constexpr uint32_t DSIZE_64 = 64;
 constexpr uint32_t DSIZE_128 = 128;
 constexpr uint32_t DSIZE_192 = 192;
@@ -159,7 +163,8 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UINT2, "DT_UINT2"},
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}
+    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"},
+    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0"}
 };
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {

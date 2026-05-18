@@ -20,7 +20,6 @@
 #include "sparse_lightning_indexer_grad_kl_loss_regbase_common.h"
 namespace SligKlLoss {
 using T = float;
-
 TEMPLATES_DEF
 class SligKlLossBlockCube {
 public:
@@ -50,6 +49,9 @@ public:
     GlobalTensor<INPUT_T> gatherSYResGm;
     GlobalTensor<OUT_T> mm4ResGm;
 
+    // deter workspace
+    GlobalTensor<T> mm3DeterResGm;
+
     /* =====================LocalBuffer变量==================== */
 
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
@@ -72,7 +74,8 @@ public:
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void InitCubeBuffers();
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR queryIndex, GM_ADDR queryRope,
-                                    GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm);
+                                    GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res,
+                                    GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3ResGm);
     __aicore__ inline void ComputeMmP(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, 
                                 BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, 
                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, SLIGradKLLossKRunInfo &pRunInfo);
@@ -127,12 +130,14 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR queryIndex, GM_ADDR queryRope,
-                                                 GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm)
+    GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm,
+    GlobalTensor<T> &bmm3ResGm)
 {
     queryGm.SetGlobalBuffer((__gm__ INPUT_T *)query);
     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)queryIndex);
     qRopeGm.SetGlobalBuffer((__gm__ INPUT_T *)queryRope);
     mm4ResGm.SetGlobalBuffer((__gm__ OUT_T *)dQueryIndex);
+    this->mm3DeterResGm = bmm3ResGm;
     this->mm2ResGm = bmm2Res;
     this->gatherSYResGm = gatherSYResGm;
 };
@@ -297,7 +302,8 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<Bu
         // 右矩阵
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[syRunInfo.kTaskIdMod2]);
         LocalTensor<INPUT_T> gatherL1Tensor = gatherResL1Buf.GetTensor<INPUT_T>();
-        uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE * constInfo.gSizeQueryIndex;
+        uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE *
+                             AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
         MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
             sYQL1Tensor, gatherL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[syRunInfo.kTaskIdMod2]);
@@ -371,21 +377,38 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(BuffersPol
         mm3L0CBuffer.Set<HardEvent::M_FIX>();
         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
         // fix2ub
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
-        fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
-        fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
-        fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
-        // mmResUb上两行之间的间隔，单位：element。
-        fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
-        // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-        fixpipe2UbParams.dualDstCtl = 1;
-        fixpipe2UbParams.params.ndNum = 1;
-        fixpipe2UbParams.params.srcNdStride = 0;
-        fixpipe2UbParams.params.dstNdStride = 0;
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
-        mm3L0CBuffer.Set<HardEvent::FIX_M>();
-        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
+        if constexpr (!IS_DETER) {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
+            fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
+            fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
+            fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
+            // mmResUb上两行之间的间隔，单位：element。
+            fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
+            // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+            fixpipe2UbParams.dualDstCtl = 1;
+            fixpipe2UbParams.params.ndNum = 1;
+            fixpipe2UbParams.params.srcNdStride = 0;
+            fixpipe2UbParams.params.dstNdStride = 0;
+            Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
+            mm3L0CBuffer.Set<HardEvent::FIX_M>();
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
+        } else {
+            int64_t gmOffset = (runInfo.taskIdMod2 * constInfo.kSize +
+                pRunInfo.kTaskId * constInfo.pKBaseSize + kIdx * VEC_P_BASESIZE) * constInfo.dSizeQueryIndex;
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
+            fixpipe2GmParams.nSize = mmParam.singleN;
+            fixpipe2GmParams.mSize = mmParam.singleM;
+            fixpipe2GmParams.srcStride = AlignTo(fixpipe2GmParams.mSize, static_cast<uint16_t>(C0_SIZE));
+            fixpipe2GmParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
+            fixpipe2GmParams.dualDstCtl = 0;
+            fixpipe2GmParams.params.ndNum = 1;
+            fixpipe2GmParams.params.srcNdStride = 0;
+            fixpipe2GmParams.params.dstNdStride = 0;
+            Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm3DeterResGm[constInfo.bmm3BaseOffset + gmOffset],
+                mm3L0CBuffer.GetTensor<T>(), fixpipe2GmParams);
+            mm3L0CBuffer.Set<HardEvent::FIX_M>();
+        }
     }
     if (pRunInfo.kTaskId == runInfo.s2LoopTimes - 1) {
         sYQL1Buffer.Set<HardEvent::MTE1_MTE2>();
@@ -469,7 +492,8 @@ public:
     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr){};
     __aicore__ inline void InitCubeBuffers(){};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR queryIndex, GM_ADDR queryRope,
-                                        GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm){};
+        GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm,
+        GlobalTensor<T> &bmm3ResGm){};
     __aicore__ inline void ComputeMmP(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, 
                                 BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, 
                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, SLIGradKLLossKRunInfo &pRunInfo){};

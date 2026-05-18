@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：完成Matmul计算、Permute(保证通信后地址连续)和AlltoAll通信的融合，**先计算后通信**。
+- 接口功能：完成Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**。
 - 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
 
   $$
@@ -35,7 +35,7 @@ aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(
   const char*        group,
   bool               transposeX1,
   bool               transposeX2,
-  aclTensor*         output,
+  const aclTensor*   output,
   uint64_t*          workspaceSize,
   aclOpExecutor**    executor)
 ```
@@ -92,7 +92,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>2维，shape为(H1, H2)</td>
-    <td>√</td>
+    <td>不同设备型号支持情况不同，参见<a href="#约束说明">约束说明</a>。</td>
     </tr>
     <tr>
     <td>biasOptional</td>
@@ -107,7 +107,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <tr>
     <td>alltoAllAxesOptional</td>
     <td>输入</td>
-    <td>可选输入，AlltoAll和Pemute数据交换的方向。</td>
+    <td>可选输入，AlltoAll和Permute数据交换的方向。</td>
     <td>支持配置空或者[-1, -2]，传入空时默认按[-1, -2]处理，表示将输入由(BS, H2)转为(BS * rankSize, H2 / rankSize)。</td>
     <td>aclIntArray*(元素类型INT64)</td>
     <td>-</td>
@@ -146,7 +146,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>数据类型与输入x1保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
@@ -175,7 +175,6 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>-</td>
     </tr>
     </tbody></table>
-
 
 - **返回值**
 
@@ -275,14 +274,14 @@ aclnnStatus aclnnMatmulAlltoAll(
 * 默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
-  - <term>Atlas A3 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8、16卡。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16卡。
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
 * 参数说明中shape使用的变量H2必须整除NPU卡数。
 * H1范围仅支持[1, 65535]。
 * BS*rankSize和H2的值不得超过2147483647(INT32_MAX)，BS的值不得小于0，H2的值不得小于2。
 * 空tensor的支持度根据不同设备型号有不同的限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何空tensor。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持任何空tensor。
   - <term>Ascend 950PR/Ascend 950DT</term>：仅支持输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持。
 * 非连续tensor的支持度根据不同设备型号有不同的限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何非连续tensor。
@@ -295,6 +294,10 @@ aclnnStatus aclnnMatmulAlltoAll(
   - <term>Ascend 950PR/Ascend 950DT</term>：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持BFLOAT16和FLOAT32。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
+* 通信引擎约束：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
 
 ## 调用示例
 
@@ -312,6 +315,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     #include <vector>
     #include <acl/acl.h>
     #include <hccl/hccl.h>
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_allto_all.h"
 
     int ndev = 2;
@@ -397,10 +401,10 @@ aclnnStatus aclnnMatmulAlltoAll(
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
         long long outShapeSize = GetShapeSize(outShape);
-        std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-        std::vector<int16_t> biasHostData(biasShapeSize, 1);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建 tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -498,7 +502,7 @@ aclnnStatus aclnnMatmulAlltoAll(
             args[rankId].hcclComm = comms[rankId];
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args  [rankId])));
+            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();
@@ -507,6 +511,7 @@ aclnnStatus aclnnMatmulAlltoAll(
         return 0;
     }
     ```
+
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
@@ -669,7 +674,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 
     int main(int argc, char *argv[])
     {
-        // 本样例基于Atlas A5实现，必须在Atlas A5上运行
+        // 本样例基于<term>Ascend 950PR/Ascend 950DT</term>实现，必须在<term>Ascend 950PR/Ascend 950DT</term>上运行
         int ret;
         int32_t devices[ndev];
         for (int i = 0; i < ndev; i++) {
@@ -703,7 +708,7 @@ aclnnStatus aclnnMatmulAlltoAll(
             args[rankId].hcclComm = comms[rankId];
             args[rankId].stream = stream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args  [rankId])));
+            threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadMatmulAlltoAll, std::ref(args[rankId])));
         }
         for (uint32_t rankId = 0; rankId < ndev; rankId++) {
             threads[rankId]->join();

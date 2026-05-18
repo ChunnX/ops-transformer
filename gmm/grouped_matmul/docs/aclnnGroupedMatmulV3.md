@@ -117,7 +117,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight</td>
+      <td>weight（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional</td>
+      <td>biasOptional（aclTensorList）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional</td>
+      <td>scaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional</td>
+      <td>antiquantScaleOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional</td>
+      <td>antiquantOffsetOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional</td>
+      <td>groupListOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>当输出中TensorList的长度为1时，groupListOptional中的最后一个值约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>splitItem</td>
+      <td>splitItem（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，代表输出是否要做tensor切分。</td>
       <td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupType</td>
+      <td>groupType（int64_t）</td>
       <td>输入</td>
       <td>整数型参数，代表需要分组的轴。</td>
       <td>如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>y</td>
+      <td>y（aclTensorList）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -356,6 +356,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 - 确定性计算：
   - aclnnGroupedMatmulV3默认确定性实现。
 - 如果传入groupListOptional，groupListOptional必须为非负递增数列。
@@ -389,7 +390,7 @@ aclnnStatus aclnnGroupedMatmulV3(
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
   <details>
-    <summary><term>非量化量化场景约束</term></summary>
+    <summary>非量化量化场景约束</summary>
       <a id="非量化场景约束"></a>
 
   - 非量化场景支持的数据类型为：
@@ -405,7 +406,7 @@ aclnnStatus aclnnGroupedMatmulV3(
   </details>
 
   <details>
-  <summary><term>伪量化量化场景约束</term></summary>
+  <summary>伪量化量化场景约束</summary>
   <a id="伪量化场景约束"></a>
 
   - 伪量化场景支持的数据类型为：
@@ -442,7 +443,7 @@ aclnnStatus aclnnGroupedMatmulV3(
   </details>
 
   <details>
-  <summary><term>groupType场景约束</term></summary>
+  <summary>groupType场景约束</summary>
   <a id="groupType场景约束"></a>
 
   - 不同groupType支持场景：
@@ -454,9 +455,10 @@ aclnnStatus aclnnGroupedMatmulV3(
         | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（g, N, K）或（g, K, N）；x，y中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（g, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持weight转置<br>6）x不支持转置<br>7）仅支持ND进ND出 |
         | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为1024<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持ND进ND出<br>8）仅支持非量化|
         | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持ND进ND出<br>8）仅支持非量化|
-        | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维, shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）仅支持非量化|
+        | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维, shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
+        | 2 | 单多多 |1）仅支持splitItem为0/1<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为2维, shape为（M, N）<br>3）groupListOptional可以传空，如果传groupListOptional，其最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
 
-      </details>
+  </details>
 
 ## 调用示例
 
@@ -639,7 +641,7 @@ int main() {
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
         for (int64_t j = 0; j < size; j++) {
-            LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+            LOG_PRINT("result[%ld] is: %u\n", j, resultData[j]);
         }
     }
 

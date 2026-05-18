@@ -104,8 +104,8 @@ enum class HCCLType {
 };
 
 enum class TopoType {
-    STANDARD_CARD,
-    SERVER,
+    STANDARD_CARD,  // 0 - 标卡 4P
+    EIGHT_P,        // 1 - 8P场景（POD8P/Server8P）
 };
 
 struct HCCLInfo {
@@ -116,6 +116,7 @@ struct HCCLInfo {
     HCCLType commMethod;
     TopoType topoType;
     uint64_t maxStepSize; // number of steps in a full round of communication
+    uint64_t commDtypeSizeExpansionFraction;
 };
 
 struct HCCLFittingParameters {

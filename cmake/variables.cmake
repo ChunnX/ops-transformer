@@ -52,24 +52,25 @@ endif()
 
 set(BIN_STATIC_INSTALL_DIR          packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/static)
 if (ENABLE_BUILT_IN)
-  set(ACLNN_INC_INSTALL_DIR           ops_transformer/built-in/op_impl/ai_core/tbe/op_api/include/aclnnop)
-  set(ACLNN_INC_LEVEL2_INSTALL_DIR    ops_transformer/built-in/op_impl/ai_core/tbe/op_api/include/aclnnop/level2)
-  set(ACLNN_LIB_INSTALL_DIR           ops_transformer/built-in/op_impl/ai_core/tbe/op_api/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
-  set(OPS_INFO_INSTALL_DIR            ops_transformer/built-in/op_impl/ai_core/tbe/config)
-  set(IMPL_DYNAMIC_INSTALL_DIR        ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer/dynamic)
-  set(BIN_KERNEL_INSTALL_DIR          ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
-  set(BIN_KERNEL_CONFIG_INSTALL_DIR   ops_transformer/built-in/op_impl/ai_core/tbe/kernel/config)
-  set(BIN_STATIC_INSTALL_DIR          ops_transformer/built-in/op_impl/ai_core/tbe/static)
-  set(OPHOST_INC_INSTALL_PATH         ops_transformer/built-in/op_impl/ai_core/tbe/op_host/include)
-  set(OPHOST_LIB_INSTALL_PATH         ops_transformer/built-in/op_impl/ai_core/tbe/op_host/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
+  set(ACLNN_INC_INSTALL_DIR           ${CMAKE_SYSTEM_PROCESSOR}-linux/include/aclnnop)
+  set(ACLNN_INC_LEVEL2_INSTALL_DIR    ${CMAKE_SYSTEM_PROCESSOR}-linux/include/aclnnop/level2)
+  set(ACLNN_LIB_INSTALL_DIR           ${CMAKE_SYSTEM_PROCESSOR}-linux/lib64)
+  set(OPS_INFO_INSTALL_DIR            opp/built-in/op_impl/ai_core/tbe/config)
+  set(IMPL_DYNAMIC_INSTALL_DIR        opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer/dynamic)
+  set(BIN_KERNEL_INSTALL_DIR          opp/built-in/op_impl/ai_core/tbe/kernel)
+  set(BIN_KERNEL_CONFIG_INSTALL_DIR   opp/built-in/op_impl/ai_core/tbe/kernel/config)
+  set(BIN_STATIC_INSTALL_DIR          opp/built-in/op_impl/ai_core/tbe/static)
+  set(OPHOST_INC_INSTALL_PATH         opp/built-in/op_impl/ai_core/tbe/op_host/include)
+  set(OPHOST_LIB_INSTALL_PATH         opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
   set(OPTILING_LIB_INSTALL_DIR        ${OPHOST_LIB_INSTALL_PATH})
-  set(OPGRAPH_INC_INSTALL_DIR         ops_transformer/built-in/op_graph/inc)
-  set(OPGRAPH_LIB_INSTALL_DIR         ops_transformer/built-in/op_graph/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
-  set(ONNX_PLUGIN_LIB_INSTALL_DIR     ops_transformer/built-in/framework/onnx)
-  set(COMMON_INC_INSTALL_DIR          ops_transformer/include)
-  set(COMMON_LIB_INSTALL_DIR          ops_transformer/lib)
-  set(VERSION_INFO_INSTALL_DIR        ops_transformer)
-  set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+  set(OPGRAPH_INC_INSTALL_DIR         opp/built-in/op_graph/inc)
+  set(OPGRAPH_LIB_INSTALL_DIR         opp/built-in/op_graph/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
+  set(ONNX_PLUGIN_LIB_INSTALL_DIR     opp/built-in/framework/onnx)
+  set(VERSION_INFO_INSTALL_DIR        ${CMAKE_SYSTEM_PROCESSOR}-linux)
+  set(WHL_INSTALL_DIR                 ops_transformer)
+  set(IMPL_INSTALL_DIR                opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+  set(AICPU_HOST_KERNEL_IMPL          ops_transformer/built-in/op_impl/host_cpu)
+  set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ops-transformer)
 else()
  	# custom pkg
  	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)
@@ -149,9 +150,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include
+    ${TOP_DIR}/tmp/host-prefix/src/host-build/asl/ops/cann/ops/built-in/op_host/inner/
   )
 else()
-  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS})
+  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS} ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
 endif()
 
 set(OP_TILING_INCLUDE
@@ -233,7 +235,6 @@ set(OP_PROTO_INCLUDE
 
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
    ${OPS_TRANSFORMER_DIR}/mc2/3rd
    ${OPS_TRANSFORMER_DIR}/mc2
@@ -288,7 +289,7 @@ set(AICPU_INCLUDE
   ${NNOPBASE_INCLUDE_DIRS}
   ${HCCL_EXTERNAL_INCLUDE}
   ${OPS_TRANSFORMER_DIR}/common/inc/common
-  ${OPS_TRANSFORMER_DIR}/common/include/kernel
+  ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
   ${METADEF_INCLUDE_DIRS}
 )
 

@@ -17,6 +17,7 @@
 #define MOE_DISTRIBUTE_COMM_CTX_H
 
 constexpr uint32_t HCCL_MTE_MAX_RANK_NUM = 64;
+constexpr uint32_t EP_HCCL_BUFFER_RANK_NUM = 1024;
 
 // A5 HCCL Context
 struct HcclCombinOpParam {
@@ -35,4 +36,9 @@ struct HcclCombinOpParam {
     uint64_t msSize; // 可写的MS个数，预留
 };
 
+struct CommContextForDump {
+    uint64_t epRankid = 0;
+    uint64_t kfcContextAddr = 0;
+    uint64_t epHcclBufffer_[EP_HCCL_BUFFER_RANK_NUM];
+};
 #endif

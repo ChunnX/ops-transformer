@@ -16,6 +16,8 @@
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2/matmul_all_reduce/op_kernel/matmul_all_reduce_apt_tiling_key.h"
+#include "all_reduce_fit_balance_tiling.h"
+#include "mc2_comm_utils.h"
 
 using namespace Mc2Tiling;
 namespace optiling {
@@ -39,6 +41,10 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
             OP_LOGE(opName_, "Get mc2InitTiling from matmulAllReduce910TilingData failed."),
@@ -58,6 +64,10 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
         OP_LOGE(opName_, "Get mc2InitTiling from MatmulAllReduce910TilingDataA5 failed."),
@@ -80,9 +90,13 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
 ge::graphStatus MatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        isUseA2APath = false;
+    }
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    if (isStandardCard4P) {
+    if (isUseA2APath) {
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType) != ge::GRAPH_SUCCESS,
             OP_LOGE(opName_, "MatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
@@ -138,13 +152,18 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
     if (!matmulAllReduce910TilingData_.param.isAdd) {
         matmulWithAdd = false;
     }
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
-    bool isA2ARSAG = isStandardCard4P;
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        isUseA2APath = false;
+    }
+    bool isA2ARSAG = isUseA2APath;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_FP_MM,                               \
         false,                                      \
         false,                                      \
         isA2ARSAG,                                  \
+        commMode,                                   \
         matmulWithAdd,                              \
         SET_NOT_USE_QUANT_MM_TILING,                \
         SET_NOT_USE_WEIGHT_QUANT_MM_TILING);
@@ -171,7 +190,7 @@ void MatmulAllReduceTilingA5::PrintExtendMatmulTiling(bool isTail)
     OP_LOGD(opName_, "Matmul tiling aswWindowLen=%u", tiling.aswWindowLen);
 }
 
-ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSizeInStandardCard4P()
+ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSizeForA2ARSAG()
 {
     uint64_t commWorkSpace = 0UL;
     uint64_t cgmPadLen = 0UL;
@@ -197,8 +216,13 @@ ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSize()
         workspaceSize_);
     myWorkSpaceSize_ = std::max(myWorkSpaceSize_, workspaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    if(mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
-        GetWorkspaceSizeInStandardCard4P();
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        isUseA2APath = false;
+    }
+    if (isUseA2APath) {
+        GetWorkspaceSizeForA2ARSAG();
     }
     workspaces[0] = myWorkSpaceSize_;
     return ge::GRAPH_SUCCESS;
@@ -394,6 +418,33 @@ MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(
     gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, MatmulAllReduce910TilingDataA5* out)
     : MatmulAllReduceTilingBase(context, mmrCtxInfo), matmulAllReduce910TilingData_(*out)
 {}
+
+CutResult MatmulAllReduceTilingA5::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    bool isAicpu = (commMode == Mc2Comm::COMM_MODE_AICPU);
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_) && !isAicpu) {
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                        TopoType::STANDARD_CARD);
+        mCutAllreduce = allReduceTilingHccl.GetTiling();
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_) && !isAicpu) {
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                        TopoType::EIGHT_P);
+        mCutAllreduce = allReduceTilingHccl.GetTiling();
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
+}
 
 //注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, MatmulAllReduceTilingA5, \
