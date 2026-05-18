@@ -50,11 +50,12 @@ except ImportError:
     GPU_AVAILABLE = False
 
 try:
-    from npu_impl import flash_attn_npu, flash_attn_metadata_only
+    from npu_impl import flash_attn_npu, flash_attn_metadata_only, flash_attn_npu_graph
     NPU_AVAILABLE = True
 except ImportError:
     flash_attn_npu = None
     flash_attn_metadata_only = None
+    flash_attn_npu_graph = None
     NPU_AVAILABLE = False
 
 # ------------------ 辅助函数 ------------------
@@ -209,7 +210,7 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
 # ------------------ 三方精度对比 ------------------
 def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
                     verbose_diff=False, visualize=False, viz_dir="./viz_output",
-                    meta_only=False, compare_mode=False,
+                    meta_only=False, compare_mode=False, graph_mode=False,
                     load_gpu_dump=None, load_npu_dump=None,
                     **kwargs):
     b          = kwargs.get("B", 1)
@@ -315,9 +316,13 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         if not NPU_AVAILABLE:
             print(f"[{test_name}] 警告: NPU 不可用，尝试从 dump 加载。")
         if NPU_AVAILABLE:
-            print(f"[{test_name}] NPU 计算...")
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
-            npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            if graph_mode:
+                print(f"[{test_name}] NPU 图模式计算...")
+                npu_out, lse_npu = flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            else:
+                print(f"[{test_name}] NPU 单算子模式计算...")
+                npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
@@ -511,6 +516,8 @@ if __name__ == "__main__":
                         help="指定 NPU dump 文件路径（用于离线对比）")
     parser.add_argument("--compare_mode", action="store_true",
                         help="启用三方对比模式（CPU vs GPU vs NPU），使用详细精度统计")
+    parser.add_argument("--graph_mode",  action="store_true",
+                        help="使用图模式调用 NPU 算子（需要 torchair）")
     args = parser.parse_args()
 
     # 设备初始化
@@ -588,6 +595,7 @@ if __name__ == "__main__":
                 viz_dir=args.viz_dir,
                 meta_only=args.meta_only,
                 compare_mode=args.compare_mode,
+                graph_mode=args.graph_mode,
                 load_gpu_dump=args.load_gpu_dump,
                 load_npu_dump=args.load_npu_dump,
                 **kwargs
