@@ -527,7 +527,7 @@ private:
                 Pack((RegTensor<uint16_t>&)fp16Reg0, (RegTensor<uint32_t>&)fp8Reg0);
                 StoreAlign<float8_e4m3_t, DataCopyMode::DATA_BLOCK_COPY>(
                     pAddrFp8 + i * FP8_ELE_NUM_PER_C0 + j * blockStride * HALF_REP_SIZE,
-                    (RegTensor<float8_e4m3_t>&)fp16Reg0, blockStride, pregFp8TailN);
+                    (RegTensor<float8_e4m3_t>&)fp16Reg0, blockStride, pregHalfFp8);
             }
             LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
@@ -543,7 +543,7 @@ private:
             Pack((RegTensor<uint16_t>&)fp16Reg0, (RegTensor<uint32_t>&)fp8Reg0);
             StoreAlign<float8_e4m3_t, DataCopyMode::DATA_BLOCK_COPY>(
                 pAddrFp8 + i * FP8_ELE_NUM_PER_C0 + nLoops * blockStride * HALF_REP_SIZE,
-                (RegTensor<float8_e4m3_t>&)fp16Reg0, blockStride, pregHalfFp8);
+                (RegTensor<float8_e4m3_t>&)fp16Reg0, blockStride, pregFp8TailN);
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<ElementS, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
 
