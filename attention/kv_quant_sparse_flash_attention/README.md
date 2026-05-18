@@ -53,20 +53,20 @@
           <td>key</td>
           <td>输入</td>
           <td>attention结构的K输入，不支持非连续。k_nope、query相同数据类型的k_rope和float32的量化参数按D维度拼接得到。layout_kv为PA_BSND时shape为[block_num, block_size, KV_N, KV_D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。layout_kv为BSND时shape为[B, S2, KV_N, KV_D]，layout_kv为TND时shape为[KV_T, KV_N, KV_D]，其中KV_N只支持1。</td>
-          <td>FLOAT8_E4M3、INT8</td>
+          <td>FLOAT8_E4M3、INT8、HIFLOAT8</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>value</td>
           <td>输入</td>
           <td>attention结构的V输入，不支持非连续。</td>
-          <td>FLOAT8_E4M3、INT8</td>
+          <td>FLOAT8_E4M3、INT8、HIFLOAT8</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>sparse_indices</td>
           <td>输入</td>
-          <td>代表离散取kvCache的索引，不支持非连续。当layout_query为BSND时，shape需要传入[B, Q_S, KV_N, sparse_size]，当layout_query为TND时，shape需要传入[Q_T, KV_N, sparse_size]，其中sparse_size为一次离散选取的block数，需要保证每行有效值均在前半部分，无效值均在后半部分，且需要满足sparse_size大于0。</td>
+          <td>代表离散取kvCache的索引，不支持非连续。当layout_query为BSND时，shape需要传入[B, Q_S, KV_N, sparse_size]，当layout_query为TND时，shape需要传入[Q_T, KV_N, sparse_size]，其中sparse_size为一次离散选取的block数，需要保证每行有效值均在前半部分，无效值均在后半部分，且需要满足sparse_size大于0。当`key`和`value`的数据类型为`hifloat8`时，sparse_size仅支持2048。</td>
           <td>INT32</td>
           <td>ND</td>
       </tr>
@@ -210,7 +210,7 @@
 
 - 该接口支持图模式。
 - 参数query中的Q_D值仅支持576，即nope\+rope=512\+64。
-- 参数key、value Atlas A2/A3系列产品支持int8数据类型，Ascend 950PR/Ascend 950DT支持float8_e4m3数据类型。Q_N值支持1/2/4/8/16/32/64/128。
+- 参数key、value Atlas A2/A3系列产品支持int8数据类型，Ascend 950PR/Ascend 950DT支持float8_e4m3、int8、hifloat8数据类型。Q_N值支持1/2/4/8/16/32/48/64/128。
 - 参数key、value中的KV_D值仅支持656，即nope\+rope\*2\+dequant\_scale\*4=512\+64\*2\+4\*4。KV_N值仅支持1。
 - sparse\_block\_size需要整除block\_size。
   - <term>Ascend 950PR/Ascend 950DT</term>：
