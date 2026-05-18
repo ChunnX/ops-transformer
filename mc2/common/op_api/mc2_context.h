@@ -67,6 +67,17 @@ private:
                                       uint64_t &hcclBuffSize);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
 
+    /* for quant_reduce_scatter */
+    clnnStatus Mc2Context::CreatMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                                 const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
+                                                 Mc2QuantReduceScatterContext *mc2ContextStruct);
+    aclnnStatus Mc2Context::GetOrCreateMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                                        const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
+                                                        uint64_t &hcclBuffSize);
+    aclnnStatus Mc2Context::CreatMc2ContextTensorForQrs(void *ctx, aclTensor *&mc2Context);
+    aclnnStatus Mc2Context::GetMc2ContextTensorForQrs(const char *group, const char *opName, uint64_t &hcclBuffSize,
+                                                      aclTensor *&mc2Context);
+
     const std::string GetLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);
