@@ -551,7 +551,6 @@ aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
     }
     OP_LOGD("Get rank size success, rankSize is: %u", rankSize);
 
-    OP_LOGD("Get Mc2MoeContext Tensor Success");
     return ACLNN_SUCCESS;
 }
 
