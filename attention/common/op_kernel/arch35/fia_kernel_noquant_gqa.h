@@ -429,6 +429,7 @@ public:
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
+        PRINTF("zzyzzy constInfo.aicIdx:%d, varlenCalcTimes:%lld, bSize:%d, n2Size:%d, gSize:%d\n", constInfo.aicIdx, varlenCalcTimes, constInfo.bSize, constInfo.n2Size, constInfo.gSize);
         while (shouldDispatchTask || shouldExecuteTask) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
@@ -795,13 +796,16 @@ public:
     {
         uint32_t task_i_curr = ComputeFlatTaskIdx();
         int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
-        // PRINTF("task_i_curr:%d, task_i_prev_:%d\n", task_i_curr, task_i_prev_);
+        PRINTF("task_i_curr:%d, task_i_prev_:%d\n", task_i_curr, task_i_prev_);
         task_i_prev_ = task_i_curr;
         if (gS1Skip <= 0) {
             int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
             if (rawQLen <= 0) {
                 return;
             }
+
+            uint64_t gS1Size = static_cast<uint64_t>(rawQLen) * constInfo.gSize;
+            uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
             int64_t preTokenLeftUp = 0;
             int64_t nextTokenLeftUp = 0;
@@ -814,9 +818,12 @@ public:
             uint32_t gS1Offset;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                           LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                gS1Offset = static_cast<uint32_t>(nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize);
+                gS1Offset = nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize;
                 if (gS1Cur < gS1Offset) {
                     gS1Cur = gS1Offset;
+                }
+                if (gS1Cur >= gS1LoopTimes) {
+                    gS1Cur = (gS1LoopTimes > 0U) ? (gS1LoopTimes - 1U) : 0U;
                 }
             } else {
                 gS1Offset = static_cast<uint32_t>(nextTokensError / mBaseSize);
@@ -825,7 +832,11 @@ public:
                 if (gS1CurInGroup < gS1Offset) {
                     gS1Cur = (gS1Cur / gS1PerGroup) * gS1PerGroup + gS1Offset;
                 }
+                if (gS1Cur >= gS1LoopTimes) {
+                    gS1Cur = (gS1LoopTimes > 0U) ? (gS1LoopTimes - 1U) : 0U;
+                }
             }
+            PRINTF("gS1Skip <= 0, bN2Cur:%d, rawQLen:%d, preTokenLeftUp:%d, nextTokenLeftUp:%d, nextTokensError:%d, gS1LoopTimes:%d, gS1Offset:%d, gS1Cur:%d\n", bN2Cur, rawQLen, preTokenLeftUp, nextTokenLeftUp, nextTokensError, gS1LoopTimes, gS1Offset, gS1Cur);
             return;
         }
 
@@ -866,6 +877,7 @@ public:
             gS1Skip -= gS1RemainN2;
         }
 
+        PRINTF("after gS1RemainN2 gS1Skip:%d\n", gS1Skip);
         while (true) {
             bIdx++;
             if (bIdx >= constInfo.bSize) {
@@ -884,6 +896,7 @@ public:
             } else {
                 gS1RemainN2 = gS1LoopTimes * n2Size;
             }
+            PRINTF("bIdx:%d, actSeqLensQ:%d, gS1Cur:%d, gS1Skip:%d, gS1RemainN2:%d, gS1LoopTimes:%d\n", bIdx, actSeqLensQ, gS1Cur, gS1Skip, gS1RemainN2, gS1LoopTimes);
             if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
                 uint32_t pos = (gS1Skip > 0) ? (static_cast<uint32_t>(gS1Skip) - 1) : 0;
                 if (gS1LoopTimes == 0) {
@@ -904,7 +917,7 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        // PRINTF("taskDealMode:%d, bN2Cur:%d, gS1Cur:%d, s2Cur:%d, coreGS1Loops:%d, accGS1Loops:%d\n", static_cast<int>(taskDealMode), bN2Cur, gS1Cur, s2Cur, coreGS1Loops, accGS1Loops);
+        PRINTF("taskDealMode:%d, bN2Cur:%d, gS1Cur:%d, s2Cur:%d, curS2Start:%d, curS2End:%d, actSeqLensQ:%d, actSeqLensKv:%d, coreGS1Loops:%d, accGS1Loops:%d\n", static_cast<int>(taskDealMode), bN2Cur, gS1Cur, s2Cur, curS2Start, curS2End, actSeqLensQ, actSeqLensKv, coreGS1Loops, accGS1Loops);
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
             s2Cur = curS2Start;
             return;
