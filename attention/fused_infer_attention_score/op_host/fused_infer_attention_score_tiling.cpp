@@ -343,9 +343,6 @@ static ge::graphStatus ConvertAttrsPFA(gert::TilingContext &context, ContextPara
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support query dequant now"),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(*contextKeyParams.sparseMode == 9U,
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support Tree Sparse(9) now"),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1690,7 +1687,7 @@ bool IsMlaIfaOrMtp(gert::TilingContext &context, const string inputLayoutStr, co
         if (queryS == 1)  {
             return true;
         }
-        if ((queryS > 1 && queryS <= 32) && (queryD == 512)) { // 16: mtp; 512: qD need 512
+        if ((queryS > 1 && queryS) && (queryD == 512)) { // 16: mtp; 512: qD need 512
             return true;
         }
     }

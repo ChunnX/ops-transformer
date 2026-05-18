@@ -139,7 +139,7 @@ bool FiaTilingNonQuantMla::IsCapable()
     // 支持的sparse_mode值
 
     if ((fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK) && (fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) && 
-        (fiaInfo_->sparseMode != SPARSE_MODE_BAND) && (fiaInfo_->sparseMode != SPARSE_MODE_TREE)) {
+        (fiaInfo_->sparseMode != SPARSE_MODE_BAND)) {
         return false;
     }
 
