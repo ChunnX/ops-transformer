@@ -78,16 +78,16 @@ using _aclDestroyTensorList = int (*)(const aclTensorList* array);
 
 #define GET_OP_API_FUNC(apiName) reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
 
-inline const char* GetOpApiLibName(void) {
-  return "libopapi.so";
-}
-
 inline const char* GetCustOpApiLibName(void) {
   return "libcust_opapi.so";
 }
 
 inline const char* GetTransformerOpApiLibName(void) {
   return "libopapi_transformer.so";
+}
+
+inline const char* GetOpApiLibName(void) {
+  return "libopapi.so";
 }
 
 inline void* GetOpApiFuncAddrInLib(void* handler, const char* libName, const char* apiName) {
@@ -125,15 +125,7 @@ inline void* GetAclnnArrdByApiName(const char *apiName) {
 inline void* GetOpApiFuncAddr(const char* apiName) {
   static auto custOpApiHandler = GetOpApiLibHandler(GetCustOpApiLibName());
   if (custOpApiHandler != nullptr) {
-    auto funcAddr = GetOpApiFuncAddrInLib(custOpApiHandler, GetCustOpApiLibName(), apiName);
-    if (funcAddr != nullptr) {
-      return funcAddr;
-    }
-  }
-
-  static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
-  if (opApiHandler != nullptr) {
-      auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
+      auto funcAddr = GetOpApiFuncAddrInLib(custOpApiHandler, GetCustOpApiLibName(), apiName);
       if (funcAddr != nullptr) {
           return funcAddr;
       }
@@ -142,6 +134,14 @@ inline void* GetOpApiFuncAddr(const char* apiName) {
   static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
   if (transformerOpApiHandler != nullptr) {
       auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
+      if (funcAddr != nullptr) {
+          return funcAddr;
+      }
+  }
+
+  static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
+  if (opApiHandler != nullptr) {
+      auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
       if (funcAddr != nullptr) {
           return funcAddr;
       }
@@ -454,7 +454,8 @@ using ResetCacheThreadLocal = void (*)();
       static const auto opApiFuncAddr = GetOpApiFuncAddr(#aclnn_api);                                                \
       if (getWorkspaceSizeFuncAddr == nullptr || opApiFuncAddr == nullptr || ResetCacheThreadLocalAddr == nullptr) { \
         OP_LOGE("aclnnfallback", "%s or %s not in %s or %s or %s or ResetCacheThreadLocal not found.",               \
-                #aclnn_api "GetWorkspaceSize", #aclnn_api, GetCustOpApiLibName(), GetOpApiLibName(), GetTransformerOpApiLibName()); \
+                #aclnn_api "GetWorkspaceSize", #aclnn_api,                                                       \
+                GetCustOpApiLibName(), GetTransformerOpApiLibName(), GetOpApiLibName());                          \
         ret = GRAPH_FAILED;                                                                                          \
         break;                                                                                                       \
       }                                                                                                              \
