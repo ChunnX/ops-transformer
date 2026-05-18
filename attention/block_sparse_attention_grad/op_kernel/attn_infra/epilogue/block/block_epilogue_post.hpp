@@ -394,7 +394,7 @@ public:
             set_flag(PIPE_V, PIPE_MTE3, event_id);
             wait_flag(PIPE_V, PIPE_MTE3, event_id);
             
-             if constexpr (INPUT_LAYOUT == TND) {
+            if constexpr (INPUT_LAYOUT == TND) {
                 GlobalTensor<OutputDtype_> outGm = dqGm;
                 if (qkvFlag == DK) {
                     outGm = dkGm;

@@ -296,7 +296,8 @@ public:
             uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum * layoutFlag) * BLOCK_SIZE;
             if constexpr (INPUT_LAYOUT == TND) {
                 DataCopyPad(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping],
-                    {static_cast<uint16_t>(nBurst), static_cast<uint32_t>(BLOCK_SIZE * sizeof(float)), 0, static_cast<uint32_t>((n1 - 1) * 8 * 4), 0});
+                            {static_cast<uint16_t>(nBurst), static_cast<uint32_t>(BLOCK_SIZE * sizeof(float)), 0,
+                             static_cast<uint32_t>((n1 - 1) * 8 * 4), 0});
             } else {
                 DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);
             }
