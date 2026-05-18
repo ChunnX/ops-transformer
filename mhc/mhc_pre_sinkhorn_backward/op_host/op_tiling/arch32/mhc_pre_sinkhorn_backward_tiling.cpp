@@ -445,7 +445,6 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     }
 
     auto isDeterministic = (context->GetDeterministic() == 1);
-    isDeterministic = true;
     context->SetScheduleMode(1); // 1: batchmode模式
     context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
     if (isDeterministic) {

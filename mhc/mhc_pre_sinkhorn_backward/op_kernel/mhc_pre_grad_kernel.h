@@ -231,18 +231,20 @@ private:
             skSumGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(sum_out));   // fp32
 
             gradHResGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(grad_comb)); // fp32
-            if (blkIdx_ == aivNum_ - 1) {
-                InitOutput<T>(gradHcBaseGlobal_, (n_ * n_ + PRE_POST_NUM * n_), 0);
-                InitOutput<T>(gradHcScaleGlobal_, 3, 0);
+            if constexpr (DETERMINISTIC == false) {
+                if (blkIdx_ == aivNum_ - 1) {
+                    InitOutput<T>(gradHcBaseGlobal_, (n_ * n_ + PRE_POST_NUM * n_), 0);
+                    InitOutput<T>(gradHcScaleGlobal_, 3, 0);
+                }
+                for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < n_ * c_;
+                    taskOffset += aivNum_ * tileCoreBS_) {
+                    int32_t tileTaskCount =
+                        min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(n_ * c_ - taskOffset));
+                    InitOutput<T>(gradWeightGlobal_[taskOffset * (n_ * n_ + PRE_POST_NUM * n_)],
+                                (n_ * n_ + PRE_POST_NUM * n_) * tileTaskCount, 0);
+                }
+                SyncAll<true>();
             }
-            for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < n_ * c_;
-                 taskOffset += aivNum_ * tileCoreBS_) {
-                int32_t tileTaskCount =
-                    min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(n_ * c_ - taskOffset));
-                InitOutput<T>(gradWeightGlobal_[taskOffset * (n_ * n_ + PRE_POST_NUM * n_)],
-                              (n_ * n_ + PRE_POST_NUM * n_) * tileTaskCount, 0);
-            }
-            SyncAll<true>();
         }
     }
 
