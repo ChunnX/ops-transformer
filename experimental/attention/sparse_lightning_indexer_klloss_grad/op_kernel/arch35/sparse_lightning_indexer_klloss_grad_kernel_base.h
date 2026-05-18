@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_kernel_base.h
+ * \file sparse_lightning_indexer_klloss_grad_kernel_base.h
  * \brief
  */
  
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_KERNEL_BASE_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_KERNEL_BASE_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_KERNEL_BASE_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_KERNEL_BASE_H
 
-#include "sparse_lightning_indexer_grad_tiling_regbase.h"
-#include "sparse_lightning_indexer_grad_regbase_common.h"
-#include "sparse_lightning_indexer_grad_cube_block.h"
-#include "sparse_lightning_indexer_grad_vector_block.h"
+#include "sparse_lightning_indexer_klloss_grad_tiling_regbase.h"
+#include "sparse_lightning_indexer_klloss_grad_regbase_common.h"
+#include "sparse_lightning_indexer_klloss_grad_cube_block.h"
+#include "sparse_lightning_indexer_klloss_grad_vector_block.h"
 
 namespace Slig {
 template <typename CubeBlockType, typename VecBlockType>

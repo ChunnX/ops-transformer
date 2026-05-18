@@ -19,7 +19,7 @@ set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     set(sparse_lightning_indexer_klloss_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_lightning_indexer_klloss_grad")
     add_ops_compile_options(
-        OP_NAME SparseLightningIndexerKLLossGrad
+        OP_NAME SparseLightningIndexerKllossGrad
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
@@ -28,14 +28,14 @@ endif()
 
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
-            OP_NAME SparseLightningIndexerKLLossGrad
+            OP_NAME SparseLightningIndexerKllossGrad
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
     )
 else()
     add_ops_compile_options(
-            OP_NAME SparseLightningIndexerKLLossGrad
+            OP_NAME SparseLightningIndexerKllossGrad
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror

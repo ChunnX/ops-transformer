@@ -20,7 +20,7 @@
 #include <algorithm>
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_type.h"
-#include "../sparse_lightning_indexer_grad_tiling_common.h"
+#include "../sparse_lightning_indexer_klloss_grad_tiling_common.h"
 #include "../../op_kernel/arch35/sparse_lightning_indexer_klloss_grad_template_tiling_key_regbase.h"
 #include "../../op_kernel/arch35/sparse_lightning_indexer_klloss_grad_tiling_regbase.h"
 #include "err/ops_err.h"

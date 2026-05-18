@@ -9,18 +9,18 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad.cpp
+ * \file sparse_lightning_indexer_klloss_grad.cpp
  * \brief
  */
 #include "kernel_operator.h"
 using namespace AscendC;
 
-#include "arch35/sparse_lightning_indexer_grad_regbase_common.h"
-#include "arch35/sparse_lightning_indexer_grad_tiling_regbase.h"
-#include "arch35/sparse_lightning_indexer_grad_template_tiling_key_regbase.h"
-#include "arch35/sparse_lightning_indexer_grad_vector_block.h"
-#include "arch35/sparse_lightning_indexer_grad_cube_block.h"
-#include "arch35/sparse_lightning_indexer_grad_kernel_base.h"
+#include "arch35/sparse_lightning_indexer_klloss_grad_regbase_common.h"
+#include "arch35/sparse_lightning_indexer_klloss_grad_tiling_regbase.h"
+#include "arch35/sparse_lightning_indexer_klloss_grad_template_tiling_key_regbase.h"
+#include "arch35/sparse_lightning_indexer_klloss_grad_vector_block.h"
+#include "arch35/sparse_lightning_indexer_klloss_grad_cube_block.h"
+#include "arch35/sparse_lightning_indexer_klloss_grad_kernel_base.h"
 using namespace Slig;
 #define SLI_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
     do {                                                                                                               \
@@ -41,7 +41,7 @@ using namespace Slig;
 template<int TopKRange, int LayoutT_Q, int LayoutT_KT, int SparseMode, bool HasCuSeqlensQ, bool HasCuSeqlensK, bool HasSequsedQ, 
          bool HasSequsedK, bool HasCmpResidualK, bool Deterministic>
  __global__ __aicore__ void
-sparse_lightning_indexer_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__ uint8_t *sparseIndices, 
+sparse_lightning_indexer_klloss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__ uint8_t *sparseIndices, 
                               __gm__ uint8_t *attnSoftmaxL1, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
                               __gm__ uint8_t *metadata, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dw, 

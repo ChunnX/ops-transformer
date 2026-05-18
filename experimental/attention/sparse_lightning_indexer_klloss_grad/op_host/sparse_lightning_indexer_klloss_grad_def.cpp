@@ -16,9 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class SparseLightningIndexerGrad : public OpDef {
+class SparseLightningIndexerKllossGrad : public OpDef {
 public:
-    explicit SparseLightningIndexerGrad(const char *name) : OpDef(name)
+    explicit SparseLightningIndexerKllossGrad(const char *name) : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
@@ -103,9 +103,11 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("opFile.value", "sparse_lightning_indexer_klloss_grad")
+            .ExtendCfgInfo("opInterface.value", "sparse_lightning_indexer_klloss_grad")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };
-OP_ADD(SparseLightningIndexerKLLossGrad);
+OP_ADD(SparseLightningIndexerKllossGrad);
 } // namespace ops

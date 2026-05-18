@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_tiling_common.h
+ * \file sparse_lightning_indexer_klloss_grad_tiling_common.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_TILING_COMMON_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_TILING_COMMON_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_COMMON_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_COMMON_H
 
 #include <cstdint>
 #include "err/ops_err.h"

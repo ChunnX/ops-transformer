@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_tiling_regbase.h
+ * \file sparse_lightning_indexer_klloss_grad_tiling_regbase.h
  * \brief
  */
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_REGBASE_TILING_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_REGBASE_TILING_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_REGBASE_TILING_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_REGBASE_TILING_H
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
@@ -171,4 +171,4 @@ public:
 };
 
 } // namespace optiling
-#endif // SPARSE_LIGHTNING_INDEXER_GRAD_TILING_H
+#endif // SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_H
