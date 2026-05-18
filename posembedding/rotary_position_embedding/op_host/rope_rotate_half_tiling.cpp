@@ -49,6 +49,7 @@ const uint64_t TWO = 2;
 const uint64_t SINGLE_BUFFER = 1;
 const uint64_t DOUBLE_BUFFER = 2;
 const uint64_t TILING_KEY_PREFIX = 1000;
+const uint64_t TILING_KEY_SMALL_SHAPE_PREFIX = 1100;
 const uint64_t TILING_MODE_WEIGHT = 10;
 constexpr size_t UB_RESERVE_SIZE = 2 * 1024;
 constexpr uint64_t DEFAULT_SYSTEM_WORKSPACESIZE = 16 * 1024 * 1024;
