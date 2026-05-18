@@ -26,7 +26,7 @@ public:
     __aicore__ inline RotateHalfRopeFullLoadXd(){};
     
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, const AiInfraRotaryPositionEmbeddingTilingData &tilingData);
+        GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, const RotaryPositionEmbeddingTilingData &tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -57,7 +57,7 @@ private:
 
 template <typename OriT, typename CmpT>
 __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::Init(
-    GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, const AiInfraRotaryPositionEmbeddingTilingData &tilingData)
+    GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, const RotaryPositionEmbeddingTilingData &tilingData)
 {
     this->FullLoadXDInit(tilingData);
 
