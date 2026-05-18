@@ -66,7 +66,7 @@
       <tr>
           <td>sparse_indices</td>
           <td>输入</td>
-          <td>代表离散取kvCache的索引，不支持非连续。当layout_query为BSND时，shape需要传入[B, Q_S, KV_N, sparse_size]，当layout_query为TND时，shape需要传入[Q_T, KV_N, sparse_size]，其中sparse_size为一次离散选取的block数，需要保证每行有效值均在前半部分，无效值均在后半部分，且需要满足sparse_size大于0。</td>
+          <td>代表离散取kvCache的索引，不支持非连续。当layout_query为BSND时，shape需要传入[B, Q_S, KV_N, sparse_size]，当layout_query为TND时，shape需要传入[Q_T, KV_N, sparse_size]，其中sparse_size为一次离散选取的block数，需要保证每行有效值均在前半部分，无效值均在后半部分，且需要满足sparse_size大于0。当`key`和`value`的数据类型为`hifloat8`时，sparse_size仅支持2048。</td>
           <td>INT32</td>
           <td>ND</td>
       </tr>
