@@ -134,10 +134,11 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     uint64_t remainingSpace = TOTAL_UB_SIZE - mteCommFixedSpace;
     uint64_t maxXPerBlock;
     // scale buffer 的开销以 FracDiv 精确计入 UB 预算（避免 < 1 B per X 被整数截断）
+    // 根据量化类型计算 scale 存储开销
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 4U, 1U);   // + 1/4 B per X
+        maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 4U, 1U);   // MX量化: + 1/4 B per X
     } else {
-        maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 32U, 3U);  // + 3/32 B per X
+        maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 32U, 3U);  // KG量化: + 3/32 B per X
     }
 
     // host 推荐值（TARGET_ITER 公式）作为上限，kernel UB 约束作为 safety net
@@ -157,10 +158,11 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     }
 
     // 每块 scale 数量（real 值，GM 偏移用；UB 分配按 32B 对齐）
+    // 根据量化方式确定 scale 分组粒度
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;
+        scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;  // MX量化: 32个x共用1个scale
     } else {
-        scaleNumsPerBlock_ = xPerBlock_ / PER_GROUP_SIZE;
+        scaleNumsPerBlock_ = xPerBlock_ / PER_GROUP_SIZE;  // KG量化: 128个x共用1个scale
     }
 
     uint32_t scaleAlignNum = UB_ALIGN_BYTES / sizeof(ScalesType);
@@ -258,10 +260,11 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
         if ((aivId == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
             curXNum = tailXNums_;
             // 尾块的scale数量：real 值（DataCopyPad 处理 sub-32B 拷贝，不再需要硬对齐）
+            // 根据量化方式动态计算尾块scale数量
             if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-                curScaleNum = CeilDivU32(curXNum, MX_SIZE);
+                curScaleNum = CeilDivU32(curXNum, MX_SIZE);  // MX量化分组
             } else {
-                curScaleNum = CeilDivU32(curXNum, PER_GROUP_SIZE);
+                curScaleNum = CeilDivU32(curXNum, PER_GROUP_SIZE);  // KG量化分组
             }
         }
 
