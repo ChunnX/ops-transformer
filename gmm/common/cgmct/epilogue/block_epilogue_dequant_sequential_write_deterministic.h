@@ -553,6 +553,11 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     uint64_t logitOffset = logitBase + mOffset;
     uint64_t yOffset = Get<DET_SEQ_Y_IDXS>(blockCoord);
 
+    // Rebase yGlobal_ by workspaceBaseRow to keep element offsets small
+    // (A5 DataCopyPad has limited GM element offset range)
+    yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut*>(params_->yGMAddr)
+        + workspaceBaseRow * static_cast<uint64_t>(n_));
+
     vlForFloatNumber_ = DET_SEQ_BLOCKS_BYTES / sizeof(DataTypeOut);
     auto repeatTimesRe = CeilDiv(singleN_, vlForFloatNumber_);
     uint16_t remainRepeatTimesLogit =
@@ -585,11 +590,8 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
-        // Workspace write offset = workspaceBaseRow (cycling window base)
-        //   + logitBase (tile's row offset within group)
-        //   + mOffset (sub-block offset within tile)
-        //   + chunk offset within sub-block
-        uint64_t wsWriteOffset = workspaceBaseRow + logitBase + mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
+        // Workspace write offset (workspaceBaseRow already rebased into yGlobal_)
+        uint64_t wsWriteOffset = logitBase + mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
         VectorSequentialWrite(singleN_, repeatTimesLine_, wsWriteOffset, yOffset, yLocal);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         yPingPongID_ = (yPingPongID_ + 1) & 1;
