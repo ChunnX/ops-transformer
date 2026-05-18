@@ -35,7 +35,7 @@ constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 
-ge::graphStatus TilingSparseLightningIndexerKLLossGrad(gert::TilingContext *context)
+ge::graphStatus TilingSparseLightningIndexerKllossGrad(gert::TilingContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -47,7 +47,7 @@ ge::graphStatus TilingSparseLightningIndexerKLLossGrad(gert::TilingContext *cont
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingPrepareForSparseLightningIndexerKLLossGrad(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForSparseLightningIndexerKllossGrad(gert::TilingParseContext *context)
 {
     OP_LOGW(context, "Start registering tiling.");
     auto compileInfoPtr = context->GetCompiledInfo<SparseLightningIndexerGradCompileInfo>();
@@ -59,6 +59,6 @@ ge::graphStatus TilingPrepareForSparseLightningIndexerKLLossGrad(gert::TilingPar
 }
 
 IMPL_OP_OPTILING(SparseLightningIndexerKllossGrad)
-    .Tiling(TilingSparseLightningIndexerKLLossGrad)
-    .TilingParse<SparseLightningIndexerGradCompileInfo>(TilingPrepareForSparseLightningIndexerKLLossGrad);
+    .Tiling(TilingSparseLightningIndexerKllossGrad)
+    .TilingParse<SparseLightningIndexerGradCompileInfo>(TilingPrepareForSparseLightningIndexerKllossGrad);
 } // namespace optiling
