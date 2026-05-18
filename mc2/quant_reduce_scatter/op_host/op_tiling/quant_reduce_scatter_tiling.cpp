@@ -88,6 +88,7 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     tilingData.quantReduceScatterTilingInfo.hiddenSize = xValueH;
     tilingData.quantReduceScatterTilingInfo.scaleHiddenSize = scalesValueH;
     tilingData.quantReduceScatterTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    tilingData.quantReduceScatterTilingInfo.isMc2Context = false;
 }
 
 // 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock（先除 rankSize 再反推），写入 tilingData
@@ -145,7 +146,11 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
     TilingRunInfo runInfo = {};
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "NpuArch is invalid in quant_reduce_scatter."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_REDUCE_SCATTER) !=
+
+    QuantReduceScatterIdx config;
+    config.X_INDEX = 0;
+    config.SCALES_INDEX = 1;
+    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_REDUCE_SCATTER, config) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_reduce_scatter."), return ge::GRAPH_FAILED);
 
