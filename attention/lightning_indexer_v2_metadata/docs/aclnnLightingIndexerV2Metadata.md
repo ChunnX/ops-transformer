@@ -62,10 +62,10 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
   <col style="width: 100px">
   <col style="width: 350px">
   <col style="width: 200px">
-  <col style="width: 70px">
-  <col style="width: 70px">
+  <col style="width: 100px">
+  <col style="width: 100px">
   <col style="width: 190px">
-  <col style="width: 80px">
+  <col style="width: 100px">
   </colgroup>
   <thead>
     <tr>
