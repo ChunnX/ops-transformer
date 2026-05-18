@@ -25,6 +25,7 @@
 
 #include "kernel_operator.h"
 #include "const_args.hpp"
+#include "mc2_context.hpp"
 
 #ifdef HCCL_COMM
 #include "moe_distribute_base.h"
@@ -111,13 +112,16 @@ public:
         AscendC::LocalTensor<int32_t> ub;
         FORCE_INLINE_AICORE
         HcclShmem(){
-            auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        }
+        FORCE_INLINE_AICORE
+        void initShmem(__gm__ Mc2MoeContext *mc2Context) {
+            GM_ADDR hcclContextAddr = (GM_ADDR)mc2Context->hcclContextAddr;
             if constexpr(IS_A2) {
-                WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+                WinContext_ = (__gm__ HcclA2CombineOpParam *)hcclContextAddr;
                 m_rank = WinContext_->rankId;
                 m_rankSize = WinContext_->rankNum;
             } else {
-                WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
+                WinContext_ = (__gm__ HcclOpResParamCustom *)hcclContextAddr;
                 m_rank = WinContext_->localUsrRankId;
                 m_rankSize = WinContext_->rankSize;
             }

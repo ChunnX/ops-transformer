@@ -14,6 +14,7 @@
  */
 
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
+#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
 
 #ifndef ASCENDC_DISPATCH_FFN_COMBINE_TILING_H
 #define ASCENDC_DISPATCH_FFN_COMBINE_TILING_H
@@ -70,7 +71,7 @@ struct DispatchFFNCombineInfoQuant {
 
 struct DispatchFFNCombineInfoNonQuant {
     DispatchFFNCombineInfoCommon common;
-    optiling::InnerMoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+    optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
 };
 
 struct DispatchFFNCombineTilingDataQuant {

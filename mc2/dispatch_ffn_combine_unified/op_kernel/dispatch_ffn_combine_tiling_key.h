@@ -35,6 +35,8 @@ ASCENDC_TPL_ARGS_DECL(DispatchFFNCombine,
 );
 
 ASCENDC_TPL_SEL(
+    // Quant path (W4A8 + INT8): both A2 (910B) and A3 (910_93).
+    // Note: W4A8 on A2 is reserved but not yet implemented.
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_W1, 0, 1),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_W2, 0, 1),
@@ -46,6 +48,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(TPL_ARCH, ASCENDC_TPL_UI_LIST, SOC_ASCEND910B, SOC_ASCEND910_93),
         ASCENDC_TPL_TILING_STRUCT_SEL(DispatchFFNCombineTilingDataQuant)
     ),
+    // Non-quant path: both A2 (910B) and A3 (910_93).
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_W1, 0, 1),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_W2, 0, 1),

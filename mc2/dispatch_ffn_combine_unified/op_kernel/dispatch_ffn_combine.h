@@ -34,6 +34,7 @@ using namespace AscendC;
 #include "utils/moe_distribute_base.h"
 
 #include "dispatch_ffn_combine_tiling.h"
+#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
@@ -51,7 +52,10 @@ using namespace AscendC;
 
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
+#include "utils/dispatch_policy_custom.hpp"
+#include "utils/mc2_context.hpp"
 #include "dispatch_ffn_combine_kernel.hpp"
+#include "dispatch_ffn_combine_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
 using namespace Catlass;
@@ -67,17 +71,18 @@ namespace DispatchFFNCombineImpl {
 //   NzW1_  : whether weight1 is in FRACTAL_NZ format
 //   NzW2_  : whether weight2 is in FRACTAL_NZ format
 //   IS_A2_ : whether running on Atlas A2 (910B); false means A3 (910_93)
-#define TemplateMMA2AClass                                                                                             \
+#define MegaMoeClass                                                                                                  \
     typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool NzW1_, bool NzW2_, bool IS_A2_
-#define TemplateMMA2ACFunc AType_, BType_, CType_, TB1_, TB2_, NzW1_, NzW2_, IS_A2_
+#define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, NzW1_, NzW2_, IS_A2_
 
 using namespace AscendC;
-template <TemplateMMA2AClass>
+template <MegaMoeClass>
 class DispatchFFNCombine {
 public:
     __aicore__ inline DispatchFFNCombine() {};
     __aicore__ inline void Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
                                 GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
+                                GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
                                 GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
@@ -90,6 +95,8 @@ private:
     GM_ADDR weight2GM_;
     GM_ADDR weightScales1GM_;
     GM_ADDR weightScales2GM_;
+    GM_ADDR xActiveMaskGM_;
+    GM_ADDR scalesGM_;
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
@@ -114,17 +121,19 @@ private:
     int32_t maxOutputSize;
     int32_t EP;
     int32_t listLen;
+    float activationClamp;
 
     optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
-    optiling::InnerMoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+    optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
     uint64_t initRoutingQuantTilingKey;
 };
 
 
-template <TemplateMMA2AClass>
-__aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
+template <MegaMoeClass>
+__aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Init(
     GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
     GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
+    GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
     GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
@@ -139,6 +148,8 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
     weight2GM_ = weight2GM;
     weightScales1GM_ = weightScales1GM;
     weightScales2GM_ = weightScales2GM;
+    xActiveMaskGM_ = xActiveMaskGM;
+    scalesGM_ = scalesGM;
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
@@ -157,6 +168,8 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
         maxOutputSize = tilingData.dispatchFFNCombineInfo.common.maxRecvTokenNum;
         listLen = tilingData.dispatchFFNCombineInfo.common.listLen;
 
+        activationClamp = tilingData.dispatchFFNCombineInfo.common.activationClamp;
+
         moeInitRoutingQuantV2TilingData = tilingData.dispatchFFNCombineInfo.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.dispatchFFNCombineInfo.common.initRoutingQuantTilingKey;
     } else {
@@ -173,30 +186,26 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
         maxOutputSize = tilingData.dispatchFFNCombineInfo.common.maxRecvTokenNum;
         listLen = tilingData.dispatchFFNCombineInfo.common.listLen;
 
+        activationClamp = tilingData.dispatchFFNCombineInfo.common.activationClamp;
+
         moeInitRoutingV2TilingData = tilingData.dispatchFFNCombineInfo.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.dispatchFFNCombineInfo.common.initRoutingQuantTilingKey;
     }
 
-    // The unified op exposes `context` as the first kernel input which represents
-    // the HCCL group descriptor. The actual HCCL window context is still resolved
-    // through the standard GetHcclContext() interface, but the layout of the
-    // descriptor differs between Atlas A2 and A3 platforms.
-    auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    if constexpr (IS_A2_) {
-        __gm__ HcclA2CombineOpParam *WinContext_{nullptr};
-        WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
-        rank = WinContext_->rankId;
-        rankSize = WinContext_->rankNum;
-    } else {
-        __gm__ HcclOpResParamCustom *WinContext_{nullptr};
-        WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
-        rank = WinContext_->localUsrRankId;
-        rankSize = WinContext_->rankSize;
+    // The unified op exposes `context` as the first kernel input containing a
+    // Mc2MoeContext struct that holds all ranks' HCCL buffer base addresses.
+    // This follows the pattern established in mega_moe for direct peer-memory
+    // access without HCCL collective calls.
+    __gm__ Mc2MoeContext *mc2Context = reinterpret_cast<__gm__ Mc2MoeContext*>(contextGM_);
+    rank = static_cast<int32_t>(mc2Context->epRankId);
+    rankSize = static_cast<int32_t>(mc2Context->epRankSize);
+    for (int32_t i = 0; i < rankSize; ++i) {
+        winRankAddr_[i] = (GM_ADDR)mc2Context->epHcclBuffer[i];
     }
 }
 
-template <TemplateMMA2AClass>
-__aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
+template <MegaMoeClass>
+__aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
 {
     using ArchTag = Arch::AtlasA2;
     constexpr bool enableUnitFlag = false;
@@ -204,16 +213,17 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
 
     // ------------------------------------------------------------------
     // Path selection based on the weight element type.
-    //   - W4A8 path : weight is INT4 (or INT32 packed INT4)
-    //   - INT8 path : weight is INT8
-    //   - BF16 path : weight is FP16 / BF16
+    //   - W4A8 path : weight is INT4 (or INT32 packed INT4) — A3 (910_93) only
+    //   - INT8 path : weight is INT8 — A2 (910B) and A3 (910_93)
+    //   - BF16 path : weight is FP16 / BF16 — A2 and A3
     // The matmul A side type is forced to match the weight side so that the
     // cube engine sees a homogeneous (A,B) pair.
     // ------------------------------------------------------------------
     constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t>;
     constexpr bool isInt8 = std::is_same_v<BType_, int8_t>;
 
-    using AElement = std::conditional_t<isW4A8, AscendC::int4b_t, BType_>;
+    using AElement = std::conditional_t<isW4A8, AscendC::int4b_t,
+                      std::conditional_t<isInt8, int8_t, AType_>>;
     using BElement = std::conditional_t<isW4A8, AscendC::int4b_t, BType_>;
     using CElement = std::conditional_t<isW4A8 || isInt8, float16_t, CType_>;
     using D1Element = std::conditional_t<isW4A8 || isInt8, int8_t, CType_>;
@@ -222,19 +232,14 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
     uint32_t n2 = k;
 
     using LayoutA = layout::RowMajor;
-    using LayoutB1 = typename std::conditional<
+    using LayoutB = typename std::conditional<
         NzW1_,
         layout::zN,
         typename std::conditional<TB1_, layout::ColumnMajor, layout::RowMajor>::type
     >::type;
-    using LayoutB2 = typename std::conditional<
-        NzW2_,
-        layout::zN,
-        typename std::conditional<TB2_, layout::ColumnMajor, layout::RowMajor>::type
-    >::type;
 
-    LayoutB1 layoutB1 = LayoutBInitializer<LayoutB1, BElement>::create(k, n);
-    LayoutB2 layoutB2 = LayoutBInitializer<LayoutB2, BElement>::create(k2, n2);
+    LayoutB layoutB1 = LayoutBInitializer<LayoutB, BElement>::create(k, n);
+    LayoutB layoutB2 = LayoutBInitializer<LayoutB, BElement>::create(k2, n2);
     using LayoutC = layout::RowMajor;
 
     // Cube tile shapes are tuned per data-type combination to match the legacy
@@ -270,8 +275,7 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
         enableUnitFlag, enableShuffleK>;
 
     using AType = Gemm::GemmType<AElement, layout::RowMajor>;
-    using BType1 = Gemm::GemmType<BElement, LayoutB1>;
-    using BType2 = Gemm::GemmType<BElement, LayoutB2>;
+    using BType = Gemm::GemmType<BElement, LayoutB>;
     using CType = Gemm::GemmType<CElement, layout::RowMajor>;
     using D1Type = Gemm::GemmType<D1Element, layout::RowMajor>;
     using D2Type = std::conditional_t<
@@ -280,29 +284,14 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
         Gemm::GemmType<CType_, layout::RowMajor>
     >;
 
-    // Per-channel `QuantTileCopy` is only used by the W4A4 path; the Fixpipe
-    // path uses BlockMmad's default tile copy. We still keep a separate alias
-    // for B1/B2 because their layouts may differ (NzW1 vs NzW2) — type-level
-    // isolation only.
     using ScaleGranularity = Catlass::Gemm::Tile::ScaleGranularity;
-    using TileCopyMmad1 =
-        Gemm::Tile::QuantTileCopy<ArchTag, AType, BType1, CType, void, ScaleGranularity::PER_CHANNEL>;
-    using TileCopyMmad2 =
-        Gemm::Tile::QuantTileCopy<ArchTag, AType, BType2, CType, void, ScaleGranularity::PER_CHANNEL>;
+    using TileCopyMmad =
+        Gemm::Tile::QuantTileCopy<ArchTag, AType, BType, CType, void, ScaleGranularity::PER_CHANNEL>;
 
-    // For the W4A4 dispatch policy, BlockMmad takes 8 template args (including
-    // the explicit QuantTileCopy). For Fixpipe it takes 6 (default tile copy).
-    // The conditional is reduced to a single line per Mmad and is selected
-    // purely from `BElement` via `isW4A8`.
-    using BlockMmad1 = std::conditional_t<
+    using BlockMmad = std::conditional_t<
         isW4A8,
-        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType1, CType, void, TileCopyMmad1>,
-        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType1, CType>
-    >;
-    using BlockMmad2 = std::conditional_t<
-        isW4A8,
-        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType2, CType, void, TileCopyMmad2>,
-        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType2, CType>
+        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType, void, TileCopyMmad>,
+        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType>
     >;
 
     constexpr uint32_t ubStages = 2;
@@ -328,16 +317,26 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
         D1Type, TileElemWiseMuls, TileCopy1>;
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
-    using BlockEpilogue2 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType,
-        D2Type, TileCopy2>;
+    using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
+    using BlockEpilogue2 = std::conditional_t<
+        isW4A8,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>
+    >;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
-    // Forward `IS_A2_` to the unified kernel so that `HcclShmem<IS_A2_>` picks
-    // the correct window-context structure (`HcclA2CombineOpParam` for A2 vs
-    // `HcclOpResParamCustom` for A3) at compile time.
-    using MatmulKernel = Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad1,
-        BlockMmad2, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2, IS_A2_>;
+    // Select the correct kernel implementation at compile time based on the
+    // platform: A2 (910B) uses DispatchFFNCombineKernelA2 with push-based
+    // SendTokensV3/RecvTokensV3; A3 (910_93) uses DispatchFFNCombineKernel
+    // with pull-based direct peer-memory access.
+    using MatmulKernel = std::conditional_t<
+        IS_A2_,
+        Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
+                                                 BlockEpilogue1, BlockEpilogue2>,
+        Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList,
+                                               BlockEpilogue1, BlockEpilogue2>
+    >;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};
@@ -379,7 +378,7 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
             static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
-            xGM_, layoutA1, layoutA2,
+            contextGM_, xGM_, layoutA1, layoutA2,
             weight1GM_, layoutB1,
             weight2GM_, layoutB2,
             weightScales1GM_, layoutScale1,
@@ -387,8 +386,8 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
             yGM_, layoutD1, layoutD2,
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, UB_MOVE_NUM, moeInitRoutingQuantV2TilingData,
-            epilogueGranularity};
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, moeInitRoutingQuantV2TilingData,
+            epilogueGranularity, activationClamp, winRankAddr_[rank]};
     } else {
         params = typename MatmulKernel::Params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
@@ -396,7 +395,7 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
             static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
-            xGM_, layoutA1, layoutA2,
+            contextGM_, xGM_, layoutA1, layoutA2,
             weight1GM_, layoutB1,
             weight2GM_, layoutB2,
             weightScales1GM_, layoutScale1,
@@ -404,8 +403,8 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
             yGM_, layoutD1, layoutD2,
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, UB_MOVE_NUM, moeInitRoutingV2TilingData,
-            epilogueGranularity};
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, moeInitRoutingV2TilingData,
+            epilogueGranularity, activationClamp, winRankAddr_[rank]};
     }
 
     MatmulKernel kernel(params);

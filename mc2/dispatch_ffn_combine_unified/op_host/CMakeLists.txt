@@ -22,10 +22,23 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(dispatch_ffn_combine_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+
+    set(_MOE_DISTRIBUTE_BASE_SRC "${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/moe_distribute_base.h")
+    set(_MOE_DISTRIBUTE_BASE_DST "${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/utils/moe_distribute_base.h")
+    if(EXISTS ${_MOE_DISTRIBUTE_BASE_SRC})
+        file(READ ${_MOE_DISTRIBUTE_BASE_SRC} _MOE_DISTRIBUTE_BASE_CONTENT)
+        string(REPLACE "HcclOpResParam" "HcclOpResParamCustom" _MOE_DISTRIBUTE_BASE_CONTENT "${_MOE_DISTRIBUTE_BASE_CONTENT}")
+        string(REPLACE "HcclRankRelationResV2" "HcclRankRelationResV2Custom" _MOE_DISTRIBUTE_BASE_CONTENT "${_MOE_DISTRIBUTE_BASE_CONTENT}")
+        file(WRITE ${_MOE_DISTRIBUTE_BASE_DST} "${_MOE_DISTRIBUTE_BASE_CONTENT}")
+        message(STATUS "Copied and modified moe_distribute_base.h to ${_MOE_DISTRIBUTE_BASE_DST}")
+    endif()
+
     add_ops_compile_options(
         OP_NAME DispatchFFNCombine
         OPTIONS --cce-auto-sync=off
         OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+        OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
+        OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
         OPTIONS -DHCCL_COMM
     )
 

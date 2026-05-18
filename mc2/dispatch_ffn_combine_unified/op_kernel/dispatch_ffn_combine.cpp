@@ -11,8 +11,9 @@
 /* !
  * \file dispatch_ffn_combine.cpp
  * \brief Unified DispatchFFNCombine entry kernel.
- *        Supports W4A8 (int4 weight), INT8 (int8 weight) and BF16/FP16 weight paths
- *        for both Atlas A2 (910B) and A3 (910_93) platforms.
+ *        - A3 (910_93): W4A8 (int4 weight), INT8 (int8 weight), BF16/FP16 weight
+ *        - A2 (910B):   INT8 (int8 weight), BF16/FP16 weight
+ *        Note: W4A8 on A2 is reserved but not yet implemented.
  */
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -47,7 +48,8 @@ __global__ __aicore__ void dispatch_ffn_combine(
                            TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
                            isW1Nz, isW2Nz, isA2> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2,
-                weightScales1, weightScales2, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                weightScales1, weightScales2, xActiveMask, scales,
+                yOut, expertTokenNumsOut, workspaceGM, tilingGM);
         op.Process();
     } else {
         REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
@@ -57,7 +59,8 @@ __global__ __aicore__ void dispatch_ffn_combine(
                            TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
                            isW1Nz, isW2Nz, isA2> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2,
-                weightScales1, weightScales2, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                weightScales1, weightScales2, xActiveMask, scales,
+                yOut, expertTokenNumsOut, workspaceGM, tilingGM);
         op.Process();
     }
 }

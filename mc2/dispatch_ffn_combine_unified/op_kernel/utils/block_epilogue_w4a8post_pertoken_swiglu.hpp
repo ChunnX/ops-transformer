@@ -176,7 +176,9 @@ public:
                     AscendC::GlobalTensor<int32_t> const &cumsumMM, uint32_t MOffset,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t expertPerRank,
                     uint32_t EP, AscendC::GlobalTensor<float> const &gmGMM1, int32_t rank, int32_t listLen,
-                    uint32_t epilogueCoreNum = 40, Callback &&callback = Callback{})
+                    uint32_t epilogueCoreNum = 40,
+                    float swigluLimit = 0.0f,
+                    Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
@@ -307,13 +309,19 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Muls(ubCFp32, ubCFp32, perTokenScale, blockN);
 
+            // swiglu limit clamp
+            if (swigluLimit > 0.0f) {
+                AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit, ChunkTileLen);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+
 #ifdef W4A8_DEBUG
-            // PipeBarrier<PIPE_ALL>();
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
             DataCopy(gmTileGMM1, ubCFp32, blockN);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-            // PipeBarrier<PIPE_ALL>();
 #endif
 
             // SwiGLU computation process
