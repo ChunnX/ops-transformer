@@ -279,6 +279,8 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 
 - 确定性计算：
   - aclnnMoeGatingTopKBackward默认确定性实现。
+- xNorm和gradX的shape为[M,N]，N的取值范围为[2,2048]
+- gradY和expertIdx的shape为[M,K]，K的取值范围为[1,N]
 
 ## 调用示例
 
