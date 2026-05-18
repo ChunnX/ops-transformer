@@ -33,7 +33,6 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
 
     TPipe pipe;
     if (TILING_KEY_IS(1)) {
-        printf("TILING_KEY_IS(1)\n");
         MhcPreGradKernel<DTYPE_X, DTYPE_PHI, true> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);

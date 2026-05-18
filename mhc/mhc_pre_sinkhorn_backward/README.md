@@ -174,4 +174,4 @@ x的shape记为(B,S,N,C)
 
 | 调用方式 | 调用样例 | 说明 |
 | :--- | :--- | :--- |
-| aclnn调用 | [test_aclnn_mhc_pre.cpp](examples/test_aclnn_mhc_pre.cpp) | 通过[aclnnMhcPreSinkhornBackward](docs/aclnn_mhc_pre_sinkhorn_backward.md) 接口方式调用MhcPreSinkhornBackward算子。 |
+| aclnn调用 | [test_aclnn_mhc_pre.cpp](examples/test_aclnn_mhc_pre_sinkhorn_backward.cpp) | 通过[aclnnMhcPreSinkhornBackward](docs/aclnnMhcPreSinkhornBackward.md) 接口方式调用MhcPreSinkhornBackward算子。 |

@@ -544,7 +544,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
     Copy(gradHResLocal_, gradHResTempLocal_, ELEMENTS_SIZE_PER_REPEAT, n_ * tileRepeatTimes_, {1, 2, 8, 16});
     PipeBarrier<PIPE_V>();
 
-    Cast(gradHResFLocal_.template ReinterpretCast<int32_t>(), gradHResLocal_.template ReinterpretCast<int64_t>(),
+    Cast(gradHResLocal_.template ReinterpretCast<int32_t>(), gradHResLocal_.template ReinterpretCast<int64_t>(),
          RoundMode::CAST_NONE, tileTaskCount * n_ * n_);
 
     PipeBarrier<PIPE_V>();
