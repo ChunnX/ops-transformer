@@ -396,6 +396,10 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process()
 {
     int32_t actualCoreNums = this->tilingData->multiCoreParamsRegbase.coreNum;
+    // SyncAll Cube和Vector都需要调用
+    if (this->tilingData->initOutputParams.needInit) {
+        SyncAll<false>();
+    }
     if (aicIdx >= actualCoreNums) {
         return;
     }
