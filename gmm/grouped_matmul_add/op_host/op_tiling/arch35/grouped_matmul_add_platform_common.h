@@ -29,9 +29,14 @@ inline typename std::enable_if<
     std::is_same<T, gert::TilingParseContext>::value || std::is_same<T, gert::TilingContext>::value, bool>::type
 IsAdvancedNpuArch(T *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "context is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INTERNAL_NULLPTR_ERROR(
+                    "GroupedMatmulAdd", "context", "IsAdvancedNpuArch"),
+                return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"),
+    OP_CHECK_IF(platformInfo == nullptr,
+                OP_LOGE_FOR_INTERNAL_NULLPTR_ERROR(
+                    context->GetNodeName(), "platformInfo", "IsAdvancedNpuArch"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();

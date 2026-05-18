@@ -31,10 +31,12 @@ using namespace GroupedMatmulAdd;
 inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, GMMCompileInfo *compileInfoPtr)
 {
     OP_CHECK_IF(platformInfo == nullptr,
-                    OP_LOGE("GroupedMatmulAdd", "InitCompileInfo platformInfo is null"),
+                    OP_LOGE_FOR_INTERNAL_NULLPTR_ERROR(
+                        "GroupedMatmulAdd", "platformInfo", "InitCompileInfo"),
                     return ge::GRAPH_FAILED);
     OP_CHECK_IF(compileInfoPtr == nullptr,
-                    OP_LOGE("GroupedMatmulAdd", "InitCompileInfo compileInfoPtr is null"),
+                    OP_LOGE_FOR_INTERNAL_NULLPTR_ERROR(
+                        "GroupedMatmulAdd", "compileInfoPtr", "InitCompileInfo"),
                     return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -59,7 +61,9 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, GMMCompi
 
 inline ge::graphStatus InitCompileInfo(gert::TilingParseContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "InitCompileInfo context is null"),
+    OP_CHECK_IF(context == nullptr,
+                    OP_LOGE_FOR_INTERNAL_NULLPTR_ERROR(
+                        "GroupedMatmulAdd", "context", "InitCompileInfo(TilingParseContext)"),
                     return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
     auto compileInfoPtr = context->GetCompiledInfo<GMMCompileInfo>();
