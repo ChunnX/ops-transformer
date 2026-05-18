@@ -109,18 +109,15 @@ ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSi
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "OutputDesc yScale is nullptr."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(context.GetInputDesc(WEIGHT_ASSIST_MATRIX_INDEX) != nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(),
-            "weight_assist_matrix is not supported, please pass in a null pointer"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.GetOptionalInputDesc(BIAS_INDEX) != nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(),
-            "bias is not supported, please pass in a null pointer"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.GetInputDesc(SMOOTH_SCALE_INDEX) != nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(),
-            "smooth_scale is not supported, please pass in a null pointer"),
-        return ge::GRAPH_FAILED);
+    if (context.GetInputDesc(WEIGHT_ASSIST_MATRIX_INDEX) != nullptr) {
+        OP_LOGW(context.GetNodeName(), "weight_assist_matrix is not supported, please pass in a null pointer");
+    }
+    if (context.GetOptionalInputDesc(BIAS_INDEX) != nullptr) {
+        OP_LOGW(context.GetNodeName(), "bias is not supported, please pass in a null pointer");
+    }
+    if (context.GetInputDesc(SMOOTH_SCALE_INDEX) != nullptr) {
+        OP_LOGW(context.GetNodeName(), "smooth_scale is not supported, please pass in a null pointer");
+    }
 
     const auto *rawTiling = context.GetRawTilingData();
     OP_CHECK_IF(rawTiling == nullptr,
