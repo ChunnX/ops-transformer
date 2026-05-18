@@ -10,7 +10,7 @@
 
 /* !
  * \file moe_v2_gather_out_batch_row.h
- * \brief 按输出位置批量Gather输出模板，用于token数多、hiddenSize小的场景优化
+ * \brief 按输出位置批量Gather输出模板，用于token数多、hiddenSize、k小的场景优化
  *        利用dst_to_src索引（输出位置连续），批量写出，减少搬出次数，提升性能
  */
 #ifndef MOE_V2_GATHER_OUT_BATCH_ROW_H
@@ -59,7 +59,7 @@ private:
     int64_t activateRows;
 
     int64_t ubRowsPerLoop;
-
+    
     int64_t currentLoopRows;
     int64_t coreRows;
     int64_t perLoopRows;
@@ -82,35 +82,38 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
                                                                     int64_t indexOffset,
                                                                     LocalTensor<int32_t> &dstToSrcLocal)
 {
+    int64_t cols = this->cols;
+    int64_t k = this->k;
+    int64_t n = this->n;
+    int64_t totalLength = this->totalLength;
+    int64_t activateRows = this->activateRows;
+
     LocalTensor<T> outRowsLocal = outputRowsQueue.AllocTensor<T>();
 
-    DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams copyInParams{1, static_cast<uint32_t>(cols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
 
     for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
         int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffset + outPosIdx);
 
-        if (expandedTokenIdx < 0 || expandedTokenIdx >= this->totalLength || expandedTokenIdx >= this->activateRows) {
+        if (expandedTokenIdx < 0 || expandedTokenIdx >= totalLength || expandedTokenIdx >= activateRows) {
             continue;
         }
 
-        int64_t srcRowIdx = expandedTokenIdx / this->k;
+        int64_t srcRowIdx = expandedTokenIdx / k;
 
-        if (srcRowIdx < 0 || srcRowIdx >= this->n) {
+        if (srcRowIdx < 0 || srcRowIdx >= n) {
             continue;
         }
 
-        DataCopyPad(outRowsLocal[outPosIdx * this->cols], inputXGm[srcRowIdx * this->cols], copyInParams,
-                    copyInPadParams);
+        DataCopyPad(outRowsLocal[outPosIdx * cols], inputXGm[srcRowIdx * cols], copyInParams, copyInPadParams);
     }
-
-    AscendC::PipeBarrier<PIPE_MTE2>();
 
     SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
 
-    DataCopyExtParams copyOutParams{static_cast<uint16_t>(outPosRows), static_cast<uint32_t>(this->cols * sizeof(T)), 0,
-                                    0, 0};
-    DataCopyPad(expandedXGm[outPosStart * this->cols], outRowsLocal, copyOutParams);
+    DataCopyExtParams copyOutParams{static_cast<uint16_t>(outPosRows), static_cast<uint32_t>(cols * sizeof(T)), 0, 0,
+                                    0};
+    DataCopyPad(expandedXGm[outPosStart * cols], outRowsLocal, copyOutParams);
 
     outputRowsQueue.FreeTensor(outRowsLocal);
 }
