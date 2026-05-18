@@ -57,7 +57,7 @@ aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
         const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, "default", output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduce, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
