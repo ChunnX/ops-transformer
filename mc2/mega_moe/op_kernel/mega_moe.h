@@ -625,6 +625,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             Get<IDX_C_SCALE_OFFSET>(baseOffset_) + waveRowOffset * static_cast<int64_t>(scaleOutputN),
             Get<IDX_FLAG_OFFSET>(baseOffset_) + static_cast<int64_t>(waveIdx), 0L, 0L, 0L};
         epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        // ★ GMM1 HBM 输出地址（float）：每行 n 个 float
+        //   不同 expert 通过 IDX_M_OFFSET 隔开，同 expert 内不同 wave 通过 waveRowOffset 隔开。
+        //   走 (m, n) float 空间，按 row 维 (IDX_M_OFFSET + waveRowOffset) * n * 4 算偏移。
+        int64_t gmm1RowBase = Get<IDX_M_OFFSET>(baseOffset_) + waveRowOffset;
+        gmmAddrInfo.gmm1OutGlobal = params_.workspaceInfo.ptrGmm1Out +
+            gmm1RowBase * static_cast<int64_t>(n) * sizeof(float);
         if constexpr(g_coreType == AIC) {
             gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(QuantOutType);
             gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) *
@@ -994,10 +1000,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace, MegaMoeTrace::SP_GMM1_BEGIN);
 
                 if (subBlockIdx_ == 0) {
+                    // ★ flagIdBase = bi & 1：跨 batch wave 用 0/1 轮换，
+                    //   避免 CrossCoreSetFlag 单槽阻塞 cube 的第二个 NotifyVector。
                     MegaMoeImpl::GroupMatmulSwigluQuant<
                         QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
-                        vecSetSyncCom_, curWaveTrace);
+                        vecSetSyncCom_, curWaveTrace, static_cast<uint16_t>(bi & 1U));
                 }
 
                 // [TRACE] sp5: GMM1 完成（注意此处不 EndSync，AIV sw 可能还在跑）

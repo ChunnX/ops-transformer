@@ -49,6 +49,8 @@ struct GMMAddrInfo {
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
     GM_ADDR gmm2OutGlobal;
+    // GMM1 fixpipe 输出（float），cube 直接写 HBM，去掉 cube/vec UB 共享。
+    GM_ADDR gmm1OutGlobal;
 };
 
 struct PeermemInfo {
