@@ -470,9 +470,9 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
         // N轴 = N * (D+Dr), 核内循环 core_n 次, 每次192
         uint32_t headUnit = baseShapeInfo_.dSize + baseShapeInfo_.drSize; // 192
         singlecoreNumHeadSize_ = CeilDiv(baseShapeInfo_.nSize, aicNum_);
-        mm3BlockNum_ = CeilDiv(baseShapeInfo_.nSize, singlecoreNumHeadSize_);
-        mm4BlockNum_ = mm3BlockNum_;
         singlecoreHeadSizeQcQr_ = singlecoreNumHeadSize_ * headUnit;
+    } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
+        singlecoreHeadSizeQcQr_ = oriM;
     } else if (enableGroupComputeOpt_) {
         // 算力分组场景下G=8，dimHeadSizeQc跨8核切，dimHeadSizeQr跨4核切；matmulQc和matmulQr的singleN都取128
         singlecoreHeadSizeQcQr_ =
@@ -485,13 +485,12 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
         // headnum * (dimHeadSizeQc + dimHeadRope) 合轴切
         singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     }
-    if (scenarioInfo_.splitMode_ != static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
-        mm3BlockNum_ = CeilDiv(oriM, singlecoreHeadSizeQcQr_);
-    }
-
-    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
-        singlecoreHeadSizeQcQr_ = oriM;
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
+        mm3BlockNum_ = min(baseShapeInfo_.nSize, aicNum_);
+    } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
         mm3BlockNum_ = aicNum_;
+    } else {
+        mm3BlockNum_ = CeilDiv(oriM, singlecoreHeadSizeQcQr_);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -509,12 +508,13 @@ ge::graphStatus MlaPrologTiling::FillMatmul4Tiling()
         singlecoreNumHeadSize_ = baseShapeInfo_.nSize;
         mm4BlockNum_ = aicNum_;
     } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
-        // SPLIT_KN: singlecoreNumHeadSize_ and mm4BlockNum_ already set in FillMatmul3Tiling
-        // (mm3→v3→mm4→v4 run on same CV pair, core distribution from mm3 applies)
+        mm4BlockNum_ = mm3BlockNum_;
     } else {
         singlecoreNumHeadSize_ = CeilDiv(baseShapeInfo_.nSize, aicNum_);
         mm4BlockNum_ = CeilDiv(baseShapeInfo_.nSize, singlecoreNumHeadSize_);
     }
+
+    
 
     return ge::GRAPH_SUCCESS;
 }

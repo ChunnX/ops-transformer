@@ -505,7 +505,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
     mmQcQrParam_.m = baseParams_->stepBatchSize; // 32
-    if constexpr (MLAPT::enableGroupComputeOpt) {
+    if constexpr (MLAPT:MLAPT::isSplitKn) {
+        if (baseParams_->numHeadSize % GetBlockNum() == 0 || blockIdx_ < baseParams_->numHeadSize % GetBlockNum()) {
+            mmQcQrParam_.n = baseParams_->mm3SingleCoreN;
+        } else {
+            mmQcQrParam_.n = baseParams_->mm3SingleCoreN - (baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);
+        }
+
+    } else if constexpr (MLAPT::enableGroupComputeOpt) {
         // 算力分组仅考虑G8 Qc Qr(8+4核), n固定128, 这里不处理尾核
         mmQcQrParam_.n = baseParams_->mm3SingleCoreN;
     } else {

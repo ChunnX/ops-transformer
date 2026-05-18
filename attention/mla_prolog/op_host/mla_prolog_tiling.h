@@ -219,6 +219,12 @@ enum class QUANT_SCALE_REPO_MODE:uint8_t {
     COMBINE = 1
 };
 
+enum class SPLIT_MODE : std::uint8_t {
+    SPLIT_N  = 0,
+    SPLIT_M  = 1,
+    SPLIT_KN = 2,
+};
+
 struct MlaPrologScenarioInfo {
     bool isV1Flag_;
     bool batchSeqFusedFlag_;
