@@ -14,6 +14,7 @@
  */
 #include "rotate_half.h"
 #include "rotate_half_bf16.h"
+#include "rotate_half_rope_fullLoad_xd.h"
 
 #if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
 #include "rotate_interleaved_split_s.h"
@@ -40,9 +41,30 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     GET_TILING_DATA(tilingData, tiling);
     GM_ADDR usrWorkspace = AscendC::GetUserWorkspace(workspace);
+    // FullLoadXD path: tailAxesFLBoost overrides regular tilingKey dispatch
+    // tilingKey = TILING_KEY_PREFIX + tilingMode * TILING_MODE_WEIGHT + tilingDtype
+    // Dispatch by tilingKey, dtype determined by last digit: 1=FP32, 2=FP16, 3=BF16
 
-    // mode: rotate_half
-    if (TILING_KEY_IS(1011)) {
+    // FullLoadXD path: tilingKey(11xx)
+    if (TILING_KEY_IS(1111) || TILING_KEY_IS(1121) || TILING_KEY_IS(1131) || TILING_KEY_IS(1141) ||
+        TILING_KEY_IS(1151) || TILING_KEY_IS(1161)) {
+        RotateHalfRopeFullLoadXd<float, float> op;
+        op.Init(x, cos, sin, y, tilingData);
+        op.Process();
+    } else if (TILING_KEY_IS(1112) || TILING_KEY_IS(1122) || TILING_KEY_IS(1132) || TILING_KEY_IS(1142) ||
+               TILING_KEY_IS(1152) || TILING_KEY_IS(1162)) {
+        RotateHalfRopeFullLoadXd<half, float> op;
+        op.Init(x, cos, sin, y, tilingData);
+        op.Process();
+#if !(((defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) || (defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)))
+    } else if (TILING_KEY_IS(1113) || TILING_KEY_IS(1123) || TILING_KEY_IS(1133) || TILING_KEY_IS(1143) ||
+               TILING_KEY_IS(1153) || TILING_KEY_IS(1163)) {
+        RotateHalfRopeFullLoadXd<bfloat16_t, float> op;
+        op.Init(x, cos, sin, y, tilingData);
+        op.Process();
+#endif
+        // Regular rotate_half path: tilingKey(10xx)
+    } else if (TILING_KEY_IS(1011)) {
         RotateHalf<float> rotateHalfOp;
         rotateHalfOp.Init(x, cos, sin, y, tilingData);
         rotateHalfOp.Process();
