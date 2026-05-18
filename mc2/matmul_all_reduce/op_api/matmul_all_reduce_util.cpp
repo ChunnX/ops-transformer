@@ -546,10 +546,11 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
+    const char* commModePtr = "aicpu";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commModePtr),
         output, workspaceSize, executor);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -568,6 +569,19 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         }
     }
     return ret;
+}
+
+// 检查commMode入参是否合法
+bool IsCommModeValid(const char* commModePtr) {
+    if (commModePtr == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commModePtr is nullptr!");
+        return false;
+    }
+    if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
+    if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
+    if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'ccu' or 'aicpu', but it is %s.", *commModePtr);
+    return false;
 }
 
 #ifdef __cplusplus
