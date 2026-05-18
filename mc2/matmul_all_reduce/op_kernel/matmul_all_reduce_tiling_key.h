@@ -545,7 +545,7 @@ ASCENDC_TPL_SEL(
 // MATMUL_ALLREDUCE_MM_TYPE_QUANT_MATMUL
     // tiling_key num = 8
     // 4104(1), 20488, 8(0), 16392, 4136, 20520, 40, 16424
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #if ((ORIG_DTYPE_X1 == DT_INT8) && (ORIG_DTYPE_Y == DT_BF16 || ORIG_DTYPE_RESIDUAL == DT_BF16))
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_1),
@@ -669,7 +669,7 @@ ASCENDC_TPL_SEL(
         SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
         ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
 #endif
-#else //defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#else //defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     // for host or not quant
     // Not used on kernel
     ASCENDC_TPL_ARGS_SEL(
@@ -692,7 +692,7 @@ ASCENDC_TPL_SEL(
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
         SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
         ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
-#endif//defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#endif//defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 
 // MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL
 

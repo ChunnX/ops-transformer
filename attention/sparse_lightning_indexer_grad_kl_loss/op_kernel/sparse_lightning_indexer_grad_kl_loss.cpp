@@ -68,7 +68,7 @@ sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key
                                       __gm__ uint8_t *dWeight, __gm__ uint8_t *loss,
                                       __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(optiling::SparseLightningIndexerGradKLLossRegBaseTilingData);
     TPipe tPipe;

@@ -169,14 +169,14 @@ MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQu
 {
     // MatmulImpl初始化
     mm.SetSubBlockIdx(0);
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     PRELOAD(4);
 #endif
     mm.Init(&tiling, GetTPipePtr());
     // MatmulBlock初始化
     block.Init(tiling, cfg, tileL2cacheTiling);
     SetOrgShapeAlign();
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #else
     mm.SetLocalWorkspace(mmFormatUb);
 #endif
@@ -264,7 +264,7 @@ __aicore__ inline void MatmulCompute<
             }
             mm.Iterate();
             mm.GetTensorC(cGlobal[block.offset.offsetC], enAtomic);
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #else
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
             WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);

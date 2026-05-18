@@ -45,7 +45,7 @@ __aicore__ inline void ReduceSumForSmallReduceDimPreRepeat(
     }
     PipeBarrier<PIPE_V>();
     AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32); // set mask = 64
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if ASCEND_IS_AIV {
         WholeReduceSum<float, false>(dstLocal, tmpLocal, MASK_PLACEHOLDER, repeat, 1, 1, ELEM_PER_BLK_FP32);
     }
@@ -132,7 +132,7 @@ __aicore__ inline void ReduceSumHalfInterval(
     } else {
         AscendCUtils::SetMask<float>(count);
     }
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if (g_coreType == AIV) {
         WholeReduceSum<float, false>(dst_local, src_local, MASK_PLACEHOLDER, 1, 0, 1, 0);
     }
@@ -161,7 +161,7 @@ __aicore__ inline float ReduceSumHalfInterval(const LocalTensor<float>& src_loca
     } else {
         AscendCUtils::SetMask<float>(count);
     }
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if (g_coreType == AIV) {
         WholeReduceSum<float, false>(src_local, src_local, MASK_PLACEHOLDER, 1, 0, 1, 0);
     }

@@ -255,7 +255,7 @@ __aicore__ inline void ReduceKInUb(GM_ADDR cGM, GM_ADDR mmGM, uint64_t coreSize,
         }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         WaitEvent<PIPE_S>(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         WaitEvent(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
 #endif
         SyncAll();
@@ -389,7 +389,7 @@ __aicore__ inline void ReduceKNzInUb(GM_ADDR cGM, GM_ADDR mmGM, uint64_t coreSiz
         }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         WaitEvent<PIPE_S>(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         WaitEvent(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
 #endif
         SyncAll();
@@ -607,7 +607,7 @@ __aicore__ inline void Mc2MatMulMultiCoreSplitKDivide(GM_ADDR aGM, GM_ADDR bGM, 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             WaitEvent<PIPE_S>(AIV_SYNC_AIC_FLAG + pingpongEventId);
             WaitEvent<PIPE_S>(AIV_SYNC_AIC_FLAG + pingpongEventId + FLAG_ID_MAX);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             WaitEvent(AIV_SYNC_AIC_FLAG + pingpongEventId);
 #endif
             SyncAll();
@@ -666,7 +666,7 @@ __aicore__ inline void Mc2MatMulMultiCoreSplitKDivide(GM_ADDR aGM, GM_ADDR bGM, 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG + pingpongEventId + FLAG_ID_MAX);
         NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG + pingpongEventId);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG + pingpongEventId);
 #endif
         PipeBarrier<PIPE_ALL>();
@@ -836,7 +836,7 @@ __aicore__ inline void ReduceKInUbNzL2cache(GM_ADDR cGM, GM_ADDR mmGM, uint64_t 
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             WaitEvent<PIPE_S>(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             CrossCoreWaitFlag(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
 #endif
             SyncAll();
@@ -977,7 +977,7 @@ __aicore__ inline void ReduceKInUbL2cache(GM_ADDR cGM, GM_ADDR mmGM, uint64_t co
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             WaitEvent<PIPE_S>(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             CrossCoreWaitFlag(AIC_SYNC_AIV_FLAG + pingpongEventIdWS);
 #endif
             SyncAll();
@@ -1238,7 +1238,7 @@ __aicore__ inline void Mc2MatMulMultiCoreSplitKDivideL2cache(GM_ADDR aGM, GM_ADD
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             WaitEvent<PIPE_S>(AIV_SYNC_AIC_FLAG + pingpongEventId);
             WaitEvent<PIPE_S>(AIV_SYNC_AIC_FLAG + pingpongEventId + FLAG_ID_MAX);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             CrossCoreWaitFlag(AIV_SYNC_AIC_FLAG + pingpongEventId);
 #endif
             SyncAll();
@@ -1271,7 +1271,7 @@ __aicore__ inline void Mc2MatMulMultiCoreSplitKDivideL2cache(GM_ADDR aGM, GM_ADD
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG + pingpongEventId + FLAG_ID_MAX);
             NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG + pingpongEventId);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             CrossCoreSetFlag<0x2, PIPE_FIX>(AIC_SYNC_AIV_FLAG + pingpongEventId);
 #endif
             PipeBarrier<PIPE_ALL>();
@@ -1360,7 +1360,7 @@ __aicore__ inline void Mc2MatMulKernelDeterministicSplitK(GM_ADDR aGM, GM_ADDR b
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX);
             NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG);
-#elif defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             CrossCoreSetFlag<0x2, PIPE_FIX>(AIC_SYNC_AIV_FLAG);
 #endif
             PipeBarrier<PIPE_ALL>();

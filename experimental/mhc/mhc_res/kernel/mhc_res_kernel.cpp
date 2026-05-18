@@ -143,7 +143,7 @@ private:
     int64_t batch, num_streams, stream_elements, tile_length, block_dim, total_tasks;
 };
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 template <>
 class MhcResKernel<bfloat16_t, 16> {
 public:
@@ -288,7 +288,7 @@ extern "C" __global__ __aicore__ void mhc_res_kernel_fp16(
     op.Process();
 }
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 extern "C" __global__ __aicore__ void mhc_res_kernel_bf16(
     GM_ADDR in, GM_ADDR h, GM_ADDR out,
     int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim

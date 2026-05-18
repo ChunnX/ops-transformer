@@ -67,7 +67,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A3),
         ASCENDC_TPL_TILING_STRUCT_SEL(MoeDistributeCombineV2TilingData)
     ),
-#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220)
+#elif defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     // A2 - kernel侧
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_TP, 0),

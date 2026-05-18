@@ -21,7 +21,7 @@
 
 #include "matmul_reduce_scatter_tiling.h"
 #include "matmul_reduce_scatter_tiling_key.h"
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 #else
     #include "matmul_reduce_scatter_full_mesh.h"
 #endif

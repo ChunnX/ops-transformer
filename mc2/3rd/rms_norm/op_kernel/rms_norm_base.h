@@ -25,7 +25,7 @@ using namespace AscendC;
  */
 __aicore__ inline constexpr uint32_t GetVRegSize()
 {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;
@@ -154,7 +154,7 @@ __aicore__ inline void ReduceSumFP32(
         PipeBarrier<PIPE_V>();
     }
     AscendCUtils::SetMask<float>(NUM_PER_REP_FP32);
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if (g_coreType == AIV) {
         WholeReduceSum<float, false>(dst_local, work_local, MASK_PLACEHOLDER, 1, 0, 1, 0);
     }
@@ -221,7 +221,7 @@ __aicore__ inline void BlockReduceSumFP32(
 template <typename T, typename U, typename R>
 __aicore__ inline void DataCopyCustom(const U& dstTensor, const R& srcTensor, const uint32_t count)
 {
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     DataCopyParams copyParams;
     copyParams.blockLen = count * sizeof(T);
     copyParams.blockCount = 1;
@@ -265,7 +265,7 @@ template <typename T>
 __aicore__ inline void DataCopyCustom(
     const LocalTensor<T>& dstTensor, const GlobalTensor<T>& srcTensor, const uint32_t numRow, const uint32_t numCol)
 {
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     DataCopyParams copyParams;
     copyParams.blockLen = numCol * sizeof(T);
     copyParams.blockCount = numRow;
@@ -278,7 +278,7 @@ template <typename T>
 __aicore__ inline void DataCopyCustom(
     const GlobalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor, const uint32_t numRow, const uint32_t numCol)
 {
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     DataCopyParams copyParams;
     copyParams.blockLen = numCol * sizeof(T);
     copyParams.blockCount = numRow;

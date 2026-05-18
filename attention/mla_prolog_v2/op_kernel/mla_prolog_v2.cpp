@@ -15,7 +15,7 @@
 
 #define MLA_PROLOG_VERSION 2
 
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 #if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h")
 #include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h"
 #else

@@ -211,7 +211,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
     InitWorkspace(workspace);
     // 4. 初始化block层
     if ASCEND_IS_AIC {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
         blockCube_.InitParams(constInfo, tools_);
 #else
         blockCube_.InitParams(constInfo, tools_);
@@ -219,7 +219,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
         blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, 
             stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
 #else
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
@@ -229,7 +229,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::Init(
         blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable, 
                         cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
 #else 
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);

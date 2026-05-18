@@ -82,7 +82,7 @@ extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(
         using mmType = MMImplType<xType, weightType, yType, biasType, CFG_MDL>;
         mmType::MT mm;
         mm.SetSubBlockIdx(0);
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         mm.Init(mmTiling, &tPipe);

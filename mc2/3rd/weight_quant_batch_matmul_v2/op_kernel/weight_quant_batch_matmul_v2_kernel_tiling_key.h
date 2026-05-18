@@ -179,7 +179,7 @@ ASCENDC_TPL_ARGS_DECL(
 );
 
 #if defined(__CCE_AICORE__)
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220)
+#if (defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310))
 #if (                                      \
     defined(ORIG_DTYPE_ANTIQUANT_SCALE) && \
     ((ORIG_DTYPE_ANTIQUANT_SCALE == DT_UINT64) || (ORIG_DTYPE_ANTIQUANT_SCALE == DT_INT64)))

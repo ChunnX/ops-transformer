@@ -212,7 +212,7 @@ private:
 // ============================================================
 // BF16: Strategy A
 // ============================================================
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 class MhcPostPerStreamBF16 {
 public:
     __aicore__ inline MhcPostPerStreamBF16() {}
@@ -433,7 +433,7 @@ extern "C" __global__ __aicore__ void mhc_post_kernel_a_fp16(
     op.Process();
 }
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 extern "C" __global__ __aicore__ void mhc_post_kernel_a_bf16(
     GM_ADDR in, GM_ADDR h, GM_ADDR out,
     int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
@@ -465,7 +465,7 @@ extern "C" __global__ __aicore__ void mhc_post_kernel_b_fp16(
     op.Process();
 }
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 extern "C" __global__ __aicore__ void mhc_post_kernel_b_bf16(
     GM_ADDR in, GM_ADDR h, GM_ADDR out,
     int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim

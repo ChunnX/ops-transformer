@@ -112,7 +112,7 @@ __aicore__ inline void MatmulBlock::UpdateBlockCnt(uint32_t index, int32_t mTile
     if ((offset % tiling.usedCoreNum) < preCoreNum) {
         blockCnt += 1;
     }
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     blockIndex = block_idx;
 #else
     uint32_t startIdx = (preCoreNum * index) % tiling.usedCoreNum;
@@ -144,7 +144,7 @@ __aicore__ inline void MatmulBlock::UpdateBlockCnt(uint32_t index, int32_t mTile
 
 __aicore__ inline void MatmulBlock::UpdateBlockIndex()
 {
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     blockIndex += tiling.usedCoreNum;
 #else
     // 完成一个block计算后，block需取下一个，按行取只需+1即可
@@ -211,7 +211,7 @@ __aicore__ inline void MatmulBlock::CalcGMOffset(int32_t mTileIndex, int32_t nTi
     (void)mTileIndex;
     (void)nTileIndex;
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     uint32_t lcmCuts = LCM(mBlockCnt, nBlockCnt);
     mBlockIndex = blockIndex % mBlockCnt;
     nBlockIndex = (blockIndex + blockIndex / lcmCuts) % nBlockCnt;

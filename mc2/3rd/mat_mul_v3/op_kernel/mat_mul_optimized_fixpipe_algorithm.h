@@ -171,7 +171,7 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
             CrossCoreWaitFlag(0x6 + pingPongId);
         }
         this->mm_.GetTensorC(cTensor, enAtomic);
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4 + pingPongId);
 #endif
     }

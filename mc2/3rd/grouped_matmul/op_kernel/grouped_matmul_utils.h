@@ -112,7 +112,7 @@
 #define MM_DTYPE_Y DTYPE_Y
 #endif
 
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || \
+#if (defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)) || \
     (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
 #ifdef GMM_ANTI_QUANT_A8W4_MSD_OUT_BF16
 #undef DTYPE_SCALE
@@ -153,7 +153,7 @@ constexpr int32_t MKN_LIST_LEN = 128;                                // 128: pre
 constexpr uint32_t UB_BLOCK_UNIT_SIZE = 32;                          // 32: a block has 32 bytes data
 constexpr uint32_t UB_BLOCK_DOUBLE_UNIT_SIZE = 64;                   // 64: a block has 64 bytes data
 constexpr uint32_t HALF_UB_BLOCK_UNIT_SIZE = UB_BLOCK_UNIT_SIZE / 2; // 2: a float16 data has two bytes
-#if ((defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) ||                        \
+#if ((defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)) ||                        \
     (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))) && \
     defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_WEIGHT) && ORIG_DTYPE_X == DT_INT8 && ORIG_DTYPE_WEIGHT == DT_INT8
 constexpr MatmulConfig NZ_CFG_MDL =

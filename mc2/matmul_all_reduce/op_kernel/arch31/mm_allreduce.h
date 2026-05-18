@@ -80,7 +80,7 @@ __aicore__ inline void MatMulKernel_AllReduce(
     }
     if (block_idx >= tiling.usedCoreNum) {
         for (uint32_t i = 0; i < tileCnt; i++) {
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             hcclServer->TurnNotifyRun(block_idx);
 #endif
         }
