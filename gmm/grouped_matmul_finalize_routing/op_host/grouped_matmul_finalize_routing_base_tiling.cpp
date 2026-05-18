@@ -16,6 +16,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "util/math_util.h"
 #include "err/ops_err.h"
+#include <algorithm>
 
 namespace optiling {
 namespace grouped_matmul_finalize_routing {
@@ -24,8 +25,11 @@ constexpr uint32_t BEST_BASE_K = 128;
 constexpr uint32_t BEST_BASE_N = 256;
 constexpr uint32_t BEST_VBASE_M = 16;
 constexpr uint32_t BEST_VBASE_BIG_M = 32;
-constexpr uint32_t DETER_WORK_SPACE_SIZE = 96 * 1024 * 1024; // Deterministic worksize is 96M or 64M
-constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64 * 1024 * 1024;
+constexpr uint64_t DETER_WORK_SPACE_SAFETY_FACTOR_NUMERATOR = 8;
+constexpr uint64_t DETER_WORK_SPACE_SAFETY_FACTOR_DENOMINATOR = 10;
+constexpr uint64_t DETER_WORK_SPACE_MIN_SIZE = 4UL * 1024 * 1024;
+constexpr uint64_t DETER_WORK_SPACE_ALIGN = 128UL;
+constexpr uint64_t DETER_SYS_WORKSPACE_SIZES = 16UL * 1024 * 1024;
 
 
 constexpr uint64_t RPC_WORKSIZE = 20;
@@ -420,7 +424,10 @@ void GroupedMatmulFinalizeRoutingBaseTiling::DeterministicTilingProcess()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     uint64_t l2_size;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2_size);
-    deterWorkspaceSize_ = l2_size > DETER_WORK_SPACE_SIZE ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
+    uint64_t availableL2 = (l2_size > DETER_SYS_WORKSPACE_SIZES) ? (l2_size - DETER_SYS_WORKSPACE_SIZES) : 0;
+    deterWorkspaceSize_ = availableL2 * DETER_WORK_SPACE_SAFETY_FACTOR_NUMERATOR / DETER_WORK_SPACE_SAFETY_FACTOR_DENOMINATOR;
+    deterWorkspaceSize_ = (deterWorkspaceSize_ / DETER_WORK_SPACE_ALIGN) * DETER_WORK_SPACE_ALIGN;
+    deterWorkspaceSize_ = std::max(deterWorkspaceSize_, DETER_WORK_SPACE_MIN_SIZE);
     workspaceSize_ += deterWorkspaceSize_;
 }
 

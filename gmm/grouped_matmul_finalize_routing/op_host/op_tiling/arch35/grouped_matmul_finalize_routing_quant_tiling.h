@@ -125,7 +125,7 @@ private:
     int8_t scaleType_ = 0;
     int8_t rowIndexType_ = 0;
     uint32_t deterministicFlag_ = 0;       // 确定性标志：0=关闭, 1=开启
-    uint32_t deterWorkspaceSize_ = 0;      // 确定性 workspace 大小
+    uint64_t deterWorkspaceSize_ = 0;      // 确定性 workspace 大小
 };
 } // namespace optiling
 

@@ -15,6 +15,7 @@
 
 #include "grouped_matmul_finalize_routing_quant_tiling.h"
 #include <alog_pub.h>
+#include <algorithm>
 #include <climits>
 #include "log/log.h"
 #include "register/op_impl_registry.h"
@@ -464,10 +465,14 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t l2Size = 0;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2Size);
-        constexpr uint32_t DETER_WORK_SPACE_SIZE = 96UL * 1024 * 1024;
-        constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64UL * 1024 * 1024;
-        deterWorkspaceSize_ = l2Size > DETER_WORK_SPACE_SIZE
-                              ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
+        constexpr double DETER_WORK_SPACE_SAFETY_FACTOR = 0.8;
+        constexpr uint64_t DETER_WORK_SPACE_MIN_SIZE = 4UL * 1024 * 1024;
+        constexpr uint64_t DETER_WORK_SPACE_ALIGN = 128UL;
+        uint64_t availableL2 = (l2Size > GmmConstant::SYS_WORKSPACE_SIZES)
+                               ? (l2Size - GmmConstant::SYS_WORKSPACE_SIZES) : 0;
+        deterWorkspaceSize_ = static_cast<uint64_t>(availableL2 * DETER_WORK_SPACE_SAFETY_FACTOR);
+        deterWorkspaceSize_ = (deterWorkspaceSize_ / DETER_WORK_SPACE_ALIGN) * DETER_WORK_SPACE_ALIGN;
+        deterWorkspaceSize_ = std::max(deterWorkspaceSize_, DETER_WORK_SPACE_MIN_SIZE);
         tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
     }
 

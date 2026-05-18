@@ -85,7 +85,7 @@ private:
     uint32_t hasPertokenScale_;
     uint32_t hasBias_;
     uint32_t deterministicFlag_;
-    uint32_t deterWorkspaceSize_;
+    uint64_t deterWorkspaceSize_;
     bool useL1OptKernel_;    
 protected:
     matmul_tiling::MultiCoreMatmulTiling mm_;
