@@ -389,12 +389,12 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
         int64_t outerBlockNums = (actualSeqLengthsQ_[bIdx] * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
                                  static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
-        if (actualSeqLengthsQ_[bIdx] == 0 || actualSeqLengthsKV_[bIdx] == 0) {
+        if (actualSeqLengthsQ_[bIdx] == 0) {
             outerBlockNums = fiaInfo_->n2Size;
         }
         printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
-               "outerBlockNums:%d\n",
-               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums);
+               "outerBlockNums:%d, totalSize:%d\n",
+               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
         totalSize += outerBlockNums;
     }
 
