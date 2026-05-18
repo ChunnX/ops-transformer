@@ -18,6 +18,7 @@
 
 #if (__CCE_AICORE__ == 310)
 constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
+constexpr AscendC::FixpipeConfig CFG_NZ_UB = {AscendC::CO2Layout::NZ, true};
 #endif
 
 namespace NpuArch::Gemm::Tile {
@@ -97,6 +98,187 @@ struct CopyL0CToUBTla<
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    NpuArch::Arch::AtlasA5,
+    TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::NO_SPLIT,
+    ScaleGranularity::PER_TENSOR,
+    ReluEnable_,
+    std::enable_if_t<tla::detail::iszN<ElementDst_, LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA5;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    struct Params {
+        float scale = 1.0f;
+
+        __aicore__ inline
+        Params() = default;
+
+        __aicore__ inline
+        Params(float scalar)
+        {
+            scale = scalar;
+        }
+    };
+    Params params;
+
+    __aicore__ inline
+    CopyL0CToUBTla() = default;
+
+    __aicore__ inline
+    CopyL0CToUBTla(Params const &params_) : params(params_) {};
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        intriParams.quantPre = quantPre;
+        intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&params.scale));
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(
+        TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        intriParams.quantPre = quantPre;
+        intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&params.scale));
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = subBlockId;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    NpuArch::Arch::AtlasA5,
+    TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::NO_SPLIT,
+    ScaleGranularity::NO_QUANT,
+    ReluEnable_,
+    std::enable_if_t<tla::detail::iszN<ElementDst_, LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA5;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        //shape = ((16, ceil_div(rows, 16)), (16, ceil_div(cols, 16)))
+        //stride = ((16, 256), (1, round_up(rows, 16) * 16))
+        // zN/NZ Fixpipe consumes the physical fractal extent stored in TLA nested shape.
+        // 源NZ矩阵在N方向上的大小
+        intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        // 源NZ矩阵在M方向上的大小
+        intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
+        // 源NZ矩阵中的相邻Z排布的起始地址偏移，单位是C0_SIZE
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
+        // 目的NZ矩阵中相邻Z排布的起始地址偏移，单位是C0_SIZE
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(
+        TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = subBlockId;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
             dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
 };
@@ -249,6 +431,52 @@ struct CopyL0CToUBTla<
     }
 };
 
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    NpuArch::Arch::AtlasA5,
+    TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::SPLIT_M,
+    ScaleGranularity::NO_QUANT,
+    ReluEnable_,
+    std::enable_if_t<tla::detail::iszN<ElementDst_, LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA5;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        intriParams.mSize = RoundUp(tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape()), 2);
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 1;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
 // NOTE: SPLIT_M + PER_CHANNEL is NOT supported by single Fixpipe with dualDstCtl=1,
 // because per-channel dequant (scale tensor) conflicts with dual-core split mode.
 // Workaround: manually decompose into two independent Fixpipe calls (sub0 + sub1),
@@ -334,6 +562,85 @@ struct CopyL0CToUBTla<
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
             dstSub0.data()[dstOffset0], srcSub0.data()[srcOffset0], scale, intriParams0);
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
+            dstSub1.data()[dstOffset1], srcSub1.data()[srcOffset1], scale, intriParams1);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    NpuArch::Arch::AtlasA5,
+    TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::SPLIT_M,
+    ScaleGranularity::PER_CHANNEL,
+    ReluEnable_,
+    std::enable_if_t<tla::detail::iszN<ElementDst_, LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA5;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_CHANNEL>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    struct Params {};
+    Params params;
+
+    __aicore__ inline
+    CopyL0CToUBTla() = default;
+
+    __aicore__ inline
+    CopyL0CToUBTla(Params const &params_) : params(params_) {};
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
+        AscendC::LocalTensor<uint64_t> const &scale, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
+        );
+
+        uint32_t mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
+        uint32_t nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        uint32_t mPerSubCore = mSize / 2;
+
+        auto dstSub0 = tla::GetTile(dstTensor, tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, nSize));
+        auto srcSub0 = tla::GetTile(srcTensor, tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, nSize));
+
+        auto dstSub1 = tla::GetTile(dstTensor, tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, nSize));
+        auto srcSub1 = tla::GetTile(srcTensor, tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, nSize));
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams0;
+        intriParams0.nSize = tla::get<1, 0>(dstSub0.shape()) * tla::get<1, 1>(dstSub0.shape());
+        intriParams0.mSize = tla::get<0, 0>(dstSub0.shape()) * tla::get<0, 1>(dstSub0.shape());
+        intriParams0.srcStride = tla::get<1, 1>(srcSub0.stride()) / tla::get<1, 0>(srcSub0.shape());
+        intriParams0.dstStride = tla::get<1, 1>(dstSub0.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams0.quantPre = quantPre;
+        intriParams0.reluEn = reluEn;
+        intriParams0.unitFlag = unitFlag;
+        intriParams0.dualDstCtl = 0;
+        intriParams0.subBlockId = 0;
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams1;
+        intriParams1.nSize = tla::get<1, 0>(dstSub1.shape()) * tla::get<1, 1>(dstSub1.shape());
+        intriParams1.mSize = tla::get<0, 0>(dstSub1.shape()) * tla::get<0, 1>(dstSub1.shape());
+        intriParams1.srcStride = tla::get<1, 1>(srcSub1.stride()) / tla::get<1, 0>(srcSub1.shape());
+        intriParams1.dstStride = tla::get<1, 1>(dstSub1.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams1.quantPre = quantPre;
+        intriParams1.reluEn = reluEn;
+        intriParams1.unitFlag = unitFlag;
+        intriParams1.dualDstCtl = 0;
+        intriParams1.subBlockId = 1;
+
+        auto dstOffset0 = dstSub0.layout()(dstSub0.coord());
+        auto srcOffset0 = srcSub0.layout()(srcSub0.coord());
+        auto dstOffset1 = dstSub1.layout()(dstSub1.coord());
+        auto srcOffset1 = srcSub1.layout()(srcSub1.coord());
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
+            dstSub0.data()[dstOffset0], srcSub0.data()[srcOffset0], scale, intriParams0);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
             dstSub1.data()[dstOffset1], srcSub1.data()[srcOffset1], scale, intriParams1);
     }
 };
