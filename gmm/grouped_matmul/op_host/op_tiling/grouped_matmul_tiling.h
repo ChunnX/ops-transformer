@@ -19,6 +19,7 @@
 #include <graph/utils/type_utils.h>
 
 #include "../grouped_matmul_host_util.h"
+#include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
@@ -110,17 +111,55 @@ struct GMMCompileInfo {
     NpuArch npuArch;
 };
 
-class GMMTiling {
+class GMMTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
+    explicit GMMTiling(gert::TilingContext *context = nullptr)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
+    void Reset(gert::TilingContext *context) override;
     GMMTilingData tilingData;
     ge::graphStatus Init(const gert::TilingContext *context);
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
-    ge::graphStatus A8W4Tiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
+    ge::graphStatus A8W4MsdTiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
+    ge::graphStatus A8W4FakeTiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     ge::graphStatus A16W4MsdTiling(gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
 protected:
-    bool IsAivAicRatioTwoRequired();
+    bool IsCapable() override;
+    ge::graphStatus GetPlatformInfo() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus DoLibApiTiling() override;
+    uint64_t GetTilingKey() const override;
+    ge::graphStatus GetWorkspaceSize() override;
+    ge::graphStatus PostTiling() override;
+    void DumpTilingInfo() override;
+    virtual const char *GetScenarioName() const;
+    virtual bool IsScenarioMatched() const;
+    virtual bool IsTilingComplete() const;
+    virtual ge::graphStatus DoScenarioOpTiling();
+    virtual ge::graphStatus DoScenarioLibApiTiling();
+    virtual ge::graphStatus GetScenarioWorkspaceSize();
+    virtual ge::graphStatus PostScenarioTiling();
+    virtual void DumpScenarioTilingInfo();
+    virtual uint32_t GetScenarioA8W4KernelTemplate() const;
+    virtual uint32_t GetScenarioA16W8KernelTemplate() const;
+    virtual uint32_t GetScenarioAivAicRatio() const;
+    virtual uint32_t GetScenarioEnableFixedAxis() const;
+    virtual bool ShouldSetScenarioScheduleMode() const;
+    virtual ge::graphStatus SetScenarioUbDivideBlk();
+    virtual int32_t GetScenarioBaseN(bool tuningConfigFlag) const;
+    virtual bool TryScenarioSpecificBaseTiling(const GMMCompileInfo *compileInfoPtr, bool tuningConfigFlag);
+    virtual int32_t CalcScenarioBaseK(const GMMCompileInfo *compileInfoPtr) const;
+    virtual uint32_t CalcScenarioBaseM(const GMMCompileInfo *compileInfoPtr, uint32_t maxBaseM) const;
+    virtual int32_t AlignScenarioBaseM(uint32_t baseM) const;
+    virtual uint32_t CalcScenarioStepKa(uint64_t l1ASize) const;
+    virtual uint32_t CalcScenarioStepKb(uint64_t l1BSize) const;
+    virtual int64_t GetScenarioMInMM() const;
+    virtual bool ShouldReserveQuantL1N() const;
+    virtual bool ShouldDisableBiasInMMTiling() const;
+    virtual bool CanUsePreTiling() const;
+    bool IsAivAicRatioTwoRequired() const;
     bool IsFixedAxisMoveCondition();
-    bool IsIntDataType();
+    bool IsIntDataType() const;
     ge::graphStatus CalMMTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     ge::graphStatus GMMSetMMTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     ge::graphStatus GMMGetAttrs(const gert::TilingContext *context);
@@ -172,7 +211,7 @@ protected:
     bool CheckTensorListLength(const gert::TilingContext *context);
 	bool IsA4W4OptimizeCondition();
 
-private:
+protected:
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t nList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
@@ -232,6 +271,113 @@ private:
     int64_t quantGroupSize_ = 0;
     bool isPerGroup_ = false;
     bool isA4W4Optimize_ = false;
+    const GMMCompileInfo *compileInfoPtr_ = nullptr;
+    uint32_t aicNum_ = 0U;
+    bool isSpecialTilingDone_ = false;
+};
+
+class GMMA8W4MsdTiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    ge::graphStatus GetShapeAttrsInfo() override;
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    ge::graphStatus DoScenarioOpTiling() override;
+};
+
+class GMMA8W4FakeTiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    ge::graphStatus DoScenarioOpTiling() override;
+    uint32_t GetScenarioA8W4KernelTemplate() const override;
+    ge::graphStatus SetScenarioUbDivideBlk() override;
+    bool TryScenarioSpecificBaseTiling(const GMMCompileInfo *compileInfoPtr, bool tuningConfigFlag) override;
+    bool ShouldReserveQuantL1N() const override;
+    bool CanUsePreTiling() const override;
+};
+
+class GMMA8W8Tiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    uint32_t GetScenarioAivAicRatio() const override;
+    uint32_t GetScenarioEnableFixedAxis() const override;
+    ge::graphStatus SetScenarioUbDivideBlk() override;
+    bool TryScenarioSpecificBaseTiling(const GMMCompileInfo *compileInfoPtr, bool tuningConfigFlag) override;
+    bool ShouldReserveQuantL1N() const override;
+    bool CanUsePreTiling() const override;
+};
+
+class GMMA4W4Tiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    uint32_t GetScenarioAivAicRatio() const override;
+    ge::graphStatus SetScenarioUbDivideBlk() override;
+    int32_t GetScenarioBaseN(bool tuningConfigFlag) const override;
+    int32_t CalcScenarioBaseK(const GMMCompileInfo *compileInfoPtr) const override;
+    uint32_t CalcScenarioBaseM(const GMMCompileInfo *compileInfoPtr, uint32_t maxBaseM) const override;
+    uint32_t CalcScenarioStepKa(uint64_t l1ASize) const override;
+    uint32_t CalcScenarioStepKb(uint64_t l1BSize) const override;
+    bool ShouldDisableBiasInMMTiling() const override;
+};
+
+class GMMA16W8Tiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    uint32_t GetScenarioA16W8KernelTemplate() const override;
+    ge::graphStatus SetScenarioUbDivideBlk() override;
+    int32_t GetScenarioBaseN(bool tuningConfigFlag) const override;
+    int32_t AlignScenarioBaseM(uint32_t baseM) const override;
+    int64_t GetScenarioMInMM() const override;
+    bool ShouldDisableBiasInMMTiling() const override;
+};
+
+class GMMA16W4Tiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    ge::graphStatus DoScenarioOpTiling() override;
+    ge::graphStatus SetScenarioUbDivideBlk() override;
+};
+
+class GMMFloatTiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
+    bool IsScenarioMatched() const override;
+    uint32_t GetScenarioAivAicRatio() const override;
+    ge::graphStatus SetScenarioUbDivideBlk() override;
+    bool TryScenarioSpecificBaseTiling(const GMMCompileInfo *compileInfoPtr, bool tuningConfigFlag) override;
+};
+
+class GMMDefaultTiling : public GMMTiling {
+public:
+    using GMMTiling::GMMTiling;
+
+protected:
+    const char *GetScenarioName() const override;
 };
 }  // namespace optiling
 
