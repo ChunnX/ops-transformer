@@ -177,7 +177,8 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopI
     copyParams.blockLen = static_cast<uint32_t>(tilingData_->k) * static_cast<uint32_t>(sizeof(T));
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
-    DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(kAlign_ - tilingData_->k), 0};
+    int64_t kAlign = tilingData_->gradYDtypeSize == NUM_TWO ? kAlign16_ : kAlign_;
+    DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(kAlign - tilingData_->k), 0};
     DataCopyPad(gradYLocal_, gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
     gradYQue_.EnQue(gradYLocal_);
     gradYLocal_ = gradYQue_.DeQue<T>();
@@ -255,7 +256,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
     Mul(bufk1, bufk1, bufk4Mask, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     uint32_t srcShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), static_cast<uint32_t>(kAlign_)};
-    ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, srcShape, true);
+    ReduceSum<float, Pattern::Reduce::AR, false>(bufs, bufk1, srcShape, true);
     PipeBarrier<PIPE_V>();
 
     Adds(bufs, bufs, tilingData_->eps, curRows_);
