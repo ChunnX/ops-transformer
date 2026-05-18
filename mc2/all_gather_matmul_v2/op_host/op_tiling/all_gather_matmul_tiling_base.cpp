@@ -391,14 +391,20 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rc
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
-    OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data x1 into (1, k), the size %lu still exceeds 256MB.", sizeOfSingleM),
-                return ge::GRAPH_FAILED);
-    
+    if (sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
+        std::string sizeStr = std::to_string(sizeOfSingleM);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", sizeStr.c_str(),
+            "size exceeds 256MB limit even after splitting x1 into (1, k)");
+        return ge::GRAPH_FAILED;
+    }
+
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
-    OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
-                return ge::GRAPH_FAILED);
+    if (sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
+        std::string sizeStr = std::to_string(sizeOfSplitM);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", sizeStr.c_str(),
+            "size exceeds 256MB limit even after splitting M into 16 parts");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -412,9 +418,11 @@ ge::graphStatus AllGatherMatmulTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling&
      " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. start re-splitM.",
         tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
     
-    OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
-        return ge::GRAPH_FAILED);
+    if (quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", "size",
+            "exceeds 256MB limit after formulaic splitting, and perblock mode does not support re-split");
+        return ge::GRAPH_FAILED;
+    }
     
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim,
                             mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
@@ -480,7 +488,8 @@ bool AllGatherMatmulTilingBase::SetCommAlgo()
 {
     args_.commAlg = mc2tiling::Mc2GetCommAlgo(rankSize_, args_.orgMValue, group_, context_);
     if (args_.commAlg == mc2tiling::COMM_ALG_DEFAULT) {
-        OP_LOGE(opName_, "CommAlgo %u is not supported.", args_.commAlg);
+        std::string algoStr = std::to_string(args_.commAlg);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commAlgo", algoStr.c_str(), "algorithm not supported");
         return false;
     }
     return true;
