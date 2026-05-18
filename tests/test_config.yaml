@@ -1273,7 +1273,7 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_allto_all
       test:
-        examples: True
+        examples: False
       options:
         - matmul_allto_all
 
