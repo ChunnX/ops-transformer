@@ -406,31 +406,19 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                         algConfig, 0, 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)), 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
-    // Set hccl comm engine with environment variable
-    uint8_t commEngine = Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU ?
-                         Mc2Comm::ENGINE_AICPU : Mc2Comm::ENGINE_CCU;
-    mc2CcTilingConfig.SetCommEngine(commEngine);
+    // Set hccl comm engine with comm_mode
+    uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
+    if (commMode_ == "ccu") {
+        commEngine = Mc2Comm::ENGINE_CCU;
+    } else { // default
+        if (rankSize_ <= 8) {
+            commEngine = Mc2Comm::ENGINE_CCU;
+        }
+    }
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ? 
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMM_MODE_INDEX));
-    if (strcmp(commMode, "aicpu") == 0) {
-        mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
-    } else if (strcmp(commMode, "default") == 0) {
-        if (args_.rankDim > 8){
-            mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
-        }
-        // uint32_t rankSize = 0; 
-        // HcclComm comm; 
-        // hcclRet = HcclGetRankSize(comm, &rankSize);
-        // if (hcclRet != HCCL_SUCCESS) {
-        //     OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
-        //     return ACLNN_ERR_INNER;
-        // }
-
-    }
-    // 不设置SetCommEngine默认为CCU
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2CcTiling) != 0,
