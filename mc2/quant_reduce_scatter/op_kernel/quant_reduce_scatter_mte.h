@@ -225,7 +225,6 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
 
     /* 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐） */
     LocalTensor<ScalesType> scaleTmpTensor = scaleInQue_.AllocTensor<ScalesType>();
-    // scale拷贝参数配置
     DataCopyParams scaleCopyParams;
     scaleCopyParams.blockLen = scaleNum * sizeof(ScalesType);
     scaleCopyParams.blockCount = 1;

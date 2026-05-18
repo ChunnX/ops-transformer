@@ -229,7 +229,6 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
 
     /* scale 从 GM -> UB -> Win（DataCopyPad 处理 sub-32B 对齐） */
     scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
-    // GM到UB的scale拷贝参数
     DataCopyParams scaleGmToUbParams;
     scaleGmToUbParams.blockLen = scaleNumsPerBlock_ * sizeof(ScalesType);
     scaleGmToUbParams.blockCount = 1;
@@ -237,7 +236,6 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
     DataCopyPad(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleGmToUbParams, scaleGmToUbPadParams);
     scaleQueue_.EnQue(scaleTmpTensor_);
     scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
-    // UB到Win的scale拷贝参数
     DataCopyParams scaleUbToWinParams;
     scaleUbToWinParams.blockLen = scaleNumsPerBlock_ * sizeof(ScalesType);
     scaleUbToWinParams.blockCount = 1;
