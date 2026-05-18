@@ -19,7 +19,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 // A8W4 MSD场景
 #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&              \
     defined(DT_INT4) && ORIG_DTYPE_WEIGHT == DT_INT4

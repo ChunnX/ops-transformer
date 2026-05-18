@@ -25,7 +25,7 @@
 using namespace RotateInterleavedN;
 #endif
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #include "rotate_matrix.h"
 using namespace RotateMatrix;
 using namespace matmul;
@@ -225,7 +225,7 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
     }
 #endif
     
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if (TILING_KEY_IS(3011)) {
         using aT = MatmulType<TPosition::GM, CubeFormat::ND, float>;
         using bT = MatmulType<TPosition::GM, CubeFormat::ND, float>;

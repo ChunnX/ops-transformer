@@ -107,7 +107,7 @@ template <typename aType, typename biasType> __aicore__ inline constexpr bool Is
  */
 __aicore__ inline constexpr uint32_t GetVRegSize()
 {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;
@@ -119,7 +119,7 @@ __aicore__ inline constexpr uint32_t GetVRegSize()
  */
 __aicore__ inline constexpr uint32_t GetTaskRation()
 {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     return 2U; // aiv corenum is 2 in C310 platform
 #else
     return 1U;

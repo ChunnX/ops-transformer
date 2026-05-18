@@ -13,7 +13,7 @@
  * \brief
  */
 
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 #include "arch35/sparse_flash_attention_grad_template_tiling_key.h"
 #include "arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
 #include "arch35/sparse_flash_attention_grad_entry_regbase.h"
@@ -29,7 +29,7 @@ constexpr static uint32_t ND = 0;
 constexpr static uint32_t NZ = 1;
 constexpr static uint32_t TND = 3;
 
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 
 template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType, bool isRope, bool deterministic>
 __global__ __aicore__ void

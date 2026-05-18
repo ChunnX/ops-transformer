@@ -63,7 +63,7 @@ struct AivAicpuOpParam {
 };
 
 #ifdef __CCE_AICORE__
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 // Rich Communications Services
 class HcclServer
 {
@@ -112,7 +112,7 @@ public:
             AscendC::DcciDst::CACHELINE_OUT>(msgRcvRspArea);
     }
 };
-#endif // __CCE_AICORE__ == 220
+#endif // (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 
 #if __CCE_AICORE__ < 220                                      // we can test this code in 220
 constexpr uint32_t AC_MAX_AIV = 64;                           // 最多有64个AIV

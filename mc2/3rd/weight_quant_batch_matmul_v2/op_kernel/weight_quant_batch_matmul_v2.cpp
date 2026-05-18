@@ -15,7 +15,7 @@
 
 #define K_MAX_SHAPE_DIM 0
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #include "weight_quant_batch_matmul_v2_constant.h"
 #include "tool.h"
 #if (                                      \
@@ -144,7 +144,7 @@ __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         return;
     }
     AscendC::TPipe tPipe;
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220)
+#if (defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310))
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (                                      \
     defined(ORIG_DTYPE_ANTIQUANT_SCALE) && \

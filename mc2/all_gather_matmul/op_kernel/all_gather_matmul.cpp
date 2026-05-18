@@ -20,7 +20,7 @@
 #include "lib/matmul_intf.h"
 #include "all_gather_matmul_tiling.h"
 #include "all_gather_matmul_tiling_key.h"
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 #else
     #include "all_gather_matmul_full_mesh.h"
 #endif

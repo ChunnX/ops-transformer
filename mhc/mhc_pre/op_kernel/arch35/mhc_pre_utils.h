@@ -51,7 +51,7 @@ __aicore__ inline uint64_t Align(uint64_t a, uint64_t b) {
  */
 __aicore__ inline constexpr uint32_t GetVRegSize()
 {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;

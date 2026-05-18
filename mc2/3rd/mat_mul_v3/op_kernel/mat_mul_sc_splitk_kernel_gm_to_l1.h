@@ -326,7 +326,7 @@ Mc2MatMulBaseKernelSingleCoreSplitKGmToL1<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE,
                     }
                 }
                 // c侧做完才能做v侧
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
                 NotifyEvent<PIPE_FIX>(5);
 #endif
                 PipeBarrier<PIPE_ALL>();
@@ -1079,7 +1079,7 @@ MatMulSingleCoreSplitKKernelGmToL1<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE
     if ASCEND_IS_AIC {
         WaitFlagDevLocal(6);
         if (GetBlockIdx() >= matmulTilingData_->matmulTiling.usedCoreNum) {
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             NotifyEvent<PIPE_FIX>(5);
 #endif
             PipeBarrier<PIPE_ALL>();
@@ -1087,7 +1087,7 @@ MatMulSingleCoreSplitKKernelGmToL1<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE
         }
         mmcBaseKernel_.UnAlignedProcess();
         // c侧做完才能做v侧
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         NotifyEvent<PIPE_FIX>(5);
 #endif
         PipeBarrier<PIPE_ALL>();

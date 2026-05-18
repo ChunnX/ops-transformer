@@ -216,7 +216,7 @@ Mc2MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_
                 }
             }
             // c侧做完才能做v侧
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG);
 #endif
             PipeBarrier<PIPE_ALL>();
@@ -264,7 +264,7 @@ Mc2MatMulBaseKernelSingleCoreSplitK<A_TYPE, B_TYPE, L0C_TYPE, OUTPUT_TYPE, BIAS_
                 }
             }
             // c侧做完才能做v侧
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             NotifyEvent<PIPE_FIX>(AIC_SYNC_AIV_FLAG);
 #endif
             PipeBarrier<PIPE_ALL>();
@@ -614,7 +614,7 @@ Mc2MatMulSingleCoreSplitKKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, M
     if ASCEND_IS_AIC {
         WaitFlagDevLocal(6);
         if (GetBlockIdx() >= matmulTilingData_->matmulTiling.usedCoreNum) {
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
             NotifyEvent<PIPE_FIX>(5);
 #endif
             PipeBarrier<PIPE_ALL>();
@@ -622,7 +622,7 @@ Mc2MatMulSingleCoreSplitKKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, M
         }
         mmcBaseKernel_.UnAlignedProcess();
         // c侧做完才能做v侧
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
         NotifyEvent<PIPE_FIX>(5);
 #endif
         PipeBarrier<PIPE_ALL>();

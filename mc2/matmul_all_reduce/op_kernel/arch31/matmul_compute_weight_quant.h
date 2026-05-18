@@ -160,7 +160,7 @@ __aicore__ inline void MatmulComputeWeightQuant<
             }
             this->mm.Iterate();
             this->mm.GetTensorC(this->cGlobal[this->block.offset.offsetC], enAtomic);
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #else
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
             WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);

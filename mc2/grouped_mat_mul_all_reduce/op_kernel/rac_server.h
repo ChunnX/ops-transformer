@@ -126,7 +126,7 @@ struct AivAicpuOpParam {
 constexpr uint32_t HCCL_PARAM_SIZE = sizeof(AivAicpuOpParam); // must aligned by 32 bytes
 
 #ifdef __CCE_AICORE__
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 // Rich Communications Services
 class HcclServer
 {
@@ -213,7 +213,7 @@ public:
         }
     }
 };
-#endif // __CCE_AICORE__ == 220
+#endif // (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 
 #if __CCE_AICORE__ < 220 // we can test this code in 220
 // Rich Communications Services

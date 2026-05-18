@@ -50,7 +50,7 @@ __aicore__ inline constexpr uint32_t GetUbBlockSizeDispatch()
 
 __aicore__ inline constexpr uint32_t GetVRegSizeDispatch()
 {
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;

@@ -132,7 +132,7 @@ private:
     int64_t batch, num_streams, batch_elements, tile_length, block_dim;
 };
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 template <>
 class MhcPreKernel<bfloat16_t, 16> {
 public:
@@ -275,7 +275,7 @@ extern "C" __global__ __aicore__ void mhc_pre_kernel_fp16(
     op.Process();
 }
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 extern "C" __global__ __aicore__ void mhc_pre_kernel_bf16(
     GM_ADDR in, GM_ADDR h, GM_ADDR out,
     int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim

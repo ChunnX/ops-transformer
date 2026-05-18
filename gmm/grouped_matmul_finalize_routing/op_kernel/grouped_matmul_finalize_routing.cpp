@@ -12,7 +12,7 @@
  * \file grouped_matmul_finalize_routing.cpp
  * \brief
  */
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #include "grouped_matmul_finalize_routing.h"
 #include "grouped_matmul_finalize_routing_antiquant_a8w4_msd_pre.h"
 #include "grouped_matmul_finalize_routing_antiquant_a8w4_msd.h"
@@ -106,7 +106,7 @@ using namespace GroupedMatmulFinalizeRouting;
         op.Process();                                                                                                  \
     } while (0)
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 extern "C" __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bias,
                                                                       GM_ADDR pertoken_scale, GM_ADDR group_list,
                                                                       GM_ADDR share_input, GM_ADDR logit,

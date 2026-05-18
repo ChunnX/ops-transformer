@@ -528,7 +528,7 @@ __aicore__ inline void MatrixBtoNZ(GM_ADDR workspace, GM_ADDR src, const Mc2Tili
 #endif  // ENALBE_ND2NZ
 
 __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TPosition::VECCALC> &totalUbBuf) {
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if (g_coreType == AIC) { // 先aiv，后aic
     #ifndef __CCE_KT_TEST__
         CrossCoreWaitFlag(EVENT_ID_5);

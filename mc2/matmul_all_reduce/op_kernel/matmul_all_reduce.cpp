@@ -22,7 +22,7 @@
 #include "common.h"
 #include "matmul_all_reduce_tiling_key.h"
 
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #ifdef MC2_QUANT
 #include "arch22/quant_matmul_all_reduce_tiling_data.h"
 #include "arch22/matmul_all_reduce_quant.h"
@@ -62,7 +62,7 @@
 #include "arch22/quant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
 #include "arch31/matmul_all_reduce_310_general.h"
 #endif // ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_X2 == DT_INT8
-#endif // __CCE_AICORE__ == 220
+#endif // (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 
 #if ((ORIG_DTYPE_X1 == DT_INT8) && (ORIG_DTYPE_Y == DT_BF16))
 #define INVOKE_QUANT_BATCH_MATMUL_DEQUANT_BF16_IMPL_COMM_INT8(templateClass, opTile, opTail, ...)                   \
@@ -133,7 +133,7 @@ __global__ __aicore__ void fp_matmul_all_reduce(
     GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
     GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe &tPipe, GM_ADDR userWS)
 {
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #if defined(MC2_QUANT_FP16)
 #elif defined(MC2_QUANT_BF16)
 #elif defined(MC2_WEIGHT_QUANT)
@@ -157,7 +157,7 @@ __global__ __aicore__ void quant_matmul_allreduce(
     GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
     GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe &tPipe, GM_ADDR userWS)
 {
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #if defined(MC2_QUANT_FP16)
     if constexpr (INT8_COMM == MATMUL_ALLREDUCE_INT8_COMM_F && TRANS == QUANT_BATCH_MATMUL_V3_NOT_TRANS &&
         PERTOKEN == QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN) {
@@ -262,7 +262,7 @@ __global__ __aicore__ void weight_quant_matmul_allreduce(
     GM_ADDR dequantGM, GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
     GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe &tPipe, GM_ADDR userWS)
 {
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 #if defined(MC2_WEIGHT_QUANT)
     if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T &&
         MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL) {
@@ -381,7 +381,7 @@ __global__ __aicore__ void matmul_all_reduce(
     }
 
     TPipe tPipe;
-#if __CCE_AICORE__ == 220
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
     if constexpr (MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM || MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM_CUBE_ONLY) {
         fp_matmul_all_reduce<MM_TYPE, PARAMS_COMM, PARAMS_SHARE_MM, PARAMS_FP_MM>(
             aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM,
@@ -586,5 +586,5 @@ __global__ __aicore__ void matmul_all_reduce(
         MatMulEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
     }
 #endif // ORIG_DTYPE_X1 == DT_INT8
-#endif // __CCE_AICORE__ == 220
+#endif // (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 }

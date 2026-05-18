@@ -57,7 +57,7 @@ constexpr int32_t ONE_BLOCK_SIZE = 32;
 constexpr uint16_t DATA_BLOCK = 32;
 const uint32_t FP32_OUTPUT_TIMES = 4;
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 constexpr MatmulConfig MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG =
     GetMDLConfig(false, false, 0, false, false, false, true, true, false, false, false, true);
 constexpr MatmulConfig MM_DEFAULT_MDL_CFG =
@@ -217,7 +217,7 @@ __aicore__ inline constexpr bool IsFp4()
 }
 #endif
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310)
 __aicore__ inline void CalcDequantParams(uint32_t curAivM, uint32_t curAivN, AscendC::DequantParams &dequantParams,
                                          bool needUpdate = true)
 {

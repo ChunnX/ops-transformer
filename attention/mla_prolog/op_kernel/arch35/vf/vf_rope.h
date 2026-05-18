@@ -17,7 +17,7 @@
 #define VF_ROPE_H
 #include "kernel_tensor.h"
 
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 
 namespace MlaProlog {
 constexpr uint64_t FLOAT_VF_SIZE = 64;

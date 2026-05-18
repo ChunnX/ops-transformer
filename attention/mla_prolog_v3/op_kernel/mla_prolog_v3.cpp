@@ -16,7 +16,7 @@
 #define MLA_PROLOG_VERSION 3
 #define GLOBAL_OVERFLOW_MODE_CTRL 60
 
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
 #if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h")
 #include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h"
 #include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_m.h"
@@ -162,7 +162,7 @@ __global__ __aicore__ void mla_prolog_v3(
                 queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
     }
-#if __CCE_AICORE__ == 310
+#if 0 // __CCE_AICORE__ == 310
     else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
