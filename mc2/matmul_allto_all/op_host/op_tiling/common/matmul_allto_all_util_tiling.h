@@ -11,6 +11,7 @@
 #ifndef MATMUL_ALLTO_ALL_UTIL_TILING_H
 #define MATMUL_ALLTO_ALL_UTIL_TILING_H
 
+#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 
@@ -65,6 +66,7 @@ constexpr size_t ATTR_COMMON_QUANTDTYPE_INDEX = 7;
 constexpr size_t ATTR_X1_TRANSPOSE_INDEX = 8;
 constexpr size_t ATTR_X2_TRANSPOSE_INDEX = 9;
 constexpr size_t ATTR_GROUP_SIZE_INDEX = 10;
+constexpr size_t ATTR_COMM_MODE_INDEX = 11;
 // AlltoAllMatmul的差异的Attr
 constexpr size_t ALLTOALLMATMUL_ATTR_X1_QUANTDTYPE_INDEX = 7;
 constexpr size_t ALLTOALLMATMUL_ATTR_COMMON_QUANTDTYPE_INDEX = 8;
@@ -144,6 +146,8 @@ public:
     static QuantMode GetQuantMode(const gert::TilingContext *context, const char *opName);
     static ge::graphStatus GetAndValidateRankSize(const gert::TilingContext *context, const char *opName,
                                                   const char *group, int64_t &rankDim);
+    static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
+                                                 const TilingContextInfo &contextInfo, uint8_t &commMode);
     static void GetMatrix2DShapes(const gert::TilingContext *context, Matrix2DShapes &shapes);
     static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema);
