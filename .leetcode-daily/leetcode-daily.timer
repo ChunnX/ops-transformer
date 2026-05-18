@@ -1,0 +1,12 @@
+[Unit]
+Description=LeetCode Daily Push Timer - triggers every day at 9:15 AM
+Requires=leetcode-daily.service
+
+[Timer]
+OnCalendar=daily
+OnCalendar=*-*-* 09:15:00
+Persistent=true
+Unit=leetcode-daily.service
+
+[Install]
+WantedBy=timers.target

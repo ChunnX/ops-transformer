@@ -463,7 +463,7 @@ public:
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if (enableS1OutSplit) {
-            return coreGS1Loops < varlenCalcTimes; // 按照S1块维度进行任务拦截
+            return coreGS1Loops < varlenCalcTimes && bN2Cur < constInfo.bSize * constInfo.n2Size;
         }
         return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
     }
@@ -483,6 +483,9 @@ public:
         bool isFirstTask =
             (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart) && (s2Cur == constInfo.s2OStart);
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
+        if (bIdx >= constInfo.bSize) {
+            return TASK_DEAL_MODE::DEAL_ZERO;
+        }
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
             if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
@@ -794,6 +797,10 @@ public:
 
     __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
     {
+        if (bN2Cur / constInfo.n2Size >= constInfo.bSize) {
+            coreGS1Loops = varlenCalcTimes;
+            return;
+        }
         uint32_t task_i_curr = ComputeFlatTaskIdx();
         int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
         PRINTF("task_i_curr:%d, task_i_prev_:%d\n", task_i_curr, task_i_prev_);

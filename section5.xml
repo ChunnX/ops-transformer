@@ -1,0 +1,448 @@
+<h1>5. 完整推理流水线 &mdash; 端到端逐步追踪</h1>
+
+<callout emoji="&#x1F4A1;" background-color="light-blue" border-color="blue">
+  <p>本章以 <b>两条请求并发处理</b> 的完整场景，逐步追踪从 <code>LLM.generate()</code> 调用到最终 token 输出的<b>每一个函数调用、每一次张量变换、每一次内存分配</b>。理解这条流水线后，任何 vLLM 类框架的推理流程都可以触类旁通。</p>
+</callout>
+
+<h2>5.1 场景设定</h2>
+
+<table>
+  <colgroup><col width="180"/><col width="350"/></colgroup>
+  <thead><tr><th background-color="light-gray">参数</th><th background-color="light-gray">值</th></tr></thead>
+  <tbody>
+    <tr><td>模型</td><td>Qwen3-0.6B (28层, hidden=1024, num_heads=16, num_kv_heads=8, head_dim=128)</td></tr>
+    <tr><td>请求 A</td><td><code>"What is the capital of France"</code> (7 tokens)</td></tr>
+    <tr><td>请求 B</td><td><code>"What is the capital of Germany"</code> (7 tokens)</td></tr>
+    <tr><td>SamplingParams</td><td><code>temperature=1.0, max_tokens=5, ignore_eos=False</code></td></tr>
+    <tr><td>KV Cache</td><td>block_size=256, num_blocks 通过 GPU 内存动态计算</td></tr>
+    <tr><td>TP</td><td>1（单卡，简化分析）</td></tr>
+  </tbody>
+</table>
+
+<h2>5.2 流水线全貌图</h2>
+
+<whiteboard type="mermaid">
+sequenceDiagram
+    participant User
+    participant LLM as LLM.generate()
+    participant LE as LLMEngine
+    participant Sch as Scheduler
+    participant BM as BlockManager
+    participant MR as ModelRunner
+    participant M as Qwen3Model
+    participant GPU
+
+    Note over User,GPU: Phase 1: 请求入队 (add_request)
+    User->>LLM: generate(["What is...France", "What is...Germany"], sp)
+    LLM->>LE: for each prompt: add_request(prompt, sp)
+    LE->>LE: tokenizer.encode(prompt)
+    LE->>LE: Sequence(token_ids, sp)
+    LE->>Sch: add(seq_A), add(seq_B)
+
+    Note over User,GPU: Phase 2: 调度循环 (while not finished)
+    LE->>Sch: schedule()
+    Sch->>BM: can_allocate(seq_A) → find prefix cache
+    BM-->>Sch: num_cached_blocks=0 (no prefix hit)
+    Sch->>BM: allocate(seq_A, 0)
+    BM->>BM: _allocate_block() × ceil(7/256)=1
+    Sch->>Sch: seq_A.num_scheduled_tokens = 7
+    Sch->>BM: can_allocate(seq_B) → 1 block
+    Sch->>BM: allocate(seq_B, 0)
+    Sch->>Sch: seq_B.num_scheduled_tokens = 7
+    Sch-->>LE: (scheduled_seqs=[A,B], is_prefill=True)
+
+    Note over User,GPU: Phase 3: Prefill 前向传播
+    LE->>MR: call("run", [A,B], True)
+    MR->>MR: prepare_prefill([A,B])
+    MR->>MR: prepare_sample([A,B])
+    MR->>MR: run_model(input_ids, positions, is_prefill=True)
+    MR->>M: model(input_ids, positions)
+    M->>M: embed_tokens(input_ids) → (14,1024)
+    M->>M: 28× Qwen3DecoderLayer
+    loop each layer
+        M->>M: input_layernorm + residual
+        M->>M: QKV proj → q,k,v
+        M->>M: RoPE on q,k
+        M->>M: Attention(q,k,v) via flash_attn_varlen_func
+        M->>M: store_kvcache(k,v) via Triton kernel
+        M->>M: o_proj + residual
+        M->>M: post_attention_layernorm + residual
+        M->>M: MLP (gate_up_proj → SiLU*gate → down_proj)
+    end
+    M-->>MR: hidden_states (14, 1024)
+    MR->>M: compute_logits(hidden_states)
+    M->>M: lm_head → logits (14, vocab_size)
+    MR->>M: sampler(logits, temperatures) → token_ids [A,B]
+    MR-->>LE: [token_A, token_B]
+
+    Note over User,GPU: Phase 4: 后处理 & 解码循环
+    LE->>Sch: postprocess([A,B], [tokA,tokB], True)
+    Sch->>Sch: hash_blocks(seq) 前缀哈希
+    Sch->>Sch: append_token(token) to each seq
+
+    Note over User,GPU: Phase 5: Decode 解码迭代
+    loop max_tokens iterations
+        LE->>Sch: schedule()
+        Sch->>Sch: decode path: each seq gets 1 token
+        Sch->>BM: can_append(seq) → check free blocks
+        Sch->>BM: may_append(seq) → allocate if needed
+        Sch-->>LE: (scheduled_seqs=[A,B], is_prefill=False)
+        LE->>MR: call("run", [A,B], False)
+        MR->>MR: prepare_decode([A,B])
+        MR->>MR: run_model → CUDA Graph replay
+        M->>M: flash_attn_with_kvcache(q, K_cache, V_cache)
+        MR-->>LE: [new_token_A, new_token_B]
+        LE->>Sch: postprocess([A,B], ...)
+    end
+
+    Note over User,GPU: Phase 6: 结果收集
+    LE->>User: [{text: "...", token_ids: [...]}, {...}]
+</whiteboard>
+
+<h2>5.3 逐步详细追踪</h2>
+
+<h3>5.3.1 Phase 1: 请求入队 (add_request)</h3>
+
+<p><b>调用链</b>: <code>LLM.generate() → LLMEngine.add_request() × 2 → Scheduler.add() × 2</code></p>
+
+<pre lang="python" caption="LLMEngine.add_request (llm_engine.py:43-47)">
+<code>def add_request(self, prompt: str | list[int], sampling_params: SamplingParams):
+    if isinstance(prompt, str):                          # 步骤1: 字符串→token_ids
+        prompt = self.tokenizer.encode(prompt)           # 使用 AutoTokenizer (fast)
+    seq = Sequence(prompt, sampling_params)              # 步骤2: 创建 Sequence 对象
+    self.scheduler.add(seq)                              # 步骤3: 推入 waiting 队列</code></pre>
+
+<p><b>数据状态</b>:
+  <br/>请求A: <code>token_ids = [6448, 374, 279, 8471, 315, 6612]</code> (7 tokens, 已从原始字符串编码)
+  <br/>请求B: <code>token_ids = [6448, 374, 279, 8471, 315, 19942]</code> (7 tokens)
+  <br/>两者共享前缀 "What is the capital of" (6 tokens)，仅最后1个token不同。</p>
+
+<callout emoji="&#x26A0;&#xFE0F;" background-color="light-yellow" border-color="yellow">
+  <p><b>关键设计决策</b>: Sequence 构造时使用 <code>copy(token_ids)</code>（line 21），防止外部修改污染内部状态。每个 Sequence 被赋予唯一的自增 <code>seq_id</code>（line 19），从 <code>itertools.count()</code> 全局递增。</p>
+</callout>
+
+<h3>5.3.2 Phase 2: 调度决策 (schedule)</h3>
+
+<p><b>调用链</b>: <code>LLMEngine.step() → Scheduler.schedule() → BlockManager.can_allocate/allocate × 2</code></p>
+
+<pre lang="python" caption="Scheduler.schedule prefill 路径 (scheduler.py:30-52)">
+<code># 此时 waiting = deque([seq_A, seq_B]), running = deque([])
+while self.waiting and len(scheduled_seqs) < self.max_num_seqs:  # 512
+    seq = self.waiting[0]                          # peek 队首但不弹出
+    remaining = self.max_num_batched_tokens - num_batched_tokens  # 16384 - 0 = 16384
+
+    if not seq.block_table:                        # 首次调度，block_table为空
+        num_cached_blocks = self.block_manager.can_allocate(seq)
+        # can_allocate 内部逻辑:
+        #   - seq.num_blocks = ceil(7/256) = 1
+        #   - 无前缀缓存命中, num_cached_blocks = 0
+        #   - 检查 free_block_ids >= 1, 返回 0
+        num_tokens = seq.num_tokens - num_cached_blocks * self.block_size  # 7 - 0 = 7
+
+    # remaining(16384) >= num_tokens(7), 不触发 chunked prefill
+    self.block_manager.allocate(seq, num_cached_blocks)
+    # allocate 内部:
+    #   - _allocate_block() 从 free_block_ids 弹出一个 block_id
+    #   - block.reset() 将 ref_count 设为 1, hash=-1
+    #   - seq.block_table.append(block_id)
+    #   - seq.num_cached_tokens = 0
+
+    seq.num_scheduled_tokens = min(7, 16384) = 7   # 本次调度7个token
+    num_batched_tokens += 7                         # 已累计7个token
+
+    # 检查完成：cached(0) + scheduled(7) == total(7), 转为 RUNNING
+    seq.status = SequenceStatus.RUNNING
+    self.waiting.popleft()                          # 从 waiting 弹出
+    self.running.append(seq)                        # 推入 running
+    scheduled_seqs.append(seq)                      # 加入调度结果
+
+# 对 seq_B 重复同样逻辑:
+#   can_allocate → 0 blocks cached, 1 new block needed
+#   allocate → block_table = [1]
+#   num_scheduled_tokens = 7, num_batched_tokens = 14
+#   status = RUNNING, waiting → [], running = [A, B]
+# scheduled_seqs = [A, B], is_prefill = True</code></pre>
+
+<callout emoji="&#x2757;" background-color="light-yellow" border-color="yellow">
+  <p><b>Edge Case 处理</b>: 
+  <br/>&bull; 若 <code>can_allocate</code> 返回 -1（内存不足），<code>break</code> 立即停止调度，已调度的请求照常执行，未调度的留在 waiting 队列
+  <br/>&bull; Chunked prefill：当 <code>remaining &lt; num_tokens</code> 且不是第一个请求时 break，只有队列首个请求可被分块
+  <br/>&bull; 前缀缓存：若有命中，<code>num_tokens</code> 和 <code>num_scheduled_tokens</code> 都相应减少，仅处理未缓存的尾部</p>
+</callout>
+
+<h3>5.3.3 Phase 3: Prefill 前向传播 (run_model, is_prefill=True)</h3>
+
+<callout emoji="&#x1F4A1;" background-color="light-blue" border-color="blue">
+  <p>这是 <b>计算最密集</b> 的阶段。ModelRunner 将 Sequence 的抽象数据结构转化为 GPU 上的扁平化张量，然后执行一次完整的前向传播。</p>
+</callout>
+
+<h4>Step 3.1: prepare_prefill — 数据准备</h4>
+
+<pre lang="python" caption="prepare_prefill 核心逻辑 (model_runner.py:129-170)">
+<code># for seq_A (num_cached_tokens=0, num_scheduled_tokens=7):
+#   start=0, seqlen_q=7, end=7, seqlen_k=7
+#   input_ids.extend([6448, 374, 279, 8471, 315, 6612, ...])  # seq[0:7]
+#   positions.extend([0, 1, 2, 3, 4, 5, 6])
+#   cu_seqlens_q.append(0+7=7)        # 累积前缀: [0, 7]
+#   cu_seqlens_k.append(0+7=7)        # [0, 7]
+#   max_seqlen_q = max(7, 0) = 7
+#   max_seqlen_k = max(7, 0) = 7
+#   slot_mapping: block_table[0]*256 + [0..6] = [0, 1, 2, 3, 4, 5, 6]
+
+# for seq_B (num_cached_tokens=0, num_scheduled_tokens=7):
+#   input_ids.extend([6448, 374, 279, 8471, 315, 19942])
+#   positions.extend([0, 1, 2, 3, 4, 5, 6])
+#   cu_seqlens_q.append(7+7=14)       # [0, 7, 14]
+#   cu_seqlens_k.append(7+7=14)       # [0, 7, 14]
+#   max_seqlen_q = max(7, 7) = 7
+#   max_seqlen_k = max(7, 7) = 7
+#   slot_mapping: block_table[1]*256 + [0..6] = [256, 257, ..., 262]
+
+# 最终张量:
+#   input_ids:   [14] = [6448,374,...,6612, 6448,374,...,19942], dtype=torch.int64, on GPU
+#   positions:   [14] = [0,1,..,6, 0,1,..,6], dtype=torch.int64, on GPU
+#   cu_seqlens_q:  [3] = [0, 7, 14], dtype=torch.int32, on GPU
+#   cu_seqlens_k:  [3] = [0, 7, 14], dtype=torch.int32, on GPU
+#   slot_mapping: [14] = [0,1,...,6, 256,...,262], dtype=torch.int32, on GPU
+#   max_seqlen_q=7, max_seqlen_k=7, block_tables=None (无前缀缓存)
+
+# 检查条件: cu_seqlens_k[-1](14) == cu_seqlens_q[-1](14), 所以 block_tables 保持 None</code></pre>
+
+<callout emoji="&#x1F4A1;" background-color="light-blue" border-color="blue">
+  <p><b>性能优化</b>: 所有张量通过 <code>pin_memory=True → .cuda(non_blocking=True)</code> 实现异步 CPU→GPU 传输，与 kernel 启动重叠。这在大批量场景下可减少 10-15% 的延迟。</p>
+</callout>
+
+<h4>Step 3.2: Embedding + 28层 Transformer</h4>
+
+<pre lang="python" caption="Qwen3Model.forward (qwen3.py:173-183)">
+<code>def forward(self, input_ids, positions):
+    hidden_states = self.embed_tokens(input_ids)    # (14,) → (14, 1024)
+    # VocabParallelEmbedding:
+    #   每个输入 token_id 通过词表映射到 1024-dim 向量
+    #   TP>1 时: 先 mask 掉不属于本 rank 的 token, 查表后 all_reduce
+
+    residual = None                                 # 残差连接起点
+    for layer in self.layers:                       # 28 次循环
+        hidden_states, residual = layer(positions, hidden_states, residual)
+
+    hidden_states, _ = self.norm(hidden_states, residual)  # 最终 LN
+    return hidden_states                             # (14, 1024)</code></pre>
+
+<p><b>单层 DecoderLayer 内部</b>:</p>
+
+<pre lang="python" caption="Qwen3DecoderLayer.forward (qwen3.py:146-159)">
+<code>def forward(self, positions, hidden_states, residual):
+    # 第一层: residual=None, 走简单 RMSNorm
+    if residual is None:
+        hidden_states, residual = self.input_layernorm(hidden_states), hidden_states
+        # rms_forward: x.float → var = mean(x²) → x * rsqrt(var+eps) → x*weight
+        # residual 保存归一化前的 hidden_states, 用于后续残差连接
+    else:
+        # 后续层: 融合 RMSNorm + Residual Add
+        hidden_states, residual = self.add_rms_forward(hidden_states, residual)
+        # x = x.float().add_(residual.float())  # 先做残差加
+        # residual = x.to(orig_dtype)           # 保存新残差
+        # 然后 RMSNorm
+
+    # Attention
+    hidden_states = self.self_attn(positions, hidden_states)
+    # Qwen3Attention:
+    #   qkv = qkv_proj(hidden_states) → (14, q_size+kv_size*2)
+    #   q,k,v = split → q(14,2,128), k(14,1,128), v(14,1,128)
+    #   q = q_norm(q), k = k_norm(k)     # QK LayerNorm (Qwen3特性!)
+    #   q,k = rotary_emb(positions, q, k)  # RoPE位置编码
+    #   o = attn(q,k,v)                   # Flash Attention varlen
+    #   output = o_proj(o.flatten())      # 输出投影
+
+    # MLP
+    hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
+    hidden_states = self.mlp(hidden_states)
+    # Qwen3MLP:
+    #   gate_up = gate_up_proj(x) → (14, 2*intermediate)
+    #   x = silu(gate) * up              # SwiGLU
+    #   x = down_proj(x)
+
+    return hidden_states, residual</code></pre>
+
+<h4>Step 3.3: Attention 内部 &mdash; Flash Attention varlen + KV Cache 写入</h4>
+
+<pre lang="python" caption="Attention.forward (attention.py:59-75)">
+<code>def forward(self, q, k, v):
+    context = get_context()              # 获取全局上下文
+
+    # ---- KV Cache 写入 ----
+    k_cache, v_cache = self.k_cache, self.v_cache  # (num_blocks, block_size, num_kv_heads, head_dim)
+    if k_cache.numel() and v_cache.numel():
+        store_kvcache(k, v, k_cache, v_cache, context.slot_mapping)
+        # Triton kernel 将每个 token 的 k,v 写入对应 slot:
+        #   slot_mapping = [0,1,2,3,4,5,6, 256,257,...,262]
+        #   seq_A 的 k[0..6] → k_cache[0..6], v[0..6] → v_cache[0..6]
+        #   seq_B 的 k[0..6] → k_cache[256..262], v[0..6] → v_cache[256..262]
+
+    # ---- 注意力计算 ----
+    if context.is_prefill:               # True
+        # cu_seqlens_q=[0,7,14], cu_seqlens_k=[0,7,14], max_seqlen=7
+        o = flash_attn_varlen_func(q, k, v,
+            max_seqlen_q=7, cu_seqlens_q=[0,7,14],
+            max_seqlen_k=7, cu_seqlens_k=[0,7,14],
+            softmax_scale=self.scale,     # 1/sqrt(128) ≈ 0.0884
+            causal=True,                  # 因果mask
+            block_table=None)             # 无前缀缓存
+        # flash_attn_varlen_func 内部:
+        #   将批次内不等长序列打包为一个连续块
+        #   使用 cu_seqlens 定位每个序列的起止位置
+        #   因果mask确保 token_i 只能 attend token_{0..i}
+    return o  # (14, 2, 128)</code></pre>
+
+<h4>Step 3.4: Logits 计算 + 采样</h4>
+
+<pre lang="python" caption="Logits & Sampling (embed_head.py:56-66 + sampler.py:7-12)">
+<code># compute_logits:
+#   prefill=True, 取每个序列最后位置的 hidden_states
+#   last_indices = cu_seqlens_q[1:]-1 = [6, 13]
+#   x = hidden_states[[6, 13]]  → (2, 1024)
+#   logits = F.linear(x, weight) → (2, vocab_size=151936)
+#   TP>1 时: gather 各 rank 的 logits, cat → 完整 logits
+
+# Sampler.forward:
+#   temperatures = [1.0, 1.0] → (2,1) via unsqueeze
+#   logits = logits / temperatures          # 温度缩放
+#   probs = softmax(logits, dim=-1)         # 归一化
+#   # Gumbel-Max trick (等价于从 categorical 分布采样):
+#   # gumbel_noise = -log(-log(uniform(0,1))) → exponential_(1).clamp_min_(1e-10)
+#   sample_tokens = (probs / gumbel_noise).argmax(dim=-1)
+#   → [token_A1, token_B1]</code></pre>
+
+<callout emoji="&#x2757;" background-color="light-yellow" border-color="yellow">
+  <p><b>Gumbel-Max Trick 解释</b>: <code>probs / exponential(1)</code> 等价于 <code>argmax(log(probs) + Gumbel(0,1))</code>。除以指数随机变量而不是取对数求和，避免了对数和数值稳定问题。关键约束：<code>temperature &gt; 1e-10</code>，禁止纯贪心采样（会导致退化为固定 argmax）。</p>
+</callout>
+
+<h3>5.3.4 Phase 4: 后处理 (postprocess)</h3>
+
+<pre lang="python" caption="Scheduler.postprocess (scheduler.py:81-92)">
+<code>def postprocess(self, seqs, token_ids, is_prefill=True):
+    for seq, token_id in zip(seqs, token_ids):
+        self.block_manager.hash_blocks(seq)
+        # 对新写入的 KV Cache blocks 计算 xxhash 并建立索引
+        # 后续相同前缀的请求可以通过哈希查找直接命中缓存
+
+        seq.num_cached_tokens += seq.num_scheduled_tokens  # 0+7=7
+        seq.num_scheduled_tokens = 0                        # 重置
+
+        # is_prefill=True 且 num_cached_tokens(7) == num_tokens(7), 不 continue
+        seq.append_token(token_id)  # seq_A: [..., token_A1], seq_B: [..., token_B1]
+        # 检查停止条件: token!=eos, num_completion_tokens(1)!=max_tokens(5) → 继续</code></pre>
+
+<h3>5.3.5 Phase 5: Decode 解码循环 (迭代 2-5)</h3>
+
+<callout emoji="&#x1F4A1;" background-color="light-blue" border-color="blue">
+  <p><b>关键区别</b>: Decode 阶段每次只处理 1 个 token per request（自动回归）。与 Prefill 的区别在于：使用 CUDA Graph 加速 kernel launch、使用 <code>flash_attn_with_kvcache</code> 直接读缓存、使用旋转位置编码。</p>
+</callout>
+
+<pre lang="python" caption="Scheduler.schedule decode 路径 (scheduler.py:58-73)">
+<code># running = deque([A, B]), 每个 seq 有 8 个 token (7 prompt + 1 completion)
+while self.running and len(scheduled_seqs) < self.max_num_seqs:
+    seq = self.running.popleft()        # 取出 seq_A
+    while not self.block_manager.can_append(seq):
+        # can_append: 检查是否需要新 block
+        # len(seq)=8, block_size=256, 8%256 != 1 → 不需要新 block, 通过
+        # 若需要新 block 但 free_block_ids 不足, 触发 preempt
+        if self.running:
+            self.preempt(self.running.pop())  # 抢占比当前更晚入队的请求
+        else:
+            self.preempt(seq)           # 只剩自己, 抢占自己
+    else:
+        seq.num_scheduled_tokens = 1
+        seq.is_prefill = False
+        self.block_manager.may_append(seq)  # 若 8%256==1 则分配新 block
+        scheduled_seqs.append(seq)
+# 对 seq_B 同样处理
+
+assert scheduled_seqs                    # 确保至少有一个
+self.running.extendleft(reversed(scheduled_seqs))  # 回填: [B, A] → running = [A, B]
+return scheduled_seqs, False</code></pre>
+
+<pre lang="python" caption="prepare_decode (model_runner.py:172-188)">
+<code># for seq_A: input_ids=[last_token], positions=[7], slot_mapping=[6+1=7]
+# for seq_B: input_ids=[last_token], positions=[7], slot_mapping=[262+1=263]
+# context_lens = [8, 8]  # 每个序列的完整长度
+# block_tables: [[0], [1]]  # 每个序列持有的 block 列表
+# 最终:
+#   input_ids:     [2] = [token_A1, token_B1]
+#   positions:     [2] = [7, 7]
+#   slot_mapping:  [2] = [7, 263]
+#   context_lens:  [2] = [8, 8]
+#   block_tables:  [2, max_blocks] = [[0, -1], [1, -1]]</code></pre>
+
+<pre lang="python" caption="Decode Attention (attention.py:71-74)">
+<code># Decode 路径:
+o = flash_attn_with_kvcache(
+    q.unsqueeze(1),           # (2, 1, 2, 128) — 每个请求1个query
+    k_cache,                  # (num_blocks, block_size, num_kv_heads, head_dim)
+    v_cache,
+    cache_seqlens=[8, 8],     # 每个缓存的长度
+    block_table=block_tables, # 逻辑块→物理块映射
+    softmax_scale=self.scale,
+    causal=True)
+# flash_attn_with_kvcache:
+#   对于每个 batch 元素:
+#     1. 根据 block_table 从 k_cache/v_cache 取出对应的物理块
+#     2. 按 cache_seqlens 截取出有效的 KV 历史（含 prompt + 已生成的 completion）
+#     3. 计算 q @ K^T / sqrt(d), softmax, 加权 V
+#   返回: (2, 1, 2, 128)</code></pre>
+
+<h3>5.3.6 Phase 6: 结果收集与终止</h3>
+
+<pre lang="python" caption="LLMEngine.generate 主循环 (llm_engine.py:73-90)">
+<code>while not self.is_finished():        # scheduler.waiting 和 scheduler.running 都为空
+    t = perf_counter()
+    output, num_tokens = self.step()
+    # output = [(seq_id_0, [token1,...,token5]), ...]
+    # num_tokens: prefill 时 = 14 (positive), decode 时 = -2 (negative → 取绝对值)
+
+    # 吞吐量计算:
+    if num_tokens > 0:
+        prefill_throughput = num_tokens / (perf_counter()-t)  # 14 / 0.1s = 140 tok/s
+    else:
+        decode_throughput = -num_tokens / (perf_counter()-t)  # 2 / 0.005s = 400 tok/s
+
+    for seq_id, token_ids in output:
+        outputs[seq_id] = token_ids
+        pbar.update(1)
+
+# 所有请求完成后, outputs = {
+#   seq_id_0: [token_A1, token_A2, ..., token_A5],
+#   seq_id_1: [token_B1, token_B2, ..., token_B5],
+# }
+# 按 seq_id 排序输出, tokenizer.decode → 最终文本</code></pre>
+
+<h2>5.4 关键数据维度变化汇总表</h2>
+
+<table>
+  <colgroup><col width="160"/><col width="160"/><col width="160"/><col width="160"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">阶段</th>
+      <th background-color="light-gray">输入形状</th>
+      <th background-color="light-gray">核心计算</th>
+      <th background-color="light-gray">输出形状</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Tokenizer</td><td>str × 2</td><td>BPE编码</td><td>list[int] × 2 (7 tokens each)</td></tr>
+    <tr><td>add_request</td><td>list[int]</td><td>Sequence构造函数, copy token_ids</td><td>Sequence 对象 (waiting 队列)</td></tr>
+    <tr><td>Schedule (prefill)</td><td>Sequence × 2</td><td>BlockManager 分配物理块</td><td>scheduled_seqs (block_table 已填充)</td></tr>
+    <tr><td>prepare_prefill</td><td>Sequence × 2</td><td>切片→扁平化, pin_memory→GPU</td><td>input_ids(14), positions(14), cu_seqlens(3)</td></tr>
+    <tr><td>Embedding</td><td>(14,)</td><td>词表查表</td><td>(14, 1024)</td></tr>
+    <tr><td>Attention (每层)</td><td>q(14,2,128), k/v(14,1,128)</td><td>flash_attn_varlen + store_kvcache</td><td>(14, 2, 128) → flat → (14, 256)</td></tr>
+    <tr><td>MLP (每层)</td><td>(14, 1024)</td><td>gate_up_proj → SiLU*gate → down_proj</td><td>(14, 1024)</td></tr>
+    <tr><td>LM Head</td><td>(2, 1024) [仅取最后]</td><td>F.linear(x, weight)</td><td>(2, 151936)</td></tr>
+    <tr><td>Sampler</td><td>(2, 151936)</td><td>softmax + Gumbel-Max</td><td>(2,) token_ids</td></tr>
+    <tr><td>Schedule (decode)</td><td>Sequence × 2</td><td>can_append, may_append</td><td>scheduled_seqs (each scheduled=1)</td></tr>
+    <tr><td>prepare_decode</td><td>Sequence × 2</td><td>取 last_token + 构造 block_tables</td><td>input_ids(2), positions(2), context_lens(2)</td></tr>
+    <tr><td>Decode Attn</td><td>q(2,1,2,128)</td><td>flash_attn_with_kvcache + CUDA Graph</td><td>(2, 1, 2, 128) → flat → (2, 256)</td></tr>
+    <tr><td>Final Output</td><td>list[dict]</td><td>sorted + tokenizer.decode</td><td>str × 2 (完整回答)</td></tr>
+  </tbody>
+</table>
+
+<hr/>

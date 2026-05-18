@@ -1,0 +1,49 @@
+[2026-05-12 00:06:05] ⚡ 调度器启动，等待每天 9:15 触发...
+[2026-05-12 00:06:05] 监控脚本: /mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py
+[2026-05-12 00:06:05] 监控脚本: /mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py
+[2026-05-12 00:58:33] ⚡ 调度器启动，每天一次，等待 9:15 触发...
+[2026-05-12 00:58:33] 监控脚本: /mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py
+[2026-05-12 00:58:33] 下次执行：05-12 09:15，等待 29786 秒 (~496 分钟)
+[2026-05-12 09:14:59] 执行每日推送...
+[2026-05-12 09:14:59] 每日推送失败: Traceback (most recent call last):
+  File "/mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py", line 19, in <module>
+    from markdown_pdf import MarkdownPdf, Section
+ModuleNotFoundError: No module named 'markdown_pdf'
+[2026-05-12 09:14:59] 下次执行：05-12 09:15，等待 1 秒 (~0 分钟)
+[2026-05-12 09:15:00] 下次执行：05-12 09:15，等待 86399 秒 (~1439 分钟)
+[2026-05-13 09:14:59] 执行每日推送...
+[2026-05-13 09:14:59] 每日推送失败: Traceback (most recent call last):
+  File "/mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py", line 19, in <module>
+    from markdown_pdf import MarkdownPdf, Section
+ModuleNotFoundError: No module named 'markdown_pdf'
+[2026-05-13 09:14:59] 下次执行：05-13 09:15，等待 1 秒 (~0 分钟)
+[2026-05-13 09:15:00] 下次执行：05-13 09:15，等待 86399 秒 (~1439 分钟)
+[2026-05-14 09:14:59] 执行每日推送...
+[2026-05-14 09:14:59] 每日推送失败: Traceback (most recent call last):
+  File "/mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py", line 19, in <module>
+    from markdown_pdf import MarkdownPdf, Section
+ModuleNotFoundError: No module named 'markdown_pdf'
+[2026-05-14 09:14:59] 下次执行：05-14 09:15，等待 1 秒 (~0 分钟)
+[2026-05-14 09:15:00] 下次执行：05-14 09:15，等待 86399 秒 (~1439 分钟)
+[2026-05-15 09:15:00] 执行每日推送...
+[2026-05-15 09:15:00] 每日推送失败: Traceback (most recent call last):
+  File "/mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py", line 19, in <module>
+    from markdown_pdf import MarkdownPdf, Section
+ModuleNotFoundError: No module named 'markdown_pdf'
+[2026-05-15 09:15:00] 下次执行：05-15 09:15，等待 86399 秒 (~1439 分钟)
+[2026-05-15 10:05:40] ⚡ 调度器启动，每天一次，等待 9:15 触发...
+[2026-05-15 10:05:40] 监控脚本: /mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py
+[2026-05-15 10:05:40] 下次执行：05-15 09:15，等待 83359 秒 (~1389 分钟)
+[2026-05-15 10:08:38] ⚡ 调度器启动 — 每日 9:15 推送 + 20:00 督促
+[2026-05-15 10:08:38] 每日脚本: /mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py
+[2026-05-15 10:08:38] 下次事件: 晚间学习督促，等待 35481 秒 (~591 分钟)
+[2026-05-15 19:59:59] 发送学习督促: 💡 睡觉前花15分钟复习一下今天的算法题...
+[2026-05-15 20:00:01] 督促消息发送成功
+[2026-05-15 20:00:01] 下次事件: 每日一题推送，等待 47698 秒 (~794 分钟)
+[2026-05-16 09:14:59] 推送每日一题...
+[2026-05-16 09:15:04] 推送成功: 当前天数: 2, 发送类别: 二分查找 (Binary Search)
+已更新天数到 3
+[2026-05-16 09:15:04] 下次事件: 晚间学习督促，等待 38695 秒 (~644 分钟)
+[2026-05-16 19:59:59] 发送学习督促: 📖 还没看今天的每日一题？别让它过夜呀，...
+[2026-05-16 20:00:00] 督促消息发送成功
+[2026-05-16 20:00:00] 下次事件: 每日一题推送，等待 134099 秒 (~2234 分钟)
