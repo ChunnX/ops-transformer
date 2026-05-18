@@ -49,7 +49,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor* cuSeqLensQOptional, const acl
                                 int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureSmlag();
+aclnnStatus CheckFeatureSmlag(int64_t cmpRatioOptional);
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnSparseFlashMlaGradMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_metadata_infershape.cpp
+ * \file sparse_lightning_indexer_klloss_grad_metadata_infershape.cpp
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../op_kernel_aicpu/sparse_lightning_indexer_grad_metadata.h"
+#include "../op_kernel_aicpu/sparse_lightning_indexer_klloss_grad_metadata.h"
 
 using namespace ge;
 
@@ -22,7 +22,7 @@ static ge::graphStatus InferShapeQuantLightningIndexerMetaData(gert::InferShapeC
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SLIG_METADATA_SIZE);
+    oShape->SetDim(0, optiling::SLIKG_METADATA_SIZE);
     return GRAPH_SUCCESS;
 }
 
@@ -32,7 +32,7 @@ static ge::graphStatus InferDtypeQuantLightningIndexerMetaData(gert::InferDataTy
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseLightningIndexerGradMetadata)
+IMPL_OP_INFERSHAPE(SparseLightningIndexerKllossGradMetadata)
     .InferShape(InferShapeQuantLightningIndexerMetaData)
     .InferDataType(InferDtypeQuantLightningIndexerMetaData);
 } // namespace ops

@@ -9,18 +9,18 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_grad_metadata_proto.h
+ * \file sparse_lightning_indexer_klloss_grad_metadata_proto.h
  * \brief
  */
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_PROTO_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_PROTO_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_PROTO_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_PROTO_H
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
 
 namespace ge {
 
-REG_OP(SparseLightningIndexerGradMetadata)
+REG_OP(SparseLightningIndexerKllossGradMetadata)
     .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_k, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
@@ -42,9 +42,9 @@ REG_OP(SparseLightningIndexerGradMetadata)
     .ATTR(mask_mode, Int, 0)
     .ATTR(cmp_ratio, Int, 1)
     .ATTR(deterministic, Int, 0)
-    .OP_END_FACTORY_REG(SparseLightningIndexerGradMetadata)
+    .OP_END_FACTORY_REG(SparseLightningIndexerKllossGradMetadata)
 } // namespace ge
 
-#endif // SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_PROTO_H
+#endif // SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_PROTO_H
 
 // FD

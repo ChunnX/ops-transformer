@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
-#define ACLNN_SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
+#ifndef ACLNN_SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H
+#define ACLNN_SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
+aclnnSparseLightningIndexerKllossGradMetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
     const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK, 
     int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
@@ -27,29 +27,29 @@ aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
+aclnnStatus CheckSingleParamSlikg(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
                                  int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, 
                                  int64_t maskModeOptional);
 
 __attribute__((visibility("default")))
-aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckExistenceSlikg(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
                                const aclTensor* cuSeqLensKOptional, const aclTensor* cmpResidualKOptional, 
                                int64_t maskModeOptional, int64_t cmpRatioOptional);
 
 __attribute__((visibility("default")))
-aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckConsistencySlikg(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
                                  const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
                                  const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, 
                                  int64_t batchSizeOptional);
 
 __attribute__((visibility("default")))
-aclnnStatus CheckFeatureSlig(int64_t cmpRatioOptional);
+aclnnStatus CheckFeatureSlikg(int64_t cmpRatioOptional);
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnSparseLightningIndexerGradMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+aclnnSparseLightningIndexerKllossGradMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // ACLNN_SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
+#endif  // ACLNN_SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H

@@ -9,12 +9,12 @@
  */
 
 /*!
-* \file sparse_lightning_indexer_grad_metadata.h
+* \file sparse_lightning_indexer_klloss_grad_metadata.h
 * \brief
 */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_H
 
 #include <cstdint>
 
@@ -23,8 +23,8 @@ namespace optiling {
 // Constants
 inline constexpr uint32_t AIC_CORE_NUM = 36;
 inline constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t SLIG_METADATA_SIZE = 1024;
-using SLIG_METADATA_T = int32_t;
+constexpr uint32_t SLIKG_METADATA_SIZE = 1024;
+using SLIKG_METADATA_T = int32_t;
 
 constexpr uint32_t GRAD_METADATA_SIZE = 5;
 
@@ -50,12 +50,12 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct SligMetaData {
+    struct SlikgMetaData {
         uint32_t gradMetadata[GRAD_METADATA_SIZE];
     };
 };
 
-static_assert(SLIG_METADATA_SIZE * sizeof(SLIG_METADATA_T) >= sizeof(detail::SligMetaData));
+static_assert(SLIKG_METADATA_SIZE * sizeof(SLIKG_METADATA_T) >= sizeof(detail::SlikgMetaData));
 };
 
 #endif

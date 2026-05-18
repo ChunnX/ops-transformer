@@ -49,7 +49,7 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
         CheckConsistencySmlag(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
                             sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, 
                             cmpTopkLengthOptional, layoutQOptional, layoutKvOptional, batchSizeOptional) == ACLNN_SUCCESS &&
-        CheckFeatureSmlag() == ACLNN_SUCCESS) {
+        CheckFeatureSmlag(cmpRatioOptional) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
@@ -395,8 +395,13 @@ aclnnStatus CheckConsistencySmlag(const aclTensor* cuSeqLensQOptional, const acl
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckFeatureSmlag()
+aclnnStatus CheckFeatureSmlag(int64_t cmpRatioOptional)
 {
+    // 压缩率校验
+    if (cmpRatioOptional < 1 || cmpRatioOptional > 128) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be [1, 128], but got %d", cmpRatioOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
