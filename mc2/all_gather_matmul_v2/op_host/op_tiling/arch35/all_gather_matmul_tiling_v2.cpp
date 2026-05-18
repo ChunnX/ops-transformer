@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
 */
 
-/*!
+/* !
  * \file all_gather_matmul_tiling_v2.cpp
  * \brief
  */
@@ -40,6 +40,9 @@ using namespace AscendC;
 using namespace Mc2Tiling;
 
 namespace optiling {
+static constexpr int64_t CCU_LEN = 3;
+static constexpr int64_t AI_CPU_LEN = 5;
+static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 
 bool AllGatherMatmulTilingV2::IsCapable()
 {
@@ -73,8 +76,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     DoSplitMTiling(MutableRCSTilingData());
     GE_ASSERT_GRAPH_SUCCESS(DoVersion2Tiling());
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
-                      MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
-                      allGatherMatmulTilingDataV2_->dataType);
+        MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
+        allGatherMatmulTilingDataV2_->dataType);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -109,8 +112,8 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
-    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.",
-            sizeof(AllGatherMatmulTilingDataV2), context_->GetRawTilingData()->GetCapacity());
+    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
+        context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
@@ -134,9 +137,8 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     return result;
 }
 
-ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
-                                                          Mc2MMRegisterCfg& registerCfg,
-                                                          Mc2MatMulV3TilingData& tilingData)
+ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
+    Mc2MMRegisterCfg &registerCfg, Mc2MatMulV3TilingData &tilingData)
 {
     tilingCfg.SetRankDim(args_.rankDim - 1);
     tilingCfg.SetMatMulV3TilingData(tilingData);
@@ -171,19 +173,19 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     std::vector<int32_t> priorities;
     GE_ASSERT_GRAPH_SUCCESS(mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch, priorities, opName_));
 
-    Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch, priorities};
+    Mc2MMRegisterCfg registerCfg{ "Mc2MatMulV3", npuArch, priorities };
 
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
 
     // 计算 local 块 tiling
-    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
-                                      reinterpret_cast<const void*>(&mmV3Args_));
+    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
+        reinterpret_cast<const void *>(&mmV3Args_));
     GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(localTilingCfg, registerCfg, MutableMC2MatmulV3LocalTilingData()));
 
     // 计算 tile 块 tiling
     mmV3Args_.mValue = tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tileCnt);
-    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
-                                     reinterpret_cast<const void*>(&mmV3Args_), tileMValue_);
+    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
+        reinterpret_cast<const void *>(&mmV3Args_), tileMValue_);
     tileTilingCfg.SetCommCnt(MutableRCSTilingData().tileCnt);
     GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MatmulV3TileTilingData()));
     MutableMC2MatmulV3TileTilingData().tCubeTiling.M = (tileMValue_ * (args_.rankDim - 1));
@@ -191,8 +193,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     if (tailMValue_ > 0) {
         // 计算 tail 块 tiling
         mmV3Args_.mValue = tailMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tailCnt);
-        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
-                                         reinterpret_cast<const void*>(&mmV3Args_), tailMValue_);
+        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
+            reinterpret_cast<const void *>(&mmV3Args_), tailMValue_);
         tailTilingCfg.SetCommCnt(MutableRCSTilingData().tailCnt);
         GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MatmulV3TailTilingData()));
         MutableMC2MatmulV3TailTilingData().tCubeTiling.M = (tailMValue_ * (args_.rankDim - 1));
@@ -201,18 +203,24 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCfg)
+ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
 {
     int index = 0;
     auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
     std::string algConfig = "AllGather=level0:fullmesh";
     Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER),
-        algConfig, 0,
-        static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
+        algConfig, 0, static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
-    // Set hccl comm engine with environment variable
-    uint8_t commEngine = Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU ?
-                         Mc2Comm::ENGINE_AICPU : Mc2Comm::ENGINE_CCU;
+    // Set hccl comm engine with comm_mode
+    uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
+    if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
+        commEngine = Mc2Comm::ENGINE_CCU;
+    } else if (std::strlen(commMode_) == 0) { // empty string
+        if (rankSize_ <= COMM_MODE_RANKSIZE) {
+            commEngine = Mc2Comm::ENGINE_CCU;
+        }
+    }
+    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataV2_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
@@ -241,11 +249,10 @@ ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
     return ge::GRAPH_SUCCESS;
 }
 
-AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext* context)
+AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext *context)
     : AllGatherMatmulTilingBase(context), allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
-{
-}
+{}
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2, \
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
-}  // namespace optiling
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2, static_cast<int32_t>(NpuArch::DAV_3510),
+    0);
+} // namespace optiling
