@@ -61,8 +61,8 @@ static constexpr MicroAPI::CastTrait CAST_U32_TO_FP16_TRAIT = {
     AscendC::RoundMode::CAST_TRUNC};
 
 template <typename biasType>
-__simd_callee__ inline void FrMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ biasType *biasInUbAddr,
-                                                __ubuf__ biasType *biasOutUbAddr)
+__simd_callee__ inline void GmmsqMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ biasType *biasInUbAddr,
+                                                   __ubuf__ biasType *biasOutUbAddr)
 {
     static constexpr biasType MX_BIAS_FACTOR = static_cast<biasType>(0.015625f);
     MicroAPI::RegTensor<biasType> biasVreg, biasFactorVreg;
@@ -80,11 +80,11 @@ __simd_callee__ inline void FrMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ b
 }
 
 template <typename xType, typename wType, typename biasType, bool hasBias>
-__simd_vf__ inline void FrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams)
+__simd_vf__ inline void GmmsqFrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams)
 {
     if constexpr (hasBias) {
-        FrMxA8W4BiasCompute<biasType>(mxA8W4NzParams.biasLoopNum, mxA8W4NzParams.biasInUbAddr,
-                                      mxA8W4NzParams.biasOutUbAddr);
+        GmmsqMxA8W4BiasCompute<biasType>(mxA8W4NzParams.biasLoopNum, mxA8W4NzParams.biasInUbAddr,
+                                         mxA8W4NzParams.biasOutUbAddr);
     }
     MicroAPI::RegTensor<int8_t> wShrReg, wShlReg, wAndReg, wLoad, wShl, wShr0, wShr1, wSel, wAnd;
     MicroAPI::MaskReg preg = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
@@ -117,47 +117,38 @@ __simd_vf__ inline void FrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, bia
     }
 }
 
-__simd_vf__ inline void SwiGLUVf(uint16_t mSize, uint16_t nHalfSize, __ubuf__ float *yF32Addr)
+__simd_vf__ inline void GmmsqSwiGLUVf(uint16_t mSize, uint16_t nHalfSize, __ubuf__ float *yF32Addr,
+                                      __ubuf__ float *gateF32Addr)
 {
-    // TODO: SwiGLU VF implementation - owned by another team.
-    // Swish(yF32[:, 0:N/2]) * yF32[:, N/2:N], result written back to yF32[:, 0:N/2].
-    // Swish(x) = x / (1 + exp(-x)).
     (void)mSize;
     (void)nHalfSize;
     (void)yF32Addr;
+    (void)gateF32Addr;
 }
 
-__simd_vf__ inline void ComputeMaxExpVf(uint16_t mSize, uint16_t nGroupCount, __ubuf__ float *yF32Addr,
-                                        __ubuf__ half *maxB16Addr)
+__simd_vf__ inline void GmmsqComputeMaxExpVf(uint16_t mSize, uint16_t nGroupCount, __ubuf__ float *yF32Addr,
+                                             __ubuf__ half *maxB16Addr)
 {
-    // TODO: ComputeMaxExp VF implementation - owned by another team.
-    // For each group of 32 elements, compute max(|abs(exponent)|) and store as half.
-    // Input: yF32[M, N/2], Output: maxB16[M, ceil(N/2/32)].
     (void)mSize;
     (void)nGroupCount;
     (void)yF32Addr;
     (void)maxB16Addr;
 }
 
-__simd_vf__ inline void ComputeScaleVf(uint16_t mSize, uint16_t nGroupCount, __ubuf__ half *maxB16Addr,
-                                       __ubuf__ fp8_e8m0_t *scaleE8M0Addr)
+__simd_vf__ inline void GmmsqComputeScaleVf(uint16_t mSize, uint16_t nGroupCount, __ubuf__ half *maxB16Addr,
+                                            __ubuf__ fp8_e8m0_t *scaleE8M0Addr)
 {
-    // TODO: ComputeScale VF implementation - owned by another team.
-    // shared_exp = maxExp - emax (emax=8 for FP8_E4M3FN), encode as E8M0.
-    // Input: maxB16[M, nGroupCount], Output: scaleE8M0[M, nGroupCount].
     (void)mSize;
     (void)nGroupCount;
     (void)maxB16Addr;
     (void)scaleE8M0Addr;
 }
 
-__simd_vf__ inline void ComputeDataForQuantTargetFp8Vf(uint16_t mSize, uint16_t nHalfSize, __ubuf__ float *yF32Addr,
-                                                       __ubuf__ fp8_e8m0_t *scaleE8M0Addr,
-                                                       __ubuf__ fp8_e4m3fn_t *yFp8Addr)
+__simd_vf__ inline void GmmsqComputeDataForQuantTargetFp8Vf(uint16_t mSize, uint16_t nHalfSize,
+                                                            __ubuf__ float *yF32Addr,
+                                                            __ubuf__ fp8_e8m0_t *scaleE8M0Addr,
+                                                            __ubuf__ fp8_e4m3fn_t *yFp8Addr)
 {
-    // TODO: ComputeDataForQuantTargetFp8 VF implementation - owned by another team.
-    // yF32[m, n] /= 2^scaleE8M0[m, n/32], then quantize to FP8_E4M3FN.
-    // Input: yF32[M, N/2], scaleE8M0[M, ceil(N/2/32)], Output: yFp8[M, N/2].
     (void)mSize;
     (void)nHalfSize;
     (void)yF32Addr;

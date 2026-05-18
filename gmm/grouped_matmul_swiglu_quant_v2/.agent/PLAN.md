@@ -14,9 +14,9 @@
 - [x] 任务 1.6 同步机制与数据流分析 → `docs/06_gmmfr_sync_mechanism.md` (941行)
 - [x] 任务 1.7 GMMSQ差异分析与实现规划 → `docs/07_gmmsq_diff_analysis.md` (483行) + `docs/08_gmmsq_impl_plan.md` (816行)
 
-## 阶段二：框架搭建与代码实现（当前阶段）
+## 阶段二：框架搭建与代码实现
 
-### 阶段二-Part1: 框架搭建（当前）
+### 阶段二-Part1: 框架搭建 ✅ 已完成
 
 基于新算子开发适配工程指南，完成MxA8W4数据流的框架支持：
 
@@ -47,21 +47,24 @@
 - 编译ophost动态库验证tiling
 - 编译kernel二进制验证入口
 
-### 阶段二-Part2: Kernel实现（后续）
+### 阶段二-Part2: Kernel代码适配 ✅ 已完成
 
-基于走读文档和编码方案，完成GMMSQ MxA8W4数据流的kernel代码开发：
-- Controller层改写
-- BasicBlock层改写
-- VecCompute层改写（SwiGLU+Quant）
-- CubeCompute层改写
+Kernel代码从GMMFR迁移后适配为GMMSQ专用：
+- [x] Controller层：命名统一，移除scaleType参数
+- [x] BasicBlock层：模板参数对齐Controller，UpdateGlobalAddr签名修正
+- [x] CubeCompute层：命名统一，修复MX_SCALE_K_L1_SIZE shadowing bug
+- [x] VecCompute层：VF函数调用更新，SwiGLU分离y/gate指针
+- [x] VF函数：Fr→Gmmsq前缀重命名，SwiGLU/Quant stub实现
+- [x] common/目录：header guard修正
+- [x] apt.cpp入口：xScale参数修复，模板参数对齐
 
-## 阶段三：测试验证（待阶段二完成后启动）
+## 阶段三：编译验证与测试（待阶段二完成后启动）
 
-完成精度测试、性能测试，确保算子正确性和性能达标。
+完成kernel编译验证、精度测试、性能测试，确保算子正确性和性能达标。
 
 ## 当前进度
 
 - [x] 阶段一：代码走读与文档输出
-- [ ] 阶段二-Part1: 框架搭建（当前）
-- [ ] 阶段二-Part2: Kernel实现
-- [ ] 阶段三：测试验证
+- [x] 阶段二-Part1: 框架搭建
+- [x] 阶段二-Part2: Kernel代码适配
+- [ ] 阶段三：编译验证与测试

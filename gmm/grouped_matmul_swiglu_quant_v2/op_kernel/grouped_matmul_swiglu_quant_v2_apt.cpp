@@ -75,13 +75,13 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 
     using namespace WeightQuantBatchMatmulV2::Arch35;
     GMMSQ::GMMSQWeightQuantResplitController<
-        fp8_e4m3fn_t, fp4x2_e2m1_t, fp8_e8m0_t, fp8_e8m0_t, fp8_e8m0_t,
-        float, fp8_e4m3fn_t, fp8_e8m0_t, false,
+        fp8_e4m3fn_t, fp4x2_e2m1_t, fp8_e8m0_t,
+        fp8_e8m0_t, float, fp8_e4m3fn_t, fp8_e8m0_t, false,
         MXA8W4_NZNK,
         VEC_ANTIQUANT_CONFIG_DYNAMIC>
         controller;
 
-    controller.Init(x, weight, weightScale, nullptr, groupList, nullptr, y, yScale, &tilingDataIn);
+    controller.Init(x, weight, weightScale, nullptr, groupList, xScale, y, yScale, &tilingDataIn);
     controller.Process();
 #else
     TPipe tPipe;

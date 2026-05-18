@@ -45,17 +45,18 @@ using AscendC::MicroAPI::TypeGet;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::C0_SIZE_B8;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
-using WeightQuantBatchMatmulV2::Arch35::ComputeDataForQuantTargetFp8Vf;
-using WeightQuantBatchMatmulV2::Arch35::ComputeMaxExpVf;
-using WeightQuantBatchMatmulV2::Arch35::ComputeScaleVf;
 using WeightQuantBatchMatmulV2::Arch35::DataCopyPad2D;
 using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
 using WeightQuantBatchMatmulV2::Arch35::MxA8W4NzParams;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::SwiGLUVf;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::VEC_MAX_ELEM_B16;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
+using WeightQuantBatchMatmulV2::Arch35::GmmsqFrAntiQuantMxA8W4NzNkVf;
+using WeightQuantBatchMatmulV2::Arch35::GmmsqSwiGLUVf;
+using WeightQuantBatchMatmulV2::Arch35::GmmsqComputeMaxExpVf;
+using WeightQuantBatchMatmulV2::Arch35::GmmsqComputeScaleVf;
+using WeightQuantBatchMatmulV2::Arch35::GmmsqComputeDataForQuantTargetFp8Vf;
 
 namespace GMMSQ {
 
@@ -327,12 +328,12 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(
             mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
                 (ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
             mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
-            FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
+            GmmsqFrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
         } else {
-            FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
+            GmmsqFrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
         }
     } else {
-        FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
+        GmmsqFrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
     }
 }
 
@@ -358,7 +359,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<floa
     uint64_t mRealSize = param.mL1Size;
     uint64_t nHalfSize = param.nL1Size / 2;
 
-    SwiGLUVf(static_cast<uint16_t>(mRealSize), nHalfSize, (__ubuf__ float *)yF32.GetPhyAddr());
+    __ubuf__ float *yAddr = (__ubuf__ float *)yF32.GetPhyAddr();
+    __ubuf__ float *gateAddr = yAddr + mRealSize * nHalfSize;
+    GmmsqSwiGLUVf(static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(nHalfSize), yAddr, gateAddr);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
@@ -366,10 +369,10 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeMaxExp(const LocalTens
                                                                   const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = param.mL1Size;
-    uint64_t nHalfSize = param.nL1Size / 2;
+    uint64_t nGroupCount = CeilDivide(param.nL1Size / 2, static_cast<uint64_t>(MX_GROUPSIZE));
 
-    ComputeMaxExpVf(static_cast<uint16_t>(mRealSize), nHalfSize, (__ubuf__ float *)yF32.GetPhyAddr(),
-                    (__ubuf__ half *)maxB16Buffer_.GetPhyAddr());
+    GmmsqComputeMaxExpVf(static_cast<uint16_t>(mRealSize), nGroupCount, (__ubuf__ float *)yF32.GetPhyAddr(),
+                         (__ubuf__ half *)maxB16Buffer_.GetPhyAddr());
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
@@ -378,8 +381,8 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeScale(const BasicBlock
     uint64_t mRealSize = param.mL1Size;
     uint64_t nGroupCount = CeilDivide(param.nL1Size / 2, static_cast<uint64_t>(MX_GROUPSIZE));
 
-    ComputeScaleVf(static_cast<uint16_t>(mRealSize), nGroupCount, (__ubuf__ half *)maxB16Buffer_.GetPhyAddr(),
-                   (__ubuf__ fp8_e8m0_t *)scaleE8M0Buffer_.GetPhyAddr());
+    GmmsqComputeScaleVf(static_cast<uint16_t>(mRealSize), nGroupCount, (__ubuf__ half *)maxB16Buffer_.GetPhyAddr(),
+                        (__ubuf__ fp8_e8m0_t *)scaleE8M0Buffer_.GetPhyAddr());
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
@@ -389,10 +392,10 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeDataForQuantTargetFp8(
     uint64_t mRealSize = param.mL1Size;
     uint64_t nHalfSize = param.nL1Size / 2;
 
-    ComputeDataForQuantTargetFp8Vf(static_cast<uint16_t>(mRealSize), nHalfSize,
-                                   (__ubuf__ float *)yF32.GetPhyAddr(),
-                                   (__ubuf__ fp8_e8m0_t *)scaleE8M0Buffer_.GetPhyAddr(),
-                                   (__ubuf__ fp8_e4m3fn_t *)yFp8Buffer_.GetPhyAddr());
+    GmmsqComputeDataForQuantTargetFp8Vf(static_cast<uint16_t>(mRealSize), nHalfSize,
+                                        (__ubuf__ float *)yF32.GetPhyAddr(),
+                                        (__ubuf__ fp8_e8m0_t *)scaleE8M0Buffer_.GetPhyAddr(),
+                                        (__ubuf__ fp8_e4m3fn_t *)yFp8Buffer_.GetPhyAddr());
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM

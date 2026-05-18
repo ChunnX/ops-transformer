@@ -12,8 +12,8 @@
  * \file basic_block_vf_mx.h
  * \brief
  */
-#ifndef GMMFR_BASIC_BLOCK_VF_MX_H
-#define GMMFR_BASIC_BLOCK_VF_MX_H
+#ifndef GMMSQ_BASIC_BLOCK_VF_MX_H
+#define GMMSQ_BASIC_BLOCK_VF_MX_H
 
 #include "basic_block_config.h"
 #if ASC_DEVKIT_MAJOR >= 9
@@ -47,4 +47,4 @@ static constexpr uint32_t SHIFT_LEFT_SIZE = 0x4;
 static constexpr uint32_t E2M1_AND_MASK = 0x9C;
 
 } // namespace WeightQuantBatchMatmulV2::Arch35
-#endif // GMMFR_BASIC_BLOCK_VF_MX_H
+#endif // GMMSQ_BASIC_BLOCK_VF_MX_H

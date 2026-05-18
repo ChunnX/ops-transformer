@@ -170,3 +170,47 @@
 #### 影响范围
 - opkernel编译成功
 - 不影响原有全量化数据流功能
+
+---
+
+### 2026-05-18 | Kernel代码适配GMMSQ算子命名与接口
+
+**类型**: 🔧 修改 | 🐛 修复
+**范围**: Kernel全部层（Controller/BasicBlock/CubeCompute/VecCompute/VF/common）+ apt.cpp入口
+
+#### 变更内容
+- 修复 `apt.cpp` 关键bug：xScale参数从`nullptr`改为实际传入`xScale`
+- 修复 `apt.cpp` 模板参数：移除未使用的`scaleType`参数（10→9个）
+- 修复 `cube_compute.h` 关键bug：移除`MX_SCALE_K_L1_SIZE`成员常量（shadow全局常量4096为32768）
+- 统一命名规范（GMMFR→GMMSQ）：
+  - `antiQuantScaleType` → `weightScaleType`
+  - `perTokenScaleType` → `xScaleType`
+  - `antiquantScaleGm_` → `weightScaleGm_`
+  - `perTokenScaleGm_` → `xScaleGm_`
+  - `mxScaleAGlobal_` → `xScaleGlobal_`
+  - `mxScaleBGlobal_` → `weightScaleGlobal_`
+  - `mxScaleAL1_` → `xScaleAL1_`
+  - `mxScaleBL1_` → `weightScaleBL1_`
+  - `mxScaleBufIdx_` → `scaleBufIdx_`
+- VF函数重命名（Fr→Gmmsq前缀）：
+  - `FrMxA8W4BiasCompute` → `GmmsqMxA8W4BiasCompute`
+  - `FrAntiQuantMxA8W4NzNkVf` → `GmmsqFrAntiQuantMxA8W4NzNkVf`
+  - `SwiGLUVf` → `GmmsqSwiGLUVf`（新接口：分离yF32Addr/gateF32Addr参数，stub实现）
+  - `ComputeMaxExpVf` → `GmmsqComputeMaxExpVf`（stub实现）
+  - `ComputeScaleVf` → `GmmsqComputeScaleVf`（stub实现）
+  - `ComputeDataForQuantTargetFp8Vf` → `GmmsqComputeDataForQuantTargetFp8Vf`（stub实现）
+- 移除未使用参数：`antiquantOffset`、`quantScale`、`scaleType`模板参数
+- 修复common/目录header guard：`GMMFR_BASIC_BLOCK_CONFIG_H` → `GMMSQ_BASIC_BLOCK_CONFIG_H`
+- 修复VecCompute SwiGLU调用：分离y/gate指针传入VF
+- 修复VecCompute ComputeMaxExp调用：nHalfSize → nGroupCount
+
+#### 关键决策
+- SwiGLU VF接口设计为分离yF32Addr和gateF32Addr指针：虽然UB空间连续，但分离有利于代码解耦
+- VF的SwiGLU/Quant函数保持stub实现（空函数体），由其他团队后续补充
+- 保留weight加载的N/2分块模式（swishNOffset/gateNOffset），这是SwiGLU的正确数据流
+- 移除所有GMMFR特有功能引用（sharedInput/logits/rowIndex等已在上次迁移中移除）
+
+#### 影响范围
+- 所有kernel文件签名变更，但功能逻辑不变
+- apt.cpp模板参数数量变更（10→9），需确保编译匹配
+- 不影响原有全量化数据流功能

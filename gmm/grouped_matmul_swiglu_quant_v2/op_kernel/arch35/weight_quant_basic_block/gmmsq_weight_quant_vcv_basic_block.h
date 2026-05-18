@@ -51,12 +51,12 @@ using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 namespace GMMSQ {
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                                      \
-    template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,                       \
-              typename perTokenScaleType, typename biasType, typename yType, typename yScaleType,                    \
+    template <typename xType, typename wType, typename weightScaleType,                                              \
+              typename xScaleType, typename biasType, typename yType, typename yScaleType,                           \
               bool hasBias, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS                                                                               \
-    GMMSQWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,   \
+    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, biasType, yType,                        \
                                   yScaleType, hasBias, wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
@@ -65,20 +65,20 @@ public:
     __aicore__ inline GMMSQWeightQuantVcvBasicBlock(){};
     __aicore__ inline void Init(uint64_t antiQuantGroupSize, __gm__ yType *y, __gm__ yScaleType *yScale);
     __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ wType *weight,
-                                            __gm__ antiQuantScaleType *antiquantScale, __gm__ xType *antiquantOffset,
-                                            __gm__ perTokenScaleType *perTokenScale, __gm__ biasType *bias,
-                                            __gm__ yType *y, __gm__ yScaleType *yScale, const bool weightL2Cacheable);
+                                            __gm__ weightScaleType *weightScale, __gm__ biasType *bias,
+                                            __gm__ xScaleType *xScale, __gm__ yType *y, __gm__ yScaleType *yScale,
+                                            const bool weightL2Cacheable);
     __aicore__ inline void ComputeBasicBlock(const BasicBlockOffsetParam &curOffsetParam,
-                                             const BasicBlockOffsetParam &lastOffsetParam);
+                                              const BasicBlockOffsetParam &lastOffsetParam);
     __aicore__ inline void End(const BasicBlockOffsetParam &curOffsetParam);
 
 protected:
     __aicore__ inline void IterateNzNkWithAiv(const BasicBlockOffsetParam &curOffsetParam,
-                                              const BasicBlockOffsetParam &lastOffsetParam);
-    __aicore__ inline void IterateNzNkWithKAic(const BasicBlockOffsetParam &curOffsetParam,
                                                const BasicBlockOffsetParam &lastOffsetParam);
+    __aicore__ inline void IterateNzNkWithKAic(const BasicBlockOffsetParam &curOffsetParam,
+                                                const BasicBlockOffsetParam &lastOffsetParam);
     __aicore__ inline void VecComputeNzNkWithStartLimit(uint64_t &kMte2Offset, uint64_t kMte2Limit,
-                                                        const BasicBlockOffsetParam &curOffsetParam);
+                                                         const BasicBlockOffsetParam &curOffsetParam);
 
     template <const pipe_t pipe>
     __aicore__ inline void SetAivToAic(uint64_t syncFlag)
@@ -115,7 +115,7 @@ protected:
     };
 
     GMMSQWeightQuantVecCompute<xType, wType, biasType, yType, yScaleType, hasBias, wqmmConfig, vecConfig> vecCompute_;
-    GMMSQWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, float, hasBias, wqmmConfig>
+    GMMSQWeightQuantCubeCompute<xType, biasType, weightScaleType, xScaleType, float, hasBias, wqmmConfig>
         cubeCompute_;
 
     uint64_t cvLoopIdx_ = 0;
@@ -129,7 +129,7 @@ protected:
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGroupSize, __gm__ yType *y,
-                                                            __gm__ yScaleType *yScale)
+                                                             __gm__ yScaleType *yScale)
 {
     biasL1DbOffset_ = 0;
     weightL1_ = LocalTensor<xType>(TPosition::TSCM, 0, L1_SIZE_BYTE / sizeof(xType));
@@ -160,13 +160,12 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGr
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(
-    __gm__ xType *x, __gm__ wType *weight, __gm__ antiQuantScaleType *antiquantScale, __gm__ xType *antiquantOffset,
-    __gm__ perTokenScaleType *perTokenScale, __gm__ biasType *bias, __gm__ yType *y, __gm__ yScaleType *yScale,
-    const bool weightL2Cacheable)
+    __gm__ xType *x, __gm__ wType *weight, __gm__ weightScaleType *weightScale, __gm__ biasType *bias,
+    __gm__ xScaleType *xScale, __gm__ yType *y, __gm__ yScaleType *yScale, const bool weightL2Cacheable)
 {
     if ASCEND_IS_AIC {
-        cubeCompute_.UpdateGlobalAddr(x, reinterpret_cast<__gm__ float *>(y), reinterpret_cast<__gm__ biasType *>(bias), antiquantScale, nullptr,
-                                      perTokenScale);
+        cubeCompute_.UpdateGlobalAddr(x, reinterpret_cast<__gm__ float *>(y),
+                                      reinterpret_cast<__gm__ biasType *>(bias), weightScale, xScale);
     } else {
         vecCompute_.UpdateGlobalAddr(weight, bias, weightL2Cacheable);
     }
@@ -175,7 +174,7 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void
 GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::ComputeBasicBlock(const BasicBlockOffsetParam &curOffsetParam,
-                                                  const BasicBlockOffsetParam &lastOffsetParam)
+                                                   const BasicBlockOffsetParam &lastOffsetParam)
 {
     if ASCEND_IS_AIV {
         IterateNzNkWithAiv(curOffsetParam, lastOffsetParam);
@@ -187,13 +186,13 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::ComputeBasicBlock(const BasicBlockOffsetParam &c
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void
 GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOffsetParam &curOffsetParam,
-                                                   const BasicBlockOffsetParam &lastOffsetParam)
+                                                    const BasicBlockOffsetParam &lastOffsetParam)
 {
     uint64_t kMte2Offset = 0;
     uint64_t curCvLoopIdx = cvLoopIdx_;
 
     VecComputeNzNkWithStartLimit(kMte2Offset, Min(curOffsetParam.kSize, DOUBLE_BUFFER_NUM * curOffsetParam.kbL1Size),
-                                 curOffsetParam);
+                                  curOffsetParam);
 
     if (curCvLoopIdx > 0) {
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
@@ -215,7 +214,7 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOffsetParam &
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void
 GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::VecComputeNzNkWithStartLimit(uint64_t &kMte2Offset, uint64_t kMte2Limit,
-                                                             const BasicBlockOffsetParam &curOffsetParam)
+                                                              const BasicBlockOffsetParam &curOffsetParam)
 {
     uint64_t kMte2BaseSize = curOffsetParam.kbL1Size / DOUBLE_BUFFER_NUM;
 
@@ -250,7 +249,7 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::VecComputeNzNkWithStartLimit(uint64_t &kMte2Offs
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void
 GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockOffsetParam &curOffsetParam,
-                                                    const BasicBlockOffsetParam &lastOffsetParam)
+                                                     const BasicBlockOffsetParam &lastOffsetParam)
 {
     if (cvLoopIdx_ > 0) {
         WaitAivToAic<PIPE_FIX>(SYNC_AIV_MTE3_AIC_FIX_FLAG);

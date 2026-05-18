@@ -12,8 +12,8 @@
  * \file basic_block_config.h
  * \brief
  */
-#ifndef GMMFR_BASIC_BLOCK_CONFIG_H
-#define GMMFR_BASIC_BLOCK_CONFIG_H
+#ifndef GMMSQ_BASIC_BLOCK_CONFIG_H
+#define GMMSQ_BASIC_BLOCK_CONFIG_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -148,4 +148,4 @@ __aicore__ constexpr VfConfig GetVfConfig()
     return {.vfNStandardLen = 256, .vfKStandardLen = 64};
 }
 } // namespace WeightQuantBatchMatmulV2::Arch35
-#endif // GMMFR_BASIC_BLOCK_CONFIG_H
+#endif // GMMSQ_BASIC_BLOCK_CONFIG_H
