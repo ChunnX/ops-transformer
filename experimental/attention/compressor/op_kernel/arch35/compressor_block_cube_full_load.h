@@ -358,15 +358,16 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
     uint32_t hSize = constInfo_.kEnd - constInfo_.kStart;
     uint32_t hIdxStart = (constInfo_.aiCoreIdx % constInfo_.dBasicBlockNum) * K_L1_BASE;  // 每组核内的h循环起始不同
     uint32_t kSize = K_L1_BASE;
-    for (uint32_t h = 0; h < hSize; h += kSize) {
-        uint32_t hIdx = (h + hIdxStart) % hSize;    // h方向错位搬运
+    for (uint32_t h = 0; h < hSize; h += K_L1_BASE) {
+        // h方向错位搬运
+        uint32_t hIdx = (h + hIdxStart) % (CeilDivT(hSize, K_L1_BASE) * K_L1_BASE);
         if (hIdx + K_L1_BASE > hSize) {
             kSize = hSize - hIdx;
         } else {
             kSize = K_L1_BASE;
         }
         bool isFirst = (h == 0);
-        bool isLast = (h + kSize >= hSize);
+        bool isLast = (h + K_L1_BASE >= hSize);
             WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
             LocalTensor<X_T> xL1Tensor = xBufL1.GetWithOffset<X_T>(L1_X_SIZE / sizeof(X_T), xBufId * L1_X_SIZE);
             CopyXGmToL1(xL1Tensor, hStart + hIdx, kSize);
