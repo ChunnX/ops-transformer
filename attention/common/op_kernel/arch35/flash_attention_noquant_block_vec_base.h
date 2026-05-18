@@ -272,6 +272,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+    PRINTF("sparsemode:%u, pretoken:%lld, nexttoken:%lld\n", this->tilingData->inputParamsRegbase.sparseType, this->tilingData->inputParamsRegbase.preTokens, this->tilingData->inputParamsRegbase.nextTokens);
     bmm1ResBuf.WaitCrossCore();
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         bmm1ResBuf.SetCrossCore();

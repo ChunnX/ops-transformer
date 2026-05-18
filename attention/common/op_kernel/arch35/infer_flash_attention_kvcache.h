@@ -93,7 +93,7 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
         }
         return actualMSize;
     }
-    
+    PRINTF("bIdx:%d, actseqlenQ:%d, actseqlenKV:%d\n", bIdx, actualSeqQlenAddr[bIdx], actualSeqKVlenAddr[bIdx]);  
     int64_t actualMSize = 0;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
