@@ -191,7 +191,7 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CheckGradY()
                 OP_LOGE(context_, "gradY: Rank must be 2, but got %lu.", gradYDimSize), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
-                OP_LOGE(context_, "gradY: Must match xNorm on dimension 0, but got %lu vs %ld.",
+                OP_LOGE(context_, "gradY: Must match xNorm on dimension 0, but got %ld vs %ld.",
                         gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
     k_ = gradYShapePtr->GetOriginShape().GetDim(DIM_ONE);
@@ -225,11 +225,11 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CheckExpertIdx()
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
-                OP_LOGE(context_, "expertIdx: Must match xNorm on dimension 0, but got %lu vs %ld.",
+                OP_LOGE(context_, "expertIdx: Must match xNorm on dimension 0, but got %ld vs %ld.",
                         expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE) != k_,
-                OP_LOGE(context_, "expertIdx: Must match gradY on dimension 1, but got %lu vs %ld.",
+                OP_LOGE(context_, "expertIdx: Must match gradY on dimension 1, but got %ld vs %ld.",
                         expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE), k_),
                 return ge::GRAPH_FAILED);
 
@@ -321,12 +321,12 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CheckOutShape()
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
-                OP_LOGE(context_, "gradX: Must match xNorm on dimension 0, but got %lu vs %ld.",
+                OP_LOGE(context_, "gradX: Must match xNorm on dimension 0, but got %ld vs %ld.",
                         gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE) != expertCount_,
-                OP_LOGE(context_, "gradX: Must match xNorm on dimension 1, but got %lu vs %ld.",
+                OP_LOGE(context_, "gradX: Must match xNorm on dimension 1, but got %ld vs %ld.",
                         gradXShapePtr->GetOriginShape().GetDim(DIM_ONE), expertCount_),
                 return ge::GRAPH_FAILED);
 
