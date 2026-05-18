@@ -570,6 +570,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - inputLayout必须一致。
 - 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同
 - 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同
+- MLA concat场景：仅支持dSize=128，dSizeRope=64
 - 关于数据shape的约束，以inputLayout的TND、BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
     - T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
@@ -755,15 +756,9 @@ int main() {
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
  
-<<<<<<< HEAD
   std::vector<op::fp16_t> qHostData(q_size, 1.0);
   std::vector<op::fp16_t> kHostData(kv_size, 1.0);
   std::vector<op::fp16_t> vHostData(kv_size, 1.0);
-=======
-  std::vector<op::fp16> qHostData(q_size, 1.0);
-  std::vector<op::fp16> kHostData(kv_size, 1.0);
-  std::vector<op::fp16> vHostData(kv_size, 1.0);
->>>>>>> fix flash_attention_score doc
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
   std::vector<float> sinkHostData(sink_size, 3.0);
   std::vector<float> attentionOutHostData(q_size, 255);
