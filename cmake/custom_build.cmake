@@ -977,8 +977,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    # mc2/common/op_kernel: single install under ascendc/common/op_kernel/ (skip duplicate depends rule below).
+    install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -1020,14 +1021,16 @@ endforeach(    )
             get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
             get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
-            install(FILES ${SELECTED_DEPEND_FILES}
-                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                    OPTIONAL
-            )
-            install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                    OPTIONAL
-            )
+            if (NOT op_depend_dir STREQUAL "mc2/common")
+                install(FILES ${SELECTED_DEPEND_FILES}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        OPTIONAL
+                )
+                install(DIRECTORY ${SELECTED_DEPEND_DIRS}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        OPTIONAL
+                )
+            endif ()
             if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
                 set(COMMON_SRC_DIR "")
                 if (ENABLE_EXPERIMENTAL)
