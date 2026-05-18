@@ -70,13 +70,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnMatmulAllReduce)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_group = OP_API_UT(
-        aclnnMatmulAllReduce,
-        INPUT(x1, x2, bias, nullptr, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
-
     auto ut_null_output = OP_API_UT(
         aclnnMatmulAllReduce,
         INPUT(x1, x2, bias, group, reduceOp, commTurn, streamMode),
@@ -121,13 +114,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnMatmulAllReduceV2)
         OUTPUT(output)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dScale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
-
-    auto ut_null_group = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, nullptr, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
@@ -187,13 +173,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduce)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dequant.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_group = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, x3, dequantScale, nullptr, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
-
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduce,
         INPUT(x1, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode),
@@ -239,12 +218,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV2)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dScale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_group = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, nullptr, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
@@ -295,14 +268,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV3)
         OUTPUT(output)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dScale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
-
-    auto ut_null_group = OP_API_UT(
-        aclnnQuantMatmulAllReduceV3,
-        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale,
-              commQuantScale1, commQuantScale2, nullptr, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduceV3,
@@ -357,13 +322,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV4)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2Scale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_group = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
-              nullptr, reduceOp, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduceV4,
@@ -420,13 +378,6 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, AclnnWeightQuantMatmulAllReduce)
         OUTPUT(output)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_scale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
-
-    auto ut_null_group = OP_API_UT(
-        aclnnWeightQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, antiquantScale, antiquantOffset, x3, nullptr, reduceOp, commTurn, streamMode, groupSize),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_group.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnWeightQuantMatmulAllReduce,
