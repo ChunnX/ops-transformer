@@ -9,7 +9,7 @@
   */
 
 /* !
- * \file fused_infer_attention_score_tiling.h
+ * \file fused_infer_attention_score_tiling_arch38.h
  * \brief
  */
 
