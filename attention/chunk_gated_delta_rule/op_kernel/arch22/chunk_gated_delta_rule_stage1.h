@@ -17,7 +17,7 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "chunk_gated_delta_rule_utils.h"
-#include "chunk_gated_delta_rule_tiling_data.h"
+#include "../chunk_gated_delta_rule_tiling_data.h"
 
 namespace ChunkGatedDeltaRule {
 using namespace AscendC;
