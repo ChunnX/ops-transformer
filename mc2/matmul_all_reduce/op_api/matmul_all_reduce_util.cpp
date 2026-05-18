@@ -537,12 +537,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
@@ -568,6 +563,19 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         }
     }
     return ret;
+}
+
+// 检查commMode入参是否合法
+bool IsCommModeValid(const char* commModePtr) {
+    if (commModePtr == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commModePtr is nullptr!");
+        return false;
+    }
+    if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
+    if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
+    if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'ccu' or 'aicpu', but it is %s.", *commModePtr);
+    return false;
 }
 
 #ifdef __cplusplus
