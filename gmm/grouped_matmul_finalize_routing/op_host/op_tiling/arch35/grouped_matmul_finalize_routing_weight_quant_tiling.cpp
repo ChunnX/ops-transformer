@@ -287,32 +287,32 @@ bool CheckMxA8W4NzAttrPtr(gert::TilingContext *contex)
 
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
     OP_CHECK_IF((transposeXPtr != nullptr && (*transposeXPtr)),
-                OP_LOGE(contex->GetNodeName(), "transpose_x should be false or nullptr, but now is true"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "transpose_x", "true", "transpose_x should be false or nullptr"),
                 return false);
 
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
     OP_CHECK_IF(transposeWeightPtr == nullptr,
                 OP_LOGE(contex->GetNodeName(), "transpose_w should not be nullptr, but now is nullptr"), return false);
     OP_CHECK_IF(!(*transposeWeightPtr),
-                OP_LOGE(contex->GetNodeName(), "transpose_w should be true, but now is false"), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "transpose_w", "false", "transpose_w should be true"), return false);
 
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
     OP_CHECK_IF(groupListTypePtr == nullptr, OP_LOGE(contex->GetNodeName(), "group_list_type should not be nullptr"),
                 return false);
     OP_CHECK_IF(*groupListTypePtr != 0 && *groupListTypePtr != 1,
-                OP_LOGE(contex->GetNodeName(), "Attr groupListType must be 0 or 1, actual is %d.", *groupListTypePtr),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "groupListType", std::to_string(*groupListTypePtr), "groupListType must be 0 or 1"),
                 return false);
 
     const int64_t *outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
     OP_CHECK_IF(outputDtypePtr == nullptr, OP_LOGE(contex->GetNodeName(), "dtype should not be nullptr"), return false);
     OP_CHECK_IF(*outputDtypePtr != 0,
-                OP_LOGE(contex->GetNodeName(), "Attr dtype only support 0(float32), actual is %d.", *outputDtypePtr),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "dtype", std::to_string(*outputDtypePtr), "dtype only support 0(float32)"),
                 return false);
 
     // offset must be nullptr in MxA8W4 weight Nz scenario
     auto offsetDesc = contex->GetOptionalInputDesc(OFFSET_INDEX);
     OP_CHECK_IF(offsetDesc != nullptr,
-                OP_LOGE(contex->GetNodeName(), "offset must be nullptr in MxA8W4 weight Nz scenario."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "offset", "not nullptr", "offset must be nullptr in MxA8W4 weight Nz scenario"), return false);
 
     return true;
 }
@@ -325,7 +325,7 @@ static bool ValidateXShape(gert::TilingContext *contex, int64_t &mSize, int64_t 
     auto xDimNum = xShape.GetDimNum();
 
     OP_CHECK_IF(xDimNum != DIM_NUM_X,
-                OP_LOGE(contex->GetNodeName(), "The dimension of x must be %u, actual is %zu", DIM_NUM_X, xDimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "x", std::to_string(xDimNum), "dimension must be 2"),
                 return false);
     mSize = xShape.GetDim(0);
     kSize = xShape.GetDim(1);
@@ -342,16 +342,14 @@ static bool ValidateWShape(gert::TilingContext *contex, ge::Format wFormat, int6
 
     if (wFormat == ge::FORMAT_FRACTAL_NZ || wFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
         OP_CHECK_IF(wStorageDimNum != DIM_NUM_WEIGHT_NZ,
-                    OP_LOGE(contex->GetNodeName(), "The dimension of w (FRACTAL_NZ) must be %u, actual is %zu",
-                            DIM_NUM_WEIGHT_NZ, wStorageDimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "w (FRACTAL_NZ)", std::to_string(wStorageDimNum), "dimension must be 5"),
                     return false);
         const gert::Shape &wOriginShape = wShape->GetOriginShape();
         nSize = wOriginShape.GetDim(1);
         kFromW = wOriginShape.GetDim(2); // w origin shape is [E, N, K], dim 2 is K axis
     } else {
         OP_CHECK_IF(wStorageDimNum != DIM_NUM_WEIGHT,
-                    OP_LOGE(contex->GetNodeName(), "The dimension of w must be %u, actual is %zu", DIM_NUM_WEIGHT,
-                            wStorageDimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "w", std::to_string(wStorageDimNum), "dimension must be 3"),
                     return false);
         nSize = wStorageShape.GetDim(1);
         kFromW = wStorageShape.GetDim(2); // w storage shape is [E, N, K], dim 2 is K axis
@@ -367,7 +365,7 @@ static bool ValidateGroupListShape(gert::TilingContext *contex, int64_t eFromW)
     const gert::Shape &groupListShape = groupListStorageShape->GetOriginShape();
     OP_CHECK_IF(
         eFromW != groupListShape.GetDim(0),
-        OP_LOGE(contex->GetNodeName(), "E mismatch: w has E=%ld, group_list has %ld", eFromW, groupListShape.GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(contex->GetNodeName(), "w and group_list", "E mismatch: w has E=" + std::to_string(eFromW) + ", group_list has " + std::to_string(groupListShape.GetDim(0)), "E mismatch between w and group_list"),
         return false);
     return true;
 }
@@ -378,12 +376,11 @@ static bool ValidateRowIndexShape(gert::TilingContext *contex, int64_t mSize)
     auto rowIndexStorageShape = contex->GetOptionalInputShape(ROW_INDEX_INDEX);
     const gert::Shape &rowIndexShape = rowIndexStorageShape->GetOriginShape();
     OP_CHECK_IF(rowIndexShape.GetDimNum() != DIM_NUM_ROW_INDEX,
-                OP_LOGE(contex->GetNodeName(), "The dimension of row_index must be %u, actual is %zu",
-                        DIM_NUM_ROW_INDEX, rowIndexShape.GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "row_index", std::to_string(rowIndexShape.GetDimNum()), "dimension must be 1"),
                 return false);
     OP_CHECK_IF(
         rowIndexShape.GetDim(0) != mSize,
-        OP_LOGE(contex->GetNodeName(), "row_index shape[0]=%ld must equal M=%ld", rowIndexShape.GetDim(0), mSize),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "row_index", std::to_string(rowIndexShape.GetDim(0)), "shape[0] must equal M=" + std::to_string(mSize)),
         return false);
     return true;
 }
@@ -398,11 +395,10 @@ static bool ValidateLogitShape(gert::TilingContext *contex, int64_t mSize)
     auto logitStorageShape = contex->GetOptionalInputShape(LOGIT_INDEX);
     const gert::Shape &logitShape = logitStorageShape->GetOriginShape();
     OP_CHECK_IF(logitShape.GetDimNum() != DIM_NUM_LOGIT,
-                OP_LOGE(contex->GetNodeName(), "The dimension of logit must be %u, actual is %zu", DIM_NUM_LOGIT,
-                        logitShape.GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "logit", std::to_string(logitShape.GetDimNum()), "dimension must be 1"),
                 return false);
     OP_CHECK_IF(logitShape.GetDim(0) != mSize,
-                OP_LOGE(contex->GetNodeName(), "logit shape[0]=%ld must equal M=%ld", logitShape.GetDim(0), mSize),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "logit", std::to_string(logitShape.GetDim(0)), "shape[0] must equal M=" + std::to_string(mSize)),
                 return false);
     return true;
 }
@@ -423,14 +419,13 @@ static bool ValidateBiasShape(gert::TilingContext *contex, int64_t eFromW, int64
         return true;
 
     OP_CHECK_IF(biasShape.GetDimNum() != DIM_NUM_BIAS,
-                OP_LOGE(contex->GetNodeName(), "The dimension of bias must be %u, actual is %zu", DIM_NUM_BIAS,
-                        biasShape.GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "bias", std::to_string(biasShape.GetDimNum()), "dimension must be 2"),
                 return false);
     OP_CHECK_IF(biasShape.GetDim(0) != eFromW,
-                OP_LOGE(contex->GetNodeName(), "bias shape[0]=%ld must equal E=%ld", biasShape.GetDim(0), eFromW),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "bias", std::to_string(biasShape.GetDim(0)), "shape[0] must equal E=" + std::to_string(eFromW)),
                 return false);
     OP_CHECK_IF(biasShape.GetDim(1) != nSize,
-                OP_LOGE(contex->GetNodeName(), "bias shape[1]=%ld must equal N=%ld", biasShape.GetDim(1), nSize),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "bias", std::to_string(biasShape.GetDim(1)), "shape[1] must equal N=" + std::to_string(nSize)),
                 return false);
     return true;
 }
@@ -443,21 +438,19 @@ static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int6
     auto scaleDimNum = scaleShape.GetDimNum();
 
     OP_CHECK_IF(scaleDimNum != DIM_NUM_MX_SCALE,
-                OP_LOGE(contex->GetNodeName(), "The dimension of scale must be %u, actual is %zu", DIM_NUM_MX_SCALE,
-                        scaleDimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "scale", std::to_string(scaleDimNum), "dimension must be 4"),
                 return false);
     OP_CHECK_IF(scaleShape.GetDim(0) != eFromW,
-                OP_LOGE(contex->GetNodeName(), "scale shape[0]=%ld must equal E=%ld", scaleShape.GetDim(0), eFromW),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "scale", std::to_string(scaleShape.GetDim(0)), "shape[0] must equal E=" + std::to_string(eFromW)),
                 return false);
     OP_CHECK_IF(scaleShape.GetDim(1) != nSize,
-                OP_LOGE(contex->GetNodeName(), "scale shape[1]=%ld must equal N=%ld", scaleShape.GetDim(1), nSize),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "scale", std::to_string(scaleShape.GetDim(1)), "shape[1] must equal N=" + std::to_string(nSize)),
                 return false);
     OP_CHECK_IF(scaleShape.GetDim(2) != kCeilDiv64,
-                OP_LOGE(contex->GetNodeName(), "scale shape[2]=%ld must equal CeilDiv(K, 64)=%ld", scaleShape.GetDim(2),
-                        kCeilDiv64),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "scale", std::to_string(scaleShape.GetDim(2)), "shape[2] must equal CeilDiv(K, 64)=" + std::to_string(kCeilDiv64)),
                 return false);
     OP_CHECK_IF(scaleShape.GetDim(3) != MX_INNER_DIM,
-                OP_LOGE(contex->GetNodeName(), "scale shape[3]=%ld must equal %d", scaleShape.GetDim(3), MX_INNER_DIM),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "scale", std::to_string(scaleShape.GetDim(3)), "shape[3] must equal " + std::to_string(MX_INNER_DIM)),
                 return false);
     return true;
 }
@@ -470,20 +463,16 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
     auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
 
     OP_CHECK_IF(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
-                OP_LOGE(contex->GetNodeName(), "The dimension of pertokenScale must be %u, actual is %zu",
-                        DIM_NUM_MX_PERTOKENSCALE, pertokenScaleDimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "pertokenScale", std::to_string(pertokenScaleDimNum), "dimension must be 3"),
                 return false);
     OP_CHECK_IF(pertokenScaleShape.GetDim(0) != mSize,
-                OP_LOGE(contex->GetNodeName(), "pertokenScale shape[0]=%ld must equal M=%ld",
-                        pertokenScaleShape.GetDim(0), mSize),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "pertokenScale", std::to_string(pertokenScaleShape.GetDim(0)), "shape[0] must equal M=" + std::to_string(mSize)),
                 return false);
     OP_CHECK_IF(pertokenScaleShape.GetDim(1) != kCeilDiv64,
-                OP_LOGE(contex->GetNodeName(), "pertokenScale shape[1]=%ld must equal CeilDiv(K, 64)=%ld",
-                        pertokenScaleShape.GetDim(1), kCeilDiv64),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "pertokenScale", std::to_string(pertokenScaleShape.GetDim(1)), "shape[1] must equal CeilDiv(K, 64)=" + std::to_string(kCeilDiv64)),
                 return false);
     OP_CHECK_IF(pertokenScaleShape.GetDim(2) != MX_INNER_DIM,
-                OP_LOGE(contex->GetNodeName(), "pertokenScale shape[2]=%ld must equal %d", pertokenScaleShape.GetDim(2),
-                        MX_INNER_DIM),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(contex->GetNodeName(), "pertokenScale", std::to_string(pertokenScaleShape.GetDim(2)), "shape[2] must equal " + std::to_string(MX_INNER_DIM)),
                 return false);
     return true;
 }
@@ -510,25 +499,25 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
 
     // Validate K consistency between x and w
     OP_CHECK_IF(kSize != kFromW,
-                OP_LOGE(contex->GetNodeName(), "K dimension mismatch: x has K=%ld, w has K=%ld", kSize, kFromW),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(contex->GetNodeName(), "x and w", "K dimension mismatch: x has K=" + std::to_string(kSize) + ", w has K=" + std::to_string(kFromW), "K dimension mismatch between x and w"),
                 return false);
 
     // Validate K and N alignment for MX-A8W4 weight quant
     OP_CHECK_IF(
         kSize % ALIGN_SIZE_KN != 0,
-        OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%ld", ALIGN_SIZE_KN, kSize),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "K", std::to_string(kSize), "K dimension must be aligned to " + std::to_string(ALIGN_SIZE_KN)),
         return false);
     OP_CHECK_IF(
         nSize % ALIGN_SIZE_KN != 0,
-        OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%ld", ALIGN_SIZE_KN, nSize),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "N", std::to_string(nSize), "N dimension must be aligned to " + std::to_string(ALIGN_SIZE_KN)),
         return false);
 
     // Validate K and N minimum size for MX-A8W4 weight quant
     OP_CHECK_IF(kSize < MIN_KN_SIZE,
-                OP_LOGE(contex->GetNodeName(), "K dimension must be >= %ld, actual K=%ld", MIN_KN_SIZE, kSize),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "K", std::to_string(kSize), "K dimension must be >= " + std::to_string(MIN_KN_SIZE)),
                 return false);
     OP_CHECK_IF(nSize < MIN_KN_SIZE,
-                OP_LOGE(contex->GetNodeName(), "N dimension must be >= %ld, actual N=%ld", MIN_KN_SIZE, nSize),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(contex->GetNodeName(), "N", std::to_string(nSize), "N dimension must be >= " + std::to_string(MIN_KN_SIZE)),
                 return false);
 
     // 3. Validate group_list shape
@@ -536,15 +525,15 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
                 OP_LOGE(contex->GetNodeName(), "ValidateGroupListShape failed."), return false);
 
     // 4. Validate row_index shape
-    OP_CHECK_IF(!ValidateRowIndexShape(contex, mSize), OP_LOGE(contex->GetNodeName(), "ValidateRowIndexShape failed."),
+    OP_CHECK_IF(!ValidateRowIndexShape(contex, mSize), OP_LOGE(contex->GetNodeName(), "ValidateRowIndexShape failed"),
                 return false);
 
     // 5. Validate logit shape
-    OP_CHECK_IF(!ValidateLogitShape(contex, mSize), OP_LOGE(contex->GetNodeName(), "ValidateLogitShape failed."),
+    OP_CHECK_IF(!ValidateLogitShape(contex, mSize), OP_LOGE(contex->GetNodeName(), "ValidateLogitShape failed"),
                 return false);
 
     // 6. Validate bias shape
-    OP_CHECK_IF(!ValidateBiasShape(contex, eFromW, nSize), OP_LOGE(contex->GetNodeName(), "ValidateBiasShape failed."),
+    OP_CHECK_IF(!ValidateBiasShape(contex, eFromW, nSize), OP_LOGE(contex->GetNodeName(), "ValidateBiasShape failed"),
                 return false);
 
     // Calculate CeilDiv(K, 64) for scale validation
@@ -568,7 +557,7 @@ bool CheckMxA8W4AttrWithInput(gert::TilingContext *contex)
 
     const int64_t *outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
     int64_t outputBS = outputBSPtr != nullptr ? *outputBSPtr : 0;
-    OP_CHECK_IF(outputBS < 0, OP_LOGE(contex->GetNodeName(), "Attr outputBS should be >=0."), return false);
+    OP_CHECK_IF(outputBS < 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "outputBS", std::to_string(outputBS), "outputBS should be >=0"), return false);
 
     auto sharedInputDesc = contex->GetOptionalInputDesc(SHARE_INPUT_INDEX);
     if (sharedInputDesc != nullptr) {
@@ -585,11 +574,10 @@ bool CheckMxA8W4AttrWithInput(gert::TilingContext *contex)
         OP_CHECK_IF(shareInputOffsetPtr == nullptr,
                     OP_LOGE(contex->GetNodeName(), "Input shareInputOffsetPtr should not be nullptr."), return false);
 
-        OP_CHECK_IF((*shareInputOffsetPtr) < 0, OP_LOGE(contex->GetNodeName(), "Attr shareInputOffset should be >=0."),
+        OP_CHECK_IF((*shareInputOffsetPtr) < 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "shareInputOffset", std::to_string(*shareInputOffsetPtr), "shareInputOffset should be >=0"),
                     return false);
         OP_CHECK_IF((*shareInputOffsetPtr) + sharedInputStorageShape->GetOriginShape().GetDim(0) > outputBS,
-                    OP_LOGE(contex->GetNodeName(), "Attr shareInputOffset[%lu] should less or equal to outputBS[%ld].",
-                            (*shareInputOffsetPtr), outputBS),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "shareInputOffset", std::to_string(*shareInputOffsetPtr), "shareInputOffset should less or equal to outputBS"),
                     return false);
     }
 
@@ -641,7 +629,7 @@ bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &
     } else {
         // Use M / E as default value when outputBs is not provided
         OP_CHECK_IF(inputParams.groupNum == 0,
-                    OP_LOGE(contex->GetNodeName(), "groupNum(E) is 0, cannot compute default outputBs as M/E."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "groupNum", "0", "groupNum(E) is 0, cannot compute default outputBs as M/E"),
                     return false);
         inputParams.outputBS = inputParams.mSize / inputParams.groupNum;
         OP_LOGI(contex->GetNodeName(), "outputBs not provided, using default M/E = %ld/%ld = %ld", inputParams.mSize,
@@ -678,7 +666,7 @@ static bool ExtractXDimensions(gert::TilingContext *contex, GMMFRWeightQuantInpu
     OP_LOGD(contex->GetNodeName(), "Start extracting M, K from x shape.");
 
     auto xStorageShape = contex->GetInputShape(X_INDEX);
-    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(contex->GetNodeName(), "Input xStorageShape is nullptr."),
+    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(contex->GetNodeName(), "xStorageShape"),
                 return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     uint64_t xDimNum = static_cast<uint64_t>(xShape.GetDimNum());

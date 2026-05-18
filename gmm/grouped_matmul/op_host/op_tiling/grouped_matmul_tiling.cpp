@@ -2126,7 +2126,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
         } else if (xDType != weightDtype) {
             GroupedWeightQuantBatchMatmulTiling groupedWeightQuantTiling;
             OP_CHECK_IF(!groupedWeightQuantTiling.SetTiling(context),
-                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
+                        OP_LOGE(context->GetNodeName(), "SetTiling failed."),
                         return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }
@@ -2135,7 +2135,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
         if (isUnQuant) {
             GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
             OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
-                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
+                        OP_LOGE(context->GetNodeName(), "SetTiling failed."),
                         return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }
