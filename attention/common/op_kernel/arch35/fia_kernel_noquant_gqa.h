@@ -803,7 +803,7 @@ public:
         }
         uint32_t task_i_curr = ComputeFlatTaskIdx();
         int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
-        PRINTF("task_i_curr:%d, task_i_prev_:%d\n", task_i_curr, task_i_prev_);
+        PRINTF("task_i_curr:%u, task_i_prev_:%lld\n", task_i_curr, task_i_prev_);
         task_i_prev_ = task_i_curr;
         if (gS1Skip <= 0) {
             int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
@@ -843,7 +843,7 @@ public:
                     gS1Cur = (gS1LoopTimes > 0U) ? (gS1LoopTimes - 1U) : 0U;
                 }
             }
-            PRINTF("gS1Skip <= 0, bN2Cur:%d, rawQLen:%d, preTokenLeftUp:%d, nextTokenLeftUp:%d, nextTokensError:%d, gS1LoopTimes:%d, gS1Offset:%d, gS1Cur:%d\n", bN2Cur, rawQLen, preTokenLeftUp, nextTokenLeftUp, nextTokensError, gS1LoopTimes, gS1Offset, gS1Cur);
+            PRINTF("gS1Skip<=0, bN2Cur:%u, rawQLen:%lld, preT:%lld, nextT:%lld, nextTokErr:%lld, gS1LT:%llu, gS1Off:%u, gS1Cur:%u\n", bN2Cur, rawQLen, preTokenLeftUp, nextTokenLeftUp, nextTokensError, gS1LoopTimes, gS1Offset, gS1Cur);
             return;
         }
 
@@ -884,7 +884,7 @@ public:
             gS1Skip -= gS1RemainN2;
         }
 
-        PRINTF("after gS1RemainN2 gS1Skip:%d\n", gS1Skip);
+        PRINTF("after gS1RemainN2 gS1Skip:%lld\n", gS1Skip);
         while (true) {
             bIdx++;
             if (bIdx >= constInfo.bSize) {
@@ -903,7 +903,7 @@ public:
             } else {
                 gS1RemainN2 = gS1LoopTimes * n2Size;
             }
-            PRINTF("bIdx:%d, actSeqLensQ:%d, gS1Cur:%d, gS1Skip:%d, gS1RemainN2:%d, gS1LoopTimes:%d\n", bIdx, actSeqLensQ, gS1Cur, gS1Skip, gS1RemainN2, gS1LoopTimes);
+            PRINTF("bIdx:%u, actSeqLensQ:%llu, gS1Cur:%u, gS1Skip:%lld, gS1RemainN2:%u, gS1LoopTimes:%llu\n", bIdx, actSeqLensQ, gS1Cur, gS1Skip, gS1RemainN2, gS1LoopTimes);
             if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
                 uint32_t pos = (gS1Skip > 0) ? (static_cast<uint32_t>(gS1Skip) - 1) : 0;
                 if (gS1LoopTimes == 0) {
@@ -924,7 +924,7 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        PRINTF("taskDealMode:%d, bN2Cur:%d, gS1Cur:%d, s2Cur:%d, curS2Start:%d, curS2End:%d, actSeqLensQ:%d, actSeqLensKv:%d, coreGS1Loops:%d, accGS1Loops:%d\n", static_cast<int>(taskDealMode), bN2Cur, gS1Cur, s2Cur, curS2Start, curS2End, actSeqLensQ, actSeqLensKv, coreGS1Loops, accGS1Loops);
+        PRINTF("taskDealMode:%u, bN2Cur:%u, gS1Cur:%u, s2Cur:%u, curS2Start:%u, curS2End:%u, actSeqLensQ:%llu, actSeqLensKv:%llu, coreGS1Loops:%u, accGS1Loops:%u\n", static_cast<uint32_t>(taskDealMode), bN2Cur, gS1Cur, s2Cur, curS2Start, curS2End, actSeqLensQ, actSeqLensKv, coreGS1Loops, accGS1Loops);
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
             s2Cur = curS2Start;
             return;
