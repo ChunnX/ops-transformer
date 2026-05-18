@@ -636,6 +636,7 @@ function(add_bin_compile_target)
         list(GET _group_sep 0 step)
 
         set(_compile_flag false)
+        if (${start_index} LESS ${end_index})
             foreach(i RANGE ${start_index} ${end_index} ${step})
                 if (${i} EQUAL ${end_index})
                     set(_compile_flag true)
