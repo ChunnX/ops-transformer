@@ -293,11 +293,8 @@ public:
                         remaining -= nCount;
                     }
                 }
-                // 每个 tile 末尾无条件 set：要么被下一 tile 开头的 wait 消费，
-                // 要么被本外层迭代收尾的 wait 消费。
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             }
-            // 收尾 wait：消费最后一个 tile 留下的 set，使本外层迭代收支精确为 0。
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
     }
