@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -12,6 +12,12 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
     # 算子自己的tiling文件路径
     set(grouped_matmul_tiling_files
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling_a16w4.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling_a16w8.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling_a4w4.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling_a8w4.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling_a8w8.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling_float.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp
