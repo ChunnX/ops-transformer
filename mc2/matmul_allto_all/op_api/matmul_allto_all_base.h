@@ -21,9 +21,9 @@
 ACLNN_API aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
                                                               const aclTensor *biasOptional,
                                                               const aclIntArray *alltoAllAxesOptional,
-                                                              const char *group, bool transposeX1, bool transposeX2,
-                                                              const aclTensor *output, uint64_t *workspaceSize,
-                                                              aclOpExecutor **executor);
+                                                              const char *group, const char *commMode, bool transposeX1,
+                                                              bool transposeX2, const aclTensor *output,
+                                                              uint64_t *workspaceSize, aclOpExecutor **executor);
 
 ACLNN_API aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                               aclrtStream stream);
