@@ -210,7 +210,7 @@
 
 - 该接口支持图模式。
 - 参数query中的Q_D值仅支持576，即nope\+rope=512\+64。
-- 参数key、value Atlas A2/A3系列产品支持int8数据类型，Ascend 950PR/Ascend 950DT支持float8_e4m3、int8、hifloat8数据类型。Q_N值支持1/2/4/8/16/32/64/128。
+- 参数key、value Atlas A2/A3系列产品支持int8数据类型，Ascend 950PR/Ascend 950DT支持float8_e4m3、int8、hifloat8数据类型。Q_N值支持1/2/4/8/16/32/48/64/128。
 - 参数key、value中的KV_D值仅支持656，即nope\+rope\*2\+dequant\_scale\*4=512\+64\*2\+4\*4。KV_N值仅支持1。
 - sparse\_block\_size需要整除block\_size。
   - <term>Ascend 950PR/Ascend 950DT</term>：
