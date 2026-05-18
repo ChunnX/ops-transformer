@@ -57,15 +57,18 @@ __aicore__ inline void CompressorTools<COMP>::Init(__gm__ uint8_t *startPos, __g
     isExistStartPos_ = (startPos != nullptr);
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+        startPosGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
 
     isExistSeqUsed_ = (seqUsed != nullptr);
     if (isExistSeqUsed_) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
+        sequsedGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
 
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+        cuSeqlensGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
 }
 
