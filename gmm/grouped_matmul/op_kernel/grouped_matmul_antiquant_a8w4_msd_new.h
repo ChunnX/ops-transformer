@@ -149,6 +149,7 @@ private:
     uint32_t cubeCount = 0;
     uint32_t cubeId = 0;
     uint32_t vecCount = 0;
+    uint32_t isA8W4MSDPreNZ = 0;
     TPipe *pipe;
     const GMMBaseParams *tiling;
     const TCubeTiling* mmTilingData;
@@ -159,7 +160,12 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::Init(GM_ADDR x, GM_ADDR wei
         GM_ADDR group_tokens, GM_ADDR scale, GM_ADDR pertoken_scale, GM_ADDR offset, GM_ADDR logits, GM_ADDR token_ranks, GM_ADDR residual,
         GM_ADDR y, GM_ADDR workspace, const GMMBaseParams* tilingData, const TCubeTiling* mmTilingData, TPipe *tPipeIn)
 {
-    xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD_NEW>(0, x));
+    isA8W4MSDPreNZ = tiling->isA8W4MSDPreNZ;
+    if (isA8W4MSDPreNZ) {
+        xGm.SetGlobalBuffer((__gm__ DTYPE_X_DEV_A8W4MSD_NEW*) x);
+    } else {
+        xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD_NEW>(0, x));
+    }
     weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD_NEW>(0, weight));
     biasGm.SetGlobalBuffer(GetTensorAddr<DTYPE_BIAS_A8W4MSD_NEW>(0, bias));
     mmOutGm.SetGlobalBuffer(reinterpret_cast<__gm__ cT::T *>(workspace));
@@ -251,9 +257,10 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     uint32_t tailN;
     uint32_t curSingleN;
     uint32_t curSingleM;
-    uint64_t xOffset;
+    uint64_t xOffset = 0;
     uint64_t weightOffset;
     GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD_NEW> weightSlice;
+    GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD_NEW> xSlice;
     int loopK = 0;
 
     tailN = mnConfig.nIdx * mnConfig.singleN;
@@ -266,7 +273,14 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
         curSingleM = mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
     }
     if ASCEND_IS_AIC {
-        xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+        uint64_t xOffset = 0;
+        if (tiling->isA8W4MSDPreNZ) {
+ 	        xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * 64;
+
+ 	    } else {
+ 	        xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+ 	        }
+ 	    uint64_t weightOffset = 0;
         if constexpr (mmType::BT::format == CubeFormat::NZ) {
             weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k;
         } else {
