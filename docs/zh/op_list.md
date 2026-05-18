@@ -386,6 +386,16 @@
     <td>训练场景下，计算sparse_flash_attention注意力的反向输出。</td>
   </tr>
   <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla_grad/README.md">sparse_flash_mla_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，计算sparse_flash_mla注意力的反向输出。</td>
+  </tr>
+  <tr>
     <td>ffn</td>
     <td><a href="../../ffn/ffn/README.md">ffn</a></td>
     <td>✓</td>
