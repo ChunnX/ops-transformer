@@ -23,7 +23,7 @@
 #include "kernel_operator_intf.h"
 #endif
 
-#include "gmm_swiglu_quant_mx_vf.h"
+#include "common/gmm_swiglu_quant_mx_vf.h"
 
 namespace GmmSwigluQuantMxA8W4 {
 

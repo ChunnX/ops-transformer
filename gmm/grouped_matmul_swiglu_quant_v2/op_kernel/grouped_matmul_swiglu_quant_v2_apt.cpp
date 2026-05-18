@@ -22,7 +22,7 @@
     #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
 #endif
 #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
-#include "arch35/gmm_swiglu_quant_mx_vec_compute.h"
+#include "arch35/weight_quant_basic_block/gmm_swiglu_quant_mx_vec_compute.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
