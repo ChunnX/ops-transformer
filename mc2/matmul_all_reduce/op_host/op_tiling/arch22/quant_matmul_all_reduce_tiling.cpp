@@ -36,6 +36,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::DoOpTiling()
 {
     GE_ASSERT_GRAPH_SUCCESS(CheckA8W8());
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    GE_ASSERT_GRAPH_SUCCESS(CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     GE_ASSERT_GRAPH_SUCCESS(DoQuantTiling());
