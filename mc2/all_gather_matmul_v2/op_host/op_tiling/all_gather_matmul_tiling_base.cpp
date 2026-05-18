@@ -598,10 +598,16 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK((attrs == nullptr), VECTOR_INNER_ERR_REPORT_TILING(opName_, "failed to get attrs"), return false);
     group_ = attrs->GetAttrPointer<char>(GROUP);
+    commMode_ = attrs->GetAttrPointer<char>(COMM_MODE_INDEX);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
     auto gatherIndexPtr = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
+    OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
+                    return false);
+    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", 3) == 0) || (std::strncmp(commMode_, "ai_cpu", 5) == 0) || (std::strlen(commMode_) == 0)), 
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or ai_cpu or empty string, but the actual value is %s.", commMode_),
+                    return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
     OP_TILING_CHECK(
@@ -722,11 +728,17 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 {
     uint8_t outputType = (outputIsFp8_) ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
-    uint8_t commMode = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)?
-                        Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
+    
     // Non-A5 platform must use AICPU mode
-    if (npuArch_ != NpuArch::DAV_3510) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (npuArch_ == NpuArch::DAV_3510) {    
+        if (std::strncmp(commMode_, "ccu", 3) == 0) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else if (std::strlen(commMode_) == 0) { // empty string
+            if (rankSize_ <= 8){
+                commMode = Mc2Comm::COMM_MODE_CCU;
+            }
+        }
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
         inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX, commMode);

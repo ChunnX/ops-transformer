@@ -22,35 +22,69 @@
 #include "mc2_comm_utils.h"
 
 namespace ops {
+static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *context, uint8_t &commMode)
+{
+    ge::AscendString commModeStr;
+    if (!context->GetStrAttrVal("comm_mode", commModeStr)) {
+        OPS_LOG_E(context->GetNodeName(), "Failed to get comm_mode attr.");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (commModeStr == ge::AscendString("ccu")) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (commModeStr == ge::AscendString("ai_cpu")) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (commModeStr == ge::AscendString("")) {
+        int64_t worldSize = 0;
+        if (!context->GetIntAttrVal("rank_size", worldSize) || worldSize <= 0) {
+            OPS_LOG_E(context->GetNodeName(), "Failed to get valid rank_size for default comm_mode.");
+            return ge::GRAPH_FAILED;
+        }
+        commMode = (worldSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+    } else {
+        OPS_LOG_E(context->GetNodeName(), "comm_mode only support empty string, 'ccu' or 'ai_cpu', unsupported comm_mode: %s.", commModeStr.GetString());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
 static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
+    
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
+        auto ret = GetCommModeFromAttrs(context, commMode);
+        if (ret != ge::GRAPH_SUCCESS) {
+            return ret;
+        }
         if (commMode == Mc2Comm::COMM_MODE_AICPU) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
         } else {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
-        }
+        } 
     }
     OPS_LOG_D(context->GetNodeName(), "AICPU GenTask CalcOpParam");
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
 }
 
 static ge::Status AllGatherMatmulV2GenTask(const gert::ExeResGenerationContext *context,
-                                           std::vector<std::vector<uint8_t>> &tasks)
+    std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
+        auto ret = GetCommModeFromAttrs(context, commMode);
+        if (ret != ge::GRAPH_SUCCESS) {
+            return ret;
+        }
         if (commMode == Mc2Comm::COMM_MODE_AICPU) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
         } else {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
-        }
+        } 
     }
     OPS_LOG_D(context->GetNodeName(), "AICPU GenTaskFunc");
     return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
