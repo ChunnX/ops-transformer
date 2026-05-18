@@ -126,6 +126,8 @@ public:
     BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0};
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0;
+    int64_t perGroupBOffset_{0};
+    int64_t nzKAlign_{0};
     BlockMmadOp mmadOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
@@ -246,13 +248,7 @@ public:
         }
 
         if constexpr (formatB == CubeFormat::NZ) {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-            if constexpr (transB) {
-                nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            }
-            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
+            Get<IDX_B_OFFSET>(baseOffset_) = perGroupBOffset_ * static_cast<int64_t>(groupIdx);
         } else {
             if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
                 Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
@@ -292,6 +288,18 @@ public:
         Get<N_VALUE>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<K_VALUE>(problemShape_) = params.gmmParams.matmulTiling->Ka;
         groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(params.mmadParams.groupListGmAddr));
+        if constexpr (formatB == CubeFormat::NZ) {
+            int64_t n = Get<N_VALUE>(problemShape_);
+            int64_t k = Get<K_VALUE>(problemShape_);
+            nzKAlign_ = CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
+            if constexpr (transB) {
+                perGroupBOffset_ = ((n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1))) *
+                                ((k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1)));
+            } else {
+                perGroupBOffset_ = ((n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1))) *
+                                ((k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1)));
+            }
+        }
     }
 
     __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
@@ -302,7 +310,7 @@ public:
             if constexpr (transB) {
                 bRightOffset += resN * MATMUL_MNK_ALIGN_INT8;
             } else {
-                bRightOffset += resN * CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
+                bRightOffset += resN * nzKAlign_;
             }
         } else {
             if constexpr (transB) {
