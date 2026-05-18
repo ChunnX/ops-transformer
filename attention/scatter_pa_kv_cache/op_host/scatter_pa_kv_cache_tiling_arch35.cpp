@@ -313,7 +313,7 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNormal()
                     return ge::GRAPH_FAILED;);
         kHandleNumPerCore_ /= DIM2;
         vHandleNumPerCore_ /= DIM2;
-        kHeadSize_ / = DIM2;
+        kHeadSize_ /= DIM2;
         vHeadSize_ /= DIM2;
     }
     blockFactor_ = Ops::Base::CeilDiv<int64_t>(numTokens_, totalCoreNum_);
