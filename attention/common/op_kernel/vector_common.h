@@ -1084,7 +1084,7 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
     } else if (info.layout == SG) { // sg
         AttentionmaskCopyInForSgLayout(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
     } else if (info.layout == S1_EQUAL1) {
-        uint64_t maskOffset = ComputeAttenMaskOffset(info, 0, 0, isPre);
+        uint64_t maskOffset = ComputeAttenMaskOffset(info, 0, isPre);
         uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = 1;
