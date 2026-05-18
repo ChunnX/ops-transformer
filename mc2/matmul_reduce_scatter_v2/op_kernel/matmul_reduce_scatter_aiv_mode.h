@@ -337,17 +337,17 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
 
     uint32_t pingpongSt = flagIdx * gm_c_pingpong_size;
 
-    uint32_t rowCnt = m;
-    uint32_t colCnt = n;
-    uint32_t tileM = m0;
-    uint32_t tileN = n0;
-    uint32_t coreId = core_idx;
-    uint32_t totalCores = core_num;
-    uint32_t rankId = rank;
-    uint32_t totalRanks = rank_size;
-    uint32_t pVal = p_value;
-    uint32_t swizzleDir = swizzl_direct;
-    uint32_t swizzleCnt = swizzl_count;
+    uint32_t rowNum = m;
+    uint32_t colNum = n;
+    uint32_t tileM0 = m0;
+    uint32_t tileN0 = n0;
+    uint32_t coreIdx = core_idx;
+    uint32_t coreNum = core_num;
+    uint32_t rankIdx = rank;
+    uint32_t rankSize = rank_size;
+    uint32_t pValue = p_value;
+    uint32_t swizzlDirect = swizzl_direct;
+    uint32_t swizzlCount = swizzl_count;
     __gm__ float32_t *perChannelScale = needPerChannel ?
         reinterpret_cast<__gm__ float32_t *>(perChannelScaleGM_) : nullptr;
     __gm__ float32_t *perTokenScale = needPerToken ?
@@ -369,22 +369,22 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishPadding);
         return;
     }
-    bool isTransA = TA; // 当前暂未支持A矩阵转置
-    bool isTransB = TB;
-    bool isAlignedA = aligned_a;
-    bool isAlignedB = aligned_b;
-    uint32_t matARows = m;
-    uint32_t matACols = k;
-    uint32_t matBCols = k;
-    uint32_t matBRows = n;
-    uint32_t matARowsAlign = static_cast<uint32_t>(m_align);
-    uint32_t matAColsAlign = static_cast<uint32_t>(k_align);
-    uint32_t matBColsAlign = static_cast<uint32_t>(k_align);
-    uint32_t matBRowsAlign = static_cast<uint32_t>(n_align);
-    GM_ADDR gmMatA = reinterpret_cast<GM_ADDR>(aGM_);
-    GM_ADDR gmMatB = reinterpret_cast<GM_ADDR>(bGM_);
-    GM_ADDR gmMatAAligned = reinterpret_cast<GM_ADDR>(gm_a_align);
-    GM_ADDR gmMatBAligned = reinterpret_cast<GM_ADDR>(gm_b_align);
+    bool transA = TA; // 当前暂未支持A矩阵转置
+    bool transB = TB;
+    bool alignedA = aligned_a;
+    bool alignedB = aligned_b;
+    uint32_t matrixAM = m;
+    uint32_t matrixAK = k;
+    uint32_t matrixBK = k;
+    uint32_t matrixBN = n;
+    uint32_t matrixAMAlign = static_cast<uint32_t>(m_align);
+    uint32_t matrixAKAlign = static_cast<uint32_t>(k_align);
+    uint32_t matrixBKAlign = static_cast<uint32_t>(k_align);
+    uint32_t matrixBNAlign = static_cast<uint32_t>(n_align);
+    GM_ADDR gmA = reinterpret_cast<GM_ADDR>(aGM_);
+    GM_ADDR gmB = reinterpret_cast<GM_ADDR>(bGM_);
+    GM_ADDR gmAAlign = reinterpret_cast<GM_ADDR>(gm_a_align);
+    GM_ADDR gmBAlign = reinterpret_cast<GM_ADDR>(gm_b_align);
     PaddingRunner<AType, BType> padding_runner;
     padding_runner.Run(PADDING_ARGS_CALL());
 }
