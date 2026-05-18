@@ -140,7 +140,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aivCoreMinNum = aivCoreNum_;
-    deviceInfo.cvRadio = aivCoreNum_ / aicCoreNum_;
+    deviceInfo.cvRatio = aivCoreNum_ / aicCoreNum_;
     // baseInfo
     // actual seq size
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
