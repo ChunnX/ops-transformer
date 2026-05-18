@@ -818,7 +818,8 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
             OP_LOGE(nodeName, "Attr commAlg is invalid, current only support fullmesh_v1 and fullmesh_v2, but got commAlg = %s.", commAlgPtr),
             return ge::GRAPH_FAILED);
     }
-    isSetFullMeshV2 = ((strcmp(commAlgPtr, "fullmesh_v2") == 0) ? true : false);
+    // isSetFullMeshV2 = ((strcmp(commAlgPtr, "fullmesh_v2") == 0) ? true : false);
+    isSetFullMeshV2 = true;
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 isSetFullMeshV2 = %d\n", isSetFullMeshV2);
 
     groupEp = std::string(groupEpPtr);
@@ -1831,6 +1832,11 @@ static ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* co
     } else {
         ret = MoeDistributeDispatchA3TilingFuncImpl(context);
     }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint64_t ubSize = 0UL;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    context->SetLocalMemorySize(ubSize - 32 * 1024);
     return ret;
 }
 

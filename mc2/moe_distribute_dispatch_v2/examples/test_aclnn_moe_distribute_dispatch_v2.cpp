@@ -29,6 +29,7 @@
 
 #include "acl/acl.h"
 #include "shmem.h"
+#include <iterator>
 
 int g_npus  = 8;
 const char*ipport;
@@ -116,7 +117,7 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     // 设置场景
     int64_t BS = 8;
     int64_t H = 7168;
-    int64_t K = 1;
+    int64_t K = 8;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
@@ -124,7 +125,7 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     //     sharedExpertNum = 1;
     //     sharedExpertRankNum = 1;
     // } 
-    int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
+    int64_t moeExpertNum = EP_WORLD_SIZE * 8;
     int64_t quantMode = 0;
     int64_t globalBS = BS * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 0;
@@ -214,6 +215,32 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
+
+    int pe_id = aclshmem_my_pe();
+    int n_pes = aclshmem_n_pes();
+
+    // DEBUG: n_pes * trans_size * sizeof(int32_t)
+    uint32_t trans_size = 16;
+    uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t)));
+    uint64_t custom_ptr_addr = (uint64_t)custom_ptr;
+    std::cout << "[HOST custom_ptr_addr] " << custom_ptr_addr << std::endl;
+
+    const int num10 = 10;
+    std::vector<int32_t> input(trans_size, 0);
+    for (int i = 0; i < trans_size; i++) {
+        input[i] = num10 + pe_id * 100;
+    }
+
+    aclrtMemcpy(
+        custom_ptr + aclshmem_my_pe() * trans_size * sizeof(int32_t), trans_size * sizeof(int32_t), input.data(),
+        trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+
+
+    // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
+    if (xHostData.size() >= 4) {
+        std::memcpy(xHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
+    }
+
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -282,6 +309,27 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
         ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     );
+
+    std::vector<int64_t> time_vec(4, 0);
+    ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
+    printf("[HOST TIME] pe=%d, total wqe: %lld, total wqe+pollcq: %lld, \n", pe_id, time_vec[0], time_vec[1]);
+
+    // shmem validate result
+    int32_t* y_host;
+    size_t input_size = n_pes * trans_size * sizeof(int32_t);
+    aclrtMallocHost(reinterpret_cast<void**>(&y_host), input_size);
+    aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
+
+    std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
+    std::cout << "[Output] pe=" << pe_id << ": "
+                                << y_host[trans_size * 0] << " "
+                                << y_host[trans_size * 1] << " "
+                                << y_host[trans_size * 2] << " "
+                                << y_host[trans_size * 3] << " "
+                                << y_host[trans_size * 4] << " "
+                                << y_host[trans_size * 5] << " "
+                                << y_host[trans_size * 6] << " "
+                                << y_host[trans_size * 7] << " " << std::endl;
 
     // // 调用combineV2算子第一阶段接口
     // ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
