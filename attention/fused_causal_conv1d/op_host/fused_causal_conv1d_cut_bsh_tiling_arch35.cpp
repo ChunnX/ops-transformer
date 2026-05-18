@@ -840,6 +840,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::PostTiling()
     tilingData_.xStride = xStride_;
     tilingData_.cacheStride0 = cacheStride0_;
     tilingData_.cacheStride1 = cacheStride1_;
+    tilingData_.stateLen = cacheStatesShape_.GetDim(DIM_1);
     tilingData_.residualConnection = residualConnection_;
 
     // ===== v2.0 新增字段写入 =====

@@ -347,7 +347,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
     hasCacheIndices_ = (tiling->hasCacheIndices != 0);
     inplace_ = (tiling->inplace != 0);
 
-    stateLen_ = (cacheStride1_ != 0) ? (cacheStride0_ / cacheStride1_) : (kernelWidth_ - 1);
+    stateLen_ = tiling->stateLen;
 }
 
 // ============================================================================

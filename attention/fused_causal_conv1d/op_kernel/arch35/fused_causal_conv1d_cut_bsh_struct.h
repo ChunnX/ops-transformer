@@ -50,6 +50,7 @@ struct FusedCausalConv1dCutBSHTilingData {
     uint64_t dim;               // 特征维度大小
     uint64_t batch;             // batch大小
     int64_t padSlotId;          // padding slot ID，用于 kernel 中跳过 padding batch
+    uint64_t stateLen;
     uint64_t xStride;           // x 的 stride（即 dim）
     uint64_t cacheStride0;       // convStates 的 stride[0]
     uint64_t cacheStride1;       // convStates 的 stride[1]
