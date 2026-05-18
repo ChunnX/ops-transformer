@@ -56,6 +56,12 @@ if (BUILD_OPEN_PROJECT)
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
+    message("debug C_SEC_INCLUDE = ${C_SEC_INCLUDE}")
+    message("debug TILINGAPI_INC_DIRS = ${TILINGAPI_INC_DIRS}")
+    message("debug METADEF_INCLUDE_DIRS = ${METADEF_INCLUDE_DIRS}")
+    message("debug OPS_TRANSFORMER_DIR = ${OPS_TRANSFORMER_DIR}")
+    message("debug ASCEND_CANN_PACKAGE_PATH = ${ASCEND_CANN_PACKAGE_PATH}")
+
     target_include_directories(${COMMON_NAME}_obj
       PRIVATE
       ${C_SEC_INCLUDE}
@@ -64,12 +70,15 @@ if (BUILD_OPEN_PROJECT)
       ${OPS_TRANSFORMER_DIR}/common/include
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
+      ${ASCEND_CANN_PACKAGE_PATH}/include
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
     )
 
@@ -90,12 +99,14 @@ if (BUILD_OPEN_PROJECT)
     target_include_directories(${COMMON_NAME}_fallback_obj
       PRIVATE
       ${OPS_TRANSFORMER_DIR}/common/include
+      ${CANN_3RD_LIB_PATH}/opbase/include/op_common/
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
     )
 
