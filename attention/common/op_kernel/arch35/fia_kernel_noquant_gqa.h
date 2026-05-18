@@ -931,7 +931,7 @@ public:
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
-            } else if(taskDealMode != TASK_DEAL_MODE::SKIP) {
+            } else {
                 coreGS1Loops++;
                 accGS1Loops++;
                 createdTaskCount = executedTaskCount;
