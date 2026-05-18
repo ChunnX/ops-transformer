@@ -460,7 +460,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
         LocalTensor<bool> attenMaskTmpUb = attenMaskTmpBuff.Get<bool>();
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
+        if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
             fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             AscendC::PipeBarrier<PIPE_V>();
