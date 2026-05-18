@@ -146,7 +146,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tr></thead>
         <tbody>
         <tr>
-            <td>query</td>
+            <td>query（aclTensor*）</td>
             <td>输入</td>
             <td>attention结构的输入Q。</td>
             <td>
@@ -160,11 +160,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>oriKvOptional</td>
+            <td>oriKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>attention结构的原始输入K(V)。</td>
             <td>
-            A2/A3当前暂不支持空tensor。
+            当前暂不支持空tensor。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cmpKvOptional</td>
+            <td>cmpKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>经过Compressor压缩后的K(V)。</td>
             <td>
@@ -188,7 +188,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>dOut</td>
+            <td>dOut（aclTensor*）</td>
             <td>输入</td>
             <td>注意力输出矩阵的梯度。</td>
             <td>
@@ -202,7 +202,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>out</td>
+            <td>out（aclTensor*）</td>
             <td>输入</td>
             <td>注意力输出矩阵。</td>
             <td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>lse</td>
+            <td>lse（aclTensor*）</td>
             <td>输入</td>
             <td>注意力正向计算的输出lse，计算公式详见正向文档。</td>
             <td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>oriSparseIndicesOptional</td>
+            <td>oriSparseIndicesOptional（aclTensor*）</td>
             <td>输入</td>
             <td>稀疏场景下选择的oriKvOptional中权重较高的注意力索引。</td>
             <td>
@@ -244,7 +244,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cmpSparseIndicesOptional</td>
+            <td>cmpSparseIndicesOptional（aclTensor*）</td>
             <td>输入</td>
             <td>稀疏场景下选择的cmpKvOptional中权重较高的注意力索引。</td>
             <td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cuSeqlensQOptional</td>
+            <td>cuSeqlensQOptional（aclTensor*）</td>
             <td>输入</td>
             <td>每个Batch中，Query的有效token数。</td>
             <td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cuSeqlensOriKvOptional</td>
+            <td>cuSeqlensOriKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>每个Batch中，oriKvOptional的有效token数。</td>
             <td>
@@ -294,7 +294,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cuSeqlensCmpKvOptional</td>
+            <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>每个Batch中，cmpKvOptional的有效token数。</td>
             <td>
@@ -310,11 +310,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>sequsedQOptional</td>
+            <td>sequsedQOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示不同batch中query实际参与运算的token数。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -323,11 +323,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>sequsedOriKvOptional</td>
+            <td>sequsedOriKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示不同batch中oriKvOptional实际参与运算的token数。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -336,11 +336,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>sequsedCmpKvOptional</td>
+            <td>sequsedCmpKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示不同batch中cmpKvOptional实际参与运算的token数。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -349,11 +349,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cmpResidualKvOptional</td>
+            <td>cmpResidualKvOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示每个batch S2 // cmpRatio后的余数。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -362,11 +362,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>oriTopkLengthOptional</td>
+            <td>oriTopkLengthOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示每行query对应的oriKvOptional实际可选的topk长度。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -375,11 +375,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>cmpTopkLengthOptional</td>
+            <td>cmpTopkLengthOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示每行query对应的cmpKvOptional实际可选的topk长度。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -388,7 +388,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>sinksOptional</td>
+            <td>sinksOptional（aclTensor*）</td>
             <td>输入</td>
             <td>注意力下沉tensor。</td>
             <td>
@@ -402,7 +402,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>metadataOptional</td>
+            <td>metadataOptional（aclTensor*）</td>
             <td>输入</td>
             <td>表示tiling下沉的aicpu算子输出结果。</td>
             <td>
@@ -415,7 +415,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>scaleValue</td>
+            <td>scaleValue（double）</td>
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
@@ -427,7 +427,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>cmpRatio</td>
+            <td>cmpRatio（int64_t）</td>
             <td>输入</td>
             <td>表示对oriKvOptional的压缩率。</td>
             <td>
@@ -439,7 +439,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>oriMaskMode</td>
+            <td>oriMaskMode（int64_t）</td>
             <td>输入</td>
             <td>表示query和oriKvOptional计算的mask模式。</td>
         <td>
@@ -454,7 +454,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>-</td>
         </tr>
         <tr>
-            <td>cmpMaskMode</td>
+            <td>cmpMaskMode（int64_t）</td>
             <td>输入</td>
             <td>表示query和cmpKvOptional计算的mask模式。</td>
         <td>
@@ -469,7 +469,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>-</td>
         </tr>
         <tr>
-        <td>oriWinLeft</td>
+        <td>oriWinLeft（int64_t）</td>
             <td>输入</td>
             <td>表示query和oriKvOptional计算中query对过去token计算的数量。</td>
             <td>
@@ -483,7 +483,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-        <td>oriWinRight</td>
+        <td>oriWinRight（int64_t）</td>
             <td>输入</td>
             <td>表示query和oriKvOptional计算中query对未来token计算的数量。</td>
             <td>
@@ -497,7 +497,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>layoutQOptional</td>
+            <td>layoutQOptional（char*）</td>
             <td>输入</td>
             <td>表示输入query的数据排布格式。</td>
             <td>
@@ -509,7 +509,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>layoutKvOptional</td>
+            <td>layoutKvOptional（char*）</td>
             <td>输入</td>
             <td>表示输入ori_kv和cmp_kv的数据排布格式。</td>
             <td>
@@ -521,7 +521,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>deterministic</td>
+            <td>deterministic（int64_t）</td>
             <td>输入</td>
             <td>表示是否开启确定性，应和全局保持一致。</td>
             <td>
@@ -533,7 +533,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>-</td>
         </tr>
         <tr>
-            <td>dQueryOut</td>
+            <td>dQueryOut（aclTensor*）</td>
             <td>输出</td>
             <td>表示query的梯度。</td>
             <td>
@@ -546,7 +546,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>dOriKvOutOptional</td>
+            <td>dOriKvOutOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示oriKvOptional的梯度。</td>
             <td>
@@ -559,7 +559,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>  
-            <td>dCmpKvOptional</td>
+            <td>dCmpKvOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示cmpKvOptional的梯度。</td>
             <td>
@@ -572,7 +572,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>  
-            <td>dSinksOutOptional</td>
+            <td>dSinksOutOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示sinksOptional的梯度。</td>
             <td>
@@ -585,11 +585,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>  
-            <td>oriSoftmaxL1NormOptional</td>
+            <td>oriSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与oriKvOptional计算得出的softmax结果。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -598,11 +598,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>  
-            <td>cmpSoftmaxL1NormOptional</td>
+            <td>cmpSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与cmpKvOptional计算得出的softmax结果。</td>
             <td>
-            A2/A3该参数暂不支持。
+            该参数暂不支持。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>

@@ -334,8 +334,6 @@
   - N1：支持1~128。
   - N2：仅支持1。
   - D：仅支持512。
-- 确定性计算：
-  - SparseFlashMlaGrad默认非确定性实现，暂不支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 ## 调用示例
 
