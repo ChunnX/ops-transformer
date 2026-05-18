@@ -100,12 +100,35 @@ transformer-2@ops-transformer:
             huawei_style:  
                 - ops/ops-transformer/attention/common/op_kernel/fia_public_define.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_common_regbase.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h
                 - ops/ops-transformer/attention/common/op_kernel/vector_common.h
-                - ops/ops-transformer/attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md
-                - ops/ops-transformer/attention/prompt_flash_attention/docs/PFA算子设计介绍.md
-                - ops/ops-transformer/attention/prompt_flash_attention/examples/
+                - ops/ops-transformer/attention/lightning_indexer/
+                - ops/ops-transformer/attention/sparse_flash_attention/
+                - ops/ops-transformer/attention/quant_lightning_indexer/
+                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/
+            opensource_style: null 
+            kernel_style: null  
+        unrelease:
+            test_code:
+                - ops/ops-transformer/attention/lightning_indexer/tests/
+                - ops/ops-transformer/attention/lightning_indexer/docs/
+                - ops/ops-transformer/attention/lightning_indexer/examples/
+                - ops/ops-transformer/attention/sparse_flash_attention/tests/
+                - ops/ops-transformer/attention/sparse_flash_attention/docs/
+                - ops/ops-transformer/attention/sparse_flash_attention/examples/
+                - ops/ops-transformer/attention/quant_lightning_indexer/tests/
+                - ops/ops-transformer/attention/quant_lightning_indexer/docs/
+                - ops/ops-transformer/attention/quant_lightning_indexer/examples/
+                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/tests/
+                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/docs/
+                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/examples/
+            non_delivery: null 
+            open_source: null 
+
+transformer-pfa_unevolved@ops-transformer:
+    src:  
+        release:
+            huawei_style:  
                 - ops/ops-transformer/attention/prompt_flash_attention/op_host/
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention.cpp
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/prompt_flash_attention_s1s2_bns1_mla.h
@@ -129,20 +152,30 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/pfa_service_matmul_kv_nd.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_tilingkey.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/
-                - ops/ops-transformer/attention/prompt_flash_attention/tests/
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
                 - ops/ops-transformer/attention/prompt_flash_attention/CMakeLists.txt
-                - ops/ops-transformer/attention/lightning_indexer/
-                - ops/ops-transformer/attention/sparse_flash_attention/
-                - ops/ops-transformer/attention/quant_lightning_indexer/
-                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/
+            opensource_style: null 
+            kernel_style: null  
+        unrelease:
+            test_code:
+                - ops/ops-transformer/attention/prompt_flash_attention/tests/
+                - ops/ops-transformer/attention/prompt_flash_attention/examples/
+                - ops/ops-transformer/attention/prompt_flash_attention/docs/
+            non_delivery: null 
+            open_source: null 
+
+transformer-vf@ops-transformer:
+    src:  
+        release:
+            huawei_style:  
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
             opensource_style: null 
             kernel_style: null  
         unrelease:
             test_code: null 
             non_delivery: null 
             open_source: null 
-    
+
 transformer-3@ops-transformer:
     src:  
         release:
