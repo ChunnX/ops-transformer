@@ -176,9 +176,13 @@ ge::graphStatus FpMatmulAllToAllTilingBase::SetHcclTiling()
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    // 0代表默认走调度模式
-    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : Mc2Comm::ENGINE_AICPU;
+    // 获取commMode
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, commMode) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
 
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(engineType).
@@ -270,7 +274,11 @@ uint64_t FpMatmulAllToAllTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
 
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, commMode) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", NON_QUANT_MODE,
