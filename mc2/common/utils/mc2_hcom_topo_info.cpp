@@ -35,6 +35,7 @@ const std::string COMM_GET_TOPO_TYPE_NAME = "CommGetInstTopoTypeByNetLayer";
 const std::string COMM_GET_SIZE_NAME = "CommGetInstSizeByNetLayer";
 #endif
 const std::string COMM_GET_CCL_BUFFER_SIZE_NAME = "CommGetCCLBufSizeCfg";
+const std::string COMM_GET_HCCL_BUFFER_NAME = "HcclGetHcclBuffer";
 
 static const string GetLibPath()
 {
@@ -83,6 +84,7 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
     getInstSize_ = GetHcclLibFunc<FuncGetInstSize>(handle_, COMM_GET_SIZE_NAME);
 #endif
     getCclBufferSize_ = GetHcclLibFunc<FuncGetCclBufferSize>(handle_, COMM_GET_CCL_BUFFER_SIZE_NAME);
+    getHcclBuffer_ = GetHcclLibFunc<FuncGetHcclBuffer>(handle_, COMM_GET_HCCL_BUFFER_NAME);
 
 #ifdef BUILD_OPEN_PROJECT
     if (getCommHandle_ == nullptr || getRankSizeEx_ == nullptr || getL0TopoTypeEx_ == nullptr ||
@@ -182,6 +184,15 @@ HcclResult MC2HcomTopology::CallCommGetCCLBufSizeCfg(HcclComm comm, uint64_t *cc
     return static_cast<HcclResult>(getCclBufferSize_(comm, cclBufferSize));
 }
 
+HcclResult MC2HcomTopology::CallCommGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size) const
+{
+    if (getHcclBuffer_ == nullptr) {
+        OP_LOGE("", "Failed to get inst size, func load failed.");
+        return HCCL_E_PTR;
+    }
+    return static_cast<HcclResult>(getHcclBuffer_(comm, buffer, size));
+}
+
 HcclResult MC2HcomTopology::CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm)
 {
     if (group == nullptr || cclBufferSize == nullptr || hcclComm == nullptr) {
@@ -200,6 +211,28 @@ HcclResult MC2HcomTopology::CommGetCclBufferSizeByGroup(const char *group, uint6
         return ret;
     }
     OP_LOGI("", "cclBufferSize is %lu", *cclBufferSize);
+    return HCCL_SUCCESS;
+}
+
+HcclResult MC2HcomTopology::CommGetHcclBufferByGroup(const char *group, void **buffer, uint64_t *size)
+{
+    if (group == nullptr || buffer == nullptr || size == nullptr) {
+        OP_LOGE("", "Group or Buffer or Size is nullptr.");
+        return HCCL_E_PTR;
+    }
+    HcclComm hcclComm;
+    HcclResult ret = GetInstance().CallHcomGetCommHandleByGroup(group, &hcclComm);
+    if (ret != HCCL_SUCCESS) {
+        OP_LOGI("", "Failed to get comm handle.");
+        hcclComm = nullptr;
+        return ret;
+    }
+    ret = GetInstance().CallCommGetHcclBuffer(hcclComm, buffer, size);
+    if (ret != HCCL_SUCCESS) {
+        OP_LOGE("", "Failed to get buffer size.");
+        return ret;
+    }
+    OP_LOGI("", "localBufferSize is %lu", *size);
     return HCCL_SUCCESS;
 }
 
