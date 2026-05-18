@@ -32,7 +32,8 @@ ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context)
     auto commModePtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMMMODE));
     if (commModePtr == nullptr || !(std::strcmp(commModePtr, "aiv") == 0)) {
         const char *modeStr = (commModePtr != nullptr) ? commModePtr : "nullptr";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "commMode", modeStr, "AivModeTiling commMode is invalid, expected 'aiv'");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "commMode",
+            modeStr, "AivModeTiling commMode is invalid, expected 'aiv'");
         return ge::GRAPH_FAILED;
     }
     return AllGatherMatmulTilingAIVModeFunc(context);

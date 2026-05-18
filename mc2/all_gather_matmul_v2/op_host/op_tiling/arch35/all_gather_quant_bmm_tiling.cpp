@@ -315,7 +315,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
         OP_TILING_CHECK(CheckPerBlockScaleInput() == ge::GRAPH_FAILED,
                         CUBE_INNER_ERR_REPORT(opName_, "Check perblock scale input failed"), return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMode", "invalid", "should be pertensor or mxfp or perblock");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMode", "invalid",
+            "should be pertensor or mxfp or perblock");
         return ge::GRAPH_FAILED;
     }
 
@@ -418,9 +419,11 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2InitTiling) != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling",
+            "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2CcTiling) != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling",
+            "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -430,7 +433,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
     SetTilingKeyParams();
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
-      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hcommConfig", "SetMc2Hcomm failed", "failed to set Hcomm configuration"), return ge::GRAPH_FAILED);
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hcommConfig",
+          "SetMc2Hcomm failed", "failed to set Hcomm configuration"), return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {

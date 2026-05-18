@@ -646,20 +646,24 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
         std::string algConfig = "AllGather=level0:fullmesh";
         AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
         OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2InitTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2InitTiling",
+                            "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2CcTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2CcTiling",
+                            "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
                         return ge::GRAPH_FAILED);
     } else {
         uint32_t opType = 18;
         std::string algConfig = "MultiPut=level0:fullmesh";
         AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
         OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2InitTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2InitTiling",
+                            "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2CcTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "mc2CcTiling",
+                            "GetTiling returned non-zero", "mc2CcTilingConfig failed"),
                         return ge::GRAPH_FAILED);
     }
 
