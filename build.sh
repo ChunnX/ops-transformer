@@ -542,7 +542,20 @@ function build_example()
                 return 1
             fi
             echo "We In Mpirun ${n_pes} Processes."
-            mpirun -np ${n_pes} ./test_aclnn_${EXAMPLE_NAME} "tcp://${SHMEM_UID_SESSION_ID}" ${g_npus}
+
+            # 生成日志包装脚本（每次运行覆盖，确保最新）
+            LOG_DIR="../logs_${EXAMPLE_NAME}_$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "${LOG_DIR}"
+            WRAPPER="${LOG_DIR}/wrapper.sh"
+            {
+                echo '#!/bin/bash'
+                echo 'RANK=${PMI_RANK:-0}'
+                echo "exec \"\$@\" > \"${LOG_DIR}/log_rank_\${RANK}.txt\" 2>&1"
+            } > "${WRAPPER}"
+            chmod +x "${WRAPPER}"
+            echo "Per-rank logs will be written to: ${LOG_DIR}/"
+
+            mpirun -np ${n_pes} "${WRAPPER}" ./test_aclnn_${EXAMPLE_NAME} "tcp://${SHMEM_UID_SESSION_ID}" ${g_npus}
             # ./test_aclnn_${EXAMPLE_NAME}
             run_result=$?
             if [ $run_result -ne 0 ]; then
