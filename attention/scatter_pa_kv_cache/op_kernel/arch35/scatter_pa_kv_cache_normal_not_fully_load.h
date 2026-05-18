@@ -183,7 +183,9 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
         if (startIdx < 0 || startIdx >= maxTokens_) {
             continue;
         }
-        int64_t kStartIdx = startIdx * tilingData_->kHandleNumPerCore;
+        int64_t blockIdx = startIdx / tilingData_->blockSize;
+        int64_t blockOffset = startIdx % tilingData_->blockSize;
+        int64_t kStartIdx = blockIdx * tilingData_->keyCacheStride0_ + blockOffset * tilingData_->keyCacheStride1_;
         // key main loop
         for (int64_t i = 0; i < tilingData_->kLoopNum; i++) {
             CopyInKey(i, kOffsetIn, tilingData_->kHandleNumPerLoop);
@@ -201,7 +203,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
                     continue;
                 }
             }
-            int64_t vStartIdx = startIdx * tilingData_->vHandleNumPerCore;
+            int64_t vStartIdx = blockIdx * tilingData_->valueCacheStride0_ + blockOffset * tilingData_->valueCacheStride1_;
             // value main loop
             for (int64_t i = 0; i < tilingData_->vLoopNum; i++) {
                 CopyInValue(i, vOffsetIn, tilingData_->vHandleNumPerLoop);
