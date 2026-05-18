@@ -541,7 +541,7 @@ ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 
 ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex)
 {
-    printf("tkd parameterIndex: %d\n", parameterIndex);
+    // printf("tkd parameterIndex: %d\n", parameterIndex);
     std::string parameterName;
     switch (parameterIndex) {
         case Q_DEQUANT_SCALE_INDEX:
@@ -614,25 +614,25 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
 
 ge::graphStatus BSATiling::ValidateQDequantScale(gert::TilingContext *bsaContext)
 {
-    printf("tkd ValidateQDequantScale\n");
+    // printf("tkd ValidateQDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, Q_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateKDequantScale(gert::TilingContext *bsaContext)
 {
-    printf("tkd ValidateKDequantScale\n");
+    // printf("tkd ValidateKDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, K_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext)
 {
-    printf("tkd ValidateVDequantScale\n");
+    // printf("tkd ValidateVDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bsaContext)
 {
-    printf("tkd CheckBlockShapeQuantContraint\n");
+    // printf("tkd CheckBlockShapeQuantContraint\n");
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
         constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256;
@@ -708,8 +708,8 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     }
 
     if (socVer_ == SOC_VER_950_CODE) {
-        CheckAllInputInfo(bsaContext);
-        printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
+        // CheckAllInputInfo(bsaContext);
+        // printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
