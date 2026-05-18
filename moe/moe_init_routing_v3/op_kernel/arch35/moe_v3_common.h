@@ -51,6 +51,9 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 constexpr int64_t GATHER = 0;
 constexpr int64_t SCATTER = 1;
 
+constexpr float DYNAMIC_QUANT_INT4_SYM_SCALE = 7.0f;
+constexpr uint32_t MAX_VALUE_NUM = 8;
+
 constexpr uint16_t FLOAT_REG_TENSOR_LENGTH = VECTOR_REG_WIDTH / sizeof(float);
 constexpr float HIFLOAT8_MAX_VALUE = 32768.0f;
 
