@@ -26,7 +26,7 @@
 namespace MicroAPI = AscendC::MicroAPI;
 using AscendC::VECTOR_REG_WIDTH;
 
-namespace WeightQuantBatchMatmulV2::Arch35 {
+namespace GMMSQWeightQuant {
 
 template <typename xType, typename wType, typename biasType>
 struct MxA8W4NzParams {
@@ -46,5 +46,5 @@ static constexpr uint32_t E2M1_SHIFT_RIGHT_SIZE = 0x2;
 static constexpr uint32_t SHIFT_LEFT_SIZE = 0x4;
 static constexpr uint32_t E2M1_AND_MASK = 0x9C;
 
-} // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace GMMSQWeightQuantWeightQuant
 #endif // GMMSQ_BASIC_BLOCK_VF_MX_H

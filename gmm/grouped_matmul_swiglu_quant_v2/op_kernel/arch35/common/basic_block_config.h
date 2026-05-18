@@ -24,7 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "tool.h"
 
-namespace WeightQuantBatchMatmulV2::Arch35 {
+namespace GMMSQWeightQuant {
 
 constexpr static uint16_t WEIGHT_F16_UB_NZ_STRIDE = 65;
 constexpr int16_t SHIFT_FOR_BF16 = 1;
@@ -147,5 +147,5 @@ __aicore__ constexpr VfConfig GetVfConfig()
 {
     return {.vfNStandardLen = 256, .vfKStandardLen = 64};
 }
-} // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace GMMSQWeightQuantWeightQuant
 #endif // GMMSQ_BASIC_BLOCK_CONFIG_H
