@@ -382,8 +382,8 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
 
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclTensor *x1Scale, const aclTensor *x2Scale, const char *group,
-                                        const aclIntArray *alltoAllAxesOptional, int64_t x1QuantMode,
-                                        int64_t x2QuantMode, bool transposeX1, bool transposeX2,
+                                        const char *commMode, const aclIntArray *alltoAllAxesOptional,
+                                        int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX1, bool transposeX2,
                                         const aclTensor *output)
 {
     // 检查参数是否为空指针
@@ -407,6 +407,8 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 检查group长度是否小于等于128
     CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
+    // 检查commMode非空
+    CHECK_RET(commMode != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("QuantMatmulAlltoAll checkParams success");
     return ACLNN_SUCCESS;
@@ -420,19 +422,22 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(
     const aclTensor *x2ScaleOptional, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
     const aclTensor *x2OffsetOptional, char *group, int64_t worldSize, const aclIntArray *all2allAxesOptional,
     int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype,
-    bool transposeX1, bool transposeX2, int64_t groupSize, const aclTensor *out, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    bool transposeX1, bool transposeX2, int64_t groupSize, char *commModeOptional, const aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                 aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
+
 
 // 两段式接口
 aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1Scale,
     const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
-    const aclTensor *x2OffsetOptional, const aclIntArray *alltoAllAxesOptional, const char *group, int64_t x1QuantMode,
-    int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize, bool transposeX1,
-    bool transposeX2, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *x2OffsetOptional, const aclIntArray *alltoAllAxesOptional, const char *group, const char *commMode,
+    int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
+    bool transposeX1, bool transposeX2, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
@@ -464,13 +469,14 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         });
     }
     aclnnStatus retParam =
-        CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group, alltoAllAxesOptional, x1QuantMode,
-                             x2QuantMode, transposeX1, transposeX2, output);
+        CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group, commMode, alltoAllAxesOptional,
+                             x1QuantMode, x2QuantMode, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
     const aclTensor *out = output;
     int64_t worldSize = -1;
     char *str_group = const_cast<char *>(group);
+    char *str_commMode = const_cast<char *>(commMode);
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
     commQuantDtype = op::DataType::DT_UNDEFINED;
     // 生成yDtype，图模式需要
@@ -483,16 +489,27 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     } else if (yDtype == op::DataType::DT_BF16) {
         enumYDtype = 27;
     }
+
+    uint8_t commModeEnum = 0;
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, str_group,
         worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
-        transposeX1, transposeX2, groupSize, out, workspaceSize, executor);
+        transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
     OP_LOGD("QuantMatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(
             ACLNN_ERR_INNER,
             "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
+
+    if (*executor != nullptr) {
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
+        NnopbaseSetUserHandle(executor, args);
+    }
+
     return ret;
 }
 
@@ -501,7 +518,10 @@ aclnnStatus aclnnQuantMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+
             if (commMode == Mc2Comm::COMM_MODE_CCU) {
                 OP_LOGD("QuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
