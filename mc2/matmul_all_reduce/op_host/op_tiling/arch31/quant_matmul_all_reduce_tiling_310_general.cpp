@@ -33,6 +33,7 @@ bool QuantMatmulAllReduceTiling310General::IsCapable()
 ge::graphStatus QuantMatmulAllReduceTiling310General::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckA8W8());
+    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     MC2_CHECK_LOG_RET(opName_, DoQuantTiling());
