@@ -105,15 +105,23 @@ struct GMMSwigluV2CompileInfo {
 
 namespace GroupedMatmulSwigluQuantV2Tiling {
 constexpr uint32_t X_INDEX = 0;
+constexpr uint32_t X_SCALE_INDEX = 1;
+constexpr uint32_t GROUPLIST_INDEX = 2;
 constexpr uint32_t WEIGHT_INDEX = 3;
 constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
-constexpr uint32_t GROUPLIST_INDEX = 2;
+constexpr uint32_t WEIGHT_ASSIST_MATRIX_INDEX = 5;
+constexpr uint32_t BIAS_INDEX = 6;
 constexpr uint32_t SMOOTH_SCALE_INDEX = 7;
+constexpr uint32_t Y_INDEX = 0;
+constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 constexpr uint32_t ATTR_INDEX_DEQUANT_MODE = 0;
+constexpr uint32_t ATTR_INDEX_DEQUANT_DTYPE = 1;
+constexpr uint32_t ATTR_INDEX_QUANT_MODE = 2;
+constexpr uint32_t ATTR_INDEX_QUANT_DTYPE = 3;
+constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t ATTR_INDEX_GROUPLIST_TYPE = 5;
 constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 6;
-constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;
