@@ -153,7 +153,7 @@ struct CopyL0CToUBTla<
         intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
         intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
-        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams.dstStride = intriParams.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
 
         intriParams.quantPre = quantPre;
         intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&params.scale));
@@ -183,7 +183,7 @@ struct CopyL0CToUBTla<
         intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
         intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
-        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams.dstStride = intriParams.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
 
         intriParams.quantPre = quantPre;
         intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&params.scale));
@@ -237,8 +237,8 @@ struct CopyL0CToUBTla<
         intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
         // 源NZ矩阵中的相邻Z排布的起始地址偏移，单位是C0_SIZE
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
-        // 目的NZ矩阵中相邻Z排布的起始地址偏移，单位是C0_SIZE
-        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        // 目的NZ矩阵中相邻Z排布的起始地址偏移，单位是元素
+        intriParams.dstStride = intriParams.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
 
         intriParams.quantPre = quantPre;
         intriParams.reluEn = reluEn;
@@ -267,7 +267,7 @@ struct CopyL0CToUBTla<
         intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
         intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
-        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams.dstStride = intriParams.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
 
         intriParams.quantPre = quantPre;
         intriParams.reluEn = reluEn;
@@ -462,7 +462,7 @@ struct CopyL0CToUBTla<
         intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
         intriParams.mSize = RoundUp(tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape()), 2);
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
-        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams.dstStride = intriParams.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
 
         intriParams.quantPre = quantPre;
         intriParams.reluEn = reluEn;
@@ -616,7 +616,7 @@ struct CopyL0CToUBTla<
         intriParams0.nSize = tla::get<1, 0>(dstSub0.shape()) * tla::get<1, 1>(dstSub0.shape());
         intriParams0.mSize = tla::get<0, 0>(dstSub0.shape()) * tla::get<0, 1>(dstSub0.shape());
         intriParams0.srcStride = tla::get<1, 1>(srcSub0.stride()) / tla::get<1, 0>(srcSub0.shape());
-        intriParams0.dstStride = tla::get<1, 1>(dstSub0.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams0.dstStride = intriParams0.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
         intriParams0.quantPre = quantPre;
         intriParams0.reluEn = reluEn;
         intriParams0.unitFlag = unitFlag;
@@ -627,7 +627,7 @@ struct CopyL0CToUBTla<
         intriParams1.nSize = tla::get<1, 0>(dstSub1.shape()) * tla::get<1, 1>(dstSub1.shape());
         intriParams1.mSize = tla::get<0, 0>(dstSub1.shape()) * tla::get<0, 1>(dstSub1.shape());
         intriParams1.srcStride = tla::get<1, 1>(srcSub1.stride()) / tla::get<1, 0>(srcSub1.shape());
-        intriParams1.dstStride = tla::get<1, 1>(dstSub1.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+        intriParams1.dstStride = intriParams1.mSize * (BYTE_PER_C0 / sizeof(ElementDst));
         intriParams1.quantPre = quantPre;
         intriParams1.reluEn = reluEn;
         intriParams1.unitFlag = unitFlag;
