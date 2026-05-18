@@ -115,6 +115,7 @@ public:
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
     static constexpr uint32_t VSDB_BUF_NUM = 2; 
     static constexpr uint32_t VSDB_BUF_SIZE = 256 * sizeof(uint64_t); 
+    static constexpr bool enFixpipeDequant = false;
 
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
@@ -376,7 +377,7 @@ public:
                         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                     }
 
-                    if constexpr (quant_mode == 1) {
+                    if constexpr (quant_mode == 1 && enFixpipeDequant == true) {
                         if (mL0Itr == 0 && kL0Itr == kL0LoopNum - 1){
                             AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE2>(0);
                             DataCopy(l1VSDBTensor[l1VSdbSel], gVSTensor.data()[nL0Itr * L0_TILE_N], l0TileNAct);
@@ -413,7 +414,7 @@ public:
                 tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
             if constexpr (quant_mode == 0){
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
-            } else if constexpr (quant_mode == 1){
+            } else if constexpr (quant_mode == 1 && enFixpipeDequant == true){
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla, l1VSDBTensor[l1VSdbSel]);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
                 l1VSdbSel = (l1VSdbSel + 1) % VSDB_BUF_NUM;
