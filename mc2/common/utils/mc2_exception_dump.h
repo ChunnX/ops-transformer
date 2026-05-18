@@ -30,6 +30,7 @@
 #include "version/metadef_version.h"
 #include <dlfcn.h>
 #include <cstring>
+#include <mutex>
 #include "./mc2_hcom_topo_info.h"
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
@@ -55,6 +56,7 @@ public:
     }
     void SetGroupName(const char* groupName)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
             strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
             OP_LOGE(OP_NAME, "groupName is invalid.");
@@ -70,6 +72,7 @@ public:
 private:
     MC2GroupNameManager() = default;
     std::string groupName_;
+    std::mutex mutex_;
 };
 
 // 函数指针类型定义
