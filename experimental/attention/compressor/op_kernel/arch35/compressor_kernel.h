@@ -443,6 +443,15 @@ __aicore__ inline void CompressorKernel<COMP>::InitWorkspace(__gm__ uint8_t *wor
     // vec2Input
     vec2InputGm.SetGlobalBuffer(
         (__gm__ VEC1_OUT_T *)(workspace + beforeVecOffset));
+    
+    mm1KvResGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    mm1ScoreResGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    Vec1InputKvGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    Vec1InputScoreGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    vec1KvCacheGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    vec1ScoreCacheGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    vec1ResGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    vec2InputGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 }
 
 template <typename COMP>

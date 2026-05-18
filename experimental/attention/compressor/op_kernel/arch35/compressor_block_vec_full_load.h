@@ -252,13 +252,24 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(
     isExistStartPos_ = (startPos != nullptr);
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+        cuSeqlensGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
     if (isExistSeqUsed_) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
+        sequsedGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+        startPosGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
+
+    stateBlockTableGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    stateCacheGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    apeGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    normWeightGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    ropeSinGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    ropeCosGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    cmpKvOutGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 }
 
 template <typename COMP>

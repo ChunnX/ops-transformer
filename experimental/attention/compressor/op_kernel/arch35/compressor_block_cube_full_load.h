@@ -151,10 +151,16 @@ template <typename COMP> __aicore__ inline void CompressorBlockCubeFullLoad<COMP
     isExistSeqUsed = (seqUsed != nullptr);
     if (isExistSeqUsed) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
+        sequsedGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+        cuSeqlensGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
+    xGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    wkvGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    wgateGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    startPosGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 }
 
 template <typename COMP>
