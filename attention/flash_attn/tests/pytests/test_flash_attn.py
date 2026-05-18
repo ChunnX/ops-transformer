@@ -123,10 +123,12 @@ def normalize_case(raw):
         # c.setdefault("cu_seqlens_kv", c["cu_seqlens_q"])
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
-        c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
-                                     for i in range(len(c["cu_seqlens_kv"]) - 1)])
+        if layout_kv not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+            c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
+                                         for i in range(len(c["cu_seqlens_kv"]) - 1)])
         c["B"] = 1
     if layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+        c.setdefault("cu_seqlens_kv", None)
         c.setdefault("block_size", c.get("block_size"))
         c.setdefault("block_table_shape", c.get("block_table_shape"))
         block_size = c.get("block_size", 1)
@@ -219,6 +221,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     d_v        = kwargs.get("DV", d)
     d_rope     = kwargs.get("DRope", 0)
     input_layout = kwargs.get("input_layout")
+    layout_kv    = kwargs.get("layout_kv", input_layout)
     output_layout = kwargs.get('layout_out')
     pse_type   = int(kwargs.get("pse_type") if kwargs.get("pse_type") != '' else 0)
     pse_layout = kwargs.get("pse_layout", "none").lower()
@@ -239,11 +242,15 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     sq_gen = sq;  skv_gen = skv
     if input_layout == "TND":
         cu_q = kwargs["cu_seqlens_q"]
-        cu_kv = kwargs["cu_seqlens_kv"]
-        sq     = max(cu_q[i+1] - cu_q[i] for i in range(len(cu_q) - 1))
-        skv    = max(cu_kv[i+1] - cu_kv[i] for i in range(len(cu_kv) - 1))
+        sq = max(cu_q[i+1] - cu_q[i] for i in range(len(cu_q) - 1))
         sq_gen = cu_q[-1]
-        skv_gen = cu_kv[-1]
+        if layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+            skv = max(kwargs["seqused_kv"])
+            skv_gen = sum(kwargs["seqused_kv"])
+        else:
+            cu_kv = kwargs["cu_seqlens_kv"]
+            skv = max(cu_kv[i+1] - cu_kv[i] for i in range(len(cu_kv) - 1))
+            skv_gen = cu_kv[-1]
         kwargs["S1"] = sq
         kwargs["S2"] = skv
         pse_b = len(cu_q) - 1;  pse_s1 = sq;  pse_s2 = skv

@@ -33,123 +33,36 @@
 #define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
 #endif
 
-ASCENDC_TPL_ARGS_DECL(FlashAttn, 
-    //    bit 8-1 InOutLayoutType(InputLayoutType-OutputLayoutType)
-    //    0: InOutLayoutType_BNSD_BNSD
-    //    1: InOutLayoutType_BSH_BSH
-    //    2: InOutLayoutType_TND_TND
-    //    3: InOutLayoutType_BNSD_BSND
-    ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 255),
-    //    bit 18-9 Config(S1,S2,D,DV)
-    //    0: Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64
-    //    1: Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128
-    //    2: Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64
-    //    3: Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128
-    //    4: Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128
-    //    5: Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128
-    //    6: Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256
-    //    7: Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512
-    //    8: Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64
-    //    9: Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512
-    //   10: Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256
-    //   11: Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512
-    //   12: Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64
-    //   13: Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128
-    //   14: Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256
-    //   15: Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512
-    //   16: Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64
-    //   17: Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128
-    //   18: Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256
-    ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_10_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1023),
-    //    bit 22-19 PseMode
-    //    0: PSE_MODE_PSE_OUTER_MUL_ADD_TYPE
-    //    1: PSE_MODE_PSE_OUTER_ADD_MUL_TYPE
-    //    2: PSE_MODE_PSE_INNER_MUL_ADD_TYPE
-    //    3: PSE_MODE_PSE_INNER_MUL_ADD_SQRT_TYPE
-    //    4: PSE_MODE_PSE_INVALID_TYPE
-    //    9: PSE_MODE_PSE_NONE_TYPE
-    ASCENDC_TPL_UINT_DECL(PseMode, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 15),
-    //    bit 27-23 QuantMode
-    //    0: AntiquantMode_PER_CHANNEL
-    //    1: AntiquantMode_PER_TOKEN
-    //    2: AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN
-    //    3: AntiquantMode_PER_TOKEN_HEAD
-    //    4: AntiquantMode_PER_TOKEN_PAGE_ATTENTION
-    //    5: AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION
-    //   17: PerBlock
-    //   18: FULLQUANT_MODE_PER_TOKEN_HEAD
-    //   30: FullQuantMode
-    //   31: NoQuantMode
-    ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),
-    //    bit 28 HasAttenMask
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
-    //    bit 29 HasRope
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(HasRope, false, true),
-    //    bit 31-30 KvLayoutType
-    //    0: KvLayoutType_NO_PA
-    //    1: KvLayoutType_PA_BBH
-    //    2: KvLayoutType_PA_BNBD
-    //    3: KvLayoutType_PA_NZ
-    ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
-    //    bit 31 IsFd
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(IsFd, false, true),
-    //    bit 32 EmptyTensor
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(EmptyTensor, false, true),
-    //    bit 34-33 PFAMask
-    //    0: PFAMask_DISABLE_MASK
-    //    1: PFAMask_ENABLE_MASK_NO_BAND
-    //    2: PFAMask_ENABLE_MASK_BAND
-    ASCENDC_TPL_UINT_DECL(PFAMask, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
-    //    bit 37-35 PFAMatMulType
-    //    0: PFAMatMulType_MM_PFA
-    //    1: PFAMatMulType_MM_PA
-    //    2: PFAMatMulType_MM_IFA_MLA
-    //    3: PFAMatMulType_MM_IFA_MLA_PA
-    //    4: PFAMatMulType_MM_PA_D512
-    //    5: PFAMatMulType_MM_DN
-    ASCENDC_TPL_UINT_DECL(PFAMatMulType, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 7),
-    //    bit 38 EnableKVPrefix
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(EnableKVPrefix, false, true),
-    //    bit 39 EnableS1OutSplit
-    //    0: false
-    //    1: true
-    ASCENDC_TPL_BOOL_DECL(EnableS1OutSplit, false, true),
-);
+ASCENDC_TPL_ARGS_DECL(FlashAttn,
+                      // q_out layout (8-bit)
+                      //    0: BSND
+                      //    1: BNSD
+                      //    2: TND
+                      //    3: BNSD_BSND
+                      ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
 
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
-                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                            InOutLayoutType_TND_TND, InOutLayoutType_BNSD_BSND),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
-                            Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64,
-                            Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128,
-                            Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64,
-                            Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
-        ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, 
-                            KvLayoutType_PA_BNBD, KvLayoutType_PA_BBH, KvLayoutType_PA_NZ),
-        ASCENDC_TPL_BOOL_SEL(IsFd, false, true),
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_UINT_SEL(PFAMask, ASCENDC_TPL_UI_LIST, 0),
-        ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
-        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)
-    ),
-);
+                      // kv存储类型 (8-bit)
+                      //    0: 连续（不开pageattention）
+                      //    1: PA_BBND
+                      //    2: PA_BNBD
+                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2),
+
+                      // hasAttenMask (1-bit)
+                      //    0: false
+                      //    1: true
+                      ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
+
+                      // config (1-bit), D=128 fixed
+                      //    0: sOuter=64, sInner=128 → S1=128, S2=128, D=128, DV=128
+                      //    1: sOuter=32, sInner=256 → S1=64,  S2=256, D=128, DV=128
+                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1), );
+
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
+                                                          InOutLayoutType_BNSD, InOutLayoutType_TND,
+                                                          InOutLayoutType_BNSD_BSND),
+                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2),
+                                     ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
+                                     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1),
+                                     ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
 
 #endif // TEMPLATE_TILING_KEY_FLASH_ATTN_H_

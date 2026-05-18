@@ -25,20 +25,12 @@
 namespace optiling {
 namespace flash_attn {
 
+// 4字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
-    uint64_t config = 0;
-    uint64_t pseMode = 0;
-    uint64_t quantMode = 31;
-    bool hasAttenMask = false;
-    bool hasRope = false;
     uint64_t kvLayoutType = 0;
-    bool isFd = false;
-    bool emptyTensor = false;
-    uint64_t maskMode = 0;
-    uint64_t matmulMode = 0;
-    bool enableKvPrefix = false;
-    bool enableS1OutSplit = false;
+    bool hasAttenMask = false;
+    uint64_t config = 0;
 };
 
 struct FaPlatFormInfo {
@@ -78,11 +70,8 @@ private:
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
     void UpdateTilingKeyKvLayout();
-    void UpdateTilingKeyMaskMode();
-    void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
-    void AdjustSinnerAndSouter();
     void GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
                             int64_t &winRightsLeftUp);
     void FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
