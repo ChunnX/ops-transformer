@@ -96,7 +96,7 @@ TILING_DATA_FIELD_DEF(uint64_t, tailXDataLength);
 TILING_DATA_FIELD_DEF(uint64_t, tailRDataLength);
 TILING_DATA_FIELD_DEF(uint64_t, tailUbLastDataLength);
 TILING_DATA_FIELD_DEF(uint64_t, tailUbLastPadDataLength);
-TILING_DATA_FIELD_DEF(bool, isThreeOneDim);
+TILING_DATA_FIELD_DEF(uint8_t, isThreeOneDim);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(RotateHalfParamsOp, RotateHalfParams)
 

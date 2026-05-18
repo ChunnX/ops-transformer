@@ -146,7 +146,7 @@ private:
     inline void CalcRotateHalfTiling(const ge::DataType &dtype, uint64_t ubSize);
     inline bool CheckRotHalfFullLoadXDConds(const ge::DataType &dtype, uint64_t ubSize);
     inline bool CalcFullLoadXDTiling(const ge::DataType &origType, const uint64_t ubSize,
-        const uint64_t totalS, const uint64_t totalRopeS, const bool isThreeOneDim);
+        const uint64_t totalS, const uint64_t totalRopeS, const uint8_t isThreeOneDim);
     ge::graphStatus CheckShapeSupport(const gert::Shape &xShape, const gert::Shape &cosShape,
                                       const gert::Shape &sinShape, uint64_t dLength);
     ge::graphStatus CheckStrideSupport(const ge::DataType inputDtype);
@@ -199,7 +199,7 @@ inline void RotateHalfTiling::PrintTilingParams()
     OP_LOGD(nodeName, ">>> axisLenR1:                 %ld", tilingData_.get_axisLenR1());
     OP_LOGD(nodeName, ">>> axisLenR2:                 %ld", tilingData_.get_axisLenR2());
     OP_LOGD(nodeName, ">>> axisLenR3:                 %ld", tilingData_.get_axisLenR3());
-    OP_LOGD(nodeName, ">>> isThreeOneDim:             %ld", tilingData_.get_isThreeOneDim());
+    OP_LOGD(nodeName, ">>> isThreeOneDim:             %d", tilingData_.get_isThreeOneDim());
     OP_LOGD(nodeName, ">>> tailAxesFLBoost:           %ld", tilingData_.get_tailAxesFLBoost());
     OP_LOGD(nodeName, ">>>>>>>>>>>>>>> Print RotateHalf tiling data end <<<<<<<<<<<<<<<<");
 }
@@ -399,7 +399,7 @@ inline void RotateHalfTiling::ChooseTilingMode(const gert::Shape &xShape, const 
 
 inline bool RotateHalfTiling::CalcFullLoadXDTiling(
     const ge::DataType &origType, const uint64_t ubSize,
-    const uint64_t totalS, const uint64_t totalRopeS, const bool isThreeOneDim)
+    const uint64_t totalS, const uint64_t totalRopeS, const uint8_t isThreeOneDim)
 {
     // Commence RotateHalfRoPEFullLoadXD Tiling
     const ge::DataType cmpType = ge::DT_FLOAT;
@@ -485,7 +485,7 @@ inline bool RotateHalfTiling::CheckRotHalfFullLoadXDConds(const ge::DataType &or
     bool hasRotHalfFLXD = (axisR3 == NUM_ONE);
 
     if (hasRotHalfFLXD) {
-        bool isThreeOneDim = false;  // Recompute phi_rope on kernel using BroadcastDims.
+        uint8_t isThreeOneDim = NUM_ZERO;  // Recompute phi_rope on kernel using BroadcastDims.
         // Extract broadcastAxes
         uint64_t axisR1 = tilingData_.get_axisLenR1();
         uint64_t axisR2 = tilingData_.get_axisLenR2();
@@ -502,7 +502,7 @@ inline bool RotateHalfTiling::CheckRotHalfFullLoadXDConds(const ge::DataType &or
         }
 
         if (axisR1 == NUM_ONE && axisR2 == NUM_ONE) {
-            isThreeOneDim = true;
+            isThreeOneDim = NUM_ONE;
         }
 
         hasRotHalfFLXD = CalcFullLoadXDTiling(origType, ubSize, totalS, totalRopeS, isThreeOneDim);
