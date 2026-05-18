@@ -34,11 +34,11 @@ public:
     using dataType = typename LIGT::dataType;
     
     __aicore__ inline LIGVectorPre(){};
-    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dweights, __gm__ uint8_t *workspace, 
+    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dweights, __gm__ uint8_t *workspace,
                                 const LIGTilingData *__restrict orgTilingData, __gm__ uint8_t *actualSeqLengthsQ);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
-    __aicore__ inline void DoSplitOnGM(uint32_t coreNum, uint32_t gmSize, 
+    __aicore__ inline void DoSplitOnGM(uint32_t coreNum, uint32_t gmSize,
                                     uint32_t &PreBlockTotal, int64_t &initSize, int64_t &Offset);
     
     using D_T = typename LIGT::dataType;
@@ -70,8 +70,8 @@ protected:
 
 
 template <typename LIGT>
-__aicore__ inline void LIGVectorPre<LIGT>::DoSplitOnGM(uint32_t coreNum, uint32_t gmSize, 
-                                                    uint32_t &PreBlockTotal, int64_t &initSize, int64_t &Offset)
+__aicore__ inline void LIGVectorPre<LIGT>::DoSplitOnGM(uint32_t coreNum, uint32_t gmSize, uint32_t &PreBlockTotal,
+                                                    int64_t &initSize, int64_t &Offset)
 {
     uint32_t PreBlockFactor = (gmSize + coreNum - 1) / coreNum;
     PreBlockTotal = (gmSize + PreBlockFactor - 1) / PreBlockFactor;
@@ -82,8 +82,9 @@ __aicore__ inline void LIGVectorPre<LIGT>::DoSplitOnGM(uint32_t coreNum, uint32_
 }
 
 template <typename LIGT>
-__aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dweights, __gm__ uint8_t *workspace,
-                                                const LIGTilingData *__restrict orgTilingData, __gm__ uint8_t *actualSeqLengthsQ)
+__aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dweights,
+                                            __gm__ uint8_t *workspace, const LIGTilingData *__restrict orgTilingData,
+                                            __gm__ uint8_t *actualSeqLengthsQ)
 {
     cBlockIdx = GetBlockIdx();
     pipe = pipe_in;
