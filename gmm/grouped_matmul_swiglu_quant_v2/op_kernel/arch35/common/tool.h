@@ -37,7 +37,7 @@ using matmul::MatmulTypeWithScale;
 
 #define SHORT_MIX_LOG(format, ...)
 
-namespace WeightQuantBatchMatmulV2::Arch35 {
+namespace GMMSQWeightQuant {
 enum class QuantType {
     NONE = 0,
     PER_TENSOR = 1,
@@ -174,5 +174,5 @@ template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = f
 struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
     constexpr static TPosition srcPos = TPosition::GM;
 };
-} // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace GMMSQWeightQuantWeightQuant
 #endif
