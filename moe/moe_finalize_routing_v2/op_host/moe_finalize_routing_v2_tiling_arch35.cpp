@@ -315,6 +315,8 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
 {
     // const_expert_alpha等的shape信息要与const_expert_range_num一致
     constExpertRangeNum = constantExpertEnd - constantExpertStart;
+    OP_LOGD(context_->GetNodeName(), "constantExpertEnd is %ld, constantExpertStart is %ld, constExpertRangeNum is %ld, idx is %ld\n",
+            constantExpertEnd, constantExpertStart, constExpertRangeNum, idx);
     auto desc = context_->GetOptionalInputDesc(idx);
     if (desc) {
         OP_CHECK_IF(
@@ -330,7 +332,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             shape->GetStorageShape().GetDim(0) != constExpertRangeNum,
-            OP_LOGE(context_->GetNodeName(), "dim 0 of expert should be constExpertRangeNum."),
+            OP_LOGE(context_->GetNodeName(), "dim 0 of expert should be constExpertRangeNum. dim 0 is %ld", shape->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
