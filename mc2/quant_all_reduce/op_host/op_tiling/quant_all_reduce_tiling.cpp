@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_all_reduce_tiling.cpp
@@ -54,8 +54,12 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllR
                                                  "AlltoAll=level0:fullmesh;level1:pairwise");
     // MTE方式必须适配，且要在getTiling之前
     mc2CcTilingConfig.SetCommEngine(AIV_TYPE);
+
+    // 初始化通信任务配置
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
+
+    // 配置每个通信任务的参数
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -126,23 +130,33 @@ static void SetTilingKey(gert::TilingContext *context)
  */
 static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 {
+    // 检查context有效性
     OP_TILING_CHECK(context == nullptr,
                     OP_LOGE("quant_all_reduce", "failed to get tiling context in quant_all_reduce."),
                     return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
+
+    // 检查nodeName有效性
     OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("quant_all_reduce", "failed to get nodeName in quant_all_reduce."),
                     return ge::GRAPH_FAILED);
 
+    // 检查tilingData有效性
     QuantAllReduceTilingData *tilingData = context->GetTilingData<QuantAllReduceTilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr in quant_all_reduce."),
                     return ge::GRAPH_FAILED);
 
     TilingRunInfo runInfo = {};
+
+    // 校验NPU架构
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
- 	                OP_LOGE(nodeName, "NpuArch is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "NpuArch is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
+
+    // 校验tiling参数
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
+
+    // 配置HComm参数
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     SetTilingData(context, *tilingData);
@@ -154,9 +168,9 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 
 struct QuantAllReduceCompileInfo {};
 
-ge::graphStatus TilingParseForQuantAllReduce(const gert::TilingParseContext *context) { 
+ge::graphStatus TilingParseForQuantAllReduce(const gert::TilingParseContext *context) {
     (void)context;
- 	return ge::GRAPH_SUCCESS; 
+    return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(QuantAllReduce)
