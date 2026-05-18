@@ -184,7 +184,7 @@ __aicore__ inline void RotateHalfBase<OriT, CmpT>::FullLoadXDInit(
     halfDLength = tiling.halfDLength;
     halfDPadLength = tiling.halfDPadLength;
     isAligned = (tiling.isAligned == 1);
-    isThreeOneDim = tiling.isThreeOneDim;
+    isThreeOneDim = (tiling.isThreeOneDim == 1);
     axisLenX3 = tiling.axisLenX3;
 
     uint64_t xD = axisLenX3 * dLength;
