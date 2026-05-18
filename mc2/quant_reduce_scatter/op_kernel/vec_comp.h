@@ -118,23 +118,21 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
 
     if constexpr (AscendC::IsSameType<XType, fp4x2_e2m1_t>::value ||
         AscendC::IsSameType<XType, fp4x2_e1m2_t>::value) {
-        // fp4 -> bf16 -> fp32 转换路径
+        // fp4 -> bf16 -> fp32
         Duplicate<bfloat16_t>(xTempBf16Tensor, (bfloat16_t)0.0, xNumPerBlock_);
         Cast(xTempBf16Tensor, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);
         PipeBarrier<PIPE_V>();
-
         Cast(xCastTemp_, xTempBf16Tensor, RoundMode::CAST_NONE, xNumPerBlock_);
         PipeBarrier<PIPE_V>();
     } else if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
-        // int8 -> fp16 -> fp32 转换路径
+        // int8 -> fp16 -> fp32
         Duplicate<float16_t>(xTempfp16Tensor, (float16_t)0.0, xNumPerBlock_);
         Cast(xTempfp16Tensor, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);
         PipeBarrier<PIPE_V>();
-
         Cast(xCastTemp_, xTempfp16Tensor, RoundMode::CAST_NONE, xNumPerBlock_);
         PipeBarrier<PIPE_V>();
     } else {
-        // fp8 -> fp32 直接转换路径
+        // fp8 -> fp32
         Duplicate<float>(xCastTemp_, (float)0.0, xNumPerBlock_);
         PipeBarrier<PIPE_V>();
         Cast(xCastTemp_, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);

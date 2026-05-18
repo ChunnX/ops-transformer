@@ -65,11 +65,9 @@ static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, Quan
     const size_t x_dim = x_shape->GetDimNum();
     shapeInfo.xDim = x_dim;
     if (x_dim == DIM_TWO) {
-        // 2D输入: [bs, hiddenSize]
         shapeInfo.bs = x_shape->GetDim(0);
         shapeInfo.hiddenSize = x_shape->GetDim(1);
     } else if (x_dim == DIM_THREE) {
-        // 3D输入: [b, s, hiddenSize]，计算bs = b * s
         shapeInfo.b = x_shape->GetDim(0);
         shapeInfo.s = x_shape->GetDim(1);
         shapeInfo.bs = x_shape->GetDim(0) * x_shape->GetDim(1);
@@ -126,13 +124,10 @@ static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context
 
     // infershape要的就是这些信息
     output_shape->SetDimNum(shapeInfo.xDim);
-    // 根据输入维度设置输出shape
     if (shapeInfo.xDim == DIM_TWO) {
-        // 2D输出: [bs, hiddenSize]
         output_shape->SetDim(0, shapeInfo.bs);
         output_shape->SetDim(1, shapeInfo.hiddenSize);
     } else {
-        // 3D输出: [b, s, hiddenSize]
         output_shape->SetDim(0, shapeInfo.b);
         output_shape->SetDim(1, shapeInfo.s);
         output_shape->SetDim(AXIS_TWO, shapeInfo.hiddenSize);

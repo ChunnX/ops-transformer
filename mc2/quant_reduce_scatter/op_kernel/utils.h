@@ -35,7 +35,6 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)
 // uint32_t版本的向上取整除法
 __aicore__ inline uint32_t CeilDivU32(uint32_t a, uint32_t b)
 {
-    // 参数校验：除数不能为0
     if (b == 0) {
         return 0;
     }
@@ -45,7 +44,6 @@ __aicore__ inline uint32_t CeilDivU32(uint32_t a, uint32_t b)
 // uint32_t版本的向上对齐
 __aicore__ inline uint32_t CeilAlignU32(uint32_t a, uint32_t b)
 {
-    // 若对齐值为0，直接返回原值
     if (b == 0) {
         return a;
     }
@@ -55,7 +53,6 @@ __aicore__ inline uint32_t CeilAlignU32(uint32_t a, uint32_t b)
 // 尾块模运算：计算a对b取模，模为0时返回b（用于数据块尾块的计算）
 __aicore__ inline uint64_t BlockAlignMod(uint64_t a, uint32_t b)
 {
-    // 参数校验：模数不能为0
     if (b == 0) {
         return 0;
     }
@@ -67,7 +64,6 @@ __aicore__ inline uint64_t BlockAlignMod(uint64_t a, uint32_t b)
 // 向下取整对齐：将a向下对齐到b的倍数
 __aicore__ inline uint64_t FloorAlign(uint64_t a, uint32_t b)
 {
-    // 若对齐值为0，直接返回原值
     if (b == 0) {
         return a;
     }
