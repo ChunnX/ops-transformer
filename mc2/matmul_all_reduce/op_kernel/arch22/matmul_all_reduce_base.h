@@ -1,25 +1,31 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it
+ * under the terms and conditions of CANN Open Software License Agreement
+ * Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except
+ * in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+ * KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of
+ * the License.
+ */
 
 /*!
  * \file matmul_all_reduce_base.h
- * \brief
+ * \brief MatmulAllReduce base class for Arch22 platform
  */
 #ifndef MATMUL_ALL_REDUCE_BASE_H
 #define MATMUL_ALL_REDUCE_BASE_H
 
+// Platform-specific kernel interface
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
+
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
@@ -29,6 +35,7 @@
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
+
 template <typename xType, typename yType, Mc2CoreType coreType>
 class MatmulAllReduceBase {
 public:
@@ -60,10 +67,13 @@ public:
         addFlag_ = (paramInTiling_->isAdd != 0U);
         tailFlag_ = (paramInTiling_->tailCnt != 0U);
 
+        // Initialize tile offsets
         tileInfo_.aOffset = (uint64_t)tileInfo_.mmTiling->M * (uint64_t)tileInfo_.mmTiling->Ka;
         tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(xType);
         tileInfo_.cOffset = (uint64_t)tileInfo_.mmTiling->M * (uint64_t)tileInfo_.mmTiling->N;
         tileInfo_.cAddrOffset = tileInfo_.cOffset * sizeof(yType);
+
+        // Initialize tail offsets if needed
         if (tailFlag_) {
             tailInfo_.aOffset = (uint64_t)tailInfo_.mmTiling->M * (uint64_t)tailInfo_.mmTiling->Ka;
             tailInfo_.aAddrOffset = tailInfo_.aOffset * sizeof(xType);
@@ -145,5 +155,6 @@ protected:
     bool addFlag_;
     bool tailFlag_;
 };
+
 } // namespace MatmulAllReduceImpl
 #endif // MATMUL_ALL_REDUCE_BASE_H
