@@ -634,10 +634,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradHH
 
     Mul(dhatLocal_, dPrePostTempLocal_, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {3, 1, 1, 24, 8, 8});
     PipeBarrier<PIPE_V>();
-
-    // 不同批次dbias累加
-    PipeBarrier<PIPE_V>();
-    // Add(dBiasLocal_, dhatLocal_, dBiasLocal_, (n_ * n_ + PRE_POST_NUM * n_) * tileTaskCount);
     // dRsqrt = dhatLocal_ * beforenorm
     Mul(gradRsqrtLocal_, dhatLocal_, hat2Scale, (n_ * n_ + PRE_POST_NUM * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
@@ -662,7 +658,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradHH
     Mul(dhatBeforeNormLocal, rsqrtbrcbLocal_, dhatLocal_, (n_ * n_ + PRE_POST_NUM * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
     // 不同批次dScale累加
-    // MulAddDst(dScaleLocal_, hat2LocalTemp, dhatBeforeNormLocal, (n_ * n_ + PRE_POST_NUM * n_) * tileTaskCount);
     Duplicate(dhatLocal_[tileTaskCount * (n_ * n_ + PRE_POST_NUM * n_)], 0.f,
               (tileCoreBS_ - tileTaskCount) * (n_ * n_ + PRE_POST_NUM * n_));
     Duplicate(dhatLocal_[(tileCoreBS_ + tileTaskCount) * (n_ * n_ + PRE_POST_NUM * n_)], 0.f,
@@ -820,8 +815,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradPr
 {
     Duplicate(dpreLocalList_[0], 0.f, tileTaskCount * n_ * ELEMENTS_SIZE_PER_REPEAT);
     Duplicate(dpreLocalList_[1], 0.f, tileTaskCount * n_ * ELEMENTS_SIZE_PER_REPEAT);
-    // Duplicate(tmpLocal_, 0.f, tileTaskCount * n_ * ELEMENTS_SIZE_PER_REPEAT * 2);
-    bool DDD = true;
     int32_t outPos = 0;
     for (int32_t loopIdC = 0; loopIdC < c1Align_; loopIdC += 1) {
         int64_t copyLen = c0_;
@@ -913,17 +906,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradPr
         uint64_t mask = min(static_cast<uint64_t>(cTail_), static_cast<uint64_t>(REPEAT_LENTH));
         PipeBarrier<PIPE_V>();
 
-        // Add(tmpLocal_, tmpLocal_, xCastLocal_, mask, tileTaskCount * n_, {1, 1, 1, 8, 8, blkStride});
-        // PipeBarrier<PIPE_V>();
-
-
         LocalTensor<T> sumTensor = dpreLocalList_[outPos];
         LocalTensor<T> eTensor = dpreLocalList_[1 - outPos];
         int64_t len = tileTaskCount * n_ * ELEMENTS_SIZE_PER_REPEAT;
         auto inputTensor = gradYCastLocal_;
         PipeBarrier<PIPE_V>();
         Sub(inputTensor, xCastLocal_, eTensor, mask, tileTaskCount * n_, {1, 1, 1, 8, blkStride, 8});
-        // Sub(inputTensor, inputTensor, eTensor, len);
         PipeBarrier<PIPE_V>();
         Add(eTensor, inputTensor, sumTensor, len);
         PipeBarrier<PIPE_V>();
@@ -940,9 +928,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradPr
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
         WholeReduceSum(dPrePostTempLocal_[loopIdN + innerId * n_ * 2], dpreLocalList_[outPos][loopIdN * REPEAT_LENTH],
                        REPEAT_LENTH, tileTaskCount, n_ * 2, 1, n_ * 8); // dst repeat stride  srcblkstride srcrepstride
-        // WholeReduceSum(dPrePostTempLocal_[loopIdN + innerId * n_ * 2], tmpLocal_[loopIdN * REPEAT_LENTH],
-        // REPEAT_LENTH,
-        //                tileTaskCount, n_ * 2, 1, n_ * 8); // dst repeat stride  srcblkstride srcrepstride
         // dst 间隔 8 2 *n
     }
 }
@@ -1098,14 +1083,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
     if constexpr (DETERMINISTIC == true) {
         SyncAll<false>();
         if ASCEND_IS_AIV {
-            // ComputeDeterministic(GlobalTensor<float>& inputGm,GlobalTensor<float>& outputGm,
-            //                                                                       const int64_t dimR,
-            //                                                                       const int64_t dimA)
-            // SyncAll<false>();
-
             int64_t useCoreNum = min(static_cast<int64_t>(CeilDiv(totalTasks_, tileCoreBS_)), aivNum_);
-            // ComputeDeterministic(gradWeightWSGlobal_, gradWeightGlobal_, useCoreNum, (n_ * n_ + PRE_POST_NUM * n_) *
-            // (n_ * c_));
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, (n_ * n_ + PRE_POST_NUM * n_));
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
             useCoreNum = CeilDiv(useCoreNum, 2);
