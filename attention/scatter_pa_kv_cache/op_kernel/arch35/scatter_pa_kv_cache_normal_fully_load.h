@@ -162,7 +162,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
         }
         int64_t kBlockIdx = kStartIdx / tilingData_->blockSize;
         int64_t kBlockOffset = kStartIdx % tilingData_->blockSize;
-        kStartIdx = kBlockIdx * tilingData_->keyCacheStride0_ + kBlockOffset * tilingData_->keyCacheStride1_;
+        kStartIdx = kBlockIdx * tilingData_->keyCacheStride0 + kBlockOffset * tilingData_->keyCacheStride1;
         DataCopyPad(outputKeyCacheGm_[kStartIdx], inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
                     outKeyCacheParams);
     }
@@ -182,7 +182,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
             }
             int64_t vBlockIdx = vStartIdx / tilingData_->blockSize;
             int64_t vBlockOffset = vStartIdx % tilingData_->blockSize;
-            vStartIdx = vBlockIdx * tilingData_->valueCacheStride0_ + vBlockOffset * tilingData_->valueCacheStride1_;
+            vStartIdx = vBlockIdx * tilingData_->valueCacheStride0 + vBlockOffset * tilingData_->valueCacheStride1;
             DataCopyPad(outputValueCacheGm_[vStartIdx], inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
                         outValueCacheParams);
         }
