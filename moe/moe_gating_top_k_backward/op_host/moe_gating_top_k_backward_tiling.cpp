@@ -12,12 +12,8 @@
  * \file moe_gating_top_k_backward_tiling.cpp
  * \brief
  */
-#include <cmath>
-#include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_base.h"
+
 #include "platform/platform_info.h"
-#include "log/log.h"
 #include "moe_gating_top_k_backward_tiling.h"
 
 namespace optiling {
