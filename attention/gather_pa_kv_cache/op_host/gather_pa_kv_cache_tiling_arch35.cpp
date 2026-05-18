@@ -155,6 +155,54 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
                     OP_LOGE(context_, "key_cache format should be ND when cache_mode is Norm, please check."),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: 获取stride信息 =====
+    auto kCacheStridesPtr = context_->GetInputStride(INDEX_INPUT_KEY_CACHE);
+    if (kCacheStridesPtr != nullptr) {
+        for (size_t i = 0; i < kCacheDimNum_; i++) {
+            kCacheStrides_[i] = kCacheStridesPtr->GetStride(i);
+        }
+        // 校验最后一轴必须连续
+        OP_CHECK_IF(kCacheStrides_[kCacheDimNum_ - 1] != 1,
+                    OP_LOGE(context_, "key_cache last dim stride must be 1, but got %ld.",
+                            kCacheStrides_[kCacheDimNum_ - 1]),
+                    return ge::GRAPH_FAILED);
+
+        // 判断连续性
+        int64_t contigStride = 1;
+        isKCacheContiguous_ = true;
+        for (int i = static_cast<int>(kCacheDimNum_) - 1; i >= 0; i--) {
+            if (kCacheStrides_[i] != contigStride) {
+                isKCacheContiguous_ = false;
+            }
+            contigStride *= kCacheShape_.GetDim(i);
+        }
+
+        if (!isKCacheContiguous_) {
+            if (isCacheModeNorm_) {
+                // ND模式: 判断具体哪些轴非连续
+                int64_t expectedStride1 = kCacheShape_.GetDim(2) * kCacheShape_.GetDim(3);
+                int64_t expectedStride2 = kCacheShape_.GetDim(3);
+                isKCacheSlotNonContig_ = (kCacheStrides_[1] != expectedStride1);
+                isKCacheHeadNonContig_ = (kCacheStrides_[2] != expectedStride2);
+            } else {
+                // NZ模式: 仅支持dim0(blockNum)非连续
+                int64_t expectedStride1 = kCacheShape_.GetDim(2) * kCacheShape_.GetDim(3);
+                int64_t expectedStride2 = kCacheShape_.GetDim(3);
+                OP_CHECK_IF(kCacheStrides_[1] != expectedStride1,
+                            OP_LOGE(context_, "NZ key_cache only supports non-contiguous on dim0. "
+                                    "stride[1]=%ld, expected=%ld.", kCacheStrides_[1], expectedStride1),
+                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(kCacheStrides_[2] != expectedStride2,
+                            OP_LOGE(context_, "NZ key_cache only supports non-contiguous on dim0. "
+                                    "stride[2]=%ld, expected=%ld.", kCacheStrides_[2], expectedStride2),
+                            return ge::GRAPH_FAILED);
+            }
+        }
+    } else {
+        isKCacheContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -207,6 +255,51 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
                             i, vCacheShape_.GetDim(i), i, kCacheShape_.GetDim(i)),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: 获取valueCache stride信息 =====
+    auto vCacheStridesPtr = context_->GetInputStride(INDEX_INPUT_VALUE_CACHE);
+    if (vCacheStridesPtr != nullptr) {
+        for (size_t i = 0; i < vCacheDimNum_; i++) {
+            vCacheStrides_[i] = vCacheStridesPtr->GetStride(i);
+        }
+        OP_CHECK_IF(vCacheStrides_[vCacheDimNum_ - 1] != 1,
+                    OP_LOGE(context_, "value_cache last dim stride must be 1, but got %ld.",
+                            vCacheStrides_[vCacheDimNum_ - 1]),
+                    return ge::GRAPH_FAILED);
+
+        int64_t contigStride = 1;
+        isVCacheContiguous_ = true;
+        for (int i = static_cast<int>(vCacheDimNum_) - 1; i >= 0; i--) {
+            if (vCacheStrides_[i] != contigStride) {
+                isVCacheContiguous_ = false;
+            }
+            contigStride *= vCacheShape_.GetDim(i);
+        }
+
+        if (!isVCacheContiguous_) {
+            if (isCacheModeNorm_) {
+                int64_t expectedStride1 = vCacheShape_.GetDim(2) * vCacheShape_.GetDim(3);
+                int64_t expectedStride2 = vCacheShape_.GetDim(3);
+                isVCacheSlotNonContig_ = (vCacheStrides_[1] != expectedStride1);
+                isVCacheHeadNonContig_ = (vCacheStrides_[2] != expectedStride2);
+            } else {
+                // NZ模式: 仅支持dim0非连续
+                int64_t expectedStride1 = vCacheShape_.GetDim(2) * vCacheShape_.GetDim(3);
+                int64_t expectedStride2 = vCacheShape_.GetDim(3);
+                OP_CHECK_IF(vCacheStrides_[1] != expectedStride1,
+                            OP_LOGE(context_, "NZ value_cache only supports non-contiguous on dim0. "
+                                    "stride[1]=%ld, expected=%ld.", vCacheStrides_[1], expectedStride1),
+                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(vCacheStrides_[2] != expectedStride2,
+                            OP_LOGE(context_, "NZ value_cache only supports non-contiguous on dim0. "
+                                    "stride[2]=%ld, expected=%ld.", vCacheStrides_[2], expectedStride2),
+                            return ge::GRAPH_FAILED);
+            }
+        }
+    } else {
+        isVCacheContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -310,6 +403,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
     if (isCacheModeNorm_) {
         // ND
         hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyShape_.GetDim(DIM_TWO) * keyByteSize_;
+        numHeadsK_ = keyShape_.GetDim(DIM_ONE);
         for (size_t i = 1; i < keyDimNum; i++) {
             OP_CHECK_IF(keyShape_.GetDim(i) != kCacheShape_.GetDim(i + 1),
                         OP_LOGE(context_,
@@ -321,6 +415,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
     } else {
         // NZ
         hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyByteSize_;
+        numHeadsK_ = 0; // NZ模式不需要numHeads
         uint64_t kCacheShape1 = kCacheShape_.GetDim(DIM_ONE);
         uint64_t kCacheShape3 = kCacheShape_.GetDim(DIM_THREE) * keyByteSize_;
         uint64_t hiddenSizeKCache = kCacheShape1 * kCacheShape3;
@@ -332,6 +427,26 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
                             hiddenSizeK_, kCacheShape1, kCacheShape3, hiddenSizeKCache),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: 获取key输出stride (ND和NZ模式都支持) =====
+    auto keyOutStridesPtr = context_->GetInputStride(INDEX_INPUT_KEY);
+    if (keyOutStridesPtr != nullptr) {
+        for (size_t i = 0; i < keyDimNum; i++) {
+            keyOutStrides_[i] = keyOutStridesPtr->GetStride(i);
+        }
+        // 判断连续性
+        int64_t contigStride = 1;
+        isKeyOutContiguous_ = true;
+        for (int i = static_cast<int>(keyDimNum) - 1; i >= 0; i--) {
+            if (keyOutStrides_[i] != contigStride) {
+                isKeyOutContiguous_ = false;
+            }
+            contigStride *= keyShape_.GetDim(i);
+        }
+    } else {
+        isKeyOutContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -367,6 +482,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
     if (isCacheModeNorm_) {
         // ND
         hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueShape_.GetDim(DIM_TWO) * valueByteSize_;
+        numHeadsV_ = valueShape_.GetDim(DIM_ONE);
         for (size_t i = 1; i < valueDimNum; i++) {
             OP_CHECK_IF(valueShape_.GetDim(i) != vCacheShape_.GetDim(i + 1),
                         OP_LOGE(context_,
@@ -378,6 +494,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
     } else {
         // NZ
         hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueByteSize_;
+        numHeadsV_ = 0;
         uint64_t vCacheShape1 = vCacheShape_.GetDim(DIM_ONE);
         uint64_t vCacheShape3 = vCacheShape_.GetDim(DIM_THREE) * valueByteSize_;
         uint64_t hiddenSizeVCache = vCacheShape1 * vCacheShape3;
@@ -389,6 +506,25 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
                             hiddenSizeV_, vCacheShape1, vCacheShape3, hiddenSizeVCache),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: 获取value输出stride (ND和NZ模式都支持) =====
+    auto valueOutStridesPtr = context_->GetInputStride(INDEX_INPUT_VALUE);
+    if (valueOutStridesPtr != nullptr) {
+        for (size_t i = 0; i < valueDimNum; i++) {
+            valueOutStrides_[i] = valueOutStridesPtr->GetStride(i);
+        }
+        int64_t contigStride = 1;
+        isValueOutContiguous_ = true;
+        for (int i = static_cast<int>(valueDimNum) - 1; i >= 0; i--) {
+            if (valueOutStrides_[i] != contigStride) {
+                isValueOutContiguous_ = false;
+            }
+            contigStride *= valueShape_.GetDim(i);
+        }
+    } else {
+        isValueOutContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -499,6 +635,68 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     tilingData_.set_maxUbHiddenSizeV(maxUbHiddenSizeV);
     tilingData_.set_maxUbHiddenSize(maxUbHiddenSize);
     tilingData_.set_kvCacheBlockSize(blockSize_);
+
+    // ===== 非连续支持: 设置stride字段到TilingData =====
+    uint32_t nonContigFlag = 0;
+    if (!isKCacheContiguous_) {
+        nonContigFlag |= (1 << 0);
+        if (isKCacheSlotNonContig_) nonContigFlag |= (1 << 4);
+        if (isKCacheHeadNonContig_) nonContigFlag |= (1 << 5);
+    }
+    if (!isVCacheContiguous_) {
+        nonContigFlag |= (1 << 1);
+        if (isVCacheSlotNonContig_) nonContigFlag |= (1 << 6);
+        if (isVCacheHeadNonContig_) nonContigFlag |= (1 << 7);
+    }
+    if (!isKeyOutContiguous_)   nonContigFlag |= (1 << 2);
+    if (!isValueOutContiguous_) nonContigFlag |= (1 << 3);
+
+    tilingData_.set_nonContiguousFlag(nonContigFlag);
+
+    // keyCache stride (元素粒度)
+    if (!isKCacheContiguous_) {
+        tilingData_.set_kCacheStride0(kCacheStrides_[0]);
+        tilingData_.set_kCacheStride1(kCacheStrides_[1]);
+        tilingData_.set_kCacheStride2(kCacheStrides_[2]);
+    } else {
+        // 连续时填充连续stride值
+        tilingData_.set_kCacheStride0(static_cast<int64_t>(blockSize_) * hiddenSizeK_);
+        tilingData_.set_kCacheStride1(hiddenSizeK_);
+        tilingData_.set_kCacheStride2(isCacheModeNorm_ ? kCacheShape_.GetDim(3) : kCacheShape_.GetDim(3));
+    }
+
+    // valueCache stride
+    if (!isVCacheContiguous_) {
+        tilingData_.set_vCacheStride0(vCacheStrides_[0]);
+        tilingData_.set_vCacheStride1(vCacheStrides_[1]);
+        tilingData_.set_vCacheStride2(vCacheStrides_[2]);
+    } else {
+        tilingData_.set_vCacheStride0(static_cast<int64_t>(blockSize_) * hiddenSizeV_);
+        tilingData_.set_vCacheStride1(hiddenSizeV_);
+        tilingData_.set_vCacheStride2(isCacheModeNorm_ ? vCacheShape_.GetDim(3) : vCacheShape_.GetDim(3));
+    }
+
+    // key/value输出stride (ND和NZ模式都支持)
+    if (!isKeyOutContiguous_) {
+        tilingData_.set_keyOutStride0(keyOutStrides_[0]);
+        tilingData_.set_keyOutStride1(keyOutStrides_[1]);
+    } else {
+        tilingData_.set_keyOutStride0(static_cast<int64_t>(keyShape_.GetDim(0)) > 0 ?
+            static_cast<int64_t>(hiddenSizeK_) : 0);
+        tilingData_.set_keyOutStride1(hiddenSizeK_);
+    }
+
+    if (!isValueOutContiguous_) {
+        tilingData_.set_valueOutStride0(valueOutStrides_[0]);
+        tilingData_.set_valueOutStride1(valueOutStrides_[1]);
+    } else {
+        tilingData_.set_valueOutStride0(static_cast<int64_t>(valueShape_.GetDim(0)) > 0 ?
+            static_cast<int64_t>(hiddenSizeV_) : 0);
+        tilingData_.set_valueOutStride1(hiddenSizeV_);
+    }
+
+    tilingData_.set_numHeadsK(numHeadsK_);
+    tilingData_.set_numHeadsV(numHeadsV_);
 
     // 根据属性设置tilingkey
     for (const auto &item : tilingKeyTable) {
