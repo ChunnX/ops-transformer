@@ -21,11 +21,18 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
+inline uint64_t g_combineTokensCycles = 0;
+__aicore__ inline void ResetCombineTokensTimer()
+{
+    g_combineTokensCycles = 0;
+}
+
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t groupCnt, uint32_t expertIdx, uint32_t rankId,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
+    uint64_t t0 = GetSystemCycle();
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr; // rankSyncInWorldPtr是起始地址
@@ -42,6 +49,8 @@ __aicore__ inline void CombineTokens(
         uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
     }
+    uint64_t t1 = GetSystemCycle();
+    g_combineTokensCycles += t1 - t0;
 }
 }  // namespace MegaMoeCombineImpl
 

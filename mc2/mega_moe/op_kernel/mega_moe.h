@@ -168,6 +168,35 @@ private:
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
 
+    uint64_t timeTopKIdsAllGather_ = 0;
+    uint64_t timeQuantProcessInRank_ = 0;
+    uint64_t timeSendInfoCal_ = 0;
+    uint64_t timeTripleInfoCalDispatch_ = 0;
+    uint64_t timeCombineTokens_ = 0;
+
+    __aicore__ inline void WriteTimingToOutput()
+    {
+        constexpr int32_t CYCLES_PER_US = 50;
+        GlobalTensor<int32_t> outTensor;
+        outTensor.SetGlobalBuffer((__gm__ int32_t*)params_.aGmAddr);
+        if (subBlockIdx_ == 0) {
+            topkIdsTensor_.SetValue(0, (int32_t)(timeTopKIdsAllGather_ / CYCLES_PER_US));
+            topkIdsTensor_.SetValue(1, (int32_t)(timeQuantProcessInRank_ / CYCLES_PER_US));
+            topkIdsTensor_.SetValue(2, (int32_t)(timeSendInfoCal_ / CYCLES_PER_US));
+            topkIdsTensor_.SetValue(3, (int32_t)(timeCombineTokens_ / CYCLES_PER_US));
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
+            DataCopyExtParams dataCopyParams{1U, (uint16_t)(3 * sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPad(outTensor, topkIdsTensor_, dataCopyParams);
+            DataCopyExtParams dataCopyParams2{1U, (uint16_t)(sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPad(outTensor[4], topkIdsTensor_, dataCopyParams2);
+        } else {
+            topkIdsTensor_.SetValue(0, (int32_t)(timeTripleInfoCalDispatch_ / CYCLES_PER_US));
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
+            DataCopyExtParams dataCopyParams{1U, (uint16_t)(sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPad(outTensor[3], topkIdsTensor_, dataCopyParams);
+        }
+    }
+
     LocalTensor<int32_t> topkTensor_;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
@@ -408,6 +437,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TopKIdsAllGather()
         return;
     }
 
+    uint64_t t0 = GetSystemCycle();
     GlobalTensor<int32_t> srcGlobalTensor;
     GlobalTensor<int32_t> dstGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
@@ -420,6 +450,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TopKIdsAllGather()
         dstGlobalTensor.SetGlobalBuffer((__gm__ int32_t*)GetRankWinAddrWithOffset(dstRankIdx, offsetInDstWinAddr));
         DataCopyPad(dstGlobalTensor, topkIdsTensor_, dataCopyParams);
     }
+    uint64_t t1 = GetSystemCycle();
+    timeTopKIdsAllGather_ = t1 - t0;
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -429,6 +461,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
         return;
     }
 
+    uint64_t t0 = GetSystemCycle();
     // 分核，按照BS与aivCoreNum均分
     int32_t curentNum;
     int32_t curentOffset;
@@ -459,11 +492,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
         auto xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
         DataCopyPad(dstGlobalTensor, xOutBytesTensor, xCopyOutParams);
     }
+    uint64_t t1 = GetSystemCycle();
+    timeQuantProcessInRank_ = t1 - t0;
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendInfoCal(int32_t localExpertId)
 { 
+    uint64_t t0 = GetSystemCycle();
     uint64_t sendCnt = 0;
     totalSendCntInExp_ = 0;
     uint32_t mask = sendTotalNum_;
@@ -493,6 +529,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendInfoCal(int32_t loc
         PipeBarrier<PIPE_ALL>();
         CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(2);
     }
+    uint64_t t1 = GetSystemCycle();
+    timeSendInfoCal_ += t1 - t0;
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -538,6 +576,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId)
 {
+    uint64_t t0 = GetSystemCycle();
     int32_t pingpongId = 0;
     uint64_t sendToCurExpTokenCnt = 0;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -568,6 +607,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0); 
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    uint64_t t1 = GetSystemCycle();
+    timeTripleInfoCalDispatch_ += t1 - t0;
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -739,6 +780,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 3. dispatch & GroupMatmulSwigluQuant
     FirstBuffInit();
+    timeSendInfoCal_ = 0;
+    SyncAll<true>();
+    uint64_t tDispatch0 = GetSystemCycle();
     GMMAddrInfo gmmAddrInfo;
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
@@ -760,12 +804,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndSync();
+    SyncAll<true>();
+    uint64_t tCombine0 = GetSystemCycle();
+    timeTripleInfoCalDispatch_ = tCombine0 - tDispatch0;
 
     // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
     expertBeforeCnt_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    MegaMoeCombineImpl::ResetCombineTokensTimer();
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx, 1)) {
             continue;
@@ -779,6 +827,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     EndGMM2Sync();
     SyncAll<true>();
+    uint64_t tCombine1 = GetSystemCycle();
+    timeCombineTokens_ = tCombine1 - tCombine0;
+    if constexpr(g_coreType == AIV) {
+        if (blockIdx_ == 0) {
+            WriteTimingToOutput();
+        }
+    }
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
         TPipe secondPipe;
