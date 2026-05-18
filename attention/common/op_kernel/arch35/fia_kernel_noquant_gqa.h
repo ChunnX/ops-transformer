@@ -299,6 +299,8 @@ public:
             if (!constInfo.isActualSharedPrefixLenNull) {
                 constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
             }
+        } else {
+            constInfo.actualKVPrefixSize = 0;
         }
 
         enableS1OutSplit = fiaS1OuterSplitCoreParams.enableS1OutSplit;
