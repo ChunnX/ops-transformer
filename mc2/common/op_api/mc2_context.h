@@ -29,6 +29,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
+#include "mc2_quant_reduce_scatter_context.h"
 
 namespace Mc2Aclnn {
 
@@ -66,6 +67,17 @@ private:
                                       const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
                                       uint64_t &hcclBuffSize);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
+
+    /* for quant_reduce_scatter */
+    aclnnStatus CreatMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                      const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
+                                      Mc2QuantReduceScatterContext *mc2ContextStruct);
+    aclnnStatus GetOrCreateMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                            const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
+                                            uint64_t &hcclBuffSize);
+    aclnnStatus CreatMc2ContextTensorForQrs(void *ctx, aclTensor *&mc2Context);
+    aclnnStatus GetMc2ContextTensorForQrs(const char *group, const char *opName, uint64_t &hcclBuffSize,
+                                          aclTensor *&mc2Context);
 
     const std::string GetLibPath();
     template <typename T>
