@@ -19,7 +19,7 @@
 
     - **第一部分计算H_res_grad**：设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{gradHRes}$（`gradHRes` 为输入参数，即正向输出 `h_res` 的梯度），共进行 $\mathbf{num\_iters}$（Sinkhorn迭代次数，对应`sk_iter_count`，当前仅支持20）次迭代。
     
-        - **前 $\mathbf{num\_iters} - 1$ 次迭代**：对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行：
+        - **前 $\mathbf{num\_iters} - 1$ 次迭代**：对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行，其中 $\mathbf{sumOut}$（对应输入参数 `sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数 `normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）：
         
           $$
           \begin{aligned}
@@ -33,10 +33,10 @@
           \end{aligned}
           $$
         
-        其中 $\mathbf{sumOut}$（对应输入参数 `sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数 `normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）。
+            
     
         - **最后一次迭代**：
-        
+
           $$
           \begin{aligned}
               \mathbf{dotProd}_{1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{1} \right), \\
@@ -53,13 +53,12 @@
     
     - **输出组合梯度计算**：
     
-        - **正向计算公式**：
+        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（当前仅支持4）。
         
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
         $$
         
-        其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（当前仅支持4）。
       
         - **反向计算公式**：
         
@@ -253,36 +252,36 @@
 ## 函数原型
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
 
-    ```cpp
-    aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
-        const aclTensor  *gradHin,
-        const aclTensor  *gradHPost,
-        const aclTensor  *gradHRes,
-        const aclTensor  *x,
-        const aclTensor  *phi,
-        const aclTensor  *alpha,
-        const aclTensor  *bias,
-        const aclTensor  *hPre,
-        const aclTensor  *hcBeforeNorm,
-        const aclTensor  *invRms,
-        const aclTensor  *sumOut,
-        const aclTensor  *normOut,
-        double            hcEps,
-        aclTensor        *gradX,
-        aclTensor        *gradPhi,
-        aclTensor        *gradAlpha,
-        aclTensor        *gradBias,
-        uint64_t         *workspaceSize,
-        aclOpExecutor   **executor)
-    ```
+```cpp
+aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
+    const aclTensor  *gradHin,
+    const aclTensor  *gradHPost,
+    const aclTensor  *gradHRes,
+    const aclTensor  *x,
+    const aclTensor  *phi,
+    const aclTensor  *alpha,
+    const aclTensor  *bias,
+    const aclTensor  *hPre,
+    const aclTensor  *hcBeforeNorm,
+    const aclTensor  *invRms,
+    const aclTensor  *sumOut,
+    const aclTensor  *normOut,
+    double            hcEps,
+    aclTensor        *gradX,
+    aclTensor        *gradPhi,
+    aclTensor        *gradAlpha,
+    aclTensor        *gradBias,
+    uint64_t         *workspaceSize,
+    aclOpExecutor   **executor)
+```
 
-    ```cpp
-    aclnnStatus aclnnMhcPreSinkhornBackward(
-        void             *workspace,
-        uint64_t          workspaceSize,
-        aclOpExecutor    *executor,
-        aclrtStream       stream)
-    ```
+```cpp
+aclnnStatus aclnnMhcPreSinkhornBackward(
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
+    aclrtStream       stream)
+```
 
 ## aclnnMhcPreSinkhornBackwardGetWorkspaceSize
 
@@ -314,7 +313,7 @@
     <tr>
         <td>gradHin(aclTensor *)</td>
         <td>输入</td>
-        <td>输出h_in的梯度</td>
+        <td>输出h_in的梯度。</td>
         <td>不支持空Tensor。</td>
         <td>BFLOAT16 </td>
         <td>ND</td>
@@ -324,7 +323,7 @@
     <tr>
         <td>gradHPost(aclTensor *)</td>
         <td>输入</td>
-        <td>输出h_post的梯度</td>
+        <td>输出h_post的梯度。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -334,7 +333,7 @@
     <tr>
         <td>gradHRes(aclTensor *)</td>
         <td>输入</td>
-        <td>输出h_res的梯度</td>
+        <td>输出h_res的梯度。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -344,7 +343,7 @@
     <tr>
         <td>x(aclTensor *)</td>
         <td>输入</td>
-        <td>前向输入x</td>
+        <td>前向输入x。</td>
         <td>不支持空Tensor。</td>
         <td>BFLOAT16 </td>
         <td>ND</td>
@@ -354,7 +353,7 @@
     <tr>
         <td>phi(aclTensor *)</td>
         <td>输入</td>
-        <td>前向参数phi</td>
+        <td>前向参数phi。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -364,7 +363,7 @@
     <tr>
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
-        <td>前向参数alpha</td>
+        <td>前向参数alpha。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -374,7 +373,7 @@
     <tr>
         <td>bias(aclTensor *)</td>
         <td>输入</td>
-        <td>前向参数bias</td>
+        <td>前向参数bias。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -384,7 +383,7 @@
     <tr>
         <td>hPre(aclTensor *)</td>
         <td>输入</td>
-        <td>前向保存的中间结果h_pre</td>
+        <td>前向保存的中间结果h_pre。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -394,7 +393,7 @@
     <tr>
         <td>hcBeforeNorm(aclTensor *)</td>
         <td>输入</td>
-        <td>前向保存的中间结果hc_before_norm</td>
+        <td>前向保存的中间结果hc_before_norm。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -404,7 +403,7 @@
     <tr>
         <td>invRms(aclTensor *)</td>
         <td>输入</td>
-        <td>前向保存的中间结果inv_rms</td>
+        <td>前向保存的中间结果inv_rms。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -414,7 +413,7 @@
     <tr>
         <td>sumOut(aclTensor *)</td>
         <td>输入</td>
-        <td>Sinkhorn变换正向计算保存的中间sum结果</td>
+        <td>Sinkhorn变换正向计算保存的中间sum结果。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -424,7 +423,7 @@
     <tr>
         <td>normOut(aclTensor *)</td>
         <td>输入</td>
-        <td>Sinkhorn变换正向计算保存的中间norm结果</td>
+        <td>Sinkhorn变换正向计算保存的中间norm结果。</td>
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
@@ -434,8 +433,8 @@
     <tr>
         <td>hcEps(double)</td>
         <td>输入</td>
-        <td>数值稳定性参数</td>
-        <td>建议值1e-6</td>
+        <td>数值稳定性参数。</td>
+        <td>建议值1e-6。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -444,7 +443,7 @@
     <tr>
         <td>gradX(aclTensor *)</td>
         <td>输出</td>
-        <td>输入x的梯度</td>
+        <td>输入x的梯度。</td>
         <td>-</td>
         <td>BFLOAT16</td>
         <td>ND</td>
@@ -454,7 +453,7 @@
     <tr>
         <td>gradPhi(aclTensor *)</td>
         <td>输出</td>
-        <td>参数phi的梯度</td>
+        <td>参数phi的梯度。</td>
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
@@ -464,7 +463,7 @@
     <tr>
         <td>gradAlpha(aclTensor *)</td>
         <td>输出</td>
-        <td>参数alpha的梯度</td>
+        <td>参数alpha的梯度。</td>
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
@@ -474,7 +473,7 @@
     <tr>
         <td>gradBias(aclTensor *)</td>
         <td>输出</td>
-        <td>参数bias的梯度</td>
+        <td>参数bias的梯度。</td>
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
@@ -591,7 +590,7 @@
 
 - **确定性计算**：
 
-  - aaclnnMhcPreSinkhornBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnMhcPreSinkhornBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - **规格约束**
 
