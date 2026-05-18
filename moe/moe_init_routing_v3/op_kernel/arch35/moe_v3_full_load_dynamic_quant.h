@@ -63,8 +63,10 @@ private:
 template <typename T, typename QuantT>
 __aicore__ inline void
 MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
-                                           GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                           GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                           GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
+                                           GM_ADDR expandedScale, GM_ADDR workspace,
+                                           const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                           TPipe *tPipe)
 {
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
 

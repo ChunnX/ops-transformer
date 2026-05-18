@@ -484,9 +484,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
 }
 
 template <typename T, typename QuantT>
-__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(GM_ADDR sortedExpertIdx,
-                                                                         const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                                                         TPipe *tPipe)
+__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(
+    GM_ADDR sortedExpertIdx, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -545,10 +544,10 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(GM_ADDR
 }
 
 template <typename T, typename QuantT>
-__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
-                                                                 GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                                 GM_ADDR expandedScale,
-                                                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
+    GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
+    GM_ADDR expandedX, GM_ADDR expandedScale,
+    const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     InitBaseData(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
