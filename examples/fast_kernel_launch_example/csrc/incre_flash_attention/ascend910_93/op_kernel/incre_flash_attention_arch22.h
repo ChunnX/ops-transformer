@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file incre_flash_attention_arch32.h
+ * \file incre_flash_attention_arch22.h
  * \brief
  */
 #include "incre_flash_attention_preload_dd.h"
