@@ -251,9 +251,16 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
     uint32_t sectionNum = splitRes.sectionNum;
     detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
     uint32_t* ptr = (uint32_t*)metaData_->GetData();
-    ptr[1] = mBaseSize_;
-    ptr[2] = s2BaseSize_;
-        for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
+    ptr[1] = 0;
+    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
+        auto fdSplitRes = splitRes.sectionFdResult[sectionId];
+        if (fdSplitRes.usedVecNum > 0) {
+            ptr[1] = 1;
+        }
+    }
+    ptr[2] = mBaseSize_;
+    ptr[3] = s2BaseSize_;
+    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
