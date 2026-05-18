@@ -377,6 +377,13 @@ public:
             }
 
             int64_t groupM = Get<MNK_M>(problemShape_);
+            if ASCEND_IS_AIV {
+                printf("[DET_KERNEL] groupIdx=%u groupM=%ld workspaceBaseRow=%lu windowSizeRows=%lu "
+                       "willOverflow=%d globalRowOffset=%lu\n",
+                       groupIdx, groupM, workspaceBaseRow, windowSizeRows,
+                       (workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) ? 1 : 0,
+                       globalRowOffset);
+            }
 
             // === Group-boundary pre-write check ===
             // All cores compute identical workspaceBaseRow + groupM, so the

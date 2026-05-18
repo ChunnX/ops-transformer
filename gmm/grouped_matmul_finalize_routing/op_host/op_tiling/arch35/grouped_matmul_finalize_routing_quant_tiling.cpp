@@ -15,6 +15,7 @@
 
 #include "grouped_matmul_finalize_routing_quant_tiling.h"
 #include <alog_pub.h>
+#include <algorithm>
 #include <climits>
 #include "log/log.h"
 #include "register/op_impl_registry.h"
@@ -464,10 +465,12 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t l2Size = 0;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2Size);
-        constexpr uint32_t DETER_WORK_SPACE_SIZE = 96UL * 1024 * 1024;
-        constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64UL * 1024 * 1024;
-        deterWorkspaceSize_ = l2Size > DETER_WORK_SPACE_SIZE
-                              ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
+        constexpr uint64_t sysWorkspace = 16UL * 1024 * 1024;
+        constexpr uint64_t l2Reserve = 8UL * 1024 * 1024;
+        uint64_t available = (l2Size > sysWorkspace + l2Reserve)
+                             ? (l2Size - sysWorkspace - l2Reserve) : 0UL;
+        deterWorkspaceSize_ = static_cast<uint32_t>(
+            std::min(available, static_cast<uint64_t>(UINT32_MAX)));
         tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
     }
 
@@ -549,8 +552,20 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     size_t totalWorkspace = GmmConstant::SYS_WORKSPACE_SIZES;
-    // 确定性模式累加确定性 workspace
     if (deterministicFlag_ == 1 && deterWorkspaceSize_ > 0) {
+        uint64_t N = static_cast<uint64_t>(tilingData_.matmulTiling.N);
+        uint64_t rowBytes = N * sizeof(float);
+        uint64_t totalM = inputParams_.mSize;
+        uint32_t groupNum = tilingData_.gmmFinalizeRoutingDataParams.groupNum;
+        uint64_t maxGroupM = (groupNum > 0)
+            ? (totalM + static_cast<uint64_t>(groupNum) - 1) / static_cast<uint64_t>(groupNum) : totalM;
+        uint64_t minDeterWorkspace = maxGroupM * rowBytes;
+        if (deterWorkspaceSize_ < minDeterWorkspace) {
+            OP_LOGW(context_->GetNodeName(),
+                "deterWorkspace %u may be insufficient for maxGroupM=%lu * rowBytes=%lu = %lu bytes",
+                deterWorkspaceSize_, maxGroupM, rowBytes, minDeterWorkspace);
+        }
+        tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
         totalWorkspace += static_cast<size_t>(deterWorkspaceSize_);
     }
     workspaces[0] = totalWorkspace;

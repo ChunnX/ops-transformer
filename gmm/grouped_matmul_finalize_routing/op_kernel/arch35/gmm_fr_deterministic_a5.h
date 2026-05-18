@@ -74,12 +74,15 @@ __aicore__ inline void FRDeterministicA5(
     SyncAll();  // Ensure workspace writes complete
 
     uint64_t totalM = syncConfig.curM;
+    printf("[DET_AGG] ENTER totalM=%lu coreNum=%u n=%u globalRowOffset=%lu myVecId=%lu\n",
+           totalM, coreNum, n, globalRowOffset, static_cast<uint64_t>(GetBlockIdx()));
     // On A5, AIC is subBlock 0, AIV is subBlock 1. This function only runs on AIV.
     // Use blockIdx directly (not * GetTaskRation + GetSubBlockIdx) to distribute
     // output rows across all 36 physical cores evenly.
     uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx());
 
     // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
+    uint64_t processedRows = 0;
     for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
         auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
@@ -109,7 +112,9 @@ __aicore__ inline void FRDeterministicA5(
 
             queBind.FreeTensor(bindLocal);
         }
+        processedRows++;
     }
+    printf("[DET_AGG] DONE processedRows=%lu totalM=%lu\n", processedRows, totalM);
     SyncAll();  // Ensure all writes complete
 }
 
