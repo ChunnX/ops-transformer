@@ -663,6 +663,7 @@ public:
 
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
+                PRINTF("zzyzzy ET:%lld Vec2 aicIdx:%u bloop:%lld bIdx:%u gS1Cur:%u\n", loop, constInfo.aicIdx, runInfoNegN.loop, runInfoNegN.bIdx, runInfoNegN.gS1Idx / mBaseSize);
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
                 } else {
