@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file matmul_allto_all_base.cpp
+ * \brief
+ */
 #include "matmul_allto_all_base.h"
 #include "matmul_allto_all_util.h"
 #include "securec.h"
@@ -33,7 +37,8 @@ using namespace op;
 using namespace matmul_allto_all_check;
 
 // 检查必要输入是否为空，必须非空
-static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output) {
+static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *output)
+{
     if (x1 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x1 should not be null.");
         return false;
@@ -51,49 +56,47 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
 
 // 检查是否有空tensor
 // 950 非量化场景支持x1的m轴为0，即token提示词为空
-static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool transposeX2) {
+static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2)
+{
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         auto mVal = x1->GetViewShape().GetDim(0);
         OP_API_CHECK((mVal == ZERO), {
-          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-          "X1 is empty tensor with zero dimM, which is unsupported.");
-          return false;
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X1 is empty tensor with zero dimM, which is unsupported.");
+            return false;
         });
     }
     auto kVal1 = x1->GetViewShape().GetDim(1);
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 == ZERO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "X1 is empty tensor with zero dimK, which is unsupported.");
-      return false;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X1 is empty tensor with zero dimK, which is unsupported.");
+        return false;
     });
     OP_API_CHECK((kVal2 == ZERO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "X2 is empty tensor with zero dimK, which is unsupported.");
-      return false;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X2 is empty tensor with zero dimK, which is unsupported.");
+        return false;
     });
     OP_API_CHECK((nVal == ZERO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "X2 is empty tensor with zero dimN, which is unsupported.");
-      return false;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X2 is empty tensor with zero dimN, which is unsupported.");
+        return false;
     });
     return true;
 }
 
 // 非量化模式下X支持的FP16数据类型
-static const std::initializer_list<op::DataType> X_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> X_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16,
+                                                                         op::DataType::DT_BF16};
 // 非量化模式下Output支持的FP16数据类型
-static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16,
+                                                                              op::DataType::DT_BF16};
 // 非量化模式下910B对Bias数据类型有特殊规范
-static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16,
+                                                                            op::DataType::DT_FLOAT};
 
 // 非量化场景下，校验所有输入的参数类型是否正确（A5）
-static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2,
-                                const aclTensor* biasOptional, const aclTensor* output) {
+static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                const aclTensor *output)
+{
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
@@ -103,8 +106,8 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2,
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "MatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
-                op::ToString(biasOptional->GetDataType()).GetString());
+                    "MatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
+                    op::ToString(biasOptional->GetDataType()).GetString());
             return false;
         }
     }
@@ -112,7 +115,9 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2,
 }
 
 // 910B在输入为bfloat16时，bias不支持bfloat16，只能为float32
-static bool CheckAllDtypesValid910B(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* output) {
+static bool CheckAllDtypesValid910B(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                    const aclTensor *output)
+{
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
@@ -123,10 +128,10 @@ static bool CheckAllDtypesValid910B(const aclTensor* x1, const aclTensor* x2, co
         OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
         if (x1->GetDataType() == op::DataType::DT_FLOAT16) {
             OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
-        } else if (biasDtype != op::DataType::DT_FLOAT){
+        } else if (biasDtype != op::DataType::DT_FLOAT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "The dtype of bias must be [DT_FLOAT] when x's dtype is [DT_BFLOAT16], but get: [%s].",
-            op::ToString(biasDtype).GetString());
+                    "The dtype of bias must be [DT_FLOAT] when x's dtype is [DT_BFLOAT16], but get: [%s].",
+                    op::ToString(biasDtype).GetString());
             return false;
         }
     }
@@ -134,32 +139,29 @@ static bool CheckAllDtypesValid910B(const aclTensor* x1, const aclTensor* x2, co
 }
 
 // 检查所有要用到的输入format是否为ND，不支持私有格式，如果内部不为ND格式，会打印warning日志，并将format转换为ND格式
-static bool CheckFormat(const aclTensor* x1, const aclTensor* x2,
-                        const aclTensor* biasOptional, const aclTensor* output) {
+static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                        const aclTensor *output)
+{
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAll, x1 format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MatmulAlltoAll, x1 format %s does not support private format.",
                 op::ToString(x1->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAll, x2 format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MatmulAlltoAll, x2 format %s does not support private format.",
                 op::ToString(x2->GetStorageFormat()).GetString());
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAll, biasOptional format %s does not support private format.",
-                op::ToString(biasOptional->GetStorageFormat()).GetString());
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MatmulAlltoAll, biasOptional format %s does not support private format.",
+                    op::ToString(biasOptional->GetStorageFormat()).GetString());
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnQuantMatmulAlltoAll, output format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MatmulAlltoAll, output format %s does not support private format.",
                 op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
@@ -167,8 +169,9 @@ static bool CheckFormat(const aclTensor* x1, const aclTensor* x2,
 }
 
 // 兼容性处理，非ND格式转换为ND格式
-static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2,
-                          const aclTensor* biasOptional, const aclTensor* output) {
+static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                          const aclTensor *output)
+{
     // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
@@ -196,8 +199,8 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2,
 }
 
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                        const aclIntArray* alltoAllAxesOptional, const char *group,
-                                        bool transposeX1, bool transposeX2, const aclTensor *output)
+                                        const aclIntArray *alltoAllAxesOptional, const char *group, bool transposeX1,
+                                        bool transposeX2, const aclTensor *output)
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
@@ -227,7 +230,8 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **executor) {
+static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     OP_LOGD("MatmulAlltoAll, dealing with empty tensor.");
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -240,34 +244,34 @@ static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **
 
 // L0层两段式接口Inner，根据算子原型op_graph/matmul_allto_all_proto.h，由模板自动生成。非量化L2层接口和量化L2层接口共用一套L0层接口。
 // worldSize为硬件方参数，在aclnn侧不感知。yDtype在aclnn侧不感知。这两个参数需要在Inner接口处声明，在aclnn侧通过默认值传参。
-extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
-                                                                const aclTensor* x1ScaleOptional, const aclTensor* x2ScaleOptional,
-                                                                const aclTensor* commScaleOptional,
-                                                                const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
-                                                                char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
-                                                                int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
-                                                                int64_t commQuantMode, int64_t commQuantDtype,
-                                                                bool transposeX1, bool transposeX2, int64_t groupSize,
-                                                                const aclTensor* out, uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1ScaleOptional,
+    const aclTensor *x2ScaleOptional, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
+    const aclTensor *x2OffsetOptional, char *group, int64_t worldSize, const aclIntArray *all2allAxesOptional,
+    int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype,
+    bool transposeX1, bool transposeX2, int64_t groupSize, const aclTensor *out, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerMatmulAlltoAllGetWorkspaceSize完成默认值传参和调用L0层接口
-extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                                           const aclIntArray* alltoAllAxesOptional, const char *group,
+extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                           const aclTensor *biasOptional,
+                                                           const aclIntArray *alltoAllAxesOptional, const char *group,
                                                            bool transposeX1, bool transposeX2, const aclTensor *output,
                                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值，因此此处使用的枚举值为28
     const int64_t GE_UNDEFINED = 28;
     // 根据算子原型定义默认值
-    aclTensor* x1ScaleOptional = nullptr;
-    aclTensor* x2ScaleOptional = nullptr;
-    aclTensor* commScaleOptional = nullptr;
-    aclTensor* x1OffsetOptional = nullptr;
-    aclTensor* x2OffsetOptional = nullptr;
-    const aclTensor* out = output;
-    char* str_group = const_cast<char*>(group);
+    aclTensor *x1ScaleOptional = nullptr;
+    aclTensor *x2ScaleOptional = nullptr;
+    aclTensor *commScaleOptional = nullptr;
+    aclTensor *x1OffsetOptional = nullptr;
+    aclTensor *x2OffsetOptional = nullptr;
+    const aclTensor *out = output;
+    char *str_group = const_cast<char *>(group);
     int64_t worldSize = -1;
     int64_t yDtype = GE_UNDEFINED;
     int64_t x1QuantMode = 0;
@@ -284,18 +288,20 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
 }
 
 // 两段式接口
-aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                                           const aclIntArray* alltoAllAxesOptional, const char *group,
-                                                           bool transposeX1, bool transposeX2, const aclTensor *output,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                    const aclTensor *biasOptional,
+                                                    const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                    bool transposeX1, bool transposeX2, const aclTensor *output,
+                                                    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;    // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
-        bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
-        if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                                   // 复制一个x2
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+        bool notContiguous =
+            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+        if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -306,54 +312,55 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
             CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
             OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. "
                     "After processing, transX2 dim0 is %ld, and dim1 is %ld.",
-                    x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1),
-                    transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
+                    x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0),
+                    transX2->GetViewShape().GetDim(1));
         }
     } else {
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The x2 must be contiguous, but it is non-contiguous.");
-            return ACLNN_ERR_PARAM_INVALID;});
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 must be contiguous, but it is non-contiguous.");
+            return ACLNN_ERR_PARAM_INVALID;
+        });
     }
-    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output);
+    aclnnStatus retParam =
+        CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 处理空tensor，目前非量化matmulalltoall只支持x1第一维度bs为0，空tensor作异常处理
     if (x1->GetViewShape().GetDim(0) == 0 && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         return DealWithEmptyTensor(workspaceSize, executor);
     }
-    aclnnStatus ret = InnerMatmulAlltoAllGetWorkspaceSize(
-        x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output, workspaceSize, executor);
+    aclnnStatus ret = InnerMatmulAlltoAllGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group,
+                                                          transposeX1, transposeX2, output, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAll, end ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnMatmulAlltoAllGetWorkspaceSize interface call failed.");
+                "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
     return ret;
 }
 
-aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                    aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
             if (commMode == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("aclnnMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+                OP_LOGD("MatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             } else {
-                OP_LOGD("aclnnMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+                OP_LOGD("MatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
-        } else if (GetCurrentPlatformInfo().GetSocVersion()== SocVersion::ASCEND910_93) {
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B){
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAlltoAll(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnInnerMatmulAlltoAll interface call failed.");
+        OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore, aclnnInnerMatmulAlltoAll interface call failed.");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;
