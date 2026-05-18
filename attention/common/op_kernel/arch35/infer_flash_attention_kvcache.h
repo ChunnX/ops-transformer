@@ -92,8 +92,7 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
             runParam.actualSeqLengthOfMlaPerBatch = constInfo.s1Size;
         }
         return actualMSize;
-    }
-    
+    } 
     int64_t actualMSize = 0;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {

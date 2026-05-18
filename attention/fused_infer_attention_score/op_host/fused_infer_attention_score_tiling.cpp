@@ -923,7 +923,7 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
     pfa_tiling.fromPFA_ = false;
     ret = pfa_tiling.RunBigKernelTilingWithParams(contextParamsForPFATiling, tilingKey, blockDimToBeSet, pfaTilingData);
     tilingKey += BENCHMARK_TILING_KEY;
-    OP_LOGD(contextParamsForPFATiling.opName, "The final tiling key is: %lu", tilingKey);
+    OP_LOGI(contextParamsForPFATiling.opName, "The final tiling key is: %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(blockDimToBeSet);
     pfa_tiling.PromptFlashAttentionSetTilingData(context, pfaTilingData);
@@ -2161,6 +2161,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 
 FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext *context)
 {
+    OP_LOGI("FusedInferAttentionScore", "Do op tiling now.");
     OP_CHECK_IF(context == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR("FusedInferAttentionScore", "Tiling context is null."),
         return ge::GRAPH_FAILED);

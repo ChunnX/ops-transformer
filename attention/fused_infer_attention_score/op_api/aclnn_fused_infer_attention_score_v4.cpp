@@ -89,7 +89,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
-    OP_LOGD("start aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize");
+    OP_LOGI("start aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize");
     TensorPreProcess(tensorListKey, tensorListValue);
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
