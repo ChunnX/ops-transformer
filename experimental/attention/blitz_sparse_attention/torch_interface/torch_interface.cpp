@@ -59,7 +59,8 @@ aclTensor* create_acl_tensor(const at::Tensor& tensor) {
  * @param [in] key Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] value Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] atten_mask Tensor of shape [B, N, S, T] (bool, optional)
- * @param [in] sabi Tensor of shape [B, N, S / Qtile_size, sparsity * T / KVTileSize] (uint16, padded with 65535, optional)
+ * @param [in] sabi Tensor of shape [B, N, ceil(S / BLOCK_SIZE_Q), kept_kv_tiles] (uint16, padded with 65535, optional). Each entry indexes a BLOCK_SIZE_KV-wide KV chunk.
+ * @param [in] block_shape pair [BLOCK_SIZE_Q, BLOCK_SIZE_KV], both multiples of 128. Supported: [128,128] (default), [128,512].
  * @param [in] actual_seq_lengths vector of actual sequence lengths
  * @param [in] actual_seq_lengths_kv vector of actual sequence lengths for key/value
  * @param [in] num_heads number of attention heads
@@ -91,7 +92,8 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
     c10::optional<std::string> input_layout_opt = c10::nullopt,
     c10::optional<int64_t> num_key_value_heads_opt = c10::nullopt,
     c10::optional<int64_t> sparse_mode_opt = c10::nullopt,
-    c10::optional<bool> softmax_lse_flag_opt = c10::nullopt
+    c10::optional<bool> softmax_lse_flag_opt = c10::nullopt,
+    c10::optional<std::vector<int64_t>> block_shape_opt = c10::nullopt
 ) {
     // Set default values
     int64_t num_heads = num_heads_opt.value_or(1);
@@ -102,6 +104,13 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
     int64_t num_key_value_heads = num_key_value_heads_opt.value_or(0);
     int64_t sparse_mode = sparse_mode_opt.value_or(0);
     bool softmax_lse_flag = softmax_lse_flag_opt.value_or(false);
+    std::vector<int64_t> block_shape = block_shape_opt.value_or(std::vector<int64_t>{128, 128});
+    TORCH_CHECK(block_shape.size() == 2,
+                "block_shape must be a length-2 list [BLOCK_SIZE_Q, BLOCK_SIZE_KV]");
+    TORCH_CHECK(block_shape[0] == 128,
+                "block_shape[0] (BLOCK_SIZE_Q) must be 128");
+    TORCH_CHECK(block_shape[1] == 128 || block_shape[1] == 512,
+                "block_shape[1] (BLOCK_SIZE_KV) must be 128 or 512");
 
     // Validate input tensors
     TORCH_CHECK(query.is_contiguous(), "query must be contiguous");
@@ -143,6 +152,8 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
         const auto& seq_lengths_kv = actual_seq_lengths_kv_opt.value();
         actual_seq_lengths_kv_array = aclCreateIntArray(seq_lengths_kv.data(), seq_lengths_kv.size());
     }
+
+    aclIntArray* block_shape_array = aclCreateIntArray(block_shape.data(), block_shape.size());
 
     // Prepare layerOut string
     std::vector<char> layer_out(input_layout.begin(), input_layout.end());
@@ -212,6 +223,7 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
         sparse_mode,                  //  int64_t            sparseMode,
         inner_precise,                //  int64_t            innerPrecise,
         softmax_lse_flag,             //  bool               softmaxLseFlag,
+        block_shape_array,            //  const aclIntArray *blockShape,
         output_tensor,                //  const aclTensor   *attentionOut,
         lse_tensor,                   //  const aclTensor   *softmaxLse,
         &workspace_size,              //  uint64_t          *workspaceSize,
@@ -243,6 +255,7 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
     if (workspace_addr) aclrtFree(workspace_addr);
     if (actual_seq_lengths_array) aclDestroyIntArray(actual_seq_lengths_array);
     if (actual_seq_lengths_kv_array) aclDestroyIntArray(actual_seq_lengths_kv_array);
+    if (block_shape_array) aclDestroyIntArray(block_shape_array);
     if (lse_tensor) aclDestroyTensor(lse_tensor);
 
     return std::make_tuple(output, lse_out);
@@ -270,6 +283,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             num_key_value_heads (int, optional): Number of key/value heads. Default: 0
             sparse_mode (int, optional): sparse mode = 0,1,2,...7 choice. Default: 0
             softmax_lse_flag (bool, optional): If True, compute softmax LSE output. Default: False
+            block_shape (list[int], optional): [BLOCK_SIZE_Q, BLOCK_SIZE_KV] sabi-index granularity. Both multiples of 128. Supported: [128,128] (default), [128,512].
 
         Returns:
             tuple(torch.Tensor, torch.Tensor):
@@ -290,6 +304,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("input_layout") = c10::optional<std::string>(),
         py::arg("num_key_value_heads") = c10::optional<int64_t>(),
         py::arg("sparse_mode") = c10::optional<int64_t>(),
-        py::arg("softmax_lse_flag") = c10::optional<bool>()
+        py::arg("softmax_lse_flag") = c10::optional<bool>(),
+        py::arg("block_shape") = c10::optional<std::vector<int64_t>>()
     );
 }

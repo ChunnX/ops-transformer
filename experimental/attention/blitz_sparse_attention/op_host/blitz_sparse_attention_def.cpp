@@ -112,6 +112,9 @@ public:
         this->Attr("softmax_lse_flag")
             .AttrType(OPTIONAL)
             .Bool(false);
+        this->Attr("block_shape")
+            .AttrType(OPTIONAL)
+            .ListInt({128, 128});
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

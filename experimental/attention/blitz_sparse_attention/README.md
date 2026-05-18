@@ -6,28 +6,23 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 
 > **TODO 1: 128x128 sabi granularity speedup** The 128x512 sabi granularity has 
 > shown great speedups (1.89x at 50% sparsity). However, the current 128x128 
-> version is implemented by forcing a static tiling sizes of 128x128 matmul tiles, 
-> which causes severe cube unit underutilization on Ascend 910B and the speedup 
-> is achieved only from sparsity of >65%. The necessary fix is to go back to 
-> 128x512 cube tiling, to maintain 128x128 sabi granularity, and to load four 
-> 128x128 sabi blocks before launching matmuls.
+> version is implemented by forcing a static tiling sizes of 128x512 matmul tiles 
+> without preliminary compactization of only sabi-selected 128x128 tiles into it. 
+> Therefore, in the current kernel design - the cube performs redundant matmuls 
+> which are then masked out during the softmax. Only full empty 512-long tiles 
+> (which happens if there are 4 sonsequtive non-selected blocks) are truly skipped.
+> The speedups are at sparsity >10% however the speedup isproportional to the 
+> probability of having 4 conscutive non-selected blocks.... 
+> There were multiple attempts to rewrite the matmul processing logic of the kernel, 
+> however it requires a full kernel rewrite. The curren attention/block_sparse_attention
+> seems to cope with this better - by adopting an bottom up new CATLASS-based approach.
 
-
-> **TODO 2: variable sabi granularity** The sabi tensor currently uses a fixed 
-> **128×128** (Q-tile × KV-tile) block granularity (shape `[B, N, ceil(S/128), ceil(S/128)]`). 
-> The original design used 128×512 granularity, which has established impressive speedups. 
-> If 128x128 granularity doesn't show comparable speedups, the a future task is to develop 
-> dynamic control so the caller can choose between 128×128 and 128×512 KV-block 
-> granularity at runtime, without a kernel rebuild. This requires changes to the 
-> sabi shape convention, kernel tiling, and all Python mask-generation utilities. 
-
-
-> **TODO 3: batch size > 1 is broken** Only `batch_size=1` (`B=1`) is currently 
+> **TODO 2: batch size > 1 is broken** Only `batch_size=1` (`B=1`) is currently 
 > known to produce correct results. Runs with `B>1` produce incorrect outputs. 
 > All tests and benchmarks must be run with `B=1` until the multi-batch issue 
 > is diagnosed and fixed.
 
-> **TODO 4: move `fallback_blitz_sparse_attention.cpp under op_graph subdirectory** 
+> **TODO 3: move `fallback_blitz_sparse_attention.cpp under op_graph subdirectory** 
 > as requested by liusixia. This is necessary in order to make it compilable into
 > opgraph library instead of obhost library as it is now.
 
@@ -47,29 +42,30 @@ pytest test_joint.py # simultaneously check correctness of both kernel outputs
 python benchmark.py # performance benchmarking - check the constant inputs shapes defined in the script
 ```
 
-The test should be all green, and the benchmark result on Ascend910B2 should be:
+The test should be all green, and the benchmark sweeps every sparsity at both
+`(128, 128)` and `(128, 512)` block shapes, labelled in the first column:
 ```shell
-==========================================================================================
+================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  ATTENTION_MATRIX='blocks_optimized_batched'
-  BLOCK_SIZE_Q=128  BLOCK_SIZE_KV=128  SABI_SORTED=True
+  BLOCK_SHAPES=[(128, 128), (128, 512)]  SABI_SORTED=True
   FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1)
   TORCH_REFERENCE='npu_fusion_attention'
-==========================================================================================
-  H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
-------------------------------------------------------------------------------------------
-  3   1 118806 118806  128      0.00              no          157164.07          169585.69
-  3   1 118806 118806  128      0.05             N/A                N/A          158230.64
-  3   1 118806 118806  128      0.10             N/A                N/A          155686.66 <-- Win
-  3   1 118806 118806  128      0.20             N/A                N/A          149785.80
-  3   1 118806 118806  128      0.30             N/A                N/A          142566.37
-  3   1 118806 118806  128      0.40             N/A                N/A          131445.73
-  3   1 118806 118806  128      0.50             N/A                N/A          116524.34
-  3   1 118806 118806  128      0.60             N/A                N/A           97872.73
-  3   1 118806 118806  128      0.70             N/A                N/A           75930.15
-  3   1 118806 118806  128      0.80             N/A                N/A           49718.49
-  3   1 118806 118806  128      0.90             N/A                N/A           21871.61
-==========================================================================================
+================================================================================================
+  block_shape   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
+------------------------------------------------------------------------------------------------
+      128x128   3   1 118806 118806  128      0.00              no          157164.07          169585.69
+      128x128   3   1 118806 118806  128      0.10             N/A                N/A          155686.66 <-- Win
+      128x128   3   1 118806 118806  128      0.50             N/A                N/A          116524.34
+      128x128   3   1 118806 118806  128      0.90             N/A                N/A           21871.61
+      128x512   3   1 118806 118806  128      0.00              no          157164.07          169585.69
+      128x512   3   1 118806 118806  128      0.10             N/A                N/A          155686.66
+      128x512   3   1 118806 118806  128      0.50             N/A                N/A          116524.34
+      128x512   3   1 118806 118806  128      0.90             N/A                N/A           21871.61
+================================================================================================
 ```
+(Rows trimmed for brevity — the actual sweep emits one row per sparsity for each
+block_shape.) Use `BLOCK_SHAPES` at the top of `benchmark.py` to narrow the sweep
+to a single granularity.
 more explanation about benchmarking is [here](benchmark/README.md). 
 
 To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `torch_npu` conventions:
@@ -84,8 +80,8 @@ attention_out, softmax_lse = torch_bsa.blitz_sparse_attention(
     q,
     k,
     v,
-    sabi=sabi,  # torch.uint16, shape [B, N, ceil(S/128), ceil(S/128)]
-                # Each entry is a KV-block index (128×128 granularity).
+    sabi=sabi,  # torch.uint16, shape [B, N, ceil(S/BLOCK_SIZE_Q), ceil(S/BLOCK_SIZE_KV)]
+                # Each entry is a KV-block index at BLOCK_SIZE_KV-token granularity.
                 # Pad unused slots with 0xFFFF (= uint16 sentinel for "skip").
     actual_seq_lengths=actseqlen,
     actual_seq_lengths_kv=actseqlenkv,
@@ -95,6 +91,10 @@ attention_out, softmax_lse = torch_bsa.blitz_sparse_attention(
     scale_value=scale,
     sparse_mode=0,
     softmax_lse_flag=False,   # set True to compute a valid 2nd output (log-sum-exp)
+    block_shape=[128, 128],   # [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Default [128,128].
+                              # Also supported: [128, 512] (one sabi entry per
+                              # 512-token KV chunk; sabi tensor's last dim is
+                              # ceil(S/512) accordingly).
 )
 ```
 

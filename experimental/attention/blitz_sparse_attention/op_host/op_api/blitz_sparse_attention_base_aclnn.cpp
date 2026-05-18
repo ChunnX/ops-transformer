@@ -45,6 +45,7 @@ const aclTensor *BlitzSparseAttention(
     int64_t sparseMode,
     int64_t innerPrecise,
     bool softmaxLseFlag,
+    const aclIntArray *blockShape,
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
     aclOpExecutor *executor,
@@ -83,7 +84,7 @@ const aclTensor *BlitzSparseAttention(
                  deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2),
         OP_OUTPUT(attentionOutOut, softmaxLseOut),
         OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens,
-                inputLayout, numKeyValueHeads, sparseMode, innerPrecise, softmaxLseFlag));
+                inputLayout, numKeyValueHeads, sparseMode, innerPrecise, softmaxLseFlag, blockShape));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlitzSparseAttention InferShape failed.");
         return nullptr;
@@ -94,7 +95,7 @@ const aclTensor *BlitzSparseAttention(
                  deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2),
         OP_OUTPUT(attentionOutOut, softmaxLseOut),
         OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens,
-                inputLayout, numKeyValueHeads, sparseMode, innerPrecise, softmaxLseFlag));
+                inputLayout, numKeyValueHeads, sparseMode, innerPrecise, softmaxLseFlag, blockShape));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlitzSparseAttention LaunchAicore failed.");
         return nullptr;

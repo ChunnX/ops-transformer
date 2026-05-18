@@ -747,7 +747,8 @@ aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
     const aclTensor *deqScale1, const aclTensor *quantScale1, const aclTensor *deqScale2, const aclTensor *quantScale2,
     const aclTensor *quantOffset2, int64_t numHeads, double scaleValue, int64_t preTokens, int64_t nextTokens,
     char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
-    bool softmaxLseFlag, const aclTensor *attentionOut, const aclTensor *softmaxLse,
+    bool softmaxLseFlag, const aclIntArray *blockShape,
+    const aclTensor *attentionOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(InnerBlitzSparseAttention,
@@ -808,7 +809,8 @@ aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
                                                         numHeads, scaleValue, preTokens, nextTokens,
                                                         inputLayout,
                                                         numKeyValueHeads, sparseMode, innerPrecise,
-                                                        softmaxLseFlag, attentionOut, lsePlaceholder, l0Executor,
+                                                        softmaxLseFlag, blockShape,
+                                                        attentionOut, lsePlaceholder, l0Executor,
                                                         &l0LseOut);
     if (!softmaxLseFlag) {
         aclDestroyTensor(tempLseTensor);

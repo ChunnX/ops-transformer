@@ -39,6 +39,7 @@ static constexpr uint32_t PFA_ATTENTION_OUT_INDEX = 0;
 static constexpr uint32_t BSA_SOFTMAX_LSE_OUT_INDEX = 1;
 static constexpr uint32_t PFA_ATTR_INPUT_LAYOUT_INDEX = 4;
 static constexpr uint32_t BSA_ATTR_SOFTMAX_LSE_FLAG = 8;
+static constexpr uint32_t BSA_ATTR_BLOCK_SHAPE = 9;
 static constexpr uint32_t PFA_INPUT_ACTUAL_SEQ_LENGTHS_INDEX = 6;
 static constexpr uint32_t PFA_INPUT_ACTUAL_SEQ_LENGTHS_KV_INDEX = 7;
 static constexpr uint32_t PFA_QUANT_SCALE2_INDEX = 11;
@@ -209,6 +210,25 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
     } else {
         OP_LOGE(context->GetNodeName(), "Invalid input layout: %s, not support!", inputLayoutPtr);
         return ge::GRAPH_FAILED;
+    }
+
+    // Validate block_shape attr (must be [128,128] or [128,512] in this iteration).
+    auto blockShapeList = attrs->GetListInt(BSA_ATTR_BLOCK_SHAPE);
+    if (blockShapeList != nullptr && blockShapeList->GetSize() >= 2) {
+        int64_t bsQ = blockShapeList->GetData()[0];
+        int64_t bsKV = blockShapeList->GetData()[1];
+        if (bsQ != 128) {
+            OP_LOGE(context->GetNodeName(),
+                "block_shape[0] (BLOCK_SIZE_Q) must be 128 (got %ld); variable Q-tile not supported.",
+                bsQ);
+            return ge::GRAPH_FAILED;
+        }
+        if (bsKV != 128 && bsKV != 512) {
+            OP_LOGE(context->GetNodeName(),
+                "block_shape[1] (BLOCK_SIZE_KV) must be 128 or 512 (got %ld).",
+                bsKV);
+            return ge::GRAPH_FAILED;
+        }
     }
 
     // Infer softmax_lse output shape

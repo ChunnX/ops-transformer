@@ -29,8 +29,10 @@ SEED = 42
 DEVICE = "npu:0"
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = 'BNSD'
-BLOCK_SIZE_Q = 128
-BLOCK_SIZE_KV = 128
+# block_shape pairs exercised by the suite. (128,128) is the sabi-at-128
+# default; (128,512) drops the sabi resolution to one entry per 512-token
+# KV chunk. Both share the same kernel binary at runtime.
+BLOCK_SHAPES = [(128, 128), (128, 512)]
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
@@ -55,9 +57,10 @@ FRAME_SPARSITY_IDS = [f"frame({f.left_cols},{f.right_cols},{f.top_rows},{f.botto
                       for f, s in FRAME_SPARSITY_COMBOS]
 
 @pytest.mark.parametrize("torch_ref", TORCH_REF_VALS)
+@pytest.mark.parametrize("block_shape", BLOCK_SHAPES, ids=lambda bs: f"bs{bs[0]}x{bs[1]}")
 @pytest.mark.parametrize("frame,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
 @pytest.mark.parametrize("shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
-def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
+def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity, block_shape):
     """Test correctness of torch_bsa.blitz_sparse_attention vs reference implementation"""
     # Set random seed for reproducible test inputs
     torch.manual_seed(SEED)
@@ -65,20 +68,20 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
     # Unpack input shapes
     b, h, s_kv, d = shape
     s_q = s_kv
-    
+    BLOCK_SIZE_Q, BLOCK_SIZE_KV = block_shape
 
     # Generate attention mask and parameters
     pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame, 
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV, 
+        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame,
+        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
         device=DEVICE, emit_atten_mask=True
     )
-    
+
     # Generate input tensors
     q, k, v, actseqlen, actseqlenkv = gen_pfa_inputs(
         b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE
     )
-    
+
     # Run our implementation (returns tuple: attention_out, softmax_lse)
     out_our, _ = torch_bsa.blitz_sparse_attention(q, k, v,
         sabi=sabi,
@@ -86,6 +89,7 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
         num_heads=h, num_key_value_heads=h, input_layout=INPUT_LAYOUT,
         scale_value=scale, atten_mask=bsa_atten_mask, sparse_mode=sm,
         pre_tokens=pre_tok, next_tokens=post_tok,
+        block_shape=list(block_shape),
     )
     
     # Run reference implementation
@@ -107,5 +111,6 @@ if __name__ == "__main__":
     test_blitz_sparse_attention_correctness(torch_ref="npu_fusion_attention",
                                             shape=(1, 3, 10_000, 128),
                                             frame=FrameWidths(left_cols=2, right_cols=1, top_rows=2, bottom_rows=1),
-                                            sparsity=0.5)
+                                            sparsity=0.5,
+                                            block_shape=(128, 128))
     logging.getLogger(__name__).info("Smoke test passed.")

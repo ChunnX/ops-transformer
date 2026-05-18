@@ -219,6 +219,12 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
     int64_t innerPrecise = 1;      // Standard precision
     bool    softmaxLseFlag = true; // Request LSE output
 
+    // block_shape attr (index 9): [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Supported pairs:
+    // (128,128) and (128,512). Default in this example matches the sabi shape
+    // computed above (Q_TILES = KV_TILES = S/128 → sabi at 128 granularity).
+    std::vector<int64_t> blockShapeVec = {128, 128};
+    aclIntArray* blockShape = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
+
     // Using BNSD layout as it's common for attention operations
     constexpr const char LAYER_OUT_STR[] = "BNSD";
     constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);
@@ -251,6 +257,7 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
         sparseMode,                      // int64_t            sparseMode,
         innerPrecise,                    // int64_t            innerPrecise,
         softmaxLseFlag,                  // bool               softmaxLseFlag,
+        blockShape,                      // const aclIntArray *blockShape,
         resources.outTensor,             // const aclTensor   *attentionOut,
         resources.lseTensor,             // const aclTensor   *softmaxLse,
         workspaceSize,                   // uint64_t          *workspaceSize,
@@ -272,9 +279,11 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
     ret = aclnnBlitzSparseAttention(*workspaceAddr, *workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnBlitzSparseAttention failed. ERROR: %d\n", ret);
+        aclDestroyIntArray(blockShape);
         return ret;
     }
 
+    aclDestroyIntArray(blockShape);
     return ACL_SUCCESS;
 }
 

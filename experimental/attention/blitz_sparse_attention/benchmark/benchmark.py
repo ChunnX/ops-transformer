@@ -13,6 +13,12 @@ Benchmark driver for torch_bsa.blitz_sparse_attention.
 Measures:
 *  latency (usec) - NPU timer
 *  correctness comparison with a reference PyTorch implementation
+
+Sweeps every `(B, H, S, D, sparsity)` configuration across every entry in
+`BLOCK_SHAPES`. Default is `[(128, 128), (128, 512)]` — the two sabi
+granularities the kernel supports at runtime via the `block_shape` op-attr.
+Each sweep row is labelled with the active block shape; narrow the list to a
+single pair to benchmark only one granularity.
 """
 
 import math
@@ -58,9 +64,12 @@ ATTENTION_MATRIX = "blocks_optimized_batched"
 # For (block / vertical / band) mask - fraction of attention elements that is retained for computation
 SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-# For the block mask
-BLOCK_SIZE_Q = 128
-BLOCK_SIZE_KV = 128
+# For the block mask. BLOCK_SHAPES lists every (BLOCK_SIZE_Q, BLOCK_SIZE_KV) pair
+# the benchmark sweeps over. The single-value BLOCK_SIZE_Q / BLOCK_SIZE_KV constants
+# are kept as informational defaults; the real driver of the sabi-stride choice is
+# the per-pair value passed to torch_bsa.blitz_sparse_attention via block_shape.
+BLOCK_SHAPES = [(128, 128), (128, 512)]
+BLOCK_SIZE_Q, BLOCK_SIZE_KV = BLOCK_SHAPES[0]
 BLOCK_MASK_SEED = 1234
 
 # When True, each sabi row is generated with kept block indices sorted ascending
@@ -680,9 +689,9 @@ def _fmt_or_na(value, width, spec=".2f"):
     return f"{value:{width}{spec}}"
 
 
-def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params):
+def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params, block_shape):
     sm, pre_tok, post_tok = sparsity_params
-    
+
     def fn(q, k, v, seq, seqkv):
         # Returns (attention_out, softmax_lse); benchmark only needs attention_out
         out, _ = torch_bsa.blitz_sparse_attention(
@@ -693,6 +702,7 @@ def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params):
             atten_mask=atten_mask, sparse_mode=sm,
             pre_tokens=pre_tok, next_tokens=post_tok,
             softmax_lse_flag=False, # False = don't comppute the 2nd LSE output
+            block_shape=list(block_shape),
         )
         return out
     return fn
@@ -719,60 +729,64 @@ def benchmark_blitz_sparse_attention():
         return
 
     # Print table header
-    logger.info("=" * 90)
+    logger.info("=" * 96)
     logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
-    logger.info(f"  {BLOCK_SIZE_Q=}  {BLOCK_SIZE_KV=}  {SABI_SORTED=}")
+    logger.info(f"  {BLOCK_SHAPES=}  {SABI_SORTED=}")
     logger.info(f"  {FRAME}")
     logger.info(f"  {TORCH_REFERENCE=}")
-    logger.info("=" * 90)
+    logger.info("=" * 96)
     logger.info(
-        f"{'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} {'Outputs_equal':>15} "
-        f"{'Ref_Latency_[usec]':>18} {'Our_Latency_[usec]':>18}"
+        f"{'block_shape':>13} {'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} "
+        f"{'Outputs_equal':>15} {'Ref_Latency_[usec]':>18} {'Our_Latency_[usec]':>18}"
     )
-    logger.info("-" * 90)
+    logger.info("-" * 96)
 
-    for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
-        s_q = s_kv
+    for block_shape in BLOCK_SHAPES:
+        bs_q, bs_kv = block_shape
+        bs_label = f"{bs_q}x{bs_kv}"
+        for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
+            s_q = s_kv
 
-        # Build attention mask and related parameters for this configuration
-        pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-            b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME, block_size_q=BLOCK_SIZE_Q, 
-            block_size_kv=BLOCK_SIZE_KV, device=DEVICE, emit_atten_mask=run_ref)
+            # Build attention mask and related parameters for this configuration
+            pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
+                b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME,
+                block_size_q=bs_q, block_size_kv=bs_kv,
+                device=DEVICE, emit_atten_mask=run_ref)
 
-        if PRINT_MASK and pfa_atten_mask is not None:
-            logger.info(pfa_atten_mask.int())
-            logger.info(pfa_atten_mask.shape)
+            if PRINT_MASK and pfa_atten_mask is not None:
+                logger.info(pfa_atten_mask.int())
+                logger.info(pfa_atten_mask.shape)
 
-        # When sparsity=0, always run reference as a dense baseline for sanity check
-        run_ref_sparsity_0 = sparsity == 0
+            # When sparsity=0, always run reference as a dense baseline for sanity check
+            run_ref_sparsity_0 = sparsity == 0
 
-        our_fn = _make_our_fn(sabi, h, scale, bsa_atten_mask, (sm, pre_tok, post_tok))
-        ref_fn = _make_ref_fn(h, scale, pfa_atten_mask, run_ref_sparsity_0)
+            our_fn = _make_our_fn(sabi, h, scale, bsa_atten_mask, (sm, pre_tok, post_tok), block_shape)
+            ref_fn = _make_ref_fn(h, scale, pfa_atten_mask, run_ref_sparsity_0)
 
-        # Correctness: compare our output vs reference on shared inputs
-        are_equal_ref = "N/A"
-        if run_our and run_ref or run_ref_sparsity_0:
-            are_equal_ref = _check_correctness(our_fn, ref_fn, b, h, s_q, s_kv, d, device=DEVICE)
+            # Correctness: compare our output vs reference on shared inputs
+            are_equal_ref = "N/A"
+            if run_our and run_ref or run_ref_sparsity_0:
+                are_equal_ref = _check_correctness(our_fn, ref_fn, b, h, s_q, s_kv, d, device=DEVICE)
 
-        # Timing: generate fresh input sets for each implementation
-        inputs = [gen_pfa_inputs(b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE)
-                  for _ in range(n_warmup + n_repeat)]
+            # Timing: generate fresh input sets for each implementation
+            inputs = [gen_pfa_inputs(b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE)
+                      for _ in range(n_warmup + n_repeat)]
 
-        our_duration = None
-        if run_our:
-            our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
+            our_duration = None
+            if run_our:
+                our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
 
-        ref_duration = None
-        if run_ref or run_ref_sparsity_0:
-            ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
+            ref_duration = None
+            if run_ref or run_ref_sparsity_0:
+                ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
 
-        # Print one results row
-        logger.info(
-            f"{h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} {are_equal_ref:>15} "
-            f"{_fmt_or_na(ref_duration, 18)} {_fmt_or_na(our_duration, 18)}"
-        )
+            # Print one results row
+            logger.info(
+                f"{bs_label:>13} {h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} "
+                f"{are_equal_ref:>15} {_fmt_or_na(ref_duration, 18)} {_fmt_or_na(our_duration, 18)}"
+            )
 
-    logger.info("=" * 90)
+    logger.info("=" * 96)
 
 
 if __name__ == "__main__":

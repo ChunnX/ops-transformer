@@ -445,6 +445,26 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
     contextKeyParams.isSoftMaxLseEnable =
         (contextKeyParams.softmaxLseFlag != nullptr) && (*contextKeyParams.softmaxLseFlag);
 
+    // block_shape attr (index 9): [BLOCK_SIZE_Q, BLOCK_SIZE_KV], both multiples of 128.
+    // Defaults already set in ContextParamsForPFATiling (128/128). Only (128,128) and
+    // (128,512) are supported in this iteration; anything else is rejected here so
+    // the kernel never sees an unvalidated value. BLOCK_SIZE_Q is currently locked at
+    // 128 (Q-tile re-parameterization is out of scope — see plan).
+    constexpr uint32_t ATTR_BLOCK_SHAPE_INDEX = 9;
+    auto blockShapeList = attrs->GetListInt(ATTR_BLOCK_SHAPE_INDEX);
+    if (blockShapeList != nullptr && blockShapeList->GetSize() >= 2) {
+        contextKeyParams.qBlockSize = static_cast<int32_t>(blockShapeList->GetData()[0]);
+        contextKeyParams.kvBlockSize = static_cast<int32_t>(blockShapeList->GetData()[1]);
+    }
+    OP_CHECK_IF(contextKeyParams.qBlockSize != 128,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "block_shape[0] (BLOCK_SIZE_Q) must be 128; variable Q-tile not yet supported."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(contextKeyParams.kvBlockSize != 128 && contextKeyParams.kvBlockSize != 512,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "block_shape[1] (BLOCK_SIZE_KV) must be 128 or 512."),
+        return ge::GRAPH_FAILED);
+
     contextKeyParams.deqScaleType = (context->GetOptionalInputDesc(DEQ_SCALE1_INDEX) != nullptr) ?
     context->GetOptionalInputDesc(DEQ_SCALE1_INDEX)->GetDataType() : contextKeyParams.inputDataType;
     contextKeyParams.deqScale2Type = (context->GetOptionalInputDesc(DEQ_SCALE2_INDEX) != nullptr) ?
@@ -5210,6 +5230,8 @@ ge::graphStatus BlitzSparseAttentionTiling::RunBigKernelTilingWithParams(Context
     tilingData->promptAttentionBaseParams.set_fromFused((fromFused == FROM_FUSED_FLAG) ? 1 : 0);
     tilingData->promptAttentionBaseParams.set_isBSNDOut(contextKeyParams.isBSNDOut);
     tilingData->promptAttentionBaseParams.set_isSoftMaxLseEnable(contextKeyParams.isSoftMaxLseEnable);
+    tilingData->promptAttentionBaseParams.set_qBlockSize(static_cast<uint32_t>(contextKeyParams.qBlockSize));
+    tilingData->promptAttentionBaseParams.set_kvBlockSize(static_cast<uint32_t>(contextKeyParams.kvBlockSize));
 
     // Compute tiling data.
     if (splitCoreMode == SplitCoreMode::SPLIT_ONEN_CUBE) {  // Enable N split kernel mode from the perspective of cube in long sequence scenes.

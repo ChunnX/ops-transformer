@@ -36,9 +36,16 @@ from benchmark import create_attention_mask, FrameWidths
 SEED = 42
 DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
-BLOCK_SIZE_Q = 128
-BLOCK_SIZE_KV = 128
+# block_shape pairs exercised by the suite. (128,128) = sabi at 128-token chunks;
+# (128,512) = sabi at 512-token chunks. Both share the same kernel binary.
+BLOCK_SHAPES = [(128, 128), (128, 512)]
 torch.npu.set_device(DEVICE)
+
+
+@pytest.fixture(params=BLOCK_SHAPES, ids=lambda bs: f"bs{bs[0]}x{bs[1]}")
+def block_shape(request):
+    """Parametrized fixture: each test runs once per (Q,KV) pair."""
+    return request.param
 
 OUT_ATOL        = 1e-3   # dense attention_out vs FIAS
 SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA: slight headroom over 0.01
@@ -87,7 +94,7 @@ SPARSE_CASES = [
 
 # ── Kernel helpers ────────────────────────────────────────────────────────────
 
-def _run_bsa(q, k, v, H, scale, S, sabi=None):
+def _run_bsa(q, k, v, H, scale, S, block_shape, sabi=None):
     B = q.shape[0]
     actual_seq = [S] * B
     return torch_bsa.blitz_sparse_attention(
@@ -97,6 +104,7 @@ def _run_bsa(q, k, v, H, scale, S, sabi=None):
         num_heads=H, num_key_value_heads=H,
         input_layout=INPUT_LAYOUT, scale_value=scale,
         sparse_mode=0, softmax_lse_flag=True,
+        block_shape=list(block_shape),
     )
 
 
@@ -143,7 +151,7 @@ def _run_fias_sparse(q, k, v, H, scale, S, pfa_atten_mask):
 @pytest.mark.parametrize("dtype", DENSE_DTYPES, ids=lambda d: str(d).split(".")[-1])
 @pytest.mark.parametrize("shape", DENSE_SHAPES,
                           ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
-def test_joint_dense(shape, dtype):
+def test_joint_dense(shape, dtype, block_shape):
     """Dense BSA: attention_out and softmax_lse both match FIAS in one call."""
     torch.manual_seed(SEED)
     B, H, S, D = shape
@@ -152,7 +160,7 @@ def test_joint_dense(shape, dtype):
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
 
-    bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S)
+    bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S, block_shape)
     ref_out, ref_lse = _run_fias_dense(q, k, v, H, scale, S)
 
     assert bsa_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {bsa_lse.shape}"
@@ -172,17 +180,18 @@ def test_joint_dense(shape, dtype):
 @pytest.mark.parametrize("shape,sparsity", SPARSE_CASES,
                           ids=[f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}-sp{int(sp*100):02d}pct"
                                for s, sp in SPARSE_CASES])
-def test_joint_sparse(shape, sparsity):
+def test_joint_sparse(shape, sparsity, block_shape):
     """Sparse BSA (H=1, bf16): attention_out and softmax_lse both match FIAS sparse_mode=1."""
     torch.manual_seed(SEED)
     B, H, S, D = shape
     assert H == 1
     dtype = torch.bfloat16
     scale = 1.0 / math.sqrt(D)
+    bs_q, bs_kv = block_shape
 
     pfa_atten_mask, _, sabi, *_ = create_attention_mask(
         B, H, S, S, D, sparsity, "blocks_optimized_batched",
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
+        block_size_q=bs_q, block_size_kv=bs_kv,
         frame=NO_FRAME, device="cpu", emit_atten_mask=True,
     )
     sabi            = sabi.to(DEVICE)
@@ -192,7 +201,7 @@ def test_joint_sparse(shape, sparsity):
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
 
-    bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S, sabi=sabi)
+    bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S, block_shape, sabi=sabi)
     # attention_out: compare against npu_fusion_attention (PFA) — same reference
     # as test_attn.py; PFA and BSA share implementation lineage so their outputs
     # FIAS uses a different tiling
@@ -222,11 +231,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     log = logging.getLogger(__name__)
 
-    test_joint_dense((1, 2, 2048, 128), torch.bfloat16)
+    SMOKE_BS = (128, 128)
+
+    test_joint_dense((1, 2, 2048, 128), torch.bfloat16, SMOKE_BS)
     log.info("dense joint bf16 passed")
 
-    test_joint_dense((1, 2, 2048, 128), torch.float16)
+    test_joint_dense((1, 2, 2048, 128), torch.float16, SMOKE_BS)
     log.info("dense joint fp16 passed")
 
-    test_joint_sparse((1, 1, 4096, 128), 0.5)
+    test_joint_sparse((1, 1, 4096, 128), 0.5, SMOKE_BS)
     log.info("sparse joint H=1 bf16 sp=50% passed")
