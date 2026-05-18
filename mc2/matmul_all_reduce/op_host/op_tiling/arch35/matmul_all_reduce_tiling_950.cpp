@@ -41,10 +41,11 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    }
+    // uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    // if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    //     mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    // }
+    mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
             OP_LOGE(opName_, "Get mc2InitTiling from matmulAllReduce910TilingData failed."),
@@ -64,10 +65,11 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    }
+    // uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    // if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    //     mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    // }
+    mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
         OP_LOGE(opName_, "Get mc2InitTiling from MatmulAllReduce910TilingDataA5 failed."),
@@ -150,7 +152,8 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     bool isA2ARSAG = isUseA2APath;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    // uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_FP_MM,                               \
         false,                                      \
