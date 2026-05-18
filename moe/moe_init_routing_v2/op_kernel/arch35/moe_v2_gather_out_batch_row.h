@@ -59,7 +59,7 @@ private:
     int64_t activateRows;
 
     int64_t ubRowsPerLoop;
-    
+
     int64_t currentLoopRows;
     int64_t coreRows;
     int64_t perLoopRows;
@@ -90,13 +90,22 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 
     LocalTensor<T> outRowsLocal = outputRowsQueue.AllocTensor<T>();
 
+    int64_t validOutPosRows = Min(outPosRows, activateRows - outPosStart);
+    if (validOutPosRows > 0 && outPosStart < activateRows) {
+        Duplicate(outRowsLocal, static_cast<T>(0), validOutPosRows * cols);
+    }
+
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(cols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
 
     for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
+        if (outPosIdx >= validOutPosRows) {
+            break;
+        }
+
         int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffset + outPosIdx);
 
-        if (expandedTokenIdx < 0 || expandedTokenIdx >= totalLength || expandedTokenIdx >= activateRows) {
+        if (expandedTokenIdx < 0 || expandedTokenIdx >= totalLength) {
             continue;
         }
 
@@ -111,9 +120,11 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 
     SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
 
-    DataCopyExtParams copyOutParams{static_cast<uint16_t>(outPosRows), static_cast<uint32_t>(cols * sizeof(T)), 0, 0,
-                                    0};
-    DataCopyPad(expandedXGm[outPosStart * cols], outRowsLocal, copyOutParams);
+    if (validOutPosRows > 0 && outPosStart < activateRows) {
+        DataCopyExtParams copyOutParams{static_cast<uint16_t>(validOutPosRows), static_cast<uint32_t>(cols * sizeof(T)),
+                                        0, 0, 0};
+        DataCopyPad(expandedXGm[outPosStart * cols], outRowsLocal, copyOutParams);
+    }
 
     outputRowsQueue.FreeTensor(outRowsLocal);
 }
@@ -124,6 +135,12 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutCompute(int64_t progr
     LocalTensor<int32_t> dstToSrcLocal = dstToSrcIndexQueue.DeQue<int32_t>();
 
     int64_t outPosStart = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
+
+    if (outPosStart >= this->activateRows) {
+        dstToSrcIndexQueue.FreeTensor(dstToSrcLocal);
+        return;
+    }
+
     int64_t totalOutPosRows = loopRows;
     int64_t ubRowsLoops = Ceil(totalOutPosRows, this->ubRowsPerLoop);
 
@@ -179,7 +196,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
             this->gatherOutTilingData->lastCorePerLoopRows;
 
     inputXGm.SetGlobalBuffer((__gm__ T *)inputX, this->n * this->cols);
-    expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->totalLength * this->cols);
+    expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->activateRows * this->cols);
 
     dstToSrcIndexGm.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength, sizeof(int32_t)) +
                                         this->blockIdx * this->gatherOutTilingData->perCoreRows,
