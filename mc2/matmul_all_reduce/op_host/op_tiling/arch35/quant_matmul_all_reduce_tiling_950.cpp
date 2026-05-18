@@ -1035,11 +1035,15 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
+        allReduceTilingHccl.SetIsAlign((isPerBlock_ ||
+            (scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)));
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_) && !isAicpu) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);
+        allReduceTilingHccl.SetIsAlign((isPerBlock_ ||
+            (scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)));
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {
         MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
