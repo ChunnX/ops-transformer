@@ -418,7 +418,7 @@ private:
             LoadAlign(expVreg, srcUb + i * S2BaseSize);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
             Exp(expDstVregResult, expDstVreg, pregTailN);
-            // Exp(expDstVreg, expDstVreg, pregTailN);
+            Exp(expDstVreg, expDstVreg, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
                 // AscendC::printf("tkd ComputeExpSubSum16 STAGE ONE\n");
                 constexpr half staticScale = static_cast<half>(448.0f);
