@@ -35,6 +35,7 @@ constexpr uint32_t A8W4PRE_VECTOR_BASE_K = 512;    //单位为元素个数
 constexpr int32_t MASK = 128;
 constexpr half ONE_SIXTEEN = 0.0625;
 constexpr uint32_t ALIGN_MTE = 32;
+constexpr uint32_t kNZInt4BlockSize = 64;
 
 class GMMA8W4PreProcessNZ {
 public:
@@ -170,11 +171,11 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
     auto tensorOut = vecOutQueue.AllocTensor<int4b_t>();
     
     //高四位低四位tensor交叉拼接
-    DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), 1, static_cast<uint16_t>(curVecBaseK / 64 - 1), 1};
-    auto loopCnt = curVecBaseK / 64;
+    DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), 1, static_cast<uint16_t>(curVecBaseK / kNZInt4BlockSize - 1), 1};
+    auto loopCnt = curVecBaseK / kNZInt4BlockSize;
     for(int i = 0; i < loopCnt; i++) {
-        DataCopy(tensorOut[i * curVecBaseM * 2 * 64], xHighI4Tensor[i * 64],dataCopyParams);    //高四位
-        DataCopy(tensorOut[64 + i * curVecBaseM * 2 * 64], xLowI4Tensor[i * 64],dataCopyParams);    //低四位，偏移量为64个元素
+        DataCopy(tensorOut[i * curVecBaseM * 2 * kNZInt4BlockSize], xHighI4Tensor[i * kNZInt4BlockSize],dataCopyParams);    //高四位
+        DataCopy(tensorOut[kNZInt4BlockSize + i * curVecBaseM * 2 * kNZInt4BlockSize], xLowI4Tensor[i * kNZInt4BlockSize],dataCopyParams);    //低四位，偏移量为64个元素
     }
 
     vecOutQueue.EnQue(tensorOut);
@@ -184,11 +185,11 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx
     //m需要8位对齐
     auto m_Align_8 = AlignUp<8>(m);
     auto tensorOut = vecOutQueue.DeQue<int4b_t>();
-    auto baseOffset = mIdx * A8W4PRE_VECTOR_BASE_M * 64 * 2 + kIdx * A8W4PRE_VECTOR_BASE_K * m_Align_8 * 2;
+    auto baseOffset = mIdx * A8W4PRE_VECTOR_BASE_M * kNZInt4BlockSize * 2 + kIdx * A8W4PRE_VECTOR_BASE_K * m_Align_8 * 2;
 
     
     baseOffset = (baseOffset + ALIGN_MTE - 1) / ALIGN_MTE * ALIGN_MTE;
-    DataCopyExtParams dataCopyParams{static_cast<uint16_t>(curVecBaseK / 64), curVecBaseM * 64, 0, (m_Align_8 - curVecBaseM) * 2 * 32, 0};
+    DataCopyExtParams dataCopyParams{static_cast<uint16_t>(curVecBaseK / kNZInt4BlockSize), curVecBaseM * kNZInt4BlockSize, 0, (m_Align_8 - curVecBaseM) * 2 * 32, 0};
 
     DataCopyPadExtParams<int4b_t> padParams{false, 0, 0, 0};
     
