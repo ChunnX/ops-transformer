@@ -84,6 +84,9 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 {
     LocalTensor<T> outRowsLocal = outputRowsQueue.AllocTensor<T>();
 
+    DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols * sizeof(T)), 0, 0, 0};
+    DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
+
     for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
         int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffset + outPosIdx);
 
@@ -97,8 +100,6 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
             continue;
         }
 
-        DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols * sizeof(T)), 0, 0, 0};
-        DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
         DataCopyPad(outRowsLocal[outPosIdx * this->cols], inputXGm[srcRowIdx * this->cols], copyInParams,
                     copyInPadParams);
     }
