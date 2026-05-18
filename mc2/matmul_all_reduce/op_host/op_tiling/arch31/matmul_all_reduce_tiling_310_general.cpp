@@ -33,6 +33,7 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
         OP_LOGI(opName_, "In 310p, check not quant scenario.");
         GE_ASSERT_GRAPH_SUCCESS(CheckA16W16());
     }
+    GE_ASSERT_GRAPH_SUCCESS(CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
