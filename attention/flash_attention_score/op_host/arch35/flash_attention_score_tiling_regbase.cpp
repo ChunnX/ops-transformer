@@ -85,6 +85,20 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDtype()
 {
     inputDtype = context_->GetInputDesc(0)->GetDataType();
     inputDtypeBytes = ge::GetSizeByDataType(inputDtype);
+    
+    auto keyDtype = context_->GetInputDesc(1)->GetDataType();
+    auto valueDtype = context_->GetInputDesc(2)->GetDataType();
+    OP_CHECK_IF(keyDtype != inputDtype,
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "key dtype[%s] should be same as query dtype[%s].",
+                                           ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
+                                           ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str()),
+               return false);
+    OP_CHECK_IF(valueDtype != inputDtype,
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "value dtype[%s] should be same as query dtype[%s].",
+                                           ge::TypeUtils::DataTypeToSerialString(valueDtype).c_str(),
+                                           ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str()),
+               return false);
+    
     switch (inputDtype) {
         case ge::DT_FLOAT16:
             bmmDtype = matmul_tiling::DataType::DT_FLOAT16;
@@ -212,6 +226,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
     }
     if (attrs->GetAttrNum() > idx) {
         softmaxOutLayout = attrs->GetAttrPointer<char>(idx++);
+        OP_CHECK_IF(strlen(softmaxOutLayout) > 0 && strcmp(softmaxOutLayout, "same_as_input") != 0,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "softmaxOutLayout[%s] is invalid, only support empty string or 'same_as_input'.",
+                                               softmaxOutLayout),
+                   return false);
         tndSoftmaxOut = (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxOutLayout, "same_as_input") == 0) ? 1 : tndSoftmaxOut;
     }
     OP_LOGD(context_, "attrs: scale_value[%f] keep_prob[%f] pre_tockens[%ld] next_tockens[%ld] head_num[%ld] input_layout[%s]"
@@ -231,13 +249,43 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     bool hasQueryRope = queryRope != nullptr && queryRope->GetStorageShape().GetDimNum() != 0;
     auto keyRope = context_->GetOptionalInputShape(KEY_ROPE_INDEX);
     bool hasKeyRope = keyRope != nullptr && keyRope->GetStorageShape().GetDimNum() != 0;
+    auto queryRopeDesc = context_->GetOptionalInputDesc(QUERY_ROPE_INDEX);
+    auto keyRopeDesc = context_->GetOptionalInputDesc(KEY_ROPE_INDEX);
+    
     if (hasQueryRope ^ hasKeyRope) {
         OP_LOGE(opName, "query_rope and key_rope should be present or absent at the same time, check this.");
         return false;
     }
+    
+    if (hasQueryRope && queryRopeDesc != nullptr) {
+        auto queryRopeDtype = queryRopeDesc->GetDataType();
+        OP_CHECK_IF(queryRopeDtype != inputDtype,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope dtype[%s] should be same as query dtype[%s].",
+                                               ge::TypeUtils::DataTypeToSerialString(queryRopeDtype).c_str(),
+                                               ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str()),
+                   return false);
+        OP_CHECK_IF(queryRopeDtype != ge::DT_FLOAT16 && queryRopeDtype != ge::DT_BF16,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope dtype[%s] only support FLOAT16 or BFLOAT16.",
+                                               ge::TypeUtils::DataTypeToSerialString(queryRopeDtype).c_str()),
+                   return false);
+    }
+    if (hasKeyRope && keyRopeDesc != nullptr) {
+        auto keyRopeDtype = keyRopeDesc->GetDataType();
+        OP_CHECK_IF(keyRopeDtype != inputDtype,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "keyRope dtype[%s] should be same as key dtype[%s].",
+                                               ge::TypeUtils::DataTypeToSerialString(keyRopeDtype).c_str(),
+                                               ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str()),
+                   return false);
+        OP_CHECK_IF(keyRopeDtype != ge::DT_FLOAT16 && keyRopeDtype != ge::DT_BF16,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "keyRope dtype[%s] only support FLOAT16 or BFLOAT16.",
+                                               ge::TypeUtils::DataTypeToSerialString(keyRopeDtype).c_str()),
+                   return false);
+    }
+    
     dSizeRope = 0; // init dSizeRope
     hasRope = hasQueryRope && hasKeyRope;
     const gert::Shape *queryRopeShape = hasQueryRope ? &queryRope->GetStorageShape() : nullptr;
+    const gert::Shape *keyRopeShape = hasKeyRope ? &keyRope->GetStorageShape() : nullptr;
 
     size_t layoutLen = strlen(inputLayout);
     OP_LOGD(context_, "get input_layout [%s].", inputLayout);
@@ -384,11 +432,22 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             s1Size = queryShape.GetDim(1);
             bSize = queryShape.GetDim(0);
             s2Size = keyShape.GetDim(1);
+            OP_CHECK_IF(bSize != keyShape.GetDim(0),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as key batchsize[%ld].",
+                                                   bSize, keyShape.GetDim(0)),
+                       return false);
+            OP_CHECK_IF(bSize != valueShape.GetDim(0),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as value batchsize[%ld].",
+                                                   bSize, valueShape.GetDim(0)),
+                       return false);
             h1 = queryShape.GetDim(2); // 2: H idx
             h2 = keyShape.GetDim(2);   // 2: H idx
             h3 = valueShape.GetDim(2);   // 2: H idx
             if (hasRope) {
                 hRope = queryRopeShape->GetDim(DIM_NUM_2);
+                OP_CHECK_IF(queryRopeShape->GetDim(0) != bSize || queryRopeShape->GetDim(1) != s1Size,
+                           OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope shape should match query except D dimension."),
+                           return false);
             }
             s1StrideSize = h1;
             s2StrideSize = h2;
@@ -398,11 +457,22 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             s1Size = queryShape.GetDim(0);
             s2Size = keyShape.GetDim(0);
             bSize = queryShape.GetDim(1);
+            OP_CHECK_IF(bSize != keyShape.GetDim(1),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as key batchsize[%ld].",
+                                                   bSize, keyShape.GetDim(1)),
+                       return false);
+            OP_CHECK_IF(bSize != valueShape.GetDim(1),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as value batchsize[%ld].",
+                                                   bSize, valueShape.GetDim(1)),
+                       return false);
             h1 = queryShape.GetDim(2); // 2: H idx
             h2 = keyShape.GetDim(2);   // 2: H idx
             h3 = valueShape.GetDim(2);   // 2: H idx
             if (hasRope) {
                 hRope = queryRopeShape->GetDim(DIM_NUM_2);
+                OP_CHECK_IF(queryRopeShape->GetDim(0) != s1Size || queryRopeShape->GetDim(1) != bSize,
+                           OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope shape should match query except D dimension."),
+                           return false);
             }
             s1StrideSize = h1 * bSize;
             s2StrideSize = h2 * bSize;
@@ -416,6 +486,9 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             h3 = n2Size * dSizeV;
             if (hasRope) {
                 dSizeRope = queryRopeShape->GetDim(DIM_NUM_2);
+                OP_CHECK_IF(queryRopeShape->GetDim(0) != queryShape.GetDim(0) || queryRopeShape->GetDim(1) != n1Size,
+                           OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope shape should match query except D dimension."),
+                           return false);
             }
             hRope = n1Size * dSizeRope;
             s1StrideSize = gSize * n2Size * dSize;
@@ -450,6 +523,14 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
         // 2: N idx, 3: D idx
         if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' && inputLayout[3] == 'D') {
             bSize = queryShape.GetDim(0);
+            OP_CHECK_IF(bSize != keyShape.GetDim(0),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as key batchsize[%ld].",
+                                                   bSize, keyShape.GetDim(0)),
+                       return false);
+            OP_CHECK_IF(bSize != valueShape.GetDim(0),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as value batchsize[%ld].",
+                                                   bSize, valueShape.GetDim(0)),
+                       return false);
             s1Size = queryShape.GetDim(1);
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2); // 2: N idx
@@ -463,6 +544,10 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             dSizeV = valueShape.GetDim(3);          // 3: D idx
             if (hasRope) {
                 dSizeRope = queryRopeShape->GetDim(DIM_NUM_3);
+                OP_CHECK_IF(queryRopeShape->GetDim(0) != bSize || queryRopeShape->GetDim(1) != s1Size ||
+                           queryRopeShape->GetDim(2) != n1Size,
+                           OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope shape should match query except D dimension."),
+                           return false);
             }
             s1StrideSize = gSize * n2Size * dSize;
             s2StrideSize = n2Size * dSize;
@@ -472,6 +557,14 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
                    // 2: S idx, 3: N idx
                    inputLayout[2] == 'S' && inputLayout[3] == 'D') {
             bSize = queryShape.GetDim(0);
+            OP_CHECK_IF(bSize != keyShape.GetDim(0),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as key batchsize[%ld].",
+                                                   bSize, keyShape.GetDim(0)),
+                       return false);
+            OP_CHECK_IF(bSize != valueShape.GetDim(0),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "query batchsize[%ld] should be same as value batchsize[%ld].",
+                                                   bSize, valueShape.GetDim(0)),
+                       return false);
             n2Size = keyShape.GetDim(1); // 1: N idx
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
@@ -485,6 +578,10 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             dSizeV = valueShape.GetDim(3);  // 3: D idx
             if (hasRope) {
                 dSizeRope = queryRopeShape->GetDim(DIM_NUM_3);
+                OP_CHECK_IF(queryRopeShape->GetDim(0) != bSize || queryRopeShape->GetDim(1) != n1Size ||
+                           queryRopeShape->GetDim(2) != s1Size,
+                           OPS_REPORT_VECTOR_INNER_ERR(opName, "queryRope shape should match query except D dimension."),
+                           return false);
             }
             s1StrideSize = dSize;
             s2StrideSize = dSize;
@@ -523,6 +620,34 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
     if (hasRope && (dSize != 128 || dSizeRope != 64)) {
         OPS_REPORT_VECTOR_INNER_ERR(opName, "MLA concat only support dSize=128, dSizeRope=64.");
         return ge::GRAPH_FAILED;
+    }
+
+    auto attentionOutDesc = context_->GetOutputDesc(ATTEN_OUT_INDEX);
+    if (attentionOutDesc != nullptr) {
+        auto attentionOutDtype = attentionOutDesc->GetDataType();
+        OP_CHECK_IF(attentionOutDtype != inputDtype,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "attentionOut dtype[%s] should be same as query dtype[%s].",
+                                               ge::TypeUtils::DataTypeToSerialString(attentionOutDtype).c_str(),
+                                               ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str()),
+                   return ge::GRAPH_FAILED);
+    }
+
+    auto softmaxMaxDesc = context_->GetOutputDesc(SOFTMAX_MAX_OUT_INDEX);
+    if (softmaxMaxDesc != nullptr) {
+        auto softmaxMaxDtype = softmaxMaxDesc->GetDataType();
+        OP_CHECK_IF(softmaxMaxDtype != ge::DT_FLOAT,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "softmaxMaxOut dtype[%s] must be FLOAT.",
+                                               ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str()),
+                   return ge::GRAPH_FAILED);
+    }
+
+    auto softmaxSumDesc = context_->GetOutputDesc(SOFTMAX_SUM_OUT_INDEX);
+    if (softmaxSumDesc != nullptr) {
+        auto softmaxSumDtype = softmaxSumDesc->GetDataType();
+        OP_CHECK_IF(softmaxSumDtype != ge::DT_FLOAT,
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "softmaxSumOut dtype[%s] must be FLOAT.",
+                                               ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str()),
+                   return ge::GRAPH_FAILED);
     }
 
     inputParamsRegbase_->set_bSize(bSize);
@@ -616,11 +741,28 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
     // 0: (B,N2,G,S1,S2), 1: (B,N2,G,1,S2)
     PseShapeType pseShapeType = PseShapeType::PSE_B_N2_G_1_S2;
     auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
+    auto pseInput = context_->GetOptionalInputDesc(PSE_INPUT_INDEX);
     if (pseShape != nullptr && pseShape->GetStorageShape().GetDimNum() != 0) {
         hasPse = true;
         auto &pseShapeDims = pseShape->GetStorageShape();
         size_t pseDimNum = pseShapeDims.GetDimNum();
         int64_t pseBSize = pseShapeDims.GetDim(0);
+        
+        if (pseInput != nullptr) {
+            auto pseDtype = pseInput->GetDataType();
+            OP_CHECK_IF(pseDtype != ge::DT_FLOAT16 && pseDtype != ge::DT_BF16 && pseDtype != ge::DT_FLOAT,
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "PSE dtype[%s] only support FLOAT16, BFLOAT16 or FLOAT32.",
+                                                   ge::TypeUtils::DataTypeToSerialString(pseDtype).c_str()),
+                       return false);
+            if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
+                pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+                OP_CHECK_IF(pseDtype != ge::DT_FLOAT,
+                           OPS_REPORT_VECTOR_INNER_ERR(opName, "Inner PSE (pseType=2 or 3) dtype must be FLOAT32, but got [%s].",
+                                                       ge::TypeUtils::DataTypeToSerialString(pseDtype).c_str()),
+                           return false);
+            }
+        }
+        
         if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
             if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM) {
@@ -632,6 +774,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
                 pseShapeType = PseShapeType::PSE_1_N2_G_SLOPE;
                 pseBSize = 1;
             }
+            OP_CHECK_IF(s1Size != s2Size,
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "pseType=2 or 3 only support Sq[%ld] == Skv[%ld].",
+                                                   s1Size, s2Size),
+                       return false);
         } else if (inputParamsRegbase_->get_layoutType() == static_cast<uint8_t>(LayoutType::LAYOUT_TND)) {
             OP_CHECK_IF(!AnalyzeTndPseOptionalInput(pseShapeType, pseShapeDims, pseDimNum, pseBSize),
                        OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze tnd mode pse shape fail."),
