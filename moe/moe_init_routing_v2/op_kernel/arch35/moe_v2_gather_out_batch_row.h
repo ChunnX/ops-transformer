@@ -33,10 +33,10 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CopyInDstToSrcIndices(int64_t progress);
+    __aicore__ inline void CopyInDstToSrcIndices(int64_t progress, int64_t loopRows);
     __aicore__ inline void GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows, int64_t indexOffset,
                                              LocalTensor<int32_t> &dstToSrcLocal);
-    __aicore__ inline void GatherOut(int64_t progress);
+    __aicore__ inline void GatherOutCompute(int64_t progress, int64_t loopRows);
 
 private:
     TPipe *pipe;
@@ -68,10 +68,10 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyInDstToSrcIndices(int64_t progress)
+__aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyInDstToSrcIndices(int64_t progress, int64_t loopRows)
 {
     LocalTensor<int32_t> indicesLocal = dstToSrcIndexQueue.AllocTensor<int32_t>();
-    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(this->currentLoopRows * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(loopRows * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     DataCopyPad(indicesLocal, dstToSrcIndexGm[progress * this->perLoopRows], dataCopyParams, dataCopyPadParams);
     dstToSrcIndexQueue.EnQue<int32_t>(indicesLocal);
@@ -115,14 +115,12 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOut(int64_t progress)
+__aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutCompute(int64_t progress, int64_t loopRows)
 {
-    CopyInDstToSrcIndices(progress);
     LocalTensor<int32_t> dstToSrcLocal = dstToSrcIndexQueue.DeQue<int32_t>();
-    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     int64_t outPosStart = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
-    int64_t totalOutPosRows = this->currentLoopRows;
+    int64_t totalOutPosRows = loopRows;
     int64_t ubRowsLoops = Ceil(totalOutPosRows, this->ubRowsPerLoop);
 
     for (int64_t ubBlockIdx = 0; ubBlockIdx < ubRowsLoops; ubBlockIdx++) {
@@ -190,14 +188,24 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
 template <typename T>
 __aicore__ inline void MoeV2GatherOutBatchRow<T>::Process()
 {
-    if (this->blockIdx < this->needCoreNum) {
-        currentLoopRows = perLoopRows;
-        for (int64_t loop = 0; loop < this->rowLoops; loop++) {
-            if (loop == this->rowLoops - 1) {
-                currentLoopRows = lastLoopRows;
-            }
+    if (this->blockIdx >= this->needCoreNum) {
+        return;
+    }
 
-            GatherOut(loop);
+    if (this->rowLoops == 0) {
+        return;
+    }
+
+    CopyInDstToSrcIndices(0, this->perLoopRows);
+
+    for (int64_t loop = 0; loop < this->rowLoops; loop++) {
+        int64_t currentRows = (loop == this->rowLoops - 1) ? this->lastLoopRows : this->perLoopRows;
+
+        GatherOutCompute(loop, currentRows);
+
+        if (loop < this->rowLoops - 1) {
+            int64_t nextRows = (loop + 1 == this->rowLoops - 1) ? this->lastLoopRows : this->perLoopRows;
+            CopyInDstToSrcIndices(loop + 1, nextRows);
         }
     }
 }
