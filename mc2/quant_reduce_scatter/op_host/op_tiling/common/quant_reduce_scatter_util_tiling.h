@@ -21,9 +21,23 @@ using namespace std;
 using namespace ge;
 using namespace gert;
 
+#ifdef BUILD_OPEN_PROJECT
+
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+// input index
+constexpr size_t CONTEXT_INDEX = 0;
+constexpr size_t X_INDEX = 1;
+constexpr size_t SCALES_INDEX = 2;
+#else
 // input index
 constexpr size_t X_INDEX = 0;
 constexpr size_t SCALES_INDEX = 1;
+#endif  // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+
+#endif  // BUILD_OPEN_PROJECT
+
 // output index
 constexpr size_t OUTPUT_INDEX = 0;
 // attr index
