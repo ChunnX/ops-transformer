@@ -161,7 +161,7 @@ Ascend 950PR/Ascend 950DT：
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
 - 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
-- return_value仅在Ascend 950PR/Ascend 950DT支持图模式。
+- 图模式调用算子时，入参return_value仅在Ascend 950PR/Ascend 950DT支持True。
 
 ## 调用示例
 
