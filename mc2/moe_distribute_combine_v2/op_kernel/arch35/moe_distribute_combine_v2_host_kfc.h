@@ -23,6 +23,7 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_v2_tiling.h"
+#include "../moe_distribute_combine_v2_quant.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "combine_log.h"
 #if __has_include("../../moe_distribute_dispatch_v2/check_winsize.h")
