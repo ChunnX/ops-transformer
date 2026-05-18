@@ -38,6 +38,7 @@ public:
     void AdjustLongShortTileLen() override;
     void SetLongTileLen() override;
     void SetCommBoundTile();
+    void AlignLongTileLen();
     uint64_t Align256(uint64_t value) const;
 };
 
