@@ -120,6 +120,7 @@ private:
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;
     int32_t numBlocks_ = 0;
+    bool decodeS1GMerge_ = false;
 
     // Tiling Info
     FiaTilingInfo *fiaInfo_ = nullptr;
