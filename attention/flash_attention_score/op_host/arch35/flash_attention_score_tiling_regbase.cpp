@@ -1630,8 +1630,13 @@ SparseEnum FlashAttentionScoreTilingRegbase::GetPrefixNList(std::ostringstream &
 {
     auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
     if (prefixN == nullptr) {
-        OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
-        failReason << "prefixN is null pointer while sparse mode is prefix";
+        if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX_COMPRESS)) {
+            OP_LOGE(context_, "[%s] prefixN must be provided when sparseMode=6 (PREFIX_COMPRESS).", templateName);
+            failReason << "prefixN must be provided when sparseMode=6 (PREFIX_COMPRESS)";
+        } else {
+            OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
+            failReason << "prefixN is null pointer while sparse mode is prefix";
+        }
         return SparseEnum::ALL;
     }
 
