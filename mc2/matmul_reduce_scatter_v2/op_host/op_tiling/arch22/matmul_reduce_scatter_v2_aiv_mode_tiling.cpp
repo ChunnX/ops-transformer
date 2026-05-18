@@ -680,12 +680,11 @@ void MatmulReduceScatterA2FourRankINT8Tiling(CoCTiling &cocTilingData, MatmulRed
 void MatmulReduceScatterA2FourRankFP16Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_FOUR_RANK_FP16_CODE_DEFAULT;
-    // Configure tiling parameters for FP16 four-rank mode
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> tilingParamCfg;
-    tilingParamCfg[&code] = MatmulReduceScatterV2AivModeTilingValue(MATMUL_REDUCESCATTER_A2_FOUR_RANK_FP16_CODE_DEFAULT,
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(MATMUL_REDUCESCATTER_A2_FOUR_RANK_FP16_CODE_DEFAULT,
                                                                     g_matmulReduceScatterA2FourRankFP16CodeMap);
 
-    CalTilingParam(cocTilingData, tilingParamCfg, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
@@ -694,12 +693,11 @@ void MatmulReduceScatterA2FourRankFP16Tiling(CoCTiling &cocTilingData, MatmulRed
 void MatmulReduceScatterA2EightRankINT8Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_EIGHT_RANK_INT8_CODE_DEFAULT;
-    // A2 eight-rank INT8 tiling configuration
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> tilingParamMapA2;
-    tilingParamMapA2[&code] = MatmulReduceScatterV2AivModeTilingValue(
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(
         MATMUL_REDUCESCATTER_A2_EIGHT_RANK_INT8_CODE_DEFAULT, g_matmulReduceScatterA2EightRankINT8CodeMap);
 
-    CalTilingParam(cocTilingData, tilingParamMapA2, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
@@ -708,12 +706,11 @@ void MatmulReduceScatterA2EightRankINT8Tiling(CoCTiling &cocTilingData, MatmulRe
 void MatmulReduceScatterA2EightRankFP16Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_EIGHT_RANK_FP16_CODE_DEFAULT;
-    // FP16 eight-rank configuration for A2 architecture
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> paramConfigMap;
-    paramConfigMap[&code] = MatmulReduceScatterV2AivModeTilingValue(
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(
         MATMUL_REDUCESCATTER_A2_EIGHT_RANK_FP16_CODE_DEFAULT, g_matmulReduceScatterA2EightRankFP16CodeMap);
 
-    CalTilingParam(cocTilingData, paramConfigMap, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
@@ -722,12 +719,11 @@ void MatmulReduceScatterA2EightRankFP16Tiling(CoCTiling &cocTilingData, MatmulRe
 void MatmulReduceScatterA3EightRankINT8Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A3_EIGHT_RANK_INT8_CODE_DEFAULT;
-    // A3 architecture eight-rank INT8 tiling setup
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> tilingParamMapA3;
-    tilingParamMapA3[&code] = MatmulReduceScatterV2AivModeTilingValue(
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(
         MATMUL_REDUCESCATTER_A3_EIGHT_RANK_INT8_CODE_DEFAULT, g_matmulReduceScatterA3EightRankINT8CodeMap);
 
-    CalTilingParam(cocTilingData, tilingParamMapA3, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
@@ -736,12 +732,11 @@ void MatmulReduceScatterA3EightRankINT8Tiling(CoCTiling &cocTilingData, MatmulRe
 void MatmulReduceScatterA3EightRankFP16Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A3_EIGHT_RANK_FP16_CODE_DEFAULT;
-    // Eight-rank FP16 tiling for A3 architecture
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> cfgParamMap;
-    cfgParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(
         MATMUL_REDUCESCATTER_A3_EIGHT_RANK_FP16_CODE_DEFAULT, g_matmulReduceScatterA3EightRankFP16CodeMap);
 
-    CalTilingParam(cocTilingData, cfgParamMap, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
@@ -750,12 +745,11 @@ void MatmulReduceScatterA3EightRankFP16Tiling(CoCTiling &cocTilingData, MatmulRe
 void MatmulReduceScatterA3FourRankINT8Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A3_FOUR_RANK_INT8_CODE_DEFAULT;
-    // Four-rank INT8 configuration for A3
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> tilingCfgMap;
-    tilingCfgMap[&code] = MatmulReduceScatterV2AivModeTilingValue(MATMUL_REDUCESCATTER_A3_FOUR_RANK_INT8_CODE_DEFAULT,
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(MATMUL_REDUCESCATTER_A3_FOUR_RANK_INT8_CODE_DEFAULT,
                                                                     g_matmulReduceScatterA3FourRankINT8CodeMap);
 
-    CalTilingParam(cocTilingData, tilingCfgMap, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
@@ -764,12 +758,11 @@ void MatmulReduceScatterA3FourRankINT8Tiling(CoCTiling &cocTilingData, MatmulRed
 void MatmulReduceScatterA3FourRankFP16Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A3_FOUR_RANK_FP16_CODE_DEFAULT;
-    // A3 four-rank FP16 final tiling configuration
-    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> tilingMapFinal;
-    tilingMapFinal[&code] = MatmulReduceScatterV2AivModeTilingValue(MATMUL_REDUCESCATTER_A3_FOUR_RANK_FP16_CODE_DEFAULT,
+    std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
+    TilingParamMap[&code] = MatmulReduceScatterV2AivModeTilingValue(MATMUL_REDUCESCATTER_A3_FOUR_RANK_FP16_CODE_DEFAULT,
                                                                     g_matmulReduceScatterA3FourRankFP16CodeMap);
 
-    CalTilingParam(cocTilingData, tilingMapFinal, info);
+    CalTilingParam(cocTilingData, TilingParamMap, info);
 
     ReduceScatterV2DecodeTilingData(code, cocTilingData, info);
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
