@@ -482,21 +482,21 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
 void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
 {
     // permuteout size(范围校验能够确保不溢出)
-    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_);
+    permuteOutSize_ = a_ * h1_;
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {
         // mxfp4 场景占半字节，shapesize大小除以二
         permuteOutSize_ = Ops::Base::CeilDiv(permuteOutSize_, MXFP4_PACK_FACTOR);
     }
     // 将 permuteOutSize 对齐到 512 字节
     permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    // 重排空间
+    permuteOutSize_ = permuteOutFlag_ ? permuteOutSize_ : permuteOutSize_ * 2;
     // permutscaleout size
     uint64_t hSize = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR);
     permuteScaleOutSize_ =  Ops::Base::CeilAlign((a_ * hSize * 2 * GetSizeByDataType(gmmWeightDataType_)),
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    // 如果单卡专家数大于等于32时，需要额外申请scale重排空间
-    if (e_ >= SCALE_BATCH_THRESHOLD) {
-        permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
-    }
+    // scale重排空间
+    permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB)

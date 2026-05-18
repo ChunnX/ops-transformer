@@ -333,9 +333,10 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
 
 void AlltoAllvTTQuantGmmTiling::GetPermuteOutSize()
 {
-    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
+    permuteOutSize_ = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     // 将 permuteOutSize 对齐到 512 字节
     permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    permuteOutSize_ = permuteOutFlag_ ? permuteOutSize_ : permuteOutSize_ * 2;
 }
 
 REGISTER_OPS_TILING_TEMPLATE(AlltoAllvQuantGroupedMatMul, AlltoAllvTTQuantGmmTiling, 1);
