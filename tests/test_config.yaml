@@ -1786,6 +1786,19 @@ mhc:
     test:
       examples: False
       ut: True
+  mhc_pre_sinkhorn_backward:
+    module: True
+    src:
+      - mhc/mhc_pre_sinkhorn_backward
+    exclude:
+      - mhc/mhc_pre_sinkhorn_backward/docs
+      - mhc/mhc_pre_sinkhorn_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_pre_sinkhorn_backward/examples
+      - mhc/mhc_pre_sinkhorn_backward/tests
+    test:
+      examples: True
+      ut: True
   mhc_post_backward:
     module: True
     src:
