@@ -35,6 +35,7 @@ namespace QuantReduceScatterImpl {
 using namespace QuantMTECommImpl;
 using namespace VectorComputeImpl;
 using namespace AscendC;
+using namespace Mc2Aclnn;
 
 constexpr static uint64_t MX_SCALES_LAST_DIM = 2U; // MX量化scales最后一维的大小
 
@@ -42,7 +43,7 @@ template<TemplateTypeClass>
 class QuantReduceScatterMte {
 public:
     __aicore__ inline QuantReduceScatterMte() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales, GM_ADDR output,
                                 TPipe *pipe, const QuantReduceScatterTilingData *tilingData);
     __aicore__ inline void Process();
 private:
@@ -86,10 +87,10 @@ private:
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_ADDR scales,
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales,
     GM_ADDR output, TPipe *tPipe, const QuantReduceScatterTilingData *tilingData)
 {
-    mteComm_.InitHcclContext();
+    mteComm_.InitHcclContext(mc2Context);
     ParseTilingInfo(tilingData);
     tPipe->Reset();
     ComputeXPerBlock(tilingData, tPipe);
