@@ -216,6 +216,9 @@ TEST_F(mla_preprocess_test, test_case_0)
     tilingData->epsilon = 1e-5f;
     tilingData->doRmsNorm = true;
     tilingData->qDownOutFlag = false;
+    tilingData->kvCacheBlockSize = bloackSize;
+    tilingData->kvCacheStride0 = bloackSize * 512;
+    tilingData->kvCacheRopeStride0 = bloackSize * 64;
 
     ICPU_SET_TILING_KEY(56);
     ICPU_RUN_KF(mla_preprocess, blockDim, hiddenStateGm, gamma1Gm, beta1Gm, quantScale1Gm, quantOffset1Gm, wdqkvGm,

@@ -203,6 +203,46 @@ int TransToNZShape(std::vector<int64_t> &shapeND, size_t  typeSize) {
     return 0;
 }
 
+int CreateAclTensorNonContiguousDim0(const std::vector<int64_t>& shape, int64_t dim0StrideMultiplier,
+                                     void** deviceAddr, void** hostAddr,
+                                     aclDataType dataType, aclTensor** tensor) {
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    int64_t contiguousStride0 = strides[0];
+    strides[0] *= dim0StrideMultiplier;
+
+    int64_t totalStorageElements = strides[0] * shape[0];
+    auto elementSize = aclDataTypeSize(dataType);
+    auto bufferSize = totalStorageElements * elementSize;
+    std::vector<int64_t> storageShape = {totalStorageElements};
+
+    auto ret = aclrtMalloc(deviceAddr, bufferSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc non-contiguous dim0 device failed. ERROR: %d\n", ret); return ret);
+
+    ret = aclrtMalloc(hostAddr, bufferSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc non-contiguous dim0 host failed. ERROR: %d\n", ret); return ret);
+
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0,
+                              aclFormat::ACL_FORMAT_ND, storageShape.data(), storageShape.size(), *deviceAddr);
+
+    ret = aclrtMemcpy(*deviceAddr, bufferSize, *hostAddr, bufferSize, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy non-contiguous dim0 failed. ERROR: %d\n", ret); return ret);
+
+    LOG_PRINT("Non-contiguous dim0 tensor: shape=[");
+    for (size_t i = 0; i < shape.size(); i++) {
+        LOG_PRINT("%ld%s", shape[i], i < shape.size() - 1 ? "," : "");
+    }
+    LOG_PRINT("], strides=[");
+    for (size_t i = 0; i < strides.size(); i++) {
+        LOG_PRINT("%ld%s", strides[i], i < strides.size() - 1 ? "," : "");
+    }
+    LOG_PRINT("], contiguousStride0=%ld, actualStride0=%ld, storageElements=%ld\n", contiguousStride0, strides[0], totalStorageElements);
+
+    return 0;
+}
+
 int main() {
   // 1. （固定写法）device/stream初始化，acl API手册
   // 根据自己的实际device填写deviceId
@@ -231,6 +271,8 @@ int main() {
   int64_t quantMode =  0;
   bool doRmsNorm = true;
   int64_t wdkvSplitCount = 1;
+  int64_t cacheDim0StrideMultiplier = 2;
+  LOG_PRINT("=== Testing non-contiguous first axis for cache tensors, strideMultiplier=%ld ===\n", cacheDim0StrideMultiplier);
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> inputShape = {tokenNum, hiddenNum};
@@ -398,9 +440,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(wukShape, &wukDeviceAddr, &wukHostAddr, aclDataType::ACL_FLOAT16, &wuk);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensorND(kvCacheShape, &kvCacheDeviceAddr, &kvCacheHostAddr, aclDataType::ACL_FLOAT16, &kvCache);
+  ret = CreateAclTensorNonContiguousDim0(kvCacheShape, cacheDim0StrideMultiplier, &kvCacheDeviceAddr, &kvCacheHostAddr, aclDataType::ACL_FLOAT16, &kvCache);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensorND(kvCacheRopeShape, &kvCacheRopeDeviceAddr, &kvCacheRopeHostAddr, aclDataType::ACL_FLOAT16, &kvCacheRope);
+  ret = CreateAclTensorNonContiguousDim0(kvCacheRopeShape, cacheDim0StrideMultiplier, &kvCacheRopeDeviceAddr, &kvCacheRopeHostAddr, aclDataType::ACL_FLOAT16, &kvCacheRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(slotmappingShape, &slotmappingDeviceAddr, &slotmappingHostAddr, aclDataType::ACL_INT32, &slotmapping);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -410,11 +452,11 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(qOutShape, &qOutDeviceAddr, &qOutHostAddr, aclDataType::ACL_FLOAT16, &qOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensorND(kvCacheOutShape, &kvCacheOutDeviceAddr, &kvCacheOutHostAddr, aclDataType::ACL_FLOAT16, &kvCacheOut);
+  ret = CreateAclTensorNonContiguousDim0(kvCacheOutShape, cacheDim0StrideMultiplier, &kvCacheOutDeviceAddr, &kvCacheOutHostAddr, aclDataType::ACL_FLOAT16, &kvCacheOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(qRopeOutShape, &qRopeOutDeviceAddr, &qRopeOutHostAddr, aclDataType::ACL_FLOAT16, &qRopeOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensorND(krCacheOutShape, &krCacheOutDeviceAddr, &krCacheOutHostAddr, aclDataType::ACL_FLOAT16, &krCacheOut);
+  ret = CreateAclTensorNonContiguousDim0(krCacheOutShape, cacheDim0StrideMultiplier, &krCacheOutDeviceAddr, &krCacheOutHostAddr, aclDataType::ACL_FLOAT16, &krCacheOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   // 3. 调用CANN算子库API，需要修改为具体的API名称

@@ -1,0 +1,7 @@
+[2026-05-18 09:10:13,006] [INFO] [MainProcess] [1806664] [decorators.py:34]  ascend_generate_aclnn_mla_preprocess is already registered, repeated registration will coverage it, new module path is generate
+[2026-05-18 09:10:15,368] [INFO] [MainProcess] [1806664] [decorators.py:34]  Extra cases with amount: {'scalar': 0, 'lower_border': 0, 'upper_border': 0, 'empty': 0, 'infnan': 0}
+[2026-05-18 09:10:15,451] [INFO] [MainProcess] [1806664] [decorators.py:34]  Generate Case cost time: 2.2641 s
+[2026-05-18 09:10:15,457] [INFO] [MainProcess] [1806664] [decorators.py:34]  Case Metrics: {'oversize_case': False, 'shape_intervals': [[1000000000, 0.0], [100000000, 0.23], [10000000, 1.0]], 'case_repetition_rate': 0.0, 'result': False}
+[2026-05-18 09:10:15,644] [INFO] [MainProcess] [1806664] [decorators.py:34]  save case json file: result/aclnnMlaPreprocess_kv_cache_nc_dim0/json/all_aclnnMlaPreprocess_kv_cache_nc_dim0.json
+[2026-05-18 09:10:16,832] [INFO] [MainProcess] [1806664] [decorators.py:34]  save case excel file: result/aclnnMlaPreprocess_kv_cache_nc_dim0/excel/aclnnMlaPreprocess_kv_cache_nc_dim020260518091013.xlsx
+[2026-05-18 09:10:16,987] [INFO] [MainProcess] [1806664] [decorators.py:34]  save case csv file: result/aclnnMlaPreprocess_kv_cache_nc_dim0/csv/aclnnMlaPreprocess_kv_cache_nc_dim020260518091013.csv

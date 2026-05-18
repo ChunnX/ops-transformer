@@ -50,6 +50,8 @@ constexpr uint64_t INDEX_INPUT = 0;
 constexpr uint64_t INDEX_WDQKV = 5;
 constexpr uint64_t INDEX_WUQ = 12;
 constexpr uint64_t INDEX_WUK = 18;
+constexpr uint64_t INDEX_KV_CACHE = 19;
+constexpr uint64_t INDEX_KV_CACHE_ROPE = 20;
 constexpr uint64_t INDEX_DEQBIAS = 7;
 
 constexpr uint64_t DIM_0 = 0;
@@ -83,6 +85,28 @@ inline uint64_t RoundDown(const uint64_t val, const uint64_t align = 16)
         return 0;
     }
     return val / align * align;
+}
+
+inline uint64_t GetDefaultStride0(const gert::Shape &shape)
+{
+    uint64_t stride = 1;
+    for (size_t dim = 1; dim < shape.GetDimNum(); ++dim) {
+        stride *= static_cast<uint64_t>(shape.GetDim(dim));
+    }
+    return stride;
+}
+
+inline uint64_t GetInputStride0(gert::TilingContext *context, const uint64_t inputIndex, const gert::Shape &shape)
+{
+    if (!context->InputIsView(inputIndex)) {
+        return GetDefaultStride0(shape);
+    }
+
+    auto *stride = context->GetInputStride(inputIndex);
+    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        return GetDefaultStride0(shape);
+    }
+    return static_cast<uint64_t>(stride->GetStride(DIM_0));
 }
 
 template <typename T = uint64_t> inline T Max(const T a, const T b)
@@ -604,6 +628,12 @@ void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: epsilon           is %f.", mlaTilingData.get_epsilon());
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxWorkspaceSize  is %ld.",
               mlaTilingData.get_maxWorkspaceSize());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheBlockSize  is %ld.",
+              mlaTilingData.get_kvCacheBlockSize());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheStride0    is %ld.",
+              mlaTilingData.get_kvCacheStride0());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheRopeStride0 is %ld.",
+              mlaTilingData.get_kvCacheRopeStride0());
 }
 
 ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
@@ -656,6 +686,9 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
 
     mlaTilingData.set_n(param.N);
     mlaTilingData.set_numCore(aicNum);
+    mlaTilingData.set_kvCacheBlockSize(param.kvCacheBlockSize);
+    mlaTilingData.set_kvCacheStride0(param.kvCacheStride0);
+    mlaTilingData.set_kvCacheRopeStride0(param.kvCacheRopeStride0);
     bool deqOnTheFly = false;
     if (doRmsNormQuant && (inDtype == ge::DT_BF16 || param.quantMode == QuantMode::PER_TOKEN_SYMM_QUANT)) {
         deqOnTheFly = true;
@@ -712,6 +745,15 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     param.nopeDim = static_cast<uint64_t>(wukShape.GetDim(DIM_1));
 
     param.headDimMm2 = param.nopeDim + HEADDIM;
+
+    auto kvCacheShape = context->GetInputShape(INDEX_KV_CACHE)->GetStorageShape();
+    auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
+    param.kvCacheBlockSize =
+        param.cacheMode >= 2 ? static_cast<uint64_t>(kvCacheShape.GetDim(DIM_2))
+                             : static_cast<uint64_t>(kvCacheShape.GetDim(DIM_1));
+
+    param.kvCacheStride0 = GetInputStride0(context, INDEX_KV_CACHE, kvCacheShape);
+    param.kvCacheRopeStride0 = GetInputStride0(context, INDEX_KV_CACHE_ROPE, kvCacheRopeShape);
 
     return param;
 }
