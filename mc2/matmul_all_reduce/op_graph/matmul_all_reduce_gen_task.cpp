@@ -21,12 +21,53 @@
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
 #include "mc2_comm_utils.h"
+#include "mc2_hcom_topo_info.h"
+#include "common/utils/op_mc2.h"
 
 namespace ops {
+uint32_t GentaskGetRankSize(const char *group) {
+    OP_LOGE("MatmulAllReduceCalcParamFunc", "Enter gentask GentaskGetRankSize");
+  uint32_t rankSize = 8;
+  if (Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(group, &rankSize)!=HCCL_SUCCESS) {
+      OP_LOGE("MatmulAllReduceCalcParamFunc", "Get rank size of group %s failed", group);
+      return 0;
+  }
+  return rankSize;
+}
+uint8_t GentaskGetAndConvertCommMode(const char *commModeStr, uint32_t rankSize)
+{
+    OP_LOGE("MatmulAllReduceCalcParamFunc", "Enter gentask GentaskGetAndConvertCommMode");
+    uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
+    if (commModeStr == nullptr) {
+        OP_LOGI("MatmulAllReduce", "commModeStr is nullptr, commMode will be set to ccu.");
+    } else {
+        if (std::strcmp(commModeStr, "ai_cpu") == 0) {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else if (std::strcmp(commModeStr, "") == 0) {
+            if (rankSize <= 8) {
+                commMode = Mc2Comm::COMM_MODE_CCU;
+            } else {
+                commMode = Mc2Comm::COMM_MODE_AICPU;
+            }
+            OP_LOGI("MatmulAllReduce", "commMode is default, and rankDim is %d, will use commMode: %d.", rankSize, commMode);
+        }
+    }
+    return commMode;
+}
 ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
+                    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream"));
+    const char *groupStr = attrs->GetAttrPointer<char>(0);
+    OP_TILING_CHECK(groupStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr group is null pointer."),
+                    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream"));
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+        const char *commModeStr = attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));    
+        uint32_t rankSize = GentaskGetRankSize(groupStr);
+        uint8_t commMode = GentaskGetAndConvertCommMode(commModeStr, rankSize);
         if (commMode == Mc2Comm::COMM_MODE_CCU) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
@@ -39,8 +80,16 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *context,
                                       std::vector<std::vector<uint8_t>> &tasks)
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
+                    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream"));
+    const char *groupStr = attrs->GetAttrPointer<char>(0);
+    OP_TILING_CHECK(groupStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr group is null pointer."),
+                    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream"));
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+        const char *commModeStr = attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+        uint32_t rankSize = GentaskGetRankSize(groupStr);
+        uint8_t commMode = GentaskGetAndConvertCommMode(commModeStr, rankSize);
         if (commMode == Mc2Comm::COMM_MODE_CCU) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
