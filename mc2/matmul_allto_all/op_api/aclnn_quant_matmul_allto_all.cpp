@@ -27,10 +27,12 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(
 {
     OP_LOGD("aclnnQuantMatmulAlltoAllGetWorkspaceSize start");
 
+    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "default";
+
     return aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         x1, x2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        alltoAllAxesOptional, group, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, groupSize, transposeX1,
-        transposeX2, output, workspaceSize, executor);
+        alltoAllAxesOptional, group, commMode, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, groupSize,
+        transposeX1, transposeX2, output, workspaceSize, executor);
 }
 
 extern "C" aclnnStatus aclnnQuantMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
