@@ -1700,7 +1700,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineV2Tili
 inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
     const char* socName = aclrtGetSocName();
-    if (std::strstr(socName, "Ascend950") == nullptr) {
+    if ((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910B") == nullptr)) {
         return;
     }
     Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");
