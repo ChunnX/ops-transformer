@@ -116,6 +116,7 @@ protected:
     NpuArch npuArch_;
     const char* opName_{nullptr};
     const char* group_{nullptr};
+    const char* commMode_{nullptr};
     uint64_t tileMValue_{0};
     uint64_t tailMValue_{0};
     uint64_t drMValue_{0};

@@ -527,6 +527,7 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
                                                    aclOpExecutor** executor)
 {
     aclnnStatus ret = ACLNN_SUCCESS;
+    OP_LOGD("==========before aclnnAllGatherMatmulV2GetWorkspaceSize end==============");
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                        gatherIndex, commTurn, streamMode, groupSize, commMode, output,
@@ -539,30 +540,43 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    return ret;
-}
-
-aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                   aclrtStream stream)
-{
-    if ((workspace == nullptr) || (workspaceSize == 0UL)) {
-        OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
-        return ACLNN_SUCCESS;
-    }
-
+    OP_LOGD("==========after NnopbaseSetHcclServerType==============");
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("aclnnAllGatherMatmulV2: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                OP_LOGD("aclnnAllGatherMatmulV2: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            if (commMode != nullptr) {
+                OP_LOGD("[ALLGATHERMATMULV2_COMMMODE] Execute commMode=%s", commMode);
+                if (strcmp(commMode, "aicpu") == 0) {
+                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+                } else if (strcmp(commMode, "default") == 0) {
+                    uint32_t rankSize = 0;
+                    auto hcclRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+                    if (hcclRet != ACLNN_SUCCESS) {
+                        OP_LOGE(ACLNN_ERR_INNER, "Get mc2 ranksize failed, group: %s", group);
+                        return ACLNN_ERR_INNER;
+                    }
+                    OP_LOGD("[ALLGATHERMATMULV2_COMMMODE] Execute rank size=%u", rankSize);
+                    if (rankSize <= 8) {
+                        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                    } else {
+                        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+                    }
+                } else {
+                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                }
             }
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }
+    }
+    OP_LOGD("==========after NnopbaseSetHcclServerType==============");
+    return ret;
+}
+
+aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+{
+    if ((workspace == nullptr) || (workspaceSize == 0UL)) {
+        OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
+        return ACLNN_SUCCESS;
     }
 
     return aclnnInnerAllGatherMatmulV2(workspace, workspaceSize, executor, stream);

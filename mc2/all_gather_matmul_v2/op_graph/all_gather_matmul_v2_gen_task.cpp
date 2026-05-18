@@ -26,13 +26,43 @@ namespace ops {
 static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        auto *attrs = context->GetAttrs();
+        if (attrs == nullptr) {
+            OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
+            return ge::GRAPH_FAILED;
+        }
+        const char *commModePtr = attrs->GetStr(static_cast<size_t>(ATTR_INDEX_COMM_MODE_ALLGATHER_MATMUL_V2));
+        if (commModePtr == nullptr) {
+            OPS_LOG_E(context->GetNodeName(), "commMode pointer is null.");
+            return ge::GRAPH_FAILED;
+        }
+        std::string commMode = commModePtr;
+        if (commMode.empty()) {
+            OPS_LOG_W(context->GetNodeName(), "commMode is empty, will use ccu");
+            commMode = "ccu";
+        }
+        OPS_LOG_D(context->GetNodeName(), "commMode is %s.", commMode.c_str());
+
+        if (commMode == "aicpu") {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
-        } else {
+        } else if (commMode == "ccu") {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        } else {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 default GenTask CalcOpParam");
+            const int64_t *rankSizePtr = attrs->GetInt(static_cast<size_t>(ATTR_INDEX_RANK_SIZE_ALLGATHER_MATMUL_V2));
+            if (rankSizePtr == nullptr) {
+                OPS_LOG_E(context->GetNodeName(), "rankSize pointer is null.");
+            }
+            OPS_LOG_D(context->GetNodeName(), "===gentask rankSize %d", *rankSizePtr);
+            if (*rankSizePtr <= 8) {
+                OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
+                return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+            } else {
+                OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+                return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+            }
         }
     }
     OPS_LOG_D(context->GetNodeName(), "AICPU GenTask CalcOpParam");
@@ -40,16 +70,45 @@ static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *co
 }
 
 static ge::Status AllGatherMatmulV2GenTask(const gert::ExeResGenerationContext *context,
-                                           std::vector<std::vector<uint8_t>> &tasks)
+    std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        auto *attrs = context->GetAttrs();
+        if (attrs == nullptr) {
+            OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
+            return ge::GRAPH_FAILED;
+        }
+        const char *commModePtr = attrs->GetStr(static_cast<size_t>(ATTR_INDEX_COMM_MODE_ALLGATHER_MATMUL_V2));
+        if (commModePtr == nullptr) {
+            OPS_LOG_E(context->GetNodeName(), "commMode pointer is null.");
+            return ge::GRAPH_FAILED;
+        }
+        std::string commMode = commModePtr;
+        if (commMode.empty()) {
+            OPS_LOG_W(context->GetNodeName(), "commMode is empty, will use ccu");
+            commMode = "ccu";
+        }
+        OPS_LOG_D(context->GetNodeName(), "commMode is %s.", commMode.c_str());
+
+        if (commMode == "aicpu") {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
-        } else {
+        } else if (commMode == "ccu") {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        } else {
+            const int64_t *rankSizePtr = attrs->GetInt(static_cast<size_t>(ATTR_INDEX_RANK_SIZE_ALLGATHER_MATMUL_V2));
+            if (rankSizePtr == nullptr) {
+                OPS_LOG_E(context->GetNodeName(), "rankSize pointer is null.");
+            }
+            OPS_LOG_D(context->GetNodeName(), "===gentask rankSize %d", *rankSizePtr);
+            if (*rankSizePtr <= 8) {
+                OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
+                return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+            } else {
+                OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
+                return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
+            }
         }
     }
     OPS_LOG_D(context->GetNodeName(), "AICPU GenTaskFunc");
