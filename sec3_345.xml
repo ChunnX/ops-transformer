@@ -1,0 +1,482 @@
+<hr/>
+
+<h2>3.3 Sequence — 请求状态机与序列化优化</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>每个用户请求的完整生命周期状态载体。管理 token 序列、位置指针、KV cache 块表。最关键的设计是轻量序列化 — 只传递整数元组而非完整 token list。</p>
+</callout>
+
+<h3>3.3.1 状态机图</h3>
+
+<whiteboard type="mermaid">
+stateDiagram-v2
+    [*] --> WAITING: Sequence.__init__()<br/>创建请求对象
+    WAITING --> RUNNING: Scheduler.schedule()<br/>分配KV cache + prefill全部token
+    RUNNING --> WAITING: Scheduler.preempt()<br/>显存不足，释放KV cache回排队
+    RUNNING --> FINISHED: postprocess() 检测到 EOS<br/>或 num_completion_tokens == max_tokens
+    FINISHED --> [*]: deallocate() 释放资源<br/>generate() 收集输出
+
+    note right of WAITING: 在 scheduler.waiting deque 中
+    note right of RUNNING: 在 scheduler.running deque 中<br/>有完整的 block_table
+    note right of FINISHED: 不再被调度
+</whiteboard>
+
+<h3>3.3.2 关键属性详解</h3>
+
+<pre lang="python" caption="Sequence 核心属性"><code>class Sequence:
+    block_size = 256                    # (1) 类变量，由 Config 设置，所有 Seq 共享
+    counter = count()                   # (2) itertools.count，全局自增 id 生成器
+
+    def __init__(self, token_ids, sampling_params):
+        self.seq_id = next(self.counter)        # (a) 唯一序列 ID，按创建顺序递增（无上限）
+        self.status = SequenceStatus.WAITING    # (b) 初始状态：等待调度
+        self.token_ids = copy(token_ids)        # (c) 浅拷贝 token list（int 不可变，安全）
+        self.last_token = token_ids[-1]         # (d) 最后一个 token（decode 阶段的关键优化）
+        self.num_tokens = len(self.token_ids)   # (e) 当前总 token 数（prompt + 已生成）
+        self.num_prompt_tokens = len(token_ids) # (f) prompt token 数（后续不变化）
+        self.num_cached_tokens = 0              # (g) 已缓存到 KV cache 的 token 数
+        self.num_scheduled_tokens = 0           # (h) 本轮调度要处理的 token 数
+        self.is_prefill = True                  # (i) 当前是否处于 prefill 阶段
+        self.block_table = []                   # (j) KV cache 块 ID 列表
+        self.temperature = sampling_params.temperature     # (k) 采样温度（从 SamplingParams 提取）
+        self.max_tokens = sampling_params.max_tokens       # (l) 最大生成 token 数
+        self.ignore_eos = sampling_params.ignore_eos       # (m) 是否忽略 EOS（benchmark 用）</code></pre>
+
+<h3>3.3.3 块寻址与属性方法</h3>
+
+<pre lang="python" caption="块相关方法"><code>@property
+def num_blocks(self):                                                  # (1)
+    return (self.num_tokens + self.block_size - 1) // self.block_size  # 向上取整除法，如 300 tokens / 256 = 2 blocks
+
+def block(self, i):                                                    # (2)
+    assert 0 <= i < self.num_blocks
+    return self.token_ids[i*self.block_size: (i+1)*self.block_size]   # 按 block_size 切片，用于哈希计算和前缀匹配
+
+@property
+def last_block_num_tokens(self):                                       # (3)
+    return self.num_tokens - (self.num_blocks - 1) * self.block_size   # 最后一个块的实际 token 数（≤ block_size）</code></pre>
+
+<h3>3.3.4 🔑 序列化优化 — 跨进程传输的精髓</h3>
+
+<callout emoji="🔑" background-color="light-green" border-color="green">
+  <p><b>设计核心：</b>Sequence 需要通过 SharedMemory 跨进程 pickle 传输。完整 token_ids 列表可能很大（数千个 int），但 worker 只关心 <b>调度元数据</b>（num_tokens, block_table 等），不关心具体 token 内容（token 内容由 ModelRunner 从 block_table 读取）。</p>
+</callout>
+
+<pre lang="python" caption="__getstate__ / __setstate__ 序列化协议"><code>def __getstate__(self):
+    # Prefill 阶段：传完整 token_ids（worker 需要读取 prompt tokens）
+    # Decode 阶段：只传 last_token（worker 只需要最后一个 token）
+    last_state = self.last_token if not self.is_prefill else self.token_ids
+    return (self.num_tokens,          # 总 token 数
+            self.num_prompt_tokens,   # prompt 长度
+            self.num_cached_tokens,   # 已缓存 token 数
+            self.num_scheduled_tokens,# 本轮调度 token 数
+            self.block_table,         # KV cache 块号列表
+            last_state)               # token_ids 或 last_token
+
+def __setstate__(self, state):
+    (self.num_tokens, self.num_prompt_tokens,
+     self.num_cached_tokens, self.num_scheduled_tokens,
+     self.block_table, last_state) = state
+    if isinstance(last_state, list):  # Prefill: 恢复完整 token_ids
+        self.token_ids = last_state
+        self.last_token = self.token_ids[-1]
+    else:                             # Decode: 清空 token_ids，只保留 last_token
+        self.token_ids = []
+        self.last_token = last_state</code></pre>
+
+<table>
+  <thead><tr><th background-color="light-gray">场景</th><th background-color="light-gray">传输内容</th><th background-color="light-gray">大小估算</th><th background-color="light-gray">优化比</th></tr></thead>
+  <tbody>
+    <tr><td>Prefill</td><td>完整 token_ids (如 2048 ints)</td><td>~16KB</td><td>无优化（必须传）</td></tr>
+    <tr><td>Decode</td><td>last_token (1 int) + 元数据</td><td>~200B</td><td>~100x 缩小（不传历史 tokens）</td></tr>
+    <tr><td>Warmup</td><td>token_ids = [0]*seq_len</td><td>~16KB</td><td>无优化</td></tr>
+  </tbody>
+</table>
+
+<h3>3.3.5 SequenceStatus 枚举 — 状态机三态定义</h3>
+
+<pre lang="python" caption="SequenceStatus 枚举源码"><code>class SequenceStatus(Enum):
+    WAITING = auto()    # (1) 尚未被调度，或已调度但未完成 prefill（chunked prefill 中）
+    RUNNING = auto()    # (2) 已完成 prefill，进入 decode 阶段，占用 KV cache
+    FINISHED = auto()   # (3) 生成完成（EOS / max_tokens），等待输出收集和资源释放</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>三种状态的流转路径：</b></p>
+  <ul>
+    <li><b>WAITING → RUNNING：</b>唯一正常路径。Schedule 完成所有 token 的 prefill 后转入</li>
+    <li><b>RUNNING → WAITING：</b>抢占路径。显存不足时释放 KV cache，退回等待队列队首</li>
+    <li><b>WAITING → FINISHED：</b>若 EOS 或 max_tokens 在 prefill 阶段就已触发</li>
+    <li><b>RUNNING → FINISHED：</b>Decode 阶段生成 EOS 或达到 max_tokens</li>
+    <li><b>FINISHED 不可逆：</b>一旦完成即被 deallocate 回收资源，不会再被调度</li>
+  </ul>
+</callout>
+
+<h3>3.3.6 便捷属性 — 内部状态查询</h3>
+
+<pre lang="python" caption="Sequence 便捷属性详解"><code>@property
+def is_finished(self):
+    return self.status == SequenceStatus.FINISHED    # (1) 状态查询快捷方式，供 generate() 检测
+
+@property
+def num_completion_tokens(self):
+    return self.num_tokens - self.num_prompt_tokens  # (2) 已生成的 token 数 = 总 token - prompt
+
+@property
+def prompt_token_ids(self):
+    return self.token_ids[:self.num_prompt_tokens]   # (3) 仅返回 prompt token，按切片提取
+
+@property
+def completion_token_ids(self):
+    return self.token_ids[self.num_prompt_tokens:]   # (4) 仅返回生成 token，供 generate() 拼接输出</code></pre>
+
+<callout emoji="🔑" background-color="light-green" border-color="green">
+  <p><b>关键设计：num_prompt_tokens 作为不可变分界点。</b></p>
+  <p>prompt_token_ids 和 completion_token_ids 都依赖 <code>self.num_prompt_tokens</code>，这个值在 <code>__init__</code> 中赋值为 <code>len(token_ids)</code> 之后<b>永不改变</b>。这样即使在 decode 阶段 token_ids 持续增长，prompt/completion 的分界点始终精确。这也是 <code>num_completion_tokens = num_tokens - num_prompt_tokens</code> 计算正确性的基础。</p>
+</callout>
+
+<h3>3.3.7 append_token — Decode 阶段的 token 增长</h3>
+
+<pre lang="python" caption="append_token 源码"><code>def append_token(self, token_id: int):
+    self.token_ids.append(token_id)    # (1) 直接添加到 token_ids 列表末尾
+    self.last_token = token_id         # (2) 更新 last_token（为下一轮 decode 准备）
+    self.num_tokens += 1               # (3) 递增总 token 计数</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>注意：</b>append_token 仅由 scheduler.postprocess() 在主进程调用。Worker 进程不需要关心 token_ids 的增长 — 它只在 decode 时通过 <code>seq.last_token</code> 获取下一轮的输入。这也是序列化优化中 Decode 只传 <code>last_token</code> 的基础：worker 不需要历史上的完整 token_ids。</p>
+</callout>
+
+<h3>3.3.8 Python 协议支持 — __len__ 与 __getitem__</h3>
+
+<pre lang="python" caption="魔术方法源码"><code>def __len__(self):
+    return self.num_tokens                     # (1) len(seq) 返回总 token 数
+
+def __getitem__(self, key):
+    return self.token_ids[key]                 # (2) seq[i] 等价于 seq.token_ids[i]，支持切片</code></pre>
+
+<callout emoji="💡" background-color="light-blue" border-color="blue">
+  <p><b><code>__len__</code> 的使用场景：</b>在 <code>prepare_decode</code> 中计算位置和上下文长度：</p>
+  <pre lang="python"><code>positions.append(len(seq) - 1)       # 位置 = 总 token 数 - 1
+context_lens.append(len(seq))        # 上下文长度 = 总 token 数</code></pre>
+  <p><b><code>__getitem__</code> 的使用场景：</b>在 <code>prepare_prefill</code> 中按块切片提取 token_ids：</p>
+  <pre lang="python"><code>input_ids.extend(seq[start:end])     # 通过 __getitem__ 切片，取本轮需要的 tokens</code></pre>
+</callout>
+
+<h3>3.3.9 Sequence 完整生命周期追踪</h3>
+
+<whiteboard type="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant LE as LLMEngine
+    participant S as Scheduler
+    participant MR as ModelRunner
+    participant Seq as Sequence
+
+    U->>LE: generate("Hello", params)
+    LE->>Seq: Sequence([tokens], params)
+    Note over Seq: status=WAITING<br/>num_prompt_tokens=N<br/>is_prefill=True
+
+    LE->>S: add_request(seq)
+    S->>Seq: append to waiting deque
+
+    Note over S: schedule() 第一轮
+    S->>Seq: can_allocate → allocate blocks
+    S->>Seq: num_scheduled_tokens = min(tokens, capacity)
+    Note over Seq: block_table=[5,7,3,...]<br/>num_cached_tokens maybe >0 (prefix hit)
+
+    S->>MR: run(seqs, is_prefill=True)
+    MR->>Seq: __getstate__: token_ids (prefill)
+    MR->>MR: prepare_prefill: input_ids, positions, slot_mapping
+    MR->>MR: run_model → compute_logits → sampler → next_token
+    MR->>Seq: __setstate__: restore metadata
+
+    S->>Seq: postprocess: num_cached_tokens += scheduled
+    Note over Seq: prefill 可能分多轮 (chunked prefill)
+
+    Note over S: schedule() prefill 完成
+    S->>Seq: status=RUNNING, move to running
+
+    loop Decode 循环
+        S->>Seq: num_scheduled_tokens = 1
+        S->>Seq: may_append block (if needed)
+        S->>MR: run(seqs, is_prefill=False)
+        MR->>Seq: __getstate__: last_token (decode)
+        MR->>MR: prepare_decode: 1 token per seq
+        MR->>MR: run_model → sampler → token_id
+        S->>Seq: append_token(token_id)
+        S->>Seq: hash_blocks (if full block completed)
+        Note over Seq: num_tokens += 1
+    end
+
+    Note over S: EOS or max_tokens hit
+    S->>Seq: status=FINISHED
+    S->>Seq: deallocate blocks
+    LE->>Seq: 收集 completion_token_ids
+</whiteboard>
+
+<hr/>
+
+<h2>3.4 Scheduler — 调度器与 Prefill/Decode 分治</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>所有请求的调度中心。维护 waiting/running 双队列，执行 Prefill 优先、Decode 填充的调度策略。管理 KV cache 内存分配与抢占。</p>
+</callout>
+
+<h3>3.4.1 调度流程图</h3>
+
+<whiteboard type="mermaid">
+flowchart TB
+    subgraph Input["输入"]
+        A[add_request] --> B[seq → waiting deque]
+    end
+
+    B --> C{schedule()}
+
+    subgraph Prefill["Prefill 路径"]
+        D{waiting 非空?}
+        D -->|yes| E{seq < max_num_seqs?}
+        E -->|yes| F{remaining tokens > 0?}
+        F -->|yes| G{block_table 存在?}
+        G -->|no: 首次| H[can_allocate 计算可缓存块数]
+        H --> I{num_cached_blocks == -1?}
+        I -->|yes: 无空闲| J[break: 无法 prefill]
+        I -->|no| K[计算本轮 token 数]
+        G -->|yes: 已部分prefill| K
+        K --> L{remaining < num_tokens<br/>且有其他seq?}
+        L -->|yes| J
+        L -->|no| M[allocate blocks]
+        M --> N[num_scheduled_tokens = min(num_tokens, remaining)]
+        N --> O{全部 token 已调度?}
+        O -->|yes| P[status → RUNNING<br/>移到 running deque]
+        O -->|no| Q[留在 waiting]
+    end
+
+    subgraph Decode["Decode 路径"]
+        R{prefill 有结果?}
+        R -->|no| S{running 非空?}
+        S -->|yes| T[pop running 头部]
+        T --> U{can_append?}
+        U -->|no| V[preempt 抢占]
+        V --> W{running 还有?}
+        W -->|yes| T
+        W -->|no| X[preempt 自身]
+        U -->|yes| Y[num_scheduled_tokens=1<br/>may_append block]
+    end
+
+    subgraph Output["输出"]
+        Z[返回 seqs + is_prefill]
+    end
+
+    P --> Z
+    Q --> Z
+    Y --> Z
+    X --> Q
+    J --> Z
+
+    subgraph Post["postprocess()"]
+        Z1[hash_blocks: 计算块哈希]
+        Z1 --> Z2[num_cached_tokens += num_scheduled_tokens]
+        Z2 --> Z3{prefill 未完成?}
+        Z3 -->|yes| Z4[continue: 等下一轮]
+        Z3 -->|no| Z5[append_token]
+        Z5 --> Z6{finished?}
+        Z6 -->|yes| Z7[deallocate]
+        Z6 -->|no| Z8[继续 decode]
+    end
+
+    Z --> Post
+</whiteboard>
+
+<h3>3.4.2 逐行解析 — schedule()</h3>
+
+<pre lang="python" caption="schedule() 完整源码"><code>def schedule(self) -> tuple[list[Sequence], bool]:
+    scheduled_seqs = []                      # (1) 本轮调度的 seq 列表
+    num_batched_tokens = 0                   # (2) 本轮已累计的 token 数
+
+    # ================== Prefill ==================
+    while self.waiting and len(scheduled_seqs) < self.max_num_seqs:  # (3a) 有等待请求且未达上限
+        seq = self.waiting[0]                # (3b) 查看队首（不 pop，chunked prefill 可能不完成）
+        remaining = self.max_num_batched_tokens - num_batched_tokens # (3c) 剩余可处理的 token 容量
+        if remaining == 0:                   # (3d) token 预算耗尽
+            break
+        if not seq.block_table:              # (3e) 首次分配：检查 KV cache 可用性
+            num_cached_blocks = self.block_manager.can_allocate(seq)  # ← 调用 BlockManager 前缀匹配
+            if num_cached_blocks == -1:      # (3f) 无法分配足够的块
+                break
+            num_tokens = seq.num_tokens - num_cached_blocks * self.block_size  # (3g) 需要计算的新 token 数
+        else:                                # (3h) 已有 block_table：chunked prefill 继续
+            num_tokens = seq.num_tokens - seq.num_cached_tokens
+        # (3i) Chunked prefill 限制：只允许第一个 seq 部分 prefill
+        if remaining < num_tokens and scheduled_seqs:
+            break
+        if not seq.block_table:              # (3j) 正式分配 KV cache
+            self.block_manager.allocate(seq, num_cached_blocks)
+        seq.num_scheduled_tokens = min(num_tokens, remaining)  # (3k) 设置本轮调度量
+        num_batched_tokens += seq.num_scheduled_tokens
+        if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens: # (3l) prefill 完成
+            seq.status = SequenceStatus.RUNNING   # 转运行态
+            self.waiting.popleft()                # 离开等待队列
+            self.running.append(seq)              # 进入运行队列
+        scheduled_seqs.append(seq)
+
+    if scheduled_seqs:                       # (4) 有 prefill seq 则返回
+        return scheduled_seqs, True
+
+    # ================== Decode ==================
+    while self.running and len(scheduled_seqs) < self.max_num_seqs: # (5a)
+        seq = self.running.popleft()         # (5b) 从运行队列取一个
+        while not self.block_manager.can_append(seq):  # (5c) 需要新 block？
+            if self.running:                 # (5d) 抢占队尾（而非当前 seq）
+                self.preempt(self.running.pop())
+            else:                            # (5e) 只有当前 seq，抢占自己
+                self.preempt(seq)
+                break
+        else:                                # (5f) can_append == True
+            seq.num_scheduled_tokens = 1     # decode 每次只处理 1 token
+            seq.is_prefill = False
+            self.block_manager.may_append(seq)  # 需要时追加 block
+            scheduled_seqs.append(seq)
+    assert scheduled_seqs                   # (6) 必须有 seq（至少 1 个）
+    self.running.extendleft(reversed(scheduled_seqs))  # (7) 逆序放回队首，维持公平性
+    return scheduled_seqs, False</code></pre>
+
+<h3>3.4.3 抢占机制（Preemption）</h3>
+
+<pre lang="python" caption="preempt() 源码"><code>def preempt(self, seq: Sequence):
+    seq.status = SequenceStatus.WAITING    # (1) 重置为等待状态
+    seq.is_prefill = True                  # (2) 下次调度将作为 prefill 重新计算
+    self.block_manager.deallocate(seq)     # (3) 释放所有 KV cache 块
+    self.waiting.appendleft(seq)           # (4) 插入到等待队列<b>队首</b>，获得最高优先级</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>抢占策略深度分析：</b></p>
+  <ul>
+    <li><b>抢占目标选择：</b>当 decode 需要 block 但无空闲时，优先抢占 running 队<b>尾</b>的 seq（而非当前 seq），因为队尾的 seq 最近刚被处理过，抢占损失最小。</li>
+    <li><b>释放所有 block：</b>deallocate 释放整个 block_table。下次重调度时 can_allocate 重新做前缀匹配，可能命中缓存。这是一种<b>全量回收策略</b>，简单但有效。</li>
+    <li><b>队首优先级：</b>appendleft 保证被抢占的 seq 第一时间被重新调度。</li>
+    <li><b>无 swap：</b>区别于 vLLM，Nano-vLLM 不实现 swap 到 CPU 内存的机制，依赖前缀缓存恢复。</li>
+  </ul>
+</callout>
+
+<hr/>
+
+<h2>3.5 BlockManager — 前缀缓存与引用计数</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>KV cache 的内存管理器。实现基于 xxhash 的内容寻址前缀缓存（Content-Addressable Prefix Cache）、引用计数共享、LRU 风格的空闲块管理。</p>
+</callout>
+
+<h3>3.5.1 前缀缓存匹配流程</h3>
+
+<whiteboard type="mermaid">
+flowchart TB
+    A[can_allocate seq] --> B[i=0; h=-1; cached=0]
+    B --> C{i == seq.num_blocks - 1?}
+    C -->|yes: 最后一块不检查| G[free_blocks >= num_new_blocks?]
+    C -->|no| D[token_ids = seq.block i]
+    D --> E[h = xxhash token_ids, prefix=h]
+    E --> F{hash_to_block_id.get h}
+    F -->|hit| F1{block.token_ids == token_ids?}
+    F1 -->|yes: 确认无碰撞| F2[cached_blocks++]
+    F1 -->|no: 碰撞| K[break]
+    F -->|miss| K
+    F2 --> H{block_id in used_block_ids?}
+    H -->|yes: 已在使用| I[跳过: num_new_blocks -= 1]
+    H -->|no: 空闲| J[num_new_blocks 不变]
+    I --> L[i++]
+    J --> L
+    L --> C
+
+    G -->|yes| M[return num_cached_blocks]
+    G -->|no| N[return -1: 内存不足]
+    K --> G
+</whiteboard>
+
+<h3>3.5.2 哈希计算与内容寻址</h3>
+
+<pre lang="python" caption="compute_hash 源码"><code>@classmethod
+def compute_hash(cls, token_ids: list[int], prefix: int = -1):
+    h = xxhash.xxh64()                           # (1) 64 位哈希，速度快于 SHA/MD5
+    if prefix != -1:                             # (2) 接收前一块的哈希作为前缀
+        h.update(prefix.to_bytes(8, "little"))   # 将前一块哈希编码为 8 字节作为输入
+    h.update(np.array(token_ids).tobytes())     # (3) 将当前块的 token ids 转为字节数组输入
+    return h.intdigest()                         # (4) 返回 64 位整数哈希值</code></pre>
+
+<callout emoji="❓" background-color="light-blue" border-color="blue">
+  <p><b>为什么用 xxhash 而不是 SHA256？</b></p>
+  <p>xxhash 是非加密哈希，速度极快（~10 GB/s vs SHA256 的 ~200 MB/s）。在推理场景中，哈希碰撞的代价只是少量重复计算，不会导致正确性问题（token_ids 二次比对作为校验）。64 位碰撞概率约 1/2^64 ≈ 5×10^-20，实际可忽略。</p>
+</callout>
+
+<h3>3.5.3 Block 引用计数生命周期</h3>
+
+<pre lang="python" caption="Block 类与引用计数"><code>class Block:
+    def __init__(self, block_id):
+        self.block_id = block_id     # 唯一 ID
+        self.ref_count = 0           # 引用计数：多少 seq 在使用此块
+        self.hash = -1               # 块内容的 xxhash 值（-1 表示未初始化）
+        self.token_ids = []          # 块对应的 token ids（用于碰撞校验 + 哈希计算）
+
+    def update(self, hash, token_ids):   # 填充块内容后调用
+        self.hash = hash
+        self.token_ids = token_ids
+
+    def reset(self):                     # 重新分配时调用
+        self.ref_count = 1               # 新分配时初始为 1
+        self.hash = -1
+        self.token_ids = []</code></pre>
+
+<h3>3.5.4 BlockManager 核心方法详解</h3>
+
+<pre lang="python" caption="allocate / deallocate / hash_blocks"><code>def allocate(self, seq, num_cached_blocks):          # (1) 分配 KV cache 块给 seq
+    assert not seq.block_table                       # 确保首次分配
+    h = -1
+    for i in range(num_cached_blocks):               # (1a) 复用前缀缓存块
+        token_ids = seq.block(i)
+        h = self.compute_hash(token_ids, h)
+        block_id = self.hash_to_block_id[h]          # 从哈希表查找
+        block = self.blocks[block_id]
+        if block_id in self.used_block_ids:          # 块正在被其他 seq 使用
+            block.ref_count += 1                     # 增加引用计数（共享）
+        else:                                        # 块在空闲列表中
+            block.ref_count = 1                      # 标记为使用
+            self.free_block_ids.remove(block_id)
+            self.used_block_ids.add(block_id)
+        seq.block_table.append(block_id)
+    for i in range(num_cached_blocks, seq.num_blocks):  # (1b) 分配新块
+        seq.block_table.append(self._allocate_block())
+    seq.num_cached_tokens = num_cached_blocks * self.block_size</code></pre>
+
+<pre lang="python" caption="deallocate 与 hash_blocks"><code>def deallocate(self, seq):
+    for block_id in reversed(seq.block_table):       # (2a) 逆序释放：后分配的块先释放
+        block = self.blocks[block_id]
+        block.ref_count -= 1                         # 减少引用计数
+        if block.ref_count == 0:                     # 无引用时归还空闲池
+            self._deallocate_block(block_id)         # 注意：哈希表保留，实现内容寻址
+    seq.num_cached_tokens = 0
+    seq.block_table.clear()
+
+def hash_blocks(self, seq):                          # (3) 计算并注册块的哈希值
+    start = seq.num_cached_tokens // self.block_size
+    end = (seq.num_cached_tokens + seq.num_scheduled_tokens) // self.block_size
+    if start == end: return                          # 无新完成块
+    h = self.blocks[seq.block_table[start-1]].hash if start > 0 else -1
+    for i in range(start, end):
+        block = self.blocks[seq.block_table[i]]
+        token_ids = seq.block(i)
+        h = self.compute_hash(token_ids, h)          # 链式哈希
+        block.update(h, token_ids)
+        self.hash_to_block_id[h] = block.block_id    # 注册到全局哈希表</code></pre>
+
+<table>
+  <thead><tr><th background-color="light-gray">操作</th><th background-color="light-gray">引用计数变化</th><th background-color="light-gray">哈希表处理</th><th background-color="light-gray">空闲列表</th></tr></thead>
+  <tbody>
+    <tr><td>首次分配新块</td><td>0 → 1</td><td>不操作（hash_blocks 后才注册）</td><td>移除（popleft）</td></tr>
+    <tr><td>共享前缀块</td><td>N → N+1</td><td>已存在（命中）</td><td>若空闲则移除</td></tr>
+    <tr><td>deallocate</td><td>N → N-1</td><td><b>保留不删</b></td><td>ref_count==0 时归还</td></tr>
+    <tr><td>重新分配</td><td>ref_count==0 的块</td><td>覆盖旧哈希</td><td>popleft 取出</td></tr>
+  </tbody>
+</table>
+
+<callout emoji="🔑" background-color="light-green" border-color="green">
+  <p><b>核心设计 — deallocate 保留哈希：</b></p>
+  <p>释放块时不删除 hash_to_block_id 条目。这是因为在 deallocate 和重新 allocate 之间，新请求可能共享相同的 token 前缀。哈希表扮演了"内容缓存目录"的角色 — 即使块当前空闲，仍然可以通过哈希找到并复用。直到 _allocate_block 才真正覆盖。</p>
+</callout>

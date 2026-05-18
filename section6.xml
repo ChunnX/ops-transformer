@@ -1,0 +1,398 @@
+<h1>6. 与 vLLM 的详细差异对比</h1>
+
+<callout emoji="&#x1F4A1;" background-color="light-blue" border-color="blue">
+  <p>Nano-vLLM 的设计目标是 <b>在保持 vLLM 核心功能的前提下，将代码量从数万行压缩到 ~1200 行</b>。本节从架构、模块、实现细节三个层次逐一对比两者差异。</p>
+</callout>
+
+<h2>6.1 架构层面对比</h2>
+
+<table>
+  <colgroup><col width="200"/><col width="250"/><col width="250"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">对比维度</th>
+      <th background-color="light-gray">Nano-vLLM</th>
+      <th background-color="light-gray">vLLM (生产级)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>总代码量</b></td>
+      <td><span text-color="green">~1,200 行</span></td>
+      <td>~100,000+ 行</td>
+    </tr>
+    <tr>
+      <td><b>核心文件数</b></td>
+      <td><span text-color="green">16 个源文件</span></td>
+      <td>数百个源文件</td>
+    </tr>
+    <tr>
+      <td><b>支持模型</b></td>
+      <td>Qwen3 系列（硬编码）</td>
+      <td>100+ 模型架构（插件式 Registry）</td>
+    </tr>
+    <tr>
+      <td><b>分布式策略</b></td>
+      <td>仅 Tensor Parallelism (nccl)</td>
+      <td>TP + PP + DP + EP (Expert Parallel)</td>
+    </tr>
+    <tr>
+      <td><b>调度器复杂度</b></td>
+      <td>单级队列 (waiting + running)</td>
+      <td>多级队列 (waiting/running/swapped + 优先级)</td>
+    </tr>
+    <tr>
+      <td><b>内存管理</b></td>
+      <td>Physical Block + 前缀缓存</td>
+      <td>Physical Block + Prefix Cache + Copy-on-Write + Swapping</td>
+    </tr>
+    <tr>
+      <td><b>量化支持</b></td>
+      <td>无</td>
+      <td>GPTQ, AWQ, FP8, INT8, INT4 等</td>
+    </tr>
+    <tr>
+      <td><b>多模态</b></td>
+      <td>无</td>
+      <td>LLaVA, Phi-Vision, Qwen-VL 等</td>
+    </tr>
+    <tr>
+      <td><b>推测解码</b></td>
+      <td>无</td>
+      <td>支持 (Speculative Decoding)</td>
+    </tr>
+    <tr>
+      <td><b>API 服务器</b></td>
+      <td>无 (仅 Python API)</td>
+      <td>OpenAI-compatible REST API</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6.2 引擎层对比</h2>
+
+<table>
+  <colgroup><col width="180"/><col width="260"/><col width="260"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">模块</th>
+      <th background-color="light-gray">Nano-vLLM</th>
+      <th background-color="light-gray">vLLM</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>LLMEngine</b></td>
+      <td>
+        <code>LLMEngine</code> 类，1个文件 90 行<br/>
+        直接包含 add_request + step + generate<br/>
+        无 AsyncLLMEngine<br/>
+        用 SharedMemory + Event 实现跨进程调用
+      </td>
+      <td>
+        <code>LLMEngine</code> + <code>AsyncLLMEngine</code><br/>
+        支持同步/异步双模式<br/>
+        RPC-based (ZeroMQ) 进程间通信<br/>
+        请求追踪 (request_id → RequestTracker)
+      </td>
+    </tr>
+    <tr>
+      <td><b>Scheduler</b></td>
+      <td>
+        <code>Scheduler</code>, 1个文件 92 行<br/>
+        2 个 deque: waiting + running<br/>
+        先 prefill 后 decode 的两阶段调度<br/>
+        Chunked prefill: 仅首请求可分块<br/>
+        Preempt: 简单回退到 waiting 队列
+      </td>
+      <td>
+        <code>Scheduler</code>, 1,500+ 行<br/>
+        3 个队列: waiting + running + swapped<br/>
+        统一 prefill/decode 混合调度<br/>
+        Chunked prefill: 任意请求<br/>
+        Preempt: 抢占 → swap out to CPU/disk<br/>
+        优先级 + FCFS 策略
+      </td>
+    </tr>
+    <tr>
+      <td><b>BlockManager</b></td>
+      <td>
+        <code>BlockManager</code>, 1个文件 120 行<br/>
+        Block 数据结构: ref_count + hash + token_ids<br/>
+        前缀缓存: xxhash 最小级联哈希<br/>
+        仅支持 Physical Block
+      </td>
+      <td>
+        <code>BlockSpaceManager</code>, 多文件<br/>
+        Block: ref_count + allocation groups<br/>
+        前缀缓存: Automatic Prefix Caching (APC)<br/>
+        Physical + Virtual Block 映射<br/>
+        Copy-on-Write for beam search
+      </td>
+    </tr>
+    <tr>
+      <td><b>Sequence</b></td>
+      <td>
+        <code>Sequence</code>, 1个文件 83 行<br/>
+        1 个状态机: WAITING→RUNNING→FINISHED<br/>
+        序列化: 仅保存 last_token (非prefill时)<br/>
+        block_table: list[int]
+      </td>
+      <td>
+        <code>Sequence</code> + <code>SequenceGroup</code><br/>
+        多状态: WAITING→RUNNING→SWAPPED→FINISHED<br/>
+        序列化: 完整 token_ids + 元数据<br/>
+        block_table: list of Block ids<br/>
+        SequenceGroup: 并行采样 (n&gt;1)
+      </td>
+    </tr>
+    <tr>
+      <td><b>ModelRunner</b></td>
+      <td>
+        <code>ModelRunner</code>, 1个文件 257 行<br/>
+        单进程多 GPU (TP 进程)<br/>
+        跨进程调用: SharedMemory + pickle<br/>
+        CUDA Graph: 按 bs 分为 1,2,4,8,16,32...512
+      </td>
+      <td>
+        <code>GPUModelRunner</code> + <code>CPUModelRunner</code><br/>
+        支持多节点 (Ray distributed)<br/>
+        跨节点: Ray Actor + NCCL<br/>
+        CUDA Graph: 更细粒度的 bs 分桶<br/>
+        支持 Encoder-Decoder 模型
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6.3 模型实现对比</h2>
+
+<table>
+  <colgroup><col width="180"/><col width="260"/><col width="260"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">模块</th>
+      <th background-color="light-gray">Nano-vLLM</th>
+      <th background-color="light-gray">vLLM</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>Attention</b></td>
+      <td>
+        直接调用 <code>flash_attn_varlen_func</code><br/>
+        和 <code>flash_attn_with_kvcache</code><br/>
+        自定义 Triton kernel 做 KV Cache 写入<br/>
+        硬编码 prefill/decode 分支
+      </td>
+      <td>
+        多种 attention backend 可切换:<br/>
+        FlashAttention v2/v3, FlashInfer,<br/>
+        FlashMLA, xFormers, TrtllmAttention<br/>
+        通过 PagedAttention 自定义 CUDA kernel<br/>
+        多后端注册 + 运行时选择
+      </td>
+    </tr>
+    <tr>
+      <td><b>Linear (TP)</b></td>
+      <td>5 种并行线性层:<br/>
+        ReplicatedLinear, ColumnParallel,<br/>
+        MergedColumnParallel, QKVParallel,<br/>
+        RowParallel (含 all_reduce)<br/>
+        手动 weight_loader 分片
+      </td>
+      <td>
+        通用 ColumnParallel, RowParallel,<br/>
+        MergedColumnParallel, QKVParallel<br/>
+        自定义 Unquantized/Quantized 实现<br/>
+        支持 GPTQ/AWQ/FusedMoE 等变体<br/>
+        FusedAddRMSNormLinear 融合算子
+      </td>
+    </tr>
+    <tr>
+      <td><b>RMSNorm</b></td>
+      <td>
+        <code>rms_forward</code> + <code>add_rms_forward</code><br/>
+        融合残差加法的 RMSNorm<br/>
+        <code>@torch.compile</code> 加速
+      </td>
+      <td>
+        独立 RMSNorm + FusedAddRMSNorm<br/>
+        手写 CUDA kernel 融合<br/>
+        FP8 量化支持
+      </td>
+    </tr>
+    <tr>
+      <td><b>RoPE</b></td>
+      <td>
+        预计算 cos/sin 缓存 → T × head_dim<br/>
+        <code>@torch.compile</code> 加速<br/>
+        <code>@lru_cache(1)</code> 单例
+      </td>
+      <td>
+        同上 + MRoPE (multimodal RoPE)<br/>
+        支持 YaRN / Dynamic NTK 等扩展<br/>
+        通用 RotaryEmbedding 基类
+      </td>
+    </tr>
+    <tr>
+      <td><b>Sampler</b></td>
+      <td>
+        Gumbel-Max trick<br/>
+        仅温度缩放, 无 top_p/top_k<br/>
+      </td>
+      <td>
+        完整采样策略:<br/>
+        temperature, top_p, top_k, min_p,<br/>
+        repeat_penalty, frequency_penalty,<br/>
+        presence_penalty, logit_bias,<br/>
+        beam search (分组)
+      </td>
+    </tr>
+    <tr>
+      <td><b>KV Cache</b></td>
+      <td>
+        单个连续 tensor (2, n_layers, n_blocks, bs, n_kv_heads, head_dim)<br/>
+        Triton kernel 写入<br/>
+        无 FP8 量化
+      </td>
+      <td>
+        多层缓存管理结构<br/>
+        支持 FP8 KV Cache 量化<br/>
+        PagedAttention kernel 直接写缓存<br/>
+        自动 prefix caching 与 share
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6.4 性能特性对比</h2>
+
+<table>
+  <colgroup><col width="180"/><col width="210"/><col width="310"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">特性</th>
+      <th background-color="light-gray">Nano-vLLM</th>
+      <th background-color="light-gray">vLLM</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>Continuous Batching</b></td>
+      <td><span text-color="green">✅</span> 完整实现, prefill完成后立即加入decode</td>
+      <td><span text-color="green">✅</span> 完整实现, 更灵活的混合调度</td>
+    </tr>
+    <tr>
+      <td><b>PagedAttention</b></td>
+      <td><span text-color="green">✅</span> Physical Block, flash-attn block_table参数</td>
+      <td><span text-color="green">✅</span> Virtual+Physical 双层映射, 自定义CUDA kernel</td>
+    </tr>
+    <tr>
+      <td><b>Prefix Caching</b></td>
+      <td><span text-color="green">✅</span> xxhash 级联哈希, 自动识别+复用</td>
+      <td><span text-color="green">✅</span> APC (Automatic Prefix Caching), 更细粒度</td>
+    </tr>
+    <tr>
+      <td><b>Chunked Prefill</b></td>
+      <td><span text-color="orange">⚠️</span> 仅限首请求, 其他请求必须完整prefill</td>
+      <td><span text-color="green">✅</span> 任意请求可分块, 灵活控制</td>
+    </tr>
+    <tr>
+      <td><b>CUDA Graph</b></td>
+      <td><span text-color="green">✅</span> decode 阶段, bs分桶: 1,2,4,8,16..512</td>
+      <td><span text-color="green">✅</span> decode 阶段, 更细粒度的分桶策略</td>
+    </tr>
+    <tr>
+      <td><b>Tensor Parallelism</b></td>
+      <td><span text-color="green">✅</span> 1-8 卡, SharedMemory 跨进程通信</td>
+      <td><span text-color="green">✅</span> 任意卡数, Ray + NCCL 通信</td>
+    </tr>
+    <tr>
+      <td><b>Pipeline Parallelism</b></td>
+      <td><span text-color="red">❌</span></td>
+      <td><span text-color="green">✅</span></td>
+    </tr>
+    <tr>
+      <td><b>Data Parallelism</b></td>
+      <td><span text-color="red">❌</span></td>
+      <td><span text-color="green">✅</span></td>
+    </tr>
+    <tr>
+      <td><b>Expert Parallelism</b></td>
+      <td><span text-color="red">❌</span> 不支持MoE模型</td>
+      <td><span text-color="green">✅</span> 完整支持</td>
+    </tr>
+    <tr>
+      <td><b>CPU Offload</b></td>
+      <td><span text-color="red">❌</span></td>
+      <td><span text-color="green">✅</span> Swap KV cache to CPU</td>
+    </tr>
+    <tr>
+      <td><b>torch.compile</b></td>
+      <td><span text-color="green">✅</span> RMSNorm, RoPE, SiluAndMul, Sampler</td>
+      <td>部分使用, 未全面采用</td>
+    </tr>
+    <tr>
+      <td><b>Async Tokenizer</b></td>
+      <td><span text-color="red">❌</span> 同步 encode/decode</td>
+      <td><span text-color="green">✅</span> 多进程异步 tokenizer</td>
+    </tr>
+    <tr>
+      <td><b>bench.py 吞吐量</b></td>
+      <td><span text-color="green"><b>1434 tok/s</b></span> (RTX4070L + Qwen3-0.6B)</td>
+      <td><b>1362 tok/s</b> 同等配置</td>
+    </tr>
+  </tbody>
+</table>
+
+<callout emoji="&#x26A0;&#xFE0F;" background-color="light-yellow" border-color="yellow">
+  <p><b>性能反超原因分析</b>: Nano-vLLM 在特定场景下超越 vLLM 的核心原因：
+  <br/>1. <b>torch.compile 广泛使用</b>: RMSNorm, RoPE, SiluAndMul, Sampler 全部用 <code>@torch.compile</code>，消除 Python 开销
+  <br/>2. <b>极简调度</b>: 两阶段调度比 vLLM 的多级调度开销低（在低并发场景下）
+  <br/>3. <b>小模型天然适合</b>: Qwen3-0.6B 单卡即可，不需要复杂的分布式协同
+  <br/>4. <b>零拷贝优化</b>: SharedMemory + pin_memory + non_blocking 组合减少数据传输延迟
+  <br/>但这些优化在高并发、大模型、多节点场景下会被 vLLM 的生产级优化反超。</p>
+</callout>
+
+<h2>6.5 代码简洁度对比 &mdash; 同一功能实现差异</h2>
+
+<table>
+  <colgroup><col width="160"/><col width="340"/><col width="200"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">功能</th>
+      <th background-color="light-gray">Nano-vLLM 实现</th>
+      <th background-color="light-gray">vLLM 近似功能</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Scheduler</td>
+      <td>92 行, 2个deque, 无继承</td>
+      <td>~1500 行, 3个队列 + 多层继承 + Policy抽象</td>
+    </tr>
+    <tr>
+      <td>BlockManager</td>
+      <td>120 行, 直接用 dict 做哈希索引</td>
+      <td>多文件, NaiveBlock + PrefixCachingBlock 分层</td>
+    </tr>
+    <tr>
+      <td>ModelRunner</td>
+      <td>257 行, 单文件涵盖全部功能</td>
+      <td>GPUModelRunner(800+) + CPUModelRunner + base class</td>
+    </tr>
+    <tr>
+      <td>权重加载</td>
+      <td>28 行, 纯 Python glob + safetensors</td>
+      <td>ModelLoader + WeightLoaderRegistry + sharded state dict</td>
+    </tr>
+    <tr>
+      <td>上下文传递</td>
+      <td>27 行, 全局单例 Context</td>
+      <td>InputMetadata → AttentionMetadata 多层类继承</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr/>

@@ -1,0 +1,475 @@
+<hr/>
+
+<h2>3.6 ModelRunner — 模型推理执行器</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>模型推理的全流程编排器。负责 NCCL 初始化、模型加载、KV cache 分配、CUDA Graph 捕获、Prefill/Decode 数据准备。TP 场景下 rank=0 在主进程，rank>0 在子进程 loop 中。是 NSL-VLLM 中<b>代码量最大、职责最重</b>的模块。</p>
+</callout>
+
+<h3>3.6.1 初始化流程</h3>
+
+<whiteboard type="mermaid">
+flowchart TB
+    A[__init__ config, rank, event] --> B[dist.init_process_group nccl<br/>tcp://localhost:2333]
+    B --> C[torch.cuda.set_device rank]
+    C --> D[保存 default_dtype]
+    D --> E[torch.set_default_dtype hf_config.dtype]
+    E --> F[torch.set_default_device cuda]
+    F --> G[创建 Qwen3ForCausalLM]
+    G --> H[load_model: 加载 safetensors 权重]
+    H --> I[创建 Sampler]
+    I --> J[warmup_model: 用最大batch预热]
+    J --> K[allocate_kv_cache: 计算block数]
+    K --> L{enforce_eager?}
+
+    L -->|false| M[capture_cudagraph: 捕获CUDA Graph]
+    L -->|true| N[跳过]
+
+    M --> O[恢复 default_device='cpu']
+    N --> O
+    O --> P[恢复 default_dtype]
+
+    P --> Q{world_size > 1?}
+    Q -->|yes, rank==0| R[创建 SharedMemory<br/>create=True]
+    R --> S[dist.barrier: 等待worker就绪]
+    Q -->|yes, rank>0| T[dist.barrier: 等待主进程]
+    T --> U[连接 SharedMemory]
+    U --> V[进入 loop: 无限等待命令]
+    Q -->|no| W[初始化完成]
+    S --> W
+</whiteboard>
+
+<h3>3.6.2 allocate_kv_cache — KV Cache 空间计算</h3>
+
+<pre lang="python" caption="allocate_kv_cache 逐行解析"><code>def allocate_kv_cache(self):
+    config = self.config
+    hf_config = config.hf_config
+    # (1) 获取 GPU 显存信息
+    free, total = torch.cuda.mem_get_info()
+    used = total - free
+    # (2) 获取峰值统计（用于计算模型权重占用）
+    peak = torch.cuda.memory_stats()["allocated_bytes.all.peak"]
+    current = torch.cuda.memory_stats()["allocated_bytes.all.current"]
+    # (3) 计算单个 KV block 的字节数
+    num_kv_heads = hf_config.num_key_value_heads // self.world_size     # TP 分片后的 head 数
+    head_dim = getattr(hf_config, "head_dim",
+                        hf_config.hidden_size // hf_config.num_attention_heads)
+    # Block 大小 = 2(k+v) × layers × block_size × kv_heads × head_dim × dtype_size
+    block_bytes = (2 * hf_config.num_hidden_layers *
+                   self.block_size * num_kv_heads * head_dim *
+                   hf_config.dtype.itemsize)
+    # (4) 计算可分配 block 数
+    # GPU总显存 × 利用率 - (当前已用 + 峰值增量) / 每块字节数
+    config.num_kvcache_blocks = int(
+        total * config.gpu_memory_utilization - used - peak + current
+    ) // block_bytes
+    assert config.num_kvcache_blocks > 0
+    # (5) 创建 KV cache tensor: shape=[2, layers, num_blocks, block_size, num_kv_heads, head_dim]
+    self.kv_cache = torch.empty(2, hf_config.num_hidden_layers, config.num_kvcache_blocks,
+                                 self.block_size, num_kv_heads, head_dim)
+    # (6) 将 tensor 视图绑定到各 Attention 层的 k_cache/v_cache
+    layer_id = 0
+    for module in self.model.modules():
+        if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
+            module.k_cache = self.kv_cache[0, layer_id]   # view, 不拷贝
+            module.v_cache = self.kv_cache[1, layer_id]   # view, 不拷贝
+            layer_id += 1</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>显存计算公式详解：</b></p>
+  <p><code>total × 0.9 - used - peak + current</code></p>
+  <ul>
+    <li><b>total × 0.9：</b>GPU 总显存的 90%（预留 10% 安全边际）</li>
+    <li><b>used：</b>当前已分配的全部显存（包括模型权重 + CUDA context + 临时缓冲区）</li>
+    <li><b>peak：</b>warmup 期间的峰值分配（模型前向所需临时空间）</li>
+    <li><b>+ current：</b>warmup 后可能释放了一些临时内存，修正 over-substract</li>
+    <li><b>结果 // block_bytes：</b>剩余空间可分配的 block 数</li>
+  </ul>
+  <p><b>为什么要减去 peak？</b>warmup_model 运行了最大 batch 的前向，peak 捕获了模型前向过程中临时 tensor 的峰值分配。减去 peak 确保这些临时空间在推理时仍可用。</p>
+</callout>
+
+<h3>3.6.3 prepare_prefill — Prefill 数据构造</h3>
+
+<pre lang="python" caption="prepare_prefill 逐行解析"><code>def prepare_prefill(self, seqs: list[Sequence]):
+    input_ids = []            # (1) 所有 seq 的 input tokens 平铺
+    positions = []            # (2) 对应的位置编码
+    cu_seqlens_q = [0]       # (3) Q 累积长度（FlashAttention varlen 格式）
+    cu_seqlens_k = [0]       # (4) K 累积长度（比 Q 多前缀缓存部分）
+    max_seqlen_q = 0         # (5) 最大 Q 长度
+    max_seqlen_k = 0         # (6) 最大 K 长度
+    slot_mapping = []        # (7) 每个 token 在 KV cache 中的槽位
+    block_tables = None
+
+    for seq in seqs:
+        start = seq.num_cached_tokens               # (8a) 从已缓存位置之后开始
+        seqlen_q = seq.num_scheduled_tokens          # (8b) 本轮 Q 长度
+        end = start + seqlen_q
+        seqlen_k = end                               # (8c) K 长度 = 已缓存 + 本轮
+        input_ids.extend(seq[start:end])             # (8d) 只取本轮需要的 tokens
+        positions.extend(range(start, end))          # (8e) 位置 = 已缓存偏移量起
+        cu_seqlens_q.append(cu_seqlens_q[-1] + seqlen_q)
+        cu_seqlens_k.append(cu_seqlens_k[-1] + seqlen_k)
+        max_seqlen_q = max(seqlen_q, max_seqlen_q)
+        max_seqlen_k = max(seqlen_k, max_seqlen_k)
+        if not seq.block_table:                      # (8f) warmup 阶段无 block_table
+            continue
+        # (8g) 计算 slot_mapping：每个 token 在统一 KV cache 中的线性偏移
+        start_block = start // self.block_size
+        end_block = (end + self.block_size - 1) // self.block_size
+        for i in range(start_block, end_block):
+            slot_start = seq.block_table[i] * self.block_size
+            if i == start_block:
+                slot_start += start % self.block_size
+            if i != end_block - 1:
+                slot_end = seq.block_table[i] * self.block_size + self.block_size
+            else:
+                slot_end = seq.block_table[i] * self.block_size + end - i * self.block_size
+            slot_mapping.extend(range(slot_start, slot_end))
+
+    if cu_seqlens_k[-1] > cu_seqlens_q[-1]:          # (9) 存在前缀缓存
+        block_tables = self.prepare_block_tables(seqs)
+
+    # (10) 全部通过 pin_memory + non_blocking 异步传输到 GPU
+    input_ids = torch.tensor(input_ids, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
+    positions = torch.tensor(positions, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
+    cu_seqlens_q = torch.tensor(cu_seqlens_q, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
+    cu_seqlens_k = torch.tensor(cu_seqlens_k, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
+    slot_mapping = torch.tensor(slot_mapping, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
+    # (11) 设置全局 Context，供 Attention 等层读取
+    set_context(True, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
+                slot_mapping, None, block_tables)
+    return input_ids, positions</code></pre>
+
+<callout emoji="🔑" background-color="light-green" border-color="green">
+  <p><b>slot_mapping 计算逻辑：</b></p>
+  <p>将所有 seq 的 KV cache 映射到一个<b>统一的线性地址空间</b>。例如 block_size=256，seq 的 block_table=[7, 3, 12]，256 个 tokens 的 slot 为 [7*256..7*256+256)。这是 FlashAttention 要求的输入格式。</p>
+</callout>
+
+<h3>3.6.4 prepare_decode — Decode 数据构造</h3>
+
+<pre lang="python" caption="prepare_decode 逐行解析"><code>def prepare_decode(self, seqs: list[Sequence]):
+    input_ids = []           # (1) 每个 seq 的最后一个 token
+    positions = []           # (2) 最后一个 token 的位置
+    slot_mapping = []        # (3) 写入 KV cache 的槽位（每个 seq 1 个 slot）
+    context_lens = []        # (4) 每个 seq 当前的总上下文长度
+
+    for seq in seqs:
+        input_ids.append(seq.last_token)                    # (5a) 只传最后 1 token
+        positions.append(len(seq) - 1)                      # (5b) 位置 = 总 token 数 - 1
+        context_lens.append(len(seq))                       # (5c) 上下文长度
+        # (5d) 槽位 = 最后块的起始slot + 块内偏移 - 1
+        slot_mapping.append(seq.block_table[-1] * self.block_size +
+                           seq.last_block_num_tokens - 1)
+
+    input_ids = torch.tensor(input_ids, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
+    positions = torch.tensor(positions, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
+    slot_mapping = torch.tensor(slot_mapping, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
+    context_lens = torch.tensor(context_lens, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
+    block_tables = self.prepare_block_tables(seqs)          # (6) 始终需要 block_tables
+    set_context(False, slot_mapping=slot_mapping, context_lens=context_lens, block_tables=block_tables)
+    return input_ids, positions</code></pre>
+
+<h3>3.6.5 CUDA Graph 捕获与回放</h3>
+
+<pre lang="python" caption="capture_cudagraph 与 run_model"><code># ===== capture_cudagraph =====
+def capture_cudagraph(self):
+    max_bs = min(self.config.max_num_seqs, 512)           # (1) 最大 graphic batch size = 512
+    max_num_blocks = (config.max_model_len + self.block_size - 1) // self.block_size
+    input_ids = torch.zeros(max_bs, dtype=torch.int64)    # (2) 分配一次，永久复用
+    positions = torch.zeros(max_bs, dtype=torch.int64)
+    slot_mapping = torch.zeros(max_bs, dtype=torch.int32)
+    context_lens = torch.zeros(max_bs, dtype=torch.int32)
+    block_tables = torch.zeros(max_bs, max_num_blocks, dtype=torch.int32)
+    outputs = torch.zeros(max_bs, hf_config.hidden_size)
+    self.graph_bs = [1,2,4,8] + list(range(16, max_bs+1, 16))  # (3) 指数+线性增长，覆盖常见 batch
+    for bs in reversed(self.graph_bs):                           # (4) 从大到小捕获（先捕获大图alloc一次pool）
+        graph = torch.cuda.CUDAGraph()
+        set_context(False, slot_mapping=slot_mapping[:bs], ...)
+        outputs[:bs] = self.model(input_ids[:bs], positions[:bs]) # warmup
+        with torch.cuda.graph(graph, self.graph_pool):
+            outputs[:bs] = self.model(input_ids[:bs], positions[:bs]) # capture
+        self.graphs[bs] = graph
+
+# ===== run_model =====
+@torch.inference_mode()
+def run_model(self, input_ids, positions, is_prefill):
+    if is_prefill or self.enforce_eager or input_ids.size(0) > 512:
+        return self.model.compute_logits(self.model(input_ids, positions))  # eager模式
+    else:                                                    # CUDA Graph 回放
+        bs = input_ids.size(0)
+        graph = self.graphs[next(x for x in self.graph_bs if x >= bs)]  # 找 >=bs 的最小预捕获图
+        graph_vars = self.graph_vars
+        graph_vars["input_ids"][:bs] = input_ids             # 填充数据到预分配 buffer
+        graph_vars["positions"][:bs] = positions
+        graph_vars["slot_mapping"][:bs] = context.slot_mapping
+        graph_vars["context_lens"][:bs] = context.context_lens
+        graph_vars["block_tables"][:bs, :context.block_tables.size(1)] = context.block_tables
+        graph.replay()                                       # 回放：无 kernel launch 开销
+        return self.model.compute_logits(graph_vars["outputs"][:bs])</code></pre>
+
+<table>
+  <thead><tr><th background-color="light-gray">概念</th><th background-color="light-gray">解释</th></tr></thead>
+  <tbody>
+    <tr><td>graph_bs 数组</td><td>[1,2,4,8,16,32,...,512] — 从 16 开始每 16 递增，平衡覆盖率和内存</td></tr>
+    <tr><td>逆序捕获</td><td>从大到小捕获，确保 CUDAGraphPool 在第一个（最大）图时分配，后续图复用 pool</td></tr>
+    <tr><td>graph_pool 共享</td><td>所有图形共享同一个内存池，大幅降低显存碎片</td></tr>
+    <tr><td>动态张量限制</td><td>CUDA Graph 要求输入形状固定；graph_bs 离散化是对动态 batch 的妥协</td></tr>
+    <tr><td>graph_vars 预分配</td><td>一次分配 6 个固定尺寸 tensor，capture 和 replay 复用同一块显存，零动态分配</td></tr>
+    <tr><td>fill_(-1)/zero_()</td><td>replay 前对 slot_mapping（-1 填充）和 context_lens（零填充）做重置，防止上一轮残留数据干扰</td></tr>
+  </tbody>
+</table>
+
+<h3>3.6.6 warmup_model — 预热与峰值显存统计</h3>
+
+<pre lang="python" caption="warmup_model 核心逻辑"><code>def warmup_model(self):
+    torch.cuda.empty_cache()                                          # (1) 清空 CUDA 缓存，确保后续测量准确
+    torch.cuda.reset_peak_memory_stats()                              # (2) 重置峰值统计，准备记录 warmup 的峰值
+
+    max_num_batched_tokens = self.config.max_num_batched_tokens       # (3) 配置的最大 batch token 数
+    max_model_len = self.config.max_model_len
+    seq_len = min(max_num_batched_tokens, max_model_len)              # (4) 单 seq 长度取 min
+    num_seqs = min(max_num_batched_tokens // seq_len, self.config.max_num_seqs)  # (5) seq 数量
+    seqs = [Sequence([0] * seq_len) for _ in range(num_seqs)]         # (6) 创建哑元 seq，token = [0,0,...,0]
+
+    for seq in seqs:
+        seq.num_scheduled_tokens = seq_len                            # (7) 标记全部 token 要被处理
+    self.run(seqs, True)                                              # (8) 执行一次完整 Prefill 前向
+    torch.cuda.empty_cache()                                          # (9) 清理 warmup 产生的临时 tensor</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>warmup 的三个核心目的：</b></p>
+  <ol>
+    <li><b>CUDA 上下文初始化：</b>PyTorch 首次运行 CUDA kernel 时会懒加载 cuBLAS / cuDNN 库，warmup 将这些一次性开销提前完成。</li>
+    <li><b>峰值显存测量：</b>通过 <code>reset_peak_memory_stats()</code> + <code>memory_stats()["allocated_bytes.all.peak"]</code> 捕获模型前向所需的最大临时显存，供 <code>allocate_kv_cache</code> 准确计算 KV Cache 可用容量。</li>
+    <li><b>CUDA Graph 捕获准备：</b>warmup 中将所有必要的 kernel 启动并缓存，后续 CUDA Graph 捕获只需要 replay 已缓存的 kernel 组合。</li>
+  </ol>
+</callout>
+
+<h3>3.6.7 SharedMemory 跨进程通信协议</h3>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>协议定位：</b>TP 场景下，rank 0（主进程）需要通过 SharedMemory + Event 向 rank 1..N（子进程 Worker）发送远程方法调用（RPC）指令。协议设计极其精简：仅 4 字节长度头 + pickle 序列化负载。</p>
+</callout>
+
+<h4>通信协议帧格式</h4>
+
+<whiteboard type="plantuml">
+@startuml
+title SharedMemory 通信帧格式
+
+skinparam componentStyle rectangle
+
+frame "SharedMemory Buffer (1MB)" {
+  [4 bytes: 负载长度 n] as len
+  [n bytes: pickle.dumps([method_name, *args])] as payload
+  [剩余: 未使用 (padding)] as padding
+}
+
+note right of len
+  int.from_bytes(..., "little")
+  小端字节序解码
+end note
+
+note right of payload
+  method_name: str → e.g. "run", "exit"
+  args: tuple → e.g. (seqs, is_prefill)
+end note
+@enduml
+</whiteboard>
+
+<h4>write_shm — 主进程发送指令</h4>
+
+<pre lang="python" caption="write_shm 发送端源码"><code>def write_shm(self, method_name, *args):
+    assert self.world_size > 1 and self.rank == 0          # (1) 仅主进程调用
+    data = pickle.dumps([method_name, *args])              # (2) 序列化方法名和参数
+    n = len(data)                                          # (3) 计算负载字节数
+    self.shm.buf[0:4] = n.to_bytes(4, "little")            # (4) 写 4 字节长度头（小端序）
+    self.shm.buf[4:n+4] = data                             # (5) 写 payload 到紧接位置
+    for event in self.event:                               # (6) 通知所有 worker 进程
+        event.set()</code></pre>
+
+<h4>read_shm — Worker 进程接收指令</h4>
+
+<pre lang="python" caption="read_shm 接收端源码"><code>def read_shm(self):
+    assert self.world_size > 1 and self.rank > 0           # (1) 仅 worker 进程调用
+    self.event.wait()                                       # (2) 阻塞等待主进程的 Event 信号
+    n = int.from_bytes(self.shm.buf[0:4], "little")         # (3) 读取 4 字节长度头
+    method_name, *args = pickle.loads(self.shm.buf[4:n+4])  # (4) 反序列化 payload
+    self.event.clear()                                      # (5) 清除信号，准备下一轮
+    return method_name, args</code></pre>
+
+<h4>loop — Worker 进程无限等待循环</h4>
+
+<pre lang="python" caption="loop 主循环源码"><code>def loop(self):
+    while True:
+        method_name, args = self.read_shm()                # (1) 阻塞等待主进程发指令
+        self.call(method_name, *args)                      # (2) 执行方法
+        if method_name == "exit":                          # (3) 收到 exit 指令则退出循环
+            break</code></pre>
+
+<h4>call — 统一 RPC 分发</h4>
+
+<pre lang="python" caption="call 源码"><code>def call(self, method_name, *args):
+    if self.world_size > 1 and self.rank == 0:             # (1) 主进程：广播到所有 worker
+        self.write_shm(method_name, *args)
+    method = getattr(self, method_name, None)              # (2) 通过字符串查找方法
+    return method(*args)                                   # (3) 本地调用（主进程和 worker 都执行）</code></pre>
+
+<callout emoji="🔑" background-color="light-green" border-color="green">
+  <p><b>协议设计精要：</b></p>
+  <ul>
+    <li><b>单生产者多消费者：</b>rbac 0 写，rank 1..N 读。多 worker 共享同一块 SharedMemory（只读），与主进程独立 Event 一对一同步。</li>
+    <li><b>pickle 序列化：</b>Sequence 的 <code>__getstate__</code> / <code>__setstate__</code> 在此发挥作用：传输的是精简后的元数据而非完整 token_ids。</li>
+    <li><b>无锁设计：</b>Event 信号提供了天然的内存屏障（memory barrier），worker 在 <code>event.wait()</code> 后保证能读到完整的新数据。无需额外锁机制。</li>
+    <li><b>双向执行：</b><code>call()</code> 在主进程和 worker 都执行本地方法。主进程 broadcast 后自己也算一份，保证 TP 下所有 rank 执行相同的计算。</li>
+  </ul>
+</callout>
+
+<h3>3.6.8 prepare_block_tables — KV Cache 块表构造</h3>
+
+<pre lang="python" caption="prepare_block_tables 源码"><code>def prepare_block_tables(self, seqs: list[Sequence]):
+    max_len = max(len(seq.block_table) for seq in seqs)         # (1) 找到最大 block_table 长度
+    block_tables = [seq.block_table + [-1] * (max_len - len(seq.block_table))
+                    for seq in seqs]                             # (2) 用 -1 补齐到相同长度
+    block_tables = torch.tensor(block_tables, dtype=torch.int32,
+                                pin_memory=True).cuda(non_blocking=True)  # (3) 异步上传 GPU
+    return block_tables</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>-1 填充的含义：</b>FlashAttention 的 varlen + with_kvcache 接口要求 block_tables 是一个定长 2D tensor ([num_seqs, max_blocks])。对于 block_table 较短的 seq，用 -1 填充无效槽位。FlashAttention kernel 内部会根据 context_lens 计算出有效块数，因此 -1 槽位不会被访问。</p>
+</callout>
+
+<h3>3.6.9 prepare_sample — 采样参数准备</h3>
+
+<pre lang="python" caption="prepare_sample 源码"><code>def prepare_sample(self, seqs: list[Sequence]):
+    temperatures = [seq.temperature for seq in seqs]             # (1) 从每个 seq 提取采样温度
+    temperatures = torch.tensor(temperatures, dtype=torch.float32,
+                                pin_memory=True).cuda(non_blocking=True)  # (2) 异步上传 GPU
+    return temperatures</code></pre>
+
+<callout emoji="💡" background-color="light-blue" border-color="blue">
+  <p><b>设计决策：</b>temperature 在 Sequence 初始化时从 SamplingParams 中提取（而非保留 SamplingParams 引用）。这是因为 SamplingParams 可能被 GC 回收，且跨进程 pickle 传输时，int/float 比复杂对象更可靠。每个 seq 独立携带 temperature，支持不同请求使用不同采样参数。</p>
+</callout>
+
+<h3>3.6.10 run() — 推理执行编排器</h3>
+
+<pre lang="python" caption="run 源码 — 推理全流程"><code>def run(self, seqs: list[Sequence], is_prefill: bool) -> list[int]:
+    # (1) 数据准备：根据阶段选择不同的 prepare 函数
+    input_ids, positions = self.prepare_prefill(seqs) if is_prefill else self.prepare_decode(seqs)
+    # (2) 采样参数：主进程负责（worker 不采样）
+    temperatures = self.prepare_sample(seqs) if self.rank == 0 else None
+    # (3) 模型执行：eager 或 CUDA Graph 回放
+    logits = self.run_model(input_ids, positions, is_prefill)
+    # (4) 采样：仅主进程执行（TP 下所有 rank 的 logits 一致，由 dist 保证）
+    token_ids = self.sampler(logits, temperatures).tolist() if self.rank == 0 else None
+    # (5) 清理 Context，避免跨轮次状态污染
+    reset_context()
+    return token_ids</code></pre>
+
+<callout emoji="🔑" background-color="light-green" border-color="green">
+  <p><b>run() 是 ModelRunner 的对外入口，串联了数据准备 → 模型执行 → 采样输出 的完整推理流水线。</b></p>
+  <ul>
+    <li><b>分阶段数据准备：</b>Prefill 走 <code>prepare_prefill</code>（varlen batch），Decode 走 <code>prepare_decode</code>（1 token/seq）。两者返回格式不同但后续 tensor 运算兼容。</li>
+    <li><b>仅主进程采样：</b>TP 下所有 rank 的 logits 因 all-reduce 一致，只需 rank 0 采样。rank > 0 返回 None。</li>
+    <li><b>reset_context() 重要性：</b>每次 run 后必须清空 Context，防止 CUDA Graph 回放时引用到已捕获的过期 tensor 地址。</li>
+  </ul>
+</callout>
+
+<h3>3.6.11 exit() — 资源清理</h3>
+
+<pre lang="python" caption="exit 源码"><code>def exit(self):
+    if self.world_size > 1:
+        self.shm.close()                             # (1) 关闭 SharedMemory 映射
+        dist.barrier()                               # (2) 同步所有 rank
+        if self.rank == 0:
+            self.shm.unlink()                        # (3) 主进程删除共享内存文件
+    if not self.enforce_eager:
+        del self.graphs, self.graph_pool             # (4) 释放 CUDA Graph 资源
+    torch.cuda.synchronize()                         # (5) 等待所有 GPU 操作完成
+    dist.destroy_process_group()                     # (6) 销毁 NCCL 进程组</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>退出顺序的重要性：</b></p>
+  <ul>
+    <li><b>del CUDA Graph 先于 destroy_process_group：</b>CUDA Graph 的 destructor 可能触发 GPU kernel 通信，必须在 dist 销毁前完成。</li>
+    <li><b>unlink 仅主进程：</b>SharedMemory 的底层文件只需一个进程 unlink，其余进程 close 即可。unlink 过早或多次调用会导致 worker 读取失败。</li>
+    <li><b>atexit 注册：</b>LLMEngine 在 <code>__init__</code> 末尾通过 <code>atexit.register(self.exit)</code> 确保异常退出时也能正确清理。</li>
+  </ul>
+</callout>
+
+<h3>3.6.12 enforce_eager 模式与性能权衡</h3>
+
+<whiteboard type="mermaid">
+flowchart LR
+    A[enforce_eager?] -->|true| B[Eager 模式]
+    A -->|false| C[CUDA Graph 模式]
+    
+    B --> B1[每次都 launch kernel]
+    B1 --> B2["低延迟: 无捕获开销"]
+    B2 --> B3["低吞吐: kernel launch 开销 × batch_size"]
+    
+    C --> C1{decode 且 bs ≤ 512?}
+    C1 -->|yes| C2[CUDA Graph replay]
+    C2 --> C3["高吞吐: 1次CPU→GPU提交"]
+    C1 -->|no| B
+    
+    style B fill:#ffcccc
+    style C fill:#ccffcc
+</whiteboard>
+
+<callout emoji="💡" background-color="light-blue" border-color="blue">
+  <p><b>性能权衡：</b></p>
+  <ul>
+    <li><b>Eager 模式适用场景：</b></li>
+    <ul>
+      <li>Prefill 阶段（输入长度动态变化，CUDA Graph 无法覆盖）</li>
+      <li>batch_size > 512（超出最大预捕获尺寸）</li>
+      <li>调试场景（eager 模式下错误栈更清晰）</li>
+    </ul>
+    <li><b>CUDA Graph 模式适用场景：</b></li>
+    <ul>
+      <li>Decode 阶段，bs ≤ 512（每次 1 token/seq，形状固定）</li>
+      <li>benchmark / 生产环境追求极致吞吐</li>
+    </ul>
+    <li><b>禁用方式：</b>设置 <code>config.enforce_eager = True</code>，CUDA Graph 代码路径完全跳过（不捕获也不回放）</li>
+  </ul>
+</callout>
+
+<hr/>
+
+<h2>3.7 Context — 全局变量设计模式</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>推理过程的上下文参数传递机制。用模块级全局变量替代函数参数传递，避免在每个 layer forward 中显式传递 context_lens / slot_mapping / block_tables 等参数。</p>
+</callout>
+
+<pre lang="python" caption="Context 完整源码"><code>@dataclass(slots=True)
+class Context:
+    is_prefill: bool = False                   # Prefill 或 Decode
+    cu_seqlens_q: torch.Tensor | None = None   # Q 累积长度（varlen attention 用）
+    cu_seqlens_k: torch.Tensor | None = None   # K 累积长度（不含前缀缓存的 Q 长度）
+    max_seqlen_q: int = 0
+    max_seqlen_k: int = 0
+    slot_mapping: torch.Tensor | None = None   # token → KV cache 槽位映射
+    context_lens: torch.Tensor | None = None   # 每个 seq 的上下文长度（decode 用）
+    block_tables: torch.Tensor | None = None   # block table（含 padding -1）
+
+# ==== 模块级全局变量 ====
+_CONTEXT = Context()                           # (1) 初始化为空 Context
+
+def get_context():                             # (2) 只读访问
+    return _CONTEXT
+
+def set_context(is_prefill, ...):              # (3) 写入新 Context（替换而非修改）
+    global _CONTEXT
+    _CONTEXT = Context(is_prefill, ...)
+
+def reset_context():                           # (4) 重置为空 Context
+    global _CONTEXT
+    _CONTEXT = Context()</code></pre>
+
+<callout emoji="❓" background-color="light-blue" border-color="blue">
+  <p><b>为什么用全局变量？</b></p>
+  <p>FlashAttention 的 forward 调用位于 Attention 层内部，但 block_tables / slot_mapping 等参数由 ModelRunner 准备。如果通过函数参数层层传递，需要修改每个 nn.Module 的 forward 签名（Qwen3Model → Qwen3DecoderLayer → Qwen3Attention → Attention → flash_attn_*）。全局变量方案让各层通过 get_context() 直接获取，<b>零侵入</b>。</p>
+  <p><b>替换而非修改：</b>set_context 创建新 Context 对象，确保 CUDA Graph 回放时不会意外修改捕获的 Context。CUDA Graph 捕获的 tensor 地址不变，替换对象保证原有引用安全。</p>
+</callout>

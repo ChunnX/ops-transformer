@@ -1,0 +1,14 @@
+[Unit]
+Description=LeetCode Daily Push - sends algorithm problem to Feishu
+After=network.target
+
+[Service]
+Type=oneshot
+Environment="PATH=/home/developer/.nvm/versions/node/v18.20.8/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 /mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/daily_leetcode.py
+User=developer
+StandardOutput=append:/mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/cron.log
+StandardError=append:/mnt/workspace/gitCode/cann/ops-transformer/.leetcode-daily/cron.log
+
+[Install]
+WantedBy=default.target

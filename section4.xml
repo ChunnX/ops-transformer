@@ -1,0 +1,650 @@
+<h1>4. 优化技术详解</h1>
+
+<callout emoji="🚀" background-color="light-blue" border-color="blue">
+  <p>Nano-vLLM 用约 1200 行 Python 代码实现了与 vLLM 生产级引擎相当的推理吞吐量（1434 tok/s vs 1362 tok/s）。核心依赖 7 大优化技术，本章节将逐一深度剖析其原理、源码实现与设计权衡。</p>
+</callout>
+
+<hr/>
+
+<h2>4.1 PagedAttention 分页注意力</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：将 KV Cache 从传统的一整块连续内存分配，改为按固定大小 Block（256 tokens）分页管理，通过页表（block_table）实现逻辑块到物理块的映射。类比操作系统的虚拟内存机制，彻底解决了显存碎片和浪费问题。</p>
+</callout>
+
+<h3>虚拟内存类比图解</h3>
+
+<whiteboard type="mermaid">
+graph TB
+    subgraph Traditional["传统连续分配 — 显存浪费严重"]
+        direction TB
+        T1["请求A (512 tokens)<br/>占用 Blk0-Blk1"]
+        T2["请求B (100 tokens)<br/>占用 Blk2，但只用了 100/256"]
+        T3["请求C (300 tokens)<br/>需要连续2块，但 Blk3 被占用"]
+        T4["❌ 外部碎片：Blk3 空闲但<br/>无法分配给请求C"]
+        T1 --> T2 --> T3 --> T4
+    end
+
+    subgraph Paged["PagedAttention — 按需分页"]
+        direction TB
+        LB["逻辑块 (Per Sequence)<br/>Seq A: [LB0, LB1]<br/>Seq B: [LB0]<br/>Seq C: [LB0, LB1]"]
+        PT["Block Table 页表<br/>A: [3, 7]<br/>B: [1]<br/>C: [5, 2]"]
+        PB["物理块池 (KV Cache)<br/>Blk0 | Blk1(B) | Blk2(C1) | Blk3(A0) | Blk4 | Blk5(C0) | Blk6 | Blk7(A1)"]
+        FREE["Free Queue: [0, 4, 6]<br/>块可以不连续，按需分配"]
+        LB -->|"block_table 映射"| PT
+        PT -->|"slot = blk_id × 256 + offset"| PB
+        PB --> FREE
+    end
+
+    Traditional -.->|"对比"| Paged
+</whiteboard>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. 为什么选择 256 tokens 作为块大小？</b></p>
+<ul>
+  <li><b>GPU 内存对齐</b>：256 × KV_heads × head_dim × dtype 字节能够与 GPU 内存事务对齐</li>
+  <li><b>碎片开销权衡</b>：块太小 → 块表元数据开销大；块太大 → 内部碎片多（最后一个块可能只用几个 token）</li>
+  <li><b>FlashAttention 兼容性</b>：FlashAttention 的 block_table 参数天然支持分块访问，256 对齐到其内部 tile 大小</li>
+</ul>
+
+<p><b>2. slot_mapping 的计算链路</b></p>
+<p>从逻辑位置到物理存储位置的转换经历了三层映射：</p>
+<ul>
+  <li><b>逻辑 token 位置</b>：sequence 中第 i 个 token</li>
+  <li><b>逻辑块索引</b>：<code>block_idx = i / 256</code>，块内偏移 <code>offset = i % 256</code></li>
+  <li><b>物理块 ID</b>：<code>block_table[block_idx]</code></li>
+  <li><b>物理 slot</b>：<code>slot = physical_block_id * 256 + offset</code></li>
+</ul>
+
+<p><b>3. BlockManager 数据结构</b></p>
+
+<table>
+  <colgroup><col span="1" width="180"/><col span="1" width="120"/><col span="1" width="300"/></colgroup>
+  <thead><tr><th background-color="light-gray">数据结构</th><th background-color="light-gray">类型</th><th background-color="light-gray">作用</th></tr></thead>
+  <tbody>
+    <tr><td>blocks</td><td>list[Block]</td><td>物理块数组，每个 Block 记录 ref_count、hash、token_ids</td></tr>
+    <tr><td>free_block_ids</td><td>deque[int]</td><td>空闲块队列，O(1) 分配和回收</td></tr>
+    <tr><td>used_block_ids</td><td>set[int]</td><td>已占用块集合，用于快速判断块是否被使用</td></tr>
+    <tr><td>hash_to_block_id</td><td>dict[int, int]</td><td>内容哈希 → 物理块映射，前缀缓存核心</td></tr>
+  </tbody>
+</table>
+
+<p><b>4. 内存效率对比</b></p>
+<table>
+  <colgroup><col span="1" width="160"/><col span="1" width="250"/><col span="1" width="250"/></colgroup>
+  <thead><tr><th background-color="light-gray">维度</th><th background-color="light-gray">传统连续分配</th><th background-color="light-gray">PagedAttention</th></tr></thead>
+  <tbody>
+    <tr><td>分配方式</td><td>预分配 max_model_len 大小</td><td>按需逐块分配</td></tr>
+    <tr><td>内存碎片</td><td>严重（需连续空间）</td><td>零外部碎片</td></tr>
+    <tr><td>内存利用率</td><td>~20-40%</td><td>~90%+</td></tr>
+    <tr><td>块共享</td><td>不支持</td><td>支持（前缀缓存）</td></tr>
+    <tr><td>分配/释放</td><td>O(1) 但仅一次</td><td>O(1) per block</td></tr>
+  </tbody>
+</table>
+
+<p><b>源码对应</b>：<code>block_manager.py:28-33</code> Block 类定义，<code>block_manager.py:89</code> block_table 建立映射，<code>model_runner.py:136-161</code> slot_mapping 计算。</p>
+
+<hr/>
+
+<h2>4.2 Prefix Caching 前缀缓存</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：当多个请求共享相同前缀（如 system prompt、few-shot examples）时，前缀的 KV Cache 计算结果可以被复用。通过链式 xxhash 为每个 Block 计算内容指纹，结合引用计数实现安全的块共享。</p>
+</callout>
+
+<h3>前缀缓存共享机制</h3>
+
+<whiteboard type="mermaid">
+sequenceDiagram
+    participant SA as 序列 A<br/>"System Prompt + Query1"
+    participant BM as BlockManager
+    participant HT as hash_to_block_id
+    participant SB as 序列 B<br/>"System Prompt + Query2"
+
+    Note over SA,SB: 场景：两个请求共享相同的 System Prompt
+
+    rect rgb(240, 248, 255)
+        Note over SA,BM: Phase 1: 序列 A 首次计算
+        SA->>BM: can_allocate(seq_A)
+        BM->>BM: 逐块计算链式hash<br/>h0=hash(tokens[0:256])<br/>h1=hash(h0, tokens[256:512])
+        BM->>HT: 全部未命中，需要 2 个新块
+        BM-->>SA: num_cached_blocks=0
+        SA->>BM: allocate(seq_A), 分配物理块 0,1
+        SA->>BM: hash_blocks(seq_A)
+        BM->>HT: 存入 h0→0, h1→1<br/>ref_count[0]=1, ref_count[1]=1
+        Note over BM: 序列 A 完成后释放：ref_count 归零<br/>但 hash→block 映射保留！
+    end
+
+    rect rgb(255, 248, 240)
+        Note over SB,BM: Phase 2: 序列 B 尝试复用
+        SB->>BM: can_allocate(seq_B)
+        SB->>BM: 逐块计算 hash: h0 → 查询 HT
+        BM->>HT: h0 → hit! blk_id=0
+        BM->>BM: 双重验证: token_ids 对比 ✓
+        BM->>HT: h1 → hit! blk_id=1
+        BM->>BM: 双重验证: token_ids 对比 ✓
+        BM-->>SB: num_cached_blocks=2 🎯
+        SB->>BM: allocate(seq_B, num_cached=2)
+        BM->>BM: ref_count[0]=1, ref_count[1]=1<br/>块 0,1 共享复用！
+        BM->>BM: 仅分配块 2 给 Query2 的新 token
+    end
+</whiteboard>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. 链式哈希设计</b></p>
+<p>每个 Block 的哈希值 <code>h_i = xxhash(h_{i-1}, tokens[i*256 : (i+1)*256])</code>。链式设计保证：相同的前缀 token 序列必然产生相同的哈希链，不同前缀即使内容相同也会因为前缀哈希不同而区分。这避免了传统单块哈希在不同上下文中的冲突。</p>
+
+<p><b>2. 双重验证机制</b></p>
+<p>仅依赖哈希匹配存在碰撞风险（xxhash 虽概率极低，但非零）。Nano-vLLM 在哈希命中后还会对比 <code>block.token_ids == current_token_ids</code>，确保绝对正确。这是一种防御性编程策略。</p>
+
+<p><b>3. 引用计数生命周期</b></p>
+<table>
+  <colgroup><col span="1" width="120"/><col span="1" width="120"/><col span="1" width="200"/><col span="1" width="220"/></colgroup>
+  <thead><tr><th background-color="light-gray">操作</th><th background-color="light-gray">ref_count 变化</th><th background-color="light-gray">物理块状态</th><th background-color="light-gray">hash_to_block_id</th></tr></thead>
+  <tbody>
+    <tr><td>首次分配</td><td><span text-color="green">0 → 1</span></td><td>从 free 移除</td><td>建立映射</td></tr>
+    <tr><td>缓存命中</td><td><span text-color="green">+1</span></td><td>如果 ref=0，重新激活</td><td>保持不变</td></tr>
+    <tr><td>序列完成</td><td><span text-color="red">-1</span></td><td>如果 ref→0，放回 free</td><td><b>保留映射</b> ⭐</td></tr>
+    <tr><td>再次匹配</td><td><span text-color="green">0 → 1</span></td><td>从 free 重新激活</td><td>直接命中</td></tr>
+  </tbody>
+</table>
+
+<p><b>4. 缓存的限制条件</b></p>
+<ul>
+  <li>只有<b>完整的 256-token Block</b> 参与缓存（最后一个不完整块不参与匹配）</li>
+  <li>不同 sampling params（temperature 等）不影响前缀缓存——KV Cache 只依赖 token 序列，不依赖采样参数</li>
+  <li>Block 释放后哈希映射<b>永不删除</b>，直到 Block 被重新分配给不同内容的序列并重新 hash_blocks</li>
+</ul>
+
+<p><b>源码对应</b>：<code>block_manager.py:36-41</code> 链式哈希计算，<code>block_manager.py:58-73</code> can_allocate 前缀扫描，<code>block_manager.py:110-120</code> hash_blocks 更新哈希字典。</p>
+
+<hr/>
+
+<h2>4.3 Chunked Prefill 分块预填充</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：长 prompt 的 prefill 阶段计算量巨大，如果一次性处理完，所有 decode 请求都会被阻塞等待。Chunked Prefill 将长 prompt 拆分为多个小块，在块之间插入 decode 步骤，保证低延迟。</p>
+</callout>
+
+<h3>Chunked Prefill 时间线</h3>
+
+<whiteboard type="mermaid">
+gantt
+    title Chunked Prefill vs 传统 Prefill 对比
+    dateFormat X
+    axisFormat %s
+
+    section 长序列 A (4096 tok)
+    传统: 一次性 Prefill (阻塞所有) :done, a0, 0, 40
+
+    section 长序列 A-Chunked
+    Prefill Chunk1 (1024 tok)      :a1, 0, 8
+    Decode A                       :a2, 8, 14
+    Prefill Chunk2 (1024 tok)      :a3, 14, 22
+    Decode A                       :a4, 22, 28
+    Prefill Chunk3 (1024 tok)      :a5, 28, 36
+    Decode A                       :a6, 36, 42
+    Prefill Chunk4 (1024 tok)      :a7, 42, 50
+
+    section 短序列 B (100 tok)
+    传统: 被阻塞等待              :crit, b0, 0, 40
+    Prefill B (一次性)             :b1, 40, 42
+    Decode B                       :b2, 42, 65
+
+    section 短序列 B-Chunked
+    Prefill B (一次性)             :b3, 8, 10
+    Decode B                       :b4, 10, 65
+</whiteboard>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. Nano-vLLM 的简化实现</b></p>
+<p>与 vLLM 支持所有序列做 Chunked Prefill 不同，Nano-vLLM <b>只对 batch 中的第一个序列</b>做分块：</p>
+
+<pre lang="python" caption="scheduler.py:42-43"><code>if remaining &lt; num_tokens and scheduled_seqs:
+    break  # 仅允许第一个序列做 chunked prefill</code></pre>
+
+<p>这个设计的<b>权衡</b>：</p>
+<ul>
+  <li><span text-color="green">✅ 简单</span>：避免复杂的多序列分块调度逻辑</li>
+  <li><span text-color="red">❌ 次优</span>：如果第一个序列很短而第二个序列很长，长序列仍需等待</li>
+  <li><span text-color="green">✅ 足够</span>：在大多数场景中（max_num_batched_tokens=16384），第一个长序列的分块已经能有效减少延迟</li>
+</ul>
+
+<p><b>2. 分块后的 KV Cache 管理</b></p>
+<p>Chunked Prefill 要求 KV Cache 能够<b>增量追加</b>。在 Nano-vLLM 中：</p>
+<ul>
+  <li>每个 Chunk 计算完成后，新计算的 K/V 通过 store_kvcache Triton kernel 写入对应 slot</li>
+  <li><code>num_cached_tokens</code> 累加已缓存的 token 数</li>
+  <li>下一个 Chunk 的 <code>cu_seqlens_k</code> 会包含已缓存的 token，FlashAttention 知道从 KV Cache 读取历史数据</li>
+  <li>最后一个 Chunk 完成后，序列转入 running 队列开始 decode</li>
+</ul>
+
+<p><b>3. 调度优先级</b></p>
+<p>Nano-vLLM 的 FCFS 策略中，Chunked Prefill 序列在完成所有 prefill 之前一直占据 waiting 队列头部，每次 schedule 都会优先继续处理它（因为它是第一个）。这种设计保证了长序列不会"饿死"。</p>
+
+<table>
+  <colgroup><col span="1" width="160"/><col span="1" width="250"/><col span="1" width="250"/></colgroup>
+  <thead><tr><th background-color="light-gray">维度</th><th background-color="light-gray">传统 Prefill</th><th background-color="light-gray">Chunked Prefill</th></tr></thead>
+  <tbody>
+    <tr><td>长 prompt 延迟</td><td>其他请求被阻塞直到完成</td><td>穿插 decode，低延迟</td></tr>
+    <tr><td>GPU 利用率</td><td>不均衡（突发高负载）</td><td>平滑，混合 prefill+decode</td></tr>
+    <tr><td>实现复杂度</td><td>简单</td><td>中等</td></tr>
+    <tr><td>KV Cache 管理</td><td>一次性分配</td><td>增量追加</td></tr>
+  </tbody>
+</table>
+
+<p><b>源码对应</b>：<code>scheduler.py:30-52</code> prefill 调度逻辑，<code>scheduler.py:81-92</code> postprocess 中 num_cached_tokens 累积。</p>
+
+<hr/>
+
+<h2>4.4 CUDA Graph</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：LLM decode 阶段每次只处理 1 个 token，计算量小但 kernel launch 开销占比高达 ~30%。CUDA Graph 将整个 forward 计算图录制为一张静态图，后续通过单次 graph.replay() 调用替代数百次 kernel launch，大幅降低 CPU overhead。</p>
+</callout>
+
+<h3>CUDA Graph 工作流程</h3>
+
+<whiteboard type="mermaid">
+flowchart TB
+    subgraph Init["初始化阶段 (ModelRunner.__init__)"]
+        WU["Warmup Model<br/>max_num_batched_tokens 前向"]
+        AC["分配 KV Cache<br/>allocate_kv_cache()"]
+        CG["capture_cudagraph()"]
+    end
+
+    subgraph Capture["Capture 录制阶段"]
+        direction TB
+        BS["batch_sizes = [1,2,4,8,16,...,512]<br/>共 N 个预定义大小"]
+        LOOP["对每个 bs (从大到小):"]
+        WARM["warmup: model(input[:bs], pos[:bs])"]
+        REC["录制: torch.cuda.graph(graph, pool)<br/>model(input[:bs], pos[:bs])"]
+        STORE["存储: self.graphs[bs] = graph<br/>self.graph_vars[bs] = vars"]
+        BS --> LOOP --> WARM --> REC --> STORE
+    end
+
+    subgraph Replay["运行时 Replay (每次 decode)"]
+        direction TB
+        SCHED["schedule() → N 个序列"]
+        FIND["匹配: 选 ≥ N 的最小图<br/>next(x for x in graph_bs if x ≥ N)"]
+        FILL["填充输入到预录制 buffer<br/>graph_vars['input_ids'][:N] = ...<br/>graph_vars['positions'][:N] = ..."]
+        EXEC["graph.replay()<br/>⚡ 单次 kernel launch！"]
+        SCHED --> FIND --> FILL --> EXEC
+    end
+
+    Init --> Capture
+    Capture -.->|"初始化完成"| Replay
+</whiteboard>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. 为什么只用于 Decode？</b></p>
+<p>CUDA Graph 要求计算图的<b>输入形状固定</b>。Decode 阶段每个序列固定处理 1 个 token，batch size 决定输入形状。而 Prefill 阶段 token 数动态变化，无法预录制。Nano-vLLM 在 prefill 时始终使用 eager 模式。</p>
+
+<p><b>2. 图录制策略</b></p>
+<ul>
+  <li><b>从大到小录制</b>：<code>for bs in reversed(self.graph_bs)</code>，PyTorch 的 CUDA Graph pool 复用机制让大图的内存 pool 可被小图复用</li>
+  <li><b>离散 batch sizes</b>：[1,2,4,8] + range(16, 513, 16)，共 36 张图。运行时选 ≥ 实际 batch size 的最小图</li>
+  <li><b>填充浪费</b>：如果实际 batch=10，使用 bs=16 的图，多余的 6 个位置为 padding（slot=-1 跳过）</li>
+</ul>
+
+<p><b>3. 录制的范围</b></p>
+<p>Nano-vLLM 的 CUDA Graph <b>只录制 Decoder 部分</b>（embedding → transformer layers → hidden_states），不包含：</p>
+<ul>
+  <li>lm_head (logits 计算) —— 因为 logits 形状由 batch size 决定</li>
+  <li>sampler (采样) —— 使用 Gumbel-Max Trick</li>
+  <li>KV Cache 更新 —— 在图外部通过 store_kvcache 完成</li>
+</ul>
+
+<p><b>4. 限制与回退</b></p>
+<table>
+  <colgroup><col span="1" width="160"/><col span="1" width="250"/><col span="1" width="250"/></colgroup>
+  <thead><tr><th background-color="light-gray">场景</th><th background-color="light-gray">行为</th><th background-color="light-gray">原因</th></tr></thead>
+  <tbody>
+    <tr><td>batch_size &gt; 512</td><td>回退 eager</td><td>超出预录制范围</td></tr>
+    <tr><td>enforce_eager=True</td><td>永不用 CUDA Graph</td><td>调试/兼容性需求</td></tr>
+    <tr><td>Prefill 阶段</td><td>回退 eager</td><td>token 数动态变化</td></tr>
+  </tbody>
+</table>
+
+<p><b>源码对应</b>：<code>model_runner.py:222-257</code> capture_cudagraph，<code>model_runner.py:196-212</code> run_model 中的 graph/fallback 选择。</p>
+
+<hr/>
+
+<h2>4.5 Tensor Parallelism 张量并行</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：当模型超出单 GPU 显存时，将权重矩阵按列或按行切分到多个 GPU 上并行计算。Nano-vLLM 实现了完整的 TP，通过多进程 + SharedMemory + NCCL 实现跨 GPU 通信，且子进程仅执行计算不参与调度。</p>
+</callout>
+
+<h3>多 GPU TP 架构图</h3>
+
+<whiteboard type="mermaid">
+graph TB
+    subgraph GPU0["🖥️ GPU 0 (主进程 / Rank 0)"]
+        direction TB
+        SCHED["Scheduler + BlockManager<br/>调度 + 内存管理"]
+        EMB0["Embedding<br/>vocab[0:V/4]"]
+        QKV0["QKVProjection<br/>num_heads/4"]
+        ATT0["FlashAttention<br/>各自计算本 GPU 的头"]
+        O0["OProjection<br/>输入按 head 切分"]
+        MLP0["MLP GateUp<br/>intermediate/4"]
+        D0["MLP Down<br/>输入按 intermediate 切分"]
+        LMH0["LM Head<br/>vocab[0:V/4]"]
+        SMP0["Sampler<br/>gather 所有 rank logits"]
+
+        EMB0 --> QKV0 --> ATT0 --> O0 --> MLP0 --> D0 --> LMH0 --> SMP0
+        SCHED -.->|"控制流"| SMP0
+    end
+
+    subgraph GPU1["🖥️ GPU 1 (子进程 / Rank 1)"]
+        EMB1["Embedding<br/>vocab[V/4:2V/4]"]
+        QKV1["QKVProjection<br/>num_heads/4"]
+        ATT1["FlashAttention"]
+        O1["OProjection"]
+        MLP1["MLP GateUp<br/>intermediate/4"]
+        D1["MLP Down"]
+        LMH1["LM Head<br/>vocab[2V/4:3V/4]"]
+        EMB1 --> QKV1 --> ATT1 --> O1 --> MLP1 --> D1 --> LMH1
+    end
+
+    subgraph GPU2["🖥️ GPU 2 (子进程 / Rank 2)"]
+        EMB2["Embedding<br/>vocab[2V/4:3V/4]"]
+        QKV2["QKVProjection<br/>num_heads/4"]
+        ATT2["FlashAttention"]
+        O2["OProjection"]
+        MLP2["MLP GateUp<br/>intermediate/4"]
+        D2["MLP Down"]
+        LMH2["LM Head<br/>vocab[3V/4:V]"]
+        EMB2 --> QKV2 --> ATT2 --> O2 --> MLP2 --> D2 --> LMH2
+    end
+
+    subgraph GPU3["🖥️ GPU 3 (子进程 / Rank 3)"]
+        EMB3["Embedding<br/>vocab[3V/4:V]"]
+        QKV3["QKVProjection<br/>num_heads/4"]
+        ATT3["FlashAttention"]
+        O3["OProjection"]
+        MLP3["MLP GateUp<br/>intermediate/4"]
+        D3["MLP Down"]
+        LMH3["LM Head<br/>vocab[3V/4:V]"]
+        EMB3 --> QKV3 --> ATT3 --> O3 --> MLP3 --> D3 --> LMH3
+    end
+
+    GPU0 -.->|"shm + Event<br/>命令传递"| GPU1
+    GPU0 -.->|"shm + Event"| GPU2
+    GPU0 -.->|"shm + Event"| GPU3
+
+    O0 <-.->|"NCCL all_reduce"| O1
+    O1 <-.->|"NCCL all_reduce"| O2
+    O2 <-.->|"NCCL all_reduce"| O3
+    D0 <-.->|"NCCL all_reduce"| D1
+    D1 <-.->|"NCCL all_reduce"| D2
+    D2 <-.->|"NCCL all_reduce"| D3
+    SMP0 <-.->|"NCCL gather"| LMH1
+    SMP0 <-.->|"NCCL gather"| LMH2
+    SMP0 <-.->|"NCCL gather"| LMH3
+</whiteboard>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. 各层的切分与同步策略</b></p>
+
+<table>
+  <colgroup><col span="1" width="180"/><col span="1" width="180"/><col span="1" width="180"/><col span="1" width="140"/></colgroup>
+  <thead><tr><th background-color="light-gray">层类型</th><th background-color="light-gray">权重切分维度</th><th background-color="light-gray">计算特点</th><th background-color="light-gray">同步方式</th></tr></thead>
+  <tbody>
+    <tr><td>Embedding</td><td>vocab_size / tp</td><td>非本 rank 的 token → embed=0</td><td>all_reduce 求和</td></tr>
+    <tr><td>QKV Projection</td><td>heads 维度切分</td><td>每个 GPU 计算自己负责的 head</td><td>无需同步</td></tr>
+    <tr><td>Attention</td><td>按 head 独立计算</td><td>FlashAttention 各算各的</td><td>无需同步</td></tr>
+    <tr><td>O Projection</td><td>输入(head)维度切分</td><td>各 GPU 的输出是部分和</td><td>all_reduce 求和</td></tr>
+    <tr><td>MLP Gate/Up</td><td>intermediate 维度切分</td><td>各 GPU 计算部分激活</td><td>无需同步</td></tr>
+    <tr><td>MLP Down</td><td>输入(intermediate)维度切分</td><td>各 GPU 输出是部分和</td><td>all_reduce 求和</td></tr>
+    <tr><td>LM Head</td><td>vocab_size / tp</td><td>各 GPU 计算部分 logits</td><td>gather 收集</td></tr>
+  </tbody>
+</table>
+
+<p><b>2. 通信模式分析</b></p>
+<p>Nano-vLLM 有两种通信路径：</p>
+<ul>
+  <li><b>控制流通信</b>（主进程 → 子进程）：SharedMemory + Event。主进程在 shm 中写入命令(request_id, method_name, args)，设置 event；子进程等待 event，读取并执行。这是<b>单向、低频</b>的通信。</li>
+  <li><b>数据流通信</b>（GPU 间）：NCCL (all_reduce, gather)。O Projection 和 MLP Down 的输出需要 cross-GPU all_reduce；LM Head 的 logits 需要通过 gather 汇总到 rank 0 进行采样。这是<b>高频、大带宽</b>的通信。</li>
+</ul>
+
+<p><b>3. 为什么子进程只做计算？</b></p>
+<p>这个设计极大简化了 TP 实现：</p>
+<ul>
+  <li>调度器、BlockManager 只在 rank 0 运行，避免分布式调度的一致性难题</li>
+  <li>序列状态（block_table、token_ids）只在 rank 0 维护，子进程通过共享内存读取序列的输入数据</li>
+  <li>子进程是无状态的：等待命令 → 执行模型前向 → 等待下一个命令</li>
+</ul>
+
+<p><b>4. 权重加载的 TP 适配</b></p>
+<p>通过 <code>weight_loader</code> 方法实现：ColumnParallel 层的权重按 rank 切片，每个 GPU 只加载自己负责的部分。例如 QKV 权重有 16 个 head，4 GPU 各加载 4 个 head 的切片。</p>
+
+<p><b>源码对应</b>：<code>linear.py:54-73</code> ColumnParallelLinear，<code>linear.py:131-156</code> RowParallelLinear，<code>embed_head.py:34-41</code> VocabParallelEmbedding，<code>llm_engine.py:17-35</code> 子进程创建。</p>
+
+<hr/>
+
+<h2>4.6 torch.compile 编译优化</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：利用 PyTorch 2.x 的 <code>@torch.compile</code> 装饰器，将 Python 定义的操作自动编译为融合的 Triton/CUDA kernel，消除 Python 解释器开销和多 kernel launch 开销。</p>
+</callout>
+
+<h3>所有 @torch.compile 使用位置汇总</h3>
+
+<table>
+  <colgroup><col span="1" width="200"/><col span="1" width="120"/><col span="1" width="140"/><col span="1" width="280"/></colgroup>
+  <thead><tr><th background-color="light-gray">编译目标</th><th background-color="light-gray">文件位置</th><th background-color="light-gray">原始操作</th><th background-color="light-gray">优化效果</th></tr></thead>
+  <tbody>
+    <tr><td><b>RoPE 前向传播</b></td><td>rotary_embedding.py:37</td><td>cos/sin 查表 + 旋转操作</td><td>融合查表与旋转为单个 kernel，减少访存</td></tr>
+    <tr><td><b>SiLU + Multiply 激活</b></td><td>activation.py:8</td><td>chunk + F.silu + element-wise mul</td><td>SwiGLU 融合为单 kernel，避免中间张量</td></tr>
+    <tr><td><b>RMSNorm 前向</b></td><td>layernorm.py:16</td><td>square → mean → rsqrt → normalize → scale</td><td>融合 5 个操作为一个 kernel，减少 4 次内存遍历</td></tr>
+    <tr><td><b>RMSNorm + Residual Add</b></td><td>layernorm.py:28</td><td>residual_add + RMSNorm（原来两次遍历）</td><td>add_rms_forward 融合：add + norm 单次遍历</td></tr>
+    <tr><td><b>Sampler 采样</b></td><td>sampler.py:7</td><td>div + softmax + Gumbel + argmax</td><td>融合为单 kernel，减少 GPU-CPU 同步</td></tr>
+  </tbody>
+</table>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. torch.compile 的工作原理</b></p>
+<p>PyTorch 2.x 的 <code>torch.compile</code> 通过以下步骤优化代码：</p>
+<ul>
+  <li><b>Dynamo 捕获</b>：拦截 Python bytecode，将 PyTorch 操作记录为 FX Graph</li>
+  <li><b>Inductor 编译</b>：将 FX Graph 编译为 Triton kernel（GPU）或 C++ kernel（CPU）</li>
+  <li><b>算子融合</b>：自动将相邻的 element-wise 操作融合为单 kernel（如 silu + mul）</li>
+</ul>
+
+<p><b>2. 为什么只有这些操作用了 torch.compile？</b></p>
+<p>Nano-vLLM 中的其他操作已经有了专用优化：</p>
+<ul>
+  <li><b>Attention</b>：使用 FlashAttention（CUDA kernel），不需要 torch.compile</li>
+  <li><b>Linear (GEMM)</b>：使用 cuBLAS 等高度优化的库</li>
+  <li><b>KV Cache 读写</b>：使用自定义 Triton kernel（store_kvcache）</li>
+</ul>
+<p>torch.compile 适用于那些由多个小操作组合而成的<b>非 GEMM 计算</b>，自带算子融合不充分时手动编译优化。</p>
+
+<p><b>3. RMSNorm 融合的性能收益</b></p>
+<p>以 <code>add_rms_forward</code> 为例，Transformer 的每个 DecoderLayer 中有 2 次 residual add + RMSNorm。在没有融合时：</p>
+<ul>
+  <li>步骤 1：读 hidden_states，写 residual（1 次读 + 1 次写）</li>
+  <li>步骤 2：读 hidden_states + weight，计算 RMSNorm，写输出（2 次读 + 1 次写）</li>
+  <li>步骤 3：读 residual + 输出，加法，写 hidden_states（2 次读 + 1 次写）</li>
+  <li><b>总计：5 次读 + 3 次写 = 8 次显存访问</b></li>
+</ul>
+<p>融合后：<b>3 次读 + 1 次写 = 4 次显存访问，带宽节省 50%</b>。在 decode 阶段（memory-bound），这直接转化为吞吐提升。</p>
+
+<p><b>源码对应</b>：<code>rotary_embedding.py:37</code>，<code>activation.py:8</code>，<code>layernorm.py:16,28</code>，<code>sampler.py:7</code>。</p>
+
+<hr/>
+
+<h2>4.7 Continuous Batching 连续批处理</h2>
+
+<callout emoji="💡" background-color="light-yellow" border-color="yellow">
+  <p><b>核心思想</b>：传统 batch 推理要求所有请求同时到达、同时完成，导致 GPU 利用率低下。Continuous Batching 允许请求动态加入和退出，prefill 和 decode 在同一 batch 中混合执行，GPU 不再空闲等待。</p>
+</callout>
+
+<h3>请求生命周期时间线</h3>
+
+<whiteboard type="mermaid">
+gantt
+    title Continuous Batching — 请求动态加入/退出
+    dateFormat X
+    axisFormat %s
+
+    section 请求 A (100 tok)
+    Prefill A (一次性)              :a1, 0, 4
+    Decode A (逐步生成)             :a2, 4, 15
+    A 完成 (EOS/max_tokens)         :milestone, m1, 15, 0
+
+    section 请求 B (50 tok)
+    B 到达, 等待中                   :b0, 0, 4
+    Prefill B (一次性)               :b1, 4, 6
+    Decode B                         :b2, 6, 25
+
+    section 请求 C (300 tok, 长序列)
+    C 到达, 等待中                   :c0, 0, 10
+    Prefill C Chunk1 (100 tok)       :c1, 10, 14
+    Prefill C Chunk2 (100 tok)       :c2, 15, 19
+    Prefill C Chunk3 (100 tok)       :c3, 19, 23
+    Decode C                         :c4, 23, 35
+
+    section 请求 D (80 tok)
+    D 到达, 等待中                   :d0, 14, 15
+    Prefill D (一次性)               :d1, 15, 17
+    Decode D                         :d2, 17, 35
+
+    section Batch 组成
+    仅 A                             :crit, ba1, 0, 4
+    A + B                           :crit, ba2, 4, 6
+    A + B                           :crit, ba3, 6, 10
+    A + B + C(Chunk1)               :crit, ba4, 10, 14
+    A + B + D (A即将完成)           :crit, ba5, 15, 17
+    B + D + C(Chunk2)               :crit, ba6, 17, 19
+    B + D + C(Chunk3)               :crit, ba7, 19, 25
+    B + D + C(Decode)               :crit, ba8, 25, 35
+</whiteboard>
+
+<h3>技术深度分析</h3>
+
+<p><b>1. 调度循环的核心状态机</b></p>
+
+<whiteboard type="mermaid">
+stateDiagram-v2
+    [*] --> WAITING: add_request()
+    WAITING --> RUNNING_PREFILL: schedule() 选择
+    RUNNING_PREFILL --> WAITING: Chunked Prefill 未完
+    RUNNING_PREFILL --> RUNNING_DECODE: Prefill 完成
+    RUNNING_DECODE --> RUNNING_DECODE: 每 step 生成 1 token
+    RUNNING_DECODE --> FINISHED: EOS / max_tokens
+    RUNNING_DECODE --> WAITING: 被抢占 (内存不足)
+    FINISHED --> [*]: 释放 KV Cache
+
+    note right of WAITING: FCFS 队列<br/>新请求加入队尾
+    note right of RUNNING_DECODE: 每次只生成 1 token<br/>CUDA Graph 加速
+</whiteboard>
+
+<p><b>2. 抢占策略</b></p>
+<p>当显存不足时，Nano-vLLM 使用 <b>FCFS + 抢占最新</b> 策略：</p>
+<ul>
+  <li>如果 running 队列非空，<b>抢占最后一个</b>（最新加入的）：<code>self.preempt(self.running.pop())</code></li>
+  <li>如果 running 队列已空（只有当前序列），抢占当前序列本身</li>
+  <li>被抢占的序列：状态重置为 WAITING，释放全部 KV Cache 块，放回 waiting 头部（下次优先调度）</li>
+</ul>
+<p>与 vLLM 不同，Nano-vLLM <b>不支持部分抢占</b>（释放部分 KV Cache 块），抢占时释放全部块。</p>
+
+<p><b>3. 与传统 Static Batching 的对比</b></p>
+
+<table>
+  <colgroup><col span="1" width="180"/><col span="1" width="250"/><col span="1" width="250"/></colgroup>
+  <thead><tr><th background-color="light-gray">维度</th><th background-color="light-gray">Static Batching</th><th background-color="light-gray">Continuous Batching</th></tr></thead>
+  <tbody>
+    <tr><td>请求到达</td><td>必须同时到达</td><td>任意时间到达</td></tr>
+    <tr><td>请求完成</td><td>等待 batch 内全部完成</td><td>独立完成即退出</td></tr>
+    <tr><td>长序列影响</td><td>拖慢整个 batch</td><td>通过 chunked prefill 隔离</td></tr>
+    <tr><td>GPU 利用率</td><td>低（等待慢请求）</td><td>高（动态填充）</td></tr>
+    <tr><td>实现复杂度</td><td>简单</td><td>中等</td></tr>
+    <tr><td>适用场景</td><td>离线批量推理</td><td>在线服务</td></tr>
+  </tbody>
+</table>
+
+<p><b>4. 关键设计模式：while not is_finished</b></p>
+<p>Nano-vLLM 的核心循环极其简洁：</p>
+
+<pre lang="python" caption="llm_engine.py:65-90"><code>while not self.is_finished():
+    output, num_tokens = self.step()
+    # num_tokens &gt; 0 → prefill (处理的token数)
+    # num_tokens &lt; 0 → decode (序列数取负)</code></pre>
+
+<p>这个循环是 Continuous Batching 的精髓：</p>
+<ul>
+  <li>每次 step() 只推进一个推理步骤（一次模型前向）</li>
+  <li>请求在循环的任意时刻都可以加入（add_request 向 waiting 添加）</li>
+  <li>完成的请求逐步从 running 移除</li>
+  <li>循环在所有请求完成后自然终止</li>
+</ul>
+
+<p><b>源码对应</b>：<code>llm_engine.py:60-90</code> generate 主循环，<code>scheduler.py:25-73</code> schedule 调度逻辑，<code>scheduler.py:57-68</code> preempt 抢占。</p>
+
+<hr/>
+
+<h2>4.8 七大优化技术综合对比</h2>
+
+<callout emoji="📊" background-color="light-blue" border-color="blue">
+  <p><b>总览</b>：以下表格从 8 个维度对比 Nano-vLLM 的 7 大优化技术，帮助理解各项技术在推理系统中的定位和协同关系。</p>
+</callout>
+
+<table>
+  <colgroup><col span="1" width="60"/><col span="1" width="140"/><col span="1" width="120"/><col span="1" width="120"/><col span="1" width="100"/><col span="1" width="100"/><col span="1" width="100"/></colgroup>
+  <thead><tr>
+    <th background-color="light-gray">#</th>
+    <th background-color="light-gray">技术</th>
+    <th background-color="light-gray">优化目标</th>
+    <th background-color="light-gray">核心机制</th>
+    <th background-color="light-gray">适用阶段</th>
+    <th background-color="light-gray">实现复杂度</th>
+    <th background-color="light-gray">收益幅度</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>4.1</td><td><b>PagedAttention</b></td><td>显存效率</td><td>分页管理 KV Cache</td><td>全部</td><td>中</td><td><span text-color="green">↑↑↑ 极高</span></td></tr>
+    <tr><td>4.2</td><td><b>Prefix Caching</b></td><td>计算复用</td><td>链式 xxhash + 引用计数</td><td>Prefill</td><td>中</td><td><span text-color="green">↑↑↑ 极高</span></td></tr>
+    <tr><td>4.3</td><td><b>Chunked Prefill</b></td><td>延迟</td><td>长 prompt 分块处理</td><td>Prefill</td><td>低</td><td><span text-color="green">↑↑ 高</span></td></tr>
+    <tr><td>4.4</td><td><b>CUDA Graph</b></td><td>CPU overhead</td><td>预录制计算图</td><td>Decode</td><td>中</td><td><span text-color="green">↑↑ 高</span></td></tr>
+    <tr><td>4.5</td><td><b>Tensor Parallelism</b></td><td>显存扩展</td><td>权重跨 GPU 切分</td><td>全部</td><td>高</td><td><span text-color="green">↑ 中</span></td></tr>
+    <tr><td>4.6</td><td><b>torch.compile</b></td><td>计算效率</td><td>算子融合编译</td><td>全部</td><td>低</td><td><span text-color="green">↑ 中</span></td></tr>
+    <tr><td>4.7</td><td><b>Continuous Batching</b></td><td>吞吐量</td><td>动态请求调度</td><td>全部</td><td>中</td><td><span text-color="green">↑↑↑ 极高</span></td></tr>
+  </tbody>
+</table>
+
+<h3>技术协同关系</h3>
+
+<p>这 7 大技术并非独立工作，而是形成了紧密的协同增强效应：</p>
+<ul>
+  <li><b>PagedAttention</b> 是基础设施，为 Prefix Caching 和 Chunked Prefill 提供分页内存模型</li>
+  <li><b>Prefix Caching</b> 依赖 PagedAttention 的引用计数机制实现块共享</li>
+  <li><b>Chunked Prefill</b> + <b>Continuous Batching</b> 协同保证在线服务的低延迟</li>
+  <li><b>CUDA Graph</b> 在 Continuous Batching 的 decode 阶段消除 CPU bottleneck</li>
+  <li><b>Tensor Parallelism</b> 将单 GPU 的压力分散，与 PagedAttention 协同提升多 GPU 显存利用率</li>
+  <li><b>torch.compile</b> 在以上所有技术的计算路径中消除 Python 开销</li>
+</ul>
+
+<hr/>
+
+<h3>Nano-vLLM vs vLLM 优化对比</h3>
+
+<table>
+  <colgroup><col span="1" width="160"/><col span="1" width="280"/><col span="1" width="280"/></colgroup>
+  <thead><tr><th background-color="light-gray">优化技术</th><th background-color="light-gray">Nano-vLLM (v0.2.0)</th><th background-color="light-gray">vLLM (v1 系列)</th></tr></thead>
+  <tbody>
+    <tr><td>PagedAttention</td><td>完整实现，单一 BlockManager，引用计数</td><td>多层架构 KVCacheManager→Coordinator→Manager</td></tr>
+    <tr><td>Prefix Caching</td><td>xxhash + 双重验证，固定 block 粒度</td><td>xxhash/SHA256，可分离 hash_block_size</td></tr>
+    <tr><td>Chunked Prefill</td><td>简化版（仅首个序列）</td><td>全序列支持，可配置 token 阈值</td></tr>
+    <tr><td>CUDA Graph</td><td>固定 batch size 图（36 张）</td><td>FULL/PIECEWISE 模式，任意 batch size</td></tr>
+    <tr><td>Tensor Parallelism</td><td>多进程 + SharedMemory + Event</td><td>Ray Actor + NCCL，支持 PP/DP/DCP</td></tr>
+    <tr><td>torch.compile</td><td>5 处 @torch.compile 装饰器</td><td>更广泛的编译覆盖 + 自定义 CUDA kernel</td></tr>
+    <tr><td>Continuous Batching</td><td>FCFS + 抢占最新请求</td><td>优先级调度 + 部分抢占 + Spec Decode</td></tr>
+  </tbody>
+</table>

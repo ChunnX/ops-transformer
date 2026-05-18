@@ -1,0 +1,207 @@
+<h1>3. 模块详解</h1>
+
+<callout emoji="💡" background-color="light-blue" border-color="blue">
+  <p><b>本节目标：</b>深入剖析 Nano-vLLM 的 12 个核心模块，从顶层 LLM/LLMEngine 到底层的每一个 Layer 实现。每个模块均包含源码逐行解析、设计决策分析、状态图/流程图以及模块间的交互关系。建议按顺序阅读，因为后续模块大量依赖前置模块的机制。</p>
+</callout>
+
+<hr/>
+
+<h2>3.1 LLM / LLMEngine — 入口与控制核心</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>LLM 是整个库的 <b>唯一公开入口</b>，直接继承 LLMEngine 无额外逻辑（4 行空壳）。LLMEngine 是真正的"引擎大脑"：负责多进程 TP 协同、请求管理、推理循环（step/generate）、性能统计。</p>
+</callout>
+
+<h3>3.1.1 文件结构与继承关系</h3>
+
+<grid>
+  <column width-ratio="0.3">
+    <p><b>文件路径</b></p>
+    <p><code>nanovllm/llm.py</code> — 公开入口</p>
+    <p><code>nanovllm/engine/llm_engine.py</code> — 核心实现</p>
+  </column>
+  <column width-ratio="0.7">
+    <p><b>架构决策：</b>LLM 与 LLMEngine 分离是为了符合 vLLM API 兼容。LLM 是用户直接使用的类，LLMEngine 包含所有逻辑。这样即使 LLM 需要扩展（如异步 API），LLMEngine 可保持不变。</p>
+  </column>
+</grid>
+
+<h3>3.1.2 LLMEngine.__init__ — 多进程 TP 初始化</h3>
+
+<pre lang="python" caption="LLMEngine.__init__ 完整源码"><code>def __init__(self, model, **kwargs):
+    config_fields = {field.name for field in fields(Config)}      # (1) 从 Config dataclass 提取所有合法字段名
+    config_kwargs = {k: v for k, v in kwargs.items() if k in config_fields}  # (2) 过滤出 Config 支持的参数
+    config = Config(model, **config_kwargs)                        # (3) 实例化 Config，触发 __post_init__ 验证
+    Sequence.block_size = config.kvcache_block_size                # (4) 全局设置 Sequence 的 block_size 类变量
+    self.ps = []                                                   # (5) 存储 TP worker 进程引用
+    self.events = []                                               # (6) 存储跨进程同步 Event 对象
+    ctx = mp.get_context("spawn")                                  # (7) 使用 spawn 而非 fork，避免 CUDA 上下文冲突
+    for i in range(1, config.tensor_parallel_size):                # (8) rank 1..N-1 作为 worker
+        event = ctx.Event()                                        # (9) 每个 worker 独立的 Event 信号
+        process = ctx.Process(target=ModelRunner, args=(config, i, event))  # (10) 创建子进程，传入 rank 和事件
+        process.start()                                            # (11) 启动子进程，触发 ModelRunner.__init__
+        self.ps.append(process)
+        self.events.append(event)
+    self.model_runner = ModelRunner(config, 0, self.events)        # (12) rank=0 在主进程内运行（非子进程）
+    self.tokenizer = AutoTokenizer.from_pretrained(config.model, use_fast=True)  # (13) 加载 fast tokenizer
+    config.eos = self.tokenizer.eos_token_id                       # (14) 自动获取 EOS token id
+    self.scheduler = Scheduler(config)                             # (15) 实例化调度器
+    atexit.register(self.exit)                                     # (16) 注册退出清理函数</code></pre>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p><b>关键设计 — SharedMemory + Event 的 TP 通信协议：</b></p>
+  <ul>
+    <li><b>spawn vs fork：</b>CUDA 不支持 fork，子进程必须用 spawn 从零初始化 CUDA 上下文。这要求所有状态通过 pickle 传递，但 pickle 无法序列化 CUDA tensor。</li>
+    <li><b>SharedMemory 方案：</b>rank 0 在 ModelRunner.__init__ 中创建 SharedMemory(name="nanovllm", create=True)，写入方法名和序列化参数，然后 set Event；worker 在 loop() 中 wait Event，读取并执行。这是一个<b>主从广播</b>模式 — rank 0 调用 write_shm，所有 worker 同时收到。</li>
+    <li><b>Event 双向同步：</b>Event 是单向的（rank 0 → workers），worker 执行结果不传回。那 NCCL 的 dist.all_reduce / dist.gather 如何工作？<b>NCCL 使用独立的内核级别通信通道</b>，不经过 SharedMemory，所以计算过程中各 rank 直接通过 NCCL 同步。</li>
+    <li><b>内存大小：</b>shm = 2^20 = 1MB，足够序列化方法名 + Sequence 对象（经过 __getstate__ 压缩后很小）。</li>
+  </ul>
+</callout>
+
+<h3>3.1.3 SharedMemory 通信协议详解</h3>
+
+<whiteboard type="mermaid">
+sequenceDiagram
+    participant Main as Rank 0 (Main)
+    participant Shm as SharedMemory (1MB)
+    participant W1 as Rank 1 (Worker)
+    participant W2 as Rank N (Worker)
+    participant NCCL as NCCL Backend
+
+    Note over Main,NCCL: ===== Step 1: 方法调用 =====
+    Main->>Shm: write_shm("run", seqs, is_prefill)
+    Main->>Shm: buf[0:4] = data_len (小端)
+    Main->>Shm: buf[4:n+4] = pickle.dumps(args)
+    Main->>W1: event.set()
+    Main->>W2: event.set()
+
+    W1->>Shm: read_shm() - wait event, read buf[0:4], read data
+    W2->>Shm: read_shm() - wait event, read buf[0:4], read data
+    W1->>W1: event.clear()
+    W2->>W2: event.clear()
+
+    Note over Main,NCCL: ===== Step 2: 并行执行 =====
+    Main->>Main: call("run", ...) -> local execution
+    W1->>W1: call("run", ...) -> local execution
+    W2->>W2: call("run", ...) -> local execution
+
+    Note over Main,NCCL: ===== Step 3: NCCL 同步 =====
+    Main->>NCCL: dist.all_reduce (RowParallelLinear)
+    W1->>NCCL: dist.all_reduce
+    W2->>NCCL: dist.all_reduce
+    NCCL-->>Main: 聚合结果
+    NCCL-->>W1: 聚合结果
+    NCCL-->>W2: 聚合结果
+
+    Note over Main,NCCL: ===== Step 4: 退出 =====
+    Main->>Shm: write_shm("exit")
+    Main->>W1: event.set()
+    Main->>W2: event.set()
+    W1->>W1: clean exit from loop()
+    W2->>W2: clean exit from loop()
+</whiteboard>
+
+<h3>3.1.4 LLMEngine.step() — 单步推理循环</h3>
+
+<pre lang="python" caption="step() 逐行解析"><code>def step(self):
+    # (1) 调度：从 waiting/running 队列选出本轮处理的 seqs
+    #     is_prefill=True 表示这批 seq 处于 prefill 阶段
+    seqs, is_prefill = self.scheduler.schedule()
+
+    # (2) 计算 token 数量用于吞吐统计
+    #     prefill 时：所有 seq 的 num_scheduled_tokens 之和
+    #     decode 时：每个 seq 生成 1 token，返回 -len(seqs) 作区分
+    num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
+
+    # (3) 模型推理：通过 call 方法自动广播到所有 TP ranks
+    #     返回每个 seq 采样出的下一个 token id
+    token_ids = self.model_runner.call("run", seqs, is_prefill)
+
+    # (4) 后处理：更新 seq 状态（追加 token、检查是否结束）
+    self.scheduler.postprocess(seqs, token_ids, is_prefill)
+
+    # (5) 收集已完成的 seq（finished=True）的输出 token ids
+    outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
+    return outputs, num_tokens</code></pre>
+
+<h3>3.1.5 generate() — 完整生成循环</h3>
+
+<pre lang="python" caption="generate() 逐行解析"><code>def generate(self, prompts, sampling_params, use_tqdm=True):
+    pbar = tqdm(total=len(prompts), ...)                     # (1) 进度条
+    if not isinstance(sampling_params, list):
+        sampling_params = [sampling_params] * len(prompts)    # (2) 广播单参数到所有 prompt
+    for prompt, sp in zip(prompts, sampling_params):
+        self.add_request(prompt, sp)                          # (3) 将请求加入 waiting 队列
+    outputs = {}
+    prefill_throughput = decode_throughput = 0.
+    while not self.is_finished():                            # (4) 主循环：直到所有 seq 完成
+        t = perf_counter()
+        output, num_tokens = self.step()                     # (5) 单步调度+推理+后处理
+        if num_tokens > 0:
+            prefill_throughput = num_tokens / (perf_counter() - t)   # (6a) Prefill 吞吐
+        else:
+            decode_throughput = -num_tokens / (perf_counter() - t)  # (6b) Decode 吞吐
+        pbar.set_postfix({"Prefill": ..., "Decode": ...})   # (7) 实时显示吞吐
+        for seq_id, token_ids in output:
+            outputs[seq_id] = token_ids                     # (8) 收集完成输出
+            pbar.update(1)
+    outputs = [outputs[seq_id] for seq_id in sorted(outputs.keys())]  # (9) 按 seq_id 排序
+    outputs = [{
+        "text": self.tokenizer.decode(token_ids),           # (10) 解码为文本
+        "token_ids": token_ids                              # (11) 保留原始 token ids
+    } for token_ids in outputs]
+    return outputs</code></pre>
+
+<table>
+  <thead><tr><th background-color="light-gray">设计决策</th><th background-color="light-gray">理由</th></tr></thead>
+  <tbody>
+    <tr><td>负值标记 decode</td><td>num_tokens < 0 时取反即为 decode batch size，无需额外 flag 传回 generate()</td></tr>
+    <tr><td>sorted(outputs.keys())</td><td>保证输出顺序与输入 prompts 顺序一致，因为 seq_id 按创建顺序递增</td></tr>
+    <tr><td>step() 返回已完成 seq</td><td>避免 generate() 主动检查 scheduler 状态，解耦更清晰</td></tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h2>3.2 Config — 配置管理与验证</h2>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>模块定位：</b>所有配置的单一真实来源 (Single Source of Truth)。使用 Python dataclass 实现声明式配置，__post_init__ 中执行自动验证与推导。</p>
+</callout>
+
+<pre lang="python" caption="Config 完整源码"><code>@dataclass(slots=True)                   # (1) slots=True 节省内存，禁止动态添加属性
+class Config:
+    model: str                           # (2) 必填：模型路径（本地目录）
+    max_num_batched_tokens: int = 16384  # (3) 单次 prefill 最多处理的 token 数
+    max_num_seqs: int = 512              # (4) 最多并发的 sequence 数
+    max_model_len: int = 4096            # (5) 模型位置编码上限（会被 hf_config 覆盖下限）
+    gpu_memory_utilization: float = 0.9  # (6) GPU 显存利用率，90% 用于 KV cache
+    tensor_parallel_size: int = 1        # (7) TP 并行度，1-8
+    enforce_eager: bool = False          # (8) 是否禁用 CUDA Graph（调试用）
+    hf_config: AutoConfig | None = None  # (9) 自动填充的 HuggingFace 模型配置
+    eos: int = -1                        # (10) EOS token id（自动从 tokenizer 获取）
+    kvcache_block_size: int = 256        # (11) KV cache 块大小（必须是 256 的倍数）
+    num_kvcache_blocks: int = -1         # (12) KV cache 块总数（运行时计算）
+
+    def __post_init__(self):
+        assert os.path.isdir(self.model)                    # (a) 确保模型路径存在
+        assert self.kvcache_block_size % 256 == 0           # (b) block_size 对齐要求（FlashAttention 的页大小）
+        assert 1 <= self.tensor_parallel_size <= 8          # (c) TP 范围检查
+        self.hf_config = AutoConfig.from_pretrained(self.model)  # (d) 自动加载 HF 配置
+        self.max_model_len = min(                           # (e) 取用户设置和模型上限的较小值
+            self.max_model_len,
+            self.hf_config.max_position_embeddings
+        )</code></pre>
+
+<callout emoji="❓" background-color="light-blue" border-color="blue">
+  <p><b>为什么 block_size 必须是 256 的倍数？</b></p>
+  <p>FlashAttention 要求 query/key 的最后一个维度（head_dim）对齐到 8 或 16 字节。256 是 FlashAttention varlen 实现的分页粒度，同时也是 GPU L2 cache line 的友好大小。256 × head_dim × dtype_size 恰好是典型的 L2 cache 页大小。</p>
+</callout>
+
+<table>
+  <thead><tr><th background-color="light-gray">参数</th><th background-color="light-gray">类型</th><th background-color="light-gray">设计考量</th></tr></thead>
+  <tbody>
+    <tr><td>max_num_batched_tokens</td><td>int=16384</td><td>控制 prefill 的最大显存开销。16384 约等于 64 条 256-token 的请求批处理。</td></tr>
+    <tr><td>gpu_memory_utilization</td><td>float=0.9</td><td>预留 10% 给 CUDA context、临时 buffer、模型权重增量。太激进会 OOM。</td></tr>
+    <tr><td>num_kvcache_blocks</td><td>int=-1</td><td>-1 表示未初始化，由 ModelRunner.allocate_kv_cache() 动态计算。不与 config 耦合。</td></tr>
+  </tbody>
+</table>

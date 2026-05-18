@@ -1,0 +1,220 @@
+<title>Nano-vLLM 源码深度解析（增强版）</title>
+
+<callout emoji="💡" background-color="light-blue" border-color="blue">
+  <p><b>本文档是基于"原版 Nano-vLLM 源码深度解析"的增强版本。</b>在原有逐行精讲基础上，新增了详尽的代码架构图示、数据流图、模块关系图，并对各模块的代码解析进行了大幅深化。按目录索引快速跳转。</p>
+</callout>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>作者</b>: Xingkai Yu | <b>版本</b>: v0.2.0 | <b>代码规模</b>: ~1200行 Python | <b>仓库</b>: <a href="https://github.com/GeeeekExplorer/nano-vllm">github.com/GeeeekExplorer/nano-vllm</a></p>
+</callout>
+
+<hr/>
+
+<h1>1. 项目概述</h1>
+
+<p>Nano-vLLM 是一个<b>从零构建的轻量级 LLM 推理框架</b>，用约 1200 行 Python 代码完整实现了 vLLM 的核心推理优化技术。项目定位是<b>教育性和可读性极致</b>，是理解生产级推理引擎的最佳起点。</p>
+
+<callout emoji="✅" background-color="light-green" border-color="green">
+  <p><b>性能验证</b>：RTX 4070 Laptop 8GB + Qwen3-0.6B + 256请求 → Nano-vLLM <b>1434 tok/s</b>，超越 vLLM 的 1362 tok/s</p>
+</callout>
+
+<h2>1.1 代码目录结构总览</h2>
+
+<p>整个项目由 <b>16 个源文件</b> 组成，按职责分为 4 层：入口层、引擎核心层、模型层、工具层。下图展示了完整目录树和模块职责：</p>
+
+<whiteboard type="plantuml">
+@startuml
+title Nano-vLLM 项目目录结构与模块职责
+
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+
+package "入口层 (Entry)" as Entry {
+  [llm.py\nLLM类, 仅5行\n用户API入口] as LLM
+  [llm_engine.py\nLLMEngine, 90行\n引擎编排器] as LLME
+}
+
+package "引擎核心层 (Engine Core)" as Core {
+  [scheduler.py\nScheduler, 92行\n请求调度+连续批处理] as SCH
+  [block_manager.py\nBlockManager, 120行\nPagedAttention内存管理\n+前缀缓存] as BM
+  [model_runner.py\nModelRunner, 257行\n推理执行引擎\n+CUDA Graph] as MR
+  [sequence.py\nSequence, 83行\n请求序列抽象\n状态机+块映射] as SEQ
+}
+
+package "模型层 (Model Layers)" as Model {
+  [qwen3.py\nQwen3ForCausalLM\n216行, 完整Transformer] as Q3
+  [attention.py\nFlashAttention+Triton\n75行, KV Cache存取] as ATTN
+  [linear.py\n5种并行线性层\n156行, QKV合并+TP] as LIN
+  [rotary_embedding.py\nRoPE, 59行\ncos/sin缓存+编译] as ROPE
+  [layernorm.py\nRMSNorm, 50行\n融合residual_add] as NORM
+  [sampler.py\nSampler, 12行\nGumbel-Max采样] as SMP
+  [embed_head.py\nEmbed+LM Head, 66行\n词表并行] as EMB
+  [activation.py\nSiluAndMul, 11行\nSwiGLU融合] as ACT
+}
+
+package "工具层 (Utils)" as Util {
+  [context.py\nContext, 27行\n全局上下文传递] as CTX
+  [loader.py\n权重加载, 28行\nsafetensors+融合] as LOAD
+}
+
+package "配置 (Config)" as Cfg {
+  [config.py\nConfig, 25行\n数据中心配置类] as CFG
+  [sampling_params.py\nSamplingParams\n11行, 采样参数] as SP
+}
+
+Entry --> Core
+Core --> Model
+Model --> Util
+Entry --> Cfg
+Core --> Cfg
+
+@enduml
+</whiteboard>
+
+<h2>1.2 项目核心依赖</h2>
+
+<table>
+  <thead><tr><th background-color="light-gray">依赖库</th><th background-color="light-gray">版本</th><th background-color="light-gray">用途</th></tr></thead>
+  <tbody>
+    <tr><td>PyTorch</td><td>&gt;= 2.4.0</td><td>基础张量计算、CUDA Graph、torch.compile</td></tr>
+    <tr><td>Triton</td><td>&gt;= 3.0.0</td><td>自定义 CUDA kernel（KV Cache 存储）</td></tr>
+    <tr><td>flash-attn</td><td>latest</td><td>高效注意力计算（Flash Attention varlen+with_kvcache）</td></tr>
+    <tr><td>transformers</td><td>&gt;= 4.51.0</td><td>模型配置加载、Tokenizer</td></tr>
+    <tr><td>xxhash</td><td>latest</td><td>前缀缓存的快速哈希计算</td></tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h1>2. 整体架构与调用关系</h1>
+
+<p>Nano-vLLM 采用<b>经典的引擎-调度-执行三段式架构</b>。LLMEngine 作为总协调器，驱动 Scheduler（决策层）和 ModelRunner（执行层）协作完成推理。</p>
+
+<h2>2.1 核心架构图</h2>
+
+<whiteboard type="mermaid">
+graph TB
+    subgraph "用户接口 User API"
+        USER["llm.generate(prompts, sampling_params)"]
+    end
+
+    subgraph "LLMEngine 编排层"
+        GEN["generate() 主循环"]
+        AR["add_request()"]
+        STEP["step()"]
+    end
+
+    subgraph "Scheduler 决策层"
+        SCHED["schedule()"]
+        PREEMPT["preempt()"]
+        POST["postprocess()"]
+        WQ["waiting queue"]
+        RQ["running queue"]
+    end
+
+    subgraph "BlockManager 内存管理层"
+        CAN_ALLOC["can_allocate()"]
+        ALLOC["allocate()"]
+        DEALLOC["deallocate()"]
+        HASH["hash_blocks()"]
+        PREFIX["Prefix Cache\n(hash_to_block_id)"]
+        FREEBLK["free_block_ids"]
+    end
+
+    subgraph "ModelRunner 执行层"
+        PREP_PRE["prepare_prefill()"]
+        PREP_DEC["prepare_decode()"]
+        RUN_M["run_model()"]
+        CG["CUDA Graph"]
+        SAMPLE["Sampler"]
+    end
+
+    subgraph "GPU 推理"
+        MODEL["Qwen3ForCausalLM"]
+        KV["KV Cache Tensor\n[2, layers, blocks, 256, heads, dim]"]
+        ATTN["Flash Attention"]
+    end
+
+    USER --> GEN
+    GEN --> AR
+    GEN --> STEP
+    AR --> WQ
+    STEP --> SCHED
+    SCHED --> WQ
+    SCHED --> RQ
+    SCHED --> CAN_ALLOC
+    SCHED --> PREEMPT
+    PREEMPT --> DEALLOC
+    PREEMPT --> WQ
+    CAN_ALLOC --> PREFIX
+    CAN_ALLOC --> FREEBLK
+    ALLOC --> FREEBLK
+    DEALLOC --> FREEBLK
+    POST --> HASH
+    HASH --> PREFIX
+    
+    STEP --> PREP_PRE
+    STEP --> PREP_DEC
+    PREP_PRE --> RUN_M
+    PREP_DEC --> RUN_M
+    RUN_M --> CG
+    RUN_M --> MODEL
+    CG --> MODEL
+    MODEL --> ATTN
+    ATTN --> KV
+    MODEL --> SAMPLE
+    SAMPLE --> POST
+
+    style USER fill:#e1f5fe
+    style GEN fill:#fff9c4
+    style SCHED fill:#ffccbc
+    style PREFIX fill:#c8e6c9
+    style MODEL fill:#e1bee7
+</whiteboard>
+
+<h2>2.2 一次推理的完整数据流</h2>
+
+<p>以下时序图展示了一条请求从入队到生成完成的完整数据流动：</p>
+
+<whiteboard type="mermaid">
+sequenceDiagram
+    participant User as 用户
+    participant LLM as LLMEngine
+    participant Sch as Scheduler
+    participant BM as BlockManager
+    participant MR as ModelRunner
+    participant GPU as GPU/Model
+
+    User->>LLM: generate(prompts, params)
+    LLM->>LLM: tokenizer.encode(prompt)
+    LLM->>Sch: add_request() → waiting queue
+    
+    loop 每个 step()
+        Sch->>Sch: schedule() - 从waiting/running取序列
+        Sch->>BM: can_allocate(seq) - 检查前缀缓存
+        BM-->>Sch: num_cached_blocks (命中数)
+        Sch->>BM: allocate(seq) - 分配/复用物理块
+        Sch-->>LLM: [seqs], is_prefill
+        
+        LLM->>MR: call("run", seqs, is_prefill)
+        MR->>MR: prepare_prefill/decode() - 准备输入张量
+        Note over MR: input_ids, positions, slot_mapping,<br/>block_tables, context_lens
+        MR->>MR: run_model() - eager或CUDA Graph
+        MR->>GPU: model.forward(input_ids, positions)
+        GPU->>GPU: Embed → DecoderLayers×N → Head
+        GPU->>GPU: Attention: store_kvcache() + flash_attn
+        GPU-->>MR: hidden_states/logits
+        MR->>MR: sampler(logits, temperatures)
+        MR-->>LLM: token_ids[]
+        
+        LLM->>Sch: postprocess(seqs, token_ids)
+        Sch->>BM: hash_blocks(seq) - 更新前缀缓存
+        Sch->>Sch: append_token, check EOS/max_tokens
+        Sch->>BM: deallocate(seq) if FINISHED
+    end
+    
+    LLM->>LLM: tokenizer.decode(outputs)
+    LLM-->>User: [{"text": "...", "token_ids": [...]}]
+</whiteboard>
+
+<hr/>

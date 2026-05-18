@@ -487,14 +487,19 @@ public:
             return TASK_DEAL_MODE::DEAL_ZERO;
         }
         if (isFirstTask || prevBIdx != bIdx) {
+            uint64_t rawActSeqLenKv = 0;
             prevBIdx = bIdx;
             if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
                 actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             }
+            rawActSeqLenKv = actSeqLensKv;
             actSeqLensKv += constInfo.actualKVPrefixSize;
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            PRINTF("GTDM set: bIdx:%u bSize:%u kvSize:%u rawKv:%llu +prefix:%llu -> actKv:%llu actQ:%llu\n",
+                   bIdx, constInfo.bSize, constInfo.actualSeqLenKVSize,
+                   rawActSeqLenKv, (uint64_t)constInfo.actualKVPrefixSize, actSeqLensKv, actSeqLensQ);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
@@ -894,6 +899,9 @@ public:
             }
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+            PRINTF("S1OUSP set: bIdx:%u bSize:%u kvSize:%u rawKv:%llu +prefix:%llu -> actKv:%llu actQ:%llu\n",
+                   bIdx, constInfo.bSize, constInfo.actualSeqLenKVSize,
+                   actSeqLensKv, (uint64_t)constInfo.actualKVPrefixSize, actSeqLensKv + constInfo.actualKVPrefixSize, actSeqLensQ);
             actSeqLensKv += constInfo.actualKVPrefixSize;
             gS1Size = actSeqLensQ * constInfo.gSize;
             gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
