@@ -548,7 +548,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
-        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
+        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp), "ccu",
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
         output, workspaceSize, executor);
 
@@ -568,6 +568,29 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         }
     }
     return ret;
+}
+
+// getRanksize
+aclnnStatus GetMatmulAllReduceRankSize(const char *groupEp, uint32_t &rankSize)
+{
+    OP_LOGD("Start to get Mc2RankSize Tensor");
+    auto &instance = GetInstance();
+
+    auto aclnnRet = instance.LoadHcclSymbols();
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    HcclComm hcclHandle;
+    aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    auto hcclRet = instance.HcclGetRankSize(hcclHandle, &rankSize);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGD("Get rank size success, rankSize is: %u", rankSize);
+
+    return ACLNN_SUCCESS;
 }
 
 #ifdef __cplusplus

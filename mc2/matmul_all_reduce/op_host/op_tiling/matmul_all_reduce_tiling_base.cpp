@@ -1578,4 +1578,30 @@ void MatmulAllReduceTilingBase::PrintTilingData()
     PrintExtendMatmulTiling(true);
     PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTailTilingData());
 }
+ge::graphStatus GetAndConvertCommMode(uint8_t &commMode)
+{
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
+                    return ge::GRAPH_FAILED);
+
+    if (std::strcmp(commModeStr, "aicpu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (std::strcmp(commModeStr, "default") == 0) {
+        if (args_.rankDim <= 8) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(opName_, "commMode is default, and rankDim is %d, will use commMode: %d.", args_.rankDim, commMode);
+    } else {
+        OP_LOGE(opName_, "The input attr comm_mode only support 'default', 'aicpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
 } // namespace optiling

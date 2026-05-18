@@ -291,7 +291,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, transX2, biasOptional, x3Optional, scale, offset, transX2Scale, x1ScaleOptional, commQuantScale1Optional,
-        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
+        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp), "ccu",
         transposeX1, transposeX2, commTurn, antiquantGroupSize, groupSize,
         yDtype, commQuantMode, output, workspaceSize, executor);
 
