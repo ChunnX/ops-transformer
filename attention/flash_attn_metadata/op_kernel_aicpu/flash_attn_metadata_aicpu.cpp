@@ -210,14 +210,14 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = maskMode_ = true;// todo
+    baseInfo.attenMaskFlag = true;
     baseInfo.sparseMode = maskMode_;
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
-    baseInfo.queryType = load_balance::DataType::FP16; // todo
-    baseInfo.kvType = load_balance::DataType::FP16; // todo
+    baseInfo.queryType = load_balance::DataType::FP16; // noquant
+    baseInfo.kvType = load_balance::DataType::FP16; // noquant
     // param
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;

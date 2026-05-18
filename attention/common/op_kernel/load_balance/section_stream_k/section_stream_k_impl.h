@@ -237,9 +237,17 @@ SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseI
         result[0].bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
         result[0].gS1End[0] = 0U;
         result[0].s2End[0] = 0U;
-                return result;
+        return result;
     }
     CalcCostInfo(computeContext);
+    if (computeContext.costInfo.blockNum == 0U) {
+        result.emplace_back(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
+        result[0].usedCoreNum = 1U;
+        result[0].bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
+        result[0].gS1End[0] = 0U;
+        result[0].s2End[0] = 0U;
+        return result;
+    }
     
     for (uint32_t sectionIdx = 0; sectionIdx < computeContext.gridInfo.sectionNum; ++sectionIdx) {
         auto res = ScheduleSection(sectionIdx, computeContext);
