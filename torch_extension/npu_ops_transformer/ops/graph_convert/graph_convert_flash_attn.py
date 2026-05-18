@@ -42,9 +42,9 @@ if _TORCHAIR_AVAILABLE:
         win_right: int = -1,
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
-        layout_q: string = "BSND",
-        layout_kv: string = "BSND",
-        layout_out: string = "BSND",
+        layout_q: str = "BSND",
+        layout_kv: str = "BSND",
+        layout_out: str = "BSND",
         return_softmax_lse: int = 0,
         deterministic: int = 0):
         
@@ -70,9 +70,9 @@ if _TORCHAIR_AVAILABLE:
         win_right: int = -1,
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
-        layout_q: string = "BSND",
-        layout_kv: string = "BSND",
-        layout_out: string = "BSND",
+        layout_q: str = "BSND",
+        layout_kv: str = "BSND",
+        layout_out: str = "BSND",
         return_softmax_lse: int = 0,
         deterministic: int = 0):
 
