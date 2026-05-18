@@ -15,6 +15,7 @@
 
 #include "flash_attn_tiling.h"
 #include "../flash_attn_tiling.h"
+#include "../fa_adjust_sinner_souter.h"
 #include <map>
 #include <vector>
 #include <numeric>
@@ -100,8 +101,7 @@ void FlashAttnTilingImpl::InitImplParam()
     uint32_t actSeqLenKVDims = 0;
     actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
     actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    cuSeqLenQFlag_ =
-        !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
+    cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
     cuSeqLenKVFlag_ =
         !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
 
@@ -109,65 +109,13 @@ void FlashAttnTilingImpl::InitImplParam()
     const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
     uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
-    seqUsedQFlag_ =
-        !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
-    seqUsedKvFlag_ =
-        !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
-}
-
-void FlashAttnTilingImpl::AdjustSinnerAndSouter()
-{
-    uint32_t softmaxSOuterFactor = arch35FA::SOUTER_64;
-    sOuterFactor_ = arch35FA::SOUTER_64;
-    sInnerFactor_ = arch35FA::SINNER_128;
-
-    if (faInfo_->vHeadDim <= arch35FA::DSIZE_128) {
-        bool checkQueryAndValueS =
-            faInfo_->s1Size <= arch35FA::SOUTER_64 && faInfo_->s2Size > arch35FA::SINNER_128;
-        int64_t maskMode = faInfo_->maskMode;
-        int64_t winLefts = faInfo_->winLeft;
-        int64_t winRights = faInfo_->winRight;
-        if (maskMode == 3) {
-            winLefts = MASK_MODE_INT_MAX;
-            winRights = MASK_MODE_INT_MAX;
-        } else if (maskMode == 0) {
-            winLefts = (winLefts > 0) ? 0 : winLefts;
-        } else if (maskMode == 4) {
-            winRights = (winRights > 0) ? 0 : winRights;
-        }
-        bool checkmaskMode = (maskMode != 2 && winLefts + winRights > 128);
-        if (checkQueryAndValueS && checkmaskMode) {
-            sOuterFactor_ = arch35FA::SOUTER_32;
-            sInnerFactor_ = arch35FA::SINNER_256;
-            softmaxSOuterFactor = arch35FA::SOUTER_32;
-        } else if ((faInfo_->qLayout == FaLayout::BSND) || (faInfo_->qLayout == FaLayout::TND)) {
-            sOuterFactor_ = arch35FA::SOUTER_32;
-            sInnerFactor_ = arch35FA::SINNER_256;
-        }
-    } else if (faInfo_->vHeadDim > arch35FA::DSIZE_128 && faInfo_->s1Size != 1) {
-        if (((faInfo_->qLayout == FaLayout::BSND) || (faInfo_->qLayout == FaLayout::TND)) &&
-            faInfo_->vHeadDim <= arch35FA::DSIZE_256) {
-            sOuterFactor_ = arch35FA::SOUTER_32;
-            sInnerFactor_ = arch35FA::SINNER_256;
-        } else {
-            sOuterFactor_ = arch35FA::SOUTER_64;
-            sInnerFactor_ = arch35FA::SINNER_128;
-        }
-        softmaxSOuterFactor = arch35FA::SOUTER_32;
-    } else if (faInfo_->s1Size == 1 && faInfo_->vHeadDim > arch35FA::DSIZE_128) {
-        sOuterFactor_ = arch35FA::SOUTER_64;
-        sInnerFactor_ = arch35FA::SINNER_128;
-        softmaxSOuterFactor = arch35FA::SOUTER_64;
-    }
-
-    OP_LOGI(faInfo_->opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
-            softmaxSOuterFactor);
+    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
+    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
 }
 
 void FlashAttnTilingImpl::GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
                                              int64_t &winRightsLeftUp)
 {
-
 }
 
 void FlashAttnTilingImpl::FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
@@ -225,113 +173,47 @@ void FlashAttnTilingImpl::SplitOutSeq()
 
 void FlashAttnTilingImpl::SplitPolicy()
 {
-    AdjustSinnerAndSouter(); // 确定tiling切块
-
+    int64_t winLeft = faInfo_->winLeft;
+    int64_t winRight = faInfo_->winRight;
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
+        faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+        winLeft = MASK_MODE_INT_MAX;
+        winRight = MASK_MODE_INT_MAX;
+    }
+    fa_tiling_util::AdjustSinnerAndSouter(
+        static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<uint32_t>(faInfo_->s1Size), faInfo_->s2Size,
+        static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight, static_cast<uint32_t>(faInfo_->qLayout),
+        sOuterFactor_, sInnerFactor_); // 确定tiling切块
     enableS1OutSplit = CheckS1OutSplit();
     if (false) {
         // TODO，S1外切，待适配
         SplitOutSeq();
     } else {
         CalcNumBlocks(platformInfo_.aicNum);
-        flashDecodeFlag_ = true; 
+        flashDecodeFlag_ = true;
     }
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    auto sOuter = sOuterFactor_ * platformInfo_.cvRatio;
-    auto sInner = sInnerFactor_;
-    auto dSize = faInfo_->qkHeadDim;
-    auto dVsize = faInfo_->vHeadDim;
-
-    if (dSize <= arch35FA::DSIZE_64)
-        dSize = arch35FA::DSIZE_64;
-    else if (dSize <= arch35FA::DSIZE_128)
-        dSize = arch35FA::DSIZE_128;
-    else if (dSize <= arch35FA::DSIZE_256)
-        dSize = arch35FA::DSIZE_256;
-    else if (dSize <= arch35FA::DSIZE_512)
-        dSize = arch35FA::DSIZE_512;
-    else if (dSize <= arch35FA::DSIZE_576)
-        dSize = arch35FA::DSIZE_576;
-
-    if (dVsize <= arch35FA::DSIZE_64)
-        dVsize = arch35FA::DSIZE_64;
-    else if (dVsize <= arch35FA::DSIZE_128)
-        dVsize = arch35FA::DSIZE_128;
-    else if (dVsize <= arch35FA::DSIZE_256)
-        dVsize = arch35FA::DSIZE_256;
-    else if (dVsize <= arch35FA::DSIZE_512)
-        dVsize = arch35FA::DSIZE_512;
-
-    if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_64 &&
-        dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_64 &&
-               dSize == arch35FA::DSIZE_512 && dVsize == arch35FA::DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_192 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_512 && dVsize == arch35FA::DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_576 && dVsize == arch35FA::DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
-               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128; // qkvd不等长
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
-               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128; // qkvd不等长
-    } else {
-    }
+    // config (1-bit), D=128 fixed
+    //   config=0: sOuterFactor=64, sInnerFactor=128
+    //   config=1: sOuterFactor=32, sInnerFactor=256
+    tilingKeyInfo_.config = (sOuterFactor_ == arch35FA::SOUTER_32) ? 1 : 0;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
 {
-    if (faInfo_->qLayout == FaLayout::BNSD and faInfo_->outLayout == FaLayout::BNSD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
-    } else if (faInfo_->qLayout == FaLayout::TND and faInfo_->outLayout == FaLayout::TND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
-    } else if (faInfo_->qLayout == FaLayout::BSND and faInfo_->outLayout == FaLayout::BSND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
-    } else if (faInfo_->qLayout == FaLayout::BNSD and faInfo_->outLayout == FaLayout::BSND) {
+    // q_out layout: 0=BSND, 1=BNSD, 2=TND, 3=BNSD_BSND
+    if (faInfo_->outLayout == FaLayout::BSND && faInfo_->qLayout == FaLayout::BNSD) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BSND;
+    } else if (faInfo_->outLayout == FaLayout::BNSD) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD;
+    } else if (faInfo_->outLayout == FaLayout::TND) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_TND;
+    } else {
+        // outLayout == BSND (default)
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BSND;
     }
 }
 
@@ -346,50 +228,24 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     }
 }
 
-void FlashAttnTilingImpl::UpdateTilingKeyMaskMode()
-{
-    tilingKeyInfo_.maskMode = 0;
-}
-
-void FlashAttnTilingImpl::UpdateTilingKeyMatmulMode()
-{
-    tilingKeyInfo_.matmulMode = 0;
-}
-
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
 {
-    if (false) {
-    } else {
-        UpdateTilingKeyLayout();
-        UpdateTilingKeyConfig();
-        tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE;
-        tilingKeyInfo_.isFd = flashDecodeFlag_;
-        UpdateTilingKeyKvLayout();
-        UpdateTilingKeyMaskMode();
-        UpdateTilingKeyMatmulMode();
-        tilingKeyInfo_.enableKvPrefix = 0;
-        tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
-    }
+    UpdateTilingKeyLayout();
+    UpdateTilingKeyConfig();
+    UpdateTilingKeyKvLayout();
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3) ? 1 : 0;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
-                                    tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
-                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                    tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode, tilingKeyInfo_.enableKvPrefix,
-                                    tilingKeyInfo_.enableS1OutSplit);
-
+    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, kvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, "
-            "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu.",
-            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
-            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit);
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu.",
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
+            tilingKeyInfo_.config);
 }
 
 
@@ -512,27 +368,17 @@ void FlashAttnTilingImpl::SetFATilingData()
 
     tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
     tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;
-    if (faInfo_->maskMode == 3) {
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
+        faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
         tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
-
-    tilingData_.baseTiling.flashAttnLeftPaddingParams.isQHasLeftPadding = 0;
-    tilingData_.baseTiling.flashAttnLeftPaddingParams.isKVHasLeftPadding = 0;
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
     if (faInfo_->pageAttentionFlag) {
         maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
-
-    int64_t outSize = faInfo_->opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
-    int64_t lseSize = faInfo_->softmaxLseFlag ? faInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
-    uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
-    tilingData_.baseTiling.flashAttnEmptyTensorParams.singleCoreSize = singleCoreSize;
-    tilingData_.baseTiling.flashAttnEmptyTensorParams.totalOutputSize = outSize;
-    tilingData_.baseTiling.flashAttnEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
-    tilingData_.baseTiling.flashAttnEmptyTensorParams.needInit = false;
 }
 
 ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData &tilingData)
@@ -549,10 +395,8 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     FlashAttnBaseParams &flashAttnBaseParams = baseTiling.flashAttnBaseParams;
     FlashAttnAttenMaskParams &flashAttnAttenMaskParams = baseTiling.flashAttnAttenMaskParams;
     FlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
-    FlashAttnLeftPaddingParams &flashAttnLeftPaddingParams = baseTiling.flashAttnLeftPaddingParams;
     FlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
-    FlashAttnEmptyTensorParams &flashAttnEmptyTensorParams = baseTiling.flashAttnEmptyTensorParams;
     FlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
@@ -590,11 +434,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashAttnWorkspaceParams.logSumExpSize);
 
     OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
-
-    OP_LOGD(faInfo_->opName, "singleCoreSize:%d", flashAttnEmptyTensorParams.singleCoreSize);
-    OP_LOGD(faInfo_->opName, "needInit:%d", flashAttnEmptyTensorParams.needInit);
-    OP_LOGD(faInfo_->opName, "totalOutputSize:%d", flashAttnEmptyTensorParams.totalOutputSize);
-    OP_LOGD(faInfo_->opName, "totalSoftMaxLseOutputSize:%d", flashAttnEmptyTensorParams.totalSoftMaxLseOutputSize);
 
     for (int aicIdx = 0; aicIdx < FA_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",

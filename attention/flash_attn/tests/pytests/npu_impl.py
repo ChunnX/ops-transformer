@@ -165,28 +165,6 @@ def flash_attn_metadata_only(**kwargs):
             return v.to(dtype=torch.int32, device=device).contiguous()
         return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
 
-    def _to_u64_tensor(v):
-        # kernel reads as uint64*
-        if v is None:
-            return None
-        if torch.is_tensor(v):
-            return v.to(dtype=torch.uint64, device=device).contiguous()
-        # list or int -> tensor(uint64)
-        return torch.tensor(v, dtype=torch.uint64, device=device).contiguous()
-        
-    # cu_q       = _to_u32_tensor(cu_q)
-    # cu_kv      = _to_u32_tensor(cu_kv)
-    # seqused_q  = _to_u32_tensor(seqused_q)
-    # seqused_kv = _to_u32_tensor(seqused_kv)
-
-    cu_q_u64       = _to_u64_tensor(cu_q)
-    cu_kv_u64      = _to_u64_tensor(cu_kv)
-    seqused_q_u64  = _to_u64_tensor(seqused_q)
-    seqused_kv_u64 = _to_u64_tensor(seqused_kv)
-
-    num_heads_q   = n1
-    num_heads_kv  = n2
-    head_dim      = d
     max_seqlen_q  = sq  if sq  is not None else 0
     max_seqlen_kv = skv if skv is not None else 0
 
@@ -210,10 +188,10 @@ def flash_attn_metadata_only(**kwargs):
     })
 
     metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
-        cu_seqlens_q  = cu_q_u64,
-        cu_seqlens_kv = cu_kv_u64,
-        seqused_q     = seqused_q_u64,
-        seqused_kv    = seqused_kv_u64,
+        cu_seqlens_q  = cu_q_u32,
+        cu_seqlens_kv = cu_kv_u32,
+        seqused_q     = seqused_q_u32,
+        seqused_kv    = seqused_kv_u32,
         num_heads_q   = num_heads_q,
         num_heads_kv  = num_heads_kv,
         head_dim      = head_dim,
@@ -304,24 +282,10 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
             return v.to(dtype=torch.int32, device=device).contiguous()
         return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
 
-    def _to_u64_tensor(v):
-        # kernel reads as uint64*
-        if v is None:
-            return None
-        if torch.is_tensor(v):
-            return v.to(dtype=torch.int64, device=device).contiguous()
-        # list or int -> tensor(uint64)
-        return torch.tensor(v, dtype=torch.int64, device=device).contiguous()
-
     cu_q_meta       = _to_u32_tensor(cu_q)
     cu_kv_meta      = _to_u32_tensor(cu_kv)
     seqused_q_meta  = _to_u32_tensor(seqused_q)
     seqused_kv_meta = _to_u32_tensor(seqused_kv)
-
-    cu_q_u64       = _to_u64_tensor(cu_q)
-    cu_kv_u64      = _to_u64_tensor(cu_kv)
-    seqused_q_u64  = _to_u64_tensor(seqused_q)
-    seqused_kv_u64 = _to_u64_tensor(seqused_kv)
 
     # 从实际张量形状推导 npu_flash_attn_metadata 所需参数
     if layout_q == "BNSD":
@@ -387,10 +351,10 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     })
 
     metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
-        cu_seqlens_q  = cu_q_u64,
-        cu_seqlens_kv = cu_kv_u64,
-        seqused_q     = seqused_q_u64,
-        seqused_kv    = seqused_kv_u64,
+        cu_seqlens_q  = cu_q_meta,
+        cu_seqlens_kv = cu_kv_meta,
+        seqused_q     = seqused_q_meta,
+        seqused_kv    = seqused_kv_meta,
         num_heads_q   = num_heads_q,
         num_heads_kv  = num_heads_kv,
         head_dim      = head_dim,
@@ -419,10 +383,10 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "block_table": block_table_,
         "attn_mask": atten_mask1,
         "metadata": metadata,
-        "cu_seqlens_q": cu_q_u64,
-        "cu_seqlens_kv": cu_kv_u64,
-        "seqused_q": seqused_q_u64,
-        "seqused_kv": seqused_kv_u64,
+        "cu_seqlens_q": cu_q_meta,
+        "cu_seqlens_kv": cu_kv_meta,
+        "seqused_q": seqused_q_meta,
+        "seqused_kv": seqused_kv_meta,
         "softmax_scale": scale,
         "mask_mode": sparse_mode,
         "win_left": pre_tokens,
@@ -440,10 +404,10 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         sinks         = None,
         attn_mask     = atten_mask1,
         metadata      = metadata,
-        cu_seqlens_q  = cu_q_u64,
-        cu_seqlens_kv = cu_kv_u64,
-        seqused_q     = seqused_q_u64,
-        seqused_kv    = seqused_kv_u64,
+        cu_seqlens_q  = cu_q_meta,
+        cu_seqlens_kv = cu_kv_meta,
+        seqused_q     = seqused_q_meta,
+        seqused_kv    = seqused_kv_meta,
         softmax_scale = scale,
         mask_mode     = sparse_mode,
         win_left      = pre_tokens,
