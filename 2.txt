@@ -1,0 +1,269 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+  */
+
+/*!
+ * \file fia_kernel_fullquant_mx.h
+ * \brief
+ */
+
+#ifndef FIA_KERNEL_FULLQUANT_MX_H_
+#define FIA_KERNEL_FULLQUANT_MX_H_
+
+#include "fia_public_define_arch35.h"
+#include "fia_block_cube_fullquant_mx.h"
+#include "fia_block_vec_fullquant_mx.h"
+#include "../memory_copy_arch35.h"
+#include "fia_block_vec_flashdecode_fullquant.h"
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+
+#include "fia_tiling_data_fullquant_mx.h"
+
+using namespace AscendC;
+using namespace optiling;
+using namespace AscendC::Impl::Detail;
+using namespace regbaseutil;
+
+namespace BaseApi {
+template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
+class FlashAttentionFullQuantMxKernel {
+public:
+    using ConstInfoX = typename CubeBlockType::ConstInfoX;
+    ConstInfoX constInfo;
+    __gm__ uint8_t *keyPtr = nullptr;
+    __gm__ uint8_t *valuePtr = nullptr;
+    __gm__ uint8_t *keyGm;
+    __gm__ uint8_t *valueGm;
+    __gm__ int32_t *blockTableGm;
+    __gm__ uint32_t *fiaMetaDataGm;
+    __cbuf__ void *k1[4], *v1[4];
+    int ikv{-1};
+    uint64_t inner_loop_limit;
+    uint64_t outer_loop_limit;
+    __aicore__ inline FlashAttentionFullQuantMxKernel(){};
+
+    __aicore__ inline void InitBuffer()
+    {
+        k1[0] = (__cbuf__ void *)get_imm(0);
+        k1[1] = (__cbuf__ void *)get_imm(128 * 256);
+        k1[2] = (__cbuf__ void *)get_imm(128 * 512);
+        k1[3] = (__cbuf__ void *)get_imm(128 * 768);
+        v1[0] = (__cbuf__ void *)get_imm(128 * 512 * 2);
+        v1[1] = (__cbuf__ void *)get_imm(128 * 512 * 2 + 128 * 256);
+        v1[2] = (__cbuf__ void *)get_imm(128 * 512 * 2 + 128 * 512);
+        v1[3] = (__cbuf__ void *)get_imm(128 * 512 * 2 + 128 * 768);
+    }
+
+    __aicore__ inline void InitConstInfo()
+    {
+        if ASCEND_IS_AIC {
+            constInfo.aicIdx = GetBlockIdx();
+        } else {
+            constInfo.aivIdx = GetBlockIdx();
+            constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
+            constInfo.subBlockIdx = GetSubBlockIdx();
+        }
+
+        constInfo.bSize = 4;
+        constInfo.t1Size = 192;
+        constInfo.t2Size = 0;
+        constInfo.n2Size = 8; // fiaBaseParams.n2Size;
+        constInfo.gSize = 8;
+        constInfo.s1Size = 4;
+        constInfo.s2Size = 10240;
+        constInfo.dSize = 128;
+        constInfo.dSizeV = 128;
+
+        constInfo.dSizeRope = 0;
+        constInfo.actualSeqLenSize = 48;
+        constInfo.actualSeqLenKVSize = 48;
+        constInfo.scaleValue = 0.088388;
+        constInfo.isKvContinuous = 1;
+        constInfo.coreNum = 32;
+        constInfo.outputLayout = FIA_LAYOUT::TND;
+
+        constInfo.sparseMode = 3;
+        constInfo.preTokens = 2147483647;
+        constInfo.nextTokens = 2147483647;
+        constInfo.attenMaskBatch = 1;
+        constInfo.attenMaskS1Size = 2048;
+        constInfo.attenMaskS2Size = 2048;
+        constInfo.isRowInvalidOpen = 0;
+        constInfo.isExistRowInvalid = 0;
+
+        constInfo.accumOutSize = 0;
+        constInfo.logSumExpSize = 0;
+
+        constInfo.maxBlockNumPerBatch = 20;
+        constInfo.blockSize = 512;
+        constInfo.paLayoutType = 2;
+
+        constInfo.isSoftmaxLseEnable = 0;
+
+        constInfo.bN2Start = 12 * constInfo.aicIdx;
+        constInfo.gS1OStart = 0;
+        constInfo.s2OStart = 0;
+        constInfo.bN2End = 12 * (constInfo.aicIdx + 1);
+        constInfo.gS1OEnd = 0;
+        constInfo.s2OEnd = 0;
+        constInfo.coreFirstTmpOutWsPos = 0;
+
+        constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ void *blockTable, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *workspace)
+    {
+        // gs1,现在固定case是b=48,g=8,qs=4,kvs=10240  ,qn=64,kvn=8
+        inner_loop_limit = (10240 >> 9); // constInfo.s2OEnd
+        outer_loop_limit = (32 + 127) >> 7; // constInfo.gS1OEnd
+        
+        InitConstInfo();
+        keyPtr = key;
+        valuePtr = value;
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        keyGm = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        valueGm = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        blockTableGm = (__gm__ int32_t *)blockTable;
+
+        InitBuffer();
+    }
+
+    __aicore__ inline void prefree_kv_l1()
+    {
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)0);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)1);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)2);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)3);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)4);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)5);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)6);
+        set_flag(PIPE_MTE1, PIPE_MTE2, (event_t)7);
+    }
+
+    __aicore__ inline void postalloc_kv_l1()
+    {
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)0);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)1);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)2);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)3);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)4);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)5);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)6);
+        wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)7);
+    }
+
+    __aicore__ inline void mm1(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop)
+    {
+        ikv++;
+        int ivkuse = ikv % 4;
+        wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+
+        uint32_t s2Offset = (subLoop % 2 == 0) ? inner * 512 : inner * 512 + 256;
+        uint64_t blockIdxInBatch = s2Offset / 512;  // 获取block table上的索引
+        uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
+        uint64_t blockId =
+            *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
+                                s2Offset / 512);
+        uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+
+        // DataCopyParams intriParams;
+        // intriParams.blockCount = 4;
+        // intriParams.blockLen = 256;
+        // intriParams.dstStride = 0;
+        // intriParams.srcStride = 256;
+        /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
+                                     leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)k1[ivkuse], (__gm__ float8_e4m3_t *)(keyGm + gmOffset), 0, 4,
+                                 256 * 32, 0, 0, true, 0, 256 * 32 * 2, 0);
+
+        set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
+        wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
+        set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+    }
+
+    __aicore__ inline void mm2(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
+    {
+        for (uint32_t k = 0; k < 2; k++) {
+            ikv++;
+            int ivkuse = ikv % 4;
+            wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+
+            uint32_t s2Offset = inner * 512 + k * 256;
+            uint64_t blockIdxInBatch = s2Offset / 512;  // 获取block table上的索引
+            uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
+            uint64_t blockId =
+                *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
+                                    s2Offset / 512);
+            uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+
+            // intriParams.blockCount = 4;
+            // intriParams.blockLen = 256;
+            // intriParams.dstStride = 0;
+            // intriParams.srcStride = 256;
+            /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
+                                     leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
+            copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)v1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmOffset),
+                                     0, 4, 256 * 32, 0, 0, true, 0, 256 * 32 * 2, 0);
+            set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
+            wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
+            set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+        }
+    }
+    __aicore__ inline void Process()
+    {
+        if ASCEND_IS_AIC {
+            prefree_kv_l1();  // 4buffer
+
+            uint64_t kid = 0, id0 = 0, idc = 0, sid = 0, pvid = 0;
+            uint64_t id = 0;
+            uint64_t outerp[4], innerp[4];
+            uint64_t total = outer_loop_limit * inner_loop_limit;
+
+            uint32_t bN2Cur = constInfo.bN2Start;
+            for (uint64_t bn2 = 0; bn2 < 12; bn2++) {
+                int64_t bIdx = bN2Cur / 8; //bN2Cur / 8;
+                int64_t n2Idx = bN2Cur % 8; //bN2Cur % 8
+                for (uint64_t outer = 0; outer < outer_loop_limit; outer++) {
+                    for (uint64_t inner = 0; inner < inner_loop_limit; inner++) {
+                        outerp[id & 3] = outer;
+                        innerp[id & 3] = inner;
+                        for (uint32_t subLoop = 0; subLoop < 2; ++subLoop) {
+                            mm1(inner, outer, bIdx, n2Idx, subLoop);
+                        }
+
+                        if (id >= 2) {
+                            mm2(innerp[(id + 2) & 3], outerp[(id + 2) & 3], bIdx, n2Idx);
+                        }
+                        id++;
+                    }
+                }
+
+                for (; id < total + 2; id++) {
+                    if (id >= 2) {
+                        mm2(innerp[(id + 2) & 3], outerp[(id + 2) & 3], bIdx, n2Idx);
+                    }
+                }
+            }
+
+            postalloc_kv_l1();
+        }
+    }
+};  // FlashAttentionFullQuantMxKernel
+
+}  // namespace BaseApi
+
+#endif  // FIA_KERNEL_FULLQUANT_MX_H_
