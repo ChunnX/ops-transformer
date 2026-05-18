@@ -106,6 +106,7 @@ else ()
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc
     ${TOP_DIR}/ops-base/pkg_inc/op_common
+    ${TOP_DIR}/ops-base/include/op_common
     ${TOP_DIR}/ops-base/include/base
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/common
     ${TOP_DIR}/ops-base/pkg_inc/aicpu_common/context/utils
