@@ -548,22 +548,10 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
             return v.to(dtype=torch.int32, device=device).contiguous()
         return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
 
-    def _to_u64_tensor(v):
-        if v is None:
-            return None
-        if torch.is_tensor(v):
-            return v.to(dtype=torch.int64, device=device).contiguous()
-        return torch.tensor(v, dtype=torch.int64, device=device).contiguous()
-
     cu_q_meta       = _to_u32_tensor(cu_q)
     cu_kv_meta      = _to_u32_tensor(cu_kv)
     seqused_q_meta  = _to_u32_tensor(seqused_q)
     seqused_kv_meta = _to_u32_tensor(seqused_kv)
-
-    cu_q_u64       = _to_u64_tensor(cu_q)
-    cu_kv_u64      = _to_u64_tensor(cu_kv)
-    seqused_q_u64  = _to_u64_tensor(seqused_q)
-    seqused_kv_u64 = _to_u64_tensor(seqused_kv)
 
     if layout_q == "BNSD":
         batch_size    = q1.shape[0]
@@ -626,10 +614,10 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     })
 
     metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
-        cu_seqlens_q  = cu_q_u64,
-        cu_seqlens_kv = cu_kv_u64,
-        seqused_q     = seqused_q_u64,
-        seqused_kv    = seqused_kv_u64,
+        cu_seqlens_q  = cu_q_meta,
+        cu_seqlens_kv = cu_kv_meta,
+        seqused_q     = seqused_q_meta,
+        seqused_kv    = seqused_kv_meta,
         num_heads_q   = num_heads_q,
         num_heads_kv  = num_heads_kv,
         head_dim      = head_dim,
@@ -658,10 +646,10 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "block_table": block_table_,
         "attn_mask": atten_mask1,
         "metadata": metadata,
-        "cu_seqlens_q": cu_q_u64,
-        "cu_seqlens_kv": cu_kv_u64,
-        "seqused_q": seqused_q_u64,
-        "seqused_kv": seqused_kv_u64,
+        "cu_seqlens_q": cu_q_meta,
+        "cu_seqlens_kv": cu_kv_meta,
+        "seqused_q": seqused_q_meta,
+        "seqused_kv": seqused_kv_meta,
         "softmax_scale": scale,
         "mask_mode": sparse_mode,
         "win_left": pre_tokens,
@@ -690,10 +678,10 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         block_table_,
         atten_mask1,
         metadata,
-        cu_q_u64,
-        cu_kv_u64,
-        seqused_q_u64,
-        seqused_kv_u64,
+        cu_q_meta,
+        cu_kv_meta,
+        seqused_q_meta,
+        seqused_kv_meta,
         scale,
         sparse_mode,
         pre_tokens,
