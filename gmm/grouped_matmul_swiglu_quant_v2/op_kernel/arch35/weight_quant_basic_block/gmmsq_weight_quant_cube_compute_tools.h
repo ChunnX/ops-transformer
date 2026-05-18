@@ -26,7 +26,7 @@ using AscendC::IsSameType;
 using AscendC::LocalTensor;
 using AscendC::ONE_BLK_SIZE;
 
-namespace WeightQuantBatchMatmulV2::Arch35 {
+namespace GMMSQWeightQuant {
 
 static constexpr uint64_t L0AB_OPERATE_UNIT = 512L; // L0上搬运单位512Byte
 static constexpr int32_t UNIT_FALG_UPDATE = 3;      // 检查并更新标记位
@@ -236,5 +236,5 @@ __aicore__ inline void LoadBiasToBt(const LocalTensor<DstType> &biasTable, const
                       {1, static_cast<uint16_t>(CeilDivide(l0CopyAndCalcParams.nL0Size * sizeof(float), 64UL)), 0, 0});
 }
 
-} // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace GMMSQWeightQuantWeightQuant
 #endif
