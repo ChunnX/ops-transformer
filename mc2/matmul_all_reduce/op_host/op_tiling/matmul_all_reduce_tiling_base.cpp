@@ -29,6 +29,7 @@
 #include "util/math_util.h"
 
 #include "op_host/tiling_type.h"
+#include "mc2/common/utils/mc2_comm_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -50,6 +51,7 @@ constexpr uint32_t ADD_X3_BF16_UB_BUF_FACTOR = 10; // 对应add x3算子中BF16�
 constexpr uint32_t ALIGN_DATA_SIZE = 32;
 constexpr uint64_t L2_CACHE_SIZE_910_B4 = 100663296;
 constexpr uint32_t COMM_QUANT_MODE_TRUE = 2;
+constexpr size_t ATTR_COMM_MODE_INDEX = 9;
 
 struct HcclAicpuOpParam {
     uint8_t res[64];
@@ -1577,5 +1579,34 @@ void MatmulAllReduceTilingBase::PrintTilingData()
     OP_LOGD(opName_, "Have tail.");
     PrintExtendMatmulTiling(true);
     PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTailTilingData());
+}
+ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMode) const
+{
+    OP_LOGE(opName_, "Enter matmul_all_reduce_tiling_base.cpp GetAndConvertCommMode.");
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName_, "The input attr comm_mode is null pointer."),
+                    return ge::GRAPH_FAILED);
+
+    if (std::strcmp(commModeStr, "aicpu") == 0) {
+        OP_LOGE(opName_, "aicpu, commMode is: %d", commMode);
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        OP_LOGE(opName_, "ccu, commMode is: %d", commMode);
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (std::strcmp(commModeStr, "") == 0) {
+        if (args_.rankDim <= 8) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGE(opName_, "commMode is default, and rankDim is %d, will use commMode: %d.", args_.rankDim, commMode);
+    } else {
+        OP_LOGE(opName_, "The input attr comm_mode %s is invalid.", *commModeStr);
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
