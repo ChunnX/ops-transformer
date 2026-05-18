@@ -97,6 +97,7 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
+      ${CANN_3RD_LIB_PATH}/opbase/include/op_common/
     )
 
     target_link_libraries(${COMMON_NAME}_fallback_obj
