@@ -401,21 +401,19 @@ public:
                     curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexDe;
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     float combinedDeqScalar = vDequantScaleValue * STATIC_P_SCALE_2;
-                    uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
                     AscendC::printf("tkd gatheredKvSTileIdxDe: %u\n", gatheredKvSTileIdxDe);
                     AscendC::printf("tkd yBlockIndexOffsetDe: %u\n", yBlockIndexOffsetDe);
                     AscendC::printf("tkd yBlockIndexDe: %u\n", yBlockIndexDe);
                     AscendC::printf("tkd kvDequantScaleOffsetDe: %u\n", kvDequantScaleOffsetDe);
                     AscendC::printf("tkd vDequantScaleValue: %f\n", vDequantScaleValue);
                     AscendC::printf("tkd combinedDeqScalar: %f\n", combinedDeqScalar);
-                    AscendC::printf("tkd deqScalar2: %lu\n", deqScalar);
                     epilogueRescaleO(
                         gmOTensorTla, actualBlockShapePV,
                         curTileMod, gatheredKvSTileIdxDe,
                         (gatheredKvSTileIdxDe == 0),
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
                         mm2ToReFlag,
-                        deqScalar);
+                        combinedDeqScalar);
                     AscendC::printf("tkd print gO[gmOffsetO] (O matrix, final result)\n");
                     AscendC::DumpTensor(gO[gmOffsetO], 0, 32);
 #endif

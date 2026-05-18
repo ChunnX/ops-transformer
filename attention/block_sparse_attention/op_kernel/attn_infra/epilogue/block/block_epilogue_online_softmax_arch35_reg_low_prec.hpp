@@ -186,6 +186,9 @@ public:
 
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+
+        AscendC::printf("tkd S matrix after dequantScale\n");
+        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
             ComputeScaleAndMax<KvBaseTileRegSplitStages::ONE>(
@@ -197,7 +200,7 @@ public:
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxAddr, lastMaxAddr, mLoops, tailM);
         }
-        AscendC::printf("tkd S matrix\n");
+        AscendC::printf("tkd S matrix after scaled\n");
         AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         AscendC::printf("tkd inital lpUbTensor\n");
         AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);

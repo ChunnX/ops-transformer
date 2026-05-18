@@ -258,11 +258,19 @@ public:
             AscendC::printf("tkd isLastKvSTile\n");
             AscendC::PipeBarrier<PIPE_V>();
             if (dStages == 1) {
+                AscendC::printf("tkd O matrix before dequantScale ONE\n");
+                AscendC::DumpTensor(goUbTensor32, 0, 32);
                 ScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum,
                                              deqScalar);
+                AscendC::printf("tkd O matrix after dequantScale ONE\n");
+                AscendC::DumpTensor(goUbTensor32, 1, 32);
             } else if (dStages == 2) {
+                AscendC::printf("tkd O matrix before dequantScale TWO\n");
+                AscendC::DumpTensor(goUbTensor32, 2, 32);
                 ScaleO<DRegSplitStages::TWO>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum,
                                              deqScalar);
+                AscendC::printf("tkd O matrix after dequantScale TWO\n");
+                AscendC::DumpTensor(goUbTensor32, 2, 32);
             }
             AscendC::PipeBarrier<PIPE_V>();
             if (std::is_same<ElementO, bfloat16_t>::value) {
