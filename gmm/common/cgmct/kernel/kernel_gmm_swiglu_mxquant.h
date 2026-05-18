@@ -127,6 +127,7 @@ public:
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0;
     int64_t perGroupBOffset_{0};
+    int64_t nzKAlign_{0};
     BlockMmadOp mmadOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
@@ -290,6 +291,7 @@ public:
         if constexpr (formatB == CubeFormat::NZ) {
             int64_t n = Get<N_VALUE>(problemShape_);
             int64_t k = Get<K_VALUE>(problemShape_);
+            nzKAlign_ = CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
             if constexpr (transB) {
                 perGroupBOffset_ = ((n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1))) *
                                 ((k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1)));
@@ -308,7 +310,7 @@ public:
             if constexpr (transB) {
                 bRightOffset += resN * MATMUL_MNK_ALIGN_INT8;
             } else {
-                bRightOffset += resN * CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
+                bRightOffset += resN * nzKAlign_;
             }
         } else {
             if constexpr (transB) {
