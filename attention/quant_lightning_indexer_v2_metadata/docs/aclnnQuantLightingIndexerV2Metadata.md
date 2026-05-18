@@ -25,11 +25,11 @@
 
 ``` cpp
 aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
-    const aclTensor*   cuSeqlensQOptional,
-    const aclTensor*   cuSeqlensKOptional,
-    const aclTensor*   sequsedQOptional,
-    const aclTensor*   sequsedKOptional,
-    const aclTensor*   cmpResidualKOptional,
+    const aclTensor   *cuSeqlensQOptional,
+    const aclTensor   *cuSeqlensKOptional,
+    const aclTensor   *sequsedQOptional,
+    const aclTensor   *sequsedKOptional,
+    const aclTensor   *cmpResidualKOptional,
     int64_t            numHeadsQ,
     int64_t            numHeadsK,
     int64_t            headDim,
@@ -39,21 +39,21 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     int64_t            batchSize,
     int64_t            maxSeqlenQ,
     int64_t            maxSeqlenK,
-    char *             layoutQOptional,
-    char *             layoutKOptional,
+    char              *layoutQOptional,
+    char              *layoutKOptional,
     int64_t            maskMode,
     int64_t            cmpRatio,
-    const aclTensor*   metaData,
-    uint64_t*          workspaceSize,
-    aclOpExecutor**    executor)
+    const aclTensor   *metaData,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor)
 ```
 
 ``` cpp
 aclnnStatus aclnnQuantLightningIndexerV2Metadata(
-    void *          workspace,
-    uint64_t        workspaceSize,
-    aclOpExecutor * executor,
-    aclrtStream     stream)
+    void              *workspace,
+    uint64_t           workspaceSize,
+    aclOpExecutor     *executor,
+    aclrtStream        stream)
 ```
 
 ## aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize
@@ -64,10 +64,10 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
   <col style="width: 100px">
   <col style="width: 350px">
   <col style="width: 200px">
-  <col style="width: 70px">
-  <col style="width: 70px">
+  <col style="width: 100px">
+  <col style="width: 100px">
   <col style="width: 190px">
-  <col style="width: 80px">
+  <col style="width: 100px">
   </colgroup>
   <thead>
     <tr>
