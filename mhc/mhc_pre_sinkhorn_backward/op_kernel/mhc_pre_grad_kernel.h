@@ -201,7 +201,7 @@ private:
         workspaceOffset += batchSize_ * seqLength_ * (n_ * c_);
         if constexpr (DETERMINISTIC == true) {
             gradWeightWSGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + workspaceOffset);
-            workspaceOffset += aicNum_ * (n_ * 2 + n_ * n_) * (n_ * c_);
+            workspaceOffset += aicNum_ * (n_ * PRE_POST_NUM + n_ * n_) * (n_ * c_);
         }
 
         weightGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(hc_fn));      // fp32
@@ -223,7 +223,7 @@ private:
                 gradHcScaleWSGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + workspaceOffset);
                 workspaceOffset += aivNum_ * (ELEMENTS_SIZE_PER_BLOCK);
                 gradHcBaseWSGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + workspaceOffset);
-                workspaceOffset += aivNum_ * (n_ * 2 + n_ * n_);
+                workspaceOffset += aivNum_ * (n_ * PRE_POST_NUM + n_ * n_);
             }
             h2Global_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(h_hat2)); // fp32
 
