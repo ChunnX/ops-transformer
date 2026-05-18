@@ -325,8 +325,11 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
     }
 
     // check tiling key
-    auto tilingKeyResult = tilingContext->GetTilingKey();
-    ASSERT_EQ(tilingKeyResult, expectTilingKey);
+    constexpr uint64_t SKIP_TILING_KEY_VALIDATION = UINT64_MAX;
+    if (expectTilingKey != SKIP_TILING_KEY_VALIDATION) {
+        auto tilingKeyResult = tilingContext->GetTilingKey();
+        ASSERT_EQ(tilingKeyResult, expectTilingKey);
+    }
 
     // check tiling data
     if (expectTilingData != "") {
