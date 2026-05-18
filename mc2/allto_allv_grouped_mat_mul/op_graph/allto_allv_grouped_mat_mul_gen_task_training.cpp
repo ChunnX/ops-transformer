@@ -23,26 +23,28 @@
 #include "mc2_comm_utils.h"
 
 namespace ops {
+static const size_t ATTR_COMM_MODE_INDEX = 7;
+static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    int64_t rankSize = *(attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX));
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-
+    const std::string commMode = Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_COMM_MODE_INDEX);
     const char* serverType = nullptr;
     const char* streamType = nullptr;
-
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        serverType = "aicpu kfc server";
-        streamType = "kfc_stream";
-        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, force AICPU GenTask");
-    } else if (isArch35) {
+    if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8)) {
         serverType = "ccu server";
         streamType = "ccu_stream";
-        OPS_LOG_D(context->GetNodeName(), "arch35, use CCU GenTask");
-    } else {
+        OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
+    } else if ((isArch35 &&  commMode == "aicpu") || (!isArch35) || (isArch35 && rankSize > 8)) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
-        OPS_LOG_D(context->GetNodeName(), "arch22, use AICPU GenTask");
+        OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
     }
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
 }
@@ -50,18 +52,21 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
 ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    int64_t rankSize = *(attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX));
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    if (!isArch35) {
-        OPS_LOG_D(context->GetNodeName(), "arch22, always use AICPU GenTask");
+    const std::string commMode = Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_COMM_MODE_INDEX);
+    if ((!isArch35) || (isArch35 && commMode == "aicpu") || (isArch35 && rankSize > 8)) {
+        OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
+    } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8)) {
+        OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
+        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        OPS_LOG_D(context->GetNodeName(), "arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU GenTask");
-        return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
-    }
-    OPS_LOG_D(context->GetNodeName(), "arch35, use CCU GenTask");
-    return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
 }
 
 // new ver
