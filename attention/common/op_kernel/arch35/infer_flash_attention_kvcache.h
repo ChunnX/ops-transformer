@@ -92,8 +92,7 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
             runParam.actualSeqLengthOfMlaPerBatch = constInfo.s1Size;
         }
         return actualMSize;
-    }
-    
+    } 
     int64_t actualMSize = 0;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
@@ -240,6 +239,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr<isInfer>& runParam,
         runParam, constInfo, bIdx, actualSeqQlenAddr, actualSeqMin);
     int64_t actualS2Size = CalculateActualS2Size<TEMPLATE_INTF_ARGS>(
         runParam, constInfo, bIdx, actualSeqKvlenAddr, actualSeqKVMin);
+        
+    PRINTF("bIdx:%d, actseqlenQ:%d, actseqlenKV:%d\n", bIdx, actualSeqQlenAddr[bIdx], actualSeqKvlenAddr[bIdx]); 
 
     // 初始化padding大小
     InitQueryLeftPaddingSize<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualS1Size);
