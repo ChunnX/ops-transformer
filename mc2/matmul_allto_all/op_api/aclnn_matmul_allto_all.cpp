@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file aclnn_matmul_all_to_all.cpp
+ * \brief
+ */
 #include "aclnn_matmul_allto_all.h"
 #include "matmul_allto_all_base.h"
 #include "opdev/platform.h"
