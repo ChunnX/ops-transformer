@@ -15,6 +15,7 @@
 #include "../../../op_api/aclnn_moe_distribute_combine_add_rms_norm.h"
 #undef OP_API_INC_MOE_DISTRIBUTE_ADD_RMS_NORM_COMBINE
 #include "../../../op_api/aclnn_moe_distribute_combine_add_rms_norm_v2.h"
+#include "../../../op_api/moe_distribute_combine_add_rms_norm_base.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
@@ -755,4 +756,49 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm_
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
+// 测试执行函数覆盖和 is910B 分支
+class L2MoeDistributeCombineAddRmsNorm910BTest : public testing::Test
+{
+protected:
+    static void SetUpTestCase()
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "L2MoeDistributeCombineAddRmsNorm910BTest SetUp" << endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        cout << "L2MoeDistributeCombineAddRmsNorm910BTest TearDown" << endl;
+    }
+};
+
+TEST_F(L2MoeDistributeCombineAddRmsNorm910BTest, TestExecuteV1_910B)
+{
+    aclnnStatus aclRet = aclnnMoeDistributeCombineAddRmsNorm(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2MoeDistributeCombineAddRmsNorm910BTest, TestExecuteV2_910B)
+{
+    aclnnStatus aclRet = aclnnMoeDistributeCombineAddRmsNormV2(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2MoeDistributeCombineAddRmsNorm910BTest, TestCombineArnCheckParams_910B)
+{
+    TensorDesc expandX = TensorDesc({32, 7168}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc expertIds = TensorDesc({32, 8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc expandIdx = TensorDesc({32 * 8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc epSendCounts = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
+    char groupEp[] = "test_moe_distribute_combine_add_rms_norm_ep";
+    char groupTp[] = "test_moe_distribute_combine_add_rms_norm_tp";
+    TensorDesc xOut = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
+
+    aclnnStatus aclRet = CombineArnCheckParams(DescToAclContainer(expandX), DescToAclContainer(expertIds),
+        DescToAclContainer(expandIdx), DescToAclContainer(epSendCounts), nullptr,
+        DescToAclContainer(expertScales), groupEp, groupTp, DescToAclContainer(xOut), true);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
 } // namespace MoeDistributeCombineAddRmsNorm
