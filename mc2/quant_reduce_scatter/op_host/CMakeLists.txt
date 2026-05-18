@@ -16,10 +16,10 @@ if (BUILD_OPEN_PROJECT)  # custom
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
-        OPTYPE quant_reduce_scatter quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)
+        OPTYPE quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(quant_reduce_scatter_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(quant_reduce_scatter_depends mc2/common mc2/3rd mc2/quant_reduce_scatter_v2 PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT}) 
@@ -30,6 +30,6 @@ if (BUILD_OPEN_PROJECT)  # custom
         ) 
     endif()
 else() # 回黄host
-    add_mc2_modules_sources(OPTYPE quant_reduce_scatter quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)
+    add_mc2_modules_sources(OPTYPE quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()
