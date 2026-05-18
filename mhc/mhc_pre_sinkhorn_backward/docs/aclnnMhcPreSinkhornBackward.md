@@ -33,8 +33,6 @@
           \end{aligned}
           $$
         
-            
-    
         - **最后一次迭代**：
 
           $$
@@ -59,7 +57,6 @@
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
         $$
         
-      
         - **反向计算公式**：
         
         $$
@@ -250,6 +247,7 @@
       | $\sum_{\dim=d,\text{keepdim}=\text{True}}$ | 在指定维度上求和并保持维度 |
 
 ## 函数原型
+
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
 
 ```cpp
