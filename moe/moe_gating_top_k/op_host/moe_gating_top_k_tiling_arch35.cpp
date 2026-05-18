@@ -17,9 +17,9 @@
 #include "moe_gating_top_k_tiling.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
-#include "tiling_base/tiling_util.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 const static uint64_t MOE_GATING_TOP_K_REGBASE_TILING_KEY = 10000;
@@ -30,6 +30,7 @@ const static int64_t RENORM_NO = 0;
 const static int64_t RENORM_L1 = 1;
 const static int64_t NORM_TYPE_SOFTMAX = 0;
 const static int64_t NORM_TYPE_SIGMOID = 1;
+const static int64_t NORM_TYPE_SOFTPLUS = 2;
 const static int64_t OUT_FLAG_FALSE = 0;
 const static int64_t OUT_FLAG_TRUE = 1;
 const static size_t X_INPUT_DIMS = 2;
@@ -237,13 +238,14 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
             expertCount_ / groupCount_, groupSelectMode_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(renorm_ != RENORM_NO,
-                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld.", renorm_, RENORM_NO),
+    OP_CHECK_IF(renorm_ != RENORM_NO && renorm_ != RENORM_L1,
+                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld and %ld.",
+                        renorm_, RENORM_NO, RENORM_L1),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(normType_ != NORM_TYPE_SOFTMAX && normType_ != NORM_TYPE_SIGMOID,
-                OP_LOGE(context_, "norm type is: %ld, but currently only support %ld and %ld.", normType_,
-                        NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID),
+    OP_CHECK_IF(normType_ != NORM_TYPE_SOFTMAX && normType_ != NORM_TYPE_SIGMOID && normType_ != NORM_TYPE_SOFTPLUS,
+                OP_LOGE(context_, "norm type is: %ld, but currently only support %ld, %ld and %ld.", normType_,
+                        NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID, NORM_TYPE_SOFTPLUS),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

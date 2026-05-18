@@ -44,7 +44,7 @@ else:
 
 def qli(testcase_files):   # 初始化参数和tensor
     cpu_result, npu_result, topk_value, params = quant_lightning_indexer_pt_loadprocess.test_qli_process(testcase_files, device_id=0)
-    if npu_result != None:
+    if npu_result is not None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
     else:
         result = "Failed"
@@ -79,7 +79,6 @@ def qli(testcase_files):   # 初始化参数和tensor
         "weights_datarange":params[24],
         "q_scale_datarange":params[25],
         "k_scale_datarange":params[26],
-        "cmp_ratio":params[27],
         "result":result,
         "fulfill_percent":fulfill_percent
     }

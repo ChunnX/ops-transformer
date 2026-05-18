@@ -65,6 +65,7 @@ class MOECascadeModel(torch.nn.Module):
     def forward(self, **kwargs) -> torch.Tensor:
         with torchair.scope.limit_core_num(cfg.aic_core_num, cfg.aiv_core_num):
             # Dispatch
+            # 请在forward函数中直接调用此函数，否则可能出现在dynamo多层嵌套场景下mc2_context无法成图，此为dynamo限制
             dispatch_fn = self.distribute_buffer.npu_moe_distribute_dispatch_v2
             out = dispatch_fn(
                 x=kwargs['x'], expert_ids=kwargs['expert_ids'],

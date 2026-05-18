@@ -25,6 +25,21 @@ namespace l0op {
 
 OP_TYPE_REGISTER(FlashAttentionScoreGrad);
 
+bool FakeArrayToTensor(const aclIntArray *inArray, aclTensor *&outTensor)
+    {
+        if (inArray != nullptr) {
+            int64_t size = static_cast<int64_t>(inArray->Size());
+            std::vector<int64_t> shape = {size};
+            outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
+                                        0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+            if (outTensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
+                return false;
+            }
+        }
+        return true;
+    }
+
 const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dy,
     const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
@@ -37,7 +52,8 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     const aclTensor *queryRope, const aclTensor *keyRope, const aclTensor *sinkInOptional,
     double scaleValueOptional, double keepProbOptional, int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
     char *inputLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
-    int64_t seed, int64_t offset, int64_t outDTypeOptional,char *softmaxInLayout, aclOpExecutor *executor)
+    int64_t seed, int64_t offset, int64_t outDTypeOptional, char *softmaxInLayout, aclOpExecutor *executor,
+    bool isMaxWorkspace)
 {
     L0_DFX(FlashAttentionScoreGrad, query, key, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional,
            attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional,
@@ -63,47 +79,67 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
 
     const aclTensor *prefix = nullptr;
     if (prefixOptional) {
-        prefix = executor->ConvertToTensor(prefixOptional, op::DataType::DT_INT64);
-        CHECK_NULL(prefix);
-        const_cast<aclTensor *>(prefix)->SetStorageFormat(op::Format::FORMAT_ND);
-        const_cast<aclTensor *>(prefix)->SetViewFormat(op::Format::FORMAT_ND);
-        const_cast<aclTensor *>(prefix)->SetOriginalFormat(op::Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            prefix = executor->ConvertToTensor(prefixOptional, op::DataType::DT_INT64);
+            CHECK_NULL(prefix);
+            const_cast<aclTensor *>(prefix)->SetStorageFormat(op::Format::FORMAT_ND);
+            const_cast<aclTensor *>(prefix)->SetViewFormat(op::Format::FORMAT_ND);
+            const_cast<aclTensor *>(prefix)->SetOriginalFormat(op::Format::FORMAT_ND);
+        } else {
+            FakeArrayToTensor(prefixOptional, const_cast<aclTensor *&>(prefix));
+        }
     }
 
     const aclTensor *actualSeqQLen = nullptr;
     if (actualSeqQLenOptional) {
-        actualSeqQLen = executor->ConvertToTensor(actualSeqQLenOptional, op::DataType::DT_INT64);
-        CHECK_NULL(actualSeqQLen);
-        const_cast<aclTensor *>(actualSeqQLen)->SetStorageFormat(op::Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqQLen)->SetViewFormat(op::Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqQLen)->SetOriginalFormat(op::Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            actualSeqQLen = executor->ConvertToTensor(actualSeqQLenOptional, op::DataType::DT_INT64);
+            CHECK_NULL(actualSeqQLen);
+            const_cast<aclTensor *>(actualSeqQLen)->SetStorageFormat(op::Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqQLen)->SetViewFormat(op::Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqQLen)->SetOriginalFormat(op::Format::FORMAT_ND);
+        } else {
+            FakeArrayToTensor(actualSeqQLenOptional, const_cast<aclTensor *&>(actualSeqQLen));
+        }
     }
 
     const aclTensor *actualSeqKvLen = nullptr;
     if (actualSeqKvLenOptional) {
-        actualSeqKvLen = executor->ConvertToTensor(actualSeqKvLenOptional, op::DataType::DT_INT64);
-        CHECK_NULL(actualSeqKvLen);
-        const_cast<aclTensor *>(actualSeqKvLen)->SetStorageFormat(op::Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqKvLen)->SetViewFormat(op::Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqKvLen)->SetOriginalFormat(op::Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            actualSeqKvLen = executor->ConvertToTensor(actualSeqKvLenOptional, op::DataType::DT_INT64);
+            CHECK_NULL(actualSeqKvLen);
+            const_cast<aclTensor *>(actualSeqKvLen)->SetStorageFormat(op::Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqKvLen)->SetViewFormat(op::Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqKvLen)->SetOriginalFormat(op::Format::FORMAT_ND);
+        } else {
+            FakeArrayToTensor(actualSeqKvLenOptional, const_cast<aclTensor *&>(actualSeqKvLen));
+        }
     }
 
     const aclTensor *qStartIdxOptionalTensor = nullptr;
     if (qStartIdxOptional) {
-        qStartIdxOptionalTensor = executor->ConvertToTensor(qStartIdxOptional, DataType::DT_INT64);
-        CHECK_NULL(qStartIdxOptionalTensor);
-        const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            qStartIdxOptionalTensor = executor->ConvertToTensor(qStartIdxOptional, DataType::DT_INT64);
+            CHECK_NULL(qStartIdxOptionalTensor);
+            const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
+        } else {
+            FakeArrayToTensor(qStartIdxOptional, const_cast<aclTensor *&>(qStartIdxOptionalTensor));
+        }
     }
 
     const aclTensor *kvStartIdxOptionalTensor = nullptr;
     if (kvStartIdxOptional) {
-        kvStartIdxOptionalTensor = executor->ConvertToTensor(kvStartIdxOptional, DataType::DT_INT64);
-        CHECK_NULL(kvStartIdxOptionalTensor);
-        const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            kvStartIdxOptionalTensor = executor->ConvertToTensor(kvStartIdxOptional, DataType::DT_INT64);
+            CHECK_NULL(kvStartIdxOptionalTensor);
+            const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
+        } else {
+            FakeArrayToTensor(kvStartIdxOptional, const_cast<aclTensor *&>(kvStartIdxOptionalTensor));
+        }
     }
 
     if (dScaleQOptional == nullptr) {

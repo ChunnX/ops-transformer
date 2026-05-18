@@ -195,24 +195,45 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
             !CheckOffsetValid(context_), OP_LOGE(context_->GetNodeName(), "quant offset shape check failed."),
             return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(
-        (!isRegbase_) && (dk_ != ROPE_LENGTH), OP_LOGE(context_->GetNodeName(), "rope last dim only support 64."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        (!isRegbase_) && (dv_ != RMS_NORM_LENGTH),
-        OP_LOGE(context_->GetNodeName(), "rms_norm last dim only support 512 or 192."), return ge::GRAPH_FAILED);
+    if ((!isRegbase_) && (dk_ != ROPE_LENGTH)) {
+        auto cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
+        std::string reasonMsg = "The D-dimension of input cos must be equal to " + std::to_string(ROPE_LENGTH) +
+            ", where D is the last axis of cos";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos", ToString(cosShape).c_str(),
+            reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((!isRegbase_) && (dv_ != RMS_NORM_LENGTH)) {
+        auto gammaShape = context_->GetInputShape(GAMMA_INDEX)->GetStorageShape();
+        std::string reasonMsg = "The 0th axis of input gamma must be equal to " + std::to_string(RMS_NORM_LENGTH);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "gamma", ToString(gammaShape).c_str(),
+            reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
             
     if(methodMode_ == 0){
         OP_CHECK_IF(
-        (!isRegbase_) && (currentCacheMode_ == CacheMode::Norm) && (quantMode_ == QUANT_MODE),
-        OP_LOGE(context_->GetNodeName(), "CacheMode::Norm do not support quant!"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-        (!isRegbase_) && (kv_ != D_LENGTH),
-        OP_LOGE(context_->GetNodeName(), "rms_norm last dim only support 576."), return ge::GRAPH_FAILED);
+            (!isRegbase_) && (currentCacheMode_ == CacheMode::Norm) && (quantMode_ == QUANT_MODE),
+            OP_LOGE(context_->GetNodeName(), "CacheMode::Norm do not support quant!"), return ge::GRAPH_FAILED);
+
+        if ((!isRegbase_) && (kv_ != D_LENGTH)) {
+            auto kvShape = context_->GetInputShape(KV_INDEX)->GetStorageShape();
+            std::string reasonMsg = "The D-dimension of input kv must be equal to " + std::to_string(D_LENGTH) +
+                ", where D is the last axis of kv";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv", ToString(kvShape).c_str(),
+                reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_CHECK_IF(
-            (!isRegbase_) && (vlen_ != V_LENGTH),
-            OP_LOGE(context_->GetNodeName(), "Tensor v last dim only support 128."), return ge::GRAPH_FAILED);
+        if ((!isRegbase_) && (vlen_ != V_LENGTH)) {
+            auto vShape = context_->GetOptionalInputShape(V_IDX)->GetStorageShape();
+            std::string reasonMsg = "The D-dimension of input v must be equal to " + std::to_string(V_LENGTH) +
+                ", where D is the last axis of v";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "v", ToString(vShape).c_str(),
+                reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
+        
         OP_CHECK_IF(
             (!isRegbase_) && (quantMode_ != NON_QUANT_MODE && quantMode_ != QUANT_MODE),
             OP_LOGE(context_->GetNodeName(), "Only Support QUANT or NON_QUANT."), return ge::GRAPH_FAILED);

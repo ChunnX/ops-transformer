@@ -17,7 +17,7 @@
 
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "err/ops_err.h"
 
 namespace optiling {
@@ -114,6 +114,7 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
+    size_t GetLastRequiredInputIndex() const;
 
 private:
     MhcPreTilingData tilingData_;

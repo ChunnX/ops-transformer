@@ -16,7 +16,7 @@
 #define QUANT_MATMUL_ALL_REDUCE_TILING_310_GENERAL_H
 
 #include "../matmul_all_reduce_tiling_base.h"
-#include "../arch32/quant_matmul_all_reduce_tiling.h"
+#include "../arch22/quant_matmul_all_reduce_tiling.h"
 namespace optiling {
 class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
 {
@@ -150,6 +150,8 @@ protected:
     AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
 
     AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
+    
+    CutResult GetTilingResult() override;
 
     ge::graphStatus DoQuantTiling();
 

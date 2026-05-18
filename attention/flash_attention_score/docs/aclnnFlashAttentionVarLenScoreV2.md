@@ -16,15 +16,15 @@
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**跟[aclnnFlashAttentionScoreV2](./aclnnFlashAttentionScoreV2.md)的区别是该接口支持可变长S的计算，即可以一次传入多个长度不相等的sequence。使用此接口时，query，key和value使用TND的格式传入数据，其中T意为total number，表示其所有sequence的length总和，同时使用actualSeqQLenOptional与actualSeqKvLenOptional传入每个sequence依次的累积长度以区分不同sequence。每个sequence单独计算其注意力结果**。
 - 计算公式：
 
-   注意力的正向计算公式如下：
+  注意力的正向计算公式如下：
 
-   - psetype=1时，与[aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md)计算公式相同。
+  - psetype=1时，与[aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md)计算公式相同。
 
-   - psetype=其他取值时，公式如下：
+  - psetype=其他取值时，公式如下：
 
-     $$
-     attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
-     $$
+    $$
+    attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
+    $$
 
 ## 函数原型
 
@@ -132,12 +132,12 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
         <td>数据类型与query的数据类型一致，该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[pseTotalLen]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
         <td>dropMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的Dropout。</td>
         <td>-</td>
         <td>UINT8</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>prefixOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表prefix稀疏计算场景每个Batch的N值。</td>
         <td>-</td>
         <td>INT64</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的query的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的key/value的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>qStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -207,7 +207,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>kvStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -217,7 +217,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>scaleValue</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的scale，代表缩放系数。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>keepProb</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表dropMaskOptional中1的比例。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -237,7 +237,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>preTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于稀疏计算 ，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -247,7 +247,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>nextTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>innerPrecise</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于提升精度。</td>
         <td>默认配置为0即可。</td>
         <td>INT64</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>sparseMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示sparse的模式。</td>
         <td>支持配置值为0、1、2、3、4、6、7、8。</td>
         <td>INT64</td>
@@ -297,7 +297,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>pseType</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>控制mul与add计算顺序，支持配置值为0、1、2、3。</td>
         <td>-</td>
         <td>INT64</td>
@@ -327,7 +327,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
       </tr>
       <tr>
         <td>softmaxOutOut</td>
-        <td>输入</td>
+        <td>输出</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -461,6 +461,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
 - realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义
@@ -612,15 +613,15 @@ int main() {
   std::vector<float> softmaxMaxHostData(2048, 3.0);
   std::vector<float> softmaxSumHostData(2048, 3.0);
 
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
+  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
+  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOut);
+  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
   CHECK_RET(ret == ACL_SUCCESS, return ret);

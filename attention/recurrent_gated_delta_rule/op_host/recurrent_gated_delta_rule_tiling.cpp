@@ -14,7 +14,7 @@
  */
 #include "recurrent_gated_delta_rule_tiling.h"
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "err/ops_err.h"
@@ -112,7 +112,7 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::DoOpTiling()
 
 ge::graphStatus RecurrentGatedDeltaRuleTiling::DoLibApiTiling()
 {
-    tilingKey_ = 0;
+    tilingKey_ = (stateDtype_ == ge::DT_FLOAT) ? 1UL : 0UL;
     return ge::GRAPH_SUCCESS;
 };
 
@@ -209,9 +209,13 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeDtype()
 
     auto betaDtype = context_->GetInputDesc(BETA_INDEX)->GetDataType();
     auto stateDtype = context_->GetInputDesc(STATE_INDEX)->GetDataType();
-    OP_CHECK_IF(betaDtype != ge::DT_BF16 || stateDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "beta dtype and state dtype should be bfloat16."),
+    OP_CHECK_IF(betaDtype != ge::DT_BF16,
+                OP_LOGE(context_->GetNodeName(), "beta dtype should be bfloat16."),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(stateDtype != ge::DT_BF16 && stateDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "state dtype should be bfloat16 or float32."),
+                return ge::GRAPH_FAILED);
+    stateDtype_ = stateDtype;
 
     auto actSeqlensDtype = context_->GetInputDesc(ACTUAL_SEQ_LENGTHS_INDEX)->GetDataType();
     auto ssmStateIndicesDtype = context_->GetInputDesc(SSM_STATE_INDICES_INDEX)->GetDataType();
@@ -249,7 +253,7 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeDtype()
 bool RecurrentGatedDeltaRuleTiling::CheckDim(const gert::Shape shape, const size_t dim, const std::string &dimDesc)
 {
     if (shape.GetDimNum() != dim) {
-        OP_LOGE(context_->GetNodeName(), "The number of dimensons of %s should be %zu, but it is %zu.",
+        OP_LOGE(context_->GetNodeName(), "The number of dimensions of %s should be %zu, but it is %zu.",
                 dimDesc.c_str(), dim, shape.GetDimNum());
         return false;
     }
@@ -353,6 +357,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeOptionalShapes()
     gert::Shape expectGShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // gk (T, NV, DK)
     gert::Shape expectGkShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dk});
+    // num_accepted_tokens (B)
+    gert::Shape expectNumAcceptedShape = gert::Shape({tilingData_.b});
     if (tilingData_.hasGama == 1){
         const auto &gShape = context_->GetOptionalInputShape(G_INDEX)->GetStorageShape();
         if (!CheckDim(gShape, G_DIM_NUM, "g")) {
@@ -379,6 +385,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeOptionalShapes()
         if (!CheckDim(numAcceptedShape, NUM_ACCEPTED_TOKENS_DIM_NUM, "num_accepted_tokens")){
             return ge::GRAPH_FAILED;
         }
+        OP_CHECK_IF(numAcceptedShape != expectNumAcceptedShape,
+            OP_LOGE(context_->GetNodeName(),
+                "The shape of num_accepted_tokens parameter[%ld] is not expected, Expect [%ld].",
+                numAcceptedShape.GetDim(DIM_0), expectNumAcceptedShape.GetDim(DIM_0)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -416,6 +427,10 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
     gert::Shape expectBetaShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // out (T, NV, DV)
     gert::Shape expectOutShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dv});
+    // actSeqlensShape (B)
+    gert::Shape expectActSeqlensShape = gert::Shape({tilingData_.b});
+    // ssmStateShape (T)
+    gert::Shape expectSsmStateShape = gert::Shape({tilingData_.t});
 
     OP_CHECK_IF(queryShape != expectQKShape,
         OP_LOGE(context_->GetNodeName(), "The shape of query parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
@@ -446,6 +461,15 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
         OP_LOGE(context_->GetNodeName(), "The shape of out parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
             outShape.GetDim(DIM_0), outShape.GetDim(DIM_1), outShape.GetDim(DIM_2),
             expectOutShape.GetDim(DIM_0), expectOutShape.GetDim(DIM_1), expectOutShape.GetDim(DIM_2)),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(actSeqlensShape != expectActSeqlensShape,
+        OP_LOGE(context_->GetNodeName(),
+            "The shape of actual_seq_lengths parameter[%ld] is not expected, Expect [%ld].",
+            actSeqlensShape.GetDim(DIM_0), expectActSeqlensShape.GetDim(DIM_0)),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ssmStateShape != expectSsmStateShape,
+        OP_LOGE(context_->GetNodeName(), "The shape of ssm_state_indices parameter[%ld] is not expected, Expect [%ld].",
+            ssmStateShape.GetDim(DIM_0), expectSsmStateShape.GetDim(DIM_0)),
             return ge::GRAPH_FAILED);
 
     if (AnalyzeOptionalShapes() != ge::GRAPH_SUCCESS) {
@@ -566,8 +590,10 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
     usedUbBytes += MAX_MTP * 2 * aNv; // 2 for betaInQueue_
     tilingData_.ubRestBytes = ubSize - usedUbBytes;
     usedUbBytes += MAX_MTP * (8 * aDk + 4 * aDv + 4 * aNv); // 8 for qk in ub, 4 for v in ub, 4 for beta in ub
-    int64_t coeff = (2 + 2) * aDk + 4;                      // 2 for stateInQueue_, stateOutQueue_, 4 for attnOutQueue_
-    coeff += (4 + 4) * aDk + 4 + 4;                         // 4 for qInUb, kInUb, vInUb, deltaInUb, attnInUb
+    int64_t stateInElemBytes = (stateDtype_ == ge::DT_FLOAT) ? sizeof(float) : sizeof(uint16_t);
+    int64_t stateOutElemBytes = stateInElemBytes; // stateOut has the same dtype as stateIn
+    int64_t coeff = (stateInElemBytes + stateOutElemBytes) * aDk + 4; // stateInQueue_, stateOutQueue_, attnOutQueue_
+    coeff += (4 + 4) * aDk + 4 + 4;                                   // 4 for qInUb, kInUb, vInUb, deltaInUb, attnInUb
     int64_t vStep = (ubSize - usedUbBytes) / coeff / 8 * 8; // 8 * sizeof(float) = 32
     if (vStep < 8) {                                        // vStep不小于8
         OP_LOGE(context_->GetNodeName(), "vStep should be bigger than 8, shape is too big.");
@@ -578,7 +604,7 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
                                  static_cast<uint32_t>(8)); // 8 * sizeof(float) = 32
     tilingData_.ubCalSize = compileInfo_.ubSize;
     tilingData_.vStep = vStep;
-    tilingData_.ubRestBytes -= ((2 + 2) * aDk + 4) * vStep; // 2 for stateInQueue_, stateOutQueue_, 4 for attnOutQueue_
+    tilingData_.ubRestBytes -= ((stateInElemBytes + stateOutElemBytes) * aDk + 4) * vStep;
 
     return ge::GRAPH_SUCCESS;
 }

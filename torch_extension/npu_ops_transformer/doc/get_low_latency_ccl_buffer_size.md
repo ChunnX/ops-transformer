@@ -10,7 +10,7 @@
 
 -   API功能：
     
-    需与[npu\_low\_latency_dispatch](npu\_low\_latency\_dispatch.md)和[npu\_low\_latency_combine](npu\_low\_latency\_combine.md)配套使用，用于计算dispatch\_v3和combine\_v3算子所需的HCCL通信buffer\_size大小（单位：MB）。该接口为静态方法，可在初始化`MoeDistributeBuffer`前调用。
+    需与[npu\_low\_latency_dispatch](npu_low_latency_dispatch.md)和[npu\_low\_latency_combine](npu_low_latency_combine.md)配套使用，用于计算dispatch\_v3和combine\_v3算子所需的HCCL通信buffer\_size大小（单位：MB）。该接口为静态方法，可在初始化`MoeDistributeBuffer`前调用。
 -   计算公式：
 
     -   计算token实际长度：

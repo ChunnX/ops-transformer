@@ -49,15 +49,14 @@ struct Args {
 };
 
 const uint32_t MACHINE_NUM = 1;
-const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
-const char* first_rank_id = std::getenv("FIRST_RANK_ID");
 const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-const uint32_t EP_WORLD_SIZE = (!first_rank_id) ? 2 : 16;
-const uint32_t TP_WORLD_SIZE = (!first_rank_id) ? 1 : 0;
-const uint32_t DEV_NUM = (!first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
+const uint32_t EP_WORLD_SIZE = 2;
+const uint32_t TP_WORLD_SIZE = 1;
+const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
 const bool IS_TEST_A2 = false;
+const bool IS_TEST_A3A5 = true;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
 const uint32_t TP_WORLD_SIZE_A2 = 1;
 const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2 * TP_WORLD_SIZE_A2;
@@ -112,10 +111,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
     char hcomTpName[128] = {0};
-    if (!rank_table_file && !first_rank_id) {
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
-    }
     LOG_PRINT(
         "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
         args.rankId, hcomEpName, hcomTpName, args.dispatchV2Stream, args.combineV2Stream, args.context
@@ -128,10 +123,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
-    if (!rank_table_file && !first_rank_id) {
-        sharedExpertNum = 1;
-        sharedExpertRankNum = 1;
-    } 
     int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
     int64_t quantMode = 0;
     int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -386,9 +377,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     int64_t groupList_type = 1;
     int64_t localExpertNum;
     int64_t A;
-    int64_t zeroExpertNum = 0;
-    int64_t copyExpertNum = 0;
-    int64_t constExpertNum = 0; // A3
     std::string commAlg = "fullmesh";
     if (args.epRankId < sharedExpertRankNum) {
         localExpertNum = 1;
@@ -761,15 +749,8 @@ int run_example_on_A3A5()
 
 int main(int argc, char *argv[])
 {
-    const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
-    if (IS_TEST_A2) {
-        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A2> will be executed!\n", env_var_name);
-        int ret = run_example_on_A2();
-        return 0;
-    }
     if (!env_dev_num) {
         LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
-        LOG_PRINT("[WARNING] For details related to ENV_DEV_NUM, see aclnnMoeDistributeDispatchV2.md.\n");
         return 0;
     }
     int actual_env_dev_num = std::stoi(std::string(env_dev_num));
@@ -777,16 +758,13 @@ int main(int argc, char *argv[])
         LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
         return 0;
     }
-    if (!rank_table_file && !first_rank_id) {
-        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
-        int ret = run_example_on_A3A5();
+    if (IS_TEST_A2) {
+        LOG_PRINT("Example on <Atlas A2> will be executed!\n");
+        int ret = run_example_on_A2();
     }
-    else if (rank_table_file && !first_rank_id) {
-        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
+    else if (IS_TEST_A3A5) {
+        LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
         int ret = run_example_on_A3A5();
-    }
-    else {
-        LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
     }
 
     return 0;

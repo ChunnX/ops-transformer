@@ -511,8 +511,6 @@ check_stop
             build_cmd_var += f'export ASCEND_CUSTOM_OPP_PATH={auto_gen_path}:$ASCEND_CUSTOM_OPP_PATH \n'
         build_cmd_var += bin_cmd_str.format(fun=self.op_intf, soc=hard_soc, param=param_file,
                                            impl='high_performance,optional')
-        
-        print(f"bisheng_flags is: {bisheng_flags}")
 
         if bisheng_flags:
             # 如果 bisheng_flags 非空，直接使用其值

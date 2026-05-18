@@ -16,7 +16,7 @@
 #define OPS_BUILD_IN_OP_TILING_DEQUANT_ROPE_QUANT_KVCACHE_H
 
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {
@@ -45,6 +45,7 @@ TILING_DATA_FIELD_DEF(int64_t, ifKVout);
 TILING_DATA_FIELD_DEF(int64_t, isPA);
 TILING_DATA_FIELD_DEF(int64_t, hasBias);
 TILING_DATA_FIELD_DEF(int64_t, hasAS);
+TILING_DATA_FIELD_DEF(int64_t, batch);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(DequantRopeQuantKvcache, DequantRopeQuantKvcacheTilingData)

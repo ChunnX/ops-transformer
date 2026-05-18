@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "matmul_all_reduce_util.h"
+#include "aclnnInner_matmul_all_reduce.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
@@ -22,13 +23,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
-    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
-    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
-    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -72,9 +66,9 @@ bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* 
     }
     int64_t dim1 = x2->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = x2->GetViewShape().GetDimNum() - 2;
-    uint64_t m = x1->GetViewShape().GetDim(dim1);
-    uint64_t k = x2->GetViewShape().GetDim(dim1);
-    uint64_t n = x2->GetViewShape().GetDim(dim2);
+    int64_t m = x1->GetViewShape().GetDim(dim1);
+    int64_t k = x2->GetViewShape().GetDim(dim1);
+    int64_t n = x2->GetViewShape().GetDim(dim2);
     // 空tensor放行
     if (m == 0 || k == 0 || n == 0) {
         return true;
@@ -548,7 +542,8 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
-        commQuantScale2Optional, group, reduceOp, transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
+        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
         output, workspaceSize, executor);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);

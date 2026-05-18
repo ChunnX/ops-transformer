@@ -102,7 +102,7 @@ aclnnStatus aclnnGroupedMatmul(
     </thead>
     <tbody>
       <tr>
-        <td>x</td>
+        <td>x（aclTensorList）</td>
         <td>输入</td>
         <td>公式中的输入x。</td>
         <td>
@@ -116,7 +116,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>weight</td>
+        <td>weight（aclTensorList）</td>
         <td>输入</td>
         <td>公式中的weight。</td>
         <td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>biasOptional</td>
+        <td>biasOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>公式中的bias。</td>
         <td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>scaleOptional</td>
+        <td>scaleOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表量化参数中的缩放因子。</td>
         <td>
@@ -158,7 +158,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>offsetOptional</td>
+        <td>offsetOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表量化参数中的偏移量。</td>
         <td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantScaleOptional</td>
+        <td>antiquantScaleOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的缩放因子。</td>
         <td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantOffsetOptional</td>
+        <td>antiquantOffsetOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的偏移量。</td>
         <td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>groupListOptional</td>
+        <td>groupListOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表输入和输出M方向的matmul索引情况。</td>
         <td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>splitItem</td>
+        <td>splitItem（int64_t）</td>
         <td>输入</td>
         <td>整数型参数，代表输出是否要做tensor切分。</td>
         <td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>y</td>
+        <td>y（aclTensorList）</td>
         <td>输出</td>
         <td>公式中的输出y。</td>
         <td>
@@ -243,7 +243,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>workspaceSize</td>
+        <td>workspaceSize（uint64_t）</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>executor</td>
+        <td>executor（aclOpExecutor）</td>
         <td>输出</td>
         <td>返回op执行器，包含了算子计算流程。</td>
         <td>-</td>
@@ -378,6 +378,7 @@ aclnnStatus aclnnGroupedMatmul(
         |:-------:|:-------:| :------      |:------ |
         |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
         |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+        |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
     </details>
 
@@ -408,14 +409,14 @@ aclnnStatus aclnnGroupedMatmul(
     <summary>支持场景约束</summary>
       <a id="支持场景约束"></a>
 
-      - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x、weight、y。例如单多单表示支持x为单tensor、weight多tensor、y单tensor的场景。
-
-        | 支持场景 | 场景限制 |
-        |:-------:| :-------|
-        | 多多多 |1）仅支持splitItem为0/1<br>2）伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；非量化场景x，y中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）若x中存在tensor大于2维，groupListOptional必须传空<br>4）若x中tensor为2维且传入  groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）不支持x转置，不支持weight转置 |
-        | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为128<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4） weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）仅支持非量化<br>7）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
-        | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为128<br>3）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）仅支持非量化<br>6）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
-        | 多多单 |1）仅支持splitItem为2/3<br>2）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N） <br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional， groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）仅支持非量化<br>7）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
+    - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x、weight、y。例如单多单表示支持x为单tensor、weight多tensor、y单tensor的场景。
+    
+      |支持场景 |场景限制 |
+      |:-------:|:-------|
+      | 多多多 |1）仅支持splitItem为0/1<br>2）伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；非量化场景x，y中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）若x中存在tensor大于2维，groupListOptional必须传空<br>4）若x中tensor为2维且传入  groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）不支持x转置，不支持weight转置 |
+      | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为128<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4） weight中每个tensor的N轴必须相等<br>5）仅支持ND进ND出<br>6）仅支持非量化<br>7）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
+      | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为128<br>3）x，y中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）仅支持ND进ND出<br>5）仅支持非量化<br>6）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
+      | 多多单 |1）仅支持splitItem为2/3<br>2）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N） <br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional， groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）仅支持非量化<br>7）不支持x转置，支持weight转置（weight若为多tensor，则每个tensor是否转置须保持一致）|
 
     </details>
 

@@ -66,7 +66,7 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     if (!fiaInfo.learnableSinkFlag) {
         return ge::GRAPH_SUCCESS;
     }
-
+    // sink 不支持左padding
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
         OP_LOGE(fiaInfo.opName,
                 "When learnable sink enable, left padding is not supported."),
@@ -87,7 +87,7 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
-        OP_LOGE(fiaInfo.opName, "When learnable sink enable, post qunat is not supported."),
+        OP_LOGE(fiaInfo.opName, "When learnable sink enable, post quant is not supported."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.innerPrecise != HIGH_PRECISION,
@@ -131,6 +131,10 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
     OP_CHECK_IF(fiaInfo.qkHeadDim != NUM_192 && fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_64,
         OP_LOGE(fiaInfo.opName, " When learnable sink enable, the head dim(%u) of query should be in range of "
             "{192, 128, 64}.", fiaInfo.qkHeadDim),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fiaInfo.vHeadDim != NUM_128 && fiaInfo.vHeadDim != NUM_64,
+        OP_LOGE(fiaInfo.opName, " When learnable sink enable, the head dim(%u) of value should be in range of "
+            "{128, 64}.", fiaInfo.vHeadDim),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

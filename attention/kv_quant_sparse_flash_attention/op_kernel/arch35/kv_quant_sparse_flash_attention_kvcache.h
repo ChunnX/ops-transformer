@@ -29,18 +29,6 @@ static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
 
 TEMPLATE_INTF
-__aicore__ inline void CalculateQueryOffset(RunParamStr& runParam,
-    const ConstInfo &constInfo, int32_t bIdx,
-    __gm__ int32_t* actualSeqQlenAddr)
-{
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        runParam.qBOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1] * constInfo.gSize * 576;
-    } else {
-        runParam.qBOffset = bIdx * constInfo.s1Size * constInfo.n2GD;
-    }
-}
-
-TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
     __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t * actualSeqKvlenAddr)
 {
@@ -91,8 +79,6 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     }
     runParam.preTokensPerBatch = runParam.actualS1Size;
-
-    CalculateQueryOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
 }
 
 TEMPLATE_INTF
@@ -109,7 +95,9 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     runParam.qSNumInOneBlock = 1; // 不切G轴, 计算每个基本块可以拷贝多少行s
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if (runParam.nextTokensPerBatch < 0) {
-        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+        uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
+        int64_t gs1LoopStartIdx =
+            invalidTokenCount / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
         if (gs1LoopStartIdx > gS1StartIdx) {
             runParam.gs1LoopStartIdx = gs1LoopStartIdx;
         }
@@ -122,6 +110,10 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
         runParam.gs1LoopEndIdx = gs1LoopEndIdx;
     } else { // 最后一个bn, 从数组下一个元素取值
         runParam.gs1LoopEndIdx = nextGs1Idx == 0 ? gs1LoopEndIdx : nextGs1Idx;
+    }
+
+    if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {
+        runParam.gs1LoopStartIdx = runParam.gs1LoopEndIdx;
     }
 }
 
@@ -136,6 +128,9 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
+        if constexpr (IS_SPLIT_G) {
+            runParam.mRealSize = runParam.mRealSize >> 1;
+        }
     }
 
     runParam.cubeMOuterOffset = cubeSOuterOffset * constInfo.gSize;
@@ -180,14 +175,6 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
-    } else {
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND || LAYOUT_T == QSFA_LAYOUT::BSND) {
-            runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
-        } else {
-            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gS1D +
-                runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSize;
-        }
     }
 }
 
@@ -196,7 +183,9 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
     uint32_t sOuterLoopIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
     if (runParam.nextTokensPerBatch < 0) {
-        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+        uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
+        if (runParam.s1oIdx <
+            invalidTokenCount / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
             return true;
         }
     }

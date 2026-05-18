@@ -23,6 +23,7 @@
 #include "opdev/platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 
@@ -30,15 +31,18 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
-
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
     const aclTensor* antiquantOffset, const aclTensor* residual, const aclTensor* gamma, double epsilon,
     const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, int64_t antiquantGroupSize,
     const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    DEPRECATED_MM_ARN_API_WARN_ONCE(
+        "aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
+        "aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
+        "December 2026",
+        "aclnnWeightQuantMatmulAllReduceGetWorkspaceSize",
+        "aclnnAddRmsNormGetWorkspaceSize");
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(antiquantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
@@ -72,6 +76,12 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
+    DEPRECATED_MM_ARN_API_WARN_ONCE(
+        "aclnnWeightQuantMatmulAllReduceAddRmsNorm",
+        "aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm",
+        "December 2026",
+        "aclnnWeightQuantMatmulAllReduce",
+        "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;

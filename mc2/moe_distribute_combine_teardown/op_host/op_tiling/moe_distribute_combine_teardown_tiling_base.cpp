@@ -76,6 +76,7 @@ constexpr uint32_t SDMA_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr uint32_t COMM_CMD_INFO_SIZE = 16U;
 constexpr uint64_t MIN_AVAILABLE_BUFF_SIZE = 2;
 constexpr int64_t HCCL_BUFFER_SIZE = 44;
+constexpr uint32_t COMM_TYPE_NUM = 2;
 } // namespace
 namespace MC2Tiling {
 
@@ -197,6 +198,9 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckAttrsNullptr()
     auto expertShardTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
     OP_TILING_CHECK(expertShardTypePtr == nullptr, OP_LOGE(nodeName_, "expertShardTypePtr is nullptr"),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*expertShardTypePtr != 0,
+                    OP_LOGE(nodeName_, "expertShardType[%ld] is invalid, should be 0", *expertShardTypePtr),
+                    return ge::GRAPH_FAILED);
 
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
     OP_TILING_CHECK(sharedExpertNumPtr == nullptr, OP_LOGE(nodeName_, "sharedExpertNumPtr is nullptr"),
@@ -215,6 +219,9 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckAttrsNullptr()
 
     auto commTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_TYPE_INDEX);
     OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE(nodeName_, "commTypePtr is nullptr"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*commTypePtr != COMM_TYPE_NUM,
+                    OP_LOGE(nodeName_, "commType[%ld] is invalid, should be %d", *commTypePtr, COMM_TYPE_NUM),
+                    return ge::GRAPH_FAILED);
 
     // 判非空指针
     auto commAlgPtr = attrs->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX);
@@ -598,6 +605,83 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataTypeSecon
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorFormat()
+{
+    auto expandXDesc = context_->GetInputDesc(EXPAND_X_INDEX);
+    OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE(nodeName_, "expandXDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expandXDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "expandX format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(expandXDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    auto quantExpandXDesc = context_->GetInputDesc(QUANT_EXPAND_X_INDEX);
+    OP_TILING_CHECK(quantExpandXDesc == nullptr, OP_LOGE(nodeName_, "quantExpandXDesc is null."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(quantExpandXDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "quantExpandX format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(quantExpandXDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    auto expertIdsDesc = context_->GetInputDesc(EXPERT_IDS_INDEX);
+    OP_TILING_CHECK(expertIdsDesc == nullptr, OP_LOGE(nodeName_, "expertIdsDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertIdsDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "expertIds format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(expertIdsDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    auto expandIdxDesc = context_->GetInputDesc(EXPAND_IDX_INDEX);
+    OP_TILING_CHECK(expandIdxDesc == nullptr, OP_LOGE(nodeName_, "expandIdxDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expandIdxDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "expandIdx format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(expandIdxDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    auto expertScalesDesc = context_->GetInputDesc(EXPERT_SCALES_INDEX);
+    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName_, "expertScalesDesc is null."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertScalesDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "expertScales format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(expertScalesDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    auto commCmdInfoDesc = context_->GetInputDesc(COMM_CMD_INFO_INDEX);
+    OP_TILING_CHECK(commCmdInfoDesc == nullptr, OP_LOGE(nodeName_, "commCmdInfoDesc is null."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commCmdInfoDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "commCmdInfo format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(commCmdInfoDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
+        auto xActiveMaskDesc = context_->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
+        OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName_, "xActiveMaskDesc is null."),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(xActiveMaskDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                        OP_LOGE(nodeName_, "xActiveMask format is invalid, format should be ND, but is %s",
+                                Ops::Base::ToString(xActiveMaskDesc->GetStorageFormat()).c_str()),
+                        return ge::GRAPH_FAILED);
+    }
+
+    if (tilingData_->moeDistributeCombineTeardownInfo.hasSharedExpertX) {
+        auto sharedExpertXDesc = context_->GetOptionalInputDesc(SHARED_EXPERT_X_INDEX);
+        OP_TILING_CHECK(sharedExpertXDesc == nullptr, OP_LOGE(nodeName_, "sharedExpertXDesc is null."),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(sharedExpertXDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                        OP_LOGE(nodeName_, "sharedExpertX format is invalid, format should be ND, but is %s",
+                                Ops::Base::ToString(sharedExpertXDesc->GetStorageFormat()).c_str()),
+                        return ge::GRAPH_FAILED);
+    }
+
+    auto xOutDesc = context_->GetOutputDesc(X_OUT_INDEX);
+    OP_TILING_CHECK(xOutDesc == nullptr, OP_LOGE(nodeName_, "xOutDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xOutDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName_, "xOut format is invalid, format should be ND, but is %s",
+                            Ops::Base::ToString(xOutDesc->GetStorageFormat()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 void MoeDistributeCombineTeardownTilingBase::SetTilingKey()
 {
     bool tp = false;
@@ -683,7 +767,8 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::MoeDistributeCombineTear
     SetAttrToTilingData();
 
     if (!(CheckTensorDim() == ge::GRAPH_SUCCESS && CheckTensorShapeSize() == ge::GRAPH_SUCCESS &&
-          CheckTensorShapeRelation() == ge::GRAPH_SUCCESS && CheckTensorDataType() == ge::GRAPH_SUCCESS)) {
+          CheckTensorShapeRelation() == ge::GRAPH_SUCCESS && CheckTensorDataType() == ge::GRAPH_SUCCESS &&
+          CheckTensorFormat() == ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
     SetDimsToTilingData();

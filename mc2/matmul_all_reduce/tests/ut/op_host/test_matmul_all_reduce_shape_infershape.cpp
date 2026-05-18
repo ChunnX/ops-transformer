@@ -14,20 +14,20 @@
 
 namespace MatmulAllReduceUT {
 
-class InferShapeTest : public testing::TestWithParam<MatmulAllReduceInferShapeUtParam> {
+class InferShapeMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceInferShapeUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MatmulAllReduce InferShapeTest SetUp" << std::endl;
+        std::cout << "MatmulAllReduce InferShapeMatmulAllReduceTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MatmulAllReduce InferShapeTest TearDown" << std::endl;
+        std::cout << "MatmulAllReduce InferShapeMatmulAllReduceTest TearDown" << std::endl;
     }
 };
 
-TEST_P(InferShapeTest, param)
+TEST_P(InferShapeMatmulAllReduceTest, param)
 {
     auto param = GetParam();
     std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc;
@@ -68,7 +68,7 @@ TEST_P(InferShapeTest, param)
 
 INSTANTIATE_TEST_SUITE_P(
     MatmulAllReduce,
-    InferShapeTest,
+    InferShapeMatmulAllReduceTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceInferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<MatmulAllReduceInferShapeUtParam>
 );

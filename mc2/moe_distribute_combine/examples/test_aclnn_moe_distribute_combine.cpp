@@ -17,6 +17,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <memory>
+#include <cstdio>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
@@ -412,14 +414,12 @@ int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST
     }
     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
               << ", hcclComm:" << hcclComm << std::endl;
-
     uint32_t epRankId = rank_id / TP_WORLD_SIZE;
     uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
 
     args.rankId = rankId;
     args.epRankId = epRankId;
     args.tpRankId = tpRankId;
-    args.tpRankId = 0;
     args.hcclEpComm = hcclComm;
     args.dispatchStream = dispatchStream;
     args.combineStream = combineStream;

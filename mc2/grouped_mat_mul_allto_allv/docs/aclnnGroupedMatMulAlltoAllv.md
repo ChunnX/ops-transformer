@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-算子功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
+- 接口功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
 
 - 计算公式：
 
@@ -162,7 +162,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <td>-</td>
     </tr>
     <tr>
-    <td>epWorldSize(int64_t)</td>
+    <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>ep通信域size。</td>
     <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize(uint64_t*)</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -329,6 +329,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - 确定性计算：
   - aclnnGroupedMatMulAlltoAllv默认确定性实现。
+- 通信引擎约束：
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AICPU通信。
+  - Ascend 950PR/Ascend 950DT：支持CCU通信。
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -346,9 +349,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 

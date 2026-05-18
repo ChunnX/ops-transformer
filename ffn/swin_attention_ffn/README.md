@@ -59,17 +59,17 @@
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 900px"><colgroup>
-<col style="width: 180px">
-<col style="width: 120px">
+<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
+<col style="width: 150px">
 <col style="width: 200px">
-<col style="width: 300px">
+<col style="width: 450px">
+<col style="width: 200px">
 <col style="width: 100px">
 </colgroup>
 <thead>
   <tr>
     <th>参数名</th>
-    <th>输入/输出</th>
+    <th>输入/输出/属性</th>
     <th>描述</th>
     <th>数据类型</th>
     <th>数据格式</th>
@@ -78,35 +78,35 @@
   <tr>
     <td>x1</td>
     <td>输入</td>
-    <td>公式中的输入Q。</td>
+    <td>必选参数，Device侧的aclTensor，公式中的输入x1，支持输入的维度为3维[B,M,K]，其中B为batch size,[M,K]仅支持[64,128]。</td>
     <td>FLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>x2</td>
     <td>输入</td>
-    <td>公式中的输入K。</td>
+    <td>必选参数，Device侧的aclTensor，公式中的输入x2，支持输入的维度为2维[K, N]，[K, N]仅支持[128,128]。</td>
     <td>FLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>bias</td>
     <td>输入</td>
-    <td>公式中的输入V。</td>
+    <td>必选参数，Device侧的aclTensor，公式中的输入bias，支持输入的维度为1维[N]，[N]仅支持[128]。</td>
     <td>FLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>x3</td>
     <td>输入</td>
-    <td>公式中的输入V。</td>
+    <td>可选参数，Device侧的aclTensor，公式中的输入x3，支持输入的维度为3维[B,M,N]，其中B为batch size,[M,N]仅支持[64,128]。</td>
     <td>FLOAT16</td>
     <td>ND</td>
   </tr>  
   <tr>
     <td>y</td>
     <td>输出</td>
-    <td>公式中的输出。</td>
+    <td>必选参数，Device侧的aclTensor，公式中的输出y。</td>
     <td>FLOAT16</td>
     <td>ND</td>
   </tr>

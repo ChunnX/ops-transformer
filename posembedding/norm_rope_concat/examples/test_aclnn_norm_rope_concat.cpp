@@ -256,7 +256,7 @@ int main()
     aclTensor *keyOutput = nullptr;
     aclTensor *valueOutput = nullptr;
 
-    std::vector<float> queryOutputHostData(batchSize * headNum * querySeq + encoderQuerySeq * headDim, 0.0);
+    std::vector<float> queryOutputHostData(batchSize * headNum * (querySeq * 2) + encoderQuerySeq * headDim, 0.0);
     std::vector<float> keyOutputHostData(batchSize * headNum * keySeq + encoderKeySeq * headDim, 0.0);
     std::vector<float> valueOutputHostData(batchSize * headNum * valueSeq + encoderValueSeq * headDim, 0.0);
 
@@ -377,12 +377,12 @@ int main()
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
-    bool isTrianing = false;
+    bool isTraining = false;
     // 调用aclnnGeGluBackward第一段接口
     ret = aclnnNormRopeConcatGetWorkspaceSize(
         query, key, value, encoderQuery, encoderKey, encoderValue, normQueryWeight, normQueryBias, normKeyWeight,
         normKeyBias, normAddedQueryWeight, normAddedQueryBias, normAddedKeyWeight, normAddedKeyBias, ropeSin, ropeCos,
-        normType, normAddedType, ropeType, concatOrder, eps, isTrianing, queryOutput, keyOutput, valueOutput,
+        normType, normAddedType, ropeType, concatOrder, eps, isTraining, queryOutput, keyOutput, valueOutput,
         normQueryMean, normQueryRstd, normKeyMean, normKeyRstd, normAddedQueryMean, normAddedQueryRstd,
         normAddedKeyMean, normAddedKeyRstd, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNormRopeConcatGetWorkspaceSize failed. ERROR: %d\n", ret);

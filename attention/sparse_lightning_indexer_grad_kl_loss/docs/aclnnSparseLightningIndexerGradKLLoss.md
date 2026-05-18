@@ -133,47 +133,67 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>query</td>
             <td>输入</td>
             <td>attention结构的输入Q。</td>
-            <td>数据类型与key/queryIndex/keyIndex保持一致。</td>
+            <td>
+            <ul>
+                <li>数据类型与key/queryIndex/keyIndex保持一致。</li>
+                <li>不支持空Tensor。</li>
+            </ul>
+            </td>
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
-            <td>(B,S1,N1,D)、(T1,N1,D)</td>
+            <td>(B,S1,N1,DQuery)、(T1,N1,DQuery)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>key</td>
             <td>输入</td>
             <td>attention结构的输入K。</td>
-            <td>数据类型与query/queryIndex/keyIndex保持一致。</td>
+            <td>
+            <ul>
+                <li>数据类型与query/queryIndex/keyIndex保持一致。</li>
+                <li>不支持空Tensor。</li>
+            </ul>
+            </td>
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
-            <td>(B,S2,N2,D)、(T2,N2,D)</td>
+            <td>(B,S2,N2,DQuery)、(T2,N2,DQuery)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>queryIndex</td>
             <td>输入</td>
             <td>lightingIndexer结构的输入queryIndex。</td>
-            <td>数据类型与query/key/keyIndex保持一致。</td>
+            <td>
+            <ul>
+                <li>数据类型与query/key/keyIndex保持一致。</li>
+                <li>不支持空Tensor。</li>
+            </ul>
+            </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
+            <td>(B,S1,Nidx1,DQueryIndex)、(T1,Nidx1,DQueryIndex)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>keyIndex</td>
             <td>输入</td>
             <td>lightingIndexer结构的输入keyIndex。</td>
-            <td>数据类型与query/key/queryIndex保持一致。</td>
+            <td>
+            <ul>
+                <li>数据类型与query/key/queryIndex保持一致。</li>
+                <li>不支持空Tensor。</li>
+            </ul>
+            </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
+            <td>(B,S2,Nidx2,DQueryIndex)、(T2,Nidx2,DQueryIndex)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>weights</td>
             <td>输入</td>
             <td>权重。</td>
-            <td>-</td>
+            <td>不支持空Tensor。</td>
             <td>FLOAT16、BFLOAT16、FLOAT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
@@ -183,7 +203,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>sparseIndices</td>
             <td>输入</td>
             <td>topk_index，用来选择每个query对应的key和value。</td>
-            <td>-</td>
+            <td>不支持空Tensor。</td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx2,K)、(T1,Nidx2,K)</td>
@@ -193,7 +213,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>softmaxMax</td>
             <td>输入</td>
             <td>注意力正向计算的中间输出。</td>
-            <td>-</td>
+            <td>不支持空Tensor。</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
@@ -203,7 +223,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>softmaxSum</td>
             <td>输入</td>
             <td>注意力正向计算的中间输出。</td>
-            <td>-</td>
+            <td>不支持空Tensor。</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
@@ -214,11 +234,14 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输入</td>
             <td>MLA rope部分：Query位置编码的输出。</td>
             <td>
-            与query的layout维度保持一致。
+            <ul>
+                <li>与query的layout维度保持一致。</li>
+                <li>不支持空Tensor。</li>
+            <ul>
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S1,N1,Dr)、(T1,N1,Dr)</td>
+            <td>(B,S1,N1,DRope)、(T1,N1,DRope)</td>
             <td>x</td>
         </tr>
         <tr>
@@ -226,11 +249,14 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输入</td>
             <td>MLA rope部分：Key位置编码的输出。</td>
             <td>
-            与key的layout维度保持一致。
+            <ul>
+                <li>与key的layout维度保持一致。</li>
+                <li>不支持空Tensor。</li>
+            <ul>
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S2,N2,Dr)、(T2,N2,Dr)</td>
+            <td>(B,S2,N2,DRope)、(T2,N2,DRope)</td>
             <td>x</td>
         </tr>    
         <tr>
@@ -242,6 +268,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
                 <li>值依赖。</li>
                 <li>长度与B保持一致。</li>
                 <li>累加和与T1保持一致。</li>
+                <li>不支持空Tensor。</li>
             </ul>
             </td>
             <td>INT64</td>
@@ -258,6 +285,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
                 <li>值依赖。</li>
                 <li>长度与B保持一致。</li>
                 <li>累加和T2保持一致。</li>
+                <li>不支持空Tensor。</li>
             </ul>
             </td>
             <td>INT64</td>
@@ -323,7 +351,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
+            <td>(B,S1,Nidx1,DQueryIndex)、(T1,Nidx1,DQueryIndex)</td>
             <td>x</td>
         </tr>
         <tr>
@@ -333,7 +361,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
+            <td>(B,S2,Nidx2,DQueryIndex)、(T2,Nidx2,DQueryIndex)</td>
             <td>x</td>
         </tr>
         <tr>
@@ -418,7 +446,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseLightningIndexerKLLossGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize获取。</td>
         </tr>
         <tr>
         <td>executor</td>
@@ -440,7 +468,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
     - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
@@ -507,6 +535,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
+
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -522,34 +551,26 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </thead>
         <tbody>
         <tr>
-            <td>deterministic</td>
-            <td>bool</td>
-            <td>
-            A2/A3支持确定性计算<br>
-            950不支持确定性计算
-            </td>
-        </tr>
-        <tr>
             <td>B</td>
-            <td>A2/A3支持1~256<br>
-                950支持1~128</td>
+            <td>支持1~256</td>
             <td>-</td>
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~128K</td>
+            <td>S1支持1~8K，S2支持1~512K</td>
             <td>S1、S2支持不等长</td>
         </tr>
         <tr>
             <td>N1</td>
-            <td>32、64、128</td>
+            <td>
+            32、64、128
+            </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
             <td>Nidx1</td>
             <td>
-            A2/A3支持8、16、32、64<br>
-            950支持32、64
+            16、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -564,12 +585,17 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>SparseFA为MQA，N2=1。</td>
         </tr>
         <tr>
-            <td>D</td>
+            <td>DQuery</td>
             <td>512</td>
-            <td>query与query_index的D不同。</td>
+            <td>-</td>
         </tr>
         <tr>
-            <td>Drope</td>
+            <td>DQueryIndex</td>
+            <td>128</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>DRope</td>
             <td>64</td>
             <td>-</td>
         </tr>
@@ -578,50 +604,12 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
             <td>-</td>
         </tr>
-        <tr>
-            <td>layout</td>
-            <td>BSND/TND</td>
-            <td>-</td>
-        </tr>
         </tbody>
     </table>
-- 典型值
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 300px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>规格项</th>
-                <th>典型值</th>
-            </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td>query</td>
-            <td>N1=128/64; D =512</td>
-        </tr>
-        <tr>
-            <td>queryIndex</td>
-            <td>
-            A2/A3支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
-            950支持N1 = 64/32;  D = 128 ; S1 = 64k/128k
-            </td>
-        </tr>
-        <tr>
-            <td>keyIndex</td>
-            <td>D = 128</td>
-        </tr>
-        <tr>
-            <td>topk</td>
-            <td>topk = 1024/2048/3072/4096/5120/6144/7168/8192</td>
-        </tr>
-        <tr>
-            <td>qRope</td>
-            <td>d= 64</td>
-        </tr>
-        </tbody>
-    </table>
+    <ul>
+        <li>Ascend 950PR、Ascend 950DT处理器：B仅支持1~128，N1额外支持48，Nidx1额外支持24。</li>
+        <li>Atlas A2 训练系列产品、Atlas A2 推理系列产品、Atlas A3 训练系列产品、Atlas A3 推理系列产品：Nidx1额外支持8。</li>
+    </ul>
 
 ## 调用示例
 
@@ -712,20 +700,20 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
-  std::vector<int64_t> qShape = {4,64,512};
-  std::vector<int64_t> kShape = {8,1,512};
-  std::vector<int64_t> qRopeShape = {4,64,64};
-  std::vector<int64_t> kRopeShape = {8,1,64};
-  std::vector<int64_t> qIndexShape = {4,32,128};
-  std::vector<int64_t> kIndexShape = {8,1,128};
-  std::vector<int64_t> weightShape = {4,64};
-  std::vector<int64_t> sparseIndicesShape = {1, 2048};
-  std::vector<int64_t> softmaxMaxShape = {4, 64};
-  std::vector<int64_t> softmaxSumShape = {4, 64};
+  std::vector<int64_t> qShape = {1,64,512};
+  std::vector<int64_t> kShape = {1,1,512};
+  std::vector<int64_t> qRopeShape = {1,64,64};
+  std::vector<int64_t> kRopeShape = {1,1,64};
+  std::vector<int64_t> qIndexShape = {1,32,128};
+  std::vector<int64_t> kIndexShape = {1,1,128};
+  std::vector<int64_t> weightShape = {1,32};
+  std::vector<int64_t> sparseIndicesShape = {1, 1,2048};
+  std::vector<int64_t> softmaxMaxShape = {1, 1, 64};
+  std::vector<int64_t> softmaxSumShape = {1, 1, 64};
 
-  std::vector<int64_t> dQIndexShape = {4,32,128};
-  std::vector<int64_t> dKIndexShape = {8,1,128};
-  std::vector<int64_t> dWeightShape = {4,64};
+  std::vector<int64_t> dQIndexShape = {1,32,128};
+  std::vector<int64_t> dKIndexShape = {1,1,128};
+  std::vector<int64_t> dWeightShape = {1,1,32};
   std::vector<int64_t> lossShape = {1};
 
   void* qDeviceAddr = nullptr;
@@ -760,24 +748,21 @@ int main() {
   aclTensor* dWeight = nullptr;
   aclTensor* loss = nullptr;
 
-  std::vector<short> qHostData(4*64*512, 1);
-  std::vector<short> kHostData(8*512, 2);
-  std::vector<short> qRopeHostData(4*64*64, 3);
-  std::vector<short> kRopeHostData(8*1*64, 4);
-  std::vector<short> qIndexHostData(4*32*128, 5);
-  std::vector<short> kIndexHostData(8*1*128, 6);
-  std::vector<short> weightHostData(4*64, 1);
-  std::vector<short> sparseIndicesHostData(2048, -1);
-  for (int i = 0; i < 8; i++) {
-    sparseIndicesHostData[i] = i;
-  }
-  std::vector<short> softmaxMaxHostData(4*64, 1);
-  std::vector<short> softmaxSumHostData(4*64, 1);
+  std::vector<float> qHostData(1*64*512, 1);
+  std::vector<float> kHostData(1*1*512, 1);
+  std::vector<float> qRopeHostData(1*64*64, 1);
+  std::vector<float> kRopeHostData(1*1*64, 1);
+  std::vector<float> qIndexHostData(1*32*128, 1);
+  std::vector<float> kIndexHostData(1*1*128, 1);
+  std::vector<float> weightHostData(1*32, 1);
+  std::vector<float> sparseIndicesHostData(2048, 1);
+  std::vector<float> softmaxMaxHostData(1*64, 1);
+  std::vector<float> softmaxSumHostData(1*64, 1);
 
-  std::vector<short> dQIndexHostData(4*32*128, 1);
-  std::vector<short> dKIndexHostData(8*1*128, 1);
-  std::vector<short> dWeightHostData(4*64, 1);
-  std::vector<short> lossHostData(1, 1);
+  std::vector<float> dQIndexHostData(1*32*128, 1);
+  std::vector<float> dKIndexHostData(1*1*128, 1);
+  std::vector<float> dWeightHostData(1*1*32, 1);
+  std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -809,13 +794,13 @@ int main() {
   ret = CreateAclTensor(lossHostData, lossShape, &lossDeviceAddr, aclDataType::ACL_FLOAT, &loss);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  std::vector<int64_t>  acSeqQLenOp = {4};
-  std::vector<int64_t>  acSeqKvLenOp = {8};
+  std::vector<int64_t>  acSeqQLenOp = {1};
+  std::vector<int64_t>  acSeqKvLenOp = {1};
   aclIntArray* acSeqQLen = aclCreateIntArray(acSeqQLenOp.data(), acSeqQLenOp.size());
   aclIntArray* acSeqKvLen = aclCreateIntArray(acSeqKvLenOp.data(), acSeqKvLenOp.size());
-  double scaleValue = 1.0;
-  int64_t preTokens = 65536;
-  int64_t nextTokens = 65536;
+  double scaleValue = 0.044194173824159216;
+  int64_t preTokens = 2147483647;
+  int64_t nextTokens = 2147483647;
   int64_t sparseMode = 3;
   bool deterministic = false;
 

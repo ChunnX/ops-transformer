@@ -34,6 +34,5 @@ if(NOT BUILD_OPS_RTY_KERNEL) #
     )
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
         blitz_sparse_attention_tiling.cpp
-        fallback_blitz_sparse_attention.cpp
     )
 endif()

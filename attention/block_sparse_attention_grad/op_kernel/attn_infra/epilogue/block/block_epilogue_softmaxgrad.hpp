@@ -209,7 +209,7 @@ public:
     __aicore__ inline
     void operator()<AscendC::AIV>(uint64_t startIdx, uint64_t singleCoreRowCount)
     {
-        if (cBlockIdx >= usedCoreNums) {
+        if (cBlockIdx >= usedCoreNums || singleCoreRowCount == 0) {
             return;
         }
 
@@ -223,11 +223,12 @@ public:
         uint64_t curS = s1; // tnd 格式需修改
         uint32_t ping = 0;
 
-            
         for (uint64_t i = 0; i < singleCoreLoop; i++) {
             if (i == singleCoreLoop - 1) {
                 nBurst = singleCoreLastLoopNBurstNum;
             }
+
+            auto eventId = ping ? EVENT_ID3 : EVENT_ID2;
 
             // copyIn
             if (i == 0) {
@@ -236,25 +237,32 @@ public:
                 CopyInSfmg(nBurst, curS, actualSeqQlenAddr, ping);
             }
 
-            AscendC::PipeBarrier<PIPE_ALL>();
+            set_flag(PIPE_MTE2, PIPE_V, eventId);
+            wait_flag(PIPE_MTE2, PIPE_V, eventId);
 
             // cast 1
             uint64_t calcSize = nBurst * dAlign;
             Cast(doutFp32Tensor[ping], doutTensor[ping], RoundMode::CAST_NONE, calcSize);
             AscendC::PipeBarrier<PIPE_V>();
 
-
             // cast 2
             Cast(outFp32Tensor[ping], outTensor[ping], RoundMode::CAST_NONE, calcSize);
             AscendC::PipeBarrier<PIPE_V>();
 
-            AscendC::PipeBarrier<PIPE_ALL>();
             // pre copyIn next nBurst
             if (i < singleCoreLoop - 1) {
+                set_flag(PIPE_V, PIPE_MTE2, eventId);
+                wait_flag(PIPE_V, PIPE_MTE2, eventId);
+
                 uint64_t nextNBurst = i == singleCoreLoop - 2 ? singleCoreLastLoopNBurstNum : nBurst;
                 InitIndex((startIdx + (i + 1) * singleLoopNBurstNum) * d,
                         curS, actualSeqQlenAddr);
                 CopyInSfmg(nextNBurst, curS, actualSeqQlenAddr, ping);
+            }
+
+            if (i != 0) {
+                set_flag(PIPE_MTE3, PIPE_V, eventId);
+                wait_flag(PIPE_MTE3, PIPE_V, eventId);
             }
 
             // sfmg
@@ -274,7 +282,10 @@ public:
                 SoftmaxGradFront<float, false>(softmaxGradTensor[ping], doutFp32Tensor[ping], outFp32Tensor[ping], tempBuffer, tilingData->softmaxGradTilingData);
             }
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::PipeBarrier<PIPE_ALL>();
+
+            set_flag(PIPE_V, PIPE_MTE3, eventId);
+            wait_flag(PIPE_V, PIPE_MTE3, eventId);
+
             // copyOut
             uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum) * BLOCK_SIZE;
             DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);

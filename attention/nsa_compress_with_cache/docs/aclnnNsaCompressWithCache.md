@@ -168,7 +168,7 @@ aclnnStatus aclnnNsaCompressWithCache(
             <li>其中T是B和S合轴紧密排列的数据（每个batch的actSeqLen）、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸。</li>
           </ul>
         </td>
-        <td>CHAR</td>
+        <td>STRING</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>compressStride</td>
         <td>输入</td>
         <td>两次压缩间的滑窗间隔大小。</td>
-        <td>仅支持compressBlockStride取值16、32、48、64。</td>
+        <td>仅支持compressStride取值16、32、48、64。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -218,7 +218,7 @@ aclnnStatus aclnnNsaCompressWithCache(
         <td>输出</td>
         <td>压缩之后的cache</td>
         <td>数据类型与input保持一致。</td>
-        <td>INT64</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[result_len, N, D]</td>
         <td>x</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnNsaCompressWithCache(
       <td>activeNum、expertNum、expertCapacity的值小于0。</td>
     </tr>
     <tr>
-      <td>compress_block_size、compress_stride 、不是16的整数倍，或者compress_block_size</td>
+      <td>compress_block_size、compress_stride不是16的整数倍</td>
     </tr>
     <tr>
       <td>seq_lens_type!=1或者layout取值不是BSH、SBH、BSND、BNSD、TND中的一个。</td>
@@ -347,7 +347,7 @@ aclnnStatus aclnnNsaCompressWithCache(
 
 - 确定性计算：
   - aclnnNsaCompressWithCache默认确定性实现。
-- outputCache的N和D和input一致，而且要满足result_len>(blockNum*pageBlockSize-compressBlockSize)/compressStride。
+- outputCache的N和D与input一致，而且要满足result_len>(blockNum*pageBlockSize-compressBlockSize)/compressStride。
 - page attention场景下input的shape支持[blockNum,pageBlockSize,N,D]，其余场景下input的shape支持[T,N,D]。
 
 ## 调用示例

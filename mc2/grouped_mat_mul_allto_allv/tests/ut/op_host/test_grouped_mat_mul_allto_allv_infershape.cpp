@@ -43,9 +43,9 @@ struct TilingParams {
     bool transMmWeight{false};
     std::string group{"group"};
     std::vector<int64_t> sendCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-                                     128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
+                                    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
     std::vector<int64_t> recvCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-                                     128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
+                                    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
 };
 
 struct TilingShapes {
@@ -62,7 +62,7 @@ struct TilingShapes {
 
 struct TilingDTypes {
     std::vector<ge::DataType> inputDtypes{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT64,
-                                           ge::DT_INT64,   ge::DT_FLOAT16, ge::DT_FLOAT16};
+                                          ge::DT_INT64,   ge::DT_FLOAT16, ge::DT_FLOAT16};
     std::vector<ge::DataType> outputDtypes{ge::DT_FLOAT16, ge::DT_FLOAT16};
 };
 
@@ -120,18 +120,18 @@ TEST_P(GroupedMatMulAlltoAllvInfershape, InferdatatypeTest)
     int64_t outputNum{2};
     auto tilingParam = TilingParams{};
     auto tilingDtypes = TilingDTypes{};
-    
+
     for (auto& kv : testParam.tilingInputDtypesPair) {
         if (kv.first >= 0 && kv.first < tilingDtypes.inputDtypes.size()) {
             tilingDtypes.inputDtypes[kv.first] = kv.second;
         }
     }
     for (auto& kv : testParam.tilingOutputDtypesPair) {
-            if (kv.first >= 0 && kv.first < tilingDtypes.outputDtypes.size()) {
-                tilingDtypes.outputDtypes[kv.first] = kv.second;
+        if (kv.first >= 0 && kv.first < tilingDtypes.outputDtypes.size()) {
+            tilingDtypes.outputDtypes[kv.first] = kv.second;
         }
     }
-    
+
     std::vector<void*> inputDtypesPtrs(inputNum);
     for (int64_t i = 0; i < inputNum; i++) {
         inputDtypesPtrs[i] = &tilingDtypes.inputDtypes[i];
@@ -139,21 +139,22 @@ TEST_P(GroupedMatMulAlltoAllvInfershape, InferdatatypeTest)
     std::vector<void*> outputDtypesPtrs(outputNum);
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-                .NodeIoNum(inputNum, outputNum)
-                .InputDataTypes(inputDtypesPtrs)
-                .OutputDataTypes(outputDtypesPtrs)
+            .NodeIoNum(inputNum, outputNum)
+            .InputDataTypes(inputDtypesPtrs)
+            .OutputDataTypes(outputDtypesPtrs)
                 .NodeAttrs({
                     {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParam.group)},
-                    {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParam.epWorldSize)},
-                    {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tilingParam.sendCounts)},
-                    {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tilingParam.recvCounts)},
-                    {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParam.transGmmWeight)},
-                    {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParam.transMmWeight)}})
-                .Build();
+                 {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParam.epWorldSize)},
+                 {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tilingParam.sendCounts)},
+                 {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tilingParam.recvCounts)},
+                 {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParam.transGmmWeight)},
+                 {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParam.transMmWeight)}})
+            .Build();
     /* get infershape func */
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto inferDtypeFunc = spaceRegistry->GetOpImpl("GroupedMatMulAlltoAllv")->infer_datatype;
-
+    auto opImpl = spaceRegistry->GetOpImpl("GroupedMatMulAlltoAllv");
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDtypeFunc = opImpl->infer_datatype;
     /* do infershape */
     ASSERT_EQ(inferDtypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_FLOAT16);
@@ -176,13 +177,13 @@ TEST_P(GroupedMatMulAlltoAllvInfershape, InfershapeTest)
 
     gert::InfershapeContextPara infershapeContextPara(
         "GroupedMatMulAlltoAllv",
-        {   
+        {
             {{{tilingParams.A, tilingParams.H1}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{tilingParams.BS, tilingParams.H2}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{tilingParams.mmWeightDim0, tilingParams.N2}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, 
+            {{{tilingParams.mmWeightDim0, tilingParams.N2}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
             {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -199,14 +200,42 @@ TEST_P(GroupedMatMulAlltoAllvInfershape, InfershapeTest)
     Mc2Hcom::MockValues hcomTopologyMockValues {
         {"rankNum", 8}
     };
- 
+
     std::vector<std::vector<int64_t>> expectOutputShape = {{4096, 4096}};
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape); 
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, testParam.status, expectOutputShape);
 }
 
-static TestParams g_testParamss[] = {{"Test_sample", {}, {}, {}, {}, ge::GRAPH_SUCCESS},};
+static TestParams g_testParamss[] = {
+    {"Test_sample", {}, {}, {}, {}, ge::GRAPH_SUCCESS},
+    {"Test_transGmmWeight_true",
+     {{"transGmmWeight", "true"}, {"N1", "7168"}, {"gmmWeightDim1", "4096"}},
+     {},
+     {},
+     {},
+     ge::GRAPH_SUCCESS},
+    {"Test_transMmWeight_true",
+     {{"transMmWeight", "true"}, {"N2", "7168"}, {"mmWeightDim0", "4096"}},
+     {},
+     {},
+     {},
+     ge::GRAPH_SUCCESS},
+    {"Test_both_trans_true",
+     {{"transGmmWeight", "true"},
+      {"transMmWeight", "true"},
+      {"N1", "7168"},
+      {"gmmWeightDim1", "4096"},
+      {"N2", "7168"},
+      {"mmWeightDim0", "4096"}},
+     {},
+     {},
+     {},
+     ge::GRAPH_SUCCESS},
+    {"Test_gmm_dim_mismatch", {{"gmmWeightDim1", "4096"}}, {}, {}, {}, ge::GRAPH_FAILED},
+    {"Test_mm_dim_mismatch", {{"mmWeightDim0", "4096"}}, {}, {}, {}, ge::GRAPH_FAILED},
+};
 
-INSTANTIATE_TEST_SUITE_P(GroupedMatMulAlltoAllv, GroupedMatMulAlltoAllvInfershape, testing::ValuesIn(g_testParamss), [](const testing::TestParamInfo<GroupedMatMulAlltoAllvInfershape::ParamType>& info) {
+INSTANTIATE_TEST_SUITE_P(GroupedMatMulAlltoAllv, GroupedMatMulAlltoAllvInfershape, testing::ValuesIn(g_testParamss),
+                         [](const testing::TestParamInfo<GroupedMatMulAlltoAllvInfershape::ParamType> &info) {
                              return info.param.testName;
                          });
-} // grouped_mat_mul_allto_allv_ut
+} // namespace GroupedMatMulAlltoAllvUT
