@@ -34,23 +34,8 @@ using AscendC::TBuf;
 using AscendC::TPosition;
 using AscendC::WaitFlag;
 
-using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CeilAlign;
-using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
-using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::FixL0CToDstParams;
-using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
-using WeightQuantBatchMatmulV2::Arch35::K_ALIGNMENT64;
-using WeightQuantBatchMatmulV2::Arch35::L0CopyAndCalcParams;
-using WeightQuantBatchMatmulV2::Arch35::MX_GROUPSIZE;
-using WeightQuantBatchMatmulV2::Arch35::MX_SCALE_K_L1_SIZE;
-using WeightQuantBatchMatmulV2::Arch35::SCALE_COPY_DEFAULT_N_STRIDE;
-using WeightQuantBatchMatmulV2::Arch35::SCALE_COPY_DEFAULT_STRIDE;
-using WeightQuantBatchMatmulV2::Arch35::SCALE_COPY_GROUP_SIZE;
-using WeightQuantBatchMatmulV2::Arch35::SINGLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 
-namespace GMMSQ {
+namespace GMMSQWeightQuant {
 
 #define GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM                                                                           \
     template <typename xType, typename biasType, typename weightScaleType, typename xScaleType,              \
@@ -449,5 +434,5 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::GetTensorC(LocalTensor<yType
                   CeilAlign(fixL0CToDstParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));
 }
 
-} // namespace GMMSQ
+} // namespace GMMSQWeightQuant
 #endif

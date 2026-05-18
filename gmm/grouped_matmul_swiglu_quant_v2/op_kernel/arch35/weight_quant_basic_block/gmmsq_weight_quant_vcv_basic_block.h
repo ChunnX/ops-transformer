@@ -29,26 +29,8 @@ using AscendC::LocalTensor;
 using AscendC::TBuf;
 using AscendC::TPipe;
 using AscendC::TPosition;
-using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
-using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
-using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::FLAG_ID_MAX;
-using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
-using WeightQuantBatchMatmulV2::Arch35::L1_SIZE;
-using WeightQuantBatchMatmulV2::Arch35::L1_SIZE_BYTE;
-using WeightQuantBatchMatmulV2::Arch35::Min;
-using WeightQuantBatchMatmulV2::Arch35::MX_BIAS_SINGLE_VECTOR_SIZE;
-using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
-using WeightQuantBatchMatmulV2::Arch35::SYNC_AIC_AIV_FLAG;
-using WeightQuantBatchMatmulV2::Arch35::SYNC_AIC_FIX_AIV_VF_FLAG;
-using WeightQuantBatchMatmulV2::Arch35::SYNC_AIV_AIC_FLAG;
-using WeightQuantBatchMatmulV2::Arch35::SYNC_AIV_MTE3_AIC_FIX_FLAG;
-using WeightQuantBatchMatmulV2::Arch35::SYNC_MODE4;
-using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
-using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 
-namespace GMMSQ {
+namespace GMMSQWeightQuant {
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                                      \
     template <typename xType, typename wType, typename weightScaleType,                                              \
@@ -203,6 +185,7 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOffsetParam &
         vecCompute_.ComputeScale(lastOffsetParam);
         vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
         vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam);
+        vecCompute_.TransMxScaleLayout(lastOffsetParam);
         vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam);
 
         vecCompute_.SetMTE3ToV();
@@ -296,6 +279,7 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffse
             vecCompute_.ComputeScale(lastOffsetParam);
             vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
             vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam);
+            vecCompute_.TransMxScaleLayout(lastOffsetParam);
             vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam);
         }
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
@@ -304,6 +288,6 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffse
     }
 }
 
-} // namespace GMMSQ
+} // namespace GMMSQWeightQuant
 
 #endif // GMMSQ_WEIGHT_QUANT_VCV_BASIC_BLOCK_H
