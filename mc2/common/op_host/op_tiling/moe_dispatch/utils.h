@@ -47,6 +47,14 @@ struct AttrCheckRule {
     bool required;                                      // 是否必选
 };
 
+struct TensorFormatRule {
+    uint32_t index;                                     // tensor 在 context 中的索引
+    moe_dispatch_defs::TensorType type;                 // INPUT/OUTPUT/OPTIONAL_INPUT
+    ge::Format expectedFormat;                          // 期望的 format
+    bool checkPrimary;                                  // true = 使用 GetPrimaryFormat
+    const char* name;                                   // 日志用名称
+};
+
 // ========== 小结果结构体 ==========
 
 struct SharedExpertResult {
@@ -194,7 +202,7 @@ inline ge::graphStatus CheckEpRankRelation(
 
 // ========== 平台信息获取 ==========
 
-inline PlatformInfo GetPlatformInfo(gert::TilingContext* ctx) {
+inline PlatformInfo GetPlatformInfo(const gert::TilingContext* ctx) {
     PlatformInfo result{};
     result.aivNum = 0U;
     result.ubSize = 0UL;
@@ -222,6 +230,9 @@ ge::graphStatus CheckOneTensorRule(
 
 ge::graphStatus CheckAttrRules(
     gert::TilingContext* ctx, const AttrCheckRule* rules, uint32_t count);
+
+ge::graphStatus CheckTensorFormatRules(
+    gert::TilingContext* ctx, const TensorFormatRule* rules, uint32_t count, const char* nodeName);
 
 } // namespace moe_dispatch_utils
 
