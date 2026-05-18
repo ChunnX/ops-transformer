@@ -42,7 +42,7 @@ template<TemplateTypeClass>
 class QuantReduceScatterMte {
 public:
     __aicore__ inline QuantReduceScatterMte() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales, GM_ADDR output,
                                 TPipe *pipe, const QuantReduceScatterTilingData *tilingData);
     __aicore__ inline void Process();
 private:
@@ -86,7 +86,7 @@ private:
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_ADDR scales,
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales,
     GM_ADDR output, TPipe *tPipe, const QuantReduceScatterTilingData *tilingData)
 {
     mteComm_.InitHcclContext();
