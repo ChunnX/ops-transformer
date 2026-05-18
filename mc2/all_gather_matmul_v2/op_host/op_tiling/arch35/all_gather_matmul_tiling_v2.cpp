@@ -138,7 +138,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2Ma
     tilingCfg.SetMatMulV3TilingData(tilingData);
     if (args_.nValue != 0)
         if (Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS) {
-            OP_LOGE(opName_, "DoMatmulV3Tiling failed.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmulV3Tiling", "DoTilingImpl failed", "DoMatmulV3Tiling failed");
             return ge::GRAPH_FAILED;
         }
 
@@ -154,7 +154,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 
     // 获取 compileInfo
     if (mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(opName_, "Fail to Init CompileInfo!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "compileInfo", "InitCompileInfo failed", "failed to initialize compile info");
         return ge::GRAPH_FAILED;
     }
 
@@ -215,9 +215,9 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

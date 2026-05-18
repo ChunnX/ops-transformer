@@ -82,7 +82,7 @@ bool AllGatherQuantBmmTiling::IsCapable()
         OP_LOGI(opName_, "Start with allgather quantbmm tiling.");
         return true;
     }
-    OP_LOGE(opName_, "Skip allgather quantbmm tiling as dtype not support.");
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2", "dtype", "dtype not supported for quantbmm tiling");
     return false;
 }
 
@@ -282,8 +282,11 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
         return ge::GRAPH_SUCCESS;
     } else {
         quantMmMode_ = mc2tiling::Mc2QuantMode::INVALID_MODE;
-        OP_LOGE(opName_, "Quantmode must be pertensor or mxfp or perblock, actually x1ScaleDtype is %s and x2ScaleDtype is %s",
-                Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(), Ops::Base::ToString(scaleInv2Desc->GetDataType()).c_str());
+        std::string x1DtypeStr = Ops::Base::ToString(scaleInv1Desc->GetDataType());
+        std::string x2DtypeStr = Ops::Base::ToString(scaleInv2Desc->GetDataType());
+        std::string dtypeInfo = x1DtypeStr + "/" + x2DtypeStr;
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1ScaleDtype/x2ScaleDtype", dtypeInfo.c_str(),
+            "quantmode must be pertensor or mxfp or perblock");
     }
 
     return ge::GRAPH_FAILED;
@@ -312,7 +315,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
         OP_TILING_CHECK(CheckPerBlockScaleInput() == ge::GRAPH_FAILED,
                         CUBE_INNER_ERR_REPORT(opName_, "Check perblock scale input failed"), return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(opName_, "Quant mode should be pertensor or mxfp or perblock!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMode", "invalid", "should be pertensor or mxfp or perblock");
         return ge::GRAPH_FAILED;
     }
 
@@ -415,9 +418,9 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "GetTiling returned non-zero", "mc2CcTilingConfig failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -427,7 +430,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
     SetTilingKeyParams();
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
-      OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "hcommConfig", "SetMc2Hcomm failed", "failed to set Hcomm configuration"), return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
@@ -762,7 +765,7 @@ const gert::Shape& AllGatherQuantBmmHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     if (context_->GetOptionalInputShape(static_cast<size_t>(SCALE_INV1)) == nullptr) {
-        OP_LOGE(inputParams_.opName, "%s is quant, but has no scale_inv1 shape", inputParams_.opName);
+        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "scale_inv1");
         return defaultShape;
     }
     return context_->GetOptionalInputShape(static_cast<size_t>(SCALE_INV1))->GetStorageShape();
