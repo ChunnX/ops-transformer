@@ -57,7 +57,8 @@ TEST_P(MatmulAllReduceArch35TilingTest, param)
             {"antiquant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.antiquant_group_size)},
             {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
-            {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)}
+            {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)},
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")}
         },
         param.inputInstance, param.outputInstance,
         &compileInfo,
