@@ -1083,11 +1083,6 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN=FALSE
         shift
         ;;
-    --op-variant=*)
-        OPTARG=$1
-        kernel_variant_index=${OPTARG#*=}
-        shift
-        ;;
     --bisheng_flags=*)
         OPTARG=$1
         BISHENG_FLAGS=${OPTARG#*=}
@@ -1405,10 +1400,6 @@ if [ -n "${ascend_op_name}" ];then
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
     fi
-fi
-
-if [ -n "${kernel_variant_index}" ];then
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DKERNEL_VARIANT_INDEX=${kernel_variant_index}"
 fi
 
 if [ -n "${op_build_tool}" ];then
