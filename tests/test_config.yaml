@@ -450,20 +450,6 @@ attention:
     options:
       - kv_quant_sparse_flash_attention
 
-  scatter_pa_kv_cache:
-    module: True
-    src:
-      - attention/scatter_pa_kv_cache
-    exclude:
-      - attention/scatter_pa_kv_cache/docs
-      - attention/scatter_pa_kv_cache/README.md
-    ut_cov_exclude:
-      - attention/scatter_pa_kv_cache
-    test:
-      ut: False
-    options:
-      - scatter_pa_kv_cache
-
 gmm:
   grouped_matmul:
     module: True
