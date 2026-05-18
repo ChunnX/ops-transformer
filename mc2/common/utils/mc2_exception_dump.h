@@ -53,23 +53,23 @@ public:
         static MC2GroupNameManager instance;
         return instance;
     }
-    void SetGroupNameFor910B(const char* groupName)
+    void SetGroupName(const char* groupName)
     {
         if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
             strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
             OP_LOGE(OP_NAME, "groupName is invalid.");
             return;
         }
-        groupNameFor910B_ = std::string(groupName);
+        groupName_ = std::string(groupName);
     }
-    const char* GetGroupNameFor910B()
+    const char* GetGroupName()
     {
-        return groupNameFor910B_.empty() ? nullptr : groupNameFor910B_.c_str();
+        return groupName_.empty() ? nullptr : groupName_.c_str();
     }
 
 private:
     MC2GroupNameManager() = default;
-    std::string groupNameFor910B_;
+    std::string groupName_;
 };
 
 // 函数指针类型定义
@@ -334,7 +334,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
     } else if (std::strstr(socName, "Ascend910B") != nullptr) {
-        const char *groupName = MC2GroupNameManager::GetInstance().GetGroupNameFor910B();
+        const char *groupName = MC2GroupNameManager::GetInstance().GetGroupName();
         if (ProcessArgsForA2(groupName, winContent) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;

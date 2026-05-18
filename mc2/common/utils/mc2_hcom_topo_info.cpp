@@ -88,10 +88,9 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 
 #ifdef BUILD_OPEN_PROJECT
     if (getCommHandle_ == nullptr || getRankSizeEx_ == nullptr || getL0TopoTypeEx_ == nullptr ||
-        getCclBufferSize_ == nullptr || getHcclBuffer_ == nullptr) {
+        getCclBufferSize_ == nullptr) {
         OP_LOGE("", "Lib load new topo functions failed.");
         getCommHandle_ = nullptr;
-        getHcclBuffer_ = nullptr;
         getCclBufferSize_ = nullptr;
         getRankSizeEx_ = nullptr;
         getL0TopoTypeEx_ = nullptr;
@@ -99,14 +98,13 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
     }
 #else
     if (getCommHandle_ == nullptr || getNetLayers_ == nullptr || getTopoType_ == nullptr || getInstSize_ == nullptr ||
-        getCclBufferSize_ == nullptr || getHcclBuffer_ == nullptr) {
+        getCclBufferSize_ == nullptr) {
         OP_LOGE("", "Lib load new topo functions failed.");
         getCommHandle_ = nullptr;
         getNetLayers_ = nullptr;
         getTopoType_ = nullptr;
         getInstSize_ = nullptr;
         getCclBufferSize_ = nullptr;
-        getHcclBuffer_ = nullptr;
         return;
     }
 #endif
@@ -225,9 +223,9 @@ HcclResult MC2HcomTopology::CommGetHcclBufferByGroup(const char *group, void **b
     HcclComm hcclComm;
     HcclResult ret = GetInstance().CallHcomGetCommHandleByGroup(group, &hcclComm);
     if (ret != HCCL_SUCCESS) {
-        OP_LOGI("", "get nullptr comm handle.");
+        OP_LOGI("", "Failed to get comm handle.");
         hcclComm = nullptr;
-        return HCCL_SUCCESS;
+        return ret;
     }
     ret = GetInstance().CallCommGetHcclBuffer(hcclComm, buffer, size);
     if (ret != HCCL_SUCCESS) {
