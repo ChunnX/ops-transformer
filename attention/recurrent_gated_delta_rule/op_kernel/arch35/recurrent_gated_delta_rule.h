@@ -127,7 +127,7 @@ struct RGDRInitParams {
     GM_ADDR finalState;
 };
 
-template <typename inType, typename outType>
+template <typename inType, typename outType, typename stateType = inType>
 class RGDR {
 public:
     __aicore__ inline RGDR(const RecurrentGatedDeltaRuleTilingData *tilingData)
@@ -145,7 +145,7 @@ public:
         alignDK_ = Ceil(tilingData->dk, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
         alignDV_ = Ceil(tilingData->dv, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
         vStep_ = 8192 / alignDK_;
-        if (vStep_ > 256) { 
+        if (vStep_ > 256) {
             vStep_ = 255;
         }
         vStep_ = vStep_ / BF16_NUM_PER_BLOCK * BF16_NUM_PER_BLOCK;
@@ -173,18 +173,20 @@ public:
         gamaGm_.SetGlobalBuffer((__gm__ float *)initParams.gama);
         gamaKGm_.SetGlobalBuffer((__gm__ float *)initParams.gamaK);
         betaGm_.SetGlobalBuffer((__gm__ inType *)initParams.beta);
-        initStateGm_.SetGlobalBuffer((__gm__ inType *)initParams.initState);
+        initStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.initState);
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.cuSeqlens);
         ssmStateIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.ssmStateIndices);
         numAcceptedTokensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.numAcceptedTokens);
-        finalStateGm_.SetGlobalBuffer((__gm__ outType *)initParams.finalState);
+        finalStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.finalState);
         attnOutGm_.SetGlobalBuffer((__gm__ outType *)initParams.attnOut);
     }
 
     __aicore__ inline void InitLocalBuffers()
     {
-        pipe_->InitBuffer(inputQueue1_, DOUBLE_BUFFER, BUFFER_SIZE_BYTE_16K);
-        pipe_->InitBuffer(stateOutQueue_, SINGLE_BUFFER, BUFFER_SIZE_BYTE_16K);
+        constexpr uint32_t stateQueueSize =
+            std::is_same_v<stateType, float> ? BUFFER_SIZE_BYTE_32K : BUFFER_SIZE_BYTE_16K;
+        pipe_->InitBuffer(inputQueue1_, DOUBLE_BUFFER, stateQueueSize);
+        pipe_->InitBuffer(stateOutQueue_, SINGLE_BUFFER, stateQueueSize);
         pipe_->InitBuffer(attnOutQueue_, SINGLE_BUFFER, BUFFER_SIZE_BYTE_16K);
         pipe_->InitBuffer(gamaBuff_, BUFFER_SIZE_BYTE_16K);
         pipe_->InitBuffer(stateBuff_, BUFFER_SIZE_BYTE_32K);
@@ -315,11 +317,15 @@ private:
         uint32_t actDataLen = DK_;
         uint64_t srcRowStride = DK_;
         uint64_t dstRowStride = alignDK_;
-        LocalTensor<inType> stateInUb = inputQueue1_.AllocTensor<inType>();
+        LocalTensor<stateType> stateInUb = inputQueue1_.AllocTensor<stateType>();
         CopySingleMatrixNDToND(stateInUb, initStateGm_[stateGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
-        inputQueue1_.EnQue<inType>(stateInUb);
-        inputQueue1_.DeQue<inType>();
-        Cast(stateUb_, stateInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        inputQueue1_.EnQue<stateType>(stateInUb);
+        inputQueue1_.DeQue<stateType>();
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateUb_, stateInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
+        } else {
+            stateUb_ = stateInUb;
+        }
         inputQueue1_.FreeTensor(stateInUb);
     }
 
@@ -340,14 +346,18 @@ private:
 
     __aicore__ inline void CopyOutState(LocalTensor<float> &outStateFp32Ub, uint32_t tIdx, uint32_t head_i, uint32_t dvIdx, uint32_t curSingleV)
     {
-        LocalTensor<outType> stateOutLocal = stateOutQueue_.AllocTensor<outType>();
-        Cast(stateOutLocal, outStateFp32Ub, AscendC::RoundMode::CAST_RINT, alignDK_ * curSingleV);
-        stateOutQueue_.EnQue<outType>(stateOutLocal);
-        stateOutQueue_.DeQue<outType>();
+        LocalTensor<stateType> stateOutLocal = stateOutQueue_.AllocTensor<stateType>();
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateOutLocal, outStateFp32Ub, AscendC::RoundMode::CAST_RINT, alignDK_ * curSingleV);
+        } else {
+            stateOutLocal = outStateFp32Ub;
+        }
+        stateOutQueue_.EnQue<stateType>(stateOutLocal);
+        stateOutQueue_.DeQue<stateType>();
         DataCopyExtParams stateOutParams;
         stateOutParams.blockCount = curSingleV;
-        stateOutParams.blockLen = DK_ * sizeof(outType);
-        stateOutParams.srcStride = (alignDK_ - DK_) / (32UL / sizeof(outType));
+        stateOutParams.blockLen = DK_ * sizeof(stateType);
+        stateOutParams.srcStride = (alignDK_ - DK_) / (32UL / sizeof(stateType));
         stateOutParams.dstStride = 0;
         uint64_t outStateGmOffset = (uint64_t)ssmStateIndicesGm_.GetValue(tIdx) * NV_ * DV_ * DK_ +
                                     (uint64_t)head_i * DV_ * DK_ +
@@ -451,11 +461,11 @@ private:
     GlobalTensor<inType> betaGm_;
     GlobalTensor<float> gamaGm_;
     GlobalTensor<float> gamaKGm_;
-    GlobalTensor<inType> initStateGm_;
+    GlobalTensor<stateType> initStateGm_;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> ssmStateIndicesGm_;
     GlobalTensor<int32_t> numAcceptedTokensGm_;
-    GlobalTensor<outType> finalStateGm_;
+    GlobalTensor<stateType> finalStateGm_;
     GlobalTensor<outType> attnOutGm_;
     TPipe *pipe_;
 
