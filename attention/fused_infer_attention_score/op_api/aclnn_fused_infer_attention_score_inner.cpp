@@ -24,19 +24,19 @@ const uint64_t INT4_NUMS_IN_INT32 = 8;
 
 void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue) {
     if (tensorListKey == nullptr) {
-        OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
+        OP_LOGI("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
     }
     if (tensorListValue == nullptr) {
-        OP_LOGD("tensorListValue is nullptr,TensorPreProcess exit.");
+        OP_LOGI("tensorListValue is nullptr,TensorPreProcess exit.");
         return;
     }
     if ((*tensorListKey)[0]->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kv's from OriginalShape is completed.");
+        OP_LOGI("The conversion of kv's from OriginalShape is completed.");
         return;
     }
     if ((*tensorListValue)[0]->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kv's from OriginalShape is completed.");
+        OP_LOGI("The conversion of kv's from OriginalShape is completed.");
         return;
     }
     auto tempKey = const_cast<aclTensorList *>(tensorListKey);
@@ -65,25 +65,25 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         }
     }
 
-    OP_LOGD("The conversion of kv from int32 to int4 is completed.");
+    OP_LOGI("The conversion of kv from int32 to int4 is completed.");
 }
 
 
 void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
     if (tensorKey == nullptr) {
-        OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
+        OP_LOGI("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
     }
     if (tensorValue == nullptr) {
-        OP_LOGD("tensorListValue is nullptr,TensorPreProcess exit..");
+        OP_LOGI("tensorListValue is nullptr,TensorPreProcess exit..");
         return;
     }
     if (tensorKey->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kvPrefix's from OriginalShape is completed.");
+        OP_LOGI("The conversion of kvPrefix's from OriginalShape is completed.");
         return;
     }
     if (tensorValue->GetDataType() != DataType::DT_INT32) {
-        OP_LOGD("The conversion of kvPrefix's from OriginalShape is completed.");
+        OP_LOGI("The conversion of kvPrefix's from OriginalShape is completed.");
         return;
     }
     auto tempKey = const_cast<aclTensor *>(tensorKey);
@@ -100,13 +100,13 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
     tempValue->SetViewShape(viewValueShape);
     tempValue->SetDataType(DataType::DT_INT4);
 
-    OP_LOGD("The conversion of kvPrefix from int32 to int4 is completed.");
+    OP_LOGI("The conversion of kvPrefix from int32 to int4 is completed.");
 }
 
 aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
-    OP_LOGD("start fake tensor");
+    OP_LOGI("start fake tensor");
     if (inArray != nullptr) {
-        OP_LOGD("input array is not nullptr");
+        OP_LOGI("input array is not nullptr");
         int64_t size = static_cast<int64_t>(inArray->Size());
         std::vector<int64_t> shape = {size};
         outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
@@ -116,7 +116,7 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    OP_LOGD("end fake tensor");
+    OP_LOGI("end fake tensor");
     return ACLNN_SUCCESS;
 }
 

@@ -1341,6 +1341,7 @@ void FiaInfoParser::GenerateFeatureInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.totalLseSize =
         (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
     fiaInfo.isMaxWorkspace = isMaxWorkspace_;
+    OP_LOGI("FusedInferAttentionScore", "isMaxWorkspace:%d.", fiaInfo.isMaxWorkspace);
     fiaInfo.isLegacyIfa = isLegacyIfa_;
     fiaInfo.preToken = preToken_;
     fiaInfo.nextToken = nextToken_;
