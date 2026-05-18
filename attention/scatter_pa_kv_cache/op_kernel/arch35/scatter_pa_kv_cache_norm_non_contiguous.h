@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file scatter_pa_kv_cache_normal_contiguous.h
- * \brief
+ * \file scatter_pa_kv_cache_normal_non_contiguous.h
+ * \brief Non-contiguous case 2 with ND format using strides
  */
 
-#ifndef SCATTER_PA_KV_CACHE_NORMAL_CONTIGUOUS_H_
-#define SCATTER_PA_KV_CACHE_NORMAL_CONTIGUOUS_H_
+#ifndef SCATTER_PA_KV_CACHE_NORMAL_NON_CONTIGUOUS_H_
+#define SCATTER_PA_KV_CACHE_NORMAL_NON_CONTIGUOUS_H_
 
 #include "kernel_operator.h"
 #include "common.h"
@@ -22,13 +22,13 @@ namespace ScatterPaKvCache {
 using namespace AscendC;
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-class ScatterPaKvCacheNormalContiguous {
+class ScatterPaKvCacheNormalNonContiguous {
 public:
-    __aicore__ inline ScatterPaKvCacheNormalContiguous(TPipe *pipe,
+    __aicore__ inline ScatterPaKvCacheNormalNonContiguous(TPipe *pipe,
                                                          const ScatterPaKvCacheTilingData *__restrict tiling)
         : pipe_(pipe), tilingData_(tiling){};
-    __aicore__ inline void Init(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value,
-                                GM_ADDR value_cache_in, GM_ADDR key_cache_out, GM_ADDR value_cache_out);
+    __aicore__ inline void Init(
+        GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out, GM_ADDR value_cache_out);
     __aicore__ inline void Process();
 
 private:
@@ -38,6 +38,8 @@ private:
     __aicore__ inline void CopyOutValue(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t sizeOffset, int64_t headNum, int64_t headSize);
     __aicore__ inline int64_t RoundUp(int64_t x);
     __aicore__ inline void InitLoopInfo();
+    __aicore__ inline void ProcessKey(int64_t tokenIdx, int64_t blockIdx, int64_t blockOffset);
+    __aicore__ inline void ProcessValue(int64_t tokenIdx, int64_t blockIdx, int64_t blockOffset);
 
 private:
     TPipe *pipe_;
@@ -54,25 +56,28 @@ private:
     int64_t maxTokens_ = 0;
     int64_t blockFactorOffset_ = 0;
     int64_t alignKHeadSize_ = 0;
-    int64_t kHeadSizeIn_ = 0;
-    int64_t kHeadSizeloop_ = 0;
-    int64_t kHeadSizeTail_ = 0;
-    int64_t kNumHeadIn_ = 0;
-    int64_t kNumHeadLoop_ = 0;
-    int64_t kNumHeadTail_ = 0;
     int64_t alignVHeadSize_ = 0;
-    int64_t vHeadSizeIn_ = 0;
-    int64_t vHeadSizeloop_ = 0;
-    int64_t vHeadSizeTail_ = 0;
-    int64_t vNumHeadIn_ = 0;
-    int64_t vNumHeadLoop_ = 0;
-    int64_t vNumHeadTail_ = 0;
+
+    bool kFullyLoad_{false};
+    bool vFullyLoad_{false};
+    int64_t kHeadSizeIn_{0};
+    int64_t kHeadSizeloop_{0};
+    int64_t kHeadSizeTail_{0};
+    int64_t kNumHeadIn_{0};
+    int64_t kNumHeadLoop_{0};
+    int64_t kNumHeadTail_{0};
+
+    int64_t vHeadSizeIn_{0};
+    int64_t vHeadSizeloop_{0};
+    int64_t vHeadSizeTail_{0};
+    int64_t vNumHeadIn_{0};
+    int64_t vNumHeadLoop_{0};
+    int64_t vNumHeadTail_{0};
 };
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::Init(
-    GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR value_cache_in,
-    GM_ADDR key_cache_out, GM_ADDR value_cache_out)
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::Init(
+    GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out, GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
     blockFactorOffset_ = blockIdx_ * tilingData_->blockFactor;
@@ -89,14 +94,14 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline int64_t ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::RoundUp(int64_t x)
+__aicore__ inline int64_t ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::RoundUp(int64_t x)
 {
     int64_t elemNum = ONE_BLK_SIZE / sizeof(T);
     return (x + elemNum - 1) / elemNum * elemNum;
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::CopyInKey(int64_t tokenIdx,
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::CopyInKey(int64_t tokenIdx,
                                                                                              int64_t headIdx,
                                                                                              int64_t sizeOffset,
                                                                                              int64_t headNum,
@@ -107,7 +112,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
     int64_t keyOffset = tokenIdx * tilingData_->keyStride0 + headIdx * tilingData_->keyStride1 + sizeOffset;
 
     DataCopyExtParams keyParams = {static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
-                                   static_cast<uint32_t>(tilingData_->keyStride1 * sizeof(T)),
+                                   static_cast<uint32_t>((tilingData_->keyStride1 - headSize) * sizeof(T)),
                                    static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
     DataCopyPadExtParams<T> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<T>(0)};
@@ -117,7 +122,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::CopyOutKey(int64_t blockIdx,
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::CopyOutKey(int64_t blockIdx,
                                                                                               int64_t blockOffset,
                                                                                               int64_t headIdx,
                                                                                               int64_t sizeOffset,
@@ -132,7 +137,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 
     DataCopyExtParams outKeyCacheParams = {
         static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
-        static_cast<uint32_t>(tilingData_->keyCacheStride2 * sizeof(T)),
+        static_cast<uint32_t>((tilingData_->keyCacheStride2 - headSize) * sizeof(T)),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
     event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -145,7 +150,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::CopyInValue(int64_t tokenIdx,
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::CopyInValue(int64_t tokenIdx,
                                                                                                int64_t headIdx,
                                                                                                int64_t sizeOffset,
                                                                                                int64_t headNum,
@@ -156,7 +161,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
     int64_t valueOffset = tokenIdx * tilingData_->valueStride0 + headIdx * tilingData_->valueStride1 + sizeOffset;
 
     DataCopyExtParams valueParams = {static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
-                                     static_cast<uint32_t>(tilingData_->valueStride1 * sizeof(T)),
+                                     static_cast<uint32_t>((tilingData_->valueStride1 - headSize) * sizeof(T)),
                                      static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
     DataCopyPadExtParams<T> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<T>(0)};
@@ -166,7 +171,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::CopyOutValue(int64_t blockIdx,
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::CopyOutValue(int64_t blockIdx,
                                                                                                 int64_t blockOffset,
                                                                                                 int64_t headIdx,
                                                                                                 int64_t sizeOffset,
@@ -181,7 +186,7 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 
     DataCopyExtParams outValueCacheParams = {
         static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
-        static_cast<uint32_t>(tilingData_->valueCacheStride2 * sizeof(T)),
+        static_cast<uint32_t>((tilingData_->valueCacheStride2 - headSize) * sizeof(T)),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
     event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -194,47 +199,125 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::InitLoopInfo() {
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::InitLoopInfo() {
     int64_t ubHandleSize = tilingData_->ubSize / sizeof(T);
     alignKHeadSize_ = RoundUp(tilingData_->kHeadSize);
-    kHeadSizeIn_ = tilingData_->kHeadSize;
-    kHeadSizeloop_ = 1;
-    kHeadSizeTail_ = 0;
-    kNumHeadIn_ = 1;
-    kNumHeadLoop_ = tilingData_->numHead;
-    if (alignKHeadSize_ > ubHandleSize) {
+    
+    kFullyLoad_ = (alignKHeadSize_ <= ubHandleSize);
+    
+    if (kFullyLoad_) {
+        kHeadSizeIn_ = alignKHeadSize_;
+        kHeadSizeloop_ = 1;
+        kHeadSizeTail_ = 0;
+        kNumHeadIn_ = ubHandleSize / kHeadSizeIn_;
+        if (kNumHeadIn_ > tilingData_->numHead) {
+            kNumHeadIn_ = tilingData_->numHead;
+        }
+        kNumHeadLoop_ = tilingData_->numHead / kNumHeadIn_;
+        kNumHeadTail_ = tilingData_->numHead - kNumHeadIn_ * kNumHeadLoop_;
+    } else {
         kHeadSizeIn_ = RoundUp(ubHandleSize);
         kHeadSizeloop_ = tilingData_->kHeadSize / kHeadSizeIn_;
         kHeadSizeTail_ = tilingData_->kHeadSize - kHeadSizeIn_ * kHeadSizeloop_;
-    } else {
-        kHeadSizeIn_ = alignKHeadSize_;
-        kNumHeadIn_ = ubHandleSize / kHeadSizeIn_;
-        kNumHeadLoop_ = tilingData_->numHead / kNumHeadIn_;
-        kNumHeadTail_ = tilingData_->numHead - kNumHeadIn_ * kNumHeadLoop_;
+        kNumHeadIn_ = 1;
+        kNumHeadLoop_ = tilingData_->numHead;
+        kNumHeadTail_ = 0;
     }
 
     if constexpr (InOutMode == DUAL_IN_OUT) {
         alignVHeadSize_ = RoundUp(tilingData_->vHeadSize);
-        vHeadSizeIn_ = tilingData_->vHeadSize;
-        vHeadSizeloop_ = 1;
-        vHeadSizeTail_ = 0;
-        vNumHeadIn_ = 1;
-        vNumHeadLoop_ = tilingData_->numHead;
-        if (alignVHeadSize_ > ubHandleSize) {
+        
+        vFullyLoad_ = (alignVHeadSize_ <= ubHandleSize);
+        
+        if (vFullyLoad_) {
+            vHeadSizeIn_ = alignVHeadSize_;
+            vHeadSizeloop_ = 1;
+            vHeadSizeTail_ = 0;
+            vNumHeadIn_ = ubHandleSize / vHeadSizeIn_;
+            if (vNumHeadIn_ > tilingData_->numHead) {
+                vNumHeadIn_ = tilingData_->numHead;
+            }
+            vNumHeadLoop_ = tilingData_->numHead / vNumHeadIn_;
+            vNumHeadTail_ = tilingData_->numHead - vNumHeadIn_ * vNumHeadLoop_;
+        } else {
             vHeadSizeIn_ = RoundUp(ubHandleSize);
             vHeadSizeloop_ = tilingData_->vHeadSize / vHeadSizeIn_;
             vHeadSizeTail_ = tilingData_->vHeadSize - vHeadSizeIn_ * vHeadSizeloop_;
-        } else {
-            vHeadSizeIn_ = alignVHeadSize_;
-            vNumHeadIn_ = ubHandleSize / vHeadSizeIn_;
-            vNumHeadLoop_ = tilingData_->numHead / vNumHeadIn_;
-            vNumHeadTail_ = tilingData_->numHead - vNumHeadIn_ * vNumHeadLoop_;
+            vNumHeadIn_ = 1;
+            vNumHeadLoop_ = tilingData_->numHead;
+            vNumHeadTail_ = 0;
         }
     }
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode>::Process()
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::ProcessKey(int64_t tokenIdx,
+                                                                                              int64_t blockIdx,
+                                                                                              int64_t blockOffset)
+{
+    if (kFullyLoad_) {
+        for (int64_t headLoop = 0; headLoop < kNumHeadLoop_; headLoop++) {
+            int64_t headIdx = headLoop * kNumHeadIn_;
+            CopyInKey(tokenIdx, headIdx, 0, kNumHeadIn_, kHeadSizeIn_);
+            CopyOutKey(blockIdx, blockOffset, headIdx, 0, kNumHeadIn_, kHeadSizeIn_);
+        }
+        if (kNumHeadTail_ > 0) {
+            int64_t headIdx = kNumHeadLoop_ * kNumHeadIn_;
+            CopyInKey(tokenIdx, headIdx, 0, kNumHeadTail_, kHeadSizeIn_);
+            CopyOutKey(blockIdx, blockOffset, headIdx, 0, kNumHeadTail_, kHeadSizeIn_);
+        }
+    } else {
+        for (int64_t headLoop = 0; headLoop < kNumHeadLoop_; headLoop++) {
+            int64_t headIdx = headLoop;
+            for (int64_t sizeLoop = 0; sizeLoop < kHeadSizeloop_; sizeLoop++) {
+                int64_t sizeOffset = sizeLoop * kHeadSizeIn_;
+                CopyInKey(tokenIdx, headIdx, sizeOffset, 1, kHeadSizeIn_);
+                CopyOutKey(blockIdx, blockOffset, headIdx, sizeOffset, 1, kHeadSizeIn_);
+            }
+            if (kHeadSizeTail_ > 0) {
+                int64_t sizeOffset = kHeadSizeloop_ * kHeadSizeIn_;
+                CopyInKey(tokenIdx, headIdx, sizeOffset, 1, kHeadSizeTail_);
+                CopyOutKey(blockIdx, blockOffset, headIdx, sizeOffset, 1, kHeadSizeTail_);
+            }
+        }
+    }
+}
+
+template <typename T, typename IndexDtype, int64_t InOutMode>
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::ProcessValue(int64_t tokenIdx,
+                                                                                                int64_t blockIdx,
+                                                                                                int64_t blockOffset)
+{
+    if (vFullyLoad_) {
+        for (int64_t headLoop = 0; headLoop < vNumHeadLoop_; headLoop++) {
+            int64_t headIdx = headLoop * vNumHeadIn_;
+            CopyInValue(tokenIdx, headIdx, 0, vNumHeadIn_, vHeadSizeIn_);
+            CopyOutValue(blockIdx, blockOffset, headIdx, 0, vNumHeadIn_, vHeadSizeIn_);
+        }
+        if (vNumHeadTail_ > 0) {
+            int64_t headIdx = vNumHeadLoop_ * vNumHeadIn_;
+            CopyInValue(tokenIdx, headIdx, 0, vNumHeadTail_, vHeadSizeIn_);
+            CopyOutValue(blockIdx, blockOffset, headIdx, 0, vNumHeadTail_, vHeadSizeIn_);
+        }
+    } else {
+        for (int64_t headLoop = 0; headLoop < vNumHeadLoop_; headLoop++) {
+            int64_t headIdx = headLoop;
+            for (int64_t sizeLoop = 0; sizeLoop < vHeadSizeloop_; sizeLoop++) {
+                int64_t sizeOffset = sizeLoop * vHeadSizeIn_;
+                CopyInValue(tokenIdx, headIdx, sizeOffset, 1, vHeadSizeIn_);
+                CopyOutValue(blockIdx, blockOffset, headIdx, sizeOffset, 1, vHeadSizeIn_);
+            }
+            if (vHeadSizeTail_ > 0) {
+                int64_t sizeOffset = vHeadSizeloop_ * vHeadSizeIn_;
+                CopyInValue(tokenIdx, headIdx, sizeOffset, 1, vHeadSizeTail_);
+                CopyOutValue(blockIdx, blockOffset, headIdx, sizeOffset, 1, vHeadSizeTail_);
+            }
+        }
+    }
+}
+
+template <typename T, typename IndexDtype, int64_t InOutMode>
+__aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
@@ -252,62 +335,12 @@ __aicore__ inline void ScatterPaKvCacheNormalContiguous<T, IndexDtype, InOutMode
         int64_t blockOffset = slotIdx % tilingData_->blockSize;
         int64_t tokenIdx = blockFactorOffset_ + idx;
 
-        for (int64_t headLoop = 0; headLoop < kNumHeadLoop_; headLoop++) {
-            int64_t headIdx = headLoop * kNumHeadIn_;
-            for (int64_t sizeLoop = 0; sizeLoop < kHeadSizeloop_; sizeLoop++) {
-                int64_t sizeOffset = sizeLoop * kHeadSizeIn_;
-                CopyInKey(tokenIdx, headIdx, sizeOffset, kNumHeadIn_, kHeadSizeIn_);
-                CopyOutKey(blockIdx, blockOffset, headIdx, sizeOffset, kNumHeadIn_, kHeadSizeIn_);
-            }
-            if (kHeadSizeTail_ > 0) {
-                int64_t sizeOffset = kHeadSizeloop_ * kHeadSizeIn_;
-                CopyInKey(tokenIdx, headIdx, sizeOffset, kNumHeadIn_, kHeadSizeTail_);
-                CopyOutKey(blockIdx, blockOffset, headIdx, sizeOffset, kNumHeadIn_, kHeadSizeTail_);
-            }
-        }
-        if (kNumHeadTail_ > 0) {
-            int64_t headIdx = kNumHeadLoop_ * kNumHeadIn_;
-            for (int64_t sizeLoop = 0; sizeLoop < kHeadSizeloop_; sizeLoop++) {
-                int64_t sizeOffset = sizeLoop * kHeadSizeIn_;
-                CopyInKey(tokenIdx, headIdx, sizeOffset, kNumHeadTail_, kHeadSizeIn_);
-                CopyOutKey(blockIdx, blockOffset, headIdx, sizeOffset, kNumHeadTail_, kHeadSizeIn_);
-            }
-            if (kHeadSizeTail_ > 0) {
-                int64_t sizeOffset = kHeadSizeloop_ * kHeadSizeIn_;
-                CopyInKey(tokenIdx, headIdx, sizeOffset, kNumHeadTail_, kHeadSizeTail_);
-                CopyOutKey(blockIdx, blockOffset, headIdx, sizeOffset, kNumHeadTail_, kHeadSizeTail_);
-            }
-        }
+        ProcessKey(tokenIdx, blockIdx, blockOffset);
 
         if constexpr (InOutMode == DUAL_IN_OUT) {
-            for (int64_t headLoop = 0; headLoop < vNumHeadLoop_; headLoop++) {
-                int64_t headIdx = headLoop * vNumHeadIn_;
-                for (int64_t sizeLoop = 0; sizeLoop < vHeadSizeloop_; sizeLoop++) {
-                    int64_t sizeOffset = sizeLoop * vHeadSizeIn_;
-                    CopyInValue(tokenIdx, headIdx, sizeOffset, vNumHeadIn_, vHeadSizeIn_);
-                    CopyOutValue(blockIdx, blockOffset, headIdx, sizeOffset, vNumHeadIn_, vHeadSizeIn_);
-                }
-                if (vHeadSizeTail_ > 0) {
-                    int64_t sizeOffset = vHeadSizeloop_ * vHeadSizeIn_;
-                    CopyInValue(tokenIdx, headIdx, sizeOffset, vNumHeadIn_, vHeadSizeTail_);
-                    CopyOutValue(blockIdx, blockOffset, headIdx, sizeOffset, vNumHeadIn_, vHeadSizeTail_);
-                }
-            }
-            if (vNumHeadTail_ > 0) {
-                int64_t headIdx = vNumHeadLoop_ * vNumHeadIn_;
-                for (int64_t sizeLoop = 0; sizeLoop < vHeadSizeloop_; sizeLoop++) {
-                    int64_t sizeOffset = sizeLoop * vHeadSizeIn_;
-                    CopyInValue(tokenIdx, headIdx, sizeOffset, vNumHeadTail_, vHeadSizeIn_);
-                    CopyOutValue(blockIdx, blockOffset, headIdx, sizeOffset, vNumHeadTail_, vHeadSizeIn_);
-                }
-                if (vHeadSizeTail_ > 0) {
-                    int64_t sizeOffset = vHeadSizeloop_ * vHeadSizeIn_;
-                    CopyInValue(tokenIdx, headIdx, sizeOffset, vNumHeadTail_, vHeadSizeTail_);
-                    CopyOutValue(blockIdx, blockOffset, headIdx, sizeOffset, vNumHeadTail_, vHeadSizeTail_);
-                }
-            }
+            ProcessValue(tokenIdx, blockIdx, blockOffset);
         }
     }
 }
 } // namespace ScatterPaKvCache
-#endif // SCATTER_PA_KV_CACHE_NORMAL_CONTIGUOUS_H_
+#endif // SCATTER_PA_KV_CACHE_NORMAL_NON_CONTIGUOUS_H_
