@@ -215,6 +215,8 @@ def {}({}, kernel_name="{}"{}):
     options.append("-I" + toolkit_path + os.path.join("/", os.uname().machine +"-linux", "asc", "atcos"))
     op_common_path = os.path.realpath(toolkit_path + "/pkg_inc/op_common/")
     options.append("-I" + op_common_path)
+    op_common_path = os.path.realpath(toolkit_path + "/include/op_common/")
+    options.append("-I" + op_common_path)
     if "impl_mode" in locals():
         if impl_mode == "high_performance":
             options.append("-DHIGH_PERFORMANCE=1")
