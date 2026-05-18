@@ -20,6 +20,11 @@
 #include "tiling/tiling_api.h"
 
 namespace {
+constexpr uint64_t NUM_ZERO = 0;
+constexpr uint64_t NUM_ONE = 1;
+constexpr uint64_t NUM_TWO = 2;
+constexpr uint64_t MIN_CORE_NUM = 4;                // minimum 4 cores for small shapes
+
 const uint64_t INDEX_INPUT_X = 0;
 const uint64_t INDEX_INPUT_COS = 1;
 const uint64_t INDEX_INPUT_SIN = 2;
@@ -46,6 +51,7 @@ const uint64_t DOUBLE_BUFFER = 2;
 const uint64_t TILING_KEY_PREFIX = 1000;
 const uint64_t TILING_MODE_WEIGHT = 10;
 constexpr size_t UB_RESERVE_SIZE = 2 * 1024;
+constexpr uint64_t DEFAULT_SYSTEM_WORKSPACESIZE = 16 * 1024 * 1024;
 
 const uint64_t TILING_MODE_UNKNOWN = 0;
 const uint64_t TILING_MODE_BNSD = 1;
@@ -137,6 +143,9 @@ private:
     inline void GetStoreLines(const uint64_t ubSize, const uint64_t bytePerData, const ge::DataType &dtype);
     inline void ChooseTilingMode(const gert::Shape &xShape, const gert::Shape &rShape);
     inline void CalcRotateHalfTiling(const ge::DataType &dtype, uint64_t ubSize);
+    inline bool CheckRotHalfFullLoadXDConds(const ge::DataType &dtype, uint64_t ubSize);
+    inline bool CalcFullLoadXDTiling(const ge::DataType &origType, const uint64_t ubSize,
+        const uint64_t totalS, const uint64_t totalRopeS, const bool isThreeOneDim);
     ge::graphStatus CheckShapeSupport(const gert::Shape &xShape, const gert::Shape &cosShape,
                                       const gert::Shape &sinShape, uint64_t dLength);
     ge::graphStatus CheckStrideSupport(const ge::DataType inputDtype);
@@ -182,6 +191,15 @@ inline void RotateHalfTiling::PrintTilingParams()
     OP_LOGD(nodeName, ">>> tailRDataLength:           %ld", tilingData_.get_tailRDataLength());
     OP_LOGD(nodeName, ">>> tailUbLastDataLength:      %ld", tilingData_.get_tailUbLastDataLength());
     OP_LOGD(nodeName, ">>> tailUbLastPadDataLength:   %ld", tilingData_.get_tailUbLastPadDataLength());
+    OP_LOGD(nodeName, ">>>>>>>>>>>>>>>        FullLoadXD axis tiling data        <<<<<<<<<<<<<<<<");
+    OP_LOGD(nodeName, ">>> axisLenX1:                 %ld", tilingData_.get_axisLenX1());
+    OP_LOGD(nodeName, ">>> axisLenX2:                 %ld", tilingData_.get_axisLenX2());
+    OP_LOGD(nodeName, ">>> axisLenX3:                 %ld", tilingData_.get_axisLenX3());
+    OP_LOGD(nodeName, ">>> axisLenR1:                 %ld", tilingData_.get_axisLenR1());
+    OP_LOGD(nodeName, ">>> axisLenR2:                 %ld", tilingData_.get_axisLenR2());
+    OP_LOGD(nodeName, ">>> axisLenR3:                 %ld", tilingData_.get_axisLenR3());
+    OP_LOGD(nodeName, ">>> isThreeOneDim:             %ld", tilingData_.get_isThreeOneDim());
+    OP_LOGD(nodeName, ">>> tailAxesFLBoost:           %ld", tilingData_.get_tailAxesFLBoost());
     OP_LOGD(nodeName, ">>>>>>>>>>>>>>> Print RotateHalf tiling data end <<<<<<<<<<<<<<<<");
 }
 
@@ -304,6 +322,14 @@ inline void RotateHalfTiling::ChooseTilingMode(const gert::Shape &xShape, const 
         rSecondDim = static_cast<int64_t>(rShape.GetDim(DIM_SECOND));
         rThirdDim = static_cast<int64_t>(rShape.GetDim(DIM_THIRD));
     }
+
+    // Setup indiced-axis sizes
+    tilingData_.set_axisLenX1(xFirstDim);
+    tilingData_.set_axisLenX2(xSecondDim);
+    tilingData_.set_axisLenX3(xThirdDim);
+    tilingData_.set_axisLenR1(rFirstDim);
+    tilingData_.set_axisLenR2(rSecondDim);
+    tilingData_.set_axisLenR3(rThirdDim);
     
     if (rFirstDim == xFirstDim && rSecondDim == xSecondDim && rThirdDim == xThirdDim) { // x = r, NO_BROADCAST
         OP_LOGD(context, "RotateHalf layout: x = r, NO_BROADCAST");
@@ -370,12 +396,131 @@ inline void RotateHalfTiling::ChooseTilingMode(const gert::Shape &xShape, const 
     }
 }
 
+inline bool RotateHalfTiling::CalcFullLoadXDTiling(
+    const ge::DataType &origType, const uint64_t ubSize,
+    const uint64_t totalS, const uint64_t totalRopeS, const bool isThreeOneDim)
+{
+    // Commence RotateHalfRoPEFullLoadXD Tiling
+    const ge::DataType cmpType = ge::DT_FLOAT;
+    bool needTypeCast = (origType != cmpType);
+
+    uint64_t bytePerOrigData = GetBytePerData(origType);
+    uint64_t bytePerCmpData = GetBytePerData(cmpType);
+
+    // Compute RoPE offset factor under inter-kernel tiling
+    uint64_t axisX3 = tilingData_.get_axisLenX3();
+    uint64_t dPadLength = tilingData_.get_dPadLength();
+
+    // Init Lr equation params
+    uint64_t numRopeQueueIn = needTypeCast ? NUM_TWO : NUM_ZERO;
+    uint64_t numXQueueIn = needTypeCast ? NUM_ONE : NUM_ZERO;
+    uint64_t numXYBuf = NUM_TWO;  // xBufFp32
+    uint64_t numRopeTBuf = NUM_TWO;
+
+    uint64_t ubTBufSizeFactor = bytePerCmpData * (axisX3 * numXYBuf + numRopeTBuf);
+    uint64_t ubLoopFactor =
+        dPadLength * (bytePerOrigData * (axisX3 * numXQueueIn + numRopeQueueIn) + ubTBufSizeFactor);
+
+    // Compute tiling factors for RoPE and x
+    uint64_t ubLoopPerCoreMax = GetDiv(ubSize, ubLoopFactor);  // Lx
+    if (ubLoopPerCoreMax < NUM_ONE) {  // Guard condition for insufficient ub space
+        return false;
+    }
+
+    uint64_t formerCoreNum = GetCeilDiv(totalS, ubLoopPerCoreMax);  // total cores used
+    uint64_t ubLoopPerCore = 0;
+    uint64_t ubLoopLastCore = 0;
+    if (formerCoreNum <= NUM_TWO && totalS >= MIN_CORE_NUM) {
+        formerCoreNum = MIN_CORE_NUM;
+        ubLoopPerCore = GetDiv(totalS, formerCoreNum);
+        ubLoopLastCore = totalS - ubLoopPerCore * (formerCoreNum - 1);
+    } else {
+        ubLoopPerCore = GetCeilDiv(totalS, formerCoreNum);
+        ubLoopLastCore = totalS - ubLoopPerCore * (formerCoreNum - 1);
+    }
+
+    // RoPE tiling factors
+    uint64_t ropeLoopPerCore = 0;
+    uint64_t ropeLoopLastCore = 0;
+    if (totalRopeS != NUM_ONE) {
+        ropeLoopPerCore = ubLoopPerCore;
+        ropeLoopLastCore = ubLoopLastCore;
+    } else {
+        ropeLoopPerCore = NUM_ONE;
+        ropeLoopLastCore = NUM_ONE;
+    }
+
+    const auto aivNumHalf = coreNum / NUM_TWO;
+    if (formerCoreNum > aivNumHalf) {
+        return false;
+    }
+
+    coreNum = formerCoreNum;
+
+    // only use tilingdata variables for former cores
+    tilingData_.set_formerCoreNum(formerCoreNum);
+    tilingData_.set_formerUbLoop(ubLoopPerCore);
+    tilingData_.set_formerUbLast(ubLoopLastCore);
+    tilingData_.set_totalSLines(totalS);
+    // tailCoreNum: DISABLED here
+    tilingData_.set_tailUbLoop(ropeLoopPerCore);
+    tilingData_.set_tailUbLast(ropeLoopLastCore);
+    tilingData_.set_isThreeOneDim(isThreeOneDim);
+
+    // Reassign tilingKey for FullLoadXD path
+    uint64_t tilingMode = tilingData_.get_tilingMode();
+    tilingKey = TILING_KEY_SMALL_SHAPE_PREFIX + tilingMode * TILING_MODE_WEIGHT + tilingDtype;
+    return true;
+}
+
+inline bool RotateHalfTiling::CheckRotHalfFullLoadXDConds(const ge::DataType &origType, const uint64_t ubSize)
+{
+    // XY1D: second to last dim of RoPE MUST BE 1
+    uint64_t axisR3 = tilingData_.get_axisLenR3();
+    uint64_t dLength = tilingData_.get_dLength();  // Dim
+
+    // RotateHalfRoPEFullLoadXD will deterriorate if single-core procession load of input x exceeds saved inter-kernel
+    // MTE costs of RoPE. Hence the totalS allocated to kernels shall not exceed a certain upper cap.
+    bool hasRotHalfFLXD = (axisR3 == NUM_ONE);
+
+    if (hasRotHalfFLXD) {
+        bool isThreeOneDim = false;  // Recompute phi_rope on kernel using BroadcastDims.
+        // Extract broadcastAxes
+        uint64_t axisR1 = tilingData_.get_axisLenR1();
+        uint64_t axisR2 = tilingData_.get_axisLenR2();
+        uint64_t axisX1 = tilingData_.get_axisLenX1();
+        uint64_t axisX2 = tilingData_.get_axisLenX2();
+
+        uint64_t totalS = axisX1 * axisX2;
+        uint64_t totalRopeS = axisR1 * axisR2;
+
+        bool hasSameHeadDims = (axisX1 == axisR1 && axisX2 == axisR2);
+        bool brcbAxesAligned = (hasSameHeadDims || totalRopeS == NUM_ONE);  // RoPE in XY1D or 111D
+        if (!brcbAxesAligned) {
+            return false;
+        }
+
+        if (axisR1 == NUM_ONE && axisR2 == NUM_ONE) {
+            isThreeOneDim = true;
+        }
+
+        hasRotHalfFLXD = CalcFullLoadXDTiling(origType, ubSize, totalS, totalRopeS, isThreeOneDim);
+    }
+    return hasRotHalfFLXD;
+}
+
 inline void RotateHalfTiling::CalcRotateHalfTiling(const ge::DataType &dtype, uint64_t ubSize)
 {
     uint64_t bytePerData = GetBytePerData(dtype);
-    GetCoreDataTiling();
-    GetStoreLines(ubSize, bytePerData, dtype);
-    GetUbLoopTiling();
+
+    // RotateHalfRoPEFullLoadXD conditions, highest priority overrides regular tilingKeys
+    bool hasRotHalfFLXD = this->CheckRotHalfFullLoadXDConds(dtype, ubSize);
+    if (!hasRotHalfFLXD) {
+        GetCoreDataTiling();
+        GetStoreLines(ubSize, bytePerData, dtype);
+        GetUbLoopTiling();
+    }
+    tilingData_.set_tailAxesFLBoost(hasRotHalfFLXD);
 }
 
 /* judge D/2 aligned */
@@ -584,7 +729,7 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
 
     tilingKey = GetTilingKey(tilingData_.get_tilingMode(), tilingDtype);
     CalcRotateHalfTiling(inputDtype, ubSize);
-    OP_CHECK_IF(tilingData_.get_storeSLines() <= 0, OP_LOGE(context, "head_dim shape is too large to compute."),
+    OP_CHECK_IF(!tilingData_.get_tailAxesFLBoost() && tilingData_.get_storeSLines() <= 0, OP_LOGE(context, "head_dim shape is too large to compute."),
                 return ge::GRAPH_FAILED);
     
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P) {
@@ -613,7 +758,7 @@ ge::graphStatus RopeRotateHalfTilingClass::DoOpTiling()
                                          context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(rotateHalfTiling.tiling.GetDataSize());
     size_t usrWorkspaceSize = 0;
-    size_t sysWorkspaceSize = 16 * 1024 * 1024;
+    size_t sysWorkspaceSize = DEFAULT_SYSTEM_WORKSPACESIZE;
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = usrWorkspaceSize + sysWorkspaceSize;
 

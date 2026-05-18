@@ -55,6 +55,15 @@ REGISTER_TILING_DATA_CLASS(RotateMatrixParamsOp, RotateMatrixParams)
 
 BEGIN_TILING_DATA_DEF(RotateHalfParams)
 TILING_DATA_FIELD_DEF(uint64_t, tilingMode); // layout code
+// Record Exact origin Axes length by their index
+TILING_DATA_FIELD_DEF(uint64_t, axisLenX1);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenX2);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenX3);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenR1);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenR2);
+TILING_DATA_FIELD_DEF(uint64_t, axisLenR3);        // Condition axis decides availability of RotateHalfRoPEFullLoadXD
+TILING_DATA_FIELD_DEF(uint64_t, tailAxesFLBoost);  // enable RotateHalfRoPEFullLoadXD
+// Labeled axis lengths variate according to the Layout
 TILING_DATA_FIELD_DEF(uint64_t, gmLength);
 TILING_DATA_FIELD_DEF(uint64_t, broadcastFirstDim);  // B
 TILING_DATA_FIELD_DEF(uint64_t, broadcastSecondDim); // N
