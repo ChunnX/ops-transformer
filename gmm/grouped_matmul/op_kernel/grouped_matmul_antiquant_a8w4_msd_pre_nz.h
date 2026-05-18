@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -28,9 +28,6 @@ constexpr uint32_t BUFFER_NUM_ONE = 1U;
 constexpr uint32_t BUFFER_NUM_TWO = 2U;
 constexpr uint32_t MASK_LEN = 256U;
 constexpr int BUFFER_SIZE_256B = 256;
-// constexpr int TWO = 2;
-// constexpr int EIGHT = 8;
-// constexpr size_t LEN_128 = 128;
 constexpr uint32_t DATA_BLOCK_SIZE_32_NZ = 32U;
 constexpr uint32_t WITH_OFFSET_NZ = 1U;
 constexpr uint32_t A8W4PRE_VECTOR_BASE_M = 16;     //单位为字节数
@@ -101,15 +98,12 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
     groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupList);
     xGm.SetGlobalBuffer(GetTensorAddr<int8_t>(0, x));
     xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)x_out ));
-    dbgxOutInt4.SetGlobalBuffer((__gm__ int8_t*)((__gm__ int8_t*)x_out ));
-    // xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)workspace);
     groupNum = static_cast<uint32_t>(tilingData.groupNum);
     withOffset = tilingData.withOffset;
     m = tilingData.m;
     k = tilingData.k;
 
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
-    // pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
     pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int4b_t) * 2); 
 
     pipe->InitBuffer(groupListBuff, groupNum * sizeof(int64_t));
@@ -135,7 +129,6 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
 
 __aicore__ inline void GMMA8W4PreProcessNZ::copyIn(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
-    // DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK), 0};
     DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK * sizeof(int8_t)), 0};
     DataCopyPadParams padParams{false, 0, 0, 0};
     auto xTensor = vecInQueueX.AllocTensor<int8_t>();

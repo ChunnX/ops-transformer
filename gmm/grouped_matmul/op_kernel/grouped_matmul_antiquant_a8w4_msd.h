@@ -119,7 +119,6 @@ private:
     GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> weightGm;
     GlobalTensor<DTYPE_BIAS_A8W4MSD> biasGm;  // for 8 * weight
     GlobalTensor<cT::T> mmOutGm;
-    GlobalTensor<int8_t> dbgmmOutGm;
     GlobalTensor<DTYPE_SCALE_DEV_A8W4MSD> scaleGm;
     GlobalTensor<DTYPE_PERTOKEN_SCALE_A8W4MSD> perTokenScaleGm;
     GlobalTensor<DTYPE_OFFSET_A8W4MSD> offsetGm;
@@ -127,8 +126,6 @@ private:
     GlobalTensor<float> logitsGm;
     GlobalTensor<bfloat16_t> residualGm;
     GlobalTensor<int32_t> tokenRanksGm;
-    GlobalTensor<int8_t> dbgx;
-    GlobalTensor<int8_t> weightGmdg;
     GlobalTensor<DTYPE_OUT> yGm;
     GlobalTensor<float> xRowSumGm;
     // define the que
@@ -175,7 +172,6 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Init(GM_ADDR x, GM_ADDR weight
     A8W4preM = AlignUp<8>(xRowSumCount) * 2;
     if (isA8W4MSDPreNZ) {
         xGm.SetGlobalBuffer((__gm__ DTYPE_X_DEV_A8W4MSD*) x);
-        dbgx.SetGlobalBuffer((__gm__ int8_t*) x );
     } else {
         xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD>(0, x));
     }
