@@ -68,7 +68,7 @@ SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # the benchmark sweeps over. The single-value BLOCK_SIZE_Q / BLOCK_SIZE_KV constants
 # are kept as informational defaults; the real driver of the sabi-stride choice is
 # the per-pair value passed to torch_bsa.blitz_sparse_attention via block_shape.
-BLOCK_SHAPES = [(128, 128), (128, 512)]
+BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
 BLOCK_SIZE_Q, BLOCK_SIZE_KV = BLOCK_SHAPES[0]
 BLOCK_MASK_SEED = 1234
 
@@ -80,10 +80,36 @@ BLOCK_MASK_SEED = 1234
 # has been adapted accordingly.
 SABI_SORTED = True
 
-# Force a frame of blocks to be alwasy selected (still requires to be in the sparsity budget)
-# cols are in the number of kv_block lengths (e.g. 512 tokens) rows are in terms of q-block length (e.g. 128 tokens)
-# FRAME = FrameWidths(left_cols=8, right_cols=1, top_rows=29, bottom_rows=1) # kv-512 set to zeroes to disable the frame forcing
-FRAME = FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1) # kv-128 set to zeroes to disable the frame forcing
+# Force a frame of blocks to be always selected (still requires to be in the
+# sparsity budget). The frame is defined in *token* terms and then rounded up
+# to whole blocks, because `left_cols/right_cols` are in KV-block-length units
+# and `top_rows/bottom_rows` are in Q-block-length units.
+#
+# The chosen footprint targets a typical generative-model sink/registers/recent
+# pattern: keep the first ~3600 attention rows and the first ~3600 attention
+# columns (these are the "always-attend" sink/system tokens), plus the last 6
+# rows and last 6 columns (the most-recent / streaming-tail tokens). 6 tokens
+# < 1 block in every direction, so right_cols/bottom_rows round up to 1.
+#
+# Per-shape entry math (BLOCK_SIZE_Q is fixed at 128):
+#   top_rows    = ceil( 3600 / 128 )            = 29   (every block_shape)
+#   bottom_rows = ceil(    6 / 128 )            = 1    (every block_shape)
+#   left_cols   = ceil( 3600 / BLOCK_SIZE_KV )  = 29 / 15 / 8  for 128 / 256 / 512
+#   right_cols  = ceil(    6 / BLOCK_SIZE_KV )  = 1    (every block_shape)
+#
+# So the same conceptual "first 3600 + last 6 tokens" frame produces:
+#   128: 29x128 = 3712 forced tokens / row     (right strip 128 tokens)
+#   256: 15x256 = 3840 forced tokens / row     (right strip 256 tokens)
+#   512:  8x512 = 4096 forced tokens / row     (right strip 512 tokens)
+# all within a few % of 3600, which keeps the forced density comparable across
+# block shapes and the sparsity-0.9 budget satisfiable.
+FRAMES_BY_KV = {
+    128: FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1),
+    256: FrameWidths(left_cols=15, right_cols=1, top_rows=29, bottom_rows=1),
+    512: FrameWidths(left_cols=8,  right_cols=1, top_rows=29, bottom_rows=1),
+}
+# Convenience alias for legacy single-shape callers that still read `FRAME`.
+FRAME = FRAMES_BY_KV[BLOCK_SIZE_KV]
 
 # For the band mask
 BAND_PRE_TOKENS = 8
@@ -732,7 +758,7 @@ def benchmark_blitz_sparse_attention():
     logger.info("=" * 96)
     logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
     logger.info(f"  {BLOCK_SHAPES=}  {SABI_SORTED=}")
-    logger.info(f"  {FRAME}")
+    logger.info(f"  FRAMES_BY_KV={FRAMES_BY_KV}")
     logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 96)
     logger.info(
@@ -744,12 +770,16 @@ def benchmark_blitz_sparse_attention():
     for block_shape in BLOCK_SHAPES:
         bs_q, bs_kv = block_shape
         bs_label = f"{bs_q}x{bs_kv}"
+        # Scale the frame per BLOCK_SIZE_KV so the forced-token footprint stays
+        # comparable across block shapes; otherwise sparsity ≥ 0.85 cells fail
+        # the host-side feasibility check at the larger KV granularities.
+        frame_for_shape = FRAMES_BY_KV.get(bs_kv, FRAME)
         for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
             s_q = s_kv
 
             # Build attention mask and related parameters for this configuration
             pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-                b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME,
+                b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=frame_for_shape,
                 block_size_q=bs_q, block_size_kv=bs_kv,
                 device=DEVICE, emit_atten_mask=run_ref)
 

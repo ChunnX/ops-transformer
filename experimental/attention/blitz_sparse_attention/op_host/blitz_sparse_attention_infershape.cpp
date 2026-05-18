@@ -223,9 +223,9 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
                 bsQ);
             return ge::GRAPH_FAILED;
         }
-        if (bsKV != 128 && bsKV != 512) {
+        if (bsKV != 128 && bsKV != 256 && bsKV != 512) {
             OP_LOGE(context->GetNodeName(),
-                "block_shape[1] (BLOCK_SIZE_KV) must be 128 or 512 (got %ld).",
+                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, or 512 (got %ld).",
                 bsKV);
             return ge::GRAPH_FAILED;
         }

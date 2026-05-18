@@ -38,7 +38,7 @@ Using the CAPITAL_LETTERS variables at the top of the file you can ru all the th
     * `band`: torch_npu band mode: diagonal band. You can set the width of the diagonal with `BAND_PRE_TOKENS` and `BAND_POST_TOKENS`
     * `custom`: you can create your own custom mask in `make_custom_mask`. Will use the default `dense` pattern for the torch_npu version
 * `SPARSITY_VALS`: how many blocks to activate: randomly chosen, but each Q-block row will have the same number of blocks
-* `BLOCK_SIZE_Q`, `BLOCK_SIZE_KV`: Fixed at 128×128 for the `blocks_optimized*` version. Both Q-tiles and KV-tiles are 128 tokens wide.
+* `BLOCK_SHAPES`: List of `(BLOCK_SIZE_Q, BLOCK_SIZE_KV)` pairs to sweep. The kernel accepts these at runtime via the `block_shape` op-attr — no rebuild needed to switch granularities. `BLOCK_SIZE_Q` is locked at `128`; `BLOCK_SIZE_KV` accepts `128`, `256`, or `512`. Default sweep is `[(128, 128), (128, 256), (128, 512)]`. The first column of the benchmark output labels every row with its active block shape. `BLOCK_SIZE_Q` and `BLOCK_SIZE_KV` aliases (set to `BLOCK_SHAPES[0]` for backward compatibility) are still readable from the top of `benchmark.py`.
 * `BLOCK_MASK_SEED`: for reproducibility of random sampling. Can set to any value to change random sampling
 * `USE_FRAME`: Adds a frame on top of the block-sparse mask. If you want to change the frame shape, please modify the method `generate_sparse_blocks_by_row_with_frame`. If `S` (in `S_VALS`) length is too short the mask might be dense. For now, the frame is always:
     * First 8 KV-blocks are active for all rows
@@ -128,6 +128,118 @@ On the left you see the inputs, then the "yes" line checks correctness, after th
 
 Note that for short sequence lengths, the speedups are negligible because overheads are higher than actual computation.
 
+
+# block_shape granularity sweep (S=118806, H=3, D=128, BF16)
+
+The runtime `block_shape` attr lets the same kernel run at three sabi granularities. Lower KV-block size = finer-grain sparsity selectivity per Q-row but more cube redundancy; larger KV-block size = bigger contiguous matmul calls and less wasted work, at the cost of coarser sabi resolution.
+
+### Why `(29,1,29,1)` / `(15,1,29,1)` / `(8,1,29,1)` for the three block shapes?
+
+The benchmark forces a frame in the attention matrix that models a typical
+generative-model sink/streaming pattern: **the first ~3600 attention rows and
+columns plus the last ~6 rows and columns are always selected**. 6 tokens is
+less than a single block in every dimension, so it always rounds up to one
+full block-row / block-column at the bottom/right.
+
+Because `FrameWidths.left_cols` and `FrameWidths.right_cols` are in
+*KV-block-length units* (not tokens), the same numeric `left_cols` covers
+different token counts at each `BLOCK_SIZE_KV`. The per-shape values fall out
+of rounding the constant 3600-token target up to whole blocks:
+
+| BLOCK_SIZE_KV | `left_cols  = ceil(3600 / BLOCK_SIZE_KV)` | forced tokens / row |
+|---:|:---:|---:|
+| 128 | 29 | 3712 |
+| 256 | 15 | 3840 |
+| 512 | 8  | 4096 |
+
+`top_rows = ceil(3600 / 128) = 29` and `right_cols / bottom_rows = ceil(6 / *) = 1`
+in every column, so all three shapes share `(top=29, bottom=1, right=1)`.
+That's how `FRAMES_BY_KV = {128: (29,1,29,1), 256: (15,1,29,1), 512: (8,1,29,1)}`
+is derived; the test files apply the same scaling rule with a smaller
+target (~256 tokens) for their `SPARSE_FRAME`.
+
+#### Input
+```python
+B_VALS = [1]; H_VALS = [3]; S_VALS = [118_806]; D_VALS = [128]
+N_REPEATS = 10; N_WARMUP = 2
+SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
+# Per-shape frame: left_cols is scaled by 128/BLOCK_SIZE_KV so the forced-token
+# footprint stays comparable across block shapes. Otherwise the same `left_cols`
+# at BLOCK_SIZE_KV=512 covers 4× as many tokens and pushes the minimum density
+# above the sparsity-0.9 budget.
+FRAMES_BY_KV = {
+    128: FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1),
+    256: FrameWidths(left_cols=15, right_cols=1, top_rows=29, bottom_rows=1),
+    512: FrameWidths(left_cols=8,  right_cols=1, top_rows=29, bottom_rows=1),
+}
+TORCH_REFERENCE = "npu_fusion_attention"
+```
+
+#### Output
+```
+================================================================================================
+  DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  ATTENTION_MATRIX='blocks_optimized_batched'
+  BLOCK_SHAPES=[(128, 128), (128, 256), (128, 512)]  SABI_SORTED=True
+  FRAMES_BY_KV={128: FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1),
+                256: FrameWidths(left_cols=15, right_cols=1, top_rows=29, bottom_rows=1),
+                512: FrameWidths(left_cols=8,  right_cols=1, top_rows=29, bottom_rows=1)}
+  TORCH_REFERENCE='npu_fusion_attention'
+================================================================================================
+  block_shape   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
+------------------------------------------------------------------------------------------------
+      128x128   3   1 118806 118806  128      0.00             yes          160225.13          185475.31
+      128x128   3   1 118806 118806  128      0.05             N/A                N/A          164822.39
+      128x128   3   1 118806 118806  128      0.10             N/A                N/A          162558.75
+      128x128   3   1 118806 118806  128      0.20             N/A                N/A          158171.53
+      128x128   3   1 118806 118806  128      0.30             N/A                N/A          150923.23
+      128x128   3   1 118806 118806  128      0.40             N/A                N/A          140183.75
+      128x128   3   1 118806 118806  128      0.50             N/A                N/A          125583.76
+      128x128   3   1 118806 118806  128      0.60             N/A                N/A          106748.60
+      128x128   3   1 118806 118806  128      0.70             N/A                N/A           83439.14
+      128x128   3   1 118806 118806  128      0.80             N/A                N/A           54968.96
+      128x128   3   1 118806 118806  128      0.90             N/A                N/A           23485.22
+      128x256   3   1 118806 118806  128      0.00             yes          162033.89          186889.51
+      128x256   3   1 118806 118806  128      0.05             N/A                N/A          160286.94
+      128x256   3   1 118806 118806  128      0.10             N/A                N/A          154834.48
+      128x256   3   1 118806 118806  128      0.20             N/A                N/A          140923.18
+      128x256   3   1 118806 118806  128      0.30             N/A                N/A          127126.20
+      128x256   3   1 118806 118806  128      0.40             N/A                N/A          110787.73
+      128x256   3   1 118806 118806  128      0.50             N/A                N/A           94573.64
+      128x256   3   1 118806 118806  128      0.60             N/A                N/A           77140.77
+      128x256   3   1 118806 118806  128      0.70             N/A                N/A           58382.52
+      128x256   3   1 118806 118806  128      0.80             N/A                N/A           39059.55
+      128x256   3   1 118806 118806  128      0.90             N/A                N/A           18963.61
+      128x512   3   1 118806 118806  128      0.00             yes          163574.22          185570.61
+      128x512   3   1 118806 118806  128      0.05             N/A                N/A          160347.00
+      128x512   3   1 118806 118806  128      0.10             N/A                N/A          151788.93
+      128x512   3   1 118806 118806  128      0.20             N/A                N/A          135279.79
+      128x512   3   1 118806 118806  128      0.30             N/A                N/A          118335.80
+      128x512   3   1 118806 118806  128      0.40             N/A                N/A          102160.97
+      128x512   3   1 118806 118806  128      0.50             N/A                N/A           85259.70
+      128x512   3   1 118806 118806  128      0.60             N/A                N/A           68539.73
+      128x512   3   1 118806 118806  128      0.70             N/A                N/A           51272.65
+      128x512   3   1 118806 118806  128      0.80             N/A                N/A           34220.21
+      128x512   3   1 118806 118806  128      0.90             N/A                N/A           17384.59
+================================================================================================
+```
+
+#### Reading the table
+
+| sparsity | 128×128 vs PFA | 128×256 vs PFA | 128×512 vs PFA |
+|---:|---:|---:|---:|
+| 0.0  | 1.16× slower | 1.15× slower | 1.14× slower |
+| 0.1  | 1.01× slower | 1.04× faster | 1.06× faster |
+| 0.2  | 1.01× slower | 1.15× faster | 1.20× faster |
+| 0.5  | 1.29× faster | 1.71× faster | 1.89× faster |
+| 0.7  | 1.94× faster | 2.81× faster | 3.13× faster |
+| 0.9  | 6.74× faster | 8.69× faster |  —  |
+
+* **128×128** keeps the finest sparsity-pattern granularity (one sabi entry per 128-token KV chunk), but the cube schedules redundant work for every kept sub-block that is not adjacent to another kept sub-block. Break-even with PFA happens around sparsity ≈ 0.2; the dense (sparsity-0) overhead is ≈ 16%.
+* **128×256** halves the wasted-work probability per cube call versus 128×128 while still doubling the resolution versus 128×512. Break-even with PFA happens around sparsity ≈ 0.05, and at sparsity 0.5 it is ≈ 1.32× faster than 128×128.
+* **128×512** is the historic "fastest path": one sabi entry per 512-token cube tile, no redundant within-tile matmul. At sparsity 0.5 it is ≈ 1.47× faster than 128×128 and ≈ 1.10× faster than 128×256.
+
+The PFA reference (`npu_fusion_attention` dense) is shape-invariant — the small differences in the `Ref_Latency_[usec]` column across block shapes are timing noise from re-running the same workload three times.
 
 # Benchmark performance (no correctness) for very long sequences
 
@@ -234,7 +346,14 @@ The baseline dense `"dense"` mode (standard `torch_npu.npu_fusion_attention`) ap
 pytest test_lse.py -v
 ```
 
-### What is tested (~100 test instances, B=1 only)
+Every test case is exercised at all three default block shapes
+`[(128, 128), (128, 256), (128, 512)]` via a parametrized `block_shape` fixture,
+so the live test count is ~3× the per-shape count below (300 instances total).
+A handful of `(128, 256)` / `(128, 512)` cases at sparsity 0.9 with small S or
+the wide-frame setting are auto-skipped because the test parameterization
+becomes inherently unsatisfiable — see the `pytest.skip` rules in the file.
+
+### What is tested per block shape (B=1 only)
 
 | Test | Reference | Shapes | Dtypes | Notes |
 |---|---|---|---|---|
@@ -256,10 +375,10 @@ For H>1 shapes FIAS cannot be used directly (its `sparse_mode=1` requires a `[B,
 
 | Comparison | atol |
 |---|---|
-| BSA vs FIAS (bfloat16 input) | 0.025 |
-| BSA vs FIAS (float16 input) | 0.025 |
-| BSA vs Python float32 reference | 0.05 |
-| Zero-input invariant | 0.001 |
+| BSA vs FIAS (bfloat16 input) | 0.01 |
+| BSA vs FIAS (float16 input) | 0.01 |
+| BSA vs Python float32 reference | 0.01 |
+| Zero-input invariant (bf16/fp16) | 0.01 |
 
 float16 is excluded from sparse tests: FIAS processes `-inf`-masked tiles through its flash-attention tiling while BSA skips them entirely; the resulting LSE divergence exceeds any reasonable tolerance at high sparsity.
 

@@ -65,13 +65,31 @@ with `B=1` until this is diagnosed and fixed.
 
 ## Before running anything
 
-Always set the NPU device to unit 5 before running any Python script, test, or benchmark:
+NPU ids `0,1,2,3` are available. For a single Python script / one-off run:
 
 ```bash
-export ASCEND_RT_VISIBLE_DEVICES=5
+ASCEND_RT_VISIBLE_DEVICES=1 python ...
 ```
 
-Without this, commands may land on the wrong NPU or fail to find the device.
+### Parallelising tests across NPUs
+
+The three pytest suites (`test_attn.py`, `test_lse.py`, `test_joint.py`) and
+the benchmark each run on their own device, so launch them concurrently on
+separate NPUs to cut wall time roughly in half:
+
+```bash
+ASCEND_RT_VISIBLE_DEVICES=1 pytest benchmark/test_attn.py  > /tmp/t_attn.log  2>&1 &
+ASCEND_RT_VISIBLE_DEVICES=2 pytest benchmark/test_lse.py   > /tmp/t_lse.log   2>&1 &
+ASCEND_RT_VISIBLE_DEVICES=3 pytest benchmark/test_joint.py > /tmp/t_joint.log 2>&1 &
+ASCEND_RT_VISIBLE_DEVICES=0 python  benchmark/benchmark.py > /tmp/bench.log   2>&1 &
+wait
+```
+
+One NPU per process. Don't share a device across two concurrent runs —
+correctness tests share allocator state with the benchmark and will fault
+each other with AICore exceptions if co-resident. The four jobs together
+finish in roughly the runtime of the longest single job (typically
+`test_attn.py` or the benchmark).
 
 ## Kernel Landscape (the three kernels you need to know)
 

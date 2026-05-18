@@ -32,7 +32,7 @@ INPUT_LAYOUT = 'BNSD'
 # block_shape pairs exercised by the suite. (128,128) is the sabi-at-128
 # default; (128,512) drops the sabi resolution to one entry per 512-token
 # KV chunk. Both share the same kernel binary at runtime.
-BLOCK_SHAPES = [(128, 128), (128, 512)]
+BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
@@ -49,18 +49,29 @@ S_VALS = [
     # 36_000,  # ceil(36000/128)=282, not a multiple of 4
 ]  # s_q = s_kv
 D_VALS = [128]   # head dimension
-FRAME_VALUES = [FrameWidths(0,0,0,0), FrameWidths(2,1,3,1)]
+# `frame_kind` is a label; the actual FrameWidths is resolved per block_shape
+# in the test body (left_cols is in KV-block-length units, so the same numeric
+# `left_cols` covers different token counts at each granularity — scale to keep
+# the forced-token footprint comparable).
+FRAME_KINDS = ["no_frame", "small_frame"]
+FRAMES_BY_KIND_KV = {
+    ("no_frame",    128): FrameWidths(0, 0, 0, 0),
+    ("no_frame",    256): FrameWidths(0, 0, 0, 0),
+    ("no_frame",    512): FrameWidths(0, 0, 0, 0),
+    ("small_frame", 128): FrameWidths(2, 1, 3, 1),
+    ("small_frame", 256): FrameWidths(1, 1, 3, 1),
+    ("small_frame", 512): FrameWidths(1, 1, 3, 1),
+}
 SPARSITY_VALS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 SHAPES = list(itertools.product(B_VALS, H_VALS, S_VALS, D_VALS))
-FRAME_SPARSITY_COMBOS = list(itertools.product(FRAME_VALUES, SPARSITY_VALS))
-FRAME_SPARSITY_IDS = [f"frame({f.left_cols},{f.right_cols},{f.top_rows},{f.bottom_rows})-sparsity{s:.2f}"
-                      for f, s in FRAME_SPARSITY_COMBOS]
+FRAME_SPARSITY_COMBOS = list(itertools.product(FRAME_KINDS, SPARSITY_VALS))
+FRAME_SPARSITY_IDS = [f"{kind}-sparsity{s:.2f}" for kind, s in FRAME_SPARSITY_COMBOS]
 
 @pytest.mark.parametrize("torch_ref", TORCH_REF_VALS)
 @pytest.mark.parametrize("block_shape", BLOCK_SHAPES, ids=lambda bs: f"bs{bs[0]}x{bs[1]}")
-@pytest.mark.parametrize("frame,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
+@pytest.mark.parametrize("frame_kind,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
 @pytest.mark.parametrize("shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
-def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity, block_shape):
+def test_blitz_sparse_attention_correctness(torch_ref, shape, frame_kind, sparsity, block_shape):
     """Test correctness of torch_bsa.blitz_sparse_attention vs reference implementation"""
     # Set random seed for reproducible test inputs
     torch.manual_seed(SEED)
@@ -69,6 +80,9 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity, b
     b, h, s_kv, d = shape
     s_q = s_kv
     BLOCK_SIZE_Q, BLOCK_SIZE_KV = block_shape
+    # Resolve the per-shape frame so the token-footprint stays comparable
+    # across block_shape values (left_cols is in KV-block units).
+    frame = FRAMES_BY_KIND_KV[(frame_kind, BLOCK_SIZE_KV)]
 
     # Generate attention mask and parameters
     pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
@@ -110,7 +124,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(message)s')
     test_blitz_sparse_attention_correctness(torch_ref="npu_fusion_attention",
                                             shape=(1, 3, 10_000, 128),
-                                            frame=FrameWidths(left_cols=2, right_cols=1, top_rows=2, bottom_rows=1),
+                                            frame_kind="small_frame",
                                             sparsity=0.5,
                                             block_shape=(128, 128))
     logging.getLogger(__name__).info("Smoke test passed.")

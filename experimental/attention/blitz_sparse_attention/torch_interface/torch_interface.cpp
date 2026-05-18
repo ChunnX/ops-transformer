@@ -109,8 +109,8 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
                 "block_shape must be a length-2 list [BLOCK_SIZE_Q, BLOCK_SIZE_KV]");
     TORCH_CHECK(block_shape[0] == 128,
                 "block_shape[0] (BLOCK_SIZE_Q) must be 128");
-    TORCH_CHECK(block_shape[1] == 128 || block_shape[1] == 512,
-                "block_shape[1] (BLOCK_SIZE_KV) must be 128 or 512");
+    TORCH_CHECK(block_shape[1] == 128 || block_shape[1] == 256 || block_shape[1] == 512,
+                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, or 512");
 
     // Validate input tensors
     TORCH_CHECK(query.is_contiguous(), "query must be contiguous");

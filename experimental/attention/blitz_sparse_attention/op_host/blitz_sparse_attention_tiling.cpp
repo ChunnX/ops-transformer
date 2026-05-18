@@ -460,9 +460,10 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
             "block_shape[0] (BLOCK_SIZE_Q) must be 128; variable Q-tile not yet supported."),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(contextKeyParams.kvBlockSize != 128 && contextKeyParams.kvBlockSize != 512,
+    OP_CHECK_IF(contextKeyParams.kvBlockSize != 128 && contextKeyParams.kvBlockSize != 256 &&
+                contextKeyParams.kvBlockSize != 512,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "block_shape[1] (BLOCK_SIZE_KV) must be 128 or 512."),
+            "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, or 512."),
         return ge::GRAPH_FAILED);
 
     contextKeyParams.deqScaleType = (context->GetOptionalInputDesc(DEQ_SCALE1_INDEX) != nullptr) ?

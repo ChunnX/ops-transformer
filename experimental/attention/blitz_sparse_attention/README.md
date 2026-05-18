@@ -42,30 +42,45 @@ pytest test_joint.py # simultaneously check correctness of both kernel outputs
 python benchmark.py # performance benchmarking - check the constant inputs shapes defined in the script
 ```
 
-The test should be all green, and the benchmark sweeps every sparsity at both
-`(128, 128)` and `(128, 512)` block shapes, labelled in the first column:
+The test should be all green, and the benchmark sweeps every sparsity at every
+block shape in `BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]`, labelled
+in the first column. Trimmed sample on Ascend910B2:
 ```shell
 ================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  ATTENTION_MATRIX='blocks_optimized_batched'
-  BLOCK_SHAPES=[(128, 128), (128, 512)]  SABI_SORTED=True
+  BLOCK_SHAPES=[(128, 128), (128, 256), (128, 512)]  SABI_SORTED=True
   FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1)
   TORCH_REFERENCE='npu_fusion_attention'
 ================================================================================================
   block_shape   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
 ------------------------------------------------------------------------------------------------
-      128x128   3   1 118806 118806  128      0.00              no          157164.07          169585.69
-      128x128   3   1 118806 118806  128      0.10             N/A                N/A          155686.66 <-- Win
-      128x128   3   1 118806 118806  128      0.50             N/A                N/A          116524.34
-      128x128   3   1 118806 118806  128      0.90             N/A                N/A           21871.61
-      128x512   3   1 118806 118806  128      0.00              no          157164.07          169585.69
-      128x512   3   1 118806 118806  128      0.10             N/A                N/A          155686.66
-      128x512   3   1 118806 118806  128      0.50             N/A                N/A          116524.34
-      128x512   3   1 118806 118806  128      0.90             N/A                N/A           21871.61
+      128x128   3   1 118806 118806  128      0.00             yes          160647.57          186419.60
+      128x128   3   1 118806 118806  128      0.10             N/A                N/A          163183.14
+      128x128   3   1 118806 118806  128      0.50             N/A                N/A          126072.34
+      128x128   3   1 118806 118806  128      0.90             N/A                N/A           23824.46
+      128x256   3   1 118806 118806  128      0.00             yes          162336.54          187044.41
+      128x256   3   1 118806 118806  128      0.10             N/A                N/A          155471.61
+      128x256   3   1 118806 118806  128      0.50             N/A                N/A           94882.15
+      128x256   3   1 118806 118806  128      0.90             N/A                N/A           18682.85
+      128x512   3   1 118806 118806  128      0.00             yes          163961.43          186603.97
+      128x512   3   1 118806 118806  128      0.10             N/A                N/A          152788.73
+      128x512   3   1 118806 118806  128      0.50             N/A                N/A           85956.16
+      128x512   3   1 118806 118806  128      0.80             N/A                N/A           34906.88
 ================================================================================================
 ```
-(Rows trimmed for brevity — the actual sweep emits one row per sparsity for each
-block_shape.) Use `BLOCK_SHAPES` at the top of `benchmark.py` to narrow the sweep
-to a single granularity.
+(Rows trimmed to 4 sparsities per shape — the actual sweep emits one row per
+sparsity for each block_shape.) Use `BLOCK_SHAPES` at the top of `benchmark.py`
+to narrow the sweep to a single granularity. At S=118806 D=128 BF16, 128×256
+breaks even with the dense PFA reference at sparsity ≈ 0.05, 128×512 at ≈ 0.1;
+the historic 1.89× speedup at sparsity 0.5 still holds for 128×512 (and 128×256
+is within ~10% of it while keeping 2× finer sabi resolution). See
+[benchmark/README.md](benchmark/README.md) for the full table and a per-sparsity
+PFA-speedup summary.
+
+Note: the default `FrameWidths(29,1,29,1)` becomes infeasible at sparsity 0.9
+with `BLOCK_SIZE_KV=512` (only ~233 KV-blocks at S=118806, frame forces >15%
+density). Either drop sparsity 0.9 from `SPARSITY_VALS` or shrink the frame
+when running the largest KV-block size.
 more explanation about benchmarking is [here](benchmark/README.md). 
 
 To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `torch_npu` conventions:
@@ -92,9 +107,10 @@ attention_out, softmax_lse = torch_bsa.blitz_sparse_attention(
     sparse_mode=0,
     softmax_lse_flag=False,   # set True to compute a valid 2nd output (log-sum-exp)
     block_shape=[128, 128],   # [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Default [128,128].
-                              # Also supported: [128, 512] (one sabi entry per
-                              # 512-token KV chunk; sabi tensor's last dim is
-                              # ceil(S/512) accordingly).
+                              # BLOCK_SIZE_Q is locked at 128. BLOCK_SIZE_KV
+                              # accepts 128, 256, or 512 — each sabi entry
+                              # then addresses a KV chunk of that many tokens,
+                              # so sabi's last dim is ceil(S / BLOCK_SIZE_KV).
 )
 ```
 

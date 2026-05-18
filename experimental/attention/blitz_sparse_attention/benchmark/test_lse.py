@@ -53,7 +53,7 @@ DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
 # block_shape pairs exercised by the suite. (128,128) is the sabi-at-128
 # default; (128,512) drops sabi resolution to one entry per 512-token chunk.
-BLOCK_SHAPES = [(128, 128), (128, 512)]
+BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
 _SABI_PAD = 65535   # 0xFFFF – padding sentinel in uint16 sabi tensors
 torch.npu.set_device(DEVICE)
 
@@ -96,7 +96,15 @@ SPARSE_FRAMED_FIAS_SHAPES = [
     (1, 1, 16384, 128),
     (1, 1, 24000, 128),
 ]
-SPARSE_FRAME = FrameWidths(left_cols=2, right_cols=1, top_rows=3, bottom_rows=1)
+# Per-block-shape sparse frame: `left_cols` is in KV-block-length units, so the
+# same `left_cols=2` covers 2× more tokens at BLOCK_SIZE_KV=256 and 4× more at
+# 512. Scale by 128/bs_kv (rounded, min 1) so the forced-token footprint stays
+# comparable across granularities.
+SPARSE_FRAMES_BY_KV = {
+    128: FrameWidths(left_cols=2, right_cols=1, top_rows=3, bottom_rows=1),
+    256: FrameWidths(left_cols=1, right_cols=1, top_rows=3, bottom_rows=1),
+    512: FrameWidths(left_cols=1, right_cols=1, top_rows=3, bottom_rows=1),
+}
 
 # ── Multi-head sparse shapes for Python-reference comparison ──────────────────
 # BSA runs once on all heads; LSE is compared against a CPU float32 reference
@@ -348,22 +356,18 @@ def test_bsa_lse_vs_fias_sparse(shape, sparsity, block_shape):
 @pytest.mark.parametrize("shape", SPARSE_FRAMED_FIAS_SHAPES,
                           ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
 def test_bsa_lse_vs_fias_sparse_framed(shape, sparsity, block_shape):
-    """BSA sparse LSE with FrameWidths(2,1,3,1) on long sequences, H=1, bf16."""
+    """BSA sparse LSE with a per-shape border frame on long sequences, H=1, bf16."""
     torch.manual_seed(SEED)
     B, H, S, D = shape
     assert H == 1
     scale = 1.0 / math.sqrt(D)
     dtype = torch.bfloat16
 
-    # bs128x512 + sparsity 0.9 + SPARSE_FRAME(2,1,3,1) overconstrains the frame
-    # budget: the frame alone occupies > 10% of the (now 4×-smaller) KV-block
-    # count, exceeding the 10% density implied by sparsity 0.9. Skip — not a
-    # kernel issue, just an unsatisfiable test parameterization.
+    # Per-shape frame: token footprint normalised across block_shape values.
     bs_q, bs_kv = block_shape
-    if bs_kv > 128 and sparsity >= 0.9:
-        pytest.skip(f"frame budget exceeds 1-sparsity at block_shape={block_shape}, sparsity={sparsity}")
+    sparse_frame = SPARSE_FRAMES_BY_KV[bs_kv]
 
-    sabi, pfa_atten_mask = _build_sparse_masks(B, H, S, sparsity, SPARSE_FRAME, block_shape)
+    sabi, pfa_atten_mask = _build_sparse_masks(B, H, S, sparsity, sparse_frame, block_shape)
     q = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
@@ -386,14 +390,16 @@ def test_bsa_lse_vs_fias_sparse_framed(shape, sparsity, block_shape):
 @pytest.mark.parametrize("shape", SPARSE_LSE_MULTIHEAD_SHAPES,
                           ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
 def test_bsa_lse_sparse_multihead(shape, sparsity, block_shape):
-    # bs128x512 + S=512 has only 1 KV-block per Q-row. At sparsity 0.9 most
-    # Q-rows end up with zero kept blocks; the Python reference returns -inf
-    # for those rows while BSA leaves the InitOutput sentinel, so the diff is
-    # inf. Skip — semantic gap, not a kernel correctness issue.
+    # bs128x{256,512} at small S + sparsity 0.9: when expected kept KV-blocks
+    # per Q-row drops below ~1, most rows end up with zero kept blocks. The
+    # Python reference returns -inf for those rows while BSA leaves the
+    # InitOutput sentinel, so the diff is inf. Skip — semantic gap, not a
+    # kernel correctness issue.
     bs_q, bs_kv = block_shape
     B, H, S, D = shape
-    if bs_kv > 128 and (S // bs_kv) <= 1 and sparsity >= 0.9:
-        pytest.skip(f"sabi has <=1 KV column at block_shape={block_shape}, sparsity={sparsity}; empty-row semantics differ from Python ref")
+    expected_kept_per_row = (S / bs_kv) * (1.0 - sparsity)
+    if bs_kv > 128 and expected_kept_per_row < 1.0:
+        pytest.skip(f"expected_kept_per_row={expected_kept_per_row:.2f} at block_shape={block_shape}, sparsity={sparsity}; empty-row semantics differ from Python ref")
     """BSA multi-head sparse LSE vs a CPU float32 reference.
 
     The reference _lse_reference_sparse() gathers the exact KV token rows
