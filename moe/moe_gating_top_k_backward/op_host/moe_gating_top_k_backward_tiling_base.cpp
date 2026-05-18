@@ -14,8 +14,6 @@
  */
 #include "moe_gating_top_k_backward_tiling.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
 #include "log/log.h"
 #include "kernel_tiling/kernel_tiling.h"
 
