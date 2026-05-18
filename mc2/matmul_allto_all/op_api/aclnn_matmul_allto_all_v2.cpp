@@ -26,8 +26,8 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
 {
     OP_LOGD("aclnnMatmulAlltoAllV2GetWorkspaceSize start");
 
-    return aclnnMatmulAlltoAllBaseGetWorkspaceSize(x1, x2, biasOptional, alltoAllAxesOptional, group, transposeX1,
-                                                   transposeX2, output, workspaceSize, executor);
+    return aclnnMatmulAlltoAllBaseGetWorkspaceSize(x1, x2, biasOptional, alltoAllAxesOptional, group, commMode,
+                                                   transposeX1, transposeX2, output, workspaceSize, executor);
 }
 
 extern "C" aclnnStatus aclnnMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
