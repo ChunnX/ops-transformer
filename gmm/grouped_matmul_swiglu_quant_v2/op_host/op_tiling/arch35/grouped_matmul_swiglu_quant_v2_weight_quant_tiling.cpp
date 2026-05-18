@@ -507,7 +507,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::DoLibApiTiling()
 
 uint64_t GroupedMatmulSwigluQuantV2WeightQuantTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(0, static_cast<bool>(inputParams_.wTrans));
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(inputParams_.wTrans), 0L);
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetWorkspaceSize()
