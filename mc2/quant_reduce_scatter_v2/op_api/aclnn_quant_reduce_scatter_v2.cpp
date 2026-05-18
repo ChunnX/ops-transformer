@@ -1,0 +1,49 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+**/
+
+/*!
+ * \file aclnn_quant_reduce_scatter_v2.cpp
+ * \brief
+ */
+#include "securec.h"
+#include "acl/acl.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
+#include "aclnn_kernels/common/op_error_check.h"
+#include "opdev/common_types.h"
+#include "opdev/make_op_executor.h"
+#include "opdev/op_dfx.h"
+#include "opdev/op_executor.h"
+#include "opdev/op_log.h"
+#include "opdev/platform.h"
+#include "common/utils/hccl_util.h"
+#include "aclnnInner_quant_reduce_scatter_v2.h"
+
+using namespace op;
+
+extern "C" aclnnStatus aclnnQuantReduceScatterV2GetWorkspaceSize(const aclTensor *context, const aclTensor* x,
+                                                                 const aclTensor* scales, int64_t hcclBufferSize,
+                                                                 char* reduceOp, int64_t yDtype,
+                                                                 int64_t worldSize, const aclTensor* output,
+                                                                 uint64_t* workspaceSize,
+                                                                 aclOpExecutor** executor)
+{
+    OP_LOGD("aclnnQuantReduceScatterV2GetWorkspaceSize start");
+    return aclnnInnerQuantReduceScatterV2GetWorkspaceSize(context, x, scales, hcclBufferSize,
+                                                          reduceOp, yDtype, worldSize, output,
+                                                          workspaceSize, executor);
+}
+
+extern "C" aclnnStatus aclnnQuantReduceScatterV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                                 aclrtStream stream)
+{
+    OP_LOGD("aclnnQuantReduceScatterV2 start");
+    return aclnnInnerQuantReduceScatterV2(workspace, workspaceSize, executor, stream);
+}
