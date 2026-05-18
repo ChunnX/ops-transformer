@@ -109,26 +109,29 @@ constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
 constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
 constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
-constexpr uint32_t SEQUSED_KV_INDEX = 11;
-constexpr uint32_t SINKS_INDEX = 12;
-constexpr uint32_t METADATA_INDEX = 13;
+constexpr uint32_t SEQUSED_ORI_KV_INDEX = 11;
+constexpr uint32_t SEQUSED_CMP_KV_INDEX = 12;
+constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 13;
+constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 14;
+constexpr uint32_t SINKS_INDEX = 15;
+constexpr uint32_t METADATA_INDEX = 16;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
+constexpr uint32_t SOFTMAX_LSE_INDEX = 0;
 
 // Attributes Index
-constexpr uint32_t ATTR_KV_QUANT_SCALE_INDEX = 0;
-constexpr uint32_t ATTR_TILE_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_ROPE_HEAD_DIM_INDEX = 2;
-constexpr uint32_t ATTR_SOTFMAX_SCALE_INDEX = 3;
-constexpr uint32_t ATTR_CMP_RATIO_INDEX = 4;
-constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 5;
-constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 6;
-constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 7;
-constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 8;
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 9;
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 10;
-constexpr uint32_t ATTR_ORIKV_STRIDE_INDEX = 11;
-constexpr uint32_t ATTR_CMPKV_STRIDE_INDEX = 12;
+constexpr uint32_t ATTR_QUANT_SCALE_INDEX = 0;
+constexpr uint32_t ATTR_ROPE_HEAD_DIM_INDEX = 1;
+constexpr uint32_t ATTR_SOTFMAX_SCALE_INDEX = 2;
+constexpr uint32_t ATTR_CMP_RATIO_INDEX = 3;
+constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 4;
+constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 5;
+constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 6;
+constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 7;
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
+constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;

@@ -105,8 +105,8 @@ void KvQuantSASInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.cuSeqLensCmpKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_CMP_KV_INDEX);
     opParamInfo_.seqUsedQ.tensor = context_->GetOptionalInputTensor(SEQUSED_Q_INDEX);
     opParamInfo_.seqUsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
-    opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_INDEX);
-    opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(SEQUSED_KV_INDEX);
+    opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_ORI_KV_INDEX); // 复用QSAS功能
+    opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(SEQUSED_ORI_KV_INDEX); // 复用QSAS功能
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
 }
@@ -131,12 +131,14 @@ ge::graphStatus KvQuantSASInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_KV_QUANT_SCALE_INDEX);
-    opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(ATTR_TILE_SIZE_INDEX);
+    int64_t zero = 0;
+    int64_t *pZero = &zero;
+    opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
+    opParamInfo_.tileSize = pZero;
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOTFMAX_SCALE_INDEX);
-    opParamInfo_.oriKvStride = attrs->GetAttrPointer<int64_t>(ATTR_ORIKV_STRIDE_INDEX);
-    opParamInfo_.cmpKvStride = attrs->GetAttrPointer<int64_t>(ATTR_CMPKV_STRIDE_INDEX);
+    opParamInfo_.oriKvStride = pZero;
+    opParamInfo_.cmpKvStride = pZero;
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
