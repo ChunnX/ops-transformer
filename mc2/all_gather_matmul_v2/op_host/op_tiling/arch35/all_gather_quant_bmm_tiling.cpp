@@ -406,9 +406,15 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                         algConfig, 0, 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)), 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
-    // Set hccl comm engine with environment variable
-    uint8_t commEngine = Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU ?
-                         Mc2Comm::ENGINE_AICPU : Mc2Comm::ENGINE_CCU;
+    // Set hccl comm engine with comm_mode
+    uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
+    if (commMode_ == "ccu") {
+        commEngine = Mc2Comm::ENGINE_CCU;
+    } else { // default
+        if (rankSize_ <= 8) {
+            commEngine = Mc2Comm::ENGINE_CCU;
+        }
+    }
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ? 
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
