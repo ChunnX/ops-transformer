@@ -113,7 +113,7 @@ struct WorkspaceInfo {
         ptrMmadTileResFirst = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * 192 * 1024 * 4;
         ptrMmadTileResSecond = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * 192 * 1024 * 4;
+        workspaceSize += SIZE_INT_32 * 192 * 4096 * 4;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
