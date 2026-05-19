@@ -38,6 +38,7 @@ def merge_op_proto(protos_path, output_file):
         if not proto_path.endswith("_proto.h"):
             continue
         # 过滤同名proto.h
+        file_name = os.path.basename(proto_path)
         if file_name in check_same_files:
             continue
         check_same_files.add(file_name)
