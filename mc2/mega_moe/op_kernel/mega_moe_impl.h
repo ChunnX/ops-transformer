@@ -47,6 +47,186 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 *
 // UB 容量（Da Vinci AIV 每核 256KB），用于判断 GMM1 是否还能 pingpong（需要 2 块 UbFirst+UbSecond）。
 constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 
+// ============================================================================
+// DYN_SCHED_DESIGN — 去中心化原子认领 (Decentralized Atomic Work-Stealing)
+// ============================================================================
+//
+// 解决问题：mid < hidden 不对称 case 下（如 tileNumGmm1=12, tileNumGmm2=28），静态
+// cross-wave 在 Phase 1 让 4 个核闲着不能做 Phase 2 工作。动态调度让 32 个核全部
+// 参与 task 认领，跨 group 跨 phase 自由分配，能省 1 round 关键路径。
+//
+// --- 任务空间 ---
+//
+// 每个 expert 内，task 分两类：
+//   GMM1[w][n] : (waveIdx=w, nTileIdx=n)  n ∈ [0, tileNumGmm1)
+//   GMM2[w][n] : (waveIdx=w, nTileIdx=n)  n ∈ [0, tileNumGmm2)
+//
+// 依赖：GMM2[w][*] 必须等 groupFlagListGm[w] == tileNumGmm1
+//      (该 wave 全部 GMM1+epi 完成后由 AIV0 在 epi 内 atomic_add 累加触发)
+//
+// --- 认领协议 ---
+//
+// per (expert, wave) HBM 上各两个 int32 原子计数器：
+//   gmm1NextTile[e * maxW + w]  AtomicAdd(_, 1) → 老值 = 本核拿到的 nTileIdx
+//   gmm2NextTile[e * maxW + w]  同上
+// 每 expert 起始 AIC 0 重置 0，SyncAll<false>() 让所有核见到。
+//
+// AIC 每核独立主循环（无 group 约束，所有 wave 都能抢）：
+//   loop:
+//     // 优先级 1: GMM2 已解锁的 wave
+//     for w in 0..waveCnt-1:
+//       if ReadGmByPassDCache(groupFlagListGm[w]) == tileNumGmm1:
+//         t = AtomicAdd(gmm2NextTile[e][w], 1)
+//         if t < tileNumGmm2: dispatch_gmm2(w, t); continue loop
+//     // 优先级 2: GMM1
+//     for w in 0..waveCnt-1:
+//       t = AtomicAdd(gmm1NextTile[e][w], 1)
+//       if t < tileNumGmm1: dispatch_gmm1(w, t); continue loop
+//     break  // 本核所有 task 完成
+//
+// --- AIC ↔ AIV 配对：双 channel pingpong ---
+//
+// blockIdx 一致的 AIC + AIV0 + AIV1 仍是 1:1 pair (硬件约束)。
+// AIC 抢到 task 后，通过 HBM 上的 taskSlot 把任务信息传给配对的 AIV：
+//   taskSlot[blockIdx][channel=0=GMM1][pp=0..1]  ← AIC 写, AIV0 读
+//   taskSlot[blockIdx][channel=1=GMM2][pp=0..1]  ← AIC 写, AIV1 读
+//
+// 每 channel 2 个 pingpong slot，让 AIC 可以提前一个 task 而不被 AIV 阻塞。
+//
+// Flag id 映射（参 mega_moe_base.h L91-L97）:
+//   GMM1 channel : AIC NotifyVector(pp)     ↔ AIV0 WaitForCube(pp)
+//                  AIV0 NotifyCube(pp)       ↔ AIC WaitForVector(pp)
+//   GMM2 channel : AIC NotifyVectorAIV1(pp) ↔ AIV1 WaitForCube(pp)
+//                  AIV1 NotifyCube(pp)       ↔ AIC WaitForVectorFromAIV1(pp)
+// 物理上 GMM1 用 flag id {0,1}, GMM2 用 flag id {16,17}, 两组隔离。
+//
+// AIC 写 slot 流程：
+//   if used[pp]: WaitForCube(pp) 或 WaitForVectorFromAIV1(pp)
+//   WriteTaskSlot(...)
+//   SyncFunc<MTE3_MTE2>()  // 保证 task 内容落 GM 后再发 NotifyVector
+//   NotifyVector(pp) / NotifyVectorAIV1(pp)
+//   used[pp] = true
+//   pp ^= 1
+//   do mmad of the task (与 NotifyVector 在 PIPE_FIX 上串行，自带 fixpipe drain)
+//
+// AIV 处理 slot 流程：
+//   WaitForCube(pp)         // AIV0 / AIV1 都用 WaitForCube
+//   ReadTaskSlot(...)
+//   if task.opType == END: NotifyCube(pp); break
+//   do_work(task)            // sw+quant 或 combine
+//   NotifyCube(pp)
+//   pp ^= 1
+//
+// --- END 终止 ---
+//
+// AIC 抢不到任何 task 后，分别给两个 channel 写 op=END 的 task → NotifyVector。
+// AIV 见 END 就 NotifyCube 一次（让 AIC drain）然后退出循环。
+// AIC 最后 drain 所有未消费的 NotifyCube (两 channel 各 1-2 个，按 pingpong FIFO 顺序)。
+//
+// --- 跨 expert ---
+//
+// 每 expert 结束时 AIC drain 完所有 pending NotifyCube → used[*]=false, pp reset 0。
+// 下一 expert 起始 AIC 0 重置 counter，SyncAll → 干净开始。
+//
+// --- 对称 case 影响 ---
+//
+// 对称 (tileNumGmm1 == tileNumGmm2 == coresPerWave_equiv) 时，每核仍抢 5 个 task，
+// 理论 wall 等于静态 cross-wave。多出的 overhead：
+//   - 每 task ~300 cycle (atomic add + WriteTaskSlot + SyncFunc + NotifyVector)
+//   - 全 kernel 5 task × 32 核 / 关键路径上的 5 task = ~5 × 300 = 1500 cycle ≈ 1us
+//   - HBM atomic counter 争抢：32 核同时 add 同 1 个 counter 大约 50ns 序列化 × 16 次 ≈ 1us
+// 总 overhead < 5us per kernel，相对 ~500us 量级 < 1%。
+//
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// 动态调度 helper：原子认领下一个 task
+// ----------------------------------------------------------------------------
+// 优先认领 GMM2 已解锁的 wave，再认领 GMM1。返回 false 表示无 task。
+__aicore__ inline bool ClaimNextTask(
+    const Params& params,
+    uint32_t expertIdx, uint32_t maxWavesPerExpert,
+    uint32_t tileNumGmm1, uint32_t tileNumGmm2,
+    uint64_t waveCnt, uint64_t m_i,
+    int64_t flagOffsetForExpert,  // = IDX_FLAG_OFFSET of this expert (来自 baseOffset_)
+    DynamicTask& outTask)
+{
+    // Priority 1: GMM2 of unlocked waves
+    for (uint64_t w = 0; w < waveCnt; ++w) {
+        __gm__ int32_t* flagAddr = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
+                                    flagOffsetForExpert + static_cast<int64_t>(w);
+        int32_t flagVal = AscendC::ReadGmByPassDCache(flagAddr);
+        if (flagVal != static_cast<int32_t>(tileNumGmm1)) {
+            continue;
+        }
+        __gm__ int32_t* counterAddr =
+            (__gm__ int32_t*)params.workspaceInfo.ptrGmm2NextTile +
+            expertIdx * maxWavesPerExpert + w;
+        int32_t tile = AscendC::AtomicAdd(counterAddr, 1);  // fetch_and_add: 返回老值
+        if (tile < static_cast<int32_t>(tileNumGmm2)) {
+            outTask.opType    = DYN_OP_GMM2;
+            outTask.waveIdx   = static_cast<int32_t>(w);
+            outTask.nTileIdx  = tile;
+            outTask.waveM     = static_cast<int32_t>((w == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
+                                                     (m_i % L1_TILE_M) : L1_TILE_M);
+            return true;
+        }
+    }
+    // Priority 2: GMM1
+    for (uint64_t w = 0; w < waveCnt; ++w) {
+        __gm__ int32_t* counterAddr =
+            (__gm__ int32_t*)params.workspaceInfo.ptrGmm1NextTile +
+            expertIdx * maxWavesPerExpert + w;
+        int32_t tile = AscendC::AtomicAdd(counterAddr, 1);
+        if (tile < static_cast<int32_t>(tileNumGmm1)) {
+            outTask.opType    = DYN_OP_GMM1;
+            outTask.waveIdx   = static_cast<int32_t>(w);
+            outTask.nTileIdx  = tile;
+            outTask.waveM     = static_cast<int32_t>((w == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
+                                                     (m_i % L1_TILE_M) : L1_TILE_M);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ----------------------------------------------------------------------------
+// taskSlot 读写: scalar 8 个 int32
+// ----------------------------------------------------------------------------
+// taskSlot offset = (blockIdx * 4 + channel * 2 + pp) * 32 byte = ... * 8 int32
+__aicore__ inline void WriteTaskSlot(
+    const Params& params, int32_t blockIdx, int32_t channel,
+    int32_t pp, const DynamicTask& task)
+{
+    int32_t slotIdx = blockIdx * 4 + channel * 2 + pp;
+    __gm__ int32_t* p = ((__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot) + slotIdx * DYN_TASK_INTS;
+    p[0] = task.opType;
+    p[1] = task.waveIdx;
+    p[2] = task.nTileIdx;
+    p[3] = task.waveM;
+    p[4] = task.reserved[0];
+    p[5] = task.reserved[1];
+    p[6] = task.reserved[2];
+    p[7] = task.reserved[3];
+}
+
+__aicore__ inline void ReadTaskSlot(
+    const Params& params, int32_t blockIdx, int32_t channel,
+    int32_t pp, DynamicTask& outTask)
+{
+    int32_t slotIdx = blockIdx * 4 + channel * 2 + pp;
+    __gm__ int32_t* p = ((__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot) + slotIdx * DYN_TASK_INTS;
+    outTask.opType      = AscendC::ReadGmByPassDCache(p + 0);
+    outTask.waveIdx     = AscendC::ReadGmByPassDCache(p + 1);
+    outTask.nTileIdx    = AscendC::ReadGmByPassDCache(p + 2);
+    outTask.waveM       = AscendC::ReadGmByPassDCache(p + 3);
+    outTask.reserved[0] = AscendC::ReadGmByPassDCache(p + 4);
+    outTask.reserved[1] = AscendC::ReadGmByPassDCache(p + 5);
+    outTask.reserved[2] = AscendC::ReadGmByPassDCache(p + 6);
+    outTask.reserved[3] = AscendC::ReadGmByPassDCache(p + 7);
+}
+
+
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 // coreInGroup / coresPerWave 控制本核在当前 wave 内的分片任务；多组核之间并行处理不同的 wave。
 // cube↔vec 信号是 per-pair 的（同 blockIdx 的 AIC 与 AIV 共享一个 flag 通道），不同 pair
@@ -551,6 +731,337 @@ __aicore__ inline void GroupMatmul2(
                                               MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
             }
         }
+    }
+}
+
+
+// ============================================================================
+// DynamicAicLoop — AIC 端动态调度主循环
+// ============================================================================
+// 每个 AIC 独立运行；每次 ClaimNextTask 拿一个 task → 写 slot + NotifyVector → mmad。
+// 内部建立两套 BlockMmad/Scheduler：一套给 GMM1（输出 float 到 UB），一套给 GMM2
+// （输出 bfloat16 到 GM）。每 task 用 task.nTileIdx 反算 mLoc/nLoc/kLoc。
+//
+// 参数：
+//   params       : 全局参数（含 workspaceInfo）
+//   problemShape : (m_i, n_full, k_hidden, 0)，m=expert 总 token 数；GMM1 用 (m, n, k)，
+//                  GMM2 用 (m, k_hidden, n=outputN)，n/k 维度通过参数 problemShape 推
+//   baseOffset   : 当前 expert 的偏移（IDX_A_OFFSET, IDX_B_OFFSET, ..., IDX_FLAG_OFFSET）
+//   blockIdx     : 本 AIC 的全局 blockIdx (GetBlockIdx() / GetTaskRation())
+//   expertIdx, maxWavesPerExpert: 用于在 counter 数组里定位
+//   waveCnt, m_i : 用于 wave 边界判断
+//   tileNumGmm1, tileNumGmm2 : 任务上限
+//
+// 同步：
+//   GMM1 task: AIC NotifyVector(pp)     → AIV0 WaitForCube(pp)
+//   GMM2 task: AIC NotifyVectorAIV1(pp) → AIV1 WaitForCube(pp)
+//   每 task 写 slot 后 SyncFunc<MTE3_MTE2>() 保证 task 内容先于 Notify 落 GM
+// ----------------------------------------------------------------------------
+template <typename ElementA, typename ElementB,
+          typename ElementMxScaleA, typename ElementMxScaleB,
+          bool IsInterleaved>
+__aicore__ inline void DynamicAicLoop(
+    const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                          int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
+    int32_t blockIdx,
+    uint32_t expertIdx, uint32_t maxWavesPerExpert,
+    uint64_t waveCnt, uint64_t m_i,
+    uint32_t tileNumGmm1, uint32_t tileNumGmm2)
+{
+    using QuantOutType = ElementA;  // 与 mega_moe.h 同名（fp8_e5m2/e4m3）
+
+    // ============================================================
+    // 阶段 0: 等本 expert 的 dispatch flag (only once per expert)
+    // ============================================================
+    // 等价于 GroupMatmulSwigluQuant L189-L196: 等 groupFlagListGm2 == epWorldSize*blockNumPerEP
+    __gm__ int32_t* dispatchFlagAddr = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
+    {
+        uint32_t targetValue = params.tilingData->epWorldSize * params.tilingData->blockNumPerEP;
+        while (targetValue != AscendC::ReadGmByPassDCache(dispatchFlagAddr)) {
+            int64_t st = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - st < 100) {}
+        }
+    }
+
+    int64_t flagOffsetForExpert = Get<IDX_FLAG_OFFSET>(baseOffset);
+
+    // ============================================================
+    // 阶段 1: 建立 GMM1 / GMM2 两套 Scheduler (用于反算 mLoc/nLoc/kLoc)
+    // ============================================================
+    uint32_t m_full = static_cast<uint32_t>(Get<M_VALUE>(problemShape));
+    uint32_t n_full = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // GMM1 mmad N
+    uint32_t k_full = static_cast<uint32_t>(Get<K_VALUE>(problemShape));  // hidden
+    uint32_t outputN = n_full / SWIGLU_N_HALF;
+
+    // GMM1 scheduler: 交织走全 n_full，非交织走 outputN
+    uint32_t schedulerN_gmm1 = IsInterleaved ? n_full : outputN;
+    BlockScheduler schedGmm1(
+        {static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(schedulerN_gmm1), static_cast<int64_t>(k_full)},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+
+    // GMM2 scheduler: K' = outputN, N' = k_full (hidden)
+    BlockScheduler schedGmm2(
+        {static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(k_full), static_cast<int64_t>(outputN)},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+
+    // ============================================================
+    // 阶段 2: pingpong 状态
+    // ============================================================
+    uint16_t gmm1Pp = 0, gmm2Pp = 0;
+    bool gmm1Used[2] = {false, false};
+    bool gmm2Used[2] = {false, false};
+
+    // ============================================================
+    // 阶段 3: 主循环 — claim → 写 slot → mmad
+    // ============================================================
+    DynamicTask task;
+    while (ClaimNextTask(params, expertIdx, maxWavesPerExpert,
+                          tileNumGmm1, tileNumGmm2, waveCnt, m_i,
+                          flagOffsetForExpert, task)) {
+        int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+
+        if (task.opType == DYN_OP_GMM1) {
+            // -- GMM1 task: 反算 blockCoord --
+            auto blockCoord = schedGmm1.GetBlockCoord(static_cast<uint32_t>(task.nTileIdx));
+            auto actualShape = schedGmm1.GetBlockShape(blockCoord);
+            // 注: schedGmm1 用了 m=L1_TILE_M 而非 m_i，所以 mLoc 一定是 0 (单 M-tile per wave)
+            // task.waveM 给出实际行数 (末尾 wave 可能 partial)
+
+            // -- 写 slot + Notify (等 AIV0 释放 slot 后写) --
+            if (gmm1Used[gmm1Pp]) {
+                WaitForVector(gmm1Pp);  // AIV0 的 NotifyCube → AIC WaitForVector
+            }
+            WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, static_cast<int32_t>(gmm1Pp), task);
+            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            NotifyVector(gmm1Pp);
+            gmm1Used[gmm1Pp] = true;
+
+            // -- mmad GMM1: 输出到 ptrA 对应 expert+wave 行 (但实际 fixpipe→UB，AIV 后 epi 写 ptrA2) --
+            // 这里复用 GroupMatmulSwigluQuant 内的 mmad block 模式：
+            //   a 地址 = ptrA + (IDX_A_OFFSET + waveRowOffset * k) * sizeof(QuantOutType)
+            //   b 地址 = bGmAddr + IDX_B_OFFSET * sizeof(QuantOutType)
+            //   输出 = UB l0cOutUbFirst (与 AIV epi 共享)
+            //
+            // [实现注] BlockMmad 模板实例化、layout/scale 设置同 GroupMatmulSwigluQuant
+            // L85-L165 那一大段。为避免双份 BlockMmad 在栈上 + 模板膨胀，建议把 GMM1 的
+            // mmad 抽到一个 inline helper 函数：
+            //
+            //   DoGmm1MmadOneTile<ElementA, ElementB, float, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
+            //       params, baseOffset, blockCoord, task.waveIdx, m_full, n_full, k_full);
+            //
+            // 该 helper 内部 build BlockMmad (栈上一次) + blockMmad() 一次 + fixpipe→UB。
+            //
+            // 当前留作下一步实化点（标记 [TODO-MMAD-GMM1]）：
+            //   实化时把 GroupMatmulSwigluQuant L85-L165 + L215-L257 (mmad call) 改造过来即可。
+
+            gmm1Pp ^= 1;
+        } else {  // DYN_OP_GMM2
+            // -- GMM2 task --
+            auto blockCoord = schedGmm2.GetBlockCoord(static_cast<uint32_t>(task.nTileIdx));
+            auto actualShape = schedGmm2.GetBlockShape(blockCoord);
+
+            if (gmm2Used[gmm2Pp]) {
+                WaitForVectorFromAIV1(gmm2Pp);
+            }
+            WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(gmm2Pp), task);
+            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            NotifyVectorAIV1(gmm2Pp);
+            gmm2Used[gmm2Pp] = true;
+
+            // -- mmad GMM2: 输出 bfloat16 到 ptrGmmOut --
+            // 地址：
+            //   a (GMM2 输入) = ptrA2 + (IDX_C_OFFSET + waveRowOffset * outputN) * sizeof(QuantOutType)
+            //   b           = b2GmAddr + IDX_B2_OFFSET * sizeof(QuantOutType)
+            //   c (输出)    = ptrGmmOut + (IDX_Y2_OFFSET + waveRowOffset * k_full) * sizeof(bfloat16_t)
+            //
+            // 注: GMM2 也需要等 fixpipe drain。NotifyVectorAIV1 的 PIPE_FIX 自带 drain，
+            //     AIV1 端的 WaitForCube on PIPE_V 保证读 GM 时数据已 commit。
+            //
+            // [TODO-MMAD-GMM2]: 实化时把 GroupMatmul2 L390-L515 改造过来。
+
+            gmm2Pp ^= 1;
+        }
+    }
+
+    // ============================================================
+    // 阶段 4: 发 END 到两个 channel + drain pending NotifyCube
+    // ============================================================
+    DynamicTask endTask{};
+    endTask.opType = DYN_OP_END;
+
+    if (gmm1Used[gmm1Pp]) {
+        WaitForVector(gmm1Pp);
+    }
+    WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, static_cast<int32_t>(gmm1Pp), endTask);
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    NotifyVector(gmm1Pp);
+    gmm1Used[gmm1Pp] = true;
+    gmm1Pp ^= 1;
+
+    if (gmm2Used[gmm2Pp]) {
+        WaitForVectorFromAIV1(gmm2Pp);
+    }
+    WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(gmm2Pp), endTask);
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    NotifyVectorAIV1(gmm2Pp);
+    gmm2Used[gmm2Pp] = true;
+    gmm2Pp ^= 1;
+
+    // Drain 剩余 NotifyCube：两个 channel 各最多 2 个 (含 END)
+    // pingpong FIFO 顺序：上一发先回，END 后回
+    if (gmm1Used[gmm1Pp]) {
+        WaitForVector(gmm1Pp);
+    }
+    gmm1Pp ^= 1;
+    if (gmm1Used[gmm1Pp]) {
+        WaitForVector(gmm1Pp);
+    }
+    if (gmm2Used[gmm2Pp]) {
+        WaitForVectorFromAIV1(gmm2Pp);
+    }
+    gmm2Pp ^= 1;
+    if (gmm2Used[gmm2Pp]) {
+        WaitForVectorFromAIV1(gmm2Pp);
+    }
+}
+
+// ============================================================================
+// DynamicAiv0Loop — AIV0 (subBlock 0) 端 GMM1 epi (sw+quant) 主循环
+// ============================================================================
+// 协议: WaitForCube(pp) → ReadTaskSlot → if END break → 调 epi → NotifyCube(pp) → pp^=1
+// 复用 epilogueOp_ 对象（caller 传入），但每 task 入口必须用 task.waveIdx 重设 GM 地址
+// (UpdateGlobalAddr)，否则 epi 内部用的还是上一 task 的 wave 偏移。
+template <typename ElementA, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB,
+          bool IsInterleaved>
+__aicore__ inline void DynamicAiv0Loop(
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, IsInterleaved>& epilogueOp,
+    const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                          int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
+    int32_t blockIdx)
+{
+    uint32_t n_full = static_cast<uint32_t>(Get<N_VALUE>(problemShape));
+    uint32_t k_full = static_cast<uint32_t>(Get<K_VALUE>(problemShape));
+    uint32_t outputN = n_full / SWIGLU_N_HALF;
+    auto scaleOutputN = Ops::Base::CeilDiv(outputN, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
+    // 用 GMM1 scheduler 反算 blockCoord
+    uint32_t schedulerN_gmm1 = IsInterleaved ? n_full : outputN;
+    BlockScheduler schedGmm1(
+        {static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(schedulerN_gmm1), static_cast<int64_t>(k_full)},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+
+    epilogueOp.UpdateNextProblem({L1_TILE_M, outputN, k_full, 0});
+
+    uint16_t pp = 0;
+    DynamicTask task;
+    while (true) {
+        WaitForCube(pp);
+        ReadTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, static_cast<int32_t>(pp), task);
+        if (task.opType == DYN_OP_END) {
+            NotifyCube(pp);
+            break;
+        }
+
+        // 用 task.waveIdx 重设 epi 内部 GM 指针：ptrA2, ptrA2Scale, groupFlagListGm
+        int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+        AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
+            Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN),
+            Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN),
+            Get<IDX_FLAG_OFFSET>(baseOffset) + static_cast<int64_t>(task.waveIdx),
+            0L, 0L, 0L};
+        epilogueOp.UpdateGlobalAddr(vecBaseOffset);
+
+        // 反算 mLoc/nLoc
+        auto blockCoord = schedGmm1.GetBlockCoord(static_cast<uint32_t>(task.nTileIdx));
+        auto actualShape = schedGmm1.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+
+        uint32_t swigluNLoc;
+        int64_t swigluN_tile;
+        if constexpr (IsInterleaved) {
+            swigluNLoc = nLoc / SWIGLU_N_HALF;
+            swigluN_tile = static_cast<int64_t>(Get<N_VALUE>(actualShape)) / SWIGLU_N_HALF;
+        } else {
+            swigluNLoc = nLoc;
+            swigluN_tile = static_cast<int64_t>(Get<N_VALUE>(actualShape));
+        }
+        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
+            Get<M_VALUE>(actualShape), swigluN_tile, 0, 0};
+        Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+            mLoc * outputN + swigluNLoc,
+            mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                CeilDiv(swigluNLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+            0, mLoc, 0, 0};
+
+        AscendC::SetCtrlSpr<60, 60>(0);
+        if constexpr (IsInterleaved) {
+            epilogueOp(epilogueShape, epilogueOffset, static_cast<uint16_t>(0));
+        } else {
+            epilogueOp(epilogueShape, epilogueOffset);
+        }
+        // epi 内部最后 atomic_add(groupFlagListGm[waveIdx])，触发 GMM2 解锁
+
+        NotifyCube(pp);
+        pp ^= 1;
+    }
+}
+
+// ============================================================================
+// DynamicAiv1Loop — AIV1 (subBlock 1) 端 GMM2 combine 主循环
+// ============================================================================
+template <typename ElementC>  // = bfloat16_t
+__aicore__ inline void DynamicAiv1Loop(
+    const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                          int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
+    int32_t blockIdx, int32_t rankId, uint32_t expertIdx)
+{
+    uint32_t n_full = static_cast<uint32_t>(Get<N_VALUE>(problemShape));
+    uint32_t k_full = static_cast<uint32_t>(Get<K_VALUE>(problemShape));
+    uint32_t outputN = n_full / SWIGLU_N_HALF;
+
+    // 用 GMM2 scheduler 反算 blockCoord
+    BlockScheduler schedGmm2(
+        {static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(k_full), static_cast<int64_t>(outputN)},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+
+    uint16_t pp = 0;
+    DynamicTask task;
+    while (true) {
+        WaitForCube(pp);  // AIV1 端: wait AIC NotifyVectorAIV1 → 底层 flag id = pp (AIV1 端不+16)
+        ReadTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(pp), task);
+        if (task.opType == DYN_OP_END) {
+            NotifyCube(pp);
+            break;
+        }
+
+        // 反算 mLoc/nLoc
+        auto blockCoord = schedGmm2.GetBlockCoord(static_cast<uint32_t>(task.nTileIdx));
+        auto actualShape = schedGmm2.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+
+        int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+        GM_ADDR gmm2OutGlobal = params.workspaceInfo.ptrGmmOut +
+            (Get<IDX_Y2_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) * sizeof(ElementC);
+
+        int64_t ubOffset = 0;
+        LocalTensor<ElementC> ubBuffer = LocalTensor<ElementC>(TPosition::VECIN, ubOffset,
+                                                                L1_TILE_M * L1_TILE_N);
+        MegaMoeCombineImpl::CombineTile<ElementC, decltype(actualShape)>(
+            expertIdx, mLoc, nLoc, k_full, rankId,
+            gmm2OutGlobal, params, ubBuffer, actualShape,
+            static_cast<uint64_t>(waveRowOffset));
+
+        NotifyCube(pp);
+        pp ^= 1;
     }
 }
 
