@@ -82,16 +82,12 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
         }
     }
 
-    GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
-    GM_ADDR bDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight));
-    GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-    GM_ADDR biasDataAddr =
-        mmTilingDataIn->isBias == 1 ? reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias))
-                                    : nullptr;
+    GM_ADDR aDataAddr = x;
+    GM_ADDR bDataAddr = weight;
+    GM_ADDR yDataAddr = y;
+    GM_ADDR biasDataAddr = mmTilingDataIn->isBias == 1 ? bias : nullptr;
     GM_ADDR perTokenScaleDataAddr = perTokenScale;
-    GM_ADDR scaleDataAddr =
-        scale == nullptr ? nullptr
-                         : reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
+    GM_ADDR scaleDataAddr = scale;
     GM_ADDR groupListDataAddr = groupList;
 
     if ASCEND_IS_AIC {
