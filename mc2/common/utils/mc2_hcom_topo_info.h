@@ -36,6 +36,7 @@ public:
     static HcclResult TryGetGroupTopoType(const char *group, uint32_t *topoType);
     static HcclResult CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm);
     static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t* cclBufferSize);
+    static HcclResult CommGetHcclBufferByGroup(const char *group, void **buffer, uint64_t *size);
 
 private:
     static MC2HcomTopology &GetInstance();
@@ -50,6 +51,7 @@ private:
     HcclResult CallCommGetInstSizeByNetLayer(HcclComm comm, uint32_t netLayer, uint32_t *rankNum) const;
 #endif
     HcclResult CallCommGetCCLBufSizeCfg(HcclComm comm, uint64_t *cclBufferSize) const;
+    HcclResult CallCommGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size) const;
 
     void *handle_ = nullptr;
     bool isNewHcclLib = true;
@@ -64,6 +66,7 @@ private:
     using FuncGetInstSize = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 #endif
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
+    using FuncGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);
     void *hcclHandle_ = nullptr;
     FuncGetHandle getCommHandle_ = nullptr;
 #ifdef BUILD_OPEN_PROJECT
@@ -75,6 +78,7 @@ private:
     FuncGetInstSize getInstSize_ = nullptr;
 #endif
     FuncGetCclBufferSize getCclBufferSize_ = nullptr;
+    FuncGetHcclBuffer getHcclBuffer_ = nullptr;
 };
 }  // namespace Mc2Hcom
 #endif

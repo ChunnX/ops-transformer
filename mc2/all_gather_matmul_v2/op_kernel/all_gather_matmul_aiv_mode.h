@@ -296,7 +296,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     }
 
     accumWorkSpacePingPong = tilingData.allGatherMatmulInfo.accumWorkSpacePingPong;
-    int32_t workspaceM = accumWorkSpacePingPong ? m : MAX_BLOCK_COUNT * m0 * pValue;
+    int32_t workspaceM = accumWorkSpacePingPong ? MAX_BLOCK_COUNT * m0 * pValue : m;
     uint64_t gm_scale_workspace_st = static_cast<uint64_t>(aAlignSize) + bAlignSize
                                     + workspaceM * n * worldSize * sizeof(int32_t);
  	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
@@ -593,7 +593,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     uint64_t blockStInWorkspace = (cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
     uint64_t blockSizeInWorkspace = m0 * pValue * n;
 
-    if (accumWorkSpacePingPong) {
+    if (!accumWorkSpacePingPong) {
         blockStInWorkspace = blockSt;
         blockSizeInWorkspace = blockSize;
     }

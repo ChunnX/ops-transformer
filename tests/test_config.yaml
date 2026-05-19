@@ -450,7 +450,7 @@ gmm:
     options:
       - grouped_matmul
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant:
     module: True
@@ -464,7 +464,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant_v2:
     module: True
@@ -492,7 +492,7 @@ gmm:
     options:
       - grouped_matmul_add
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_finalize_routing:
     module: True
@@ -856,7 +856,7 @@ moe:
       - moe/moe_token_unpermute/op_graph
       - moe/moe_token_unpermute/op_kernel
     test:
-      examples: False # aclnn_util.h报错
+      examples: True
     options:
       - moe_token_unpermute
       - moe_token_permute_with_routing_map_grad
@@ -911,7 +911,7 @@ moe:
     options:
       - moe_token_unpermute_with_routing_map
     test:
-      examples: False
+      examples: True
 
   moe_token_unpermute_with_routing_map_grad:
     module: True
@@ -1047,7 +1047,7 @@ mc2:
         - mc2/all_gather_matmul_v2/op_graph
         - mc2/all_gather_matmul_v2/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - all_gather_matmul_v2
 
@@ -1365,6 +1365,24 @@ mc2:
         - moe_distribute_dispatch_v3
         - moe_distribute_combine_v2
         - moe_distribute_combine_v3
+
+    distribute_barrier_extend:
+      module: True
+      src:
+        - mc2/distribute_barrier
+        - mc2/distribute_barrier_extend
+        - mc2/common
+      exclude:
+        - mc2/distribute_barrier/docs
+        - mc2/distribute_barrier/README.md
+        - mc2/distribute_barrier_extend/README.md
+      ut_cov_exclude:
+        - mc2/distribute_barrier_extend/op_graph
+        - mc2/distribute_barrier_extend/op_kernel
+      test:
+        examples: False
+      options:
+        - distribute_barrier_extend
 
     elastic_receivable_info_collect:
       module: True
@@ -1779,5 +1797,5 @@ mhc:
       - mhc/mhc_post_backward/examples
       - mhc/mhc_post_backward/tests
     test:
-      examples: False
+      examples: True
       ut: True

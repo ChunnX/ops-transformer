@@ -29,8 +29,8 @@ class FlashAttenOpBuilder(OpBuilder):
         return "npu_flash_attn(Tensor q, Tensor k, Tensor v," \
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None," \
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None," \
-            "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?metadata=None," \
-            "float softmax_scale=1.0, int mask_mode=1, int win_left=-1, int win_right=-1," \
+            "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?attn_mask=None, Tensor?metadata=None," \
+            "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1," \
             "int max_seqlen_q=-1, int max_seqlen_kv=-1," \
             "str layout_q=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\"," \
             "int return_softmax_lse=0, int deterministic=0)->(Tensor, Tensor)"
@@ -44,7 +44,7 @@ class FlashAttenOpBuilder(OpBuilder):
         def npu_flash_attn_meta(q, k, v, block_table=None, cu_seqlens_q=None,
                                 cu_seqlens_kv=None, seqused_q=None,
                                 seqused_kv=None, sinks=None, attn_mask=None, metadata=None,
-                                softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1,
+                                softmax_scale=1.0, mask_mode=0, win_left=-1, win_right=-1,
                                 max_seqlen_q=-1, max_seqlen_kv=-1,
                                 layout_q="BSND", layout_kv="BSND", layout_out="BSND",
                                 return_softmax_lse=0, deterministic=0):
@@ -87,7 +87,10 @@ class FlashAttenOpBuilder(OpBuilder):
                 attentionOutSize = (bSize, sSize, nSize, dSize)
 
             
-            return attentionOutSize, softmaxOutSize
+            return (
+ 	                 torch.empty(attentionOutSize, dtype=q.dtype, device='meta'),
+ 	                 torch.empty(softmaxOutSize, dtype=q.dtype, device='meta')
+ 	             )
 
 
 # Instantiate the builder
@@ -99,7 +102,7 @@ op_module = flash_attn_op_builder.load()  # Compiles/loads the .so file
 def npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None,
                                 cu_seqlens_kv=None, seqused_q=None,
                                 seqused_kv=None, sinks=None, attn_mask=None, metadata=None,
-                                softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1,
+                                softmax_scale=1.0, mask_mode=0, win_left=-1, win_right=-1,
                                 max_seqlen_q=-1, max_seqlen_kv=-1,
                                 layout_q="BSND", layout_kv="BSND", layout_out="BSND",
                                 return_softmax_lse=0, deterministic=0):
@@ -107,7 +110,6 @@ def npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None,
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    print("flash_attn entrance ========================\n")
     return op_module.npu_flash_attn(q,  k, v, block_table, cu_seqlens_q,
                                     cu_seqlens_kv, seqused_q,
                                     seqused_kv, sinks, attn_mask, metadata,

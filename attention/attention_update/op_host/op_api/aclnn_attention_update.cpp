@@ -131,7 +131,7 @@ static inline bool CheckShape(const aclTensorList* lse, const aclTensorList* loc
                                                     LSE_DIM_NUM, lseShape.GetDimNum()),
         return false);
     OP_CHECK(goShape.GetDimNum() == GO_DIM_NUM,
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lse should be %ld, but which is %ld.",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of localOut should be %ld, but which is %ld.",
                                                     GO_DIM_NUM, goShape.GetDimNum()),
         return false);
     for (size_t i = 1; i < lseSp; i++) {

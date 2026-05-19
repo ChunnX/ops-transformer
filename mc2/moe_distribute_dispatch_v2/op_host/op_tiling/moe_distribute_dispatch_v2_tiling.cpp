@@ -1536,7 +1536,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 inline void MoeDistributeDispatchV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
     const char* socName = aclrtGetSocName();
-    if (std::strstr(socName, "Ascend950") == nullptr) {
+    if ((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910B") == nullptr)) {
         return;
     }
     Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeDispatchV2");

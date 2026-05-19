@@ -326,10 +326,7 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
         baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
-        if ((baseShapeInfo_.heSize == 7168 || baseShapeInfo_.heSize == 7680) &&
-            baseShapeInfo_.nSize == 128) { // 后续泛化放开限制
-                scenarioInfo_.splitMFlag_ = 1U;
-        }
+        scenarioInfo_.splitMFlag_ = 1U;
     }
     return ge::GRAPH_SUCCESS;
 }

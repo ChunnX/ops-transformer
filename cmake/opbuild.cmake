@@ -251,6 +251,44 @@ function(gen_aclnn_with_opdef)
   endif()
 endfunction()
 
+function(gen_aicpu_ini_from_opdef)
+  message(STATUS "Opbuild generating AICPU ini/json from OpDef")
+  cmake_parse_arguments(OPBUILD "" "OUT_DIR;PROJECT_NAME;ACCESS_PREFIX;ENABLE_SOURCE" "OPS_SRC" ${ARGN})
+  if(NOT OPBUILD_OPS_SRC)
+    message(STATUS "No AICPU OpDef sources, skip.")
+    return()
+  endif()
+
+  file(MAKE_DIRECTORY ${OPBUILD_OUT_DIR})
+
+  set(AICPU_OPDEF_SO ${OPBUILD_OUT_DIR}/libaicpu_ops.so)
+  set(AICPU_INI ${OPBUILD_OUT_DIR}/aicpu_kernel.ini)
+  set(opbuild_env "")
+  if(NOT "${OPBUILD_PROJECT_NAME}x" STREQUAL "x")
+    list(APPEND opbuild_env "OPS_PROJECT_NAME=${OPBUILD_PROJECT_NAME}")
+  endif()
+  if(NOT "${OPBUILD_ACCESS_PREFIX}x" STREQUAL "x")
+    list(APPEND opbuild_env "OPS_DIRECT_ACCESS_PREFIX=${OPBUILD_ACCESS_PREFIX}")
+  endif()
+
+  add_custom_command(
+    OUTPUT ${AICPU_INI}
+    COMMAND ${CMAKE_CXX_COMPILER} -g -fPIC -shared -std=c++11 ${OPBUILD_OPS_SRC} -D_GLIBCXX_USE_CXX11_ABI=0
+            -I ${ASCEND_CANN_PACKAGE_PATH}/include
+            -I ${CMAKE_SOURCE_DIR}/common/include
+            -L ${ASCEND_CANN_PACKAGE_PATH}/lib64
+            -lexe_graph -lregister -ltiling_api
+            -o ${AICPU_OPDEF_SO}
+    COMMAND ${CMAKE_COMMAND} -E env ENABLE_SOURCE_PACKAGE=${OPBUILD_ENABLE_SOURCE} ${opbuild_env}
+            ${OP_BUILD_TOOL} ${AICPU_OPDEF_SO} ${OPBUILD_OUT_DIR} --aicpu
+    DEPENDS ${OPBUILD_OPS_SRC}
+    COMMENT "Generating aicpu_kernel.ini from *_aicpu_def.cpp"
+    VERBATIM
+  )
+
+  message(STATUS "Opbuild generating AICPU ini/json from OpDef - done")
+endfunction()
+
 function(merge_graph_headers)
   set(oneValueArgs TARGET OUT_DIR)
   cmake_parse_arguments(MGPROTO "" "${oneValueArgs}" "" ${ARGN})
