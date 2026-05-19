@@ -243,13 +243,6 @@ public:
                                            constInfo.logSumExpSize);
         }
     }
-
-        accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
-        softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
-        softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
-                                       constInfo.logSumExpSize);
-    }
-
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo)
