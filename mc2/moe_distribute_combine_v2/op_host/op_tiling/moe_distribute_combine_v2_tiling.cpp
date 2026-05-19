@@ -1379,6 +1379,15 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
     uint32_t hFloatSize = axisH * static_cast<uint32_t>(sizeof(float));
     uint32_t hFloatAlign32Size = (hFloatSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t hFloatAlign256Size = (hFloatSize + ALIGNED_LEN - 1) / ALIGNED_LEN * ALIGNED_LEN;
+    bool isA5Int8 = (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) && (commQuantModePtr != nullptr) &&
+        (*commQuantModePtr == INT8_COMM_QUANT);
+    // A5 + INT8 场景，工作区按 512B 对齐，避免 totalBufferSize 低估导致 UB 溢出
+    if (isA5Int8) {
+        constexpr uint32_t kA5Int8FusedAlign = ALIGNED_LEN * 2U;
+        uint32_t hFloatA5Int8Size = (hFloatSize + kA5Int8FusedAlign - 1) / kA5Int8FusedAlign * kA5Int8FusedAlign;
+        hFloatAlign32Size = hFloatA5Int8Size;
+        hFloatAlign256Size = hFloatA5Int8Size;
+    }
     uint32_t bsKFloatAlign = (axisBS * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
     uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum, maxSizeRowTmpFloatBuf = hFloatAlign32Size, totalBufferSize = 0;
@@ -1399,7 +1408,10 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
             + flagRcvCount * STATE_OFFSET * BUFFER_NUM + UB_ALIGN;
     }
     if (*commQuantModePtr == INT8_COMM_QUANT) {
-        uint32_t scaleNum = (hExpandXAlign32Size / sizeof(expandXDesc->GetDataType())) / static_cast<uint32_t>(UB_ALIGN / sizeof(float));
+        uint32_t scaleBaseCnt = isA5Int8
+            ? hFloatAlign256Size / sizeof(float)
+            : hExpandXAlign32Size / sizeof(expandXDesc->GetDataType());
+        uint32_t scaleNum = scaleBaseCnt / static_cast<uint32_t>(UB_ALIGN / sizeof(float));
         totalBufferSize += (scaleNum * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     } else if ((*commQuantModePtr == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
         (*commQuantModePtr == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT))) {
