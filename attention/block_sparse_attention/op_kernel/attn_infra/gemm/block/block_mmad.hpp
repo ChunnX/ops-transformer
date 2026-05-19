@@ -17,7 +17,7 @@
 
 namespace NpuArch::Gemm::Block {
 
-#if (__CCE_AICORE__ == 220)
+#if (__CCE_AICORE__ >= 220)
 template <
     class DispatchPolicy,
     class L1TileShape,
@@ -54,7 +54,7 @@ struct BlockMmadTla {
 #endif
 
 } // namespace NpuArch::Gemm::Block
-#if (__CCE_AICORE__ == 220)
+#if (__CCE_AICORE__ >= 220)
 #include "../../../attn_infra/gemm/block/block_mmad_qk.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_pv.hpp"
 #endif

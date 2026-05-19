@@ -26,7 +26,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention(__gm__ uint8_t* que
         reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(tiling);
     uint64_t tilingKey = tilingDataPtr->tilingKey;
 
-#if (__CCE_AICORE__ == 220)
+#if (__CCE_AICORE__ >= 220)
     TILING_KEY_IS(QF16_KVF16_TND_TND_NOCACHE_FLOATSM_NOMASK_RFA_TILING);
     TILING_KEY_IS(QF16_KVF16_TND_TND_NOCACHE_HALFSM_NOMASK_RFA_TILING);
     TILING_KEY_IS(QBF16_KVBF16_TND_TND_NOCACHE_FLOATSM_NOMASK_RFA_TILING);
