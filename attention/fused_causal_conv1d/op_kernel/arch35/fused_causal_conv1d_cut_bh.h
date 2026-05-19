@@ -202,6 +202,7 @@ private:
     int32_t dimOffsetPerLoop_;
     int64_t isResidualConnection_;
     int8_t padSlotId_;
+    int64_t yDim_;
 
     // ========== 新增成员变量（第二期需求）==========
     int64_t apcEnable_;       // APC 是否开启（F1）
@@ -230,16 +231,16 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight
     if (xInputMode_ == 0) {
         xGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * dimSum_);
         if(inplace_) {
-            yGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * dimSum_);
+            yGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * yDim_);
         } else {
-            yGm.SetGlobalBuffer((__gm__ T *)y, batchSize_ * seqLen_ * dim_);
+            yGm.SetGlobalBuffer((__gm__ T *)y, batchSize_ * seqLen_ * yDim_);
         }
     } else {
         xGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * dimSum_);
         if(inplace_) {
-            yGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * dimSum_);
+            yGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * yDim_);
         } else {
-            yGm.SetGlobalBuffer((__gm__ T *)y, cuSeqLen_ * dim_);
+            yGm.SetGlobalBuffer((__gm__ T *)y, cuSeqLen_ * yDim_);
         }
     }
     weightGm.SetGlobalBuffer((__gm__ T *)weight, kernelSize_ * dim_);
@@ -311,6 +312,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     dimSum_ = tilingData->xStride;
     cacheLenSum_ = tilingData->cacheStride1;
     cacheBatchLenSum_ = tilingData->cacheStride0;
+    yDim_ = (inplace_) ? dimSum_ : dim_;
 
     // === 当前核的参数计算 ===
     blockIdx_ = GetBlockIdx();
@@ -495,13 +497,13 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
             int32_t firstBatchIdxInLoop = firstBatchIdx_ + batchLoop * ubMainFactorBS_;
             uint16_t blockCount = batchNumInLoop_ * seqLen_;
             int64_t startSeqIdx = firstBatchIdxInLoop * seqLen_;
-            int64_t yOffset = firstBatchIdxInLoop * seqLen_ * dim_ + dimOffset_ + dimOffsetPerLoop_;
+            int64_t yOffset = firstBatchIdxInLoop * seqLen_ * yDim_ + dimOffset_ + dimOffsetPerLoop_;
             if (xInputMode_ == 1) {
                 blockCount = queryStartLocLocal.GetValue(firstBatchIdxInLoop + batchNumInLoop_) -
                              queryStartLocLocal.GetValue(firstBatchIdxInLoop);
                 startSeqIdx = queryStartLocLocal.GetValue(firstBatchIdxInLoop) -
                               queryStartLocLocal.GetValue(0);
-                yOffset = startSeqIdx * dim_ + dimOffset_ + dimOffsetPerLoop_;
+                yOffset = startSeqIdx * yDim_ + dimOffset_ + dimOffsetPerLoop_;
             }
             int64_t xOffset = startSeqIdx * dimSum_ + dimOffset_ + dimOffsetPerLoop_;
             CopyIn(batchLoop, dimLoop, blockCount, xOffset);
@@ -720,7 +722,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
     yParams.blockCount = yBlockCount;
     yParams.blockLen = dimSizeInLoop_ * sizeof(T);
     yParams.srcStride = 0;
-    yParams.dstStride = (inplace_) ? (dimSum_ - dimSizeInLoop_) * sizeof(T) : (dim_ - dimSizeInLoop_) * sizeof(T);
+    yParams.dstStride = (yDim_ - dimSizeInLoop_) * sizeof(T);
 
     // 写 y GM
     DataCopyPad(yGm[yOffset], yLocal, yParams);
