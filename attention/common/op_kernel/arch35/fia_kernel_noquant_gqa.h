@@ -736,10 +736,11 @@ public:
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
-        // MTE越界定位: 只在device打印, 不阻断
+        // MTE越界定位: gS1Cur超范围直接挂死
         if (gS1Cur * mBaseSize >= gS1Size) {
-            PRINTF("zzyzzy ERROR: gS1Cur(%u)*mBaseSize >= gS1Size(%llu) aicIdx:%u bIdx:%u loop:%llu\n",
+            PRINTF("zzyzzy FATAL: gS1Cur(%u)*mBaseSize >= gS1Size(%llu) aicIdx:%u bIdx:%u loop:%llu\n",
                    gS1Cur, gS1Size, constInfo.aicIdx, info.bIdx, loop);
+            while (1) {}
         }
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
@@ -981,8 +982,9 @@ public:
                 uint64_t gS1Sz = actSeqLensQ * constInfo.gSize;
                 uint64_t gS1LT = (gS1Sz + mBaseSize - 1) / mBaseSize;
                 if (gS1LT > 0U && gS1Cur >= gS1LT) {
-                    PRINTF("zzyzzy ERROR: S1OUSP gS1Cur(%u)>=gS1LT(%llu) aicIdx:%u bN2Cur:%u coreGS1:%u\n",
+                    PRINTF("zzyzzy FATAL: S1OUSP gS1Cur(%u)>=gS1LT(%llu) aicIdx:%u bN2Cur:%u coreGS1:%u\n",
                            gS1Cur, gS1LT, constInfo.aicIdx, bN2Cur, coreGS1Loops);
+                    while (1) {}
                 }
             }
             // PRINTF("update bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
