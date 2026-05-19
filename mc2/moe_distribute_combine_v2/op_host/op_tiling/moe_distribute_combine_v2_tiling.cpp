@@ -1420,13 +1420,14 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
     }
     if (commQuantMode == MXFP8_E5M2_COMM_QUANT || commQuantMode == MXFP8_E4M3_COMM_QUANT) {
         uint32_t scaleNum_ = Align2(Ceil32(axisH));
-        uint32_t sendCntNum = 100; // TODO sendCntNum 不确定
+        uint32_t sendCntNum = 512; // TODO sendCntNum 不确定
         uint32_t hExpandXAlignSize = Align128(axisH) * sizeof(expandXDesc->GetDataType());
-        uint32_t tokenScaleAlign32Size = Align256(axisH) / sizeof(expandXDesc->GetDataType()) + scaleNum_;
+        uint32_t tokenScaleAlign32Size = Ceil((Align256(axisH) / sizeof(expandXDesc->GetDataType()) + scaleNum_) *
+            sizeof(expandXDesc->GetDataType()), UB_ALIGN) * UB_ALIGN;
         uint32_t hFloatAlign256Cnt = hFloatAlign256Size / sizeof(float);
         uint32_t xMaxBufSize = (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float);
-        tilingData->moeDistributeCombineV2Info.bufferNum = (GetUBSizeInBytes() - UB_ALIGN - (hFloatAlign256Size * 2 + xMaxBufSize +
-            hFloatAlign256Size) - sendCntNum * EXPAND_IDX_INFO * sizeof(int32_t)) / (hExpandXAlignSize + tokenScaleAlign32Size) / 2 * 2;
+        tilingData->moeDistributeCombineV2Info.bufferNum = (GetUBSizeInBytes() - UB_ALIGN - (hFloatAlign256Size * 2 +
+            xMaxBufSize + hFloatAlign32Size) - sendCntNum * EXPAND_IDX_INFO * sizeof(int32_t)) / (hExpandXAlignSize + tokenScaleAlign32Size) / 2 * 2;
     } else {
         tilingData->moeDistributeCombineV2Info.bufferNum = totalBufferSize > ubSize ? BUFFER_SINGLE : BUFFER_NUM;
     }
