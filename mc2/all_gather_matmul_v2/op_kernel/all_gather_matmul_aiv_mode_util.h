@@ -161,6 +161,8 @@ FORCE_INLINE_AICORE void CheckBuffFlag(__gm__ int32_t *buff, TBuf<AscendC::TPosi
 
 FORCE_INLINE_AICORE void SetBuffFlag(__gm__ int32_t *buff, TBuf<AscendC::TPosition::VECCALC> uBuf_, int32_t flag)
 {
+    SetFlagHardEvent::MTE3_S(EVENT_ID2);
+    WaitFlagHardEvent::MTE3_S(EVENT_ID2);
     LocalTensor<int32_t> ubTensor = uBuf_.AllocTensor<int32_t>();
     ubTensor(0) = flag;
     SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
