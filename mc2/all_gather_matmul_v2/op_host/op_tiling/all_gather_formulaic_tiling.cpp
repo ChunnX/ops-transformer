@@ -14,6 +14,7 @@
  */
 #include <iostream>
 #include "mc2_log.h"
+#include "util/math_util.h"
 #include "all_gather_formulaic_tiling.h"
 
 void AllGatherPlusMMV2::PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime)
@@ -132,4 +133,166 @@ void AllGatherPlusMMV2::SelectTilingMethod()
         ", numLongTile %lu, shortTileLen %lu, numShortTile %lu",
         tilingM_.cutRes.shortTileAtBack, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
         tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile);
+}
+
+void AllGatherPlusMMV2::CheckHCCLLimit()
+{
+    // 计算单次通信量（假设整个M作为一块）
+    uint64_t tileSize = clusterInfo_.mValue * clusterInfo_.kValue *
+                        clusterInfo_.inMatrixADtypeSize * rankDim_;
+
+    if (tileSize <= HCCL_MEM_LIMIT) {
+        hcclLimited_ = false;
+        hcclMaxTileM_ = UINT64_MAX;
+        OPS_LOG_D("AllGatherMatmul", "HCCL limit not triggered. totalSize=%lu", tileSize);
+        return;
+    }
+
+    hcclLimited_ = true;
+    // 计算满足HCCL限制的最大tileM
+    hcclMaxTileM_ = HCCL_MEM_LIMIT /
+                    (clusterInfo_.kValue * clusterInfo_.inMatrixADtypeSize * rankDim_);
+
+    OPS_LOG_I("AllGatherMatmul", "HCCL limit triggered. totalSize=%lu, maxTileM=%lu, limit=%lu",
+              tileSize, hcclMaxTileM_, HCCL_MEM_LIMIT);
+}
+
+void AllGatherPlusMMV2::AdjustForHCCLLimit()
+{
+    if (!hcclLimited_) {
+        return;
+    }
+
+    uint64_t mValue = clusterInfo_.mValue;
+    uint64_t minTileLen = tilingM_.GetMinLen();
+
+    OPS_LOG_I("AllGatherMatmul", "Before HCCL adjust: tileM=%lu, tileCnt=%lu, tailM=%lu, shortTileAtBack=%d",
+              tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
+              tilingM_.cutRes.shortTileLen, tilingM_.cutRes.shortTileAtBack);
+
+    if (tilingM_.cutRes.shortTileAtBack) {
+        // 计算Bound：短块后置，保持 tailM <= minTileLen
+        AdjustForCalcBoundHCCL(mValue, minTileLen);
+    } else {
+        // 通信Bound：短块前置，保持切分均衡
+        AdjustForCommBoundHCCL(mValue, minTileLen);
+    }
+
+    OPS_LOG_I("AllGatherMatmul", "After HCCL adjust: tileM=%lu, tileCnt=%lu, tailM=%lu",
+              tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
+              tilingM_.cutRes.shortTileLen);
+}
+
+void AllGatherPlusMMV2::AdjustForCalcBoundHCCL(uint64_t mValue, uint64_t minTileLen)
+{
+    // 目标：tileM <= hcclMaxTileM_，tailM <= minTileLen
+    // 计算最少需要的轮次
+    uint64_t minTileCnt = Ops::Base::CeilDiv(mValue, hcclMaxTileM_);
+    uint64_t tileCnt = minTileCnt;
+    uint64_t tileM = Ops::Base::FloorDiv(mValue - minTileLen, tileCnt);
+
+    // 确保 tileM <= hcclMaxTileM_
+    if (tileM > hcclMaxTileM_) {
+        tileM = hcclMaxTileM_;
+        tileCnt = Ops::Base::CeilDiv(mValue - minTileLen, tileM);
+    }
+
+    // 确保 tileM >= minTileLen
+    if (tileM < minTileLen) {
+        tileM = minTileLen;
+        tileCnt = Ops::Base::CeilDiv(mValue, tileM);
+    }
+
+    // 计算tailM
+    uint64_t tailM = mValue - tileCnt * tileM;
+    // 验证tailM约束
+    if (tailM > minTileLen) {
+        // tailM太大，增加轮次
+        tileCnt++;
+        tileM = Ops::Base::FloorDiv(mValue - minTileLen, tileCnt);
+        tileM = std::min(tileM, hcclMaxTileM_);
+        tileM = std::max(tileM, minTileLen);
+        tailM = mValue - tileCnt * tileM;
+    }
+
+    // 更新切分结果
+    if (tailM == 0) {
+        tilingM_.cutRes.numShortTile = 0;
+        tilingM_.cutRes.shortTileLen = 0;
+    } else {
+        tilingM_.cutRes.numShortTile = 1;
+        tilingM_.cutRes.shortTileLen = tailM;
+    }
+
+    tilingM_.cutRes.longTileLen = tileM;
+    tilingM_.cutRes.numLongTile = tileCnt;
+    tilingM_.cutRes.totalTileCnt = tileCnt + tilingM_.cutRes.numShortTile;
+}
+
+void AllGatherPlusMMV2::AdjustForCommBoundHCCL(uint64_t mValue, uint64_t minTileLen)
+{
+    // 目标：tileM <= hcclMaxTileM_，切分尽量均衡
+    // 计算最少需要的轮次
+    uint64_t minTileCnt = Ops::Base::CeilDiv(mValue, hcclMaxTileM_);
+    uint64_t tileCnt = minTileCnt;
+    uint64_t tileM = Ops::Base::CeilDiv(mValue, tileCnt);
+    tileM = std::min(tileM, hcclMaxTileM_);
+
+    // 计算tailM
+    uint64_t actualTileCnt = Ops::Base::FloorDiv(mValue, tileM);
+    uint64_t tailM = mValue - actualTileCnt * tileM;
+
+    // 如果tailM过大（超过tileM的一半），增加轮次使其更均衡
+    if (tailM > tileM / 2 && tailM < tileM) {
+        tileCnt++;
+        tileM = Ops::Base::CeilDiv(mValue, tileCnt);
+        tileM = std::min(tileM, hcclMaxTileM_);
+        actualTileCnt = Ops::Base::FloorDiv(mValue, tileM);
+        tailM = mValue - actualTileCnt * tileM;
+    }
+
+    // 更新切分结果（通信Bound场景短块前置）
+    if (tailM == 0) {
+        tilingM_.cutRes.numShortTile = 0;
+        tilingM_.cutRes.shortTileLen = 0;
+        tilingM_.cutRes.numLongTile = actualTileCnt;
+    } else {
+        tilingM_.cutRes.numShortTile = 1;
+        tilingM_.cutRes.shortTileLen = tailM;
+        tilingM_.cutRes.numLongTile = actualTileCnt;
+    }
+
+    tilingM_.cutRes.longTileLen = tileM;
+    tilingM_.cutRes.shortTileAtBack = false; // 通信Bound：短块前置
+    tilingM_.cutRes.totalTileCnt = tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile;
+}
+
+void AllGatherPlusMMV2::GetTiling()
+{
+    // 先检查HCCL限制
+    CheckHCCLLimit();
+
+    // 如果有HCCL限制，更新maxTileLen约束
+    if (hcclLimited_) {
+        tilingM_.tileArgs.maxTileLen = std::min(tilingM_.tileArgs.maxTileLen, hcclMaxTileM_);
+    }
+
+    // 调用父类的标准流程
+    matmulPerf_.FindCubeUtil(tilingM_.GetMinLen(), rankTileNum_, inferFlag_,
+                             &tilingM_.tileArgs.maxTileLen);
+    matmulPerf_.GetMatmulGradient();
+
+    EstimateKernelTime();
+    SelectTilingMethod();
+
+    // HCCL限制修正（如果切分仍然超限）
+    AdjustForHCCLLimit();
+
+    // 归一化处理（长块短块一样长时合并）
+    if (tilingM_.cutRes.shortTileLen == tilingM_.cutRes.longTileLen) {
+        tilingM_.cutRes.shortTileLen = 0U;
+        tilingM_.cutRes.numShortTile = 0U;
+        tilingM_.cutRes.numLongTile++;
+        tilingM_.cutRes.totalTileCnt = tilingM_.cutRes.numLongTile;
+    }
 }
