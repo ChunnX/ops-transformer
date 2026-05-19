@@ -505,10 +505,10 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             if (commModeEnum == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("QuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+                OP_LOGD("QuantMatmulAlltoAll: use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             } else {
-                OP_LOGD("QuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+                OP_LOGD("QuantMatmulAlltoAll: use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
         } else {
