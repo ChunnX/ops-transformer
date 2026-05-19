@@ -94,6 +94,7 @@ public:
     uint32_t frontGS1Count = 0U;
     uint32_t invalidGS1Size = 0U;
     uint32_t accGS1Loops = 0U;
+    uint32_t dispatchedGS1Loops = 0U;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t executedTaskCount = 0U;
@@ -465,7 +466,7 @@ public:
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if (enableS1OutSplit) {
-            return coreGS1Loops < varlenCalcTimes && bN2Cur < constInfo.bSize * constInfo.n2Size;
+            return dispatchedGS1Loops < varlenCalcTimes && bN2Cur < constInfo.bSize * constInfo.n2Size;
         }
         return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
     }
@@ -975,7 +976,10 @@ public:
             }
             coreGS1Loops++;
             accGS1Loops++;
-            createdTaskCount = executedTaskCount;
+            if (taskDealMode != TASK_DEAL_MODE::SKIP) {
+                dispatchedGS1Loops++;
+                createdTaskCount = executedTaskCount;
+            }
             // PRINTF("bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
             S1OutSplitUpdatePos(bN2Cur, gS1Cur);
             if (bN2Cur / constInfo.n2Size < constInfo.bSize) {
