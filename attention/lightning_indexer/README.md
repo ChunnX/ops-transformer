@@ -81,7 +81,7 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsQueryOptional</td>
+      <td>actual_seq_lengths_query</td>
       <td>输入</td>
       <td>
           <ul>
@@ -96,7 +96,7 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKeyOptional</td>
+      <td>actual_seq_lengths_key</td>
       <td>输入</td>
       <td>
           <ul>
@@ -111,7 +111,7 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>blockTableOptional</td>
+      <td>block_table</td>
       <td>输入</td>
       <td>
           <ul>
@@ -125,8 +125,8 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>layoutQueryOptional</td>
-      <td>输入</td>
+      <td>layout_query</td>
+      <td>属性</td>
       <td>
           <ul>
                 <li>用于标识输入Query的数据排布格式。</li>
@@ -137,8 +137,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKeyOptional</td>
-      <td>输入</td>
+      <td>layout_key</td>
+      <td>属性</td>
       <td>
           <ul>
                 <li>用于标识输入Key的数据排布格式。</li>
@@ -149,8 +149,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseCount</td>
-      <td>输入</td>
+      <td>sparse_count</td>
+      <td>属性</td>
       <td>
           <ul>
                 <li>topK阶段需要保留的block数量。</li>
@@ -161,8 +161,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseMode</td>
-      <td>输入</td>
+      <td>sparse_mode</td>
+      <td>属性</td>
       <td>
           <ul>
                 <li>表示sparse的模式。</li>
@@ -174,22 +174,22 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>preTokens</td>
-      <td>输入</td>
+      <td>pre_tokens</td>
+      <td>属性</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>nextTokens</td>
-      <td>输入</td>
+      <td>next_tokens</td>
+      <td>属性</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联，仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>returnValues</td>
-      <td>输入</td>
+      <td>return_values</td>
+      <td>属性</td>
       <td>
           <ul>
                 <li>表示是否输出sparseValuesOut。</li>
@@ -200,7 +200,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseIndicesOut</td>
+      <td>sparse_indices</td>
       <td>输出</td>
       <td>
           <ul>
@@ -213,7 +213,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseValuesOut</td>
+      <td>sparse_values</td>
       <td>输出</td>
       <td>
           <ul>
