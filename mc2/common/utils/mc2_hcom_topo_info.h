@@ -21,6 +21,7 @@
 
 #ifdef BUILD_OPEN_PROJECT
 #include "hccl/hccl_rank_graph.h"
+#include "hccl/hccl_comm.h"
 #endif
 
 static constexpr uint32_t COMM_ALG_DEFAULT = 0U;
@@ -57,27 +58,19 @@ private:
     bool isNewHcclLib = true;
 
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
-#ifdef BUILD_OPEN_PROJECT
-    using FuncGetRankSizeEx = HcclResult (*)(const char *group, uint32_t *rankSize, uint32_t flag);
-    using FuncGetL0TopoTypeEx = HcclResult (*)(const char *group, CommTopo *topoType, uint32_t flag);
-#else
+#ifndef BUILD_OPEN_PROJECT
     using FuncGetNetLayers = HcclResult (*)(HcclComm, uint32_t **, uint32_t *);
-    using FuncGetTopoType = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
+    using FuncGetTopoType = HcclResult (*)(HcclComm, uint32_t, CommTopo *);
     using FuncGetInstSize = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 #endif
-    using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
     using FuncGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);
     void *hcclHandle_ = nullptr;
     FuncGetHandle getCommHandle_ = nullptr;
-#ifdef BUILD_OPEN_PROJECT
-    FuncGetRankSizeEx getRankSizeEx_ = nullptr;
-    FuncGetL0TopoTypeEx getL0TopoTypeEx_ = nullptr;
-#else
+#ifndef BUILD_OPEN_PROJECT
     FuncGetNetLayers getNetLayers_ = nullptr;
     FuncGetTopoType getTopoType_ = nullptr;
     FuncGetInstSize getInstSize_ = nullptr;
 #endif
-    FuncGetCclBufferSize getCclBufferSize_ = nullptr;
     FuncGetHcclBuffer getHcclBuffer_ = nullptr;
 };
 }  // namespace Mc2Hcom
