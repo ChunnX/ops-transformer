@@ -799,10 +799,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, 1);
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                rankId_);
+        if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
+            MegaMoeImpl::GroupMatmul2A8W4<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                    rankId_, expertIdx);
+        } else {
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                    rankId_);
+            }
         }
     }
     EndGMM2Sync();
