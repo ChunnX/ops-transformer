@@ -33,7 +33,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckParaExistenceAntiquant() const
     if (kvLayout_ == SASLayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }  else if (kvLayout_ == SASLayout::PA_ND) {
-        OP_CHECK_IF(opParamInfo_.sequsedKv.tensor == nullptr,
+        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
             OP_LOGE(opName_, "when layout_kv is PA_ND, actualSeqLengthsKv must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((opParamInfo_.oriBlockTable.tensor == nullptr) && (opParamInfo_.cmpBlockTable.tensor == nullptr),

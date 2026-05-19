@@ -37,7 +37,7 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {ORI_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
     {CMP_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
     {CU_SEQLENS_Q_NAME,              {ge::DT_INT32}},
-    {SEQUSED_KV_NAME,                {ge::DT_INT32}},
+    {SEQUSED_ORI_KV_NAME,            {ge::DT_INT32}},
     {SINKS_NAME,                     {ge::DT_FLOAT}},
 };
 
@@ -371,23 +371,6 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCuSeqLensQ() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaSequsedKv() const
-{
-    OP_CHECK_IF(opParamInfo_.sequsedKv.tensor == nullptr,
-        OP_LOGE(opName_, "input sequsedKv can not be nullptr, but it's empty"),
-        return ge::GRAPH_FAILED);
-
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedKv.desc, SEQUSED_KV_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-
-    OP_CHECK_IF(opParamInfo_.sequsedKv.tensor->GetShapeSize() != bSize_,
-        OP_LOGE(opName_, "input sequsedKv's shapeSize is not equal to B: %u, it is %ld", bSize_, opParamInfo_.sequsedKv.tensor->GetShapeSize()),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaSinks() const
 {
     OP_CHECK_IF(opParamInfo_.sinks.tensor == nullptr,
@@ -426,7 +409,6 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize() ||
         ge::GRAPH_SUCCESS != CheckSingleParaBlockTable() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensQ() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSequsedKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaMetadata() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSinks() ) {
         return ge::GRAPH_FAILED;

@@ -51,10 +51,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             if (bIdx > 0) {
                 actualS2OriSize -= actualSeqOriKvlenAddr[bIdx - 1];
             }
-        } else if (cuSeqlensOriKvAddr != nullptr) {
-            actualS2OriSize = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
         } else {
-            actualS2OriSize = constInfo.s2Size;
+            actualS2OriSize = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
         }
     } else {
         actualS2OriSize = (actualSeqOriKvlenAddr == nullptr) ? constInfo.s2Size :

@@ -105,8 +105,6 @@ void KvQuantSASInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.cuSeqLensCmpKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_CMP_KV_INDEX);
     opParamInfo_.seqUsedQ.tensor = context_->GetOptionalInputTensor(SEQUSED_Q_INDEX);
     opParamInfo_.seqUsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
-    opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_INDEX);
-    opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(SEQUSED_KV_INDEX);
     opParamInfo_.sequsedOriKv.tensor = context_->GetOptionalInputTensor(SEQUSED_ORI_KV_INDEX);
     opParamInfo_.sequsedOriKv.desc = context_->GetOptionalInputDesc(SEQUSED_ORI_KV_INDEX);
     opParamInfo_.sequsedCmpKv.tensor = context_->GetOptionalInputTensor(SEQUSED_CMP_KV_INDEX);
@@ -308,7 +306,7 @@ ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenSize(uint32_t &size, const 
 
 ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
-    return GetActualSeqLenSize(size, opParamInfo_.sequsedKv.tensor, qLayout_, "cuSeqLensQ");
+    return GetActualSeqLenSize(size, opParamInfo_.sequsedOriKv.tensor, qLayout_, "cuSeqLensQ");
 }
 
 ge::graphStatus KvQuantSASInfoParser::GetBatchSize()
@@ -427,9 +425,6 @@ ge::graphStatus KvQuantSASInfoParser::GetSparseBlockCount()
 ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = static_cast<uint32_t>(s2Size_);
-    if (opParamInfo_.sequsedKv.tensor != nullptr) {
-        actualLenDimsKV_ = opParamInfo_.sequsedKv.tensor->GetShapeSize();
-    }
     if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         actualLenDimsQ_ = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize(); // cuSeqLensQ shape is B+1
     }
@@ -457,14 +452,14 @@ ge::graphStatus KvQuantSASInfoParser::GetDSizeKV() {
 
 ge::graphStatus KvQuantSASInfoParser::GetSinks()
 {
-    if(opParamInfo_.sequsedKv.tensor != nullptr){
+    if(opParamInfo_.sequsedOriKv.tensor != nullptr){
         uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
         if(oriDimNum != DIM_NUM_ONE){
             OP_LOGE(opName_, "the dim num of sinks is %u, it should be %u.", oriDimNum, DIM_NUM_ONE);
             return ge::GRAPH_FAILED;
         }
 
-        int64_t oriDimension = opParamInfo_.sequsedKv.tensor->GetStorageShape().GetDim(0);
+        int64_t oriDimension = opParamInfo_.sequsedOriKv.tensor->GetStorageShape().GetDim(0);
         if(oriDimension != gSize_){
             OP_LOGE(opName_, "sinks's dimension(%ld) should be equal to query head num(%u).", oriDimension, gSize_);
             return ge::GRAPH_FAILED;
@@ -508,7 +503,6 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
 sasInfo.actualLenDimsQ = actualLenDimsQ_;
-    sasInfo.actualLenDimsKV = actualLenDimsKV_;
     sasInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sasInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
     sasInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
