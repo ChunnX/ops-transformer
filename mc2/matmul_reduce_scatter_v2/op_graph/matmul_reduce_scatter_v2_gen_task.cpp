@@ -33,8 +33,8 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }
     }
-    OPS_LOG_D(context->GetNodeName(), "AICPU GenTask CalcOpParam");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+    OPS_LOG_E(context->GetNodeName(), "Only support A5");
+    return ge::GRAPH_FAILED;
 }
 
 static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationContext *context,
@@ -50,8 +50,8 @@ static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationConte
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
         }
     }
-    OPS_LOG_D(context->GetNodeName(), "AICPU GenTaskFunc");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
+    OPS_LOG_E(context->GetNodeName(), "Only support A5");
+    return ge::GRAPH_FAILED;
 }
 
 IMPL_OP(MatmulReduceScatterV2).CalcOpParam(MatmulReduceScatterV2CalcOpParam).GenerateTask(MatmulReduceScatterV2GenTask);
