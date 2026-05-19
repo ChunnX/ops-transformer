@@ -281,7 +281,19 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         }
     }
 
-    if (m_param.l2Byte == 0U) {
+    // 计算所有head的最大数据量，用于判断是否需要开启section切分
+    uint32_t maxHeadTokenCost = 0U;
+    uint32_t headDim = baseInfo.GetHeadDim();
+    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
+        uint32_t tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;  // 2: K和V两份数据
+        if (tokenCost > maxHeadTokenCost) {
+            maxHeadTokenCost = tokenCost;
+        }
+    }
+
+    // 如果L2未设置，或者最大单个head数据量不超过每个核可用的L2容量，则不进行section切分
+    if (m_param.l2Byte == 0U || maxHeadTokenCost <= m_param.l2Byte / computeContext.deviceInfo.aicCoreMaxNum) {
         gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
         gridInfo.sectionNum = 1;
         return;
