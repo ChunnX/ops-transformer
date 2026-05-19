@@ -183,6 +183,15 @@ private:
         return static_cast<int64_t>(GetSubBlockIdx());
     }
 
+    __aicore__ inline void GetSubBlockRowRange(int64_t qCount, int64_t &rowBegin, int64_t &rowEnd) const
+    {
+        const int64_t ratio = GetTaskRatioValue();
+        const int64_t subBlock = GetSubBlockIdxValue();
+        const int64_t rowsPerSubBlock = (qCount + ratio - 1) / ratio;
+        rowBegin = MinInt64(subBlock * rowsPerSubBlock, qCount);
+        rowEnd = MinInt64(rowBegin + rowsPerSubBlock, qCount);
+    }
+
     __aicore__ inline uint32_t AlignedHeadDim() const
     {
         return static_cast<uint32_t>(AlignUpInt64(tiling_->headDim, VECTOR_ALIGN_ELEMS));
@@ -508,7 +517,10 @@ private:
     {
         const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
         CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
-        for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+        int64_t rowBegin = 0;
+        int64_t rowEnd = 0;
+        GetSubBlockRowRange(qCount, rowBegin, rowEnd);
+        for (int64_t row = rowBegin; row < rowEnd; ++row) {
             const int64_t querySeq = seq + row;
             if (querySeq >= tiling_->validSeqLen) {
                 continue;
@@ -522,7 +534,7 @@ private:
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
         CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx));
-        for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+        for (int64_t row = rowBegin; row < rowEnd; ++row) {
             const int64_t querySeq = seq + row;
             if (querySeq >= tiling_->validSeqLen) {
                 continue;
@@ -607,19 +619,26 @@ private:
 
         LocalTensor<float> maxLocal = maxFloatBuf_.Get<float>();
         LocalTensor<float> denomLocal = denomFloatBuf_.Get<float>();
-        for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+        int64_t rowBegin = 0;
+        int64_t rowEnd = 0;
+        GetSubBlockRowRange(qCount, rowBegin, rowEnd);
+        const int64_t rowCount = rowEnd - rowBegin;
+        if (rowCount > 0) {
+            LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
+            Duplicate(accTile[rowBegin * VECTOR_HEAD_DIM_LIMIT], 0.0F,
+                      static_cast<uint32_t>(rowCount * VECTOR_HEAD_DIM_LIMIT));
+            Duplicate(maxLocal[rowBegin], NEG_INF, static_cast<uint32_t>(rowCount));
+            Duplicate(denomLocal[rowBegin], 0.0F, static_cast<uint32_t>(rowCount));
+            PipeBarrier<PIPE_V>();
+        }
+        for (int64_t row = rowBegin; row < rowEnd; ++row) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
-            LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
             if (querySeq >= tiling_->validSeqLen) {
                 StoreZeroRow(qBase, static_cast<uint32_t>(row % BUFFER_NUM));
                 continue;
             }
-            Duplicate(accRow, 0.0F, AlignedHeadDim());
-            maxLocal.SetValue(row, NEG_INF);
-            denomLocal.SetValue(row, 0.0F);
         }
-        PipeBarrier<PIPE_V>();
 
         int64_t textBegin = 0;
         int64_t textEnd = 0;
@@ -629,7 +648,7 @@ private:
         ProcessImageKvTiles(head, seq, qCount, tileLoop, maxLocal, denomLocal);
         ProcessTextKvRange(seq, qCount, textBegin, textEnd, tileLoop, maxLocal, denomLocal);
 
-        for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+        for (int64_t row = rowBegin; row < rowEnd; ++row) {
             const int64_t querySeq = seq + row;
             if (querySeq >= tiling_->validSeqLen) {
                 continue;
