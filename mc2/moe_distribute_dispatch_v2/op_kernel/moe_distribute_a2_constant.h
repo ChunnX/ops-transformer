@@ -16,7 +16,7 @@
 #define MOE_DISTRIBUTE_A2_CONSTANT_H
 namespace Mc2A2Kernel {
 // ADump所需常量段
-constexpr uint32_t BUFFERID_POS = 0UL;
+constexpr uint32_t BUFFERID_POS = 0U;
 constexpr uint32_t OPOSITION_POS = 1U;
 constexpr uint32_t TILING_EPRANKID_POS = 2U;
 constexpr uint32_t MOE_NUM_POS = 3U;
@@ -27,6 +27,7 @@ constexpr uint32_t HCCL_DFX_POS = 8U;
 constexpr uint32_t HCCL_DFX_NUM = 2U;
 constexpr uint32_t HCCL_EPRANKId_POS = 0U;
 constexpr uint32_t HCCL_WORLDSIZE_POS = 1U;
+constexpr uint32_t BS_POS = 10U;
 constexpr uint32_t ISLAYERED_POS = 11U;
 constexpr uint32_t AIVNUM_POS = 12U;
 constexpr uint32_t H_POS = 13U;
@@ -55,9 +56,10 @@ constexpr uint32_t RUNPOS_FULLMESH_COMBINE_RECV = 4U;
 // A2 Hierarchy
 // Dispatch
 constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN = 3U;
-constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH = 4U;
-constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH = 5U;
-constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_IPC2OUT = 6U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_SEND = 4U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH = 5U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH = 6U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_IPC2OUT = 7U;
 
 // Combine
 constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_GM2IPC = 3U;
@@ -73,11 +75,21 @@ constexpr bool IS_SEND = true;
 constexpr bool IS_RECV = false;
 constexpr uint32_t IS_FULLMESH = 0;
 constexpr uint32_t IS_HIERARCHY = 1;
-constexpr static uint64_t BUFFER_ADUMP_WIN_SIZE = 50 * 1024UL;
-constexpr static uint64_t BUFFER_ADUMP_WIN_SIZE_PER_AIV = 512UL;
-constexpr static uint64_t BUFFER_ADUMP_WIN_ADDR_START = 768 * 1024UL;
-constexpr static uint64_t BUFFER_ADUMP_WIN_DISPATCH_SIZE = 64 * 1024UL;
-constexpr static uint64_t BUFFER_ADUMP_WIN_COMBINE_SIZE = 320 * 1024UL;
+constexpr static uint64_t ADUMP_DATA_SIZE = 50 * 1024UL;
+constexpr static uint64_t ADUMP_DATA_SIZE_PER_AIV = 512UL;
+constexpr static uint64_t ADUMP_DATA_ADDR_START = 768 * 1024UL;
+constexpr static uint64_t ADUMP_STATUS_DISPATCH_ADDR = 0UL;
+constexpr static uint64_t ADUMP_STATUS_COMBINE_ADDR = 64 * 1024UL;
+constexpr static uint64_t ADUMP_DATA_DISPATCH_ADDR_START = ADUMP_DATA_ADDR_START;
+constexpr static uint64_t ADUMP_DATA_COMBINE_ADDR_START = ADUMP_DATA_ADDR_START +
+                                                          ADUMP_DATA_SIZE;
+constexpr static uint64_t BATCH_WRITE_ITEM_OFFSET = ADUMP_DATA_ADDR_START +
+                                                    ADUMP_DATA_SIZE * 2UL;
+constexpr static uint64_t ADUMP_WIN_SIZE = 1024 * 1024UL;
+constexpr static uint64_t FULLMESH_BUFFERID_ADDR = ADUMP_WIN_SIZE -
+                                                   WIN_ADDR_ALIGN;
+constexpr static int32_t DUMP_FLAG_VALUE = 0xFFFFFFFF;
+constexpr static int64_t TIMEOUT = 1000000 * 60 * 6; // 6 mins
 }
 
 

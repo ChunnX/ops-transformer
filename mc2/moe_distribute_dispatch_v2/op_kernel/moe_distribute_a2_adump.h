@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_a2_constant.h
+ * \file moe_distribute_a2_adump.h
  * \brief
  */
 
@@ -31,7 +31,7 @@ public:
                                 uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
                                 uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBs,
                                 uint32_t bufferId, uint32_t isLayered, uint32_t aivNum,
-                                LocalTensor<uint8_t> dataStateLocalTensor, uint32_t axisH)
+                                LocalTensor<uint8_t> dataStateLocalTensor, uint32_t axisH, uint32_t axisBS)
     {
         selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + aivId * WIN_ADDR_ALIGN));
         selfTokenNumGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + (aivNum + 1) * WIN_ADDR_ALIGN));
@@ -51,6 +51,7 @@ public:
         dataStateLocalTensor_.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
         dataStateLocalTensor_.SetValue(GLOBALBS_POS, globalBs);
         dataStateLocalTensor_.SetValue(H_POS, axisH);
+        dataStateLocalTensor_.SetValue(BS_POS, axisBS);
         if ((epRankIdOriginal != epRankIdHccl) || (epWorldSizeOriginal != epWorldSizeHccl)) {
             dataStateLocalTensor_.SetValue(HCCL_DFX_POS + HCCL_EPRANKId_POS, epRankIdHccl);
             dataStateLocalTensor_.SetValue(HCCL_DFX_POS + HCCL_WORLDSIZE_POS, epWorldSizeHccl);
@@ -130,7 +131,7 @@ public:
     {
         uint32_t offset = isSend ? HIERARCHY_INTER_NODE_SEND_POS : HIERARCHY_INTER_NODE_RECV_POS;
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        dataStateLocalTensor_.SetValue(0U, dstServerId);
+        dataStateLocalTensor_.SetValue(0U, dstServerId + 1U);
         dataStateLocalTensor_.SetValue(1U, tokenNum);
         auto dataStateParams = DataCopyExtParams{1U, 2U * sizeof(uint32_t), 0U, 0U, 0U};
         SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -141,7 +142,7 @@ public:
     {
         uint32_t offset = isSend ? HIERARCHY_INNER_SEND_POS : HIERARCHY_INNER_RECV_POS;
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        dataStateLocalTensor_.SetValue(0U, dstServerId);
+        dataStateLocalTensor_.SetValue(0U, dstServerId + 1U);
         auto dataStateParams = DataCopyExtParams{1U, sizeof(uint32_t), 0U, 0U, 0U};
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(selfDataStatusGMTensor_[offset], dataStateLocalTensor_, dataStateParams);
