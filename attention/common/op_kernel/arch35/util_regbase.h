@@ -296,7 +296,7 @@ struct RunInfo<false> {
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
-    float sinkValue = 0.0f;
+    float sinkValue = -3.402823466e+38F;
 
 
 #define ROPE_INFO \
