@@ -282,6 +282,17 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
         if (constInfo.learnableSinkFlag) {
             constInfo.sinkValue = this->sinkGm.GetValue(runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx);
         }
+    } else {
+        if (constInfo.learnableSinkFlag) {
+            int64_t sinkOffset = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
+            auto sinkRaw = this->sinkGm.GetValue(sinkOffset);
+
+            if constexpr (IsSameType<decltype(sinkRaw), half>::value) {
+                constInfo.sinkValue = static_cast<float>(sinkRaw);
+            } else {
+                constInfo.sinkValue = ToFloat(sinkRaw);
+            }
+        }
     }
     if constexpr (useDn) {
         ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
