@@ -20,14 +20,23 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(BlockSparseAttentionGradTilingDataArch35)
-TILING_DATA_FIELD_DEF(uint32_t, batchNum);
-TILING_DATA_FIELD_DEF(uint32_t, qSeqLen);
-TILING_DATA_FIELD_DEF(uint32_t, kvSeqLen);
-TILING_DATA_FIELD_DEF(uint32_t, qGroup);
-TILING_DATA_FIELD_DEF(uint32_t, qHeadNum);
-TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum);
-TILING_DATA_FIELD_DEF(uint32_t, headDim);
-TILING_DATA_FIELD_DEF(float, scaleValue);
+TILING_DATA_FIELD_DEF(uint64_t, cubeCoreNum);
+TILING_DATA_FIELD_DEF(uint64_t, batchNum);
+TILING_DATA_FIELD_DEF(uint64_t, qSeqLen);
+TILING_DATA_FIELD_DEF(uint64_t, kvSeqLen);
+TILING_DATA_FIELD_DEF(uint64_t, qGroup);
+TILING_DATA_FIELD_DEF(uint64_t, qHeadNum);
+TILING_DATA_FIELD_DEF(uint64_t, kvHeadNum);
+TILING_DATA_FIELD_DEF(uint64_t, headDim);
+TILING_DATA_FIELD_DEF(uint64_t, baseM);
+TILING_DATA_FIELD_DEF(uint64_t, baseN);
+TILING_DATA_FIELD_DEF(uint64_t, dqSize);
+TILING_DATA_FIELD_DEF(uint64_t, dkSize);
+TILING_DATA_FIELD_DEF(uint64_t, dqWorkspaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, dkWorkspaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, dvWorkspaceOffset);
+TILING_DATA_FIELD_DEF(float, softmaxScale);
+TILING_DATA_FIELD_DEF(uint32_t, rsv);
 END_TILING_DATA_DEF;
 
 BEGIN_TILING_DATA_DEF(BlockSparseAttentionGradTilingData)
