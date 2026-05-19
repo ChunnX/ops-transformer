@@ -89,7 +89,7 @@ constexpr static uint64_t ADUMP_WIN_SIZE = 1024 * 1024UL;
 constexpr static uint64_t FULLMESH_BUFFERID_ADDR = ADUMP_WIN_SIZE -
                                                    WIN_ADDR_ALIGN;
 constexpr static int32_t DUMP_FLAG_VALUE = 0xFFFFFFFF;
-constexpr static int64_t TIMEOUT = 1000000 * 60 * 6; // 6 mins
+constexpr static int64_t TIMEOUT = 1000000 * 60 * 1; // 1 mins
 }
 
 
