@@ -926,16 +926,15 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108);
-    Sub(max0, max0, vreg_ln_p_scale, preg_108);
 
     if (subLoop == 1) {
         LoadAlign(vreg_x_max_f32_b, new_global_max);
         Max(max0, max0, vreg_x_max_f32_b, preg_108);
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     }
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    Muls(max0, max0, dScale, preg_108);
+    Sub(max0, max0, vreg_ln_p_scale, preg_108);
 
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
@@ -1105,6 +1104,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     } else {
         RegTensor<float> first_loop_sum;
         LoadAlign(first_loop_sum, new_global_sum);
+        Muls(vreg_x_max_f32_b, vreg_x_max_f32_b, dScale, preg_108);
+        Sub(vreg_x_max_f32_b, vreg_x_max_f32_b, vreg_ln_p_scale, preg_108);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
         Mul(first_loop_sum, vreg_x_max_f32_b, first_loop_sum, preg_134);
         Add(vreg_x_sum0, first_loop_sum, vreg_x_sum0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -1295,21 +1297,22 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108);
-    Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
             (__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     } else {
         FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134);
         LoadAlign(vreg_x_max_f32_b, pre_loop_max);
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     }
     
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
         (__ubuf__ T *&)new_global_max, max0, preg_108);
+    Muls(max0, max0, dScale, preg_108);
+    Sub(max0, max0, vreg_ln_p_scale, preg_108);
+    Muls(vreg_x_max_f32_b, vreg_x_max_f32_b, dScale, preg_108);
+    Sub(vreg_x_max_f32_b, vreg_x_max_f32_b, vreg_ln_p_scale, preg_108);
+    FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
         (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
