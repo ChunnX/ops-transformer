@@ -209,7 +209,6 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     // OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
     OP_LOGD(nodeName, "mode = %ld", *modePtr);
-    OP_LOGD(nodeName, "commMode = %s", commModePtr);
     OP_LOGI(nodeName, "Exit GetAttrAndSetTilingData");
     return ge::GRAPH_SUCCESS;
 }
