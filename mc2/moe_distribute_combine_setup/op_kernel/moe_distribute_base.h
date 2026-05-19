@@ -227,6 +227,7 @@ __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> 
 __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
                                                       uint32_t sqeCount = 1)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     AscendC::Duplicate<uint8_t>(sqeTensor, 0, WRITE_WITH_NOTIFY_SQE_SIZE); // 初始化为全0
     AscendC::SyncFunc<AscendC::HardEvent::V_S>();
     AscendC::LocalTensor<uint64_t> sqeTensorU64 = sqeTensor.ReinterpretCast<uint64_t>();
@@ -235,6 +236,11 @@ __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor
     // opcode=0x5，使用write with notify SQE
     sqeTensorU64(0) = (static_cast<uint64_t>(0x5U) << (SQE_COMMON_OPCODE_OFFSET * UINT8_BITS_OFFSET)) +
                       (static_cast<uint64_t>(0b10110000U) << (SQE_COMMON_UINT8_OFFSET_3 * UINT8_BITS_OFFSET));
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    AscendC::PRINTF("combine SetCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -282,6 +288,7 @@ __aicore__ inline void UpdateCommWriteSQE(const AscendC::LocalTensor<uint8_t> &s
 __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
                                                     const AscendC::LocalTensor<uint8_t> &sqInfoTensor)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     UpdateCommonSQE(sqeTensor, sqInfoTensor);
 
     // 更新rmt_token_id(20b), notify_token_value(32b), notify_token_id(20b)
@@ -292,6 +299,11 @@ __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<u
     templateSqeU64(SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_VALUE_OFFSET) =
         (static_cast<uint64_t>(sqInfoU32(WQ_RMTTOKENVALUE_OFFSET)) << UINT32_BITS_OFFSET) + // notify_token_value
         static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET));                               // notify_token_id
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    AscendC::PRINTF("combine UpdateCommWriteWithNotifySQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint64_t dataAddr,
@@ -326,6 +338,7 @@ __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint
                                                  uint64_t rmtAddr, uint32_t length, uint64_t notifyAddr,
                                                  uint64_t notifyData, uint8_t cqe)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     // 设置cqe(1 bit), odr(3 bits), data_addr(64 bits), rmt_addr(64 bits), length(32 bits), notify_addr(64 bits),
     // notify_data(64 bits)
 
@@ -347,6 +360,11 @@ __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint
         sqeTensor(SQE_COMMON_UINT8_OFFSET_2) &= 0b11011001;
         sqeTensor(SQE_COMMON_UINT8_OFFSET_2) |= 0b00000001;
     }
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    AscendC::PRINTF("combine SetCommWriteWithNotifySQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, uint32_t sqPi)
@@ -365,6 +383,7 @@ __aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &sqIn
 
 __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &cqInfoTensor, uint32_t cqCi)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     // 敲JFC DoorBell，更新硬件的cqCi
     AscendC::LocalTensor<uint32_t> cqInfoU32 = cqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> cqInfoU64 = cqInfoTensor.ReinterpretCast<uint64_t>();
@@ -372,6 +391,11 @@ __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &cqIn
     uint64_t jfcDbValue =
         (static_cast<uint64_t>(cqInfoU32(CQ_JFCID_OFFSET)) << UINT32_BITS_OFFSET) + static_cast<uint64_t>(cqCi);
     st_dev(jfcDbValue, (__gm__ uint64_t *)(cqInfoU64(CQ_DBADDR_OFFSET)), 0); // Scalar操作
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    AscendC::PRINTF("combine SendJFCDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline bool CheckCqeStatus(const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
@@ -524,6 +548,7 @@ __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqI
                                         const AscendC::LocalTensor<uint8_t> &sqeTensor, uint32_t sendSqeIdx,
                                         uint32_t sqPi)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     uint32_t sqeSize = sqInfoU32(WQ_WQESIZE_OFFSET); // 单个WQEBB占用大小（64B），由HCCL传递
@@ -546,6 +571,11 @@ __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqI
         // 拷贝剩余部分到头部
         AscendC::DataCopy(sqGlobalTensor, sqeTensor[sqeSize], WRITE_WITH_NOTIFY_SQE_SIZE - sqeSize);
     }
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    AscendC::PRINTF("combine PutCommNotifySQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor, GM_ADDR hcclContext,
