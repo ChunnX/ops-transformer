@@ -1281,6 +1281,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
         }
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
+    }
+    if constexpr (QuantMode != MXFP8_E5M2_COMM_QUANT && QuantMode != MXFP8_E4M3_COMM_QUANT) {
         PipeBarrier<PIPE_V>();
         AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
         PipeBarrier<PIPE_V>();
@@ -1387,6 +1389,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessExpert
             }
         } else {
             Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
+        }
+        if constexpr (QuantMode != MXFP8_E5M2_COMM_QUANT && QuantMode != MXFP8_E4M3_COMM_QUANT) {
             PipeBarrier<PIPE_V>();
             AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
             PipeBarrier<PIPE_V>();
