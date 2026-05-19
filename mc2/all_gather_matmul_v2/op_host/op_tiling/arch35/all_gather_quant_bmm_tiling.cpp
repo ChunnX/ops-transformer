@@ -16,6 +16,7 @@
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log.h"
@@ -65,6 +66,9 @@ constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 
 }  // namespace
+
+// HCCL辅助函数（来自all_gather_hccl_utils.h）
+// 已移到公共文件，这里不再重复定义
 
 bool AllGatherQuantBmmTiling::IsCapable()
 {
@@ -593,7 +597,11 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 CutResult AllGatherQuantBmmTiling::GetTilingResult()
 {
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    return tileFormulate.GetTiling();
+    CutResult result = tileFormulate.GetTiling();
+    
+    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    
+    return result;
 }
 
 
