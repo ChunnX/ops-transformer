@@ -17,12 +17,15 @@
 #include "platform/platform_info.h"
 #include "graph/ascend_string.h"
 #include "mc2_common_log.h"
+#include "mc2_platform_info.h"
 #include "runtime/runtime/base.h"
 
 namespace {
 constexpr int64_t INVALID_INT_VAL = -1;
-const std::string SO_NAME = "libccl_kernel.so";
+const std::string SO_NAME_LEGACY = "libccl_kernel.so";
+const std::string SO_NAME_MC2_SERVER = "libmc2_server.so";
 const std::string KERNEL_NAME_V1 = "RunAicpuKfcSrvLaunch";
+const std::string KERNEL_NAME_MC2_SERVER = "Mc2ServerKernel";
 
 // 对已有结构的重复定义，只在本文件插入 aicpu desc 的时候使用
 struct HcclCommParamDescTemp {
@@ -206,8 +209,13 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationC
     ++aicore_idx;
 
     // aicpu task
+    const bool useA5AicpuServer = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    const std::string &soName = useA5AicpuServer ? SO_NAME_MC2_SERVER : SO_NAME_LEGACY;
+    const std::string &kernelName = useA5AicpuServer ? KERNEL_NAME_MC2_SERVER : KERNEL_NAME_V1;
+    OPS_LOG_I(context->GetNodeName(), "Create AICPU KFC task for MC2, so[%s], kernel[%s], useA5AicpuServer[%d].",
+              soName.c_str(), kernelName.c_str(), useA5AicpuServer);
     ge::KernelLaunchInfo aicpu_task =
-        ge::KernelLaunchInfo::CreateAicpuKfcTask(context, SO_NAME.c_str(), KERNEL_NAME_V1.c_str());
+        ge::KernelLaunchInfo::CreateAicpuKfcTask(context, soName.c_str(), kernelName.c_str());
     aicpu_task.SetStreamId(static_cast<uint32_t>(attach_stream_id));
     if (CreateAicpuTaskV1(context, aicpu_task) != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(context->GetNodeName(), "Failed to get aicpu task.");
