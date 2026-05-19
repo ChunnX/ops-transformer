@@ -1,23 +1,24 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-/* !
- * \file tool.h
+/*!
+ * \file mc2_weight_quant_tool.h
  * \brief
  */
-#ifndef TOOL_H
-#define TOOL_H
+#ifndef MC2_WEIGHT_QUANT_TOOL_H
+#define MC2_WEIGHT_QUANT_TOOL_H
 
 #include <limits>
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "../../../../common/include/op_kernel/tool_common.h"
 
 using AscendC::AIC;
 using AscendC::CrossCoreSetFlag;
@@ -40,10 +41,6 @@ using AscendC::ToFloat;
 using AscendC::TPosition;
 using AscendC::WaitFlag;
 using matmul::MatmulType;
-
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-using AscendC::VECTOR_REG_WIDTH;
-#endif
 
 #if defined(__CCE_KT_TEST__)
 #include <sys/types.h>
@@ -245,31 +242,24 @@ std::string Mc2DoPrintData(
 #define PRINT_DATA(format, ...)
 
 #endif
+
 namespace Mc2WeightQuantBatchMatmulV2 {
+using namespace CommonTool;
+
 static constexpr uint64_t SYNC_MODE0 = 0;
 static constexpr uint64_t SYNC_MODE2 = 2;
-static constexpr uint64_t SYNC_MODE4 = 4;
 static constexpr uint64_t SYNC_AIV_ONLY_ALL_FLAG = 6;
 static constexpr uint64_t SYNC_AIC_ONLY_ALL_FLAG = 7;
 static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
-static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
-static constexpr uint64_t SYNC_AIC_FIX_AIV_VF_FLAG = 3;
-static constexpr uint64_t SYNC_AIV_MTE3_AIC_FIX_FLAG = 4;
 
 static constexpr uint64_t SYNC_AIV_ONLY_CONFIG = 1 | (SYNC_MODE0 << 4) | (SYNC_AIV_ONLY_ALL_FLAG << 8);
 static constexpr uint64_t SYNC_AIC_ONLY_CONFIG = 1 | (SYNC_MODE0 << 4) | (SYNC_AIC_ONLY_ALL_FLAG << 8);
 static constexpr uint64_t SYNC_AIV_AIC_CONFIG = 1 | (SYNC_MODE2 << 4) | (SYNC_AIV_AIC_FLAG << 8);
 static constexpr uint64_t SYNC_AIC_AIV_CONFIG = 1 | (SYNC_MODE2 << 4) | (SYNC_AIC_AIV_FLAG << 8);
 
-static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
-static constexpr int32_t DOUBLE_BUFFER_NUM = 2;
-static constexpr int32_t SINGLE_BUFFER_NUM = 1;
-
 static constexpr int32_t FP32_MAX_MASK_SIZE = 64;
 static constexpr int32_t FP32_MASK_BLK_NUM = 8;
 static constexpr uint32_t FP16_MASK_SIZE = 128;
-static constexpr uint32_t FP32_BLOCK_SIZE = 8;
-static constexpr uint32_t FP16_BLOCK_SIZE = 16;
 static constexpr uint32_t INT4_BLOCK_SIZE = 64;
 static constexpr uint32_t INT8_BLOCK_SIZE = 32;
 
@@ -278,7 +268,6 @@ static constexpr uint32_t FLOAT_DATA_BENCHMARK = 256;
 static constexpr uint32_t HALF_DATA_BENCHMARK = 512;
 static constexpr uint32_t INT8_DATA_BENCHMARK = 1024;
 static constexpr uint32_t INT4_DATA_BENCHMARK = 2048;
-static constexpr uint64_t FLAG_ID_MAX = 16;
 
 static constexpr uint64_t FRAC_SIZE_HALF = 256;
 // CUBE分型信息
@@ -302,29 +291,6 @@ static constexpr uint32_t L0C_MAX_SIZE_910B = 128 * 1024;
 static constexpr uint32_t BIAS_TABLE_MAX_SIZE_910B = 1024;
 static constexpr uint32_t FIXPIPE_TABLE_MAX_SIZE_910B = 2048;
 
-static constexpr uint64_t MX_GROUPSIZE = 32;
-
-static constexpr int32_t C0_SIZE_B8 = 32;
-
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
-#endif
-
-template <typename T>
-__aicore__ inline T CeilAlign(T a, T b)
-{
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b * b;
-}
-
-__aicore__ inline uint32_t CeilAlign(uint32_t a, uint32_t b)
-{
-    ASCENDC_ASSERT(
-        a <= (std::numeric_limits<uint32_t>::max() - b), { KERNEL_LOG(KERNEL_ERROR, "CeilAlign uint32 over limit."); });
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b * b;
-}
-
 template <typename T>
 __aicore__ inline T CeilDiv(T a, T b)
 {
@@ -337,12 +303,6 @@ __aicore__ inline T FloorDiv(T a, T b)
 {
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return a / b;
-}
-
-template <typename T>
-__aicore__ inline T Min(T a, T b)
-{
-    return a < b ? a : b;
 }
 
 template <typename T>
@@ -563,4 +523,4 @@ struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSH
 };
 
 } // namespace Mc2WeightQuantBatchMatmulV2
-#endif
+#endif // MC2_WEIGHT_QUANT_TOOL_H

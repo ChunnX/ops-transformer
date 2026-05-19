@@ -16,7 +16,7 @@
 #ifndef WEIGHT_QUANT_BATCHMATMUL_V2_FIXPIPE_H
 #define WEIGHT_QUANT_BATCHMATMUL_V2_FIXPIPE_H
 
-#include "../tool.h"
+#include "../mc2_weight_quant_tool.h"
 #include "../weight_quant_batch_matmul_v2_constant.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -24,7 +24,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "static_diag_constant.h"
+#include "mc2_weight_quant_static_diag_constant.h"
 #include "weight_quant_batch_matmul_v2_fixpipe_stage1.h"
 #include "weight_quant_batch_matmul_v2_fixpipe_stage2.h"
 

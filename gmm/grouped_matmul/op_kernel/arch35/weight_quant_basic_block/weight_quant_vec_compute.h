@@ -25,7 +25,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "tool.h"
+#include "gmm_arch35_weight_quant_tool.h"
 
 using AscendC::BLOCK_CUBE;
 using AscendC::CacheMode;

@@ -1,21 +1,22 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-/* !
- * \file tool.h
+/*!
+ * \file gmm_a16w4_msd_tool.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
+#ifndef GMM_A16W4_MSD_TOOL_H
+#define GMM_A16W4_MSD_TOOL_H
 
 #include "kernel_operator.h"
+#include "../../../../common/include/op_kernel/tool_common.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -30,13 +31,7 @@ using AscendC::ONE_BLK_SIZE;
 using AscendC::TPosition;
 
 namespace GROUPED_MATMUL::A16W4Msd {
-// 函数定义
-template <typename T>
-__aicore__ inline T CeilAlign(T a, T b)
-{
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b * b;
-}
+using CommonTool::CeilAlign;
 
 template <typename T>
 __aicore__ inline T CeilDiv(T a, T b)
@@ -100,4 +95,4 @@ __aicore__ constexpr uint32_t GetKBUnit()
     return 512;  // 512个half是1kb
 }
 }  // namespace GROUPED_MATMUL::A16W4Msd
-#endif
+#endif // GMM_A16W4_MSD_TOOL_H

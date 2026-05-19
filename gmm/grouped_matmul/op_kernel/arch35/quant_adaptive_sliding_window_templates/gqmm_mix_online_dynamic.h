@@ -18,7 +18,7 @@
 #include "mm_extension_interface/gqmm_custom_mm_policy.h"
 #include "quant_block_sch.h"
 #include "quant_utils.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../gmm_grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 

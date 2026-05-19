@@ -12,8 +12,8 @@
  * \file static_diag_constant.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
+#ifndef GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H
+#define GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
@@ -31,4 +31,4 @@ static constexpr volatile __gm__ int16_t C1C2_EYE_DIAG[256] = {
     7176, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7176};
 
 }  // namespace GROUPED_MATMUL::A16W4Msd
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
+#endif  // GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H

@@ -15,7 +15,7 @@
 #ifndef ASCENDC_GROUPED_AUTOTILING_A8W4_H
 #define ASCENDC_GROUPED_AUTOTILING_A8W4_H
 
-#include "grouped_matmul_utils.h"
+#include "gmm_grouped_matmul_utils.h"
 #include "kernel_operator.h"
 #include "grouped_matmul.h"
 

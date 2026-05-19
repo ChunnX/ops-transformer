@@ -12,7 +12,7 @@
  * \file grouped_matmul.cpp
  * \brief
  */
-#include "grouped_matmul_utils.h"
+#include "gmm_grouped_matmul_utils.h"
 #include "grouped_matmul_antiquant.h"
 #include "grouped_matmul_vector.h"
 #include "grouped_matmul_tiling_key.h"

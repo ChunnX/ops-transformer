@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "grouped_matmul_utils.h"
+#include "gmm_grouped_matmul_utils.h"
 #include "arch35/grouped_matmul_tiling_data_apt.h"
 using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingData;
 using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
