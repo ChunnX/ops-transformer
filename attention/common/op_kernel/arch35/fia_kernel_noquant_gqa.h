@@ -100,6 +100,7 @@ public:
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
     int64_t task_i_prev_ = 0;
+    bool s1OusFirstCall = true;
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -426,7 +427,7 @@ public:
 
         if (enableS1OutSplit) {
             ClacS1OutSplitLoopTimes();
-            task_i_prev_ = static_cast<int64_t>(ComputeFlatTaskIdx());
+            task_i_prev_ = 0;
         }
 
         bool shouldDispatchTask = true;
@@ -818,6 +819,7 @@ public:
             return;
         }
         uint32_t task_i_curr = ComputeFlatTaskIdx();
+        s1OusFirstCall = false;
         int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
         PRINTF("task_i_curr:%u, task_i_prev_:%lld\n", task_i_curr, task_i_prev_);
         task_i_prev_ = task_i_curr;
@@ -862,8 +864,8 @@ public:
                 }
             }
 
-            // sparse调整未推进gS1Cur时(SKIP场景), 手动推进避免死循环
-            if (gS1Cur == oldGS1Cur && gS1LoopTimes > 0U) {
+            // sparse调整未推进gS1Cur时(SKIP场景非首次), 手动推进避免死循环
+            if (!s1OusFirstCall && gS1Cur == oldGS1Cur && gS1LoopTimes > 0U) {
                 if (gS1Cur + 1 < gS1LoopTimes) {
                     gS1Cur++;
                 } else {
