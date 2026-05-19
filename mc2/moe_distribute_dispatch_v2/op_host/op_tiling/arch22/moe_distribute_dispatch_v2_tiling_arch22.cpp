@@ -68,24 +68,23 @@ constexpr uint32_t PERFORMANCE_INFO_INDEX = 6U;
 constexpr uint32_t OUTPUT_EXPAND_SCALES_INDEX = 6U;
 
 // A2特化常量（defs.h 中未定义的部分）
-// 注：以下常量已使用公共层 defs.h 定义，不再重复定义：
-//     - MAX_H_A2, MAX_H_A2_LAYERED (原 MAX_HIDDEN_SIZE_A2)
-//     - MAX_BS_A2, MAX_BS_A2_LAYERED (原 MAX_BATCH_SIZE_A2)
-//     - MAX_MOE_EXPERT_NUM_A2 (原 MAX_MOE_EXPERT_NUMS_A2)
+// 注：以下常量已在公共层 defs.h 定义，不再重复定义：
+//     - MAX_H_A2, MAX_H_A2_LAYERED (MAX_H_A2_LAYERED = 10240)
+//     - MAX_BS_A2, MAX_BS_A2_LAYERED
+//     - MAX_MOE_EXPERT_NUM_A2
 //     - MAX_EP_WORLD_SIZE_A2, MAX_EP_WORLD_SIZE_A2_LAYERED
-//     - MAX_K_DEFAULT (原 MAX_K_DEFAULT)
+//     - MAX_K_DEFAULT
 const char *K_INNER_DEBUG = "MoeDistributeDispatchV2 Tiling Debug";
 constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 constexpr uint32_t BLOCK_SIZE_A2 = 32;
+// 本地特化常量（defs.h 中未定义）
 constexpr uint32_t MAX_K_VALUE_A2 = 16;
-constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 10240;
-constexpr int32_t MAX_EP_WORLD_SIZE_A2 = 384;
-constexpr int32_t MAX_EP_WORLD_SIZE_A2_LAYERED = 64;
+constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 10240;  // 与 defs.h MAX_H_A2_LAYERED 同值
 constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_FULLMESH = 1024;
 constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_HIERARCHY = 512;
 constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
 constexpr uint32_t LAYERED_MAX_BATCH_SIZE_A2 = 512;
-constexpr size_t USER_WORKSPACE_A2 = 1UL * 1024UL * 1024UL; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
+constexpr size_t USER_WORKSPACE_A2 = 1UL * 1024UL * 1024UL;
 constexpr uint64_t TILING_KEY_BASE_A2 = 2000000000;
 constexpr uint64_t TILING_KEY_LAYERED_COMM_A2 = 100000000;
 constexpr uint64_t INIT_TILINGKEY_A2 = 1000;
@@ -251,7 +250,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     OP_TILING_CHECK((groupEpPtr == nullptr) || (strnlen(groupEpPtr, moe_dispatch_defs::MAX_GROUP_NAME_LENGTH) == 0) ||
         (strnlen(groupEpPtr, moe_dispatch_defs::MAX_GROUP_NAME_LENGTH) == moe_dispatch_defs::MAX_GROUP_NAME_LENGTH),
         OP_LOGE(K_INNER_DEBUG, "groupEp is invalid."), return ge::GRAPH_FAILED);
-    int32_t maxEpWorldSizeA2 = MAX_EP_WORLD_SIZE_A2;
+    int64_t maxEpWorldSizeA2 = MAX_EP_WORLD_SIZE_A2;
     if (isLayered) {
         maxEpWorldSizeA2 = MAX_EP_WORLD_SIZE_A2_LAYERED;
     }
@@ -262,11 +261,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
         OP_LOGE(K_INNER_DEBUG, "epRankId is invalid."), return GRAPH_FAILED);
     int32_t maxMoeExpertNums = isLayered ? MAX_MOE_EXPERT_NUMS_A2_HIERARCHY : MAX_MOE_EXPERT_NUMS_A2_FULLMESH;
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr % *epWorldSizePtr != 0 ||
-<<<<<<< HEAD
         *moeExpertNumPtr <= 0 || *moeExpertNumPtr > maxMoeExpertNums,
-=======
-        *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUM_A2,
->>>>>>> f1e3625e5 (refactor(dispatch_v2): 使用公共层组件优化 tiling 代码)
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return GRAPH_FAILED);
@@ -313,11 +308,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
     info.quantMode = *quantModePtr;
-<<<<<<< HEAD
     info.maxMoeExpertNum = maxMoeExpertNums;
-=======
-    info.maxMoeExpertNum = MAX_MOE_EXPERT_NUM_A2;
->>>>>>> f1e3625e5 (refactor(dispatch_v2): 使用公共层组件优化 tiling 代码)
 
     if (*globalBsPtr == 0) {
         info.globalBs = *epWorldSizePtr * bs;
@@ -383,12 +374,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-<<<<<<< HEAD
     OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > MAX_HIDDEN_SIZE_A2,
-=======
-    uint32_t maxHiddenSizeA2 = isLayered ? MAX_H_A2_LAYERED : MAX_H_A2;
-    OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > maxHiddenSizeA2,
->>>>>>> f1e3625e5 (refactor(dispatch_v2): 使用公共层组件优化 tiling 代码)
         OP_LOGE(K_INNER_DEBUG, "hiddensize is invalid."), return GRAPH_FAILED);
     uint32_t maxBatchSizeA2 = isLayered ? MAX_BS_A2_LAYERED : MAX_BS_A2;
     OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,
