@@ -192,7 +192,7 @@ def sas(param_combinations):   # 初始化参数和tensor
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
-def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
+def test_mixed_quant_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         futures = executor.submit(sas, param_combinations)

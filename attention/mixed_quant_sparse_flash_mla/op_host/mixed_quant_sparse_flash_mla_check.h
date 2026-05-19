@@ -117,7 +117,7 @@ constexpr uint32_t SINKS_INDEX = 15;
 constexpr uint32_t METADATA_INDEX = 16;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
-constexpr uint32_t SOFTMAX_LSE_INDEX = 0;
+constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_SCALE_INDEX = 0;
@@ -581,4 +581,4 @@ private:
     gert::Shape attenOutShapeCmp_{};
 };
 } // namespace optiling
-#endif // KVQUANT_SPARSE_ATTN_SHAREDKV_TILING_H
+#endif // MIXED_QUANT_SPARSE_FLASH_MLA_CHECK_H

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file sparse_attn_sharedkv_proto.cpp
+ * \file mixed_quant_sparse_flash_mla_proto.cpp
  * \brief
  */
 

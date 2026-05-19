@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file kvquant_sparse_attn_sharedkv_tiling.cpp
+ * \file mixed_quant_sparse_flash_mla_tiling.cpp
  * \brief
  */
 
@@ -131,14 +131,12 @@ ge::graphStatus KvQuantSASInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    int64_t zero = 0;
-    int64_t *pZero = &zero;
     opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
-    opParamInfo_.tileSize = pZero;
+    opParamInfo_.tileSize = nullptr;
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOTFMAX_SCALE_INDEX);
-    opParamInfo_.oriKvStride = pZero;
-    opParamInfo_.cmpKvStride = pZero;
+    opParamInfo_.oriKvStride = nullptr;
+    opParamInfo_.cmpKvStride = nullptr;
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
@@ -501,11 +499,11 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
     sasInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
-    sasInfo.tileSize = *opParamInfo_.tileSize;
+    sasInfo.tileSize = 64;
     sasInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     sasInfo.softmaxScale = *opParamInfo_.softmaxScale;
-    sasInfo.oriKvStride = *opParamInfo_.oriKvStride;
-    sasInfo.cmpKvStride = *opParamInfo_.cmpKvStride;
+    sasInfo.oriKvStride = 81920;
+    sasInfo.cmpKvStride = 0;
     sasInfo.cmpRatio = *opParamInfo_.cmpRatio;
     sasInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     sasInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
@@ -567,7 +565,7 @@ static ge::graphStatus TilingPrepareForMixedQuantSparseFlashMla(gert::TilingPars
     return ge::GRAPH_SUCCESS;
 }
 
-// --------------------------SparseAttnSharedkvTiling类成员函数定义-----------------------
+// --------------------------MixedQuantSparseFlashMlaTiling类成员函数定义-----------------------
 ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(KvQuantSASTilingInfo *tilingInfo)
 {
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {

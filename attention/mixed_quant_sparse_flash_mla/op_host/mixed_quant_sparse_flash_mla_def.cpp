@@ -9,7 +9,7 @@
  */
  
 /*!
- * \file kvquant_sparse_attn_sharedkv_def.cpp
+ * \file mixed_quant_sparse_flash_mla_def.cpp
  * \brief
  */
 

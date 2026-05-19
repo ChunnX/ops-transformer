@@ -41,10 +41,11 @@ public:
     ARGS_TRAITS;
     __aicore__ inline MixedQuantSparseFlashMlaScfa() {};
 
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-        __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
-        __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
+        __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *seqUsedOriKV,
+        __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
+        __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
         const MixedQuantSparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 private:
@@ -99,13 +100,14 @@ private:
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-    __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-    __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
-    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
+    __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
+    __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *seqUsedOriKV,
+    __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
+    __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
     const MixedQuantSparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe)
 {
-    __gm__ uint8_t *sequsedKv = sequsedOriKv; // 复用QSAS功能
+    __gm__ uint8_t *sequsedKv = seqUsedOriKV; // 复用QSAS功能
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
@@ -143,24 +145,24 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ParseTilingData(
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
 {
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
-    constInfo.bSize = sparseAttnSharedkvBaseParams.batchSize;
+    auto &mixedQuantSparseFlashMlaBaseParams = this->tilingData->baseParams;
+    constInfo.bSize = mixedQuantSparseFlashMlaBaseParams.batchSize;
     constInfo.n2Size = 1;
-    constInfo.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup;
-    constInfo.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
-    constInfo.s2Size = sparseAttnSharedkvBaseParams.kvSeqSize;
-    constInfo.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
-    constInfo.cmpRatio = sparseAttnSharedkvBaseParams.cmpRatio;
-    constInfo.oriWinLeft = sparseAttnSharedkvBaseParams.oriWinLeft;
-    constInfo.oriWinRight = sparseAttnSharedkvBaseParams.oriWinRight;
-    constInfo.tileSize = sparseAttnSharedkvBaseParams.tileSize;
-    constInfo.dSizeRope = sparseAttnSharedkvBaseParams.ropeHeadDim;
-    constInfo.softmaxScale = sparseAttnSharedkvBaseParams.softmaxScale;
-    constInfo.oriKvStride = sparseAttnSharedkvBaseParams.oriKvStride;
-    constInfo.cmpKvStride = sparseAttnSharedkvBaseParams.cmpKvStride;
-    constInfo.dSize = sparseAttnSharedkvBaseParams.dSize;
+    constInfo.gSize = mixedQuantSparseFlashMlaBaseParams.nNumOfQInOneGroup;
+    constInfo.s1Size = mixedQuantSparseFlashMlaBaseParams.qSeqSize;
+    constInfo.s2Size = mixedQuantSparseFlashMlaBaseParams.kvSeqSize;
+    constInfo.sparseBlockCount = mixedQuantSparseFlashMlaBaseParams.sparseBlockCount;
+    constInfo.cmpRatio = mixedQuantSparseFlashMlaBaseParams.cmpRatio;
+    constInfo.oriWinLeft = mixedQuantSparseFlashMlaBaseParams.oriWinLeft;
+    constInfo.oriWinRight = mixedQuantSparseFlashMlaBaseParams.oriWinRight;
+    constInfo.tileSize = mixedQuantSparseFlashMlaBaseParams.tileSize;
+    constInfo.dSizeRope = mixedQuantSparseFlashMlaBaseParams.ropeHeadDim;
+    constInfo.softmaxScale = mixedQuantSparseFlashMlaBaseParams.softmaxScale;
+    constInfo.oriKvStride = mixedQuantSparseFlashMlaBaseParams.oriKvStride;
+    constInfo.cmpKvStride = mixedQuantSparseFlashMlaBaseParams.cmpKvStride;
+    constInfo.dSize = mixedQuantSparseFlashMlaBaseParams.dSize;
     constInfo.dSizeV = constInfo.dSize;
-    constInfo.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
+    constInfo.dSizeVInput = mixedQuantSparseFlashMlaBaseParams.dSizeVInput;
     constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
@@ -168,10 +170,10 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 
     // pageAttention
     if constexpr (isPa) {
-        constInfo.oriBlockSize = sparseAttnSharedkvBaseParams.paOriBlockSize;
-        constInfo.cmpBlockSize = sparseAttnSharedkvBaseParams.paCmpBlockSize;
-        constInfo.oriMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.oriMaxBlockNumPerBatch;
-        constInfo.cmpMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.cmpMaxBlockNumPerBatch;
+        constInfo.oriBlockSize = mixedQuantSparseFlashMlaBaseParams.paOriBlockSize;
+        constInfo.cmpBlockSize = mixedQuantSparseFlashMlaBaseParams.paCmpBlockSize;
+        constInfo.oriMaxBlockNumPerBatch = mixedQuantSparseFlashMlaBaseParams.oriMaxBlockNumPerBatch;
+        constInfo.cmpMaxBlockNumPerBatch = mixedQuantSparseFlashMlaBaseParams.cmpMaxBlockNumPerBatch;
     }
     
     // actQ->TND, actKV pa场景任意layout均有

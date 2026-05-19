@@ -60,7 +60,7 @@ def sas(testcase_files):
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
-def test_sparse_attn_sharedkv(testcase_files):
+def test_mixed_quant_sparse_flash_mla(testcase_files):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(sas, testcase_files)

@@ -30,9 +30,10 @@ using namespace AscendC;
         templateClass<CubeBlockType, VecBlockType> op;                                            \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                       \
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                             \
-        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,  \
-            seqUsedQ, seqUsedOriKV, seqUsedCmpKV, oriTopkLength, cmpTopkLength, sinks, metadata,  \
-            attentionOut, user, tilingData, &tPipe);                                              \
+        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable,           \
+            cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,    \
+            seqUsedCmpKV, oriTopkLength, cmpTopkLength, sinks, metadata, attentionOut,            \
+            user, tilingData, &tPipe);                                                            \
         op.Process();                                                                             \
     } while (0)
 
