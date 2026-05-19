@@ -284,11 +284,9 @@ __aicore__ inline void
 BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_DETERMINISTIC_FUNC_LOCAL_PARAMS>::VectorSequentialWrite(
     uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset, LocalTensor<DataTypeOut> &yLocal)
 {
-    // offsetM is the cycling-window-relative row offset (computed by Kernel from
-    // workspaceBaseRow + subBlock iterations), NOT a global offset.
-    // The Kernel passes cyclingRowOffset via epilogueOffset[5], and operator()
-    // computes wsWriteOffset = workspaceBaseRow + i * MAX_OUTPUT_M_UBS for each chunk.
-    // Therefore offsetM is already the absolute row base within the cycling window.
+    // workspaceBaseRow is now per-tile (Kernel increments after each tile epilogue).
+    // wsWriteOffset is mOffset + i * MAX_OUTPUT_M_UBS (no logitBase).
+    // yGlobal_ is rebased by workspaceBaseRow, so offsetM is relative to workspaceBaseRow.
     uint64_t absRowBase = offsetM;
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
@@ -586,7 +584,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
         // Workspace write offset (workspaceBaseRow already rebased into yGlobal_)
-        uint64_t wsWriteOffset = logitBase + mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
+        uint64_t wsWriteOffset = mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
         VectorSequentialWrite(singleN_, repeatTimesLine_, wsWriteOffset, yOffset, yLocal);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         yPingPongID_ = (yPingPongID_ + 1) & 1;

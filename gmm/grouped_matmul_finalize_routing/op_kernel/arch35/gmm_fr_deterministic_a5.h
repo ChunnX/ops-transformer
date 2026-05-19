@@ -79,7 +79,7 @@ __aicore__ inline void FRDeterministicA5(
     // On A5, AIC is subBlock 0, AIV is subBlock 1. This function only runs on AIV.
     // Use blockIdx directly (not * GetTaskRation + GetSubBlockIdx) to distribute
     // output rows across all 36 physical cores evenly.
-    uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx());
+    uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
 
     // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
     uint64_t processedRows = 0;
