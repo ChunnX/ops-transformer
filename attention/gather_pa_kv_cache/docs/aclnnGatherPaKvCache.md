@@ -99,7 +99,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，当cacheMode为"Norm"时，D轴（最后一维head_size）必须连续，D轴之前的维度支持非连续；当cacheMode为"PA_NZ"时，仅dim0（num_blocks维）支持非连续。</td>
     </tr>
     <tr>
       <td class="tg-0pky">valueCache（aclTensor*）</td>
@@ -109,7 +109,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">与keyCache保持一致</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，与keyCache非连续约束一致。</td>
     </tr>
     <tr>
       <td class="tg-0pky">blockTables（aclTensor*）</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">与keyCache保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2-3</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，B、S维度支持非连续，N、D维度必须连续。</td>
     </tr>
     <tr>
       <td class="tg-0pky">valueRef（aclTensor*）</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">与keyCache保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2-3</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，与keyRef非连续约束一致。</td>
     </tr>
     <tr>
       <td class="tg-0pky">seqOffsetOptional（aclTensor*）</td>
