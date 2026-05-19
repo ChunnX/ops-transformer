@@ -822,6 +822,8 @@ public:
             uint64_t gS1Size = static_cast<uint64_t>(rawQLen) * constInfo.gSize;
             uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
+            uint32_t oldGS1Cur = gS1Cur;
+
             int64_t preTokenLeftUp = 0;
             int64_t nextTokenLeftUp = 0;
             GetPreNextTokenLeftUp(rawQLen, static_cast<int64_t>(actSeqLensKv),
@@ -851,8 +853,20 @@ public:
                     gS1Cur = (gS1LoopTimes > 0U) ? (gS1LoopTimes - 1U) : 0U;
                 }
             }
-            PRINTF("gS1Skip<=0, bN2Cur:%u, rawQLen:%lld, preT:%lld, nextT:%lld, nextTokErr:%lld, gS1LT:%llu, gS1Off:%u, gS1Cur:%u\n", bN2Cur, rawQLen, preTokenLeftUp, nextTokenLeftUp, nextTokensError, gS1LoopTimes, gS1Offset, gS1Cur);
-            return;
+
+            // sparse调整未推进gS1Cur时(SKIP场景), 手动推进避免死循环
+            if (gS1Cur == oldGS1Cur && gS1LoopTimes > 0U) {
+                if (gS1Cur + 1 < gS1LoopTimes) {
+                    gS1Cur++;
+                } else {
+                    // 已到当前batch末尾, 转为gS1Skip>0走跨batch逻辑
+                    gS1Skip = 1;
+                }
+            }
+            if (gS1Skip <= 0) {
+                PRINTF("gS1Skip<=0, bN2Cur:%u, rawQLen:%lld, preT:%lld, nextT:%lld, nextTokErr:%lld, gS1LT:%llu, gS1Off:%u, gS1Cur:%u\n", bN2Cur, rawQLen, preTokenLeftUp, nextTokenLeftUp, nextTokensError, gS1LoopTimes, gS1Offset, gS1Cur);
+                return;
+            }
         }
 
         uint32_t n2Size = constInfo.n2Size;
@@ -892,7 +906,7 @@ public:
             gS1Skip -= gS1RemainN2;
         }
 
-        PRINTF("after gS1RemainN2 gS1Skip:%lld\n", gS1Skip);
+        PRINTF("after gS1RemainN2 gS1Skip:%lld, gS1LoopTimes:%lld\n", gS1Skip, gS1LoopTimes);
         while (true) {
             bIdx++;
             if (bIdx >= constInfo.bSize) {
@@ -949,7 +963,7 @@ public:
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
-            } else {
+            } else if (taskDealMode != TASK_DEAL_MODE::SKIP) {
                 coreGS1Loops++;
                 accGS1Loops++;
                 createdTaskCount = executedTaskCount;
