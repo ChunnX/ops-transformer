@@ -317,6 +317,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             attenMaskInfo.preTokens = inputParamsRegbase.preTokens;
             attenMaskInfo.nextTokens = inputParamsRegbase.nextTokens;
             attenMaskInfo.compressMode = inputParamsRegbase.attenMaskCompressMode;
+            attenMaskInfo.maskBatch = inputParamsRegbase.maskBatch;
             attenMaskInfo.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
             attenMaskInfo.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
         }
@@ -342,6 +343,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             attenMaskInfo.nextTokens = inputParamsRegbase.nextTokens;
             attenMaskInfo.compressMode = inputParamsRegbase.attenMaskCompressMode;
             attenMaskInfo.attenMaskShapeType = inputParamsRegbase.attenMaskShapeType;
+            attenMaskInfo.maskBatch = inputParamsRegbase.maskBatch;
             attenMaskInfo.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
             attenMaskInfo.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
             attenMaskInfo.bandIndex = inputParamsRegbase.bandIndex;

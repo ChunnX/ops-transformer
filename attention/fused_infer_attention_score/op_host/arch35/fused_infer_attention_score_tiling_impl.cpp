@@ -1655,6 +1655,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         singleCoreParams.set_attenMaskBatch(maskBatch);
         maskS2Size = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
         maskS1Size = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
+        inputParams.set_maskBatch(maskBatch);
         inputParams.set_attenMaskS1Size(maskS1Size);
         inputParams.set_attenMaskS2Size(maskS2Size);
         baseParams.set_maskQsSize(maskS1Size);
