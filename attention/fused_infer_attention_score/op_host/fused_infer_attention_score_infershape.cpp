@@ -298,7 +298,7 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
         OP_LOGE("FusedInferAttentionScore", "context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(context->GetNodeName(), "Enter FusedInferAttentionScore InferShape impl.");
+    OP_LOGI(context->GetNodeName(), "Enter FusedInferAttentionScore InferShape impl.");
     // query shape
     const gert::Shape *queryShape = context->GetInputShape(FIA_QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -366,7 +366,7 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
         (*softmaxLseShape)[FIA_LAYOUT_DIM0] = NUM_0;
     }
 
-    OP_LOGD(context->GetNodeName(), "FusedInferAttentionScore InferShape end.");
+    OP_LOGI(context->GetNodeName(), "FusedInferAttentionScore InferShape end.");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -376,7 +376,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         OP_LOGE("FusedInferAttentionScore", "context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(context->GetNodeName(), "Enter FusedInferAttentionScore InferDataType impl.");
+    OP_LOGI(context->GetNodeName(), "Enter FusedInferAttentionScore InferDataType impl.");
     // default set q's dtype as fia's output type
     ge::DataType outputType = context->GetInputDataType(FIA_QUERY_INDEX);
     // 10 is quant_scale2's index, if not instantiated or illegal return ge::DT_UNDEFINED
@@ -419,7 +419,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
     // attention_out, outidx:0
     context->SetOutputDataType(FIA_ATTENTION_OUT_INDEX, outputType);
     context->SetOutputDataType(FIA_SOFTMAX_LSE_INDEX, ge::DT_FLOAT);
-    OP_LOGD(context->GetNodeName(), "FusedInferAttentionScore InferDataType end.");
+    OP_LOGI(context->GetNodeName(), "FusedInferAttentionScore InferDataType end.");
     return GRAPH_SUCCESS;
 }
 
