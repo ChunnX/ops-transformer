@@ -546,6 +546,14 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     uint64_t logitOffset = logitBase + mOffset;
     uint64_t yOffset = Get<DET_SEQ_Y_IDXS>(blockCoord);
 
+    // DEBUG: print key offsets
+    if (subBlockIdx_ == 1) {
+        printf("[EPI] singleM=%lu halfM=%u singleMInVec=%lu mOffset=%lu logitBase=%lu wsBaseRow=%lu yOffset=%lu n_=%lu wsWriteMax=%lu\n",
+               static_cast<uint64_t>(singleM_), halfSingleM, singleMInVec, mOffset,
+               logitBase, workspaceBaseRow, yOffset, static_cast<uint64_t>(n_),
+               mOffset + singleMInVec);
+    }
+
     // Rebase yGlobal_ by workspaceBaseRow to keep element offsets small
     // (A5 DataCopyPad has limited GM element offset range)
     yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut*>(params_->yGMAddr)
