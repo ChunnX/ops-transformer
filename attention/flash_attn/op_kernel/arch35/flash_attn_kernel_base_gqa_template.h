@@ -393,7 +393,9 @@ public:
         }
 
         GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoXShared taskRunInfoShared[PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
@@ -418,7 +420,7 @@ public:
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                     // 创建任务
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoShared, taskRunInfoCube, taskRunInfoVec);
                     createdTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
@@ -433,9 +435,9 @@ public:
                 }
             }
             // 执行任务
-            shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
+            shouldExecuteTask = ShouldExecuteTask(taskRunInfoShared);
             if (shouldExecuteTask) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
+                ExecuteTask(executedTaskCount, taskRunInfoShared, taskRunInfoCube, taskRunInfoVec);
                 executedTaskCount++;
             }
         }
@@ -446,10 +448,10 @@ public:
         return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTask(RunInfoXShared taskRunInfoShared[PRELOAD_TASK_CACHE_SIZE])
     {
         for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
-            if (taskRunInfo[i].isValid) {
+            if (taskRunInfoShared[i].isValid) {
                 return true;
             }
         }
@@ -609,140 +611,163 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoXShared taskRunInfoShared[PRELOAD_TASK_CACHE_SIZE],
+                                    RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE],
+                                    RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
-        if (runInfo0.isValid) {
+        RunInfoXShared &runInfo0Shared = taskRunInfoShared[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXCube &runInfo0Cube = taskRunInfoCube[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXVec &runInfo0Vec = taskRunInfoVec[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXShared &runInfoNegNShared = taskRunInfoShared[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXCube &runInfoNegNCube = taskRunInfoCube[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXVec &runInfoNegNVec = taskRunInfoVec[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+        
+        if (runInfo0Shared.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(runInfo0Shared, runInfo0Cube);
             } else {
-                ComputeVec1(runInfo0);
+                ComputeVec1(runInfo0Shared, runInfo0Vec);
             }
         }
         if (loop >= PRELOAD_N) {
-            if (runInfoNegN.isValid) {
+            if (runInfoNegNShared.isValid) {
                 if ASCEND_IS_AIC {
-                    ComputeMm2(runInfoNegN);
+                    ComputeMm2(runInfoNegNShared, runInfoNegNCube);
                 } else {
-                    ComputeVec2(runInfoNegN);
+                    ComputeVec2(runInfoNegNShared, runInfoNegNVec);
                 }
-                runInfoNegN.isValid = false;
+                runInfoNegNShared.isValid = false;
             }
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(RunInfoXShared &runInfoShared, RunInfoXCube &runInfoCube)
     {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfoShared, runInfoCube);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm2(RunInfoXShared &runInfoShared, RunInfoXCube &runInfoCube)
     {
         if constexpr (BMM2_TOUB) {
-            cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+            cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfoShared, runInfoCube);
         } else {
-            cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
+            cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfoShared, runInfoCube);
         }
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1(RunInfoXShared &runInfoShared, RunInfoXVec &runInfoVec)
     {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfoShared, runInfoVec);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2(RunInfoXShared &runInfoShared, RunInfoXVec &runInfoVec)
     {
         if constexpr (BMM2_TOUB) {
-            this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
+            this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfoShared, runInfoVec);
         } else {
-            this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo);
+            this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfoShared, runInfoVec);
         }
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+                                      RunInfoXShared taskRunInfoShared[PRELOAD_TASK_CACHE_SIZE],
+                                      RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE],
+                                      RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
-        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
+        RunInfoXShared &runInfoShared = taskRunInfoShared[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXCube &runInfoCube = taskRunInfoCube[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXVec &runInfoVec = taskRunInfoVec[loop % PRELOAD_TASK_CACHE_SIZE];
+        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfoShared, runInfoCube, runInfoVec);
+        runInfoShared.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
+                                    RunInfoXShared &runInfoXShared, RunInfoXCube &runInfoXCube, RunInfoXVec &runInfoXVec)
     {
-        info.loop = loop;
-        info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * s2BaseSize;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
-
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        // ==================== Shared 部分（公共信息） ====================
+        runInfoXShared.bIdx = bN2Cur / constInfo.n2Size;
+        runInfoXShared.n2Idx = bN2Cur % constInfo.n2Size;
+        runInfoXShared.gS1Idx = gS1Cur * mBaseSize;
+        runInfoXShared.s2Idx = s2Cur * s2BaseSize;
+        
+        runInfoXShared.actMSize = mBaseSize;
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+            runInfoXShared.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
-        info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
+        
+        runInfoXShared.actSingleLoopS2Size = s2BaseSize;
+        if (((s2Cur + 1) * s2BaseSize) > actSeqLensKv) {
+            runInfoXShared.actSingleLoopS2Size = actSeqLensKv - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
+        
+        runInfoXShared.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        runInfoXShared.isLastS2Loop = (s2Cur + 1 == curS2End);
+        
+        // ==================== Cube 部分（AIC 核心） ====================
+        if ASCEND_IS_AIC {
+            if (constInfo.isKvContinuous) {
+                runInfoXCube.isChangeBatch = false;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+                // for tensor-list
+                if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
+                    runInfoXCube.isChangeBatch = true;
+                } else {
+                    runInfoXCube.isChangeBatch = (runInfoXShared.n2Idx == 0 && s2Cur == curS2Start);
+                }
             }
         }
-
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
-
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
-        } else {
-            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
+        
+        // ==================== Vec 部分（AIV 核心） ====================
+        if ASCEND_IS_AIV {
+            runInfoXVec.loop = loop;
+            runInfoXVec.mloop = mloop;
+            
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                          LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                // S1G layout
+                runInfoXVec.s1Idx = runInfoXShared.gS1Idx / constInfo.gSize;
+            } else {
+                // GS1 layout
+                runInfoXVec.s1Idx = runInfoXShared.gS1Idx % actSeqLensQ;
+            }
+            
+            runInfoXVec.actS1Size = actSeqLensQ;
+            runInfoXVec.actS2Size = actSeqLensKv;
+            
+            runInfoXVec.actSingleLoopS2SizeAlign =
+                Align((uint32_t)runInfoXShared.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            
+            GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, runInfoXVec.preTokensLeftUp, runInfoXVec.nextTokensLeftUp);
+            
+            runInfoXVec.isS2SplitCore = false;
+            runInfoXVec.faTmpOutWsPos = coreFirstTmpOutWsPos_;
+            
+            if constexpr (USE_DN) {
+                runInfoXVec.actMSizeAlign32 = (runInfoXShared.actMSize + 31) >> 5 << 5;
+                runInfoXVec.actVecMSize = runInfoXShared.actMSize <= 16 ? runInfoXShared.actMSize : (runInfoXVec.actMSizeAlign32 >> 1);
+            } else {
+                runInfoXVec.actVecMSize = (runInfoXShared.actMSize + 1) >> 1;
+            }
+            
+            runInfoXVec.vecMbaseIdx = 0;
+            if (constInfo.subBlockIdx == 1) {
+                runInfoXVec.vecMbaseIdx = runInfoXVec.actVecMSize;
+                runInfoXVec.actVecMSize = runInfoXShared.actMSize - runInfoXVec.actVecMSize;
+            }
+            
+            if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
+                // 所有任务属于同一个S1G
+                runInfoXVec.isS2SplitCore = true;
+            } else {
+                if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+                    // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
+                    runInfoXVec.isS2SplitCore = true;
+                } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+                    // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
+                    runInfoXVec.isS2SplitCore = true;
+                    runInfoXVec.faTmpOutWsPos = headS2Split ? (runInfoXVec.faTmpOutWsPos + 1) : runInfoXVec.faTmpOutWsPos;
+                }
             }
         }
     }
