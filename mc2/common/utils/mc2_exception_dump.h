@@ -57,9 +57,14 @@ public:
     void SetGroupName(const char* groupName)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
-            strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
-            OP_LOGE(OP_NAME, "groupName is invalid.");
+        if (groupName == nullptr) {
+            OP_LOGE(OP_NAME, "groupName is nullptr.");
+            return;
+        }
+
+        size_t len = strnlen(groupName, MAX_GROUP_NAME_LENGTH);
+        if (len == 0 || len == MAX_GROUP_NAME_LENGTH) {
+            OP_LOGE(OP_NAME, "groupName len is %d, should be in range (0, %d).", len, MAX_GROUP_NAME_LENGTH);
             return;
         }
         groupName_ = std::string(groupName);
@@ -256,9 +261,13 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
 
 inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
 {
-    if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
-        strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
-        OP_LOGE(OP_NAME, "groupName is invalid.");
+    if (groupName == nullptr) {
+        OP_LOGE(OP_NAME, "groupName is nullptr.");
+        return -1;
+    }
+    size_t len = strnlen(groupName, MAX_GROUP_NAME_LENGTH);
+    if (len == 0 || len == MAX_GROUP_NAME_LENGTH) {
+        OP_LOGE(OP_NAME, "groupName len is %d, should be in range (0, %d).", len, MAX_GROUP_NAME_LENGTH);
         return -1;
     }
     uint64_t size;
