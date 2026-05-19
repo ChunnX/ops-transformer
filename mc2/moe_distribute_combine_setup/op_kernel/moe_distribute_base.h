@@ -208,6 +208,7 @@ __aicore__ inline void GetURMACqInfoTensor(const AscendC::LocalTensor<uint8_t> &
 
 __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint32_t sqeCount = 1)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     AscendC::Duplicate<uint8_t>(sqeTensor, 0, WRITE_SQE_SIZE); // 初始化为全0
     AscendC::SyncFunc<AscendC::HardEvent::V_S>();
     AscendC::LocalTensor<uint64_t> sqeTensorU64 = sqeTensor.ReinterpretCast<uint64_t>();
@@ -216,6 +217,11 @@ __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> 
     // opcode=0x3
     sqeTensorU64(0) = (static_cast<uint64_t>(0x3U) << (SQE_COMMON_OPCODE_OFFSET * UINT8_BITS_OFFSET)) +
                       (static_cast<uint64_t>(0b10110000U) << (SQE_COMMON_UINT8_OFFSET_3 * UINT8_BITS_OFFSET));
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    PRINTF("combine GenerateCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -258,12 +264,19 @@ __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeT
 __aicore__ inline void UpdateCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
                                           const AscendC::LocalTensor<uint8_t> &sqInfoTensor)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     UpdateCommonSQE(sqeTensor, sqInfoTensor);
 
     // 更新rmt_token_id(20b)
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> templateSqeU32 = sqeTensor.ReinterpretCast<uint32_t>();
     templateSqeU32(SQE_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // rmt_token_id
+
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    PRINTF("combine UpdateCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -285,6 +298,7 @@ __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeT
                                        uint64_t rmtAddr, uint32_t length, uint8_t cqe)
 {
     // 设置cqe(1 bit), odr(3 bits), data_addr(64 bits), rmt_addr(64 bits), length(32 bits)
+    uint64_t timeStart = AscendC::GetSystemCycle();
 
     AscendC::LocalTensor<uint32_t> sqeLocalU32 = sqeTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqeLocalU64 = sqeTensor.ReinterpretCast<uint64_t>();
@@ -301,6 +315,11 @@ __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeT
         sqeTensor(SQE_COMMON_UINT8_OFFSET_2) &= 0b11011001;
         sqeTensor(SQE_COMMON_UINT8_OFFSET_2) |= 0b00000001;
     }
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    PRINTF("combine SetCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint64_t dataAddr,
@@ -332,9 +351,16 @@ __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint
 
 __aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, uint32_t sqPi)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     // 敲JFS DoorBell，更新硬件的sqPi
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     st_dev(sqPi, (__gm__ uint32_t *)(sqInfoU64(WQ_DBADDR_OFFSET)), 0); // Scalar操作
+
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    PRINTF("combine SendJFSDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &cqInfoTensor, uint32_t cqCi)
@@ -388,6 +414,7 @@ __aicore__ inline void PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> 
                                             const AscendC::LocalTensor<uint8_t> &cqeTensor, uint32_t &outSqCi,
                                             uint32_t &outCqCi, uint32_t &outCqCiLinear)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> cqInfoU32 = cqInfoTensor.ReinterpretCast<uint32_t>();
 
@@ -414,6 +441,12 @@ __aicore__ inline void PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> 
     AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>(); // 等cqe status写回无效值
     // 通过敲JFC DoorBell，更新硬件的cqCi
     SendJFCDoorBell(cqInfoTensor, outCqCiLinear);
+
+    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    PRINTF("combine PollCommCQUpdateSQCI cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void InvalidateCqeStatus(const AscendC::LocalTensor<uint8_t> &cqeInfoTensor,
@@ -467,6 +500,7 @@ __aicore__ inline uint32_t GetAvailableSpace(const AscendC::LocalTensor<uint8_t>
 __aicore__ inline void PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
                                   const AscendC::LocalTensor<uint8_t> &sqeTensor, uint32_t sendSqeIdx, uint32_t sqPi)
 {
+    uint64_t timeStart = AscendC::GetSystemCycle();
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     uint32_t sqeSize = sqInfoU32(WQ_WQESIZE_OFFSET); // 单个WQEBB占用大小（64B），由HCCL传递
@@ -478,6 +512,12 @@ __aicore__ inline void PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTen
     uint32_t targetSqPi = (sqPi + sendSqeIdx) % sqDepth;
 
     AscendC::DataCopy(sqGlobalTensor[sqeSize * targetSqPi], sqeTensor, WRITE_SQE_SIZE);
+
+    AscendC::SyncFunc<AscendC::HardEvent::MTE3_V>();
+    uint64_t timeEnd = AscendC::GetSystemCycle();
+    uint64_t cycleUse = timeEnd - timeStart;
+    uint64_t timeUse = cycleUse / 50;
+    PRINTF("combine PutCommSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
