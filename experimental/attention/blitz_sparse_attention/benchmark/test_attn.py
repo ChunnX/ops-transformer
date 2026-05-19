@@ -29,10 +29,12 @@ SEED = 42
 DEVICE = "npu:0"
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = 'BNSD'
-# block_shape pairs exercised by the suite. (128,128) is the sabi-at-128
-# default; (128,512) drops the sabi resolution to one entry per 512-token
-# KV chunk. Both share the same kernel binary at runtime.
-BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
+# block_shape pairs exercised by the suite. The kernel accepts any pair from
+# {128, 256, 512, 1024} × {128, 256, 512, 1024} at runtime via the `block_shape`
+# op-attr; all 16 combinations share the same kernel binary.
+BLOCK_SHAPES = [(bsq, bskv)
+                for bsq  in (128, 256, 512, 1024)
+                for bskv in (128, 256, 512, 1024)]
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
@@ -50,18 +52,22 @@ S_VALS = [
 ]  # s_q = s_kv
 D_VALS = [128]   # head dimension
 # `frame_kind` is a label; the actual FrameWidths is resolved per block_shape
-# in the test body (left_cols is in KV-block-length units, so the same numeric
-# `left_cols` covers different token counts at each granularity — scale to keep
-# the forced-token footprint comparable).
+# in the test body. `left_cols` is in BLOCK_SIZE_KV-token units and `top_rows`
+# is in BLOCK_SIZE_Q-token units, so we scale both by 128 / size (rounded up,
+# min 1) to keep the forced-token footprint comparable across granularities.
 FRAME_KINDS = ["no_frame", "small_frame"]
-FRAMES_BY_KIND_KV = {
-    ("no_frame",    128): FrameWidths(0, 0, 0, 0),
-    ("no_frame",    256): FrameWidths(0, 0, 0, 0),
-    ("no_frame",    512): FrameWidths(0, 0, 0, 0),
-    ("small_frame", 128): FrameWidths(2, 1, 3, 1),
-    ("small_frame", 256): FrameWidths(1, 1, 3, 1),
-    ("small_frame", 512): FrameWidths(1, 1, 3, 1),
-}
+_SMALL_FRAME_LEFT_BY_KV = {128: 2, 256: 1, 512: 1, 1024: 1}
+_SMALL_FRAME_TOP_BY_Q   = {128: 3, 256: 2, 512: 1, 1024: 1}
+FRAMES_BY_KIND_BLOCK_SHAPE = {}
+for _bsq in (128, 256, 512, 1024):
+    for _bskv in (128, 256, 512, 1024):
+        FRAMES_BY_KIND_BLOCK_SHAPE[("no_frame", (_bsq, _bskv))] = FrameWidths(0, 0, 0, 0)
+        FRAMES_BY_KIND_BLOCK_SHAPE[("small_frame", (_bsq, _bskv))] = FrameWidths(
+            left_cols=_SMALL_FRAME_LEFT_BY_KV[_bskv],
+            right_cols=1,
+            top_rows=_SMALL_FRAME_TOP_BY_Q[_bsq],
+            bottom_rows=1,
+        )
 SPARSITY_VALS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 SHAPES = list(itertools.product(B_VALS, H_VALS, S_VALS, D_VALS))
 FRAME_SPARSITY_COMBOS = list(itertools.product(FRAME_KINDS, SPARSITY_VALS))
@@ -81,15 +87,22 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame_kind, sparsi
     s_q = s_kv
     BLOCK_SIZE_Q, BLOCK_SIZE_KV = block_shape
     # Resolve the per-shape frame so the token-footprint stays comparable
-    # across block_shape values (left_cols is in KV-block units).
-    frame = FRAMES_BY_KIND_KV[(frame_kind, BLOCK_SIZE_KV)]
+    # across block_shape values (left_cols is in BLOCK_SIZE_KV-token units,
+    # top_rows is in BLOCK_SIZE_Q-token units).
+    frame = FRAMES_BY_KIND_BLOCK_SHAPE[(frame_kind, block_shape)]
 
-    # Generate attention mask and parameters
-    pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame,
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
-        device=DEVICE, emit_atten_mask=True
-    )
+    # Generate attention mask and parameters.  Some extreme (block_shape, frame,
+    # sparsity) cells have a forced-frame density that exceeds (1 − sparsity);
+    # `generate_sparse_blocks_by_row` raises ValueError when that happens.  Treat
+    # those as parameterisation-infeasible and skip rather than fail.
+    try:
+        pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
+            b, h, s_q, s_kv, d, sparsity, frame=frame,
+            block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
+            device=DEVICE, emit_atten_mask=True
+        )
+    except ValueError as e:
+        pytest.skip(f"sparsity {sparsity} unsatisfiable for {block_shape} {frame_kind}: {e}")
 
     # Generate input tensors
     q, k, v, actseqlen, actseqlenkv = gen_pfa_inputs(

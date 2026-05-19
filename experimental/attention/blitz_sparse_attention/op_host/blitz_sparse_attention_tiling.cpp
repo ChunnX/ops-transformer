@@ -445,25 +445,25 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
     contextKeyParams.isSoftMaxLseEnable =
         (contextKeyParams.softmaxLseFlag != nullptr) && (*contextKeyParams.softmaxLseFlag);
 
-    // block_shape attr (index 9): [BLOCK_SIZE_Q, BLOCK_SIZE_KV], both multiples of 128.
-    // Defaults already set in ContextParamsForPFATiling (128/128). Only (128,128) and
-    // (128,512) are supported in this iteration; anything else is rejected here so
-    // the kernel never sees an unvalidated value. BLOCK_SIZE_Q is currently locked at
-    // 128 (Q-tile re-parameterization is out of scope — see plan).
+    // block_shape attr (index 9): [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Both dimensions
+    // accept {128, 256, 512, 1024}; all 16 combinations are supported. Defaults
+    // are set in ContextParamsForPFATiling (128/128). Validation is duplicated
+    // here so the kernel never sees an unvalidated value (mirrors infershape).
     constexpr uint32_t ATTR_BLOCK_SHAPE_INDEX = 9;
     auto blockShapeList = attrs->GetListInt(ATTR_BLOCK_SHAPE_INDEX);
     if (blockShapeList != nullptr && blockShapeList->GetSize() >= 2) {
         contextKeyParams.qBlockSize = static_cast<int32_t>(blockShapeList->GetData()[0]);
         contextKeyParams.kvBlockSize = static_cast<int32_t>(blockShapeList->GetData()[1]);
     }
-    OP_CHECK_IF(contextKeyParams.qBlockSize != 128,
+    OP_CHECK_IF(contextKeyParams.qBlockSize != 128 && contextKeyParams.qBlockSize != 256 &&
+                contextKeyParams.qBlockSize != 512 && contextKeyParams.qBlockSize != 1024,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "block_shape[0] (BLOCK_SIZE_Q) must be 128; variable Q-tile not yet supported."),
+            "block_shape[0] (BLOCK_SIZE_Q) must be 128, 256, 512, or 1024."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(contextKeyParams.kvBlockSize != 128 && contextKeyParams.kvBlockSize != 256 &&
-                contextKeyParams.kvBlockSize != 512,
+                contextKeyParams.kvBlockSize != 512 && contextKeyParams.kvBlockSize != 1024,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, or 512."),
+            "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, 512, or 1024."),
         return ge::GRAPH_FAILED);
 
     contextKeyParams.deqScaleType = (context->GetOptionalInputDesc(DEQ_SCALE1_INDEX) != nullptr) ?

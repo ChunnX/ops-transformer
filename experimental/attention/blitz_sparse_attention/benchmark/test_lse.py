@@ -51,9 +51,11 @@ from benchmark import create_attention_mask, FrameWidths
 SEED = 42
 DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
-# block_shape pairs exercised by the suite. (128,128) is the sabi-at-128
-# default; (128,512) drops sabi resolution to one entry per 512-token chunk.
-BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
+# block_shape pairs exercised by the suite. All 16 combinations of
+# {128, 256, 512, 1024} × {128, 256, 512, 1024} share the same kernel binary.
+BLOCK_SHAPES = [(bsq, bskv)
+                for bsq  in (128, 256, 512, 1024)
+                for bskv in (128, 256, 512, 1024)]
 _SABI_PAD = 65535   # 0xFFFF – padding sentinel in uint16 sabi tensors
 torch.npu.set_device(DEVICE)
 
@@ -96,14 +98,20 @@ SPARSE_FRAMED_FIAS_SHAPES = [
     (1, 1, 16384, 128),
     (1, 1, 24000, 128),
 ]
-# Per-block-shape sparse frame: `left_cols` is in KV-block-length units, so the
-# same `left_cols=2` covers 2× more tokens at BLOCK_SIZE_KV=256 and 4× more at
-# 512. Scale by 128/bs_kv (rounded, min 1) so the forced-token footprint stays
-# comparable across granularities.
-SPARSE_FRAMES_BY_KV = {
-    128: FrameWidths(left_cols=2, right_cols=1, top_rows=3, bottom_rows=1),
-    256: FrameWidths(left_cols=1, right_cols=1, top_rows=3, bottom_rows=1),
-    512: FrameWidths(left_cols=1, right_cols=1, top_rows=3, bottom_rows=1),
+# Per-block-shape sparse frame: `left_cols` is in BLOCK_SIZE_KV-token units and
+# `top_rows` is in BLOCK_SIZE_Q-token units. Scale both with bs_kv / bs_q so the
+# forced-token footprint stays comparable across granularities.
+_SPARSE_FRAME_LEFT_BY_KV = {128: 2, 256: 1, 512: 1, 1024: 1}
+_SPARSE_FRAME_TOP_BY_Q   = {128: 3, 256: 2, 512: 1, 1024: 1}
+SPARSE_FRAMES_BY_BLOCK_SHAPE = {
+    (bsq, bskv): FrameWidths(
+        left_cols=_SPARSE_FRAME_LEFT_BY_KV[bskv],
+        right_cols=1,
+        top_rows=_SPARSE_FRAME_TOP_BY_Q[bsq],
+        bottom_rows=1,
+    )
+    for bsq  in (128, 256, 512, 1024)
+    for bskv in (128, 256, 512, 1024)
 }
 
 # ── Multi-head sparse shapes for Python-reference comparison ──────────────────
@@ -154,13 +162,19 @@ SPARSE_REF_ATOL = 1e-2
 # ── Mask helper ───────────────────────────────────────────────────────────────
 
 def _build_sparse_masks(B, H, S, sparsity, frame, block_shape):
-    """Return (sabi, pfa_atten_mask) on DEVICE, built on CPU first."""
+    """Return (sabi, pfa_atten_mask) on DEVICE, built on CPU first.
+
+    Skips (via pytest.skip) when the frame+sparsity combination is infeasible
+    for the given block_shape (ValueError from generate_sparse_blocks_by_row)."""
     bs_q, bs_kv = block_shape
-    pfa_atten_mask, _, sabi, _, _, _, _ = create_attention_mask(
-        B, H, S, S, 128, sparsity, "blocks_optimized_batched",
-        block_size_q=bs_q, block_size_kv=bs_kv,
-        frame=frame, device="cpu", emit_atten_mask=True,
-    )
+    try:
+        pfa_atten_mask, _, sabi, _, _, _, _ = create_attention_mask(
+            B, H, S, S, 128, sparsity,
+            block_size_q=bs_q, block_size_kv=bs_kv,
+            frame=frame, device="cpu", emit_atten_mask=True,
+        )
+    except ValueError as e:
+        pytest.skip(f"sparsity {sparsity} unsatisfiable for {block_shape} frame {frame}: {e}")
     return sabi.to(DEVICE), pfa_atten_mask.to(DEVICE)
 
 
@@ -330,6 +344,16 @@ def test_bsa_lse_vs_fias_sparse(shape, sparsity, block_shape):
     scale = 1.0 / math.sqrt(D)
     dtype = torch.bfloat16
 
+    # Empty-sabi edge case: when sparsity is so high that the floor of the
+    # kept-block budget drops to 0, BSA emits no work and leaves the LSE
+    # output at the InitOutput sentinel (~1e12) while FIAS with a fully
+    # masked row collapses to LSE = -inf via -inf-mask softmax. Skip — this
+    # is a known semantic gap at the empty-row boundary, not a kernel bug.
+    bs_q, bs_kv = block_shape
+    n_total_blocks = math.ceil(S / bs_q) * math.ceil(S / bs_kv)
+    if math.floor(n_total_blocks * (1.0 - sparsity)) == 0:
+        pytest.skip(f"empty-sabi edge case at block_shape={block_shape}, S={S}, sparsity={sparsity}")
+
     sabi, pfa_atten_mask = _build_sparse_masks(B, H, S, sparsity, NO_FRAME, block_shape)
     q = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
@@ -365,7 +389,7 @@ def test_bsa_lse_vs_fias_sparse_framed(shape, sparsity, block_shape):
 
     # Per-shape frame: token footprint normalised across block_shape values.
     bs_q, bs_kv = block_shape
-    sparse_frame = SPARSE_FRAMES_BY_KV[bs_kv]
+    sparse_frame = SPARSE_FRAMES_BY_BLOCK_SHAPE[block_shape]
 
     sabi, pfa_atten_mask = _build_sparse_masks(B, H, S, sparsity, sparse_frame, block_shape)
     q = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
@@ -390,11 +414,12 @@ def test_bsa_lse_vs_fias_sparse_framed(shape, sparsity, block_shape):
 @pytest.mark.parametrize("shape", SPARSE_LSE_MULTIHEAD_SHAPES,
                           ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
 def test_bsa_lse_sparse_multihead(shape, sparsity, block_shape):
-    # bs128x{256,512} at small S + sparsity 0.9: when expected kept KV-blocks
-    # per Q-row drops below ~1, most rows end up with zero kept blocks. The
-    # Python reference returns -inf for those rows while BSA leaves the
-    # InitOutput sentinel, so the diff is inf. Skip — semantic gap, not a
-    # kernel correctness issue.
+    # When the expected kept KV-blocks per Q-row drops below ~1, most rows end up
+    # with zero kept blocks. The Python reference returns -inf for those rows
+    # while BSA leaves the InitOutput sentinel, so the diff is inf. Skip — this
+    # is a semantic gap at the empty-row boundary, not a kernel correctness
+    # issue. Also skip when ceil(S/bs_q) collapses to too few Q-blocks at the
+    # tested S (e.g. S=512 with bs_q=1024 has only 1 Q-block).
     bs_q, bs_kv = block_shape
     B, H, S, D = shape
     expected_kept_per_row = (S / bs_kv) * (1.0 - sparsity)

@@ -578,6 +578,12 @@ protected:
             const uint16_t lastSabi  = params->packedSabi[params->packedCount - 1];
             const bool kContiguous   = ((uint32_t)lastSabi - (uint32_t)firstSabi + 1u
                                         == (uint32_t)params->packedCount);
+            // NOTE: the per-sub-tile token offset for KV>basicSInnerSize is
+            // pre-baked into params->tensorBOffset by the wide-KV packer
+            // branch in SInnerLoopFunc; no extra term needed here. Keeping
+            // this code byte-identical for the existing (KV<=basicSInnerSize)
+            // path avoids any I-cache layout shift (Session 8 rule —
+            // see feedback_premask_must_be_noinline.md).
             if (kContiguous) {
                 const int64_t kvOffset = kvBase + (int64_t)firstSabi * kvBlockSize * kvTokenStride;
                 this->mm.SetTail(souterM, params->mm1SingleCoreN);
@@ -1017,6 +1023,9 @@ protected:
             const uint16_t lastSabi  = params->packedSabi[params->packedCount - 1];
             const bool kContiguous   = ((uint32_t)lastSabi - (uint32_t)firstSabi + 1u
                                         == (uint32_t)params->packedCount);
+            // Mirror Bmm1ComputeIterate: per-sub-tile offset is pre-baked into
+            // params->valueOffset by the wide-KV packer branch; no extra term
+            // needed here, keeping the hot path byte-identical.
             if (kContiguous) {
                 const int64_t valOffset = valBase + (int64_t)firstSabi * kvBlockSize * kvTokenStride;
                 this->bmm2.SetTail(souterM, headSize, params->bmm2K);
@@ -2608,6 +2617,142 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
                 this->queSize++;
             }
         }
+    } else if (kvBlockSize > basicSInnerSize) {
+        // ===========================================================================
+        // Wide-KV path (BLOCK_SIZE_KV > basicSInnerSize, currently only KV=1024).
+        // One sabi entry covers `kvBlockSize` tokens but the cube tile is only
+        // `basicSInnerSize` (=512 for D=128 BF16). Each sabi entry is therefore
+        // split into `subTilesPerSabi = kvBlockSize / basicSInnerSize` cube ops
+        // sharing the same flash-softmax accumulator. Per cube op:
+        //   packedCount = 1, packedSabi[0] = real sabi value,
+        //   params->tensorBOffset / valueOffset are pre-baked with the per-
+        //     sub-tile token offset  (sub * basicSInnerSize * kvTokenStride)
+        //     so that Bmm1/Bmm2ComputeIterate's existing
+        //       kvOffset = kvBase + packedSabi[0]*kvBlockSize*kvTokenStride
+        //     formula reaches the correct K/V slice WITHOUT any extra term —
+        //     keeping the hot cube path byte-identical to the legacy
+        //     KV<=basicSInnerSize case (Session 8 I-cache rule).
+        // The contiguous-K fast path in Bmm1/Bmm2ComputeIterate fires because
+        // firstSabi == lastSabi (packedCount==1), so one wide matmul of width
+        // mm1SingleCoreN = basicSInnerSize (or smaller for tail) is issued.
+        // ===========================================================================
+        const int32_t subTilesPerSabi = basicSInnerSize == 0 ? 1 : (int32_t)(kvBlockSize / basicSInnerSize);
+        const int64_t kvTokenStride_packer =
+            (PFAT::layout == PFALayout::BNSD)
+            ? (int64_t)this->tilingData->promptAttentionBaseParams.headSize
+            : (int64_t)this->MultiHeadKV;
+        // startIndex is in basicSInnerSize-units; convert to sabi-index units.
+        // The first sabi entry whose token range overlaps sInnerFirstToken is at
+        // sabi index = (startIndex * basicSInnerSize) / kvBlockSize.
+        const int32_t startSabiIdx = (int32_t)((int64_t)startIndex * basicSInnerSize / kvBlockSize);
+        int32_t firstSabiIdx = FirstGreaterEqual(rowSabi, (uint16_t)startSabiIdx);
+        if (firstSabiIdx < 0) return;
+
+        const int64_t sInnerLastTokenAligned =
+            ((int64_t)sInnerLastToken + (int64_t)softmaxInnerBasicSize - 1) /
+            (int64_t)softmaxInnerBasicSize * (int64_t)softmaxInnerBasicSize;
+
+        int32_t computedBlocks = 0;
+        int32_t chunkIdx = firstSabiIdx;
+        while (chunkIdx < (int32_t)rowSabi.len) {
+            uint16_t s = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+            if (s == kPadU16) break;
+            const int64_t sabiTokenStart = (int64_t)s * kvBlockSize;
+            if (sabiTokenStart >= sInnerLastTokenAligned) break;
+
+            // Peek ahead to detect last sabi for this row, for isLastComputedIter.
+            bool isLastSabi;
+            if (chunkIdx + 1 >= (int32_t)rowSabi.len) {
+                isLastSabi = true;
+            } else {
+                uint16_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx + 1));
+                isLastSabi = (nxt == kPadU16) ||
+                             ((int64_t)nxt * kvBlockSize >= sInnerLastTokenAligned);
+            }
+
+            for (int sub = 0; sub < subTilesPerSabi; ++sub) {
+                const int64_t tileTokenStart = sabiTokenStart + (int64_t)sub * basicSInnerSize;
+                if (tileTokenStart >= sInnerLastTokenAligned) break;
+
+                const int64_t lastCols64 = sInnerLastTokenAligned - tileTokenStart;
+                const int32_t lastCols =
+                    (lastCols64 >= basicSInnerSize) ? basicSInnerSize : (int32_t)lastCols64;
+                const int64_t lastColsActual64 = (int64_t)sInnerLastToken - tileTokenStart;
+                const int32_t lastColsActual =
+                    (lastColsActual64 >= basicSInnerSize) ? basicSInnerSize
+                    : (lastColsActual64 < 0) ? 0
+                    : (int32_t)lastColsActual64;
+
+                params->packedSabi[0]            = s;
+                params->packedCount              = 1;
+                // Pre-bake the sub-tile offset into the K/V base so bmm1/bmm2
+                // can use the legacy `kvBase + packedSabi[0]*kvBlockSize*stride`
+                // formula unchanged — no per-cube-call extra add, no I-cache shift.
+                const int64_t subOff             = (int64_t)sub * basicSInnerSize * kvTokenStride_packer;
+
+                params->mm1SingleCoreN           = (uint32_t)lastCols;
+                params->singleProcessSInnerSizeNow = (uint32_t)lastCols;
+                params->singleProcessSInnerBmmTail = (uint32_t)lastCols;
+                params->bmm2K                    = (uint32_t)lastColsActual;
+                params->mm2SingleKAlign = (params->mm1SingleCoreN + MM2_SINGLE_K_ALIGN_SIZE - 1)
+                                        / MM2_SINGLE_K_ALIGN_SIZE * MM2_SINGLE_K_ALIGN_SIZE;
+                params->maskCopyInCol            = (uint32_t)lastColsActual;
+                params->pseShiftCopyInCol        = (uint32_t)lastColsActual;
+
+                const bool isLastSubTile =
+                    (sub == subTilesPerSabi - 1) ||
+                    (tileTokenStart + basicSInnerSize >= sInnerLastTokenAligned);
+                const bool doneNow = isLastSabi && isLastSubTile;
+
+                params->isFirstComputedIter   = (computedBlocks == 0);
+                params->isSecondComputedIter  = (computedBlocks == 1);
+                params->isLastComputedIter    = doneNow;
+                params->isFirstInnerIter      = params->isFirstComputedIter;
+                params->isSecondInnerIter     = params->isSecondComputedIter;
+                params->isLastInnerIter       = params->isLastComputedIter;
+                params->isPrefixInnerIter     = 0;
+                params->isInnerTail           = (lastCols < basicSInnerSize);
+
+                params->sInnerLoopOffset = (uint32_t)(tileTokenStart / basicSInnerSize);
+
+                params->tensorBOffset            = this->tensorBCoreOffset + subOff;
+                params->valueOffset              = this->valueCoreOffset   + subOff;
+                params->tensorAOffset            = this->tensorACoreOffset;
+                params->sInnerOffsetDataSize     = tileTokenStart;
+                params->antiqParamOffsetPerToken = this->antiqParamBatchOffsetPerToken + tileTokenStart;
+                params->attenMaskOffset          = 0;
+                params->attenMaskOffsetPre       = 0;
+                params->pseShiftOffset           = 0;
+
+                CheckRowInvalid(preTokens, nextTokens, params);
+                params->sparseBandSelect0 = true;
+                params->sparseBandSelect1 = true;
+
+                if (this->queSize >= this->queSizeLimit) {
+                    ComputeEachCoreSInnerLoop();
+                    this->preHeadParams = this->headParams;
+                    this->headId = (this->headId + 1) % PFA_PARAMS_QUEUE_CAPBABILITY;
+                    this->headParams = &this->pfaParamsQueue[this->headId];
+                    this->tailId = (this->tailId + 1) % PFA_PARAMS_QUEUE_CAPBABILITY;
+                    PFAComputeParam *nextTailParams = &this->pfaParamsQueue[this->tailId];
+                    if (computedBlocks < PFA_PARAMS_QUEUE_CAPBABILITY - 1) {
+                        this->CopyParamsAttrOutOfInnerLoop(nextTailParams, this->tailParams);
+                    }
+                    nextTailParams->gmPingpong = this->tailParams->gmPingpong ^ 1;
+                    this->tailParams = nextTailParams;
+                } else {
+                    this->tailId = (this->tailId + 1) % PFA_PARAMS_QUEUE_CAPBABILITY;
+                    PFAComputeParam *nextTailParams = &this->pfaParamsQueue[this->tailId];
+                    this->CopyParamsAttrOutOfInnerLoop(nextTailParams, this->tailParams);
+                    nextTailParams->gmPingpong = this->tailParams->gmPingpong ^ 1;
+                    this->tailParams = nextTailParams;
+                    this->queSize++;
+                }
+                ++computedBlocks;
+                if (doneNow) { chunkIdx = (int32_t)rowSabi.len; break; }
+            }
+            ++chunkIdx;
+        }
     } else {
         // ===========================================================================
         // Session 21 Stage D.1: K-contiguous-only packing.
@@ -3016,6 +3161,11 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::ComputeEachCoreBa
     const uint32_t sabiQBlocks  = this->tilingData->promptAttentionBaseParams.sabiQblocks;
     const uint32_t sabiKVBlocks  = this->tilingData->promptAttentionBaseParams.sabiKVBlocks;
     const uint32_t sabiLen = this->tilingData->promptAttentionBaseParams.sabiLen;
+    // physRow runs in 128-token Q-stride units (sOuterSize=128). The sabi tensor
+    // has `ceil(S / qBlockSize)` rows, so multiple consecutive physRow values
+    // share the same sabi row when qBlockSize > 128. sabiRow = physRow * 128 / qBlockSize.
+    // Direct member access (mirrors kvBlockSize read in SInnerLoopFunc).
+    const uint32_t qBlockSize = this->tilingData->promptAttentionBaseParams.qBlockSize;
 
     // Validate SABI metadata once
     // Superfluous len check, it is already computed in the same way
@@ -3088,7 +3238,13 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::ComputeEachCoreBa
             const uint32_t H = static_cast<uint32_t>(this->tilingData->promptAttentionBaseParams.headNumSize);
             const uint32_t bh = static_cast<uint32_t>(sIdx * H + params->batchNOffset);
 
-            sabiRow = t3.At(bh, static_cast<uint32_t>(physRow));
+            // physRow is in 128-token Q-stride units; sabi rows are at qBlockSize
+            // stride. Map physRow → sabiRow by physRow*128/qBlockSize. Equals physRow
+            // when qBlockSize=128 (no change to legacy behavior).
+            const uint32_t sabiRowIdx = (qBlockSize == 128U)
+                ? static_cast<uint32_t>(physRow)
+                : static_cast<uint32_t>(((int64_t)physRow * 128) / (int64_t)qBlockSize);
+            sabiRow = t3.At(bh, sabiRowIdx);
         }
         if (sInnerLastToken <= sInnerFirstToken) {
             continue;

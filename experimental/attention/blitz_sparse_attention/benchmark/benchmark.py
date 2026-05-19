@@ -23,6 +23,7 @@ single pair to benchmark only one granularity.
 
 import math
 import random
+import sys
 import itertools
 import logging
 from collections import namedtuple
@@ -33,8 +34,11 @@ import torch_bsa
 
 FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+# Configure logging — write to stdout (not the default stderr) so the result
+# table can be piped into `plot.py`:  
+# `python benchmark.py | python plot.py` only produce the figure and discard
+# `python benchmark.py | tee >(python plot.py)` - produce the figure but also keep printing the table to sandard output
+logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Global Definitions
@@ -51,24 +55,27 @@ D_VALS = [128]   # head dimension
 N_REPEATS = 10
 N_WARMUP = 2
 
-# Kind of attention matrix pattern
-# "dense" - dense attention 
-# "lower_triangular"
-# "band"
-# "custom"
-# 'sparse_block_all_same' is the same, but with all masks which are the same.
-# "blocks_optimized" - blocks 
-# 'blocks_optimized_batched' is the new optimized version written by us
-ATTENTION_MATRIX = "blocks_optimized_batched"
-
-# For (block / vertical / band) mask - fraction of attention elements that is retained for computation
+# Fraction of attention blocks zeroed out per row. 0.0 = dense, 0.9 = ~10 % kept.
 SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 # For the block mask. BLOCK_SHAPES lists every (BLOCK_SIZE_Q, BLOCK_SIZE_KV) pair
-# the benchmark sweeps over. The single-value BLOCK_SIZE_Q / BLOCK_SIZE_KV constants
-# are kept as informational defaults; the real driver of the sabi-stride choice is
-# the per-pair value passed to torch_bsa.blitz_sparse_attention via block_shape.
-BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
+# the benchmark sweeps over. The kernel accepts any pair from
+# {128, 256, 512, 1024} × {128, 256, 512, 1024} at runtime via the `block_shape`
+# op-attr. The single-value BLOCK_SIZE_Q / BLOCK_SIZE_KV constants are kept as
+# informational defaults; the real driver of the sabi-stride choice is the
+# per-pair value passed to torch_bsa.blitz_sparse_attention via block_shape.
+BLOCK_SHAPES = [(bsq, bskv)
+                for bsq  in (128, 256, 512, 1024)
+                for bskv in (128, 256, 512, 1024)]
+# Optional sharding for parallel sweeps across multiple NPUs. Set
+# BSA_SHARD="i/N" (e.g. "0/4") to keep only the i-th of N contiguous slices of
+# BLOCK_SHAPES. Used by the README's "shard across NPUs 0,1,2,3" recipe.
+import os as _os
+_shard_spec = _os.environ.get("BSA_SHARD", "")
+if _shard_spec:
+    _i, _n = (int(x) for x in _shard_spec.split("/"))
+    _per = (len(BLOCK_SHAPES) + _n - 1) // _n
+    BLOCK_SHAPES = BLOCK_SHAPES[_i * _per:(_i + 1) * _per]
 BLOCK_SIZE_Q, BLOCK_SIZE_KV = BLOCK_SHAPES[0]
 BLOCK_MASK_SEED = 1234
 
@@ -82,38 +89,41 @@ SABI_SORTED = True
 
 # Force a frame of blocks to be always selected (still requires to be in the
 # sparsity budget). The frame is defined in *token* terms and then rounded up
-# to whole blocks, because `left_cols/right_cols` are in KV-block-length units
-# and `top_rows/bottom_rows` are in Q-block-length units.
+# to whole blocks, because `left_cols / right_cols` are in BLOCK_SIZE_KV-token
+# units and `top_rows / bottom_rows` are in BLOCK_SIZE_Q-token units.
 #
 # The chosen footprint targets a typical generative-model sink/registers/recent
 # pattern: keep the first ~3600 attention rows and the first ~3600 attention
 # columns (these are the "always-attend" sink/system tokens), plus the last 6
 # rows and last 6 columns (the most-recent / streaming-tail tokens). 6 tokens
-# < 1 block in every direction, so right_cols/bottom_rows round up to 1.
+# < 1 block in every direction, so right_cols / bottom_rows round up to 1.
 #
-# Per-shape entry math (BLOCK_SIZE_Q is fixed at 128):
-#   top_rows    = ceil( 3600 / 128 )            = 29   (every block_shape)
-#   bottom_rows = ceil(    6 / 128 )            = 1    (every block_shape)
-#   left_cols   = ceil( 3600 / BLOCK_SIZE_KV )  = 29 / 15 / 8  for 128 / 256 / 512
-#   right_cols  = ceil(    6 / BLOCK_SIZE_KV )  = 1    (every block_shape)
+# Per-pair entry math:
+#   top_rows    = ceil( 3600 / BLOCK_SIZE_Q  )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
+#   left_cols   = ceil( 3600 / BLOCK_SIZE_KV )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
+#   right_cols  = ceil(    6 / BLOCK_SIZE_KV )  = 1
+#   bottom_rows = ceil(    6 / BLOCK_SIZE_Q  )  = 1
 #
-# So the same conceptual "first 3600 + last 6 tokens" frame produces:
-#   128: 29x128 = 3712 forced tokens / row     (right strip 128 tokens)
-#   256: 15x256 = 3840 forced tokens / row     (right strip 256 tokens)
-#   512:  8x512 = 4096 forced tokens / row     (right strip 512 tokens)
-# all within a few % of 3600, which keeps the forced density comparable across
-# block shapes and the sparsity-0.9 budget satisfiable.
-FRAMES_BY_KV = {
-    128: FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1),
-    256: FrameWidths(left_cols=15, right_cols=1, top_rows=29, bottom_rows=1),
-    512: FrameWidths(left_cols=8,  right_cols=1, top_rows=29, bottom_rows=1),
+# So the same conceptual "first 3600 + last 6 tokens" frame produces a forced-
+# token footprint of ≈ 3600–4096 tokens per side at every block_shape pair,
+# keeping the forced density comparable across granularities. At extreme shapes
+# like 1024×1024 the frame alone is already ~8 % density, so the sparsity-0.9
+# budget can be very tight and the host-side feasibility check may reject the
+# configuration; `generate_sparse_blocks_by_row` raises ValueError in that case.
+_LEFT_COLS_BY_KV = {128: 29, 256: 15, 512: 8, 1024: 4}
+_TOP_ROWS_BY_Q   = {128: 29, 256: 15, 512: 8, 1024: 4}
+FRAMES_BY_BLOCK_SHAPE = {
+    (bsq, bskv): FrameWidths(
+        left_cols   = _LEFT_COLS_BY_KV[bskv],
+        right_cols  = 1,
+        top_rows    = _TOP_ROWS_BY_Q[bsq],
+        bottom_rows = 1,
+    )
+    for bsq  in _TOP_ROWS_BY_Q
+    for bskv in _LEFT_COLS_BY_KV
 }
 # Convenience alias for legacy single-shape callers that still read `FRAME`.
-FRAME = FRAMES_BY_KV[BLOCK_SIZE_KV]
-
-# For the band mask
-BAND_PRE_TOKENS = 8
-BAND_POST_TOKENS = 2
+FRAME = FRAMES_BY_BLOCK_SHAPE[(BLOCK_SIZE_Q, BLOCK_SIZE_KV)]
 
 # Print tensors for manual comparisons
 PRINT_OUTPUTS = False
@@ -228,17 +238,12 @@ def generate_sparse_blocks_by_row(
     sort_within_row: bool = True,
 ) -> list[list[int]]:
     """
-    Builds the sabi blocks (soparse blocks selection) of a single head, with a "frame" of 
+    Builds the sabi blocks (sparse blocks selection) of a single head, with a "frame" of 
     always-included blocks and the rest of the blocks randomly selected to meet the target 
     sparsity 
     
     Note: blocks from the frame + sparsely selected blocks are both taken into account when computing the sparsity.
 
-    Constraints (post-sparsity selection):
-      - first 8 block-cols of each row are always included (if they exist)
-      - first 29 block-rows contain all blocks
-      - last row contains all blocks
-      - each row always includes the last block-col
     Output:
       - shape [n_block_rows][n_block_cols]
       - each row: selected cols, then pad_value to the end. Cols are sorted ascending
@@ -405,83 +410,6 @@ def make_block_mask_per_head(
     return torch.stack(head_masks, dim=0).unsqueeze(0)
 
 
-def make_lower_triangular_mask(
-    s_q: int,
-    s_kv: int,
-    device: str = "npu:0",
-) -> torch.Tensor:
-    """
-    Create an *exact* token-level lower-triangular (causal) mask.
-
-    Mask positions where key index > query index (future attention).
-    Works best when s_q == s_kv; for s_q != s_kv this still produces the
-    correct "no-looking-forward" relation over indices.
-
-    Returns:
-        atten_mask: Bool tensor of shape [1, 1, s_q, s_kv] (BNSD),
-                    where True means "masked" (disallowed).
-    """
-    q = torch.arange(s_q, device=device)[:, None]   # [s_q, 1]
-    k = torch.arange(s_kv, device=device)[None, :]  # [1, s_kv]
-    mask_2d = k > q                                # [s_q, s_kv]
-    return mask_2d.unsqueeze(0).unsqueeze(0)
-
-
-def make_dense_mask(
-    s_q: int,
-    s_kv: int,
-    device: str = "npu:0",
-):
-    mask_2d = torch.zeros(s_q, s_kv, dtype=torch.bool, device=device)
-    return mask_2d.unsqueeze(0).unsqueeze(0)
-
-
-def make_band_mask(
-    s_q: int,
-    s_kv: int,
-    pre_tokens: int,
-    post_tokens: int = 0,
-    device: str = "npu:0",
-) -> torch.Tensor:
-    """
-    Band (sliding-window) mask:
-      query i can attend only to keys in [i-pre_tokens, i+post_tokens].
-
-    Returns:
-        atten_mask: Bool tensor of shape [1, 1, s_q, s_kv] (BNSD),
-                    where True means "masked" (disallowed).
-    """
-    pre_tokens = int(pre_tokens)
-    post_tokens = int(post_tokens)
-    if pre_tokens < 0:
-        raise ValueError(f"pre_tokens must be >= 0, got {pre_tokens}")
-    if post_tokens < 0:
-        raise ValueError(f"post_tokens must be >= 0, got {post_tokens}")
-
-    q = torch.arange(s_q, device=device)[:, None]    # [s_q, 1]
-    k = torch.arange(s_kv, device=device)[None, :]   # [1, s_kv]
-
-    left_bound = q - pre_tokens
-    right_bound = q + post_tokens
-
-    # Mask anything outside the allowed window:
-    mask_2d = (k < left_bound) | (k > right_bound)
-    return mask_2d.unsqueeze(0).unsqueeze(0)
-
-
-def make_custom_mask(
-    s_q: int,
-    s_kv: int,
-    block_size_q: int, 
-    block_size_kv: int,
-    device: str = "npu:0",
-) -> torch.Tensor:
-    # single block mask
-    mask_2d = torch.zeros(s_q, s_kv, device=device)
-    mask_2d[:block_size_q, :block_size_kv] = 1
-    return mask_2d.unsqueeze(0).unsqueeze(0).bool()
-
-
 def block_allclose_map(
     out: torch.Tensor,
     ref: torch.Tensor,
@@ -603,68 +531,39 @@ def gen_pfa_inputs(
     return q, k, v, actseqlen, actseqlenkv
 
 
-def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix, 
-                          block_size_q: int, block_size_kv: int, frame:FrameWidths, 
+def create_attention_mask(b, h, s_q, s_kv, d, sparsity,
+                          block_size_q: int, block_size_kv: int, frame: FrameWidths,
                           device: str, emit_atten_mask: bool = True):
     """
-    Creates the (token)-level attention mask and the sabi - necessary for the blocks_optimized_batched
-    sparse patterns
+    Build the block-sparse `sabi` tensor (and the matching token-level
+    `pfa_atten_mask` if `emit_atten_mask`) for the batched block-sparse pattern
+    that BSA expects.  Each batch entry gets an independent random sabi seeded
+    by `BLOCK_MASK_SEED + bidx`; `frame` forces a fixed sink/streaming border on
+    top of the sparsity budget.
+
+    Returns: (pfa_atten_mask, bsa_atten_mask, sabi, sparse_mode, scale,
+              pre_tokens, next_tokens). `bsa_atten_mask` is always None for
+    the block-sparse pattern (BSA's per-tile masking comes from the sabi).
     """
     scale = 1.0 / math.sqrt(float(d))
     pre_tok, post_tok = 2147483647, 0
-    sabi = pfa_atten_mask = bsa_atten_mask = None
+    bsa_atten_mask = None
     sm = 0
 
-    if attention_matrix == "sparse_block_all_same":
-        if sparsity > 0:
-            block_indices = generate_sparse_blocks_by_row(s_q, s_kv, block_size_q, block_size_kv, sparsity, 
-                                                          seed=BLOCK_MASK_SEED, frame=None)
-            pfa_atten_mask = bsa_atten_mask = make_block_mask(s_q, s_kv, block_size_q, block_size_kv, block_indices, 
-                                                          device=device)
-            sm = 1
-    elif attention_matrix == "lower_triangular":
-        if sparsity > 0:
-            pfa_atten_mask = make_lower_triangular_mask(s_q, s_kv, device=device)
-            bsa_atten_mask = make_lower_triangular_mask(2048, 2048, device=device)
-            sm = 2
-    elif attention_matrix == "band":
-        if sparsity > 0:
-            pfa_atten_mask = make_band_mask(s_q, s_kv, pre_tokens=BAND_PRE_TOKENS, post_tokens=BAND_POST_TOKENS, 
-                                        device=device)
-            bsa_atten_mask = make_lower_triangular_mask(2048, 2048, device=device)
-            sm, pre_tok, post_tok = 4, BAND_PRE_TOKENS, BAND_POST_TOKENS
-    elif attention_matrix == "blocks_optimized":
-        if emit_atten_mask and sparsity > 0:
-            per_head_block_ids = generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv,
-                                                                            sparsity, h, frame, BLOCK_MASK_SEED,
-                                                                            sort_within_row=SABI_SORTED)
-            pfa_atten_mask = make_block_mask_per_head(s_q, s_kv, block_size_q, block_size_kv, per_head_block_ids,
-                                                      device)
-            sabi = torch.tensor(per_head_block_ids, dtype=torch.uint16, device=device)
-    elif attention_matrix == "blocks_optimized_batched":
-        per_batch_head_block_indices = [
-            generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, sparsity, h,
-                                                   frame, BLOCK_MASK_SEED + bidx,
-                                                   sort_within_row=SABI_SORTED)
-            for bidx in range(b)
-        ]
-        sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
-        if emit_atten_mask and sparsity > 0:
-            pfa_atten_mask = torch.cat([make_block_mask_per_head(
-                                     s_q, s_kv, block_size_q, block_size_kv, bi, device=device
-                                     ) for bi in per_batch_head_block_indices], dim=0)
-    elif attention_matrix == "custom":
-        if sparsity > 0:
-            pfa_atten_mask = make_custom_mask(s_q, s_kv, block_size_q, block_size_kv, device=device)
-            sm = 1
-        bsa_atten_mask = pfa_atten_mask
-    else:
-        if attention_matrix != "dense":
-            raise ValueError(f"Attention matrix type {attention_matrix} is not implemented, for dense use 'dense'")
-    
-    ret = (pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok)
-    
-    return ret
+    per_batch_head_block_indices = [
+        generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, sparsity, h,
+                                               frame, BLOCK_MASK_SEED + bidx,
+                                               sort_within_row=SABI_SORTED)
+        for bidx in range(b)
+    ]
+    sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
+    pfa_atten_mask = None
+    if emit_atten_mask and sparsity > 0:
+        pfa_atten_mask = torch.cat([make_block_mask_per_head(
+                                 s_q, s_kv, block_size_q, block_size_kv, bi, device=device
+                                 ) for bi in per_batch_head_block_indices], dim=0)
+
+    return pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok
 
 
 def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int, n_repeat: int):
@@ -756,9 +655,9 @@ def benchmark_blitz_sparse_attention():
 
     # Print table header
     logger.info("=" * 96)
-    logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
+    logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}")
     logger.info(f"  {BLOCK_SHAPES=}  {SABI_SORTED=}")
-    logger.info(f"  FRAMES_BY_KV={FRAMES_BY_KV}")
+    logger.info(f"  FRAMES_BY_BLOCK_SHAPE={FRAMES_BY_BLOCK_SHAPE}")
     logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 96)
     logger.info(
@@ -770,16 +669,15 @@ def benchmark_blitz_sparse_attention():
     for block_shape in BLOCK_SHAPES:
         bs_q, bs_kv = block_shape
         bs_label = f"{bs_q}x{bs_kv}"
-        # Scale the frame per BLOCK_SIZE_KV so the forced-token footprint stays
-        # comparable across block shapes; otherwise sparsity ≥ 0.85 cells fail
-        # the host-side feasibility check at the larger KV granularities.
-        frame_for_shape = FRAMES_BY_KV.get(bs_kv, FRAME)
+        # Scale the frame per (BLOCK_SIZE_Q, BLOCK_SIZE_KV) so the forced-token
+        # footprint stays comparable across block shapes.
+        frame_for_shape = FRAMES_BY_BLOCK_SHAPE.get(block_shape, FRAME)
         for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
             s_q = s_kv
 
             # Build attention mask and related parameters for this configuration
             pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-                b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=frame_for_shape,
+                b, h, s_q, s_kv, d, sparsity, frame=frame_for_shape,
                 block_size_q=bs_q, block_size_kv=bs_kv,
                 device=DEVICE, emit_atten_mask=run_ref)
 

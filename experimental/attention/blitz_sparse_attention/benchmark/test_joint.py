@@ -36,9 +36,11 @@ from benchmark import create_attention_mask, FrameWidths
 SEED = 42
 DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
-# block_shape pairs exercised by the suite. (128,128) = sabi at 128-token chunks;
-# (128,512) = sabi at 512-token chunks. Both share the same kernel binary.
-BLOCK_SHAPES = [(128, 128), (128, 256), (128, 512)]
+# block_shape pairs exercised by the suite. All 16 combinations of
+# {128, 256, 512, 1024} × {128, 256, 512, 1024} share the same kernel binary.
+BLOCK_SHAPES = [(bsq, bskv)
+                for bsq  in (128, 256, 512, 1024)
+                for bskv in (128, 256, 512, 1024)]
 torch.npu.set_device(DEVICE)
 
 
@@ -200,11 +202,14 @@ def test_joint_sparse(shape, sparsity, block_shape):
     scale = 1.0 / math.sqrt(D)
     bs_q, bs_kv = block_shape
 
-    pfa_atten_mask, _, sabi, *_ = create_attention_mask(
-        B, H, S, S, D, sparsity, "blocks_optimized_batched",
-        block_size_q=bs_q, block_size_kv=bs_kv,
-        frame=NO_FRAME, device="cpu", emit_atten_mask=True,
-    )
+    try:
+        pfa_atten_mask, _, sabi, *_ = create_attention_mask(
+            B, H, S, S, D, sparsity,
+            block_size_q=bs_q, block_size_kv=bs_kv,
+            frame=NO_FRAME, device="cpu", emit_atten_mask=True,
+        )
+    except ValueError as e:
+        pytest.skip(f"sparsity {sparsity} unsatisfiable for {block_shape}: {e}")
     sabi            = sabi.to(DEVICE)
     pfa_atten_mask  = pfa_atten_mask.to(DEVICE)
 

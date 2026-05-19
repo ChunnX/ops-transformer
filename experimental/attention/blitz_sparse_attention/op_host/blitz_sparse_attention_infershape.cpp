@@ -212,20 +212,21 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
         return ge::GRAPH_FAILED;
     }
 
-    // Validate block_shape attr (must be [128,128] or [128,512] in this iteration).
+    // Validate block_shape attr. Both dimensions accept {128, 256, 512, 1024};
+    // all 16 combinations are supported.
     auto blockShapeList = attrs->GetListInt(BSA_ATTR_BLOCK_SHAPE);
     if (blockShapeList != nullptr && blockShapeList->GetSize() >= 2) {
         int64_t bsQ = blockShapeList->GetData()[0];
         int64_t bsKV = blockShapeList->GetData()[1];
-        if (bsQ != 128) {
+        if (bsQ != 128 && bsQ != 256 && bsQ != 512 && bsQ != 1024) {
             OP_LOGE(context->GetNodeName(),
-                "block_shape[0] (BLOCK_SIZE_Q) must be 128 (got %ld); variable Q-tile not supported.",
+                "block_shape[0] (BLOCK_SIZE_Q) must be 128, 256, 512, or 1024 (got %ld).",
                 bsQ);
             return ge::GRAPH_FAILED;
         }
-        if (bsKV != 128 && bsKV != 256 && bsKV != 512) {
+        if (bsKV != 128 && bsKV != 256 && bsKV != 512 && bsKV != 1024) {
             OP_LOGE(context->GetNodeName(),
-                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, or 512 (got %ld).",
+                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, 512, or 1024 (got %ld).",
                 bsKV);
             return ge::GRAPH_FAILED;
         }

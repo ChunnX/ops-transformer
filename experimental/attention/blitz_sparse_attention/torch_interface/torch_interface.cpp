@@ -59,8 +59,10 @@ aclTensor* create_acl_tensor(const at::Tensor& tensor) {
  * @param [in] key Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] value Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] atten_mask Tensor of shape [B, N, S, T] (bool, optional)
- * @param [in] sabi Tensor of shape [B, N, ceil(S / BLOCK_SIZE_Q), kept_kv_tiles] (uint16, padded with 65535, optional). Each entry indexes a BLOCK_SIZE_KV-wide KV chunk.
- * @param [in] block_shape pair [BLOCK_SIZE_Q, BLOCK_SIZE_KV], both multiples of 128. Supported: [128,128] (default), [128,512].
+ * @param [in] sabi Tensor of shape [B, N, ceil(S / BLOCK_SIZE_Q), kept_kv_tiles] (uint16, padded with 65535, 
+                    optional). Each entry indexes a BLOCK_SIZE_KV-wide KV chunk.
+ * @param [in] block_shape pair [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Each value is one of {128, 256, 512, 1024}; 
+                    all 16 combinations supported. Default: [128, 128].
  * @param [in] actual_seq_lengths vector of actual sequence lengths
  * @param [in] actual_seq_lengths_kv vector of actual sequence lengths for key/value
  * @param [in] num_heads number of attention heads
@@ -107,10 +109,12 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
     std::vector<int64_t> block_shape = block_shape_opt.value_or(std::vector<int64_t>{128, 128});
     TORCH_CHECK(block_shape.size() == 2,
                 "block_shape must be a length-2 list [BLOCK_SIZE_Q, BLOCK_SIZE_KV]");
-    TORCH_CHECK(block_shape[0] == 128,
-                "block_shape[0] (BLOCK_SIZE_Q) must be 128");
-    TORCH_CHECK(block_shape[1] == 128 || block_shape[1] == 256 || block_shape[1] == 512,
-                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, or 512");
+    TORCH_CHECK(block_shape[0] == 128 || block_shape[0] == 256 ||
+                block_shape[0] == 512 || block_shape[0] == 1024,
+                "block_shape[0] (BLOCK_SIZE_Q) must be 128, 256, 512, or 1024");
+    TORCH_CHECK(block_shape[1] == 128 || block_shape[1] == 256 ||
+                block_shape[1] == 512 || block_shape[1] == 1024,
+                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, 512, or 1024");
 
     // Validate input tensors
     TORCH_CHECK(query.is_contiguous(), "query must be contiguous");
@@ -272,7 +276,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             key (torch.Tensor): Key tensor of shape [B, N, T, D] (fp16/bf16)
             value (torch.Tensor): Value tensor of shape [B, N, T, D] (fp16/bf16)
             atten_mask (torch.Tensor, optional): Attention mask of shape [B, N, S, T] (bool)
-            sabi (torch.Tensor, optional): Sparse Attention Block Indices, shape [B, N, S / Qtile_size, sparsity * T / KVTileSize] (uint16, padded with 65535, optional)
+            sabi (torch.Tensor, optional): Sparse Attention Block Indices, 
+                  shape [B, N, S / Qtile_size, sparsity * T / KVTileSize] (uint16, padded with 65535, optional)
             actual_seq_lengths (list, optional): Actual sequence lengths
             actual_seq_lengths_kv (list, optional): Actual sequence lengths for key/value
             num_heads (int, optional): Number of attention heads. Default: 1
@@ -283,7 +288,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             num_key_value_heads (int, optional): Number of key/value heads. Default: 0
             sparse_mode (int, optional): sparse mode = 0,1,2,...7 choice. Default: 0
             softmax_lse_flag (bool, optional): If True, compute softmax LSE output. Default: False
-            block_shape (list[int], optional): [BLOCK_SIZE_Q, BLOCK_SIZE_KV] sabi-index granularity. Both multiples of 128. Supported: [128,128] (default), [128,512].
+            block_shape (list[int], optional): [BLOCK_SIZE_Q, BLOCK_SIZE_KV] sabi-index granularity. 
+                        Each value is one of {128, 256, 512, 1024}; all 16 combinations supported. Default: [128, 128].
 
         Returns:
             tuple(torch.Tensor, torch.Tensor):
