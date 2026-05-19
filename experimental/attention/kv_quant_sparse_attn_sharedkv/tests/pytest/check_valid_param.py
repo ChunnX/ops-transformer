@@ -17,19 +17,14 @@ logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
 def check_valid_param(params):
-    layout_q = params.get('layout_q')
-    layout_kv = params.get('layout_kv')
-    q_type = params.get('q_type')
-    template_run_mode = params.get('template_run_mode')
-
-    if q_type not in [torch.bfloat16]:
+    if params.get('q_type') not in [torch.bfloat16]:
         raise ValueError("q_type should be: bfloat16")
 
-    if layout_q not in ["BSND", "TND"]:
-        raise ValueError(f"不支持的Q shape: {layout_q}")
+    if params.get('layout_q') not in ["BSND", "TND"]:
+        raise ValueError(f"不支持的Q shape: {params.get('layout_q')}")
 
-    if layout_kv not in ["PA_ND"]:
-        raise ValueError(f"不支持的KV shape: {layout_kv}")
+    if params.get('layout_kv') not in ["PA_ND"]:
+        raise ValueError(f"不支持的KV shape: {params.get('layout_kv')}")
 
-    if template_run_mode not in ["SCFA","CFA","SWA"]:
-        raise ValueError(f"不支持的template_run_mode: {template_run_mode}")
+    if params.get('template_run_mode') not in ["SCFA", "CFA", "SWA"]:
+        raise ValueError(f"不支持的template_run_mode: {params.get('template_run_mode')}")
