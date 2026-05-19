@@ -124,12 +124,13 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    if (originN < ubN) {
+        for (uint16_t i = originN; i < ubN; ++i) {
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
-
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
@@ -523,11 +524,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    if (originN < ubN) {
+        for (uint16_t i = originN; i < ubN; ++i) {
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
@@ -928,11 +931,13 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    if (originN < ubN) {
+        for (uint16_t i = originN; i < ubN; ++i) {
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
@@ -1296,11 +1301,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    if (originN < ubN) {
+        for (uint16_t i = originN; i < ubN; ++i) {
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
