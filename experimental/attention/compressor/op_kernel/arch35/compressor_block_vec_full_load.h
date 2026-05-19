@@ -795,7 +795,8 @@ CompressorBlockVectorFullLoad<COMP>::SaveState(const LocalTensor<T> &srcLocal, c
 
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
         uint32_t writeSeqStartIdx =
-            Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_) - (coff_ - 1) * cmpRatio_;
+            Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_) > (coff_ - 1) * cmpRatio_ ?
+            Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_) - (coff_ - 1) * cmpRatio_ : 0;
         if (endSeqIdx <= writeSeqStartIdx) {
             return;
         }
