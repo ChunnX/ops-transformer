@@ -516,11 +516,8 @@ private:
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
             float maxScore = maxLocal.GetValue(row);
             float denom = denomLocal.GetValue(row);
-            const float oldMaxScore = maxScore;
             AccumulateVisibleScoreBlock(accRow, kvCount, static_cast<uint32_t>(row), maxScore, denom, bufferIdx);
-            if (maxScore != oldMaxScore) {
-                maxLocal.SetValue(row, maxScore);
-            }
+            maxLocal.SetValue(row, maxScore);
             denomLocal.SetValue(row, denom);
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
