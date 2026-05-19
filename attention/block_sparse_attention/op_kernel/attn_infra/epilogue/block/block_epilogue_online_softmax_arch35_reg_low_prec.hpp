@@ -504,7 +504,14 @@ private:
             RegLayout::ZERO,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_ROUND,
+            AscendC::RoundMode::CAST_RINT,
+        };
+
+        constexpr static CastTrait castTrait = {
+            RegLayout::ZERO,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
         };
         RegTensor<ElementInput> expVreg0;
         RegTensor<ElementInput> expVreg1;
@@ -512,9 +519,15 @@ private:
         RegTensor<ElementInput> maxVreg;
 
         RegTensor<ElementInput> expDstVreg0;
+        RegTensor<ElementInput> expDstVreg00;
+        RegTensor<ElementInput> expDstVreg01;
         RegTensor<ElementInput> expDstVreg1;
+        RegTensor<ElementInput> expDstVreg10;
+        RegTensor<ElementInput> expDstVreg11;
         RegTensor<ElementInput> expDstVregResult;
 
+        RegTensor<float> floatVreg0;
+        RegTensor<float> floatVreg1;
         RegTensor<ElementOutput> pVreg0;
         RegTensor<ElementOutput> pVreg1;
 
@@ -534,12 +547,27 @@ private:
             Duplicate(expDstVregResult, 0);
             Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVregResult, expDstVreg0, pregFull);
             Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVregResult, expDstVreg1, pregTailN);
+            // if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+            //     constexpr half staticScale = static_cast<half>(448.0f);
+            //     Muls(expDstVreg0, expDstVreg0, staticScale, pregFull);
+            //     Muls(expDstVreg1, expDstVreg1, staticScale, pregTailN);
+            //     Cast<ElementOutput, ElementInput, castTraitZero>(pVreg0, expDstVreg0, pregFull);
+            //     Cast<ElementOutput, ElementInput, castTraitZero>(pVreg1, expDstVreg1, pregTailN);
+            //     StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,
+            //                                                              blockStride, pregFull);
+            //     StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+            //         expUb + i * ELE_NUM_PER_C0_FLOAT8 + blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
+            //         pVreg1, blockStride, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg0, expDstVreg0, staticScale, pregFull);
                 Muls(expDstVreg1, expDstVreg1, staticScale, pregTailN);
-                Cast<ElementOutput, ElementInput, castTraitZero>(pVreg0, expDstVreg0, pregFull);
-                Cast<ElementOutput, ElementInput, castTraitZero>(pVreg1, expDstVreg1, pregTailN);
+                Interleave(expDstVreg00, expDstVreg01, expDstVreg0, expDstVreg0);
+                Interleave(expDstVreg10, expDstVreg11, expDstVreg1, expDstVreg1);
+                Cast<float, ElementInput, castTrait>(floatVreg0, expDstVreg00, pregFull);
+                Cast<float, ElementInput, castTrait>(floatVreg1, expDstVreg10, pregTailN);
+                Cast<ElementOutput, float, castTrait>(pVreg0, floatVreg0, pregFull);
+                Cast<ElementOutput, float, castTrait>(pVreg1, floatVreg1, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,
                                                                          blockStride, pregFull);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
