@@ -582,8 +582,8 @@ public:
             uint32_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
             LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
             mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
-            uint16_t copyBlockCount = runInfo.actMSizeAlign16 * s2BaseSizeCur / 32 / blockBytes;
-            uint64_t dstOffset = constInfo.subBlockIdx * runInfo.actMSizeAlign16 * s2BaseSizeCur / 32;
+            uint16_t copyBlockCount = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / 32 / blockBytes;
+            uint64_t dstOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * s2BaseSizeCur / 32;
             DataCopy(mm2AScaleL1Tensor[dstOffset], pScaleSubLoop0Tensor,
                     {s2BaseSize / s2BaseSizeCur, copyBlockCount, 0, copyBlockCount}); // todo pscale打印看搬运偏移
         }
