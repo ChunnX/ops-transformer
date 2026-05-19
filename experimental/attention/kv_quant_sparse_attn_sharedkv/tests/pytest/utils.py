@@ -301,6 +301,7 @@ def fill_none_params(params_dict):
         'cmp_kv_type': cmp_kv_type,
         'B': B,
         'S1': S1,
+        'S2': S2,
         'T1': T1,
         'N1': params_dict['N1'],
         'N2': params_dict['N2'],
