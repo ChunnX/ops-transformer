@@ -204,10 +204,41 @@ def sas(param_combinations):
     block_num1 = ori_block_num_sum
     block_num2 = cmp_block_num_sum
     
-    params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-             block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, \
-             cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
-             cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode
+    params = {
+        'Testcase_Name': Testcase_Name,
+        'layout_q': layout_q,
+        'layout_kv': layout_kv,
+        'q_type': q_type,
+        'ori_kv_type': ori_kv_type,
+        'cmp_kv_type': cmp_kv_type,
+        'B': B,
+        'S1': S1,
+        'T1': T1,
+        'N1': N1,
+        'N2': N2,
+        'D': D,
+        'K': K,
+        'block_num1': block_num1,
+        'block_num2': block_num2,
+        'block_size1': block_size1,
+        'block_size2': block_size2,
+        'cu_seqlens_q': cu_seqlens_q,
+        'seqused_ori_kv': seqused_ori_kv,
+        'seqused_cmp_kv': seqused_cmp_kv,
+        'cu_seqlens_ori_kv': cu_seqlens_ori_kv,
+        'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
+        'cmp_residual_kv': cmp_residual_kv,
+        'softmax_scale': softmax_scale,
+        'cmp_ratio': cmp_ratio,
+        'ori_mask_mode': ori_mask_mode,
+        'cmp_mask_mode': cmp_mask_mode,
+        'ori_win_left': ori_win_left,
+        'ori_win_right': ori_win_right,
+        'kv_quant_mode': kv_quant_mode,
+        'tile_size': tile_size,
+        'rope_head_dim': rope_head_dim,
+        'template_run_mode': template_run_mode,
+    }
 
     # 输入参数的合法性校验
     try:

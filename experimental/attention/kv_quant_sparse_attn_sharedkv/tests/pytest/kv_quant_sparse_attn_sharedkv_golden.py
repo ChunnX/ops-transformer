@@ -884,10 +884,39 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return test_data
     '''
 
-    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
-    block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, \
-    cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, \
-    ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode = params
+    Testcase_Name = params['Testcase_Name']
+    layout_q = params['layout_q']
+    layout_kv = params['layout_kv']
+    q_type = params['q_type']
+    ori_kv_type = params['ori_kv_type']
+    cmp_kv_type = params['cmp_kv_type']
+    B = params['B']
+    S1 = params['S1']
+    T1 = params['T1']
+    N1 = params['N1']
+    N2 = params['N2']
+    D = params['D']
+    K = params['K']
+    block_num1 = params['block_num1']
+    block_num2 = params['block_num2']
+    block_size1 = params['block_size1']
+    block_size2 = params['block_size2']
+    cu_seqlens_q = params['cu_seqlens_q']
+    seqused_ori_kv = params['seqused_ori_kv']
+    seqused_cmp_kv = params['seqused_cmp_kv']
+    cu_seqlens_ori_kv = params['cu_seqlens_ori_kv']
+    cu_seqlens_cmp_kv = params['cu_seqlens_cmp_kv']
+    cmp_residual_kv = params['cmp_residual_kv']
+    softmax_scale = params['softmax_scale']
+    cmp_ratio = params['cmp_ratio']
+    ori_mask_mode = params['ori_mask_mode']
+    cmp_mask_mode = params['cmp_mask_mode']
+    ori_win_left = params['ori_win_left']
+    ori_win_right = params['ori_win_right']
+    kv_quant_mode = params['kv_quant_mode']
+    tile_size = params['tile_size']
+    rope_head_dim = params['rope_head_dim']
+    template_run_mode = params['template_run_mode']
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
