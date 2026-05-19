@@ -72,7 +72,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAllV2Get
  * 该接口用于执行分布式训练中的通信和计算流程，需在调用前检查HCCL_BUFFSIZE环境变量配置是否合理。
  *
  * @param [in] workspace: 在Device侧申请的workspace内存地址。
- * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnQuantMatmulAlltoAllGetWorkspaceSize获取。
+ * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnQuantMatmulAlltoAllV2GetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码
