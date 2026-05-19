@@ -427,6 +427,9 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(
 extern "C" aclnnStatus aclnnInnerMatmulAlltoAll(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                 aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
+
 
 // 两段式接口
 aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
@@ -502,18 +505,9 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
 
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (commModeEnum == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("QuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else {
-                OP_LOGD("QuantMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            }
-        } else {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        }
+    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+        NnopbaseSetUserHandle(*executor, arg);
     }
 
     return ret;
@@ -522,6 +516,23 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
 aclnnStatus aclnnQuantMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          aclrtStream stream)
 {
+    if (NnopbaseSetHcclServerType) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+
+            if (commMode == Mc2Comm::COMM_MODE_CCU) {
+                OP_LOGD("QuantMatmulAlltoAll: use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            } else {
+                OP_LOGD("QuantMatmulAlltoAll: use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            }
+        } else {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        }
+    }
     aclnnStatus ret = aclnnInnerMatmulAlltoAll(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore, aclnnInnerMatmulAlltoAll interface call failed.");
