@@ -68,7 +68,6 @@ for params in ENABLED_PARAMS:
         "kv_quant_mode": params.get("kv_quant_mode"),
         "tile_size": params.get("tile_size"),
         "rope_head_dim": params.get("rope_head_dim"),
-        "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2"),
     }
@@ -115,7 +114,6 @@ def qsas(param_combinations):
     kv_quant_mode = param_combinations['kv_quant_mode']
     tile_size = param_combinations['tile_size']
     rope_head_dim = param_combinations['rope_head_dim']
-    template_run_mode = param_combinations['template_run_mode']
     actlen_mode = param_combinations['actlen_mode']
     S1EQS2 = param_combinations['S1EQS2']
 
@@ -126,7 +124,33 @@ def qsas(param_combinations):
     kv_type_str = "FP8_E4M3FN"
     if ori_kv_type == torch.uint8:
         kv_type_str = "HIF8"
-    if Testcase_Name ==None :
+
+    template_run_mode = "SWA"
+    if K is None or K == ['None']:
+        if cmp_ratio is None or cmp_ratio == ['None']:
+            template_run_mode = "SWA"
+            cmp_ratio = 1
+            cmp_kv_type = ori_kv_type
+            cmp_mask_mode = 0
+            K = 0
+            block_size2 = block_size1
+            block_num2 = 0
+        else:
+            template_run_mode = "CFA"
+            cmp_ratio = int(cmp_ratio)
+            cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
+            K = 0
+            block_size2 = int(block_size2) if block_size2 is not None else block_size1
+            cmp_mask_mode = int(cmp_mask_mode) if cmp_mask_mode is not None else 3
+    else:
+        template_run_mode = "SCFA"
+        K = int(K)
+        cmp_ratio = int(cmp_ratio)
+        cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
+        block_size2 = int(block_size2) if block_size2 is not None else block_size1
+        cmp_mask_mode = int(cmp_mask_mode) if cmp_mask_mode is not None else 3
+
+    if Testcase_Name == None:
         Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
 
     QS = [0]
@@ -177,7 +201,7 @@ def qsas(param_combinations):
 
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
-    # ori_block_num_per_batch = []
+    ori_block_num_per_batch = []
     ori_block_num_sum = 0
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
@@ -190,8 +214,11 @@ def qsas(param_combinations):
         cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
         cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
         cmp_block_num_sum += cur_cmp_kv_block_num
-    block_num1 = ori_block_num_sum
-    block_num2 = cmp_block_num_sum
+    
+    if block_num1 is None:
+        block_num1 = ori_block_num_sum
+    if block_num2 is None:
+        block_num2 = cmp_block_num_sum
     
     params = {
         'Testcase_Name': Testcase_Name,
