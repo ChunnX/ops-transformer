@@ -29,28 +29,39 @@ class Network(torch.nn.Module):
     def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
         cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, tile_size, rope_head_dim, 
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
-        npu_result, _ = torch_npu.npu_mixed_quant_sparse_flash_mla(
+        npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
                                             q=q,
                                             ori_kv=ori_kv,
                                             cmp_kv=cmp_kv,
+                                            ori_sparse_indices=None,
                                             cmp_sparse_indices=cmp_sparse_indices,
                                             ori_block_table=ori_block_table,
                                             cmp_block_table=cmp_block_table,
                                             cu_seqlens_q=cu_seqlens_q,
-                                            seqused_kv=seqused_kv,
+                                            cu_seqlens_ori_kv=None,
+                                            cu_seqlens_cmp_kv=None,
+                                            seqused_q=None,
+                                            seqused_ori_kv=seqused_kv,
+                                            seqused_cmp_kv=None,
+                                            ori_topk_length=None,
+                                            cmp_topk_length=None,
                                             sinks=sinks,
                                             metadata=metadata,
-                                            kv_quant_mode=kv_quant_mode,
+                                            quant_mode=kv_quant_mode,
                                             tile_size=tile_size,
                                             rope_head_dim=rope_head_dim,
                                             softmax_scale=softmax_scale,
                                             cmp_ratio=cmp_ratio,
                                             ori_mask_mode=ori_mask_mode,
                                             cmp_mask_mode=cmp_mask_mode,
-                                            ori_win_left=ori_win_left,
-                                            ori_win_right=ori_win_right,
+                                            ori_win_left=127,
+                                            ori_win_right=0,
                                             layout_q=layout_q,
-                                            layout_kv=layout_kv)
+                                            layout_kv=layout_kv,
+                                            topk_value_mode=1,
+                                            return_softmax_lse=False,
+                                            key_dtype=None,
+                                            value_dtype=None)
         return npu_result
 
 def test_sas_quant_process_graph(test_data, device_id=0):
@@ -193,14 +204,21 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                                         q=input['q'].npu() if input['q'] is not None else None,
                                                         ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
                                                         cmp_kv=input['cmp_kv'].npu() if input['cmp_kv'] is not None else None,
+                                                        ori_sparse_indices=None,
                                                         cmp_sparse_indices=input['cmp_sparse_indices'].npu() if input['cmp_sparse_indices'] is not None else None,
                                                         ori_block_table=input['ori_block_table'].npu() if input['ori_block_table'] is not None else None,
                                                         cmp_block_table=input['cmp_block_table'].npu() if input['cmp_block_table'] is not None else None,
                                                         cu_seqlens_q=input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None,
-                                                        seqused_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
+                                                        cu_seqlens_ori_kv=None,
+                                                        cu_seqlens_cmp_kv=None,
+                                                        seqused_q=None,
+                                                        seqused_ori_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,,
+                                                        seqused_cmp_kv=None,
+                                                        ori_topk_length=None,
+                                                        cmp_topk_length=None,
                                                         sinks=input['sinks'].npu() if input['sinks'] is not None else None,
                                                         metadata=metadata,
-                                                        kv_quant_mode=input['kv_quant_mode'],
+                                                        quant_mode=input['kv_quant_mode'],
                                                         tile_size=input['tile_size'],
                                                         rope_head_dim=input['rope_head_dim'],
                                                         softmax_scale=input['softmax_scale'],
@@ -210,7 +228,11 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                                         ori_win_left=input['ori_win_left'],
                                                         ori_win_right=input['ori_win_right'],
                                                         layout_q=input['layout_q'],
-                                                        layout_kv=input['layout_kv'])
+                                                        layout_kv=input['layout_kv'],
+                                                        topk_value_mode=1,
+                                                        return_softmax_lse=False,
+                                                        key_dtype=None,
+                                                        value_dtype=None)
 
     torch.npu.synchronize()
 
