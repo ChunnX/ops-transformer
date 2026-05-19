@@ -35,13 +35,11 @@ ge::graphStatus DequantChecker::CheckDataTypeSupportFullquant(const FiaTilingInf
 {
     // {Q, KV, attenOut}
     const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> fullQuantDtypeSupported = {
-        {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16},
         {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16},
         {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16},
         {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16},
         {ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_FLOAT16},
-        {ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_BF16},
-        {ge::DT_INT8, ge::DT_INT8, ge::DT_INT8}};
+        {ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_BF16}};
 
     std::tuple<ge::DataType, ge::DataType, ge::DataType> inOutDtypeTuple = {fiaInfo.inputQType, fiaInfo.inputKvType,
                                                                             fiaInfo.outputType};
