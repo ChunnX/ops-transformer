@@ -422,12 +422,12 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 // 执行流程: 参数校验 -> 窗口检查 -> 设置通信配置 -> 填充TilingData
 static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
-    OP_LOGI(nodeName, "Enter BandwidthTestTilingFuncImpl");
     uint32_t batchMode = 1U;
     auto ret = context->SetScheduleMode(batchMode);
     GE_ASSERT_GRAPH_SUCCESS(ret);
 
     const char *nodeName = context->GetNodeName();
+    OP_LOGI(nodeName, "Enter BandwidthTestTilingFuncImpl");
     BandwidthTestTilingData *tilingData = context->GetTilingData<BandwidthTestTilingData>();
     OP_TILING_CHECK(tilingData == nullptr,
         OP_LOGE(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
