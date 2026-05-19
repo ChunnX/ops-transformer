@@ -23,7 +23,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common/tool.h"
+#include "../../../../grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h"
 #include "gmm_fr_weight_quant_cube_compute.h"
 #include "gmm_fr_weight_quant_vec_compute.h"
 

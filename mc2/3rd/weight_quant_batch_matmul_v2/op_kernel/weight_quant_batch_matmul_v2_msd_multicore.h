@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "tool.h"
+#include "wqmm_kernel_tool.h"
 #include "weight_quant_batch_matmul_v2_constant.h"
 
 using AscendC::AIC;

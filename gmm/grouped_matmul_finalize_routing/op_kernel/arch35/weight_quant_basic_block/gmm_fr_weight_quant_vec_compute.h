@@ -23,7 +23,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "../common/tool.h"
+#include "../../../../grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h"
 #include "gmm_fr_mx_a8w4_vf.h"
 
 using AscendC::BLOCK_CUBE;
