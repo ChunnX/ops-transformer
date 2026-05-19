@@ -17,7 +17,7 @@
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
 #include "weight_quant_batch_matmul_v2_constant.h"
-#include "tool.h"
+#include "wqmm_kernel_tool.h"
 #if (                                      \
     defined(ORIG_DTYPE_ANTIQUANT_SCALE) && \
     ((ORIG_DTYPE_ANTIQUANT_SCALE == DT_UINT64) || (ORIG_DTYPE_ANTIQUANT_SCALE == DT_INT64)))

@@ -24,7 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "weight_quant_batch_matmul_v2_constant.h"
 #include "weight_quant_batch_matmul_v2_common.h"
-#include "tool.h"
+#include "wqmm_kernel_tool.h"
 
 using AscendC::AIC;
 using AscendC::AIV;

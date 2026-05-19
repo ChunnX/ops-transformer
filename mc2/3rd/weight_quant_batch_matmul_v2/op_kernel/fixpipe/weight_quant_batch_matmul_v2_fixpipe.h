@@ -24,7 +24,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "static_diag_constant.h"
+#include "wqmm_fixpipe_diag_constant.h"
 #include "weight_quant_batch_matmul_v2_fixpipe_stage1.h"
 #include "weight_quant_batch_matmul_v2_fixpipe_stage2.h"
 
