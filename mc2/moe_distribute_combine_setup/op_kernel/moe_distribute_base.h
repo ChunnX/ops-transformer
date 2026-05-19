@@ -221,7 +221,7 @@ __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> 
     uint64_t timeEnd = AscendC::GetSystemCycle();
     uint64_t cycleUse = timeEnd - timeStart;
     uint64_t timeUse = cycleUse / 50;
-    PRINTF("combine GenerateCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    AscendC::PRINTF("combine GenerateCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -276,7 +276,7 @@ __aicore__ inline void UpdateCommWriteSQE(const AscendC::LocalTensor<uint8_t> &s
     uint64_t timeEnd = AscendC::GetSystemCycle();
     uint64_t cycleUse = timeEnd - timeStart;
     uint64_t timeUse = cycleUse / 50;
-    PRINTF("combine UpdateCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    AscendC::PRINTF("combine UpdateCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -319,7 +319,7 @@ __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeT
     uint64_t timeEnd = AscendC::GetSystemCycle();
     uint64_t cycleUse = timeEnd - timeStart;
     uint64_t timeUse = cycleUse / 50;
-    PRINTF("combine SetCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    AscendC::PRINTF("combine SetCommWriteSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint64_t dataAddr,
@@ -360,7 +360,7 @@ __aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &sqIn
     uint64_t timeEnd = AscendC::GetSystemCycle();
     uint64_t cycleUse = timeEnd - timeStart;
     uint64_t timeUse = cycleUse / 50;
-    PRINTF("combine SendJFSDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    AscendC::PRINTF("combine SendJFSDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &cqInfoTensor, uint32_t cqCi)
@@ -446,7 +446,7 @@ __aicore__ inline void PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> 
     uint64_t timeEnd = AscendC::GetSystemCycle();
     uint64_t cycleUse = timeEnd - timeStart;
     uint64_t timeUse = cycleUse / 50;
-    PRINTF("combine PollCommCQUpdateSQCI cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    AscendC::PRINTF("combine PollCommCQUpdateSQCI cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void InvalidateCqeStatus(const AscendC::LocalTensor<uint8_t> &cqeInfoTensor,
@@ -517,7 +517,7 @@ __aicore__ inline void PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTen
     uint64_t timeEnd = AscendC::GetSystemCycle();
     uint64_t cycleUse = timeEnd - timeStart;
     uint64_t timeUse = cycleUse / 50;
-    PRINTF("combine PutCommSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    AscendC::PRINTF("combine PutCommSQE cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
