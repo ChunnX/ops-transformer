@@ -550,6 +550,7 @@ __aicore__ inline void GroupMatmul2A8W4(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t subBlockIdx = GetSubBlockIdx();
 
     GlobalTensor<int32_t> groupFlagListGm;
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
