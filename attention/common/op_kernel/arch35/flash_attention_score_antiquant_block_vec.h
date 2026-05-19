@@ -224,10 +224,9 @@ private:
     GlobalTensor<float> softmaxLseGm;
     __gm__ uint8_t *blocktablePtr;
     GlobalTensor<int32_t> blockTableGm;
-    using FDGmType = typename std::conditional<isFd, GlobalTensor<float>, int8_t>::type;
-    FDGmType accumOutGm;
-    FDGmType softmaxFDMaxGm;
-    FDGmType softmaxFDSumGm;
+    GlobalTensor<float> accumOutGm;
+    GlobalTensor<float> softmaxFDMaxGm;
+    GlobalTensor<float> softmaxFDSumGm;
     LocalTensor<pseShiftType> dummyPseTensor;
     LocalTensor<uint8_t> dummyAttenMaskTensor;
     PseInfo pseInfo;
@@ -282,7 +281,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitVecBloc
         blocktablePtr = blockTable;
         this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
-    if constexpr (isFd) {
+    if (this->tilingData->inputParamsRegbase.isFd) {
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
         uint64_t accumOutSize = this->tilingData->inputParamsRegbase.accumOutSize;
         uint64_t logSumExpSize = this->tilingData->inputParamsRegbase.logSumExpSize;
@@ -529,6 +528,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAnt
         taskParam.kvStep = taskParam.kvHeadNum * constInfo.dSize;
     }
     taskParam.copySplitS = kvInputSize / sizeof(KV_T) / dTemplateAlign64;
+    taskParam.isFd = constInfo.isFd;
     taskParam.isPageAttentionAntiquant = antiquantPageAttentionFlag;
     taskParam.isPertensor = antiquantPerTensorFlag;
     taskParam.isPerHead = antiquantPerHeadFlag;
@@ -561,7 +561,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
         curSequence += runInfo.s2StartIdx;
     }
     taskParam.flashDecodeS2Idx = runInfo.flashDecodeS2Idx;
-    if constexpr(isFd) {
+    if (constInfo.isFd) {
         curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
     }
 
@@ -641,7 +641,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     }
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+        AttenMaskCopyIn<hasAtten, enableKVPrefix>(
+            this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
             this->attenMaskGmInt, runInfo, constInfo, attenMaskInfo);
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
     } else {
@@ -768,7 +769,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     }
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         SoftmaxDataCopyOut(runInfo, constInfo);
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             ComputeLogSumExpAndCopyToGm(runInfo, constInfo);
             return;
         }
@@ -902,7 +903,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
         curSequence += runInfo.s2StartIdx;
     }  
     taskParam.flashDecodeS2Idx = runInfo.flashDecodeS2Idx;
-    if constexpr(isFd) {
+    if (constInfo.isFd) {
         curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
     }
     taskParam.kvGmOffset = runInfo.valueOffset + constInfo.subBlockIdx *
@@ -1014,7 +1015,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec2
 
         this->stage2OutQue[0].template EnQue(vec2ResUb);
         this->stage2OutQue[0].template DeQue<OUTPUT_T>();
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             Bmm2FDOut(runInfo, vec2ResUb, vec2CalcSize, constInfo);
         } else {
             Bmm2DataCopyOut(runInfo, vec2ResUb, 0, vec2CalcSize, constInfo);

@@ -129,6 +129,7 @@ struct CommonConstInfo {
     uint32_t s2OStart;
     uint32_t s2OEnd;
     uint32_t coreFirstTmpOutWsPos;
+    bool isFd;
 
     /* mask */
     uint32_t sparseMode; // sparse

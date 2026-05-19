@@ -34,7 +34,6 @@ struct FiaTilingKeyInfo {
     bool hasRope = false;
     // bool isPa = false;
     uint64_t KvLayoutType = 0;
-    bool isFd = false;
     bool emptyTensor = false;
     bool enableKvPrefix = false;
     bool enableS1OutSplit = false;
