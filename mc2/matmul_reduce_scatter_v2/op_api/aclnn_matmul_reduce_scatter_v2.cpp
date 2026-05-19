@@ -136,13 +136,19 @@ static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclT
 
 static const std::initializer_list<op::DataType> AIV_MODE_INPUT_SUPPORT_LIST = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_INT8};
+static const std::initializer_list<op::DataType> AIV_MODE_BIAS_SUPPORT_LIST = {
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> AIV_MODE_OUTPUT_SUPPORT_TYPE = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
-static bool CheckAivModeDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
+static bool CheckAivModeDtypeValid(const aclTensor* x1, const aclTensor* x2,
+    const aclTensor* bias, const aclTensor* output)
 {
     // 检查x1、x2、output的数据类型是否在算子的支持列表内
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    if (bias != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
+    }
     OP_CHECK_DTYPE_NOT_SUPPORT(output, AIV_MODE_OUTPUT_SUPPORT_TYPE, return false);
     return true;
 }
@@ -172,14 +178,14 @@ static aclnnStatus CheckParams(const aclTensor* x1, const aclTensor* x2, const a
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckAivModeParams(const aclTensor* x1, const aclTensor* x2, int64_t streamMode,
-                               const aclTensor* output)
+static aclnnStatus CheckAivModeParams(const aclTensor* x1, const aclTensor* x2,
+    const aclTensor* bias, int64_t streamMode, const aclTensor* output)
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
-    CHECK_RET(CheckAivModeDtypeValid(x1, x2, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAivModeDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查attr是否符合规则
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
@@ -430,7 +436,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
                                                        aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode start");
-    auto ret_param = CheckAivModeParams(x1, x2, streamMode, output);
+    auto ret_param = CheckAivModeParams(x1, x2, bias, streamMode, output);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
