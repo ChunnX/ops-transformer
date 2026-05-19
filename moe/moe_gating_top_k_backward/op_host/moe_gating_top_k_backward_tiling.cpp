@@ -46,7 +46,7 @@ const static int64_t DOUBLE_BUFFER_NUM = 2;
 const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 const static int64_t UB_RESERVE_SPACE = 1024;
 const static int64_t NUM_TWO = 2;                       // 2 buffers with the same size
-const static int64_t NUM_SIX = 6;                      // 6 buffers with the same size
+const static int64_t NUM_SIX = 6;                       // 6 buffers with the same size
 
 // Tiling keys
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
