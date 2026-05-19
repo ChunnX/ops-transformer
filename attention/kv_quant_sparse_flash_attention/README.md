@@ -45,14 +45,14 @@
       <tr>
           <td>query</td>
           <td>输入</td>
-          <td>attention结构的Q输入，不支持非连续。layout_query为BSND时shape为[B,S1,Q_N,Q_D]，当layout_query为TND时shape为[Q_T,Q_N,Q_D]。query由相同数据类型的q_nope和q_rope按D维度拼接得到。</td>
+          <td>attention结构的Q输入，不支持非连续。query由相同数据类型的q_nope和q_rope按D维度拼接得到。layout_query为BSND时shape为[B,S1,Q_N,Q_D]，当layout_query为TND时shape为[Q_T,Q_N,Q_D]，其中Q_D值仅支持576，即q_nope+q_rope=512+64，Q_N值支持1/2/4/8/16/32/48/64/128。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>key</td>
           <td>输入</td>
-          <td>attention结构的K输入，不支持非连续。k_nope、query相同数据类型的k_rope和float32的量化参数按D维度拼接得到。layout_kv为PA_BSND时shape为[block_num, block_size, KV_N, KV_D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。layout_kv为BSND时shape为[B, S2, KV_N, KV_D]，layout_kv为TND时shape为[KV_T, KV_N, KV_D]，其中KV_N只支持1。</td>
+          <td>attention结构的K输入，不支持非连续。k_nope、query相同数据类型的k_rope和float32的量化参数按D维度拼接得到。layout_kv为PA_BSND时shape为[block_num, block_size, KV_N, KV_D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。layout_kv为BSND时shape为[B, S2, KV_N, KV_D]，layout_kv为TND时shape为[KV_T, KV_N, KV_D]，其中KV_N只支持1，KV_D值仅支持656，即nope+rope*2+dequant_scale*4=512+64*2+4*4。</td>
           <td>FLOAT8_E4M3、INT8、HIFLOAT8</td>
           <td>ND</td>
       </tr>
@@ -209,16 +209,11 @@
 ## 约束说明
 
 - 该接口支持图模式。
-- 参数query shape中：
-  - Q\_D值仅支持576，即nope\+rope=512\+64。
-  - Q\_N值支持1/2/4/8/16/32/48/64/128。
-- 参数key、value shape中：
-  - KV\_D值仅支持656，即nope\+rope\*2\+dequant_scale\*4=512\+64\*2\+4\*4。
-  - KV\_N值仅支持1。
+- 参数query shape中：<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：Q_N值不支持48。
 - 参数key、value数据类型要求：
   - <term>Ascend 950PR/Ascend 950DT</term>：仅支持float8_e4m3、int8、hifloat8数据类型。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持int8数据类型。
 - 参数sparse\_block\_size：
   - <term>Ascend 950PR/Ascend 950DT</term>：只支持sparse\_block\_size为1。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse\_block\_size整除block_size
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse\_block\_size整除block\_size
 - 非PageAttention场景layout\_query和layout\_kv取值需要保持一致。
