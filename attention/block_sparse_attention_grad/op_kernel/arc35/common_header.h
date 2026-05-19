@@ -10,11 +10,76 @@
 
 namespace BSA_ARC35 {
 
+#define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
+#define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
+
+static constexpr int32_t C0_SIZE = 16;
+static constexpr int32_t FLAG_C1_V1 = 0;     // cube(qk) -> vec(softmax)
+static constexpr int32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
+static constexpr int32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
+static constexpr int32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr int32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
+
 struct RunTimeInfo {
     int32_t taskId{0};
-    int32_t s1Idx{0}; // 需要计算的左上角顶点s1Idx
-    int32_t s2Idx{0}; // 需要计算的左上角顶点s2Idx
-    int32_t s1Len{0}; // 需要计算S1方向的长度
-    int32_t s2Len{0}; // 需要计算S2方向的长度
+    int32_t bIdx{0};           // 当前计算的batch的idx
+    int32_t n1Idx{0};          // 当前计算的q_head的idx
+    int32_t n2Idx{0};          // 当前计算的kv_head的idx
+    int32_t s1Idx{0};          // 当前计算的q_seq的起始idx
+    int32_t s2Idx{0};          // 当前计算的kv_seq的起始idx
+    int32_t s1Len{0};          // 当前计算的q_seq的长度
+    int32_t s2Len{0};          // 当前计算的kv_seq的长度
+    int32_t s1LenAlign{0};     // 当前计算的q_seq的16对齐的长度
+    int32_t s2LenAlign{0};     // 当前计算的kv_seq的16对齐的长度
+    uint64_t queryGmOffset{0}; // query gm offset
+    uint64_t keyGmOffset{0};   // key gm offset
+    uint64_t lseGmOffset{0};   // lse gm offset
+    int32_t loop_finish{0};    // 是否遍历完所有任务
 };
+
+template <typename T>
+inline __aicore__ T CeilDiv(const T dividend, const T divisor)
+{
+    return (dividend + divisor - 1) / divisor;
+}
+
+template <typename T>
+inline __aicore__ T RoundUp(const T val, const T align)
+{
+    return (val + align - 1) / align * align;
+}
+
+__aicore__ inline int64_t getSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
+{
+    int64_t actualSeqlen;
+    if (i == 0) {
+        actualSeqlen = ((__gm__ int64_t *)seq_Len)[0];
+    } else {
+        actualSeqlen = ((__gm__ int64_t *)seq_Len)[i] - ((__gm__ int64_t *)seq_Len)[i - 1];
+    }
+    return actualSeqlen;
+}
+
+__aicore__ inline int64_t getTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
+{
+    int64_t actualTotalSeqlen = ((__gm__ int64_t *)seq_Len)[i];
+    return actualTotalSeqlen;
+}
+
+__aicore__ inline uint64_t GetQueryGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t head_dim, int32_t s1Idx,
+                                            int32_t n1Idx)
+{
+    return lastBatchSum * head_num * head_dim + (s1Idx * head_num * head_dim) + (n1Idx * head_dim);
+}
+__aicore__ inline uint64_t GetKeyGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t head_dim, int32_t s2Idx,
+                                          int32_t n2Idx)
+{
+    return lastBatchSum * head_num * head_dim + (s2Idx * head_num * head_dim) + (n2Idx * head_dim);
+}
+__aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t s1Idx, int32_t n1Idx)
+{
+    return lastBatchSum * head_num + (s1Idx * head_num) + n1Idx;
+}
+
+
 } // namespace BSA_ARC35
