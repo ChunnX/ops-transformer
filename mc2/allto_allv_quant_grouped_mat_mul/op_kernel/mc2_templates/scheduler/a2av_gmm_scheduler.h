@@ -63,7 +63,7 @@ private:
     uint32_t e_ = 0U;
     uint32_t cntCounts_ = 1;
     uint32_t expertNum_ = 1;
-    bool isScaleBatchMode_ = true;
+    bool isScaleBatchMode_ = false;
     bool isNeedPermute_ = false;
 };
 
@@ -79,8 +79,8 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     tilingData_ = &tilingData;
     e_ = tilingData_->taskTilingInfo.e;
     gmmxScaleGm_ = gmmxScaleGM;
-    // isScaleBatchMode_ = e_ >= SCALE_COMM_BATCH_THRESHOLD;
-    isNeedPermute_ = expertNum_ != 1;
+    isScaleBatchMode_ = e_ >= SCALE_COMM_BATCH_THRESHOLD;
+    isNeedPermute_ = expertNum_ > 1;
     uint64_t workspaceOffset = 0;
     uint64_t gmmxSize = Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
                                 PACK_FACTOR), TENSOR_LIST_SIZE);
@@ -102,14 +102,10 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
         uint64_t permuteScaleOutSize = Align(tilingData_->taskTilingInfo.A * scaleAxis, TENSOR_LIST_SIZE);
         gmmxScaleCommOutGm_ = workspaceGM + workspaceOffset;
         workspaceOffset += permuteScaleOutSize;
-        if (isScaleBatchMode_) {
-            gmmxScalePermuteOutGm_ = workspaceGM + workspaceOffset;
-            workspaceOffset += permuteScaleOutSize;
-        } else {
-            gmmxScalePermuteOutGm_ = gmmxScaleCommOutGm_;
-        }
+        gmmxScalePermuteOutGm_ = workspaceGM + workspaceOffset;
+        workspaceOffset += permuteScaleOutSize;
         commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
-        computeScaleGm_ = gmmxScalePermuteOutGm_;
+        computeScaleGm_ = isNeedPermute_ ? gmmxScalePermuteOutGm_ : gmmxScaleCommOutGm_;
     }
     computeWorkspaceGm_ = workspaceGM + workspaceOffset;
     if (tilingData_->isNeedMM != 0) {

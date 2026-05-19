@@ -127,7 +127,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
     recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
     permuteOutBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)permuteBuffer);
-    pipe_->InitBuffer(xTBuf_, taskTilingInfo_->ubSize);
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
     }
@@ -151,7 +150,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
     recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
     scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
-    pipe_->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -198,12 +196,14 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 
     if (isScale) {
         uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
+        pipe_->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
         LocalTensor<fp8_e8m0_t> ubTensor = scaleTBuf_.Get<fp8_e8m0_t>();
         PermuteImpl<fp8_e8m0_t>(startExpertIdx, expertNum,
                                 recvScaleGlobalBuffer_, scalePermuteOutBuffer_,
                                 ubTensor, axis);
     } else {
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+        pipe_->InitBuffer(xTBuf_, taskTilingInfo_->ubSize);
         LocalTensor<hcclDataType> ubTensor = xTBuf_.Get<hcclDataType>();
         PermuteImpl<hcclDataType>(startExpertIdx, expertNum,
                                   recvGlobalBuffer_, permuteOutBuffer_,
@@ -343,7 +343,8 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
         }
     }
     HcclDataType dataType = isScale ? HCCL_DATA_TYPE_FP8E8M0 : hcclDataType_;
-    alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
+    HcclHandle alltoAllvHandleId =  isScale ? alltoAllvScaleHandleId_[startExpertIdx] : alltoAllvHandleId_[startExpertIdx];
+    alltoAllvHandleId = hccl_.template AlltoAllV<true>(
         (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, dataType,
         (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, dataType);
 }
