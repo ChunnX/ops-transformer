@@ -34,8 +34,9 @@ AscendC::MicroAPI::MaskMergeMode::ZEROING,
 AscendC::RoundMode::UNKNOWN,
 };
 
-template <typename T, typename INPUT_T>
-__simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcUb, __ubuf__ INPUT_T * weightUb, const uint32_t m, const uint32_t nBaseSize)
+template <typename T, typename WEIGHT_T>
+__simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcUb, __ubuf__ WEIGHT_T * weightUb,
+    const uint32_t m, const uint32_t nBaseSize)
 {
     RegTensor<float> vreg_input_x1;
     RegTensor<float> vreg_input_x2;
@@ -54,7 +55,7 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
     RegTensor<float> vreg_weight;
     RegTensor<float> vreg_zero;
 
-    MaskReg pregFullExeB16 = CreateMask<INPUT_T, MaskPattern::ALL>();
+    MaskReg pregFullExeB16 = CreateMask<WEIGHT_T, MaskPattern::ALL>();
     MaskReg preg_all_b32 = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_relu;
 
@@ -64,12 +65,14 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
     Duplicate(vreg_output_x4, 0, preg_all_b32);
     Duplicate(vreg_zero, 0.0f);
     for (uint16_t i = 0; i < m; ++i) {
-        if constexpr (IsSameType<INPUT_T, half>::value) {
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B16>(vreg_weight_half, weightUb + i);
-            Cast<float, INPUT_T, castTraitB162B32Even>(vreg_weight, vreg_weight_half, pregFullExeB16);
-        } else if constexpr (IsSameType<INPUT_T, bfloat16_t>::value) {
-            LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B16>(vreg_weight_bf, weightUb + i);
-            Cast<float, INPUT_T, castTraitB162B32Even>(vreg_weight, vreg_weight_bf, pregFullExeB16);
+        if constexpr (IsSameType<WEIGHT_T, half>::value) {
+            LoadAlign<WEIGHT_T, MicroAPI::LoadDist::DIST_BRC_B16>(vreg_weight_half, weightUb + i);
+            Cast<float, WEIGHT_T, castTraitB162B32Even>(vreg_weight, vreg_weight_half, pregFullExeB16);
+        } else if constexpr (IsSameType<WEIGHT_T, bfloat16_t>::value) {
+            LoadAlign<WEIGHT_T, MicroAPI::LoadDist::DIST_BRC_B16>(vreg_weight_bf, weightUb + i);
+            Cast<float, WEIGHT_T, castTraitB162B32Even>(vreg_weight, vreg_weight_bf, pregFullExeB16);
+        } else if constexpr (IsSameType<WEIGHT_T, float>::value) {
+            LoadAlign<WEIGHT_T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight, weightUb + i);
         }
 
         LoadAlign(vreg_input_x1, srcUb + i * nBaseSize);
@@ -99,15 +102,15 @@ __simd_vf__ inline void ProcessVec1BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
     StoreAlign(((__ubuf__ T *&)dstUb + floatRepSize * 3), vreg_output_x4, preg_all_b32);
 }
 
-template <typename T, typename INPUT_T>
+template <typename T, typename WEIGHT_T>
 __aicore__ inline void ProcessVec1Vf(const LocalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor,
-    const LocalTensor<INPUT_T>& weightTensor, const uint32_t m, const uint32_t nBaseSize)
+    const LocalTensor<WEIGHT_T>& weightTensor, const uint32_t m, const uint32_t nBaseSize)
 {
     __ubuf__ T * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
     __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ INPUT_T * weightUb = (__ubuf__ INPUT_T*)weightTensor.GetPhyAddr();
+    __ubuf__ WEIGHT_T * weightUb = (__ubuf__ WEIGHT_T*)weightTensor.GetPhyAddr();
 
-    ProcessVec1BasicVF<T, INPUT_T>(dstUb, srcUb, weightUb, m, nBaseSize);
+    ProcessVec1BasicVF<T, WEIGHT_T>(dstUb, srcUb, weightUb, m, nBaseSize);
 }
 } // namespace
 

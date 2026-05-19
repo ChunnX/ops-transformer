@@ -602,8 +602,10 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessInvalid()
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
             if (constInfo.returnValueFlag) {
-                GlobalTensor<K_T> valueOutput = valueOutGm[baseSize];
-                AscendC::InitGlobalMemory(valueOutput, dealSize, (K_T)constInfo.INVALID_VAL);
+                GlobalTensor<uint16_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.INVALID_VAL);
             }
         }
     }

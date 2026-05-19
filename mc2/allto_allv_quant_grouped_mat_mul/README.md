@@ -232,6 +232,8 @@
 
 ## 约束说明
 
+- 通信引擎约束：仅支持CCU通信。
+
 - 确定性计算：
   - `aclnnAlltoAllvQuantGroupedMatMul`默认确定性实现。
 

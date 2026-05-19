@@ -409,9 +409,61 @@ TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestCsvFileLoaded)
 {
     auto& cases = GetCsvTestCases();
     EXPECT_EQ(cases.size(), 28) << "Expected 28 test cases in CSV file";
-    
+
     cout << "Successfully loaded " << cases.size() << " test cases from CSV" << endl;
     for (const auto& pair : cases) {
         cout << "  - " << pair.first << endl;
     }
+}
+
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzInvalidAicAivRatio)
+{
+    // Use invalid compile info: aicNum=24, aivNum=24 (expected 1:2, i.e. 24:48)
+    optiling::GroupedMatmulFinalizeRoutingCompileInfo invalidCompileInfo = DEFAULT_COMPILE_INFO;
+    invalidCompileInfo.aicNum = 24;
+    invalidCompileInfo.aivNum = 24;
+
+    int m = 128, k = 256, n = 256, e = 2;
+
+    gert::StorageShape xShape = {{m, k}, {m, k}};
+    gert::StorageShape wShape = {{e, n, k}, {e, (k + 31) / 32, (n + 15) / 16, 16, 32}};
+    gert::StorageShape scaleShape = {{e, n, (k + 63) / 64, 2}, {e, n, (k + 63) / 64, 2}};
+    gert::StorageShape biasShape = {{}, {}};
+    gert::StorageShape pertokenScaleShape = {{m, (k + 63) / 64, 2}, {m, (k + 63) / 64, 2}};
+    gert::StorageShape groupListShape = {{e}, {e}};
+    gert::StorageShape sharedInputShape = {{}, {}};
+    gert::StorageShape logitShape = {{m}, {m}};
+    gert::StorageShape rowindexShape = {{m}, {m}};
+    gert::StorageShape yShape = {{m, n}, {m, n}};
+
+    vector<gert::TilingContextPara::OpAttr> attrs;
+    attrs.push_back({"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)});
+    attrs.push_back({"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)});
+    attrs.push_back({"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)});
+    attrs.push_back({"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)});
+    attrs.push_back({"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)});
+    attrs.push_back({"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)});
+    attrs.push_back({"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)});
+    attrs.push_back({"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)});
+
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmulFinalizeRouting",
+        {
+            {xShape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {wShape, ge::DT_FLOAT4_E2M1, ge::FORMAT_FRACTAL_NZ},
+            {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {biasShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {pertokenScaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
+            {sharedInputShape, ge::DT_BF16, ge::FORMAT_ND},
+            {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}
+        },
+        {{yShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        attrs,
+        &invalidCompileInfo,
+        "Ascend950"
+    );
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
