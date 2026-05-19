@@ -724,9 +724,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     // 按Token分核
     LocalTensor<float> outTensorFp32 = outBuf.Get<float>();
     Duplicate<float>(outTensorFp32, float(1), hCommuSize_ * VALID_EVENT_FLAG_NUM / sizeof(float));
-    sendNum_ = axisBS_ * axisK_ / moeUsedAivNum_;
+    uint32_t validTokenNum = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+    sendNum_ = validTokenNum / moeUsedAivNum_;
     startId_ = sendNum_ * aivId_;
-    uint32_t reaminTokenNum = axisBS_ * axisK_ - sendNum_ * moeUsedAivNum_;
+    uint32_t reaminTokenNum = validTokenNum - sendNum_ * moeUsedAivNum_;
     if(aivId_ < reaminTokenNum){
         sendNum_ += 1;
         startId_ += aivId_;
@@ -754,6 +755,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         int32_t tokenId = index / axisK_;
         int32_t topKId = index % axisK_;
         int32_t expertId = validExpertIdsTensor_(index);
+        if (expertId > moeExpertNum_)
+            continue;
         int32_t toRankId = expertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
         if (isScalingDownFlag_) {
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
