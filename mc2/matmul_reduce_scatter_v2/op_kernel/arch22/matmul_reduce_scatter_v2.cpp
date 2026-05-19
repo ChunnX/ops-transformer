@@ -25,6 +25,7 @@
 #include "../matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 using namespace matmulReduceScatterV2_aivmode_tiling;
 
+
 using namespace AscendC;
 using namespace MatmulReduceScatterV2Impl;
 

@@ -22,6 +22,7 @@
 #include "../grouped_mat_mul_all_reduce_utils.h"
 #include "../grouped_mat_mul_all_reduce.h"
 
+
 using namespace AscendC;
 using namespace matmul;
 using namespace GROUPED_MAT_MUL_ALL_REDUCE;

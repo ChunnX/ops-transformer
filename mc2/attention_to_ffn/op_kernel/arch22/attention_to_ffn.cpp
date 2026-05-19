@@ -26,6 +26,7 @@ using namespace AscendC;
 using namespace AttentionToFFNImpl;
 using namespace Mc2Tiling;
 
+
 template<bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
 __global__ __aicore__ void attention_to_ffn(GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId,
     GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask,
