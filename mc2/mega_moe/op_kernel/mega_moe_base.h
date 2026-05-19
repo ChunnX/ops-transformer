@@ -51,6 +51,31 @@ struct GMMAddrInfo {
     GM_ADDR gmm2OutGlobal;
 };
 
+// ============================================================================
+// DynamicTask — 动态调度的任务描述结构 (32 byte, AIC 写, AIV 读)
+// 详细设计见 mega_moe_impl.h 顶部 DYN_SCHED_DESIGN 注释块。
+// ============================================================================
+// 任务编码:
+//   opType : 0=GMM1, 1=GMM2, 2=END (终止哨兵)
+//   waveIdx: 任务属于的 wave (0..waveCnt-1)
+//   nTileIdx: 任务在 wave 内的 N-tile 编号 (0..tileNumGmm1-1 或 tileNumGmm2-1)
+//   waveM  : 该 wave 的实际 M (=L1_TILE_M 或末尾 partial M)
+struct DynamicTask {
+    int32_t opType;
+    int32_t waveIdx;
+    int32_t nTileIdx;
+    int32_t waveM;
+    int32_t reserved[4];
+};
+static_assert(sizeof(DynamicTask) == 32, "DynamicTask must be 32 bytes");
+
+constexpr int32_t DYN_OP_GMM1 = 0;
+constexpr int32_t DYN_OP_GMM2 = 1;
+constexpr int32_t DYN_OP_END  = 2;
+constexpr int32_t DYN_CHANNEL_GMM1 = 0;  // AIC → AIV0 channel
+constexpr int32_t DYN_CHANNEL_GMM2 = 1;  // AIC → AIV1 channel
+constexpr int32_t DYN_TASK_INTS = 8;     // 32 byte = 8 int32
+
 struct PeermemInfo {
     GM_ADDR ptrBase;
     GM_ADDR ptrTokenPerExpert;
