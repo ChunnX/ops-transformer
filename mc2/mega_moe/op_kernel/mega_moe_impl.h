@@ -48,6 +48,23 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 *
 constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 
 // ============================================================================
+// 动态调度调试打印 —— 定位卡死 / UB 崩溃位置
+// ----------------------------------------------------------------------------
+// 把下面的 1 改成 0 即可彻底关闭（DYN_DBG 变空语句，编译器消除，零开销）。
+// 开启时每个关键步骤打印一条 "[核类型 bk=核号] ..." 日志：
+//   * 卡死：最后打印的那条 = 卡住的那一步的"前一步"（下一步没打出来）。
+//   * 崩溃：最后打印的那条 = 崩溃的那一步的"前一步"。
+//   * 读到的 task 值（op/wave/nTile/waveM）也打出来——若是垃圾值会立刻看出来。
+// 用 `grep "bk=5"` 可单独看某个核的时间线。
+// ============================================================================
+#define MEGA_MOE_DYN_DEBUG 1
+#if MEGA_MOE_DYN_DEBUG
+#define DYN_DBG(...) AscendC::PRINTF(__VA_ARGS__)
+#else
+#define DYN_DBG(...) ((void)0)
+#endif
+
+// ============================================================================
 // DYN_SCHED_DESIGN — 去中心化原子认领 (Decentralized Atomic Work-Stealing)
 // ============================================================================
 //
@@ -165,6 +182,9 @@ __aicore__ inline bool ClaimNextTask(
     __gm__ int32_t* flagBase = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
                                 flagOffsetForExpert;
 
+    int dbgBk = static_cast<int>(GetBlockIdx() / GetTaskRation());
+    (void)dbgBk;
+    uint64_t spinCnt = 0;
     while (true) {
         // === 优先级 1: GMM2 已解锁的 wave ===
         for (uint64_t w = 0; w < waveCnt; ++w) {
@@ -217,6 +237,18 @@ __aicore__ inline bool ClaimNextTask(
             return false;  // 真的没活了
         }
         // 还有 GMM2 没解锁 (sw 没跑完) → spin 一会再重试
+        spinCnt++;
+#if MEGA_MOE_DYN_DEBUG
+        if ((spinCnt & 0x3FFU) == 0U) {
+            // 每 1024 次 spin 打一条：若反复打印同一行说明卡在"等 GMM2 解锁"
+            int32_t f0 = AscendC::ReadGmByPassDCache(flagBase + 0);
+            int32_t g1c0 = AscendC::ReadGmByPassDCache(gmm1Counter + 0);
+            int32_t g2c0 = AscendC::ReadGmByPassDCache(gmm2Counter + 0);
+            DYN_DBG("[AIC bk=%d] ClaimNextTask SPIN exp=%d cnt=%d flag[0]=%d g1cnt[0]=%d g2cnt[0]=%d (tnG1=%d tnG2=%d)\n",
+                    dbgBk, (int)expertIdx, (int)spinCnt, (int)f0, (int)g1c0, (int)g2c0,
+                    (int)tileNumGmm1, (int)tileNumGmm2);
+        }
+#endif
         int64_t st = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - st < 100) {}
     }
@@ -881,6 +913,8 @@ __aicore__ inline void DynamicAicGmm1Tile(
         Te::MakeShape(actualM, CeilDiv(actualK, MXFP_SCALE_GROUP_NUM)));
     auto tensorBlockUbFirst = l0cOutUbFirst.Slice(Te::MakeCoord(0, 0), Te::MakeShape(actualM, actualN));
     typename BlockMmad::BlockShape singleShape{actualM, actualN, actualK, 0};
+    DYN_DBG("[AIC] G1Tile mmad: nTile=%d nLoc=%d rowStart=%d actualM=%d actualN=%d actualK=%d\n",
+            (int)nTileIdx, (int)nLoc, (int)rowStart, (int)actualM, (int)actualN, (int)actualK);
     if constexpr (IsInterleaved) {
         auto gmBlockB = gmB.Slice(
             Te::MakeCoord(static_cast<int64_t>(kLoc), static_cast<int64_t>(nLoc)),
@@ -903,6 +937,7 @@ __aicore__ inline void DynamicAicGmm1Tile(
                       weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
         }
     }
+    DYN_DBG("[AIC] G1Tile mmad RETURNED nTile=%d\n", (int)nTileIdx);
 }
 
 // ============================================================================
@@ -1009,11 +1044,14 @@ __aicore__ inline void DynamicAicGmm2Tile(
     auto gmBlockC = gmC.Slice(
         Te::MakeCoord(rowStart, static_cast<int64_t>(nLoc)), Te::MakeShape(actualM, actualN));
     typename BlockMmad::BlockShape singleShape{actualM, actualN, actualK, 0};
+    DYN_DBG("[AIC] G2Tile mmad: nTile=%d nLoc=%d rowStart=%d actualM=%d actualN=%d actualK=%d\n",
+            (int)nTileIdx, (int)nLoc, (int)rowStart, (int)actualM, (int)actualN, (int)actualK);
     blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
     // 等 fixpipe drain (GMM2 直接 fixpipe→GM, 保证 GM 数据 commit 后才 return)
     event_t eventIdFIX_S = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_S>());
     SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
     WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
+    DYN_DBG("[AIC] G2Tile mmad RETURNED nTile=%d\n", (int)nTileIdx);
 }
 
 // ============================================================================
@@ -1044,15 +1082,21 @@ __aicore__ inline void DynamicAicLoop(
     uint64_t waveCnt, uint64_t m_i,
     uint32_t tileNumGmm1, uint32_t tileNumGmm2)
 {
+    DYN_DBG("[AIC bk=%d] >>> DynamicAicLoop ENTRY exp=%d tnG1=%d tnG2=%d waveCnt=%d m_i=%d\n",
+            (int)blockIdx, (int)expertIdx, (int)tileNumGmm1, (int)tileNumGmm2, (int)waveCnt, (int)m_i);
     // 阶段 0: 等本 expert 的 dispatch flag (只等一次)
     __gm__ int32_t* dispatchFlagAddr = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
     {
         uint32_t targetValue = params.tilingData->epWorldSize * params.tilingData->blockNumPerEP;
+        DYN_DBG("[AIC bk=%d] waiting dispatch flag exp=%d target=%d cur=%d\n",
+                (int)blockIdx, (int)expertIdx, (int)targetValue,
+                (int)AscendC::ReadGmByPassDCache(dispatchFlagAddr));
         while (targetValue != AscendC::ReadGmByPassDCache(dispatchFlagAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {}
         }
     }
+    DYN_DBG("[AIC bk=%d] dispatch flag DONE exp=%d\n", (int)blockIdx, (int)expertIdx);
 
     int64_t flagOffsetForExpert = Get<IDX_FLAG_OFFSET>(baseOffset);
     uint32_t n_full = static_cast<uint32_t>(Get<N_VALUE>(problemShape));
@@ -1066,33 +1110,50 @@ __aicore__ inline void DynamicAicLoop(
 
     // === 主循环: claim → 写 slot → mmad → Notify ===
     DynamicTask task;
+    int taskSeq = 0;
+    (void)taskSeq;
     while (ClaimNextTask(params, expertIdx, maxWavesPerExpert,
                           tileNumGmm1, tileNumGmm2, waveCnt, m_i,
                           flagOffsetForExpert, task)) {
         int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+        DYN_DBG("[AIC bk=%d] CLAIM #%d op=%d wave=%d nTile=%d waveM=%d\n",
+                (int)blockIdx, taskSeq, (int)task.opType, (int)task.waveIdx,
+                (int)task.nTileIdx, (int)task.waveM);
+        taskSeq++;
 
         if (task.opType == DYN_OP_GMM1) {
             // GMM1 单通道: 先等 AIV0 释放 UB (上一个 epi 读完)，再写 slot + mmad
             if (gmm1Used) {
+                DYN_DBG("[AIC bk=%d] G1 wait AIV0 free UB...\n", (int)blockIdx);
                 WaitForVector(0);
             }
+            DYN_DBG("[AIC bk=%d] G1 write slot...\n", (int)blockIdx);
             WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, task);
+            DYN_DBG("[AIC bk=%d] G1 mmad begin nTile=%d waveM=%d\n",
+                    (int)blockIdx, (int)task.nTileIdx, (int)task.waveM);
             DynamicAicGmm1Tile<ElementA, ElementB, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
                 params, baseOffset, task.nTileIdx, waveRowOffset, task.waveM, m_full, n_full, k_full);
+            DYN_DBG("[AIC bk=%d] G1 mmad done, notify AIV0\n", (int)blockIdx);
             NotifyVector(0);  // PIPE_FIX 自带 fixpipe→UB drain → AIV0 解锁
             gmm1Used = true;
         } else {  // DYN_OP_GMM2
             if (gmm2Used[gmm2Pp]) {
+                DYN_DBG("[AIC bk=%d] G2 wait AIV1 free pp=%d...\n", (int)blockIdx, (int)gmm2Pp);
                 WaitForVectorFromAIV1(gmm2Pp);
             }
+            DYN_DBG("[AIC bk=%d] G2 write slot pp=%d...\n", (int)blockIdx, (int)gmm2Pp);
             WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(gmm2Pp), task);
+            DYN_DBG("[AIC bk=%d] G2 mmad begin nTile=%d waveM=%d\n",
+                    (int)blockIdx, (int)task.nTileIdx, (int)task.waveM);
             DynamicAicGmm2Tile<ElementA, ElementB, ElementMxScaleA, ElementMxScaleB>(
                 params, baseOffset, task.nTileIdx, waveRowOffset, task.waveM, m_full, n_full, k_full);
+            DYN_DBG("[AIC bk=%d] G2 mmad done, notify AIV1 pp=%d\n", (int)blockIdx, (int)gmm2Pp);
             NotifyVectorAIV1(gmm2Pp);
             gmm2Used[gmm2Pp] = true;
             gmm2Pp ^= 1;
         }
     }
+    DYN_DBG("[AIC bk=%d] main loop DONE (%d tasks), sending END\n", (int)blockIdx, taskSeq);
 
     // === 发 END 哨兵 + drain 所有 pending NotifyCube ===
     DynamicTask endTask;
@@ -1105,14 +1166,17 @@ __aicore__ inline void DynamicAicLoop(
     if (gmm1Used) {
         WaitForVector(0);  // 收最后一个真 task 的 NotifyCube
     }
+    DYN_DBG("[AIC bk=%d] write GMM1 END\n", (int)blockIdx);
     WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, endTask);
     NotifyVector(0);
     WaitForVector(0);      // 收 END task 的 NotifyCube → GMM1 channel 全部 drain
+    DYN_DBG("[AIC bk=%d] GMM1 channel drained\n", (int)blockIdx);
 
     // GMM2 channel END (双通道)
     if (gmm2Used[gmm2Pp]) {
         WaitForVectorFromAIV1(gmm2Pp);
     }
+    DYN_DBG("[AIC bk=%d] write GMM2 END pp=%d\n", (int)blockIdx, (int)gmm2Pp);
     WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(gmm2Pp), endTask);
     NotifyVectorAIV1(gmm2Pp);
     gmm2Used[gmm2Pp] = true;
@@ -1125,6 +1189,7 @@ __aicore__ inline void DynamicAicLoop(
     if (gmm2Used[gmm2Pp]) {
         WaitForVectorFromAIV1(gmm2Pp);
     }
+    DYN_DBG("[AIC bk=%d] <<< DynamicAicLoop EXIT exp=%d\n", (int)blockIdx, (int)expertIdx);
 }
 
 // ============================================================================
@@ -1156,14 +1221,33 @@ __aicore__ inline void DynamicAiv0Loop(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
 
     // GMM1 单通道: flag id 恒 0 (GMM1 输出 UB 只一块, cube↔vec 串行复用)
+    DYN_DBG("[AIV0 bk=%d] >>> DynamicAiv0Loop ENTRY n_full=%d k_full=%d outputN=%d\n",
+            (int)blockIdx, (int)n_full, (int)k_full, (int)outputN);
     DynamicTask task;
+    int taskSeq = 0;
+    (void)taskSeq;
     while (true) {
+        DYN_DBG("[AIV0 bk=%d] iter#%d wait cube...\n", (int)blockIdx, taskSeq);
         WaitForCube(0);
         int32_t packed = ReadTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, task);
+        DYN_DBG("[AIV0 bk=%d] iter#%d slot read packed=%d op=%d wave=%d nTile=%d waveM=%d\n",
+                (int)blockIdx, taskSeq, (int)packed, (int)task.opType, (int)task.waveIdx,
+                (int)task.nTileIdx, (int)task.waveM);
+        taskSeq++;
         if (task.opType == DYN_OP_END) {
+            DYN_DBG("[AIV0 bk=%d] got END, exiting\n", (int)blockIdx);
             ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, packed);  // slot 清回 0 (内部含 PipeBarrier)
             NotifyCube(0);
             break;
+        }
+        // ★ task 合法性自检：若读到垃圾值 (waveM 越界 / nTileIdx 越界 / opType 非法)，
+        //   说明 slot 通信出错——这通常就是后面 UB 崩溃的真正源头。
+        if (task.opType != DYN_OP_GMM1 ||
+            task.waveM <= 0 || task.waveM > static_cast<int32_t>(L1_TILE_M) ||
+            task.nTileIdx < 0 || task.nTileIdx > 4095) {
+            DYN_DBG("[AIV0 bk=%d] !!! BAD TASK packed=%d op=%d wave=%d nTile=%d waveM=%d (期望 op=0,0<waveM<=256)\n",
+                    (int)blockIdx, (int)packed, (int)task.opType, (int)task.waveIdx,
+                    (int)task.nTileIdx, (int)task.waveM);
         }
 
         // ★ 每 task 用 task.waveM 重新设置 epi 的 problem M (处理末尾 partial wave)
@@ -1183,6 +1267,8 @@ __aicore__ inline void DynamicAiv0Loop(
         auto actualShape = schedGmm1.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        DYN_DBG("[AIV0 bk=%d] blockCoord mLoc=%d nLoc=%d actualN=%d\n",
+                (int)blockIdx, (int)mLoc, (int)nLoc, (int)Get<N_VALUE>(actualShape));
 
         uint32_t swigluNLoc;
         int64_t swigluN_tile;
@@ -1203,16 +1289,20 @@ __aicore__ inline void DynamicAiv0Loop(
             0, mLoc, 0, 0};
 
         AscendC::SetCtrlSpr<60, 60>(0);
+        DYN_DBG("[AIV0 bk=%d] epi call shapeM=%d shapeN=%d\n",
+                (int)blockIdx, (int)task.waveM, (int)swigluN_tile);
         if constexpr (IsInterleaved) {
             epilogueOp(epilogueShape, epilogueOffset, static_cast<uint16_t>(0));
         } else {
             epilogueOp(epilogueShape, epilogueOffset);
         }
+        DYN_DBG("[AIV0 bk=%d] epi RETURNED\n", (int)blockIdx);
         // epi 内部最后 atomic_add(groupFlagListGm[waveIdx])，触发 GMM2 解锁
 
         ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, packed);  // 清 slot (内部含 PipeBarrier) 必须在 NotifyCube 前
         NotifyCube(0);
     }
+    DYN_DBG("[AIV0 bk=%d] <<< DynamicAiv0Loop EXIT\n", (int)blockIdx);
 }
 
 // ============================================================================
@@ -1236,14 +1326,32 @@ __aicore__ inline void DynamicAiv1Loop(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
 
     uint16_t pp = 0;
+    DYN_DBG("[AIV1 bk=%d] >>> DynamicAiv1Loop ENTRY exp=%d n_full=%d k_full=%d outputN=%d\n",
+            (int)blockIdx, (int)expertIdx, (int)n_full, (int)k_full, (int)outputN);
     DynamicTask task;
+    int taskSeq = 0;
+    (void)taskSeq;
     while (true) {
+        DYN_DBG("[AIV1 bk=%d] iter#%d wait cube pp=%d...\n", (int)blockIdx, taskSeq, (int)pp);
         WaitForCube(pp);  // AIV1 端: wait AIC NotifyVectorAIV1 → 底层 flag id = pp (AIV1 端不+16)
         int32_t packed = ReadTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(pp), task);
+        DYN_DBG("[AIV1 bk=%d] iter#%d slot read pp=%d packed=%d op=%d wave=%d nTile=%d waveM=%d\n",
+                (int)blockIdx, taskSeq, (int)pp, (int)packed, (int)task.opType, (int)task.waveIdx,
+                (int)task.nTileIdx, (int)task.waveM);
+        taskSeq++;
         if (task.opType == DYN_OP_END) {
+            DYN_DBG("[AIV1 bk=%d] got END, exiting\n", (int)blockIdx);
             ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(pp), packed);
             NotifyCube(pp);
             break;
+        }
+        // ★ task 合法性自检：读到垃圾值 → slot 通信出错（后面 UB 崩溃的真正源头）
+        if (task.opType != DYN_OP_GMM2 ||
+            task.waveM <= 0 || task.waveM > static_cast<int32_t>(L1_TILE_M) ||
+            task.nTileIdx < 0 || task.nTileIdx > 4095) {
+            DYN_DBG("[AIV1 bk=%d] !!! BAD TASK packed=%d op=%d wave=%d nTile=%d waveM=%d (期望 op=1,0<waveM<=256)\n",
+                    (int)blockIdx, (int)packed, (int)task.opType, (int)task.waveIdx,
+                    (int)task.nTileIdx, (int)task.waveM);
         }
 
         // 反算 mLoc/nLoc
@@ -1251,6 +1359,8 @@ __aicore__ inline void DynamicAiv1Loop(
         auto actualShape = schedGmm2.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        DYN_DBG("[AIV1 bk=%d] blockCoord mLoc=%d nLoc=%d actualN=%d\n",
+                (int)blockIdx, (int)mLoc, (int)nLoc, (int)Get<N_VALUE>(actualShape));
         // ★ 覆盖 actualShape.M 为 task.waveM (partial wave 处理)
         // CombineTile 内部按 actualShape.M 拷数据，必须是真实 waveM，不能是 L1_TILE_M
         Get<M_VALUE>(actualShape) = static_cast<int64_t>(task.waveM);
@@ -1262,15 +1372,19 @@ __aicore__ inline void DynamicAiv1Loop(
         int64_t ubOffset = 0;
         LocalTensor<ElementC> ubBuffer = LocalTensor<ElementC>(TPosition::VECIN, ubOffset,
                                                                 L1_TILE_M * L1_TILE_N);
+        DYN_DBG("[AIV1 bk=%d] CombineTile begin mLoc=%d nLoc=%d waveM=%d\n",
+                (int)blockIdx, (int)mLoc, (int)nLoc, (int)task.waveM);
         MegaMoeCombineImpl::CombineTile<ElementC, decltype(actualShape)>(
             expertIdx, mLoc, nLoc, k_full, rankId,
             gmm2OutGlobal, params, ubBuffer, actualShape,
             static_cast<uint64_t>(waveRowOffset));
+        DYN_DBG("[AIV1 bk=%d] CombineTile RETURNED\n", (int)blockIdx);
 
         ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, static_cast<int32_t>(pp), packed);
         NotifyCube(pp);
         pp ^= 1;
     }
+    DYN_DBG("[AIV1 bk=%d] <<< DynamicAiv1Loop EXIT\n", (int)blockIdx);
 }
 
 } // namespace MegaMoeImpl

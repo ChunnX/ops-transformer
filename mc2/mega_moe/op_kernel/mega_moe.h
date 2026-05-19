@@ -1011,6 +1011,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // 互不冲突。expert 顺序串行执行 → 不同 expert 的 counter 不会被同时访问。
         //
         // -- 分发到三个 dynamic loop --
+        AscendC::PRINTF("[DISPATCH bk=%d ct=%d sub=%d] expert=%d tnG1=%d tnG2=%d waveCnt=%d m_i=%d\n",
+                        (int)blockIdx_, (int)g_coreType, (int)subBlockIdx_, (int)expertIdx,
+                        (int)tileNumGmm1, (int)tileNumGmm2, (int)waveCnt, (int)m_i);
         if constexpr (g_coreType == AscendC::AIC) {
             MegaMoeImpl::DynamicAicLoop<
                 QuantOutType, QuantOutType, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
