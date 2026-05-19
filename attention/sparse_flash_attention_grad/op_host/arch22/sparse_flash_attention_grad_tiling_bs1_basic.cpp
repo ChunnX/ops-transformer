@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_tiling_bs1_basic.cpp
@@ -25,13 +25,14 @@ constexpr uint32_t B16 = 2;
 constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
+constexpr uint32_t SCATTER_BUFFER_NUM = 3;
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
 {
     /*
     Get all shape info and attr
     */
-    opName = context_->GetNodeName();
+    opName = (context_ != nullptr) ? context_->GetNodeName() : nullptr;
     OP_CHECK_IF(context_ == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "context is nullptr."),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetAttrs() == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "GetAttrs is nullptr."),
@@ -156,7 +157,6 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
                                            aicoreParams_.aicNum, aicoreParams_.numBlocks),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
-    context_->SetScheduleMode(1);
 
     // 系统预留
     int64_t sysLen = WORKSPACE_BASE_CAL;
@@ -170,7 +170,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     // Gather/Scatter
     int64_t selectedKWorkspaceLen = selectedS2 * (tmpData.d + tmpData.ropeDim) * inputDtypeSize;
     int64_t selectedVWorkspaceLen = selectedS2 * tmpData.d2 * inputDtypeSize;
-    
+
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN);
     selectedVWorkspaceLen = AlignData(selectedVWorkspaceLen, GM_ALIGN);
 
@@ -185,8 +185,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
     int64_t d2Align = (tilingData.opInfo.get_D2() + 15) / 16 * 16;
-    // 每个s1做完，做scatter add累加，workspace开DB
-    workspaces[0] += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
+    workspaces[0] += 24 * SCATTER_BUFFER_NUM * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
@@ -237,6 +236,10 @@ uint64_t SparseFlashAttentionGradBasicTiling::GetTilingKey() const
     if (tmpData.layout == static_cast<uint32_t>(InputLayout::BSND)) {
         tilingKey += 1;
     }
+    tilingKey *= 10;
+    if (tmpData.deterministic) {
+        tilingKey += 1;
+    }
 
     OP_LOGI(context_,
               "SparseFlashAttentionGrad DoTiling success, tilingkey is"
@@ -270,9 +273,10 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
     /*
      * softmax tiling切分策略
      */
+    constexpr int32_t maxProcessDataSize = 8 * 1024;
 
     uint32_t sftBaseN = tmpData.singleN;
-    uint32_t sftBaseM = 16;
+    uint32_t sftBaseM = 6;
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
@@ -462,14 +466,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     }
 
     if (strcmp(inputLayout, TND_STR) == 0) {
-        auto actSeqQLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
-        auto actSeqKVLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
-        OP_CHECK_IF(actSeqQLen == nullptr || actSeqKVLen == nullptr,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "When layout is TND, actSeqQLen / actSeqKVLen can not be nullptr"),
-            return false);
         const gert::Shape &actSeqQLenShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN))->GetStorageShape();
         tmpData.b = actSeqQLenShape.GetDim(DIM_0);
-        OP_CHECK_IF(tmpData.b == 0, OP_LOGE(context_, "batchNum is 0"), return ge::GRAPH_FAILED);
         tmpData.t1 = queryShape.GetDim(DIM_0);
         tmpData.t2 = keyShape.GetDim(DIM_0);
         tmpData.s1 = tmpData.t1;
@@ -480,7 +478,6 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         tmpData.layout = static_cast<uint32_t>(InputLayout::TND);
     } else { // BSND
         tmpData.b = queryShape.GetDim(DIM_0);
-        OP_CHECK_IF(tmpData.b == 0, OP_LOGE(context_, "batchNum is 0"), return ge::GRAPH_FAILED);
         tmpData.s1 = queryShape.GetDim(DIM_1);
         tmpData.s2 = keyShape.GetDim(DIM_1);
         tmpData.n2 = keyShape.GetDim(DIM_2);
@@ -549,4 +546,3 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashAttentionGrad, SparseFlashAttentio
 
 } // namespace sfag
 } // namespace optiling
-
