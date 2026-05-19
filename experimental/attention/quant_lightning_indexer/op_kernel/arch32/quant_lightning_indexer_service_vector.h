@@ -48,7 +48,9 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct QLICommon::ConstInfo &constInfo,
                                       const QLITilingData *__restrict tilingData);
-    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<half> vec0OutGm, GlobalTensor<MM1_OUT_T> mm1ResGm);
+    __aicore__ inline void ProcessLD();
+    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<half> vec0OutGm, GlobalTensor<MM1_OUT_T> mm1ResGm),
+                                                  GlobalTensor<float> vec1ResGm;
     __aicore__ inline void InitVecInputTensor(GlobalTensor<half> weightsGm, GlobalTensor<half> qScaleGm,
                                               GlobalTensor<half> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm);
@@ -59,6 +61,7 @@ public:
 
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
+    GlobalTensor<float> vec1ResGm;
     GlobalTensor<half> weightsGm;
     GlobalTensor<half> qScaleGm;
     GlobalTensor<half> kScaleGm;
@@ -80,6 +83,12 @@ private:
     TBuf<TPosition::VECCALC> indexBuf_;
     TBuf<TPosition::VECCALC> tmpBuf_;
 
+    // tmp buff for LD
+    TBuf<> ldToBeMrgBuf_;
+    TBuf<> ldTmpBuf_;
+    TBuf<> ldOutValueBuf_;
+    TBuf<> ldOutIdxBuf_;
+
     LocalTensor<int32_t> globalTopkIndice_;
     LocalTensor<float> globalTopkUb_;
 
@@ -96,6 +105,9 @@ private:
     int32_t s2BaseSize_ = 0;
     int32_t kCacheBlockSize_ = 0;
     int32_t maxBlockNumPerBatch_ = 0;
+
+    // para for LD
+    uint32_t mrgListNum_ = 4;
 
     struct QLICommon::ConstInfo constInfo_;
 };
@@ -170,6 +182,16 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename QLIT>
+__aicore__ inline void QLIVector<QLIT>::InitLDBuffers(TPipe *pipe)
+{
+    pipe->Reset();
+    pipe->InitBuffer(ldToBeMrgBuf_, BASE_TOPK_VALUE_IDX_SIZE * mrgListNum_ * sizeof(float));
+    pipe->InitBuffer(ldTmpBuf_, BASE_TOPK_VALUE_IDX_SIZE * mrgListNum_ * sizeof(float));
+    pipe->InitBuffer(ldOutValueBuf_, BASE_TOPK * sizeof(float));
+    pipe->InitBuffer(ldOutIdxBuf_, BASE_TOPK * sizeof(int32_t));
+}
+
+template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::ConstInfo &constInfo,
                                                    const QLITilingData *__restrict tilingData)
 {
@@ -203,9 +225,11 @@ __aicore__ inline void QLIVector<QLIT>::InitVecInputTensor(GlobalTensor<half> we
 
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::InitVecWorkspaceTensor(GlobalTensor<half> vec0OutGm,
+                                                               GlobalTensor<float> vec1ResGm,
                                                                GlobalTensor<MM1_OUT_T> mm1ResGm)
 {
     this->mm1ResGm = mm1ResGm;
+    this->vec1ResGm = vec1ResGm;
     this->vec0OutGm = vec0OutGm;
 }
 
@@ -397,6 +421,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
                                        idxULocal.template ReinterpretCast<int32_t>(), constInfo_.sparseCount);
                 outQueue_.FreeTensor(idxULocal);
             }
+            uint64_t wsOffset = info.saveWorkSpaceIdx * s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE + rowIdx * BASE_TOPK_VALUE_IDX_SIZE;
+            if (info.isNeedLD && info.isLastS2InnerLoop) {  // 当前核存在归约任务 且是最后处理的一段
+                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                QLIServiceVec::CopyOut(vec1ResGm[wsOffset], globalTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE],
+                                       BASE_TOPK_VALUE_IDX_SIZE);
+                SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+            }
         } else if (cuRealAcSeq <= 0) {
             CleanInvalidOutput(info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount);
         }
@@ -431,6 +462,111 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
         // S2最后一个Loop后, 下一个基本块初始从0开始
         blockS2StartIdx_ = 0;
     }
+}
+
+template <typename QLIT>
+__aicore__ inline void QLIVector<QLIT>::ProcessLD()
+{
+    int32_t curCubeId = blockId_ / 2;
+    int32_t tmpCubeId = curCubeId;
+
+    LocalTensor<float> curValueIdxUb = ldToBeMrgBuf_.Get<float>();
+    LocalTensor<float> tmpUb = ldTmpBuf_.Get<float>();
+
+    LocalTensor<float> outValueUb = ldOutValueBuf_.Get<float>();
+    LocalTensor<uint32_t> outIdxUb = ldOutIdxBuf_.Get<uint32_t>();
+
+    AscendC::MrgSort4Info params;
+    params.elementLengths[0] = BASE_TOPK;
+    params.elementLengths[1] = BASE_TOPK;
+    params.elementLengths[2] = BASE_TOPK;
+    params.elementLengths[3] = BASE_TOPK;
+    params.ifExhaustedSuspension = true;
+
+    AscendC::DataCopyParams copyOutParams;
+    copyOutParams.blockCount = 1;
+    copyOutParams.blockLen = topkCount_ * sizeof(uint32_t); // bytes
+    copyOutParams.srcStride = 0;
+    copyOutParams.dstStride = 0;
+
+    AscendC::DataCopyPadExtParams<int32_t> indexValuePadParams{true, 0, 0, 0};
+    AscendC::DataCopyExtParams indexValueParams;
+    ldIndexParams.blockLen = BASE_TOPK_VALUE_IDX_SIZE * sizeof(int32_t); // bytes
+    ldIndexParams.srcStride = 3 * BASE_TOPK_VALUE_IDX_SIZE * sizeof(int32_t);
+    ldIndexParams.dstStride = 0;
+
+    uint32_t ldProWorkspaceNum = ldInfo_.workspaceNum;
+    uint32_t ldProcessLen = 4;     // 4: 4块归约任务做一次Merge
+    uint32_t ldProcessNum = ceilDiv(ldProWorkspaceNum - 1, ldProcessLen - 1); 
+    uint32_t ldTailLen = (ldProcessNum > 0) ? ldProWorkspaceNum - (ldProcessNum * (ldProcessLen - 1) + 1) : ldProWorkspaceNum;   // 尾块长度
+    
+    
+    for (uint32_t j = 0; j < ldInfo_.mNum; j++) {
+        // 拷贝第一块归约任务
+        ldIndexParams.blockCount = 1;
+        uint64_t wsOffset = ldInfo_.workspaceIdx * s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE +
+                            BASE_TOPK_VALUE_IDX_SIZE * (ldInfo_.mStart + j);
+        DataCopyPad(curValueIdxUb, vec1ResGm[wsOffset], indexValueParams, indexValuePadParams);
+        uint64_t valueOffset = BASE_TOPK_VALUE_IDX_SIZE;
+
+        SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+        // 处理等于4的部分
+        for (uint32_t i = 0; i < ldProcessNum - 1; i++) {
+            // LD处理偏移
+            wsOffset += i * ldProcessLen * s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE;
+            uint64_t wsOffset = ldInfo_.workspaceIdx * s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE +
+                                BASE_TOPK_VALUE_IDX_SIZE * (ldInfo_.mStart + j) + (i * (ldProcessLen - 1) + 1) * s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE; 
+            ldIndexParams.blockCount = ldProcessLen - 1;    // 拷贝4块进行merge
+            
+            SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
+            DataCopyPad(curValueIdxUb[valueOffset], vec1ResGm[wsOffset], indexValueParams, indexValuePadParams);
+            // merge参数
+            params.ifExhaustedSuspension = true;
+            params.validBit = 0b1111;
+            params.repeatTimes = 1;
+
+            AscendC::MrgSortSrcList<float> srcList;
+            srcList.src1 = curValueIdxUb[0];
+            srcList.src2 = curValueIdxUb[BASE_TOPK_VALUE_IDX_SIZE];
+            srcList.src3 = curValueIdxUb[2 * BASE_TOPK_VALUE_IDX_SIZE];
+            srcList.src4 = curValueIdxUb[3 * BASE_TOPK_VALUE_IDX_SIZE];
+            SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+            MrgSort(tmpUb, srcList, params);
+            PipeBarrier<PIPE_V>();
+            DataCopy(curValueIdxUb, tmpUb, BASE_TOPK_VALUE_IDX_SIZE);
+            PipeBarrier<PIPE_V>();
+        }
+
+        // 处理不等于4的部分
+        if (ldTailLen != 0) {
+            if (ldTailLen == 1) {
+                params.validBit = 0b0011;
+            } else if (ldTailLen == 2) {
+                params.validBit = 0b0111;
+            }
+            params.repeatTimes = 1;
+
+            AscendC::MrgSortSrcList<float> srcList;
+            srcList.src1 = curValueIdxUb[0];
+            srcList.src2 = curValueIdxUb[BASE_TOPK_VALUE_IDX_SIZE];
+            srcList.src3 = curValueIdxUb[2 * BASE_TOPK_VALUE_IDX_SIZE];
+            srcList.src4 = curValueIdxUb[3 * BASE_TOPK_VALUE_IDX_SIZE];
+            SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+            MrgSort(tmpUb, srcList, params);
+            PipeBarrier<PIPE_V>();
+            DataCopy(curValueIdxUb, tmpUb, BASE_TOPK_VALUE_IDX_SIZE);
+            PipeBarrier<PIPE_V>();
+        }
+
+        // 搬出
+        Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
+        LocalTensor<int32_t> idxULocal1 = outIdxUb.template ReinterpretCast<int32_t>();
+        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+        uint64_t outOffset = ldInfo_.indiceOutCoreOffset + (ldInfo_.mStart + j) * constInfo_.kHeadNum * topkCount_;
+        DataCopyPad(indiceOutGm[outOffset], idxULocal1, copyOutParams);
+        SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+    }
+    SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
 }
 
 }  // namespace QLIKernel

@@ -303,6 +303,43 @@ __aicore__ void inline QLIPreload<QLIT>::SplitCore()
 
     // 如果0核都没有启动，说明所有核都没启动
     coreZeroEnable = metadataGm.GetValue(GetAttrAbsIndex(0, LI_CORE_ENABLE_INDEX, false));
+
+    uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(aiCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
+    ldInfo.saveWorkSpaceIdx = metadataGm.GetValue(ldFirstWorkSpaceIndex);
+    if ASCEND_IS_AIV {
+        vecCoreIdx = aiCoreIdx; // 此时代表vectoe核数
+        uint32_t ldCoreEnableIndex = GetAttrAbsIndex(vecCoreIdx, LD_CORE_ENABLE_INDEX, true);
+        ldInfo.isLdCoreEnable = metadataGm.GetValue(ldCoreEnableIndex);
+        
+        if (!ldInfo.isLdCoreEnable) {
+            return;
+        }
+
+        // LD 参数信息
+        uint32_t ldBn2IdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_BN2_IDX_INDEX, true);
+        uint32_t ldMIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_IDX_INDEX, true);
+        uint32_t ldWorkspaceIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_IDX_INDEX, true);
+        uint32_t ldWorkspaceNumINDEX = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_NUM_INDEX, true);
+        uint32_t ldMstartIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_START_INDEX, true);
+        uint32_t ldMNumIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_NUM_INDEX, true);
+
+        ldInfo.bn2Idx = metadataGm.GetValue(ldBn2IdxIndex);
+        ldInfo.bIdx = ldInfo.bn2Idx / constInfo.kHeadNum;
+        ldInfo.n2Idx = ldInfo.bn2Idx % constInfo.kHeadNum;
+        ldInfo.mIdx = metadataGm.GetValue(ldMIdxIndex);
+        ldInfo.workspaceIdx = metadataGm.GetValue(ldWorkspaceIdxIndex);
+        ldInfo.workspaceNum = metadataGm.GetValue(ldWorkspaceNumINDEX);
+        ldInfo.mStart = metadataGm.GetValue(ldMstartIndex);
+        ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
+        uint64_t actualSeqQPrefixSum = 0;
+        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(ldInfo.bIdx - 1);
+        } else { // BSND
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
+        }
+        ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + ldInfo.n2Idx * constInfo.sparseCount +
+                                    ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;  // 搬出Topk的初始偏移地址
+        }
 }
 
 template <typename QLIT>
@@ -375,17 +412,24 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
     weightWorkspaceGm.SetGlobalBuffer((__gm__ half *)(workspace + offset + aiCoreIdx * weightMemSize));
     offset += GetBlockNum() * weightMemSize;
 
+    // ld流程需要ws大小: [aicnum, 2, s1BaseSize, topkOut_*2]
+    // (aic, 8, 2, 2, 2048)
+    // (aic, s1_cube, 头尾, idx/value, K)
+    GlobalTensor<float> vec1ResGm;  // 存放TopK计算中间结果
+    vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * BASE_TOPK * sizeof(float);
+
     GlobalTensor<half> qScaleGm;
     GlobalTensor<half> kScaleGm;
     if ASCEND_IS_AIV {
-        vectorService.InitParams(constInfo, tiling);
+        vectorService.InitParams(constInfo, ldInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         weightsGm.SetGlobalBuffer((__gm__ half *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ half *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ half *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
-        vectorService.InitVecWorkspaceTensor(weightWorkspaceGm, mm1ResGm);
+        vectorService.InitVecWorkspaceTensor(weightWorkspaceGm, mm1ResGm, vec1ResGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
@@ -427,6 +471,11 @@ __aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
         tempLoopInfo.validS2Len = tempLoopInfo.actS2Size;
     }
     tempLoopInfo.s2LoopEnd = (isEnd && constInfo.s2End != 0) ? constInfo.s2End : s2BlockNum;
+    if (splitCoreInfo.s2Start > 0 || tempLoopInfo.s2LoopEnd < s2BlockNum - 1) {
+        tempLoopInfo.isNeedLD = true;
+    } else {
+        tempLoopInfo.isNeedLD = false;
+    }
     tempLoopInfo.s2BasicSizeTail = tempLoopInfo.validS2Len % constInfo.s2BaseSize;
     tempLoopInfo.s2BasicSizeTail = (tempLoopInfo.s2BasicSizeTail == 0) ?
                                    constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
@@ -464,6 +513,11 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.s2Idx = s2LoopIdx;
     runInfo.bN2Idx = tempLoopInfo.bN2Idx;
     runInfo.isValid = s2LoopIdx < tempLoopInfo.s2LoopEnd;
+    runInfo.isNeedLD = tempLoopInfo.isNeedLD;
+    if (runInfo.isNeedLD && s2LoopIdx == tempLoopInfo.s2LoopEnd) {
+        runInfo.saveWorkSpaceIdx = ldInfo.saveWorkSpaceIdx;
+        ldInfo.saveWorkSpaceIdx++;
+    }
 
     if (!runInfo.isValid) {
         return;
@@ -527,6 +581,8 @@ __aicore__ inline void QLIPreload<QLIT>::Process()
         return;
     }
     ProcessMain();
+
+    ProcessDecode();
 }
 
 template <typename QLIT>
@@ -660,5 +716,19 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
         lastRunInfo.isValid = false;
     }
 }
+
+template <typename QLIT>
+    __aicore__ inline void QLIPreload<QLIT>::ProcessDecode()
+    {
+        if ASCEND_IS_AIV {
+            vectorService.InitLDBuffers(pipe, ldInfo);
+            ICachePreLoad(LD_PREFETCH_LEN);
+            SyncAll();
+            if (ldInfo.isLdCoreEnable) {
+                vectorService.ProcessLD();
+            }
+        }
+    }
+
 }  // namespace QLIKernel
 #endif  // QUANT_LIGHTNING_INDEXER_KERNEL_H
