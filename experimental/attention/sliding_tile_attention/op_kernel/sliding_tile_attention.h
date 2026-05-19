@@ -17,7 +17,7 @@
 #endif
 
 #ifndef STA_USE_VECIN_PROB_OUT_HANDOFF
-#define STA_USE_VECIN_PROB_OUT_HANDOFF 0
+#define STA_USE_VECIN_PROB_OUT_HANDOFF 1
 #endif
 
 namespace SlidingTileAttentionKernel {
@@ -29,7 +29,7 @@ constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t BUFFER_NUM = 1;
-constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 128 * 1024;
+constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 96 * 1024;
 constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
 constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
 constexpr uint64_t SYNC_AIC_TO_AIV_0 = 5;
