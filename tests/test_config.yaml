@@ -1366,6 +1366,24 @@ mc2:
         - moe_distribute_combine_v2
         - moe_distribute_combine_v3
 
+    distribute_barrier_extend:
+      module: True
+      src:
+        - mc2/distribute_barrier
+        - mc2/distribute_barrier_extend
+        - mc2/common
+      exclude:
+        - mc2/distribute_barrier/docs
+        - mc2/distribute_barrier/README.md
+        - mc2/distribute_barrier_extend/README.md
+      ut_cov_exclude:
+        - mc2/distribute_barrier_extend/op_graph
+        - mc2/distribute_barrier_extend/op_kernel
+      test:
+        examples: False
+      options:
+        - distribute_barrier_extend
+
     elastic_receivable_info_collect:
       module: True
       src:
