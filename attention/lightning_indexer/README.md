@@ -155,6 +155,7 @@
           <ul>
                 <li>topK阶段需要保留的block数量。</li>
                 <li>支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。</li>
+                <li>默认值为2048。</li>
           </ul>
       </td>
       <td>INT32</td>
@@ -168,6 +169,7 @@
                 <li>表示sparse的模式。</li>
                 <li>sparse_mode为0时代表defaultMask模式。</li>
                 <li>sparse_mode为3时代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
+                <li>默认值为3。</li>
           </ul>
       </td>
       <td>INT32</td>
