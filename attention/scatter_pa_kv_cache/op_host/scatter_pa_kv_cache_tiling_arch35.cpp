@@ -623,7 +623,7 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
     int64_t numHead = inputKeyShape_.GetDim(DIM1);
     int64_t kHeadSize = inputKeyShape_.GetDim(DIM2);
     int64_t tokensK = numHead * kHeadSize;
-    int64_t lastDimK = inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.getDimNum() - DIM1);
+    int64_t lastDimK = inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.GetDimNum() - DIM1);
     int64_t lastDimKSize = lastDimK * dtypeByteSize_;
     if (inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2) {
         lastDimKSize /= 2;
@@ -652,7 +652,7 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
                 OP_LOGE(context_, "the dim 0 of key and value must be equal. "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM1) != inputValueShape_.GetDim(DIM1),
                 OP_LOGE(context_, "the dim 1 of key and value must be equal. "), return ge::GRAPH_FAILED;);
-    OP_CHECK_IF(inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.getDimNum() - DIM2) !=
+    OP_CHECK_IF(inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.GetDimNum() - DIM2) !=
                     inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM2),
                 OP_LOGE(context_, "the blockSize of key cache and value cache must be equal. "),
                 return ge::GRAPH_FAILED;);
