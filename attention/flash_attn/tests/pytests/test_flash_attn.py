@@ -15,6 +15,7 @@ import argparse
 import importlib
 import itertools
 
+import gc
 import torch
 import math
 import numpy as np
@@ -129,8 +130,8 @@ def normalize_case(raw):
         if c.get(key) == [None] or c.get(key) is None:
             c.pop(key, None)
     if layout_q == "TND":
-        # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
-        # c.setdefault("cu_seqlens_kv", c["cu_seqlens_q"])
+        # cu_seqlens_kv 未提供时默认与 cu_seqlens_q 相同（self-attention 场景）
+        c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
         if layout_kv not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
@@ -771,8 +772,24 @@ if __name__ == "__main__":
 
     results = {}
     for name in run_cases:
+        # 清理 NPU 缓存，防止前一个 case 的显存残留影响后续 case
+        gc.collect()
+        if NPU_AVAILABLE:
+            torch.npu.synchronize()
+            torch.npu.empty_cache()
+
         config = all_cases[name]
-        kwargs = normalize_case(config)
+        try:
+            kwargs = normalize_case(config)
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] {name} normalize_case 异常: {e}")
+            traceback.print_exc()
+            results[name] = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                       "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
+                              "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                       "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+            continue
         if args.use_gpu:
             kwargs["_use_gpu"] = True
             auto_load_npu = args.load_npu_dump or (args.dump_tensors and not NPU_AVAILABLE)
