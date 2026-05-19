@@ -728,6 +728,8 @@ public:
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
+        PRINTF("zzyzzy CP: aicIdx:%u, loop:%llu, gS1Cur:%u, bIdx:%u, n2Idx:%u, actS1:%llu, actS2:%llu\n",
+               constInfo.aicIdx, loop, gS1Cur, info.bIdx, info.n2Idx, info.actS1Size, info.actS2Size);
 
         info.actMSize = mBaseSize;
         uint64_t gS1Size = info.actS1Size * constInfo.gSize;
