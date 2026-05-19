@@ -15,6 +15,7 @@ import argparse
 import importlib
 import itertools
 
+import gc
 import torch
 import math
 import numpy as np
@@ -113,15 +114,24 @@ def normalize_case(raw):
     c.setdefault("keep_prob",   1.0)
     c.setdefault("seed",        0)
     c.setdefault("offset",      0)
+    # win_left/win_right → pre_tokens/next_tokens（test_case_functional_single 用 win_left/win_right）
+    if "win_left" in c and c["win_left"] != -1:
+        c.setdefault("pre_tokens", c["win_left"])
+    if "win_right" in c and c["win_right"] != -1:
+        c.setdefault("next_tokens", c["win_right"])
     c.setdefault("pre_tokens",  2147483647)
     c.setdefault("next_tokens", 2147483647)
     c.setdefault("prefix",      [])
     c.setdefault("q_range",     None)
     c.setdefault("k_range",     None)
     c.setdefault("v_range",     None)
+    # 清理 [None] 哨兵值 → None（test_case_functional_single.py 用 [[None]] 表示"不传"）
+    for key in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
+        if c.get(key) == [None] or c.get(key) is None:
+            c.pop(key, None)
     if layout_q == "TND":
-        # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
-        # c.setdefault("cu_seqlens_kv", c["cu_seqlens_q"])
+        # cu_seqlens_kv 未提供时默认与 cu_seqlens_q 相同（self-attention 场景）
+        c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
         if layout_kv not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
@@ -134,6 +144,9 @@ def normalize_case(raw):
         c.setdefault("block_table_shape", c.get("block_table_shape"))
         block_size = c.get("block_size", 1)
         block_table_shape = c.get("block_table_shape", [])
+        # PA 需要 seqused_kv；如果未提供（被 [None] 清理掉了），默认为 [S2]*B
+        if "seqused_kv" not in c:
+            c["seqused_kv"] = [c.get("S2", c.get("S1"))] * c.get("B", 1)
         seqused_kv = c.get("seqused_kv")
         if ("block_table" in c.keys()) and (c.get("block_table") is not None):
             block_table_list = c.get("block_table")
@@ -206,12 +219,201 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
     return stats
 
 
+def analyze_fail_distribution(test_name, expect, result, dump_dir="./dump_output", **kwargs):
+    """分析失败元素在各 batch/head/seq 维度的分布情况，输出统计报告并保存到文件。"""
+    ef = expect.float()
+    rf = result.float()
+    diff = torch.abs(ef - rf)
+    ref_abs = torch.abs(ef)
+    threshold = torch.max(ref_abs.mul(RATIO_THRESHOLD), torch.full_like(diff, 0.000025))
+    fail_mask = diff > threshold
+
+    shape = expect.shape
+    ndim = len(shape)
+    total_fail = int(fail_mask.sum().item())
+    total_elem = expect.numel()
+
+    SEP = "━" * 80
+    lines = []
+    lines.append(f"\n{SEP}")
+    lines.append(f"  失败元素分布分析: {test_name}")
+    lines.append(f"  Shape: {tuple(shape)}  FailElems: {total_fail}/{total_elem} ({total_fail/total_elem*100:.4f}%)")
+    lines.append(SEP)
+
+    if ndim == 4:
+        B, N, S, D = shape
+        # ---- 按 batch 统计 ----
+        lines.append(f"\n  [按 Batch 维度统计] (共 {B} 个 batch)")
+        lines.append(f"  {'Batch':>6}  {'FailCnt':>10}  {'Total':>10}  {'FailRatio':>10}  {'MaxAbsErr':>12}  {'MeanAbsErr':>12}")
+        lines.append(f"  {'─'*6}  {'─'*10}  {'─'*10}  {'─'*10}  {'─'*12}  {'─'*12}")
+        batch_stats = []
+        for bi in range(B):
+            b_fail = fail_mask[bi]
+            b_diff = diff[bi]
+            cnt = int(b_fail.sum().item())
+            tot = N * S * D
+            ratio = cnt / tot
+            max_err = b_diff.max().item() if cnt > 0 else 0.0
+            mean_err = b_diff[b_fail].mean().item() if cnt > 0 else 0.0
+            batch_stats.append((bi, cnt, tot, ratio, max_err, mean_err))
+            lines.append(f"  {bi:>6}  {cnt:>10}  {tot:>10}  {ratio*100:>9.4f}%  {max_err:>12.8f}  {mean_err:>12.8f}")
+
+        # ---- 按 head 统计 ----
+        lines.append(f"\n  [按 Head 维度统计] (共 {N} 个 head，显示 Top-10 失败率最高)")
+        lines.append(f"  {'Head':>6}  {'FailCnt':>10}  {'Total':>10}  {'FailRatio':>10}  {'MaxAbsErr':>12}")
+        lines.append(f"  {'─'*6}  {'─'*10}  {'─'*10}  {'─'*10}  {'─'*12}")
+        head_stats = []
+        for ni in range(N):
+            h_fail = fail_mask[:, ni]
+            h_diff = diff[:, ni]
+            cnt = int(h_fail.sum().item())
+            tot = B * S * D
+            ratio = cnt / tot
+            max_err = h_diff.max().item() if cnt > 0 else 0.0
+            head_stats.append((ni, cnt, tot, ratio, max_err))
+        head_stats.sort(key=lambda x: x[3], reverse=True)
+        for ni, cnt, tot, ratio, max_err in head_stats[:10]:
+            lines.append(f"  {ni:>6}  {cnt:>10}  {tot:>10}  {ratio*100:>9.4f}%  {max_err:>12.8f}")
+
+        # ---- 按 seq 位置统计（聚合） ----
+        lines.append(f"\n  [按 Seq 位置统计] (共 {S} 个位置，显示 Top-10 失败率最高)")
+        lines.append(f"  {'SeqPos':>6}  {'FailCnt':>10}  {'Total':>10}  {'FailRatio':>10}  {'MaxAbsErr':>12}")
+        lines.append(f"  {'─'*6}  {'─'*10}  {'─'*10}  {'─'*10}  {'─'*12}")
+        seq_stats = []
+        for si in range(S):
+            s_fail = fail_mask[:, :, si]
+            s_diff = diff[:, :, si]
+            cnt = int(s_fail.sum().item())
+            tot = B * N * D
+            ratio = cnt / tot
+            max_err = s_diff.max().item() if cnt > 0 else 0.0
+            seq_stats.append((si, cnt, tot, ratio, max_err))
+        seq_stats.sort(key=lambda x: x[3], reverse=True)
+        for si, cnt, tot, ratio, max_err in seq_stats[:10]:
+            lines.append(f"  {si:>6}  {cnt:>10}  {tot:>10}  {ratio*100:>9.4f}%  {max_err:>12.8f}")
+
+        # ---- 关联 seqused_kv 分析 ----
+        seqused_kv = kwargs.get("seqused_kv", None)
+        if seqused_kv is not None:
+            lines.append(f"\n  [Batch vs seqused_kv 关联分析]")
+            lines.append(f"  {'Batch':>6}  {'seqused_kv':>12}  {'FailRatio':>10}  {'说明':>20}")
+            lines.append(f"  {'─'*6}  {'─'*12}  {'─'*10}  {'─'*20}")
+            for bi, cnt, tot, ratio, max_err, mean_err in batch_stats:
+                skv = seqused_kv[bi] if bi < len(seqused_kv) else "N/A"
+                note = ""
+                if ratio > 0.03:
+                    note = "⚠ 超3%阈值"
+                elif ratio > 0.01:
+                    note = "△ 偏高"
+                lines.append(f"  {bi:>6}  {skv:>12}  {ratio*100:>9.4f}%  {note:>20}")
+
+        # ---- 错误位置连续性分析（按 D 维度展开，检测连段模式） ----
+        lines.append(f"\n  [错误位置连续性分析] (选取失败率最高的 3 个 batch，分析 D 维度连段)")
+        top_batches = sorted(batch_stats, key=lambda x: x[3], reverse=True)[:3]
+        for bi, cnt, tot, ratio, max_err, mean_err in top_batches:
+            if cnt == 0:
+                continue
+            lines.append(f"\n  ── Batch {bi} (FailRatio={ratio*100:.4f}%) ──")
+            # 选取该 batch 中失败最多的一个 (head, seq) 位置
+            b_fail = fail_mask[bi]  # (N, S, D)
+            # 按 (head, seq) 聚合失败数
+            hs_fail_cnt = b_fail.sum(dim=-1)  # (N, S)
+            max_hs_idx = int(hs_fail_cnt.argmax().item())
+            max_h = max_hs_idx // S
+            max_s = max_hs_idx % S
+            d_fail_vec = b_fail[max_h, max_s]  # (D,) bool
+            d_fail_cnt = int(d_fail_vec.sum().item())
+            lines.append(f"    最密集位置: head={max_h}, seq={max_s}, 失败D元素={d_fail_cnt}/{D}")
+
+            # 检测连续段
+            fail_positions = d_fail_vec.nonzero(as_tuple=False).squeeze(1).tolist()
+            if len(fail_positions) == 0:
+                lines.append(f"    无失败位置")
+                continue
+
+            # 计算连续段
+            segments = []
+            seg_start = fail_positions[0]
+            seg_end = fail_positions[0]
+            for pos in fail_positions[1:]:
+                if pos == seg_end + 1:
+                    seg_end = pos
+                else:
+                    segments.append((seg_start, seg_end))
+                    seg_start = pos
+                    seg_end = pos
+            segments.append((seg_start, seg_end))
+
+            num_seg = len(segments)
+            max_seg_len = max(e - s + 1 for s, e in segments)
+            avg_seg_len = d_fail_cnt / num_seg
+
+            # 判断模式
+            if num_seg == 1 and d_fail_cnt == D:
+                pattern = "全D失败（整行错误）"
+            elif avg_seg_len >= 8 and num_seg <= d_fail_cnt / 4:
+                pattern = "连段集中（可能与tiling/block边界相关）"
+            elif num_seg >= d_fail_cnt * 0.8:
+                pattern = "随机分散（典型精度累积误差）"
+            else:
+                pattern = "混合模式"
+
+            lines.append(f"    连续段数: {num_seg}  最长段: {max_seg_len}  平均段长: {avg_seg_len:.1f}")
+            lines.append(f"    模式判定: {pattern}")
+            # 显示前 8 个连续段
+            show_segs = segments[:8]
+            seg_strs = [f"[{s}:{e}]({e-s+1})" for s, e in show_segs]
+            lines.append(f"    前{len(show_segs)}段: {', '.join(seg_strs)}")
+            if len(segments) > 8:
+                lines.append(f"    ... 共 {num_seg} 段")
+
+            # 额外：按整个 seq 维度看该 batch+head 的错误 D 位置热图（简化）
+            lines.append(f"    该 head={max_h} 在 batch={bi} 中各 seq 位置失败率:")
+            seq_fail_in_bh = b_fail[max_h].sum(dim=-1)  # (S,)
+            # 显示每 16 个 seq 位置聚合
+            chunk_size = max(1, S // 16)
+            chunks = []
+            for ci in range(0, S, chunk_size):
+                c_end = min(ci + chunk_size, S)
+                c_cnt = int(seq_fail_in_bh[ci:c_end].sum().item())
+                c_tot = (c_end - ci) * D
+                chunks.append(f"{c_cnt/c_tot*100:.1f}%")
+            lines.append(f"    seq分段失败率(每{chunk_size}位置): [{', '.join(chunks)}]")
+
+    elif ndim == 3:
+        T, N, D = shape
+        lines.append(f"\n  [按 Head 维度统计] (TND: T={T}, N={N}, D={D})")
+        lines.append(f"  {'Head':>6}  {'FailCnt':>10}  {'Total':>10}  {'FailRatio':>10}")
+        lines.append(f"  {'─'*6}  {'─'*10}  {'─'*10}  {'─'*10}")
+        for ni in range(N):
+            h_fail = fail_mask[:, ni]
+            cnt = int(h_fail.sum().item())
+            tot = T * D
+            lines.append(f"  {ni:>6}  {cnt:>10}  {tot:>10}  {cnt/tot*100:>9.4f}%")
+    else:
+        lines.append(f"  [维度={ndim}，跳过分维统计]")
+
+    lines.append(f"\n{SEP}")
+
+    report = "\n".join(lines)
+    print(report)
+
+    # 保存分析报告到文件
+    dump_path = os.path.join(dump_dir, test_name)
+    os.makedirs(dump_path, exist_ok=True)
+    report_file = os.path.join(dump_path, "fail_analysis.txt")
+    with open(report_file, "w", encoding="utf-8") as f:
+        f.write(report)
+    print(f"  [分析报告已保存] {report_file}")
+
+    return batch_stats if ndim == 4 else None
+
 
 # ------------------ 三方精度对比 ------------------
 def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
                     verbose_diff=False, visualize=False, viz_dir="./viz_output",
                     meta_only=False, compare_mode=False, graph_mode=False,
-                    load_gpu_dump=None, load_npu_dump=None,
+                    load_gpu_dump=None, load_npu_dump=None, fail_analysis=False,
                     **kwargs):
     b          = kwargs.get("B", 1)
     n1         = kwargs.get("N1")
@@ -315,7 +517,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     if not kwargs.get("_use_gpu", False):
         if not NPU_AVAILABLE:
             print(f"[{test_name}] 警告: NPU 不可用，尝试从 dump 加载。")
-        if NPU_AVAILABLE:
+        if NPU_AVAILABLE and (n1 >= n2 and n1 % n2 == 0):
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
             if graph_mode:
                 print(f"[{test_name}] NPU 图模式计算...")
@@ -323,11 +525,8 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             else:
                 print(f"[{test_name}] NPU 单算子模式计算...")
                 npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
-            if dump_tensors:
-                dump_path = os.path.join(dump_dir, test_name)
-                os.makedirs(dump_path, exist_ok=True)
-                save_tensor_to_txt(npu_out.float(),   os.path.join(dump_path, "npu_out.txt"))
-                print(f"[{test_name}] 已保存 q/k/v/npu_out → {dump_path}/")
+        elif NPU_AVAILABLE:
+            print(f"[{test_name}] 跳过 NPU: N1={n1} 不满足 N1>=N2 且 N1%N2==0 (N2={n2})")
         else:
             print(f"[{test_name}] NPU 不可用，跳过计算。")
     if npu_out is None or load_npu_dump:
@@ -411,6 +610,8 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         if npu_out is not None:
             print(f"\n{'='*40} 对比 CPU vs NPU {'='*40}")
             passed_cpu_npu = check_result(test_name + "_CPU_vs_NPU", out_cpu_out_layout.float(), npu_out.float(), except_label="CPU", comp_label="NPU", verbose_diff=verbose_diff)
+            if fail_analysis and isinstance(passed_cpu_npu, dict) and not passed_cpu_npu["passed"]:
+                analyze_fail_distribution(test_name, out_cpu_out_layout, npu_out, dump_dir=dump_dir, **kwargs)
         else:
             print(f"[{test_name}] 缺少 NPU 结果，跳过 CPU vs NPU 对比。")
 
@@ -518,6 +719,8 @@ if __name__ == "__main__":
                         help="启用三方对比模式（CPU vs GPU vs NPU），使用详细精度统计")
     parser.add_argument("--graph_mode",  action="store_true",
                         help="使用图模式调用 NPU 算子（需要 torchair）")
+    parser.add_argument("--fail_analysis", action="store_true",
+                        help="分析失败元素在各 batch/head 的分布情况，配合 --dump_tensors 使用")
     args = parser.parse_args()
 
     # 设备初始化
@@ -569,8 +772,24 @@ if __name__ == "__main__":
 
     results = {}
     for name in run_cases:
+        # 清理 NPU 缓存，防止前一个 case 的显存残留影响后续 case
+        gc.collect()
+        if NPU_AVAILABLE:
+            torch.npu.synchronize()
+            torch.npu.empty_cache()
+
         config = all_cases[name]
-        kwargs = normalize_case(config)
+        try:
+            kwargs = normalize_case(config)
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] {name} normalize_case 异常: {e}")
+            traceback.print_exc()
+            results[name] = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                       "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
+                              "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                       "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+            continue
         if args.use_gpu:
             kwargs["_use_gpu"] = True
             auto_load_npu = args.load_npu_dump or (args.dump_tensors and not NPU_AVAILABLE)
@@ -598,6 +817,7 @@ if __name__ == "__main__":
                 graph_mode=args.graph_mode,
                 load_gpu_dump=args.load_gpu_dump,
                 load_npu_dump=args.load_npu_dump,
+                fail_analysis=args.fail_analysis,
                 **kwargs
             )
         except Exception as e:
