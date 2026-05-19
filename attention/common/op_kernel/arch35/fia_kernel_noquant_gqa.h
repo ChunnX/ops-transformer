@@ -882,7 +882,7 @@ public:
                 gS1Cur = 0;
                 return;
             }
-            gS1Skip -= gS1RemainN2 + 1;
+            gS1Skip -= gS1RemainN2;
         } else {
             uint32_t gS1First = 0;
             uint32_t gS1Last = gS1LoopTimes - 1;
