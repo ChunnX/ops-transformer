@@ -236,6 +236,14 @@ public:
             sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
         }
 
+        if (this->isFd) {
+            accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
+            softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
+            softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
+                                           constInfo.logSumExpSize);
+        }
+    }
+
         accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
         softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
         softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
