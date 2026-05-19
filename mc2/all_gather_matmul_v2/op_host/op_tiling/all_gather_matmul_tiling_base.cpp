@@ -403,33 +403,19 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 }
 
 ge::graphStatus AllGatherMatmulTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
-{    
-    if (tileMValue_ * args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
+{
+    // Formulaic tiling 已经考虑了 HCCL 限制，这里只做验证
+    uint64_t tileSize = tileMValue_ * args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
+    if (tileSize <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;
     }
-    
-    OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
-     " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. start re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
-    
+
+    // 超限情况：检查是否是PERBLOCK_MODE（不支持）
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
+        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting with HCCL adjustment,
+                the size still exceeds 256MB, tileM=%lu, tileSize=%lu", tileMValue_, tileSize),
         return ge::GRAPH_FAILED);
-    
-    uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim,
-                            mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
-    tileMValue_ = Ops::Base::CeilDiv(args_.mValue, minSplitPart);
-    rcfCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
-    rcfCfg.tailM = args_.mValue - rcfCfg.tileCnt * tileMValue_;
-    tailMValue_ = rcfCfg.tailM;
-    if (tailMValue_ == 0) {
-        rcfCfg.tailCnt = 0;
-    } else {
-        rcfCfg.tailCnt = 1;
-    }
-    OPS_LOG_I(opName_, "Because the result of formulaic tiling result does not meet the hccl restriction,"
-     " the re-splitM result: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. end re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
+
     return ge::GRAPH_SUCCESS;
 }
 
