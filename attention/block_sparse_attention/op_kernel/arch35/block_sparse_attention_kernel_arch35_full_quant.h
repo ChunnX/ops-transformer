@@ -330,8 +330,8 @@ public:
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
-                    AscendC::printf("tkd print ubSTensor[ubSBufId] (S matrix)\n");
-                    AscendC::DumpTensor(ubSTensor[ubSBufId], 0, 32);
+                    // AscendC::printf("tkd print ubSTensor[ubSBufId] (S matrix)\n");
+                    // AscendC::DumpTensor(ubSTensor[ubSBufId], 0, 32);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }

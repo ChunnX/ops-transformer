@@ -424,15 +424,27 @@ private:
             RegLayout::ZERO,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_ROUND,
+            AscendC::RoundMode::CAST_RINT,
+        };
+
+        constexpr static CastTrait castTrait = {
+            RegLayout::ZERO,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
         };
         RegTensor<ElementInput> expVreg;
         RegTensor<ElementInput> expSumVreg;
         RegTensor<ElementInput> maxVreg;
 
         RegTensor<ElementInput> expDstVreg;
+        RegTensor<ElementInput> expDstVreg0;
+        RegTensor<ElementInput> expDstVreg1;
         RegTensor<ElementInput> expDstVregResult;
         RegTensor<ElementOutput> pVreg;
+        RegTensor<ElementOutput> pVreg0;
+        RegTensor<ElementOutput> pVreg1;
+        RegTensor<float> floatVreg;
 
         UnalignReg expSumUreg;
 
@@ -446,7 +458,9 @@ private:
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
-                Cast<ElementOutput, ElementInput, castTraitZero>(pVreg, expDstVreg, pregTailN);
+                Interleave(expDstVreg0, expDstVreg1, expDstVreg, expDstVreg);
+                Cast<float, ElementInput, castTrait>(floatVreg, expDstVreg0, pregTailN);
+                Cast<ElementOutput, float, castTraitZero>(pVreg, floatVreg, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg,
                                                                          blockStride, pregTailN);
             } else {
@@ -454,10 +468,29 @@ private:
                                                                          blockStride, pregTailN);
             }
             ReduceSum(expSumVreg, expDstVregResult, pregTailN);
-            // ReduceSum(expSumVreg, expDstVreg, pregTailN);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+        // for (uint16_t i = 0; i < m; ++i) {
+        //     LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
+        //     LoadAlign(expVreg, srcUb + i * S2BaseSize);
+        //     Sub(expDstVreg, expVreg, maxVreg, pregTailN);
+        //     Exp(expDstVregResult, expDstVreg, pregTailN);
+        //     Exp(expDstVreg, expDstVreg, pregTailN);
+        //     if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+        //         constexpr half staticScale = static_cast<half>(448.0f);
+        //         Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
+        //         Cast<ElementOutput, ElementInput, castTraitZero>(pVreg, expDstVreg, pregTailN);
+        //         StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg,
+        //                                                                  blockStride, pregTailN);
+        //     } else {
+        //         StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg,
+        //                                                                  blockStride, pregTailN);
+        //     }
+        //     ReduceSum(expSumVreg, expDstVregResult, pregTailN);
+        //     StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
+        // }
+        // vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
     }
 
     template <>

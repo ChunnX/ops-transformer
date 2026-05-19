@@ -131,6 +131,8 @@ public:
         
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::printf("tkd initial loUbTensor[ubOTmpBufId]\n");
+        AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 32);
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -172,6 +174,9 @@ public:
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
             AscendC::PipeBarrier<PIPE_V>();
+            AscendC::printf("tkd isLastKvSTile\n");
+            AscendC::printf("tkd final goUbTensor32\n");
+            AscendC::DumpTensor(goUbTensor32, 2, 32);
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(
                     goUbTensor16, goUbTensor32,
@@ -221,6 +226,8 @@ public:
         
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::printf("tkd initial loUbTensor[ubOTmpBufId]\n");
+        AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 32);
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -255,8 +262,8 @@ public:
         // release lo buf
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
-            AscendC::printf("tkd isLastKvSTile\n");
             AscendC::PipeBarrier<PIPE_V>();
+            AscendC::printf("tkd isLastKvSTile\n");
             if (dStages == 1) {
                 AscendC::printf("tkd O matrix before dequantScale ONE\n");
                 AscendC::DumpTensor(goUbTensor32, 0, 32);
@@ -273,6 +280,8 @@ public:
                 AscendC::DumpTensor(goUbTensor32, 2, 32);
             }
             AscendC::PipeBarrier<PIPE_V>();
+            AscendC::printf("tkd final goUbTensor32\n");
+            AscendC::DumpTensor(goUbTensor32, 2, 32);
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(
                     goUbTensor16, goUbTensor32,
@@ -604,6 +613,7 @@ public:
         uint32_t rowOffsetCurSubCore = rowNumSplit * subBlockIdx;
         uint32_t colNumCurSubCore = colNumOri;
         uint32_t colStrideCurSubCore = colNumOriAligned8;
+
 
         auto gOTensorTlaTile = GetTile(gOTensor,
             tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, colNumCurSubCore));
