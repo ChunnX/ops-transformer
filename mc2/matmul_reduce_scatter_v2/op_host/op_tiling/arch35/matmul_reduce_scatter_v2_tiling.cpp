@@ -112,8 +112,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
         group, opType, rsConfig, reduceType, dataType, dataType
     );
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to %d (AICPU=%d, CCU=default) for matmul_reduce_scatter_v2.",
-            commMode, Mc2Comm::ENGINE_AICPU);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
