@@ -25,7 +25,7 @@
 #include <vector>
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
-#include "hcomm/hcomm_res.h"
+// #include "hcomm/hcomm_res.h"
 #include "aclnn/aclnn_base.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
