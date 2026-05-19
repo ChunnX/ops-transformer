@@ -154,7 +154,7 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     // MX 量化规则：每32个元素共享一个 scale (fp8_e8m0)
     // 注意：B矩阵存储shape是 (N, K)，与kernel期望 (K, N) 不同！
 
-    const uint32_t perRankM = 128; // 单卡M, ranges from 20 to 128
+    const uint32_t perRankM = 63; // 单卡M, ranges from 20 to 128
 
     std::vector<int64_t> x1Shape = {perRankM * RANK_SIZE, 2560};           // M x K (A矩阵)
     std::vector<int64_t> x2Shape = {2560, 5120};           // K x N (kernel期望shape) -- KN转置
