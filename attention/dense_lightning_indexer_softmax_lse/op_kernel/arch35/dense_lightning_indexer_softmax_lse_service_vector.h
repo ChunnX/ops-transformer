@@ -390,20 +390,22 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessOutput(uint64_t outOff
         return;
     }
     uint32_t blockNum = DenseLISoftmaxLseCommon::CeilDiv(aivCoreDealSize, (uint64_t)REST_ZERO_BASE_BLOCK_SIZE);
+    LocalTensor<float> resetZeroTensor = resetZeroQueue_.AllocTensor<float>();
+    Duplicate(resetZeroTensor, 0.0f, REST_ZERO_BASE_BLOCK_SIZE);
+    event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(vToMte3);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3);
     for (uint32_t blockIdx = 0; blockIdx <= blockNum - 1; blockIdx++) {
-        LocalTensor<float> resetZeroTensor = resetZeroQueue_.AllocTensor<float>();
         uint32_t curBlockSize = blockIdx != blockNum - 1 ? REST_ZERO_BASE_BLOCK_SIZE :
                                 aivCoreDealSize - REST_ZERO_BASE_BLOCK_SIZE * blockIdx;
-        Duplicate(resetZeroTensor, 0.0f, REST_ZERO_BASE_BLOCK_SIZE);
-        resetZeroQueue_.EnQue<float>(resetZeroTensor);
-        resetZeroTensor = resetZeroQueue_.DeQue<float>();
         DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(curBlockSize * sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPad(softmaxMaxGm[aivOutOffset + REST_ZERO_BASE_BLOCK_SIZE * blockIdx],
                              resetZeroTensor, copyOutParams);
         AscendC::DataCopyPad(softmaxSumGm[aivOutOffset + REST_ZERO_BASE_BLOCK_SIZE * blockIdx],
                              resetZeroTensor, copyOutParams);
-        resetZeroQueue_.FreeTensor(resetZeroTensor);
     }
+    resetZeroQueue_.FreeTensor(resetZeroTensor);
+    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
 }
 }
 #endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_VECTOR_H
