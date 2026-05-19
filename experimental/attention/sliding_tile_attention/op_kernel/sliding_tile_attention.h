@@ -433,6 +433,39 @@ private:
         return accTile[static_cast<int64_t>(rowInBlock) * VECTOR_HEAD_DIM_LIMIT];
     }
 
+    __aicore__ inline void InitOnlineStateRows(int64_t rowBegin, int64_t rowEnd, LocalTensor<float> &maxLocal,
+                                               LocalTensor<float> &denomLocal)
+    {
+        const int64_t alignedBegin = MinInt64(AlignUpInt64(rowBegin, VECTOR_FP32_BLOCK_ELEMS), rowEnd);
+        const int64_t alignedEnd =
+            MaxInt64(alignedBegin, (rowEnd / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS);
+        for (int64_t row = rowBegin; row < alignedBegin; ++row) {
+            maxLocal.SetValue(row, NEG_INF);
+            denomLocal.SetValue(row, 0.0F);
+        }
+
+        if (alignedBegin < alignedEnd) {
+            const uint32_t alignedCount = static_cast<uint32_t>(alignedEnd - alignedBegin);
+            Duplicate(maxLocal[alignedBegin], NEG_INF, alignedCount);
+            Duplicate(denomLocal[alignedBegin], 0.0F, alignedCount);
+            PipeBarrier<PIPE_V>();
+        }
+
+        for (int64_t row = alignedEnd; row < rowEnd; ++row) {
+            maxLocal.SetValue(row, NEG_INF);
+            denomLocal.SetValue(row, 0.0F);
+        }
+    }
+
+    __aicore__ inline int64_t GetValidRowEnd(int64_t seq, int64_t rowBegin, int64_t rowEnd) const
+    {
+        const int64_t validRows = tiling_->validSeqLen - seq;
+        if (validRows <= rowBegin) {
+            return rowBegin;
+        }
+        return MinInt64(rowEnd, validRows);
+    }
+
     __aicore__ inline float ExpScalarWithVector(float value, uint32_t bufferIdx)
     {
         LocalTensor<float> expLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
@@ -520,11 +553,8 @@ private:
         int64_t rowBegin = 0;
         int64_t rowEnd = 0;
         GetSubBlockRowRange(qCount, rowBegin, rowEnd);
-        for (int64_t row = rowBegin; row < rowEnd; ++row) {
-            const int64_t querySeq = seq + row;
-            if (querySeq >= tiling_->validSeqLen) {
-                continue;
-            }
+        const int64_t validRowEnd = GetValidRowEnd(seq, rowBegin, rowEnd);
+        for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
             float maxScore = maxLocal.GetValue(row);
             float denom = denomLocal.GetValue(row);
@@ -534,11 +564,7 @@ private:
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
         CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx));
-        for (int64_t row = rowBegin; row < rowEnd; ++row) {
-            const int64_t querySeq = seq + row;
-            if (querySeq >= tiling_->validSeqLen) {
-                continue;
-            }
+        for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
             AddPvOutRowToAcc(accRow, static_cast<uint32_t>(row), bufferIdx);
         }
@@ -622,6 +648,7 @@ private:
         int64_t rowBegin = 0;
         int64_t rowEnd = 0;
         GetSubBlockRowRange(qCount, rowBegin, rowEnd);
+        const int64_t validRowEnd = GetValidRowEnd(seq, rowBegin, rowEnd);
         const int64_t rowCount = rowEnd - rowBegin;
         if (rowCount > 0) {
             LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
@@ -629,15 +656,11 @@ private:
                       static_cast<uint32_t>(rowCount * VECTOR_HEAD_DIM_LIMIT));
             PipeBarrier<PIPE_V>();
         }
-        for (int64_t row = rowBegin; row < rowEnd; ++row) {
-            maxLocal.SetValue(row, NEG_INF);
-            denomLocal.SetValue(row, 0.0F);
+        InitOnlineStateRows(rowBegin, rowEnd, maxLocal, denomLocal);
+        for (int64_t row = validRowEnd; row < rowEnd; ++row) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
-            if (querySeq >= tiling_->validSeqLen) {
-                StoreZeroRow(qBase, static_cast<uint32_t>(row % BUFFER_NUM));
-                continue;
-            }
+            StoreZeroRow(qBase, static_cast<uint32_t>(row % BUFFER_NUM));
         }
 
         int64_t textBegin = 0;
@@ -648,11 +671,8 @@ private:
         ProcessImageKvTiles(head, seq, qCount, tileLoop, maxLocal, denomLocal);
         ProcessTextKvRange(seq, qCount, textBegin, textEnd, tileLoop, maxLocal, denomLocal);
 
-        for (int64_t row = rowBegin; row < rowEnd; ++row) {
+        for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             const int64_t querySeq = seq + row;
-            if (querySeq >= tiling_->validSeqLen) {
-                continue;
-            }
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
             const float denom = denomLocal.GetValue(row);
