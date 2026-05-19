@@ -372,6 +372,15 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV4)
         OUTPUT(nullptr)
     );
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
+
+    auto ut_null_reduceOp_v4 = OP_API_UT(
+        aclnnQuantMatmulAllReduceV4,
+        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
+              group, nullptr, commTurn, streamMode, groupSize, commQuantMode),
+        OUTPUT(output)
+    );
+    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR,
+              ut_null_reduceOp_v4.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
 TEST_F(MatmulAllReduceAclnnInputNullPtrTest, AclnnWeightQuantMatmulAllReduce)

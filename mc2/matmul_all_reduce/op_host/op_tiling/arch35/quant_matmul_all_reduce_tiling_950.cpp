@@ -20,6 +20,7 @@
 #include "util/math_util.h"
 #include "mc2/matmul_all_reduce/op_kernel/matmul_all_reduce_apt_tiling_key.h"
 #include "all_reduce_fit_balance_tiling.h"
+#include "mc2_comm_utils.h"
 
 using namespace Mc2Log;
 using namespace Mc2Tiling;
@@ -60,6 +61,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* g
     uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
         OP_LOGE(opName_, "Get mc2InitTiling from quantMatmulAllReduceTilingData failed."),
@@ -79,6 +84,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
         OP_LOGE(opName_, "Get mc2InitTiling from quantMatmulAllReduceTilingData by SetMc2HcommTwoShot failed."),
@@ -107,6 +116,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
     const std::string algConfig1 = "ReduceScatter=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType2, dataType1);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
         OP_LOGE(opName_, "Get mc2InitTiling from quantMatmulAllReduceTilingData by SetMc2HcommRSAG failed."),
@@ -298,11 +311,13 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
     bool scenarioIsMXFP8 = (scenario_ == AllReduceScenario::MXFP8); // 区分MXFP8 和 FP8HIF8场景
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     bool isA2ARSAG = (isUseA2APath && (commDtype == COMMDTPYE_DEFAULT));
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_QUANT_MM,                            \
         quantTPlparam_.transB,                      \
         false,                                      \
         isA2ARSAG,                                  \
+        commMode,                                   \
         SET_NOT_USE_FP_MM_TILING,                   \
         quantTPlparam_.kernelType,                  \
         commDtype,                                  \

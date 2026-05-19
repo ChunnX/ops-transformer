@@ -17,7 +17,7 @@
 #include "util/platform_util.h"
 #include "util/math_util.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 #define TILINGKEY_REGBASE_DROPLESS 400001

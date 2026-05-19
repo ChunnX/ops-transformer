@@ -25,7 +25,7 @@ ENABLED_PARAMS = utils.load_paramset(PARAMSET_FILE)
 PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS, pytest_paramset=True)
 
 EXCEL_COLUMNS = [
-    "Testcase_Prefix", "Testcase_Number",
+    "Testcase_Prefix",
     "layout_query", "layout_kv", "q_type", "kv_type",
     "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
     "scale_value", "key_quant_mode", "value_quant_mode",

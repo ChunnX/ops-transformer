@@ -69,6 +69,8 @@ if (ENABLE_BUILT_IN)
   set(VERSION_INFO_INSTALL_DIR        ${CMAKE_SYSTEM_PROCESSOR}-linux)
   set(WHL_INSTALL_DIR                 ops_transformer)
   set(IMPL_INSTALL_DIR                opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+  set(AICPU_HOST_KERNEL_IMPL          ops_transformer/built-in/op_impl/host_cpu)
+  set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ops-transformer)
 else()
  	# custom pkg
  	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)

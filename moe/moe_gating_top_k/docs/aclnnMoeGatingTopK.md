@@ -167,7 +167,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>无</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>√</td>
     </tr>
     <tr>
@@ -177,7 +177,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>shape值与x最后一维相等。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>1</td>
       <td>√</td>
     </tr>
     <tr>
@@ -277,7 +277,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>数据类型与x需要保持一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>-</td>
     </tr>
     <tr>
@@ -287,7 +287,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>shape要求与yOut一致。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>-</td>
     </tr>
     <tr>
@@ -297,7 +297,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>shape要求与x保持一致。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>-</td>
     </tr>
     <tr>

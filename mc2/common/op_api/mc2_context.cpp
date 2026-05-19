@@ -225,7 +225,6 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
         }
         channelDesc[channelId].channelProtocol = protocol;
         channelDesc[channelId].remoteRank = dstRank;
-        channelDesc[channelId].notifyNum = channelNum;
         channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
         channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
     }

@@ -440,7 +440,7 @@ static ge::graphStatus CheckShapeDimRange(const gert::TilingContext *context, co
                     return ge::GRAPH_FAILED);
     // 校验N, N不为空
     OP_TILING_CHECK(nAxis == 0, OP_LOGE(opName, "Invalid x2 shape: N cannot be 0."), return ge::GRAPH_FAILED);
-    // 校验N不能大雨int32的
+    // 校验N不能大于int32的
     OP_TILING_CHECK(nAxis > MAX_INT32_VALUE, OP_LOGE(opName, "N axis exceeds INT32_MAX, got %lu.", nAxis),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
