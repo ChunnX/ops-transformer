@@ -261,14 +261,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     uint32_t swigluCount = expertPerRank_ * maxWavesPerExpert_;
     uint32_t dispatchCount = expertPerRank_;
     uint32_t totalFlagCount = Ops::Base::CeilAlign(swigluCount + dispatchCount, 8U);
-    // ResetFlagBuf_ 要能容纳 ResetGmm2RowReadyFlags 里所有 reset 目标里最大的一块:
-    //   - rowReadyFlags : blockNum 个 int32
-    //   - gmm1/gmm2NextTile counter : expertPerRank * maxWavesPerExpert 个 int32
-    //   - taskSlot : blockNum * 4 个 int32
-    // 取三者最大，按 int32 个数算字节，CeilAlign 到 32B。
-    uint32_t resetMaxElems = max(totalFlagCount,
-        max(static_cast<uint32_t>(blockNum_) * 4U,
-            static_cast<uint32_t>(expertPerRank_ * maxWavesPerExpert_)));
+    // ResetFlagBuf_ 要能容纳 ResetGmm2RowReadyFlags 里所有 reset 目标里最大的一块，
+    // 且必须 ≥ ResetGmm2RowReadyFlags 内部用的 maxAlign (对齐到 8 的元素数)，否则
+    // Duplicate(initTensor, 0, maxAlign) 会越界。
+    uint32_t blockNumAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int32_t>(blockNum_), static_cast<int32_t>(8)));
+    uint32_t counterAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_), static_cast<int32_t>(8)));
+    uint32_t slotAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int32_t>(blockNum_) * 4, static_cast<int32_t>(8)));
+    uint32_t resetMaxElems = max(max(totalFlagCount, blockNumAlign), max(counterAlign, slotAlign));
     uint32_t maxResetBufAlign = Ops::Base::CeilAlign(
         static_cast<int32_t>(resetMaxElems * sizeof(int32_t)), static_cast<int32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);

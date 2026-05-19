@@ -238,6 +238,10 @@ __aicore__ inline void WriteTaskSlot(
     int32_t slotIdx = blockIdx * 4 + channel * 2 + pp;
     __gm__ int32_t* p = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + slotIdx;
     AscendC::AtomicAdd(p, PackDynamicTask(task));  // slot 此前 = 0 → 加完 = packed
+    // ★ AtomicAdd 异步时, 后续的 NotifyVector<PIPE_FIX> 不 drain atomic 流水。
+    //   加 PipeBarrier 保证 AtomicAdd commit 到 HBM 后才发 cross-core flag,
+    //   否则配对 AIV ReadGmByPassDCache 读到旧值 → unpack 错 → 误判 END → 死锁
+    PipeBarrier<PIPE_ALL>();
 }
 
 // 读 slot，返回 packed (供之后 ClearTaskSlot 用)，并 unpack 到 outTask
@@ -260,6 +264,8 @@ __aicore__ inline void ClearTaskSlot(
     int32_t slotIdx = blockIdx * 4 + channel * 2 + pp;
     __gm__ int32_t* p = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + slotIdx;
     AscendC::AtomicAdd(p, -packed);  // 清回 0
+    // ★ 同 WriteTaskSlot, 保证 AtomicAdd commit 后才发 NotifyCube
+    PipeBarrier<PIPE_ALL>();
 }
 
 
@@ -1155,7 +1161,7 @@ __aicore__ inline void DynamicAiv0Loop(
         WaitForCube(0);
         int32_t packed = ReadTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, task);
         if (task.opType == DYN_OP_END) {
-            ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, packed);  // slot 清回 0
+            ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, packed);  // slot 清回 0 (内部含 PipeBarrier)
             NotifyCube(0);
             break;
         }
@@ -1204,7 +1210,7 @@ __aicore__ inline void DynamicAiv0Loop(
         }
         // epi 内部最后 atomic_add(groupFlagListGm[waveIdx])，触发 GMM2 解锁
 
-        ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, packed);  // 清 slot 必须在 NotifyCube 前
+        ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, 0, packed);  // 清 slot (内部含 PipeBarrier) 必须在 NotifyCube 前
         NotifyCube(0);
     }
 }
