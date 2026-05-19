@@ -16,6 +16,7 @@
 #include <string>
 #include <numeric>
 #include <vector>
+#include <cstdlib>
 #include "grouped_mat_mul_allto_allv_tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "op_host/op_tiling/mc2_tiling_common_var.h"
@@ -891,13 +892,52 @@ static ge::graphStatus SetMatmulTiling(
     return ge::GRAPH_SUCCESS;
 }
 
+static uint64_t CalcExpertsPerComm(uint64_t E_ep, uint64_t avgTokensPerExpert, uint64_t N1)
+{
+    const char* envOverride = std::getenv("GROUPED_MATMUL_ALLTOALLV_EXPERTS_PER_COMM");
+    if (envOverride != nullptr) {
+        uint64_t overrideVal = static_cast<uint64_t>(std::atoi(envOverride));
+        if (overrideVal >= 1 && overrideVal <= E_ep && E_ep % overrideVal == 0) {
+            return overrideVal;
+        }
+    }
+
+    if (E_ep <= 1) {
+        return 1;
+    }
+    uint64_t bytesPerExpert = avgTokensPerExpert * N1 * FP16_DATASIZE;
+    uint64_t targetBytes = 8 * 1024 * 1024; // 8MB
+
+    static const uint64_t candidates[] = {1, 2, 4, 8};
+    for (auto c : candidates) {
+        if (c > E_ep) {
+            continue;
+        }
+        if (bytesPerExpert * c >= targetBytes) {
+            if (E_ep % c == 0) {
+                return c;
+            }
+        }
+    }
+    // fallback: largest candidate that divides E_ep
+    static const uint64_t fallbackCandidates[] = {8, 4, 2, 1};
+    for (auto c : fallbackCandidates) {
+        if (c <= E_ep && E_ep % c == 0) {
+            return c;
+        }
+    }
+    return 1;
+}
+
 static ge::graphStatus SetWorkspace(gert::TilingContext* context, const GroupedMatMulAlltoAllvTilingData* tilingData)
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(C_INNER_DEBUG, "get workspace failed"), return ge::GRAPH_FAILED);
     uint64_t gmmOut = tilingData->commonTilingInfo.A * tilingData->commonTilingInfo.N1 * FP16_DATASIZE;
-    workspaces[0] = gmmOut + SYS_WORKSPACE_SIZE;
-    OP_LOGD(C_INNER_DEBUG, "workspaces[0] size is %ld. gmmOut is %lu.", workspaces[0], gmmOut);
+    uint64_t permuteSize = (tilingData->commonTilingInfo.expertsPerComm > 1) ? gmmOut : 0;
+    workspaces[0] = gmmOut + permuteSize + SYS_WORKSPACE_SIZE;
+    OP_LOGD(C_INNER_DEBUG, "workspaces[0] size is %ld. gmmOut is %lu. permuteSize is %lu.", workspaces[0], gmmOut,
+             permuteSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -965,8 +1005,16 @@ static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* c
         SetMatmulTiling(context, tilingData, PLATFORM_SIZE) != ge::GRAPH_SUCCESS,
         OP_LOGE(C_INNER_DEBUG, "Set matmul tiling Failed!"), return ge::GRAPH_FAILED);
 
+    // Calculate expertsPerComm and commGroupNum
+    uint64_t avgTokensPerExpert = tilingData->commonTilingInfo.A / tilingData->commonTilingInfo.E_ep;
+    tilingData->commonTilingInfo.expertsPerComm =
+        CalcExpertsPerComm(tilingData->commonTilingInfo.E_ep, avgTokensPerExpert, tilingData->commonTilingInfo.N1);
+    tilingData->commonTilingInfo.commGroupNum = tilingData->commonTilingInfo.E_ep / tilingData->commonTilingInfo.expertsPerComm;
+    OP_LOGD(C_INNER_DEBUG, "expertsPerComm=%lu, commGroupNum=%lu", tilingData->commonTilingInfo.expertsPerComm,
+            tilingData->commonTilingInfo.commGroupNum);
+
     // Compute and set workspace
-    // allGatherOut, gmmOut, 16kb
+    // allGatherOut, gmmOut, permuteBuffer, 16kb
     OP_TILING_CHECK(
         SetWorkspace(context, tilingData) != ge::GRAPH_SUCCESS, OP_LOGE(C_INNER_DEBUG, "Set workspace Failed!"),
         return ge::GRAPH_FAILED);
