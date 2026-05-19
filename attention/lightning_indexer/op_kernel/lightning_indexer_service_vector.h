@@ -33,19 +33,18 @@ constexpr uint32_t EVENTID_V_TO_MTE2_PING = 0;
 constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
 
-// 主模板：Q_T必选，W_T可选（默认void），无论W_T传什么，默认weightsType=Q_T
 template<typename Q_T, typename W_T = void>
 struct LightningIndexerTypeTraits
 {
-    using weightsType = Q_T;   // 默认：weightsType绑定Q_T
+    using weightsType = Q_T;
 };
 
-// 偏特化1：固定第二个参数W_T=float，Q_T保留泛型
 template<typename Q_T>
 struct LightningIndexerTypeTraits<Q_T, float>
 {
-    using weightsType = float;  // W_T=float时，强制weightsType为float
+    using weightsType = float;
 };
+constexpr uint32_t MAX_LOGITS_TMP = 0x7F7FFFFF;
 
 template <typename LIT>
 class LIVector {
@@ -69,7 +68,8 @@ public:
                                       const LITilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                 GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
-                                                GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm);
+                                                GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm,
+                                                GlobalTensor<int32_t> initTensorGm, GlobalTensor<int32_t> localTensorGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -82,6 +82,8 @@ protected:
     GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
+    GlobalTensor<int32_t> initTensorGm;
+    GlobalTensor<int32_t> localTensorGm;
     // =================================常量区=================================
 
 private:
@@ -122,6 +124,11 @@ private:
     uint32_t mrgListNum_ = 4;
     uint32_t paramNum_ = 16;
     int32_t virTopK = 0;
+
+    // max score
+    const float MAX_LOGITS = *((float *)&MAX_LOGITS_TMP);
+    const float SECOND_MAX_LOGITS = MAX_LOGITS / 2;
+
 
     constexpr static uint32_t REDUCE_BANK_CONFLICT_OFFSETS = 256;
     constexpr static uint32_t REDUCE_BANK_CONFLICT_NUM = REDUCE_BANK_CONFLICT_OFFSETS / sizeof(float);
@@ -205,7 +212,8 @@ template <typename LIT>
 __aicore__ inline void
 LIVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                     GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
-                                    GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm)
+                                    GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm,
+                                    GlobalTensor<int32_t> initTensorGm, GlobalTensor<int32_t> localTensorGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -213,6 +221,8 @@ LIVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTens
     this->weightsGm = weightsGm;
     this->indiceOutGm = indiceOutGm;
     this->valueOutGm = valueOutGm;
+    this->initTensorGm = initTensorGm;
+    this->localTensorGm = localTensorGm;
 }
 
 template <typename LIT>
@@ -353,6 +363,42 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
 
+            LocalTensor<float> tmpSortBuf = outQueue_.AllocTensor<float>();
+            if (info.isInitTensorValid) {
+                uint32_t curInitNum = initTensorGm.GetValue(info.bIdx);
+                uint32_t curLocalNum = localTensorGm.GetValue(info.bIdx);
+                if (curInitNum + curInitNum < cuRealAcSeq) {
+                    SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
+                    uint32_t initDupLen =  curInitNum > (info.s2Idx + 1 ) * s2BaseSize_ ? s2BaseSize_ : curInitNum - info.s2Idx * s2BaseSize_;
+                    if (curInitNum > info.s2Idx * s2BaseSize_ && initDupLen > 0) {
+                        Duplicate(reduceOutInner, SECOND_MAX_LOGITS, initDupLen);
+                        PipeBarrier<PIPE_V>();
+                    }
+
+                    int32_t localDupStart = cuRealAcSeq - curLocalNum;
+                    if (curLocalNum > 0 && localDupStart < cuBaseS2Idx + cuS2Len) {
+                        if (cuBaseS2Idx < localDupStart) {
+                            int32_t nonLocalNum = localDupStart - cuBaseS2Idx;
+                            int32_t needDupNum = cuS2Len - nonLocalNum;
+                            if (nonLocalNum % 8 == 0) {
+                                Duplicate(reduceOutInner[nonLocalNum], SECOND_MAX_LOGITS, needDupNum);
+                                PipeBarrier<PIPE_V>();
+                            } else {
+                                Duplicate(tmpSortBuf, SECOND_MAX_LOGITS, cuS2Len);
+                                PipeBarrier<PIPE_V>();
+                                Adds(tmpSortBuf, reduceOutInner, 0.0f, nonLocalNum);
+                                PipeBarrier<PIPE_V>();
+                                Adds(reduceOutInner, tmpSortBuf, 0.0f, cuS2Len);
+                                PipeBarrier<PIPE_V>();
+                            }
+                        } else {
+                            Duplicate(reduceOutInner, SECOND_MAX_LOGITS, cuS2Len);
+                            PipeBarrier<PIPE_V>();
+                        }
+                    }
+                }
+            }
+
             LocalTensor<float> sortScoreUb = reduceOutBuff;
             LocalTensor<float> sortIndiceUb = reduceOutBuff[cuS2LenVecAlign];
             Duplicate(sortScoreUb.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, cuS2LenVecAlign);
@@ -368,7 +414,6 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             Adds(sortIndiceUbInt, globalTopkIndice_, static_cast<int32_t>(cuBaseS2Idx), cuS2Len);
             PipeBarrier<PIPE_V>();
 
-            LocalTensor<float> tmpSortBuf = outQueue_.AllocTensor<float>();
             if (info.actS1Size > 4 || constInfo_.isSparseCountOver2K) {
                 // info.actS1Size > 4 则单个vector核内处理的 s1>2，缓存方案无法处理
                 LIServiceVec::SortAll(reduceOutBuff, tmpSortBuf,
