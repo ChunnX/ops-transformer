@@ -365,16 +365,16 @@ __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint
 __aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &jfsDoorBellTensor,
                                        const AscendC::LocalTensor<uint8_t> &sqInfoTensor, uint32_t sqPi)
 {
-    PipeBarrier<PIPE_ALL>();
-    uint64_t timeStart = AscendC::GetSystemCycle();
+    // PipeBarrier<PIPE_ALL>();
+    // uint64_t timeStart = AscendC::GetSystemCycle();
     // 敲JFS DoorBell，更新硬件的sqPi
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     st_dev(sqPi, (__gm__ uint32_t *)(sqInfoU64(WQ_DBADDR_OFFSET)), 0); // Scalar操作
-    PipeBarrier<PIPE_ALL>();
-    uint64_t timeEnd = AscendC::GetSystemCycle();
-    uint64_t cycleUse = timeEnd - timeStart;
-    uint64_t timeUse = cycleUse / 50;
-    AscendC::PRINTF("dispatch SendJFSDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+    // PipeBarrier<PIPE_ALL>();
+    // uint64_t timeEnd = AscendC::GetSystemCycle();
+    // uint64_t cycleUse = timeEnd - timeStart;
+    // uint64_t timeUse = cycleUse / 50;
+    // AscendC::PRINTF("dispatch SendJFSDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
 }
 
 __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,

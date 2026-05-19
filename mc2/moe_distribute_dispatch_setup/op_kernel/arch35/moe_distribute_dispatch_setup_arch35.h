@@ -132,6 +132,7 @@ private:
     GlobalTensor<YOutType> expandXOutGMTensor_;
     GlobalTensor<bool> xActiveMaskGMTensor_;
     GlobalTensor<float> windowInstatusFp32Tensor_;
+    GlobalTensor<uint64_t> commCmdInfoGMT_;
 
     LocalTensor<YOutType> xTmpTensor_;
     LocalTensor<XType> xInTensor_;
@@ -268,6 +269,7 @@ private:
     uint32_t sortNum_;
     uint32_t sortRepeat_;
     uint64_t totalUbSize_;
+    uint64_t cnt_{0};
 };
 
 template <TemplateMC2TypeClass>
@@ -275,6 +277,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR YOut, GM_ADDR expandIdxOut,
     GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe* pipe, const MoeDistributeDispatchSetupTilingData* tilingData)
 {
+    commCmdInfoGMT_.SetGlobalBuffer((__gm__ uint64_t*)commCmdInfoOut);
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     tpipe_ = pipe;
     workspaceGM_ = workspaceGM;
@@ -1051,7 +1054,16 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             PutCommSQE(sqInfoU8, cqInfoU8, statusSqeU8, cqeTensorU8, jfcDoorBellU8, moeExpertNumPerRank_, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear);
             SyncFunc<AscendC::HardEvent::MTE3_S>();
+            PipeBarrier<PIPE_ALL>();
+            uint64_t timeStart = AscendC::GetSystemCycle();
             SendJFSDoorBell(jfsDoorBellU8, sqInfoU8, sqPiLinear);
+            PipeBarrier<PIPE_ALL>();
+            uint64_t timeEnd = AscendC::GetSystemCycle();
+            uint64_t cycleUse = timeEnd - timeStart;
+            uint64_t timeUse = cycleUse / 50;
+            AscendC::PRINTF("dispatch SendJFSDoorBell cost: %u cycles, time is : %u us \n", cycleUse, timeUse);
+            commCmdInfoGMT_.SetValue(cnt_, cycleUse);
+            cnt_ += 1;
         }
         UpdatePICI((GM_ADDR)hcclContext_, epRankId_, rankId, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
     }
