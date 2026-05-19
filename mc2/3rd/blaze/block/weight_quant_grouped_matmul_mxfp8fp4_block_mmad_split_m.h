@@ -33,7 +33,6 @@ using AscendC::TEventID;
 using AscendC::WaitFlag;
 using Blaze::Gemm::GroupedMatmulRecipe::DOUBLE_BUFFER;
 using Blaze::Gemm::GroupedMatmulRecipe::FINAL_ACCUMULATION;
-using Blaze::Gemm::GroupedMatmulRecipe::FLAG_ID_MAX;
 using Blaze::Gemm::GroupedMatmulRecipe::MX_DIVISOR_SIZE;
 using Blaze::Gemm::GroupedMatmulRecipe::MX_GROUP_SIZE;
 using Blaze::Gemm::GroupedMatmulRecipe::NON_FINAL_ACCUMULATION;
@@ -455,14 +454,12 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::operator()(
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::WaitAivToAic()
 {
-    CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
     CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::SetAicToAiv()
 {
-    CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
     CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
 }
 

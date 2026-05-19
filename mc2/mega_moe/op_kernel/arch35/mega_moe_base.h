@@ -35,6 +35,8 @@ struct GMMAddrInfo {
     GM_ADDR bGlobal;
     GM_ADDR aScaleGlobal;
     GM_ADDR bScaleGlobal;
+    GM_ADDR gmm1OutGlobal;
+    GM_ADDR gmm2OutGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
 };
@@ -94,7 +96,7 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void NotifyVectorToSwiglu(uint16_t value = 0)
+__aicore__ inline void NotifyVectorToCopyIn(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPO_FLAG + FLAG_ID_MAX_PER_V + value);
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPO_FLAG + value);
@@ -103,7 +105,6 @@ __aicore__ inline void NotifyVectorToSwiglu(uint16_t value = 0)
 __aicore__ inline void WaitForCubeFinishCopyout(uint16_t value = 0)
 {
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPO_FLAG + value);
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_EPO_FLAG + value);
 }
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
