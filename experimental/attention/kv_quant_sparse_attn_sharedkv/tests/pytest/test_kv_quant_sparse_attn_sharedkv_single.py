@@ -69,7 +69,7 @@ for params in ENABLED_PARAMS:
         "tile_size": params.get("tile_size"),
         "rope_head_dim": params.get("rope_head_dim"),
         "actlen_mode": params.get("actlen_mode"),
-        "S1EQS2": params.get("S1EQS2"),
+        "S1EQS2": params.get("S1EQS2", [False]),
     }
 
     param_names = list(param_values.keys())
