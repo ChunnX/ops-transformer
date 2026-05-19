@@ -22,92 +22,6 @@ namespace FaVectorApi {
 static constexpr MicroAPI::CastTrait castTraitFp16_32_update = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                    MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr uint16_t REDUCE_SIZE = 1;
-
-// Optimized version for D <= 72: single loop with fused tail handling
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
-__simd_vf__ inline void FlashUpdateOptimized72VF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
-    __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
-    const float deScaleV, const float deScaleVPre, const uint32_t tailD)
-{
-    constexpr uint16_t floatRepSize = 64;
-    RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
-    RegTensor<float> vreg_input_pre;
-    RegTensor<float> vreg_input_cur;
-    RegTensor<float> vreg_mul;
-    RegTensor<float> vreg_add;
-    
-    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_tail = UpdateMask<float>(tailD);
-    
-    for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
-        
-        // First 64 elements - full mask
-        LoadAlign(vreg_input_pre, preUb + i * d);
-        LoadAlign(vreg_input_cur, curUb + i * d);
-        if constexpr (isMlaFullQuant) {
-            Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-        }
-        Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
-        if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                        IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                        IsSameType<INPUT_T, hifloat8_t>::value ||
-                        IsSameType<INPUT_T, int8_t>::value) {
-            Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
-            if constexpr (isUpdatePre) {
-                Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
-            }
-        }
-        Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)dstUb + i * d, vreg_add, preg_all);
-        
-        // Tail elements (8 for D=72) - use tail mask
-        if (tailD > 0) {
-            LoadAlign(vreg_input_pre, preUb + i * d + floatRepSize);
-            LoadAlign(vreg_input_cur, curUb + i * d + floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_tail);
-            }
-            Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_tail);
-            if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                            IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value ||
-                            IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_tail);
-                if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_tail);
-                }
-            }
-            Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * d + floatRepSize, vreg_add, preg_tail);
-        }
-    }
-}
-
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
-__aicore__ inline void FlashUpdateOptimized72(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor,
-    const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
-{
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
-    
-    constexpr uint16_t floatRepSize = 64;
-    uint32_t tailD = static_cast<uint32_t>(d % floatRepSize);
-    
-    FlashUpdateOptimized72VF<T, INPUT_T, OUTPUT_T, reduceSize, isUpdatePre, isMlaFullQuant>(
-        dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre, tailD);
-}
-
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
 __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
     __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
@@ -273,11 +187,7 @@ __aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const Loc
     static_assert(IsSameType<T, float>::value, "VF FlashUpdate, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
-    // Optimized path for D <= 72 (72 = 64 + 8 tail)
-    if constexpr(srcD <= 72 && srcD > floatRepSize) {
-        FlashUpdateOptimized72<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(
-            dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor, m, d, deScaleV, deScaleVPre);
-    } else if constexpr(srcD % floatRepSize == 0) {
+    if constexpr(srcD % floatRepSize == 0) {
         FlashUpdateBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor,
         m, d, deScaleV, deScaleVPre);
     } else {
@@ -456,119 +366,6 @@ __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T>& dstTensor,
         dstUb, curUb, preUb, expMaxUb, expSumUb, m, d, deScaleV, deScaleVPre, pltTailD, hasTail);
 }
 
-// Optimized version for D <= 72: single loop with fused tail handling and div
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
-__simd_vf__ inline void FlashUpdateLastOptimized72VF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
-    __ubuf__ float * expMaxUb, __ubuf__ float * expSumUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
-    const float deScaleV, const float deScaleVPre, const uint32_t tailD)
-{
-    RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
-    RegTensor<float> vreg_input_pre;
-    RegTensor<float> vreg_input_cur;
-    RegTensor<float> vreg_mul;
-    RegTensor<float> vreg_add;
-    RegTensor<float> vreg_div;
-    RegTensor<float> vreg_exp_sum;
-    
-    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_tail = UpdateMask<float>(tailD);
-    constexpr uint16_t floatRepSize = 64;
-    constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
-    constexpr float int8MaxValueRec = 1 / 127.0f;
-    constexpr float hifp8MaxValueRec = 1 / 32768.0f;
-    
-    for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
-        
-        // First 64 elements
-        LoadAlign(vreg_input_pre, preUb + i * d);
-        LoadAlign(vreg_input_cur, curUb + i * d);
-        if constexpr (isMlaFullQuant) {
-            Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-        }
-        Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
-        if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                        IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                        IsSameType<INPUT_T, hifloat8_t>::value ||
-                        IsSameType<INPUT_T, int8_t>::value) {
-            Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
-            if constexpr (isUpdatePre) {
-                Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
-            }
-        }
-        Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
-        Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
-        if constexpr (isMlaFullQuant) {
-            if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-            } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
-            } else {
-                Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
-            }
-        }
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)dstUb + i * d, vreg_div, preg_all);
-        
-        // Tail elements
-        if (tailD > 0) {
-            LoadAlign(vreg_input_pre, preUb + i * d + floatRepSize);
-            LoadAlign(vreg_input_cur, curUb + i * d + floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_tail);
-            }
-            Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_tail);
-            if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                            IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                            IsSameType<INPUT_T, hifloat8_t>::value ||
-                            IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_tail);
-                if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_tail);
-                }
-            }
-            Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail);
-            Div(vreg_div, vreg_add, vreg_exp_sum, preg_tail);
-            if constexpr (isMlaFullQuant) {
-                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_tail);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_tail);
-                } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_tail);
-                }
-            }
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * d + floatRepSize, vreg_div, preg_tail);
-        }
-    }
-}
-
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
-__aicore__ inline void FlashUpdateLastOptimized72(const LocalTensor<T>& dstTensor,
-    const LocalTensor<T>& curTensor, const LocalTensor<T>& preTensor,
-    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const LocalTensor<T>& expSumTensor,
-    const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
-{
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-    __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
-    
-    constexpr uint16_t floatRepSize = 64;
-    uint32_t tailD = static_cast<uint32_t>(d % floatRepSize);
-    
-    FlashUpdateLastOptimized72VF<T, INPUT_T, OUTPUT_T, reduceSize, isUpdatePre, isMlaFullQuant>(
-        dstUb, curUb, preUb, expMaxUb, expSumUb, rowMaxUb, m, d, deScaleV, deScaleVPre, tailD);
-}
-
 /*
  * @ingroup FlashUpdateLast
  * @brief compute, dstTensor = (preTensor * expMaxTensor + curTensor) / expSumTensor
@@ -589,9 +386,14 @@ __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor,
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
-    // Optimized path for D <= 72
-    if constexpr(srcD <= 72 && srcD > floatRepSize) {
-        FlashUpdateLastOptimized72<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(
+    if constexpr(srcD % floatRepSize == 0) {
+        FlashUpdateLastBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(
+            dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
+    } else {
+        FlashUpdateLastGeneral<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre>(
+            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
+    }
+}
             dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
     } else if constexpr(srcD % floatRepSize == 0) {
         FlashUpdateLastBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(
