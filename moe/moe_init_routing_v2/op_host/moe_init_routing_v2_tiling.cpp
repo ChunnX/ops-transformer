@@ -334,17 +334,17 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
             moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreLastLoopRows());
     OP_LOGI(
         opName,
-            "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld, gatherMode:%ld",
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_needCoreNum(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_activateRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCorePerLoopRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreLastLoopRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows(),
-            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_gatherMode());
+        "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
+        "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld, gatherMode:%ld",
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_needCoreNum(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_activateRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCorePerLoopRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreLastLoopRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows(),
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_gatherMode());
 }
 
 ge::graphStatus MoeInitRoutingV2TilingBase::DoOpTiling()
@@ -669,8 +669,9 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     // 向下对齐，确保不超出 ubSize
     ubRows = ubRows / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
 
+    int64_t minColsAlign = ONE_BLOCK_BYTE / inuptXDtypeSize_;
     bool useGatherMode = (cols * inuptXDtypeSize_ < ubRowsThreshold) && (ubRows >= NUM_TWO) && (dropPadMode != 1) &&
-                         (moeInitRoutingTilingData.get_k() <= 6);
+                         (moeInitRoutingTilingData.get_k() <= 6) && (cols >= minColsAlign);
 
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
@@ -689,11 +690,30 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
 
         int64_t actualPerCorePerLoopRows = std::min(perCoreRows, maxRowsPerLoop);
         int64_t actualLastCorePerLoopRows = std::min(lastCoreRows, maxRowsPerLoop);
+
+        constexpr int64_t MIN_ALIGN_ROWS = ONE_BLOCK_BYTE / sizeof(int32_t);
+        if (actualPerCorePerLoopRows > 0 && actualPerCorePerLoopRows < MIN_ALIGN_ROWS) {
+            actualPerCorePerLoopRows = MIN_ALIGN_ROWS;
+        }
+        if (actualLastCorePerLoopRows > 0 && actualLastCorePerLoopRows < MIN_ALIGN_ROWS) {
+            actualLastCorePerLoopRows = MIN_ALIGN_ROWS;
+        }
+
         tilingData->set_perCorePerLoopRows(actualPerCorePerLoopRows);
+
         int64_t perCoreLastLoopRows = GetPerOrLastValue(perCoreRows, maxRowsPerLoop);
+
+        if (perCoreLastLoopRows > 0 && perCoreLastLoopRows < MIN_ALIGN_ROWS) {
+            perCoreLastLoopRows = MIN_ALIGN_ROWS;
+        }
         tilingData->set_perCoreLastLoopRows(perCoreLastLoopRows == 0 ? maxRowsPerLoop : perCoreLastLoopRows);
+
         tilingData->set_lastCorePerLoopRows(actualLastCorePerLoopRows);
         int64_t lastCoreLastLoopRows = GetPerOrLastValue(lastCoreRows, maxRowsPerLoop);
+
+        if (lastCoreLastLoopRows > 0 && lastCoreLastLoopRows < MIN_ALIGN_ROWS) {
+            lastCoreLastLoopRows = MIN_ALIGN_ROWS;
+        }
         tilingData->set_lastCoreLastLoopRows(lastCoreLastLoopRows == 0 ? maxRowsPerLoop : lastCoreLastLoopRows);
         tilingData->set_perCoreLoops(CeilDiv(perCoreRows, actualPerCorePerLoopRows));
         tilingData->set_lastCoreLoops(CeilDiv(lastCoreRows, actualLastCorePerLoopRows));
