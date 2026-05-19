@@ -75,6 +75,18 @@ struct WorkspaceInfo {
     GM_ADDR ptrFlagDispatchToGmm1;
     GM_ADDR ptrGmmOut;
     GM_ADDR ptrGmm2RowReady;
+    // ========================================================================
+    // 动态调度 (Dynamic Scheduling) workspace 区
+    // 设计 doc: 见 mega_moe_impl.h 顶部 DYN_SCHED_DESIGN 注释块
+    // ========================================================================
+    // gmm1NextTile / gmm2NextTile: 每 (expert, wave) 一个 int32 原子计数器。
+    //   AIC 用 AtomicAdd(_, 1) 认领，返回值 = 老值 = 本次拿到的 nTileIdx。
+    //   值 >= tileNum 表示该 wave 已被认完。每 expert 起始时重置 0。
+    GM_ADDR ptrGmm1NextTile;
+    GM_ADDR ptrGmm2NextTile;
+    // taskSlot: 每 blockIdx × 2 channel × 2 pingpong 一个 32 byte 任务结构。
+    //   AIC 写 (scalar)，AIV 读 (ReadGmByPassDCache)，通过 NotifyVector + WaitForCube 同步。
+    GM_ADDR ptrTaskSlot;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -114,6 +126,19 @@ struct WorkspaceInfo {
         ptrGmm2RowReady = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->blockNum), ALIGN_128);
+        // === 动态调度: per-(expert, wave) 原子计数器 + per-blockIdx taskSlot ===
+        int64_t counterElems = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->expertPerRank * maxWavesPerExpert),
+            static_cast<int64_t>(ALIGN_128));
+        ptrGmm1NextTile = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * counterElems;
+        ptrGmm2NextTile = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * counterElems;
+        // taskSlot: blockNum × 4 slot (2 channel × 2 pingpong) × 32 byte
+        ptrTaskSlot = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->blockNum) * 4 * 32,
+            ALIGN_512);
         expandedRowIdxGather = ptrA;
     }
 };
