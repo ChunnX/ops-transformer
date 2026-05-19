@@ -1011,21 +1011,28 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // 互不冲突。expert 顺序串行执行 → 不同 expert 的 counter 不会被同时访问。
         //
         // -- 分发到三个 dynamic loop --
+        AscendC::PRINTF("[DISPATCH bk=%d ct=%d sub=%d] expert=%d tnG1=%d tnG2=%d waveCnt=%d m_i=%d\n",
+                        (int)blockIdx_, (int)g_coreType, (int)subBlockIdx_, (int)expertIdx,
+                        (int)tileNumGmm1, (int)tileNumGmm2, (int)waveCnt, (int)m_i);
         if constexpr (g_coreType == AscendC::AIC) {
             MegaMoeImpl::DynamicAicLoop<
-                QuantOutType, QuantOutType, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
-                params_, problemShape_, baseOffset_, static_cast<int32_t>(blockIdx_),
+                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                epilogueOp_, params_, problemShape_, baseOffset_,
+                static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
                 expertIdx, static_cast<uint32_t>(maxWavesPerExpert_),
                 waveCnt, m_i, tileNumGmm1, tileNumGmm2);
         } else if (subBlockIdx_ == 0) {
             MegaMoeImpl::DynamicAiv0Loop<
-                QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                 epilogueOp_, params_, problemShape_, baseOffset_,
-                static_cast<int32_t>(blockIdx_));
+                static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
+                expertIdx, tileNumGmm1);
         } else if (subBlockIdx_ == 1) {
-            MegaMoeImpl::DynamicAiv1Loop<bfloat16_t>(
-                params_, problemShape_, baseOffset_, static_cast<int32_t>(blockIdx_),
-                static_cast<int32_t>(rankId_), expertIdx);
+            MegaMoeImpl::DynamicAiv1Loop<
+                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                params_, problemShape_, baseOffset_,
+                static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
+                expertIdx, tileNumGmm2);
         }
 
         waveTraceIdx_ += static_cast<int>(waveCnt);  // 给 trace 留 waveCnt 个 slot
