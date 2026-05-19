@@ -145,10 +145,6 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
     int64_t neumannWsSz = neumannMatrixCount * (sizeHalf * 2 + sizeHigh);
     tilingData_.stageWorkspaceSz += neumannWsSz;
 
-    int64_t rhsHalfWsSz = tilingData_.aiCoreNum * tilingData_.stageOneParaNum *
-                          sizeHalf * c * (dk + dv);
-    tilingData_.stageWorkspaceSz += rhsHalfWsSz;
-
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
 }
