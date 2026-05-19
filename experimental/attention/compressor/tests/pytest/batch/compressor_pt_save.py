@@ -145,25 +145,25 @@ def compressor_output_single(data_case):
         cu_seqlens = [cu_seqlens]
     elif isinstance(cu_seqlens, list):
         cu_seqlens = cu_seqlens
-    elif cu_seqlens != None:
+    elif cu_seqlens is not None:
         cu_seqlens = [int(x.strip()) for x in cu_seqlens.split(',')]
     # print(f"===== {start_pos} =====")
     if isinstance(start_pos, int):
         start_pos = [start_pos]
     elif isinstance(start_pos, list):
         start_pos = start_pos
-    elif start_pos != None and batch_size !=1:
+    elif start_pos is not None and batch_size !=1:
         start_pos = [int(x.strip()) for x in start_pos.split(',')]
-    elif start_pos != None:
+    elif start_pos is not None:
         start_pos = [int(start_pos)]
     # print(f"===== {seqused} =====")
     if isinstance(seqused, int):
         seqused = [seqused]
     elif isinstance(seqused, list):
         seqused = seqused
-    elif seqused != None and batch_size !=1:
+    elif seqused is not None and batch_size !=1:
         seqused = [int(x.strip()) for x in seqused.split(',')]
-    elif seqused != None:
+    elif seqused is not None:
         seqused = [int(seqused)]
 
     x_datarange = [float(x.strip()) for x in x_datarange.split(',')]

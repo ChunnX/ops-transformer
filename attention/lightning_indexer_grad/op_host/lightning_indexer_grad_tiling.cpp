@@ -93,6 +93,10 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
         opParamInfo.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
         opParamInfo.actualSeqLengthsK.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_K_INDEX);
         opParamInfo.actualSeqLengthsK.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
+        OP_CHECK_IF(opParamInfo.actualSeqLengthsQ.tensor == nullptr || opParamInfo.actualSeqLengthsK.tensor == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                "TND layout requires actual_seq_lengths_query and actual_seq_lengths_key to be provided, but got null."),
+            return ge::GRAPH_FAILED);
 
         batch = static_cast<uint32_t>(opParamInfo.actualSeqLengthsQ.tensor->GetShapeSize());
         seqlenQ = static_cast<uint32_t>(opParamInfo.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
