@@ -71,6 +71,9 @@ constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
 // constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+constexpr uint32_t ATTR_COMM_MODE_INDEX = 5U;  // 通信模式
+
+
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -113,6 +116,7 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+    auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
 
     OP_TILING_CHECK(groupPtr == nullptr,
         OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
@@ -124,6 +128,8 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
         OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commModePtr == nullptr,
+        OP_LOGE(nodeName, "commModePtr is null."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -137,6 +143,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+    auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
 
     OP_TILING_CHECK((strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
         (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
@@ -158,6 +165,10 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
         *modePtr), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK((*commModePtr != "mte") && (*commModePtr != "urama"),
+        OP_LOGE(nodeName, "commMode is invalid, should be mte or urama, but got commMode=%s.",
+        *commModePtr), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -292,10 +303,16 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 }
 
 // 根据NPU架构计算TilingKey
-static uint64_t CalTilingKey()
+static uint64_t CalTilingKey(const std::string & commMode)
 {
     uint64_t archTag = TILING_KEY_BASE_A5;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
+    uint8_t commModeByte = 0;
+    if (commMode =="mte") {
+        commModeByte = TILINGKEY_TPL_MTE;
+    } else if (commMode =="urma") {
+        commModeByte = TILINGKEY_TPL_URAMA;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(commModeByte, archTag);
     return tilingKey;
 }
 
@@ -407,8 +424,11 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 
     OP_TILING_CHECK(BandwidthTestTilingCheckAttr(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "BandwidthTest tiling check failed."), return ge::GRAPH_FAILED);
+    
+    auto commModePtr = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    std::string commMode(commModePtr);
 
-    uint64_t tilingKey = CalTilingKey();
+    uint64_t tilingKey = CalTilingKey(commMode);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
