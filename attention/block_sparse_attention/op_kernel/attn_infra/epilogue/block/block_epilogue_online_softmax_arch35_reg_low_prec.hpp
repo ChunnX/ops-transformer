@@ -566,8 +566,8 @@ private:
                 Interleave(expDstVreg10, expDstVreg11, expDstVreg1, expDstVreg1);
                 Cast<float, ElementInput, castTrait>(floatVreg0, expDstVreg00, pregFull);
                 Cast<float, ElementInput, castTrait>(floatVreg1, expDstVreg10, pregTailN);
-                Cast<ElementOutput, float, castTrait>(pVreg0, floatVreg0, pregFull);
-                Cast<ElementOutput, float, castTrait>(pVreg1, floatVreg1, pregTailN);
+                Cast<ElementOutput, float, castTraitZero>(pVreg0, floatVreg0, pregFull);
+                Cast<ElementOutput, float, castTraitZero>(pVreg1, floatVreg1, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,
                                                                          blockStride, pregFull);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
