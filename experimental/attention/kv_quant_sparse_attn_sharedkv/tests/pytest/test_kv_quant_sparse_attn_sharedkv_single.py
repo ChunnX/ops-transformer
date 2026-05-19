@@ -66,6 +66,7 @@ for params in ENABLED_PARAMS:
         "kv_quant_mode": params.get("kv_quant_mode"),
         "tile_size": params.get("tile_size"),
         "rope_head_dim": params.get("rope_head_dim"),
+        "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
     }

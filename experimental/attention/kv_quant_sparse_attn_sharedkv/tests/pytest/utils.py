@@ -206,17 +206,48 @@ def fill_none_params(params_dict):
     actlen_mode = params_dict.get('actlen_mode', 'full')
     S1EQS2 = params_dict.get('S1EQS2', False)
     
-    # 1. 推断template_run_mode及相关参数
-    infer_result = infer_template_run_mode(
-        params_dict.get('K'),
-        params_dict.get('cmp_ratio'),
-        ori_kv_type,
-        params_dict.get('cmp_kv_type'),
-        params_dict.get('cmp_mask_mode'),
-        block_size1,
-        params_dict.get('block_size2'),
-        params_dict.get('block_num2')
-    )
+    # 1. 获取template_run_mode（优先从params_dict获取）
+    template_run_mode = params_dict.get('template_run_mode')
+    
+    if template_run_mode is None:
+        # 如果未提供template_run_mode，则推断（向后兼容）
+        infer_result = infer_template_run_mode(
+            params_dict.get('K'),
+            params_dict.get('cmp_ratio'),
+            ori_kv_type,
+            params_dict.get('cmp_kv_type'),
+            params_dict.get('cmp_mask_mode'),
+            block_size1,
+            params_dict.get('block_size2'),
+            params_dict.get('block_num2')
+        )
+        K = infer_result['K']
+        cmp_ratio = infer_result['cmp_ratio']
+        cmp_kv_type = infer_result['cmp_kv_type']
+        cmp_mask_mode = infer_result['cmp_mask_mode']
+        block_size2 = infer_result['block_size2']
+        block_num2 = infer_result['block_num2']
+        template_run_mode = infer_result['template_run_mode']
+    else:
+        # 如果提供了template_run_mode，直接使用params_dict中的参数
+        K = params_dict.get('K')
+        cmp_ratio = params_dict.get('cmp_ratio')
+        cmp_kv_type = params_dict.get('cmp_kv_type')
+        cmp_mask_mode = params_dict.get('cmp_mask_mode')
+        block_size2 = params_dict.get('block_size2')
+        block_num2 = params_dict.get('block_num2')
+        
+        # 处理None参数的默认值（保持一致性）
+        if cmp_ratio is None:
+            cmp_ratio = 1
+        if cmp_kv_type is None:
+            cmp_kv_type = ori_kv_type
+        if cmp_mask_mode is None:
+            cmp_mask_mode = 3 if cmp_ratio != 1 else 0
+        if block_size2 is None:
+            block_size2 = block_size1
+        if K is None:
+            K = 0
     
     # 2. 生成cu_seqlens_q和seqused_ori_kv
     cu_seqlens_q = params_dict.get('cu_seqlens_q')
@@ -228,12 +259,12 @@ def fill_none_params(params_dict):
     # 3. 生成seqused_cmp_kv
     seqused_cmp_kv = params_dict.get('seqused_cmp_kv')
     if seqused_cmp_kv is None:
-        seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, infer_result['cmp_ratio'])
+        seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
     
     # 4. 生成cmp_residual_kv
     cmp_residual_kv = params_dict.get('cmp_residual_kv')
     if cmp_residual_kv is None:
-        cmp_residual_kv = gen_cmp_residual_kv(seqused_ori_kv, infer_result['cmp_ratio'], infer_result['cmp_mask_mode'])
+        cmp_residual_kv = gen_cmp_residual_kv(seqused_ori_kv, cmp_ratio, cmp_mask_mode)
     
     # 5. 生成cu_seqlens_ori_kv和cu_seqlens_cmp_kv
     cu_seqlens_ori_kv = params_dict.get('cu_seqlens_ori_kv')
@@ -250,7 +281,7 @@ def fill_none_params(params_dict):
     
     if block_num1 is None or block_num2 is None:
         ori_block_num, cmp_block_num = calc_block_num(
-            seqused_ori_kv, seqused_cmp_kv, block_size1, infer_result['block_size2'], infer_result['cmp_ratio']
+            seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio
         )
         if block_num1 is None:
             block_num1 = ori_block_num
@@ -267,18 +298,18 @@ def fill_none_params(params_dict):
         'layout_kv': params_dict['layout_kv'],
         'q_type': params_dict['q_type'],
         'ori_kv_type': ori_kv_type,
-        'cmp_kv_type': infer_result['cmp_kv_type'],
+        'cmp_kv_type': cmp_kv_type,
         'B': B,
         'S1': S1,
         'T1': T1,
         'N1': params_dict['N1'],
         'N2': params_dict['N2'],
         'D': params_dict['D'],
-        'K': infer_result['K'],
+        'K': K,
         'block_num1': block_num1,
         'block_num2': block_num2,
         'block_size1': block_size1,
-        'block_size2': infer_result['block_size2'],
+        'block_size2': block_size2,
         'cu_seqlens_q': cu_seqlens_q,
         'seqused_ori_kv': seqused_ori_kv,
         'seqused_cmp_kv': seqused_cmp_kv,
@@ -286,15 +317,15 @@ def fill_none_params(params_dict):
         'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
         'cmp_residual_kv': cmp_residual_kv,
         'softmax_scale': params_dict['softmax_scale'],
-        'cmp_ratio': infer_result['cmp_ratio'],
+        'cmp_ratio': cmp_ratio,
         'ori_mask_mode': params_dict['ori_mask_mode'],
-        'cmp_mask_mode': infer_result['cmp_mask_mode'],
+        'cmp_mask_mode': cmp_mask_mode,
         'ori_win_left': params_dict['ori_win_left'],
         'ori_win_right': params_dict['ori_win_right'],
         'kv_quant_mode': params_dict['kv_quant_mode'],
         'tile_size': params_dict['tile_size'],
         'rope_head_dim': params_dict['rope_head_dim'],
-        'template_run_mode': infer_result['template_run_mode'],
+        'template_run_mode': template_run_mode,
     }
     
     return filled_params
