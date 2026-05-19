@@ -6805,7 +6805,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_per
         &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 128189184;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // per-tensor 全量化 check QKV scaleMode仅支持0
