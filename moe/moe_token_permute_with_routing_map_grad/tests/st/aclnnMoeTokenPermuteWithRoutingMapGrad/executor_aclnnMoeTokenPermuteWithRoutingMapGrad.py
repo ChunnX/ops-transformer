@@ -35,17 +35,6 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         drop_and_pad = input_data.kwargs["padded_mode"]
         num_out_tokens = input_data.kwargs["permutedTokenOutputGrad"].shape[0]
         self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
-        # num_tokens = 1024
-        # hidden_size = 1024
-        # num_experts = 256
-        # capacity = 8
-        # topK = 1
-        # drop_and_pad = False
-        # if drop_and_pad:
-        #     num_out_tokens = num_experts *  capacity
-        # else:
-        #     num_out_tokens = num_tokens *  topK
-        # self.torch_type = torch.float16
         input_data.kwargs['tokensNum'] = num_tokens
         input_data.kwargs["padded_mode"] = drop_and_pad
         input_data.kwargs["numExperts"] = num_experts
@@ -55,7 +44,6 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         OpsDataset.seed_everything(case_id)
         prob_is_none_list = [True,False]
         self.prob_is_none = prob_is_none_list[case_id%2]
-        # self.prob_is_none = False
 
         routing_map = None
         if drop_and_pad:
@@ -71,7 +59,23 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         if not self.prob_is_none:
             probs = self.generate_tensor((num_tokens, num_experts), torch.bfloat16, 5)
         permuted_tokens, permuted_probs, sorted_indices = self.permute(tokens, routing_map, probs, num_out_tokens, False, drop_and_pad)
-        sorted_indices = sorted_indices.to(torch.int32)
+        if not drop_and_pad:
+            sorted_twice_indices = torch.arange(num_tokens, dtype=sorted_indices.dtype).repeat_interleave(topK)
+            sorted_twice_index = torch.full((num_tokens * topK,), -1, dtype=sorted_indices.dtype)
+            sorted_vals, sort_idx = torch.sort(sorted_indices, stable=True)
+            group_starts = torch.searchsorted(sorted_vals, torch.arange(num_tokens, dtype=sorted_vals.dtype))
+            within_offsets = torch.arange(len(sorted_vals), dtype=torch.long) - group_starts[sorted_vals.long()]
+            target_pos = sorted_vals.long() * topK + within_offsets
+            sorted_twice_index.scatter_(0, target_pos, sort_idx)
+            padded_permuted_tokens = torch.zeros((num_tokens * topK, hidden_size), dtype=permuted_tokens.dtype)
+            padded_permuted_tokens[:permuted_tokens.shape[0]] = permuted_tokens
+            permuted_tokens = padded_permuted_tokens
+            if not self.prob_is_none:
+                padded_permuted_probs = torch.zeros(num_tokens * topK, dtype=permuted_probs.dtype)
+                padded_permuted_probs[:permuted_probs.shape[0]] = permuted_probs
+                permuted_probs = padded_permuted_probs
+        else:
+            sorted_twice_index = sorted_indices
         
         if self.device == "pyaclnn":
             input_data.kwargs['permutedTokenOutputGrad'] = permuted_tokens.to(self.torch_type).npu()
@@ -79,7 +83,7 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
                 input_data.kwargs['permutedProbsOutputGradOptional'] = None
             else:
                 input_data.kwargs['permutedProbsOutputGradOptional'] = permuted_probs.to(self.torch_type).npu()
-            input_data.kwargs['sortedIndices'] = sorted_indices.npu()
+            input_data.kwargs['sortedIndices'] = sorted_twice_index.to(torch.int32).npu()
             input_data.kwargs['routingMapOptional'] = routing_map.npu()
         else:
             input_data.kwargs['permutedTokenOutputGrad'] = permuted_tokens.to(self.torch_type)
@@ -87,13 +91,14 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
                 input_data.kwargs['permutedProbsOutputGradOptional'] = ctypes.POINTER(AclTensor)()
             else:
                 input_data.kwargs['permutedProbsOutputGradOptional'] = permuted_probs.to(self.torch_type)
-            input_data.kwargs['sortedIndices'] = sorted_indices
+            input_data.kwargs['sortedIndices'] = sorted_twice_index.to(torch.int32)
             input_data.kwargs['routingMapOptional'] = routing_map
 
     def generate_routing_map_drop_pad_false(self,topk,num_tokens,num_experts):
         tensor = torch.zeros((num_tokens, num_experts), dtype=torch.bool)
         for i in range(num_tokens):
-            indices = torch.randperm(num_experts)[:topk]
+            true_num = random.randint(1, topk)
+            indices = torch.randperm(num_experts)[:true_num]
             tensor[i, indices] = True
         return tensor
     
@@ -158,7 +163,8 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
             (num_tokens,hidden), dtype=torch.float32, device=permuted_tokens.device
         )
         for i in range(sorted_indices.size(-1)):
-            output_tokens[i // topK] += permuted_tokens[sorted_indices[i]]
+            if sorted_indices[i] >= 0:
+                output_tokens[i // topK] += permuted_tokens[sorted_indices[i]]
             
         
         return output_tokens.to(dtype=permuted_tokens.dtype)
@@ -198,17 +204,6 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
             permutedProbsOutputGradOptional = permutedProbsOutputGradOptional.npu()
             sortedIndices = sortedIndices.npu()
             routingMapOptional = routingMapOptional.npu()
-        # num_tokens = 1024
-        # hidden_size = 1024
-        # num_experts = 256
-        # capacity = 8
-        # topK = 1
-        # drop_and_pad = False
-        # if drop_and_pad:
-        #     num_out_tokens = num_experts *  capacity
-        # else:
-        #     num_out_tokens = num_tokens *  topK
-        # self.torch_type = torch.float16
         if drop_and_pad is False:
             topK = num_out_tokens // num_tokens
 
