@@ -438,24 +438,13 @@ private:
     __aicore__ inline void InitOnlineStateRows(int64_t rowBegin, int64_t rowEnd, LocalTensor<float> &maxLocal,
                                                LocalTensor<float> &denomLocal)
     {
-        const int64_t alignedBegin = MinInt64(AlignUpInt64(rowBegin, VECTOR_FP32_BLOCK_ELEMS), rowEnd);
-        const int64_t alignedEnd =
-            MaxInt64(alignedBegin, (rowEnd / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS);
-        for (int64_t row = rowBegin; row < alignedBegin; ++row) {
-            maxLocal.SetValue(row, NEG_INF);
-            denomLocal.SetValue(row, 0.0F);
-        }
-
-        if (alignedBegin < alignedEnd) {
+        if (rowBegin < rowEnd) {
+            const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
+            const int64_t alignedEnd = MinInt64(AlignUpInt64(rowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
             const uint32_t alignedCount = static_cast<uint32_t>(alignedEnd - alignedBegin);
             Duplicate(maxLocal[alignedBegin], NEG_INF, alignedCount);
             Duplicate(denomLocal[alignedBegin], 0.0F, alignedCount);
             PipeBarrier<PIPE_V>();
-        }
-
-        for (int64_t row = alignedEnd; row < rowEnd; ++row) {
-            maxLocal.SetValue(row, NEG_INF);
-            denomLocal.SetValue(row, 0.0F);
         }
     }
 
@@ -466,17 +455,6 @@ private:
             return rowBegin;
         }
         return MinInt64(rowEnd, validRows);
-    }
-
-    __aicore__ inline float ExpScalarWithVector(float value, uint32_t bufferIdx)
-    {
-        LocalTensor<float> expLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
-        Duplicate(expLocal, value, VECTOR_FP32_BLOCK_ELEMS);
-        PipeBarrier<PIPE_V>();
-        Exp(expLocal, expLocal, VECTOR_FP32_BLOCK_ELEMS);
-        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-        return expLocal.GetValue(0);
     }
 
     __aicore__ inline uint32_t ScoreCalcCount(int64_t kvCount) const
@@ -499,51 +477,6 @@ private:
         PipeBarrier<PIPE_V>();
         DuplicateTailFp32(scoreLocal, kvCount, calcCount, NEG_INF);
         PipeBarrier<PIPE_V>();
-    }
-
-    __aicore__ inline void AccumulateVisibleScoreBlock(LocalTensor<float> &accLocal, int64_t kvCount,
-                                                       uint32_t rowInBlock, float &maxScore, float &denom,
-                                                       uint32_t bufferIdx)
-    {
-        const uint32_t calcCount = ScoreCalcCount(kvCount);
-        LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
-        LoadScaledScoreRow(scoreLocal, kvCount, rowInBlock, bufferIdx);
-
-        LocalTensor<float> reduceLocal = GetKvBlockSlice<float>(reduceFloatBuf_, bufferIdx);
-        LocalTensor<float> reduceWorkLocal = GetKvBlockSlice<float>(reduceWorkBuf_, bufferIdx);
-        ReduceMax(reduceLocal, scoreLocal, reduceWorkLocal, calcCount, false);
-        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-        const float blockMaxScore = reduceLocal.GetValue(0);
-        if (blockMaxScore == NEG_INF) {
-            LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
-            Duplicate(weightLocal, 0.0F, calcCount);
-            PipeBarrier<PIPE_V>();
-            StoreProbRow(rowInBlock, weightLocal, kvCount, bufferIdx);
-            return;
-        }
-
-        if (maxScore == NEG_INF) {
-            maxScore = blockMaxScore;
-        } else if (blockMaxScore > maxScore) {
-            const float oldScale = ExpScalarWithVector(maxScore - blockMaxScore, bufferIdx);
-            Muls(accLocal, accLocal, oldScale, AlignedHeadDim());
-            PipeBarrier<PIPE_V>();
-            denom *= oldScale;
-            maxScore = blockMaxScore;
-        }
-
-        LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
-        Adds(weightLocal, scoreLocal, -maxScore, calcCount);
-        PipeBarrier<PIPE_V>();
-        Exp(weightLocal, weightLocal, calcCount);
-        PipeBarrier<PIPE_V>();
-        StoreProbRow(rowInBlock, weightLocal, kvCount, bufferIdx);
-
-        ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, calcCount);
-        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-        denom += reduceLocal.GetValue(0);
     }
 
     __aicore__ inline void AccumulateFirstVisibleScoreBlock(int64_t kvCount, uint32_t rowInBlock,
@@ -635,30 +568,14 @@ private:
     {
         LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
         LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
-        const int64_t alignedBegin = MinInt64(AlignUpInt64(rowBegin, VECTOR_FP32_BLOCK_ELEMS), validRowEnd);
-        const int64_t alignedEnd =
-            MaxInt64(alignedBegin, (validRowEnd / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS);
-
-        for (int64_t row = rowBegin; row < alignedBegin; ++row) {
-            float oldScale = oldScaleLocal.GetValue(row);
-            if (oldScale != 0.0F) {
-                oldScale = ExpScalarWithVector(oldScale, bufferIdx);
-                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-                Muls(accRow, accRow, oldScale, AlignedHeadDim());
-                PipeBarrier<PIPE_V>();
-            } else {
-                oldScale = 1.0F;
-            }
-            const float denom = denomLocal.GetValue(row) * oldScale + blockSumLocal.GetValue(row);
-            denomLocal.SetValue(row, denom);
-        }
-
-        if (alignedBegin < alignedEnd) {
+        if (rowBegin < validRowEnd) {
+            const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
+            const int64_t alignedEnd = MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
             const uint32_t alignedCount = static_cast<uint32_t>(alignedEnd - alignedBegin);
             Exp(oldScaleLocal[alignedBegin], oldScaleLocal[alignedBegin], alignedCount);
             SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
             WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-            for (int64_t row = alignedBegin; row < alignedEnd; ++row) {
+            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
                 const float oldScale = oldScaleLocal.GetValue(row);
                 if (oldScale != 1.0F) {
                     LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
@@ -668,20 +585,6 @@ private:
                 const float denom = denomLocal.GetValue(row) * oldScale + blockSumLocal.GetValue(row);
                 denomLocal.SetValue(row, denom);
             }
-        }
-
-        for (int64_t row = alignedEnd; row < validRowEnd; ++row) {
-            float oldScale = oldScaleLocal.GetValue(row);
-            if (oldScale != 0.0F) {
-                oldScale = ExpScalarWithVector(oldScale, bufferIdx);
-                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-                Muls(accRow, accRow, oldScale, AlignedHeadDim());
-                PipeBarrier<PIPE_V>();
-            } else {
-                oldScale = 1.0F;
-            }
-            const float denom = denomLocal.GetValue(row) * oldScale + blockSumLocal.GetValue(row);
-            denomLocal.SetValue(row, denom);
         }
     }
 
@@ -706,6 +609,13 @@ private:
         } else {
             LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
             LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
+            if (rowBegin < validRowEnd) {
+                const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
+                const int64_t alignedEnd =
+                    MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
+                Duplicate(oldScaleLocal[alignedBegin], 0.0F, static_cast<uint32_t>(alignedEnd - alignedBegin));
+                PipeBarrier<PIPE_V>();
+            }
             for (int64_t row = rowBegin; row < validRowEnd; ++row) {
                 float maxScore = maxLocal.GetValue(row);
                 float newMaxScore = maxScore;
