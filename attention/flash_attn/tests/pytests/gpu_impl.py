@@ -21,6 +21,8 @@ GPU 后端实现 (基于 flash-attn 库)
 
 import torch
 from typing import Optional, List
+from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
+                         data_compare_benchmark_new, Result, gen_block_table)
 
 try:
     from flash_attn import flash_attn_func, flash_attn_varlen_func, flash_attn_with_kvcache
@@ -54,6 +56,11 @@ def flash_attn_gpu(
     使用 FlashAttention 库进行 GPU 计算。
     输入 q/k/v 形状均为 (B, N, S, D) BNSD 格式。
     输出形状为 (B, N, S_out, Dv) BNSD 格式，上层会调用 trans_bnsd_to_layout 转换。
+    k_cache: (batch_size_cache, seqlen_cache, nheads_k, headdim) if there's no block_table,
+        or (num_blocks, page_block_size, nheads_k, headdim) if there's a block_table (i.e. paged KV cache)
+        page_block_size must be a multiple of 256.
+    v_cache: (batch_size_cache, seqlen_cache, nheads_k, headdim) if there's no block_table,
+        or (num_blocks, page_block_size, nheads_k, headdim) if there's a block_table (i.e. paged KV cache)
     """
     if not FLASH_ATTN_AVAILABLE:
         raise RuntimeError("flash_attn 库未安装，无法使用 GPU 后端")
@@ -88,10 +95,6 @@ def flash_attn_gpu(
         if block_table is None or block_size is None:
             raise ValueError(f"Paged Attention ({layout_kv}) 需要提供 block_table 和 block_size")
         
-        # flash_attn_with_kvcache 要求 page_block_size 是 256 的倍数
-        if block_size % 256 != 0:
-            raise ValueError(f"block_size={block_size} 必须是 256 的倍数（flash_attn_with_kvcache 限制）")
-        
         # 转换 block_table 为 tensor: (batch_size, max_num_blocks_per_seq)
         if isinstance(block_table, list):
             if isinstance(block_table[0], list):
@@ -103,17 +106,12 @@ def flash_attn_gpu(
         
         B, N, S, D = k.shape
         
-        # 根据 PA 格式转换 k/v 为 paged cache
-        if layout_kv == "PA_BBND":
+        if layout_kv in ("PA_BBND", "PA_BNBD"):
             # PA_BBND: (num_blocks, block_size, nheads, headdim)
-            num_blocks = block_table_tensor.numel()
-            k_cache = k.reshape(B, N, S // block_size, block_size, D).permute(0, 2, 3, 1, 4).reshape(num_blocks, block_size, N, D)
-            v_cache = v.reshape(B, N, S // block_size, block_size, D).permute(0, 2, 3, 1, 4).reshape(num_blocks, block_size, N, D)
-        elif layout_kv == "PA_BNBD":
             # PA_BNBD: (num_blocks, nheads, block_size, headdim)
-            num_blocks = block_table_tensor.numel()
-            k_cache = k.reshape(B, N, S // block_size, block_size, D).permute(0, 2, 1, 3, 4).reshape(num_blocks, N, block_size, D)
-            v_cache = v.reshape(B, N, S // block_size, block_size, D).permute(0, 2, 1, 3, 4).reshape(num_blocks, N, block_size, D)
+            device = torch.cuda.current_device()
+            k_cache = trans_bnsd_to_layout(k, "PA_BBND", **kwargs).contiguous().cuda(device)
+            v_cache = trans_bnsd_to_layout(v, "PA_BBND", **kwargs).contiguous().cuda(device)
         else:
             raise ValueError(f"不支持的 PA layout: {layout_kv}")
         
@@ -141,7 +139,6 @@ def flash_attn_gpu(
             softmax_scale=softmax_scale,
             causal=causal,
             window_size=(-1, -1),
-            deterministic=False,
         )
         
         out_bnsd = _bshd_to_bnsd(out_bshd)
