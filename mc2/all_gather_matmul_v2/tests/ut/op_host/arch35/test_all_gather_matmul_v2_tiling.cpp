@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <gtest/gtest.h>
@@ -32,6 +33,12 @@ protected:
 TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
 {
     auto param = GetParam();
+    constexpr char kAscendMc2DebugMode[] = "ASCEND_MC2_DEBUG_MODE";
+    bool debugModeEnvSet = false;
+    if (param.case_name.compare(0, 14U, "ut_mc2_debug4_") == 0) {
+        (void)setenv(kAscendMc2DebugMode, "4", 1);
+        debugModeEnvSet = true;
+    }
     struct AllGatherMatmulV2CompileInfo {};
     AllGatherMatmulV2CompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
@@ -72,6 +79,9 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
     };
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
         param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+    if (debugModeEnvSet) {
+        (void)unsetenv(kAscendMc2DebugMode);
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(
