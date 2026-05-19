@@ -9,9 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 import torch
 import torch_npu
-from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
 class UpdateContextOpBuilder(OpBuilder):
@@ -19,31 +17,15 @@ class UpdateContextOpBuilder(OpBuilder):
         super(UpdateContextOpBuilder, self).__init__("update_context")
 
     def sources(self):
-        """Path to C++ source conde."""
         return ['ops/csrc/update_context.cpp']
-    
+
     def schema(self) -> str:
-        """PyTorch operator signature."""
-        return "update_context(str group_ep, int ep_world_size, int ccl_buffer_size, Tensor context_tensor) -> bool"
+        return ""
 
     def register_meta(self):
-        """
-        Registers the Meta implementation (Shape/Dtype inference).
-        Essential for Autograd and FakeTensor support.
-        """
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def update_context_meta(group_ep, ep_world_size, ccl_buffer_size, context_tensor):
-            return False
+        pass
 
-# Instantiate the builder
 update_context_op_builder = UpdateContextOpBuilder()
-op_module = update_context_op_builder.load() # Compiles/loads the .so file
+op_module = update_context_op_builder.load()
 
-
-@impl(AS_LIBRARY, update_context_op_builder.name, "PrivateUse1")
-def update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor):
-    """
-    dispatcher implementation for NPU.
-    'PrivateUse1' is the combine key for custom NPU backends.
-    """
-    return op_module.update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor)
+CommContextManager = op_module.CommContextManager
