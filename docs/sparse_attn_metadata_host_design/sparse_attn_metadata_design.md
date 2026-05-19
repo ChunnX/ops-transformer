@@ -2,9 +2,39 @@
 
 ## 1. 项目背景
 
-当前 `SparseAttnSharedkvMetadata` 算子是昇腾NPU平台上 `SparseAttnSharedkv` 算子的前序算子，其主要功能是生成任务分核列表，为后续Attention计算提供每个AI Core的计算任务索引。该算子目前运行在昇腾AICPU上（NPU的辅助CPU单元），通过AscendC语言实现。本项目要求将该算子迁移到Host端CPU执行，使用TileLang语言重写，实现相同的数据切分优化功能，不依赖AICPU硬件特性。
+当前 `SparseAttnSharedkvMetadata` 算子是昇腾NPU平台上 `SparseAttnSharedkv` 算子的前序算子，其主要功能是生成任务分核列表，为后续Attention计算提供每个AI Core的计算任务索引。该算子目前运行在昇腾AICPU上（NPU的辅助CPU单元），通过AscendC语言实现。
 
----
+本项目要求将该算子迁移到Host端CPU执行，使用TileLang语言重写，实现相同的数据切分优化功能，不依赖AICPU硬件特性。
+
+### 1.1 迁移方案概述
+
+**数据流路径**：
+
+```
+输入张量(NPU) → D2H传输 → Host CPU计算 → H2D传输 → metadata(NPU) → SparseAttnSharedkv
+```
+
+**关键设计要点**：
+
+| 设计项        | 说明                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| **张量输入获取** | Host CPU无法直接访问NPU内存，必须通过`aclrtMemcpy(ACL_MEMCPY_DEVICE_TO_HOST)`将`cu_seqlens_q`和`seqused_kv`从NPU传至Host |
+| **核心算法执行** | Metadata生成在Host端执行，使用TileLang实现切分、负载均衡、分配算法                                                            |
+| **输出传输**   | 生成的`metadata[1024]`通过`aclrtMemcpy(ACL_MEMCPY_HOST_TO_DEVICE)`传回NPU的metadata tensor                     |
+| **数据量估算**  | 输入\~36 bytes (B=4)，输出4KB，PCIe传输延迟约10-50μs                                                              |
+
+**Host端 vs AICPU的关键区别**：
+
+| 对比项      | AICPU                        | Host CPU             |
+| -------- | ---------------------------- | -------------------- |
+| 运行位置     | NPU设备上                       | 主机CPU                |
+| Tensor类型 | `aicpu::Tensor`              | `aclTensor`          |
+| 数据访问     | `tensor->GetData()`直接读取NPU内存 | **必须D2H传输后才能读取数据内容** |
+| 输出写入     | 直接写入NPU内存                    | 需H2D传输写入             |
+
+> **重要说明**：Host端`aclTensor`只包含元信息（shape、dtype、format等），其数据指针指向NPU设备内存。Host CPU无法直接通过该指针读取数据内容，必须使用Ascend API进行D2H传输。
+
+***
 
 ## 2. 函数原型与流程
 
@@ -34,39 +64,87 @@
     └── metadata: 分核结果数组，维度[1024]，类型INT32
 ```
 
-### 2.2 核心流程图
+### 2.2 完整数据流图
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    SparseAttnSharedkvMetadata                   │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────┐    ┌──────────────┐    ┌─────────────┐            │
-│  │ 参数校验  │───▶│ 切分信息计算  │───▶│ 开销估算     │            │
-│  └──────────┘    └──────────────┘    └─────────────┘            │
-│       │                 │                  │                    │
-│       ▼                 ▼                  ▼                    │
-│  ┌──────────────────────────────────────────────────┐           │
-│  │              负载均衡分配(三层策略)                │           │
-│  │  ┌─────────────┐  ┌───────────┐  ┌───────────┐   │           │
-│  │  │AssignByBatch│─▶│AssignByRow│─▶│AssignByBlock│ │           │
-│  │  └─────────────┘  └───────────┘  └───────────┘   │           │
-│  └──────────────────────────────────────────────────┘           │
-│                         │                                       │
-│                         ▼                                       │
-│              ┌─────────────────────┐                            │
-│              │   Metadata生成      │                            │
-│              │   ├─ FA Metadata    │                            │
-│              │   └─ FD Metadata    │                            │
-│              └─────────────────────┘                            │
-│                         │                                       │
-│                         ▼                                       │
-│                   metadata[1024]                                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Host端SparseAttnSharedkvMetadata                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    Step 1: 参数获取 (D2H传输)                        │    │
+│  │                                                                     │    │
+│  │  ┌──────────────────┐                                               │    │
+│  │  │ NPU设备内存       │   aclrtMemcpy(D2H)    ┌──────────────────┐    │    │
+│  │  │ cu_seqlens_q[B+1]│ ──────────────────▶   │ Host内存         │    │    │
+│  │  │ seqused_kv[B]    │    ~10-50μs           │ host_cu_seqlens  │    │   │
+│  │  │ (aclTensor指针)  │                       │ host_seqused_kv  │     │   │
+│  │  └──────────────────┘                       └──────────────────┘    │   │
+│  │                                                                     │   │
+│  │  属性参数(num_heads_q, batch_size等): 直接传递，无需传输               │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                             │
+│                              ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    Step 2-6: 核心计算 (Host CPU)                     │   │
+│  │                                                                     │   │
+│  │  ┌──────────┐   ┌──────────────┐   ┌─────────────┐                  │   │
+│  │  │ 参数校验  │──▶│ 切分信息计算  │──▶│ 开销估算     │                  │   │
+│  │  └──────────┘   └──────────────┘   └─────────────┘                  │   │
+│  │       │              │                   │                          │   │
+│  │       ▼              ▼                   ▼                          │   │
+│  │  ┌──────────────────────────────────────────────────┐               │   │
+│  │  │              负载均衡分配(三层策略)                │               │   │
+│  │  │  ┌─────────────┐  ┌───────────┐  ┌───────────┐   │               │   │
+│  │  │  │AssignByBatch│─▶│AssignByRow│─▶│AssignByBlock│ │               │   │
+│  │  │  └─────────────┘  └───────────┘  └───────────┘   │               │   │
+│  │  └──────────────────────────────────────────────────┘               │   │
+│  │       │                                                             │   │
+│  │       ▼                                                             │   │
+│  │  ┌─────────────────────┐                                            │   │
+│  │  │   Metadata生成      │                                            │   │
+│  │  │   ├─ FA Metadata    │                                            │   │
+│  │  │   └─ FD Metadata    │                                            │   │
+│  │  └─────────────────────┘                                            │   │
+│  │       │                                                             │   │
+│  │       ▼                                                             │   │
+│  │  host_metadata[1024] (Host内存)                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                             │
+│                              ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    Step 7: 输出传输 (H2D传输)                        │   │
+│  │                                                                     │   │
+│  │  ┌──────────────────┐                                               │   │
+│  │  │ Host内存         │   aclrtMemcpy(H2D)   ┌──────────────────┐      │   │
+│  │  │ host_metadata    │ ──────────────────▶  │ NPU设备内存       │     │   │
+│  │  │ [1024] INT32     │    ~10-50μs          │ metadata tensor  │     │   │
+│  │  │ (4KB)            │                      │ (算子输出)        │     │   │
+│  │  └──────────────────┘                      └──────────────────┘     │   │
+│  │                                                                     │   │
+│  │  aclrtSynchronizeStream(stream) 确保传输完成                         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                             │
+│                              ▼                                             │
+│                    SparseAttnSharedkv (NPU AICore)                         │
+│                    ┌─────────────────────────────────────────────────────┐ │
+│                    │ 读取metadata[1024]，执行Attention计算                │  │
+│                    └─────────────────────────────────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+### 2.3 数据传输详细说明
+
+| 传输阶段     | 数据               | 方向       | API                                      | 数据量           | 延迟估算      |
+| -------- | ---------------- | -------- | ---------------------------------------- | ------------- | --------- |
+| D2H (输入) | `cu_seqlens_q`   | NPU→Host | `aclrtMemcpy(ACL_MEMCPY_DEVICE_TO_HOST)` | (B+1)×4 bytes | \~10-50μs |
+| D2H (输入) | `seqused_kv`     | NPU→Host | `aclrtMemcpy(ACL_MEMCPY_DEVICE_TO_HOST)` | B×4 bytes     | \~10-50μs |
+| H2D (输出) | `metadata[1024]` | Host→NPU | `aclrtMemcpy(ACL_MEMCPY_HOST_TO_DEVICE)` | 4KB           | \~10-50μs |
+
+> **总传输开销**：约20-100μs（两次传输 + 同步）
+
+***
 
 ## 3. 具体设计
 
@@ -136,12 +214,12 @@ struct SplitResult {
 
 #### 3.2.1 基本块切分
 
-| 计算项 | 公式 | 依据说明 |
-|--------|------|----------|
-| M轴基本块大小 | `mBaseSize = groupSize = N1/N2 = 64` | 与Q头数对应，便于后续kernel按头组切分 |
-| S2轴基本块大小 | `s2BaseSize = 512` | 与kernel内部循环的sInnerSize一致，减少尾块开销 |
-| M轴块数 | `s1GBaseNum[b] = ceil(s1Size[b] * groupSize / mBaseSize)` | 将Q序列按头组切分 |
-| S2轴块数 | `s2BaseNum[b] = ceil(s2Size[b] / s2BaseSize)` | 将KV序列按512切分 |
+| 计算项      | 公式                                                        | 依据说明                            |
+| -------- | --------------------------------------------------------- | ------------------------------- |
+| M轴基本块大小  | `mBaseSize = groupSize = N1/N2 = 64`                      | 与Q头数对应，便于后续kernel按头组切分          |
+| S2轴基本块大小 | `s2BaseSize = 512`                                        | 与kernel内部循环的sInnerSize一致，减少尾块开销 |
+| M轴块数     | `s1GBaseNum[b] = ceil(s1Size[b] * groupSize / mBaseSize)` | 将Q序列按头组切分                       |
+| S2轴块数    | `s2BaseNum[b] = ceil(s2Size[b] / s2BaseSize)`             | 将KV序列按512切分                     |
 
 #### 3.2.2 滑窗注意力负载计算
 
@@ -278,7 +356,7 @@ Compressed Attention 计算公式:
 │ Level 1: AssignByBatch (按整Batch分配)                           │
 ├─────────────────────────────────────────────────────────────────┤
 │ 策略: 尽可能将完整Batch*N2分配给单个核                             │
-│ 条件: costLimit + tolerance >= currentCost + batchCost          │
+│ 条件: costLimit + tolerance >= currentCost + batchCost             │
 │ 优点: 减少跨batch边界，简化数据访问                                │
 │ 适用: 大batch场景                                                │
 ├─────────────────────────────────────────────────────────────────┤
@@ -344,11 +422,144 @@ def balance_schedule(cost_info, aic_core_num):
     return split_result
 ```
 
----
+***
 
 ## 4. 实现逻辑
 
-### 4.1 TileLang实现框架
+### 4.1 参数获取与数据传输
+
+由于Host CPU无法直接访问NPU设备内存，张量输入参数必须通过D2H传输获取。
+
+#### 4.1.1 张量输入参数获取
+
+```cpp
+// Host端参数获取实现
+class SparseAttnSharedkvMetadataHost {
+private:
+    int32_t* host_cu_seqlens_q_;  // Host侧cu_seqlens_q数据缓存
+    int32_t* host_seqused_kv_;    // Host侧seqused_kv数据缓存
+    
+public:
+    // 获取张量输入数据的D2H传输
+    void GetTensorInputs(
+        aclrtStream stream,
+        const aclTensor* cu_seqlens_q,    // NPU侧aclTensor
+        const aclTensor* seqused_kv,      // NPU侧aclTensor
+        int64_t batch_size
+    ) {
+        // Step 1: 获取NPU设备指针
+        void* device_cu_seqlens_ptr = nullptr;
+        void* device_seqused_kv_ptr = nullptr;
+        
+        if (cu_seqlens_q != nullptr) {
+            // 通过aclTensor API获取设备数据指针
+            device_cu_seqlens_ptr = aclGetTensorDataPtr(cu_seqlens_q);
+        }
+        
+        if (seqused_kv != nullptr) {
+            device_seqused_kv_ptr = aclGetTensorDataPtr(seqused_kv);
+        }
+        
+        // Step 2: D2H传输cu_seqlens_q
+        if (device_cu_seqlens_ptr != nullptr) {
+            size_t cu_q_size = (batch_size + 1) * sizeof(int32_t);
+            aclrtMemcpy(
+                host_cu_seqlens_q_,              // Host destination
+                cu_q_size,
+                device_cu_seqlens_ptr,           // NPU source
+                cu_q_size,
+                ACL_MEMCPY_DEVICE_TO_HOST,
+                stream
+            );
+        }
+        
+        // Step 3: D2H传输seqused_kv
+        if (device_seqused_kv_ptr != nullptr) {
+            size_t seq_kv_size = batch_size * sizeof(int32_t);
+            aclrtMemcpy(
+                host_seqused_kv_,
+                seq_kv_size,
+                device_seqused_kv_ptr,
+                seq_kv_size,
+                ACL_MEMCPY_DEVICE_TO_HOST,
+                stream
+            );
+        }
+        
+        // Step 4: 同步等待传输完成
+        aclrtSynchronizeStream(stream);
+    }
+};
+```
+
+**数据量估算**：
+
+| 参数             | 维度     | 数据量 (B=4)          | 数据量 (B=128)           |
+| -------------- | ------ | ------------------ | --------------------- |
+| cu\_seqlens\_q | \[B+1] | (4+1)×4 = 20 bytes | (128+1)×4 = 516 bytes |
+| seqused\_kv    | \[B]   | 4×4 = 16 bytes     | 128×4 = 512 bytes     |
+| **总计**         | <br /> | \~36 bytes         | \~1KB                 |
+
+#### 4.1.2 Metadata输出传输
+
+生成的metadata需要通过H2D传输写回NPU：
+
+```cpp
+void WriteMetadataOutput(
+    aclrtStream stream,
+    const int32_t* host_metadata,         // Host侧生成的metadata
+    const aclTensor* metadata_tensor,     // NPU侧输出aclTensor
+    uint32_t batch_size
+) {
+    // Step 1: 获取NPU输出tensor的设备指针
+    void* device_metadata_ptr = aclGetTensorDataPtr(metadata_tensor);
+    
+    // Step 2: H2D传输metadata
+    size_t metadata_size = SAS_META_SIZE * sizeof(int32_t); // 1024 × 4 = 4KB
+    
+    aclrtMemcpy(
+        device_metadata_ptr,               // NPU destination
+        metadata_size,
+        host_metadata,                     // Host source
+        metadata_size,
+        ACL_MEMCPY_HOST_TO_DEVICE,
+        stream
+    );
+    
+    // Step 3: 同步确保写入完成
+    aclrtSynchronizeStream(stream);
+}
+```
+
+**数据量**：1024 × 4 = 4KB
+
+#### 4.1.3 内存管理
+
+```cpp
+class SparseAttnSharedkvMetadataHost {
+public:
+    void AllocateHostBuffers(int64_t batch_size) {
+        // 分配Host侧输入缓存
+        host_cu_seqlens_q_ = new int32_t[batch_size + 1];
+        host_seqused_kv_ = new int32_t[batch_size];
+        
+        // 分配Host侧输出缓存
+        host_metadata_ = new int32_t[SAS_META_SIZE]; // 1024
+    }
+    
+    void FreeHostBuffers() {
+        delete[] host_cu_seqlens_q_;
+        delete[] host_seqused_kv_;
+        delete[] host_metadata_;
+    }
+};
+```
+
+**内存开销估算**：< 1KB（输入） + 4KB（输出） + \~1KB（临时结构） = < 6KB
+
+***
+
+### 4.2 TileLang实现框架
 
 ```python
 # sparse_attn_sharedkv_metadata_host.py
@@ -607,7 +818,7 @@ class SparseAttnSharedkvMetadataHost:
         return metadata
 ```
 
-### 4.2 数据访问偏移计算
+### 4.3 数据访问偏移计算
 
 ```python
 def calc_data_offset(self, run_info, const_info):
@@ -634,62 +845,77 @@ def calc_data_offset(self, run_info, const_info):
     }
 ```
 
----
+***
 
 ## 5. 约束分析
 
 ### 5.1 输入约束
 
-| 参数 | 约束条件 | 说明 |
-|------|----------|------|
-| num_heads_q | = 64 | 固定值，对应Q头数 |
-| num_heads_kv | = 1 | 固定值，KV共享单头 |
-| head_dim | = 512 | 固定值，头维度 |
-| cmp_topk | ∈ {0, 512, 1024} | 压缩KV稀疏token数上限 |
-| cmp_ratio | ∈ {4, 128} | 压缩率，决定了压缩KV大小 |
-| ori_mask_mode | = 4 | BAND模式（滑动窗口） |
-| cmp_mask_mode | = 3 | RIGHT_DOWN_CAUSAL模式 |
-| ori_win_left | = 127 | 滑动窗口左边界 |
-| ori_win_right | = 0 | 滑动窗口右边界 |
-| layout_q | ∈ {"BSND", "TND"} | Q数据排布格式 |
-| layout_kv | = "PA_ND" | KV数据排布格式 |
+| 参数              | 约束条件              | 说明                    |
+| --------------- | ----------------- | --------------------- |
+| num\_heads\_q   | = 64              | 固定值，对应Q头数             |
+| num\_heads\_kv  | = 1               | 固定值，KV共享单头            |
+| head\_dim       | = 512             | 固定值，头维度               |
+| cmp\_topk       | ∈ {0, 512, 1024}  | 压缩KV稀疏token数上限        |
+| cmp\_ratio      | ∈ {4, 128}        | 压缩率，决定了压缩KV大小         |
+| ori\_mask\_mode | = 4               | BAND模式（滑动窗口）          |
+| cmp\_mask\_mode | = 3               | RIGHT\_DOWN\_CAUSAL模式 |
+| ori\_win\_left  | = 127             | 滑动窗口左边界               |
+| ori\_win\_right | = 0               | 滑动窗口右边界               |
+| layout\_q       | ∈ {"BSND", "TND"} | Q数据排布格式               |
+| layout\_kv      | = "PA\_ND"        | KV数据排布格式              |
 
 ### 5.2 输出约束
 
-| 约束项 | 条件 | 说明 |
-|--------|------|------|
-| metadata大小 | = 1024 INT32 | 固定大小，与kernel解耦 |
-| 数据类型 | INT32 | 与kernel解析一致 |
-| FA Metadata字段数 | 8 | 每个核8个索引字段 |
-| FD Metadata字段数 | 8 | 每个向量核8个字段 |
-| 最大核数 | AIC=36, AIV=72 | Atlas A3规格 |
+| 约束项            | 条件             | 说明             |
+| -------------- | -------------- | -------------- |
+| metadata大小     | = 1024 INT32   | 固定大小，与kernel解耦 |
+| 数据类型           | INT32          | 与kernel解析一致    |
+| FA Metadata字段数 | 8              | 每个核8个索引字段      |
+| FD Metadata字段数 | 8              | 每个向量核8个字段      |
+| 最大核数           | AIC=36, AIV=72 | Atlas A3规格     |
 
 ### 5.3 性能约束
 
-| 约束项 | 建议值 | 说明 |
-|--------|--------|------|
-| Host并行处理 | 多线程 | Batch数据可并行处理 |
-| 内存开销 | < 1MB | split_info/cost_info等临时结构 |
-| 计算复杂度 | O(B * S1 * S2 / blockSize) | 遍历所有基本块 |
+| 约束项      | 建议值                  | 说明                                              |
+| -------- | -------------------- | ----------------------------------------------- |
+| D2H传输延迟  | \~10-50μs            | cu\_seqlens\_q + seqused\_kv (\~36 bytes @ B=4) |
+| H2D传输延迟  | \~10-50μs            | metadata\[1024] (4KB)                           |
+| Host计算时间 | O(B×S1×S2/blockSize) | 核心算法计算复杂度                                       |
+| 总额外开销    | \~20-100μs           | D2H + Host计算 + H2D                              |
+| Host并行处理 | 多线程                  | Batch数据可并行处理                                    |
+| 内存开销     | < 6KB                | Host侧输入缓存 + 输出缓存 + 临时结构                         |
+
+**性能影响分析**：
+
+| 场景             | D2H/H2D开销  | 对整体性能影响                         |
+| -------------- | ---------- | ------------------------------- |
+| 小batch (B=4)   | \~20-100μs | 相对于NPU端Attention计算(通常>1ms)，影响较小 |
+| 大batch (B=128) | \~20-100μs | 影响更小，传输开销相对计算开销比例降低             |
+| 连续调用           | 可优化        | 通过stream异步执行减少同步开销              |
+
+**关键优化点**：
+
+1. 使用异步stream执行D2H/H2D传输，避免阻塞
+2. Host端计算与下一次调用的D2H可并行（pipeline优化）
+3. 小batch场景下，可考虑将cu\_seqlens\_q/seqused\_kv提前放入tilingData避免D2H
 
 ### 5.4 兼容性约束
 
 1. **输出格式兼容**: metadata数组格式必须与原AICPU版本完全一致，确保后续`SparseAttnSharedkv`算子可正确解析
-
 2. **边界条件兼容**: 空batch、零序列长度等边界情况的处理逻辑需保持一致
-
 3. **数值精度兼容**: 开销计算使用整数运算，避免浮点误差导致分配差异
 
 ### 5.5 功能约束
 
-| 场景 | 约束说明 |
-|------|----------|
-| SWA模式 | 仅使用ori_kv，不生成cmp相关metadata |
-| CFA模式 | 使用ori_kv + cmp_kv，需计算两部分开销 |
-| SCFA模式 | 使用ori_kv + cmp_kv + sparse_indices，需处理稀疏索引 |
-| FlashDecode | 跨核行需记录归约信息，支持多核协作 |
+| 场景          | 约束说明                                          |
+| ----------- | --------------------------------------------- |
+| SWA模式       | 仅使用ori\_kv，不生成cmp相关metadata                   |
+| CFA模式       | 使用ori\_kv + cmp\_kv，需计算两部分开销                  |
+| SCFA模式      | 使用ori\_kv + cmp\_kv + sparse\_indices，需处理稀疏索引 |
+| FlashDecode | 跨核行需记录归约信息，支持多核协作                             |
 
----
+***
 
 ## 6. 测试验证方案
 
@@ -744,21 +970,59 @@ def test_compare_with_aicpu():
     assert torch.allclose(host_metadata, aicpu_metadata)
 ```
 
----
+***
 
 ## 7. 附录
 
 ### 7.1 相关文件列表
 
-| 文件路径 | 功能说明 |
-|----------|----------|
-| `sparse_attn_sharedkv_metadata/op_kernel_aicpu/sparse_attn_sharedkv_metadata_aicpu.cpp` | AICPU实现主逻辑 |
-| `sparse_attn_sharedkv_metadata/op_kernel_aicpu/sparse_attn_sharedkv_metadata_aicpu.h` | AICPU数据结构定义 |
-| `sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_metadata.h` | Metadata结构定义 |
-| `sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_swa_kernel.h` | SWA kernel实现 |
-| `sparse_attn_sharedkv/op_host/sparse_attn_sharedkv_tiling.h` | Tiling参数定义 |
+| 文件路径                                                                          | 功能说明                      |
+| ----------------------------------------------------------------------------- | ------------------------- |
+| `sparse_attn_sharedkv_metadata/op_kernel_aicpu/*.cpp/.h`                      | AICPU原实现（参考用）             |
+| `sparse_attn_sharedkv_metadata/op_host/sparse_attn_sharedkv_metadata_host.py` | **Host端TileLang核心实现（新增）** |
+| `sparse_attn_sharedkv_metadata/op_host/op_api/*.cpp`                          | Host端API层，处理D2H/H2D传输     |
+| `sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_metadata.h`              | Metadata结构定义              |
+| `sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_swa_kernel.h`            | SWA kernel实现              |
+| `sparse_attn_sharedkv/op_host/sparse_attn_sharedkv_tiling.h`                  | Tiling参数定义                |
 
-### 7.2 关键常量定义
+### 7.2 Host端新增文件说明
+
+| 新增文件                                                  | 功能                          |
+| ----------------------------------------------------- | --------------------------- |
+| `sparse_attn_sharedkv_metadata_host.py`               | TileLang实现的Host端Metadata生成器 |
+| `op_api/aclnn_sparse_attn_sharedkv_metadata_host.cpp` | Host端aclnn API，包含D2H/H2D逻辑  |
+
+### 7.3 关键API说明
+
+```cpp
+// 获取aclTensor的设备数据指针
+void* aclGetTensorDataPtr(const aclTensor* tensor);
+
+// D2H传输
+aclError aclrtMemcpy(
+    void* dst,           // Host destination
+    size_t destMax,
+    const void* src,     // NPU source
+    size_t count,
+    aclrtMemcpyKind kind, // ACL_MEMCPY_DEVICE_TO_HOST
+    aclrtStream stream
+);
+
+// H2D传输
+aclError aclrtMemcpy(
+    void* dst,           // NPU destination
+    size_t destMax,
+    const void* src,     // Host source
+    size_t count,
+    aclrtMemcpyKind kind, // ACL_MEMCPY_HOST_TO_DEVICE
+    aclrtStream stream
+);
+
+// 同步stream
+aclError aclrtSynchronizeStream(aclrtStream stream);
+```
+
+### 7.4 关键常量定义
 
 ```cpp
 // 来自 sparse_attn_sharedkv_metadata.h
@@ -777,3 +1041,4 @@ constexpr uint32_t FA_BN2_END_INDEX = 4;
 constexpr uint32_t FA_M_END_INDEX = 5;
 constexpr uint32_t FA_S2_END_INDEX = 6;
 ```
+
