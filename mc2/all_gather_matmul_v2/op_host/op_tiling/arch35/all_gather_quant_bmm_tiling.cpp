@@ -16,6 +16,7 @@
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log.h"
@@ -433,7 +434,6 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
-    GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantScene()));
     GE_ASSERT_GRAPH_SUCCESS(DoAdaptSlidWindowTiling());
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
@@ -593,7 +593,11 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 CutResult AllGatherQuantBmmTiling::GetTilingResult()
 {
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    return tileFormulate.GetTiling();
+    CutResult result = tileFormulate.GetTiling();
+
+    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+
+    return result;
 }
 
 
