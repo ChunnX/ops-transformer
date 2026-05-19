@@ -23,7 +23,8 @@ from cpu_impl import tforward
 from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
                          data_compare_benchmark_new, Result, gen_block_table)
 
-_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
+_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single", 
+                        "test_case_redline_fa_TND", "test_case_redline_fa", "test_case_redline_fia"]
 
 
 def load_case_modules(module_names):
@@ -130,9 +131,11 @@ def normalize_case(raw):
         if c.get(key) == [None] or c.get(key) is None:
             c.pop(key, None)
     if layout_q == "TND":
+        # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
         if layout_kv not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+            c.setdefault("cu_seqlens_kv", c["cu_seqlens_q"])
             # cu_seqlens_kv 未提供时默认与 cu_seqlens_q 相同（self-attention 场景，非 PA）
             c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
             c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
