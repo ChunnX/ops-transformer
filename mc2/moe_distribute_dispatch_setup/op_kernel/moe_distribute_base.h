@@ -377,10 +377,6 @@ __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &jfcD
 
     uint64_t jfcDbValue = (static_cast<uint64_t>(cqInfoU32(CQ_JFCID_OFFSET)) << 32) + static_cast<uint64_t>(cqCi);
     st_dev(jfcDbValue, (__gm__ uint64_t *)(cqInfoU64(CQ_DBADDR_OFFSET)), 0); // Scalar操作
-    AscendC::SyncFunc<AscendC::HardEvent::S_V>();
-    uint64_t timeEnd = AscendC::GetSystemCycle();
-    uint64_t cycleUse = timeEnd - timeStart;
-    uint64_t timeUse = cycleUse / 50;
 }
 
 __aicore__ inline bool CheckCqeStatus(const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
