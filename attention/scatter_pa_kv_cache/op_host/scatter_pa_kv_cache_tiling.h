@@ -150,11 +150,11 @@ private:
     int64_t keyCacheStride0_ = 0;
     int64_t keyCacheStride1_ = 0;
     int64_t keyCacheStride2_ = 0;
-    int64_t keyCacheStride3_ = 1;
+    int64_t keyCacheStride3_ = 0;
     int64_t valueCacheStride0_ = 0;
     int64_t valueCacheStride1_ = 0;
     int64_t valueCacheStride2_ = 0;
-    int64_t valueCacheStride3_ = 1;
+    int64_t valueCacheStride3_ = 0;
     int64_t kHeadSize_;
     int64_t vHeadSize_;
     int64_t batch_;

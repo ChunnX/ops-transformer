@@ -256,9 +256,7 @@ void ScatterPaKvCacheTiling::GetNonContigousStrideInfo()
     keyCacheStride0_ = keyCacheStride_[DIM0];
     keyCacheStride1_ = keyCacheStride_[DIM1];
     keyCacheStride2_ = keyCacheStride_[DIM2];
-    if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
-        keyCacheStride3_ = keyCacheStride_[DIM3];
-    }
+    keyCacheStride3_ = keyCacheStride_[DIM3];
     if (inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2) {
         keyStride0_ /= DIM2;
         keyStride1_ /= DIM2;
@@ -280,9 +278,7 @@ void ScatterPaKvCacheTiling::GetNonContigousStrideInfo()
         valueCacheStride0_ = valueCacheStride_[DIM0];
         valueCacheStride1_ = valueCacheStride_[DIM1];
         valueCacheStride2_ = valueCacheStride_[DIM2];
-        if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
-            valueCacheStride3_ = valueCacheStride_[DIM3];
-        }
+        valueCacheStride3_ = valueCacheStride_[DIM3];
         if (valueDtype_ == ge::DT_FLOAT4_E2M1 || valueDtype_ == ge::DT_FLOAT4_E1M2) {
             valueStride0_ /= DIM2;
             valueStride1_ /= DIM2;
