@@ -85,7 +85,8 @@ public:
     using ElementBInt8 = int8_t;
     using ElementCHalf = half;
     using FixpipeBlockMmad =
-        Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape, L0TileShape, LayoutA, LayoutB, LayoutC>;
+        Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape, L0TileShape, LayoutA,
+            LayoutB, LayoutC>;
 
     /// Parameters structure
     struct Params {
