@@ -13,7 +13,7 @@ message(STATUS "=== Debug: start ops.moe.moe_re_routing.op_host.CMakeLists.txt")
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
-    target_sources(op_host_aclnnInner PRIVATE
+    target_sources(op_host_aclnn PRIVATE
         moe_re_routing_def.cpp
     )
     if(CONDITION_UNIT STREQUAL "ascend950")
