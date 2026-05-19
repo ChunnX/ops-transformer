@@ -97,10 +97,9 @@ public:
         LayoutB layoutB1;
         __gm__ ElementB *ptrB2;
         LayoutB layoutB2;
-        // The unified op def has no separate bias inputs; per-channel scale
-        // information is fully carried by `weight_scales1` / `weight_scales2`
-        // (forwarded as `ptrScale1` / `ptrScale2` below). Any epilogue that
-        // historically read `ptrMAux*` now receives `nullptr`.
+        // The unified op def exposes optional bias1/bias2 inputs; when absent
+        // ptrBias1/ptrBias2 are nullptr. Per-channel scale info is fully carried
+        // by `weight_scales1` / `weight_scales2` (forwarded as `ptrScale1` / `ptrScale2`).
         __gm__ ElementScale *ptrScale1;
         LayoutScale layoutScale1;
         __gm__ ElementScale *ptrScale2;
@@ -129,6 +128,8 @@ public:
         GM_ADDR probs;
         GM_ADDR ptrXActiveMask;
         GM_ADDR ptrScales;
+        GM_ADDR ptrBias1;
+        GM_ADDR ptrBias2;
         int64_t topK;
         uint64_t initRoutingQuantTilingKey;
         uint32_t epilogueCoreNum;
@@ -158,7 +159,7 @@ public:
                GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                 GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
-                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
+                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
                 optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
                 float swigluLimit_ = std::numeric_limits<float>::infinity(),
@@ -197,6 +198,8 @@ public:
               probs(probs_),
               ptrXActiveMask(ptrXActiveMask_),
               ptrScales(ptrScales_),
+              ptrBias1(ptrBias1_),
+              ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
               symmetricPtr(symmetricPtr_),
@@ -225,7 +228,7 @@ public:
                 GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                 GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                 GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
-                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
+                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
                 optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
                 float swigluLimit_ = std::numeric_limits<float>::infinity(),
@@ -264,6 +267,8 @@ public:
               probs(probs_),
               ptrXActiveMask(ptrXActiveMask_),
               ptrScales(ptrScales_),
+              ptrBias1(ptrBias1_),
+              ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
               symmetricPtr(symmetricPtr_),
@@ -1365,7 +1370,7 @@ private:
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                     blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
-                                    static_cast<__gm__ float *>(nullptr),
+                                    reinterpret_cast<__gm__ float *>(params.ptrBias1),
                                     gmA2I4_I8[gmOffsetD], cumsumMM, rowStartThisCore, gmPerTokenScale2[rowStartThisCore],
                                     params.expertPerRank, params.EP, gmCGMM1[gmOffsetC], params.rank, params.listLen,
                                     params.epilogueCoreNum, params.swigluLimit);
@@ -1532,7 +1537,7 @@ private:
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue(gmCGMM2, gmC2, gmPerTokenScale2,
-                                      static_cast<__gm__ float *>(nullptr),
+                                      reinterpret_cast<__gm__ float *>(params.ptrBias2),
                                       realTileCoord, realTileShape, groupIdx,
                                       preSrcExpertSum, preSumBeforeRank, params.listLen);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {

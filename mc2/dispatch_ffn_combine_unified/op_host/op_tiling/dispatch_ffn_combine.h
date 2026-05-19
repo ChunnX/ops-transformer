@@ -38,8 +38,10 @@ struct DispatchFFNCombineConfig {
     //   5: weight2        (DYNAMIC, same as weight1)
     //   6: weight_scales1 (DYNAMIC, INT64 ND)
     //   7: weight_scales2 (DYNAMIC, INT64 ND)
-    //   8: x_active_mask  (OPTIONAL, INT8 ND)
-    //   9: scales         (OPTIONAL, FP32 ND)
+    //   8: bias1          (OPTIONAL, FP32 ND)
+    //   9: bias2          (OPTIONAL, FP32 ND)
+    //  10: x_active_mask  (OPTIONAL, INT8 ND)
+    //  11: scales         (OPTIONAL, FP32 ND)
     // ----------------------------------------------------------------
     uint32_t contextIndex            = 0U;
     uint32_t xIndex                  = 1U;
@@ -49,8 +51,10 @@ struct DispatchFFNCombineConfig {
     uint32_t weightTwoIndex          = 5U;
     uint32_t weightScalesOneIndex    = 6U;
     uint32_t weightScalesTwoIndex    = 7U;
-    uint32_t xActiveMaskIndex        = 8U;
-    uint32_t scalesIndex             = 9U;
+    uint32_t biasOneIndex            = 8U;
+    uint32_t biasTwoIndex            = 9U;
+    uint32_t xActiveMaskIndex        = 10U;
+    uint32_t scalesIndex             = 11U;
 
     // ----------------------------------------------------------------
     // Output indices (matching def order):
@@ -75,6 +79,8 @@ struct DispatchFFNCombineConfig {
     //  10: activation_clamp          (OPTIONAL Float, default INFINITY)
     //  11: transpose_weight1         (OPTIONAL Bool, default false)
     //  12: transpose_weight2         (OPTIONAL Bool, default false)
+    //  13: gmm2_x_dtype              (OPTIONAL Int, default DT_UNDEFINED)
+    //  14: weight1_interleave        (OPTIONAL Int, default 0)
     // ----------------------------------------------------------------
     uint32_t attrMoeExpertNumIndex          = 0U;
     uint32_t attrEpWorldSizeIndex           = 1U;
@@ -89,6 +95,8 @@ struct DispatchFFNCombineConfig {
     uint32_t attrActivationClampIndex       = 10U;
     uint32_t attrTransposeWeight1Index      = 11U;
     uint32_t attrTransposeWeight2Index      = 12U;
+    uint32_t attrGmm2XDtypeIndex            = 13U;
+    uint32_t attrWeight1InterleaveIndex     = 14U;
 };
 
 }  // namespace optiling

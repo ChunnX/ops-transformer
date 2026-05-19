@@ -63,7 +63,17 @@ class DispatchFFNCombine : public OpDef {
         .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-   this->Input("x_active_mask")
+    this->Input("bias1")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("bias2")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    this->Input("x_active_mask")
         .ParamType(OPTIONAL)
         .DataTypeList({ge::DT_INT8})
         .FormatList({ge::FORMAT_ND})
@@ -96,9 +106,11 @@ class DispatchFFNCombine : public OpDef {
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
     this->Attr("num_max_token_per_rank").AttrType(OPTIONAL).Int(0);
     this->Attr("activation").AttrType(OPTIONAL).String("");
-    this->Attr("activation_clamp").AttrType(OPTIONAL).Float(INFINITY);
+    this->Attr("activation_clamp").AttrType(OPTIONAL).Float(0.0f);
     this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
     this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
+    this->Attr("gmm2_x_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
+    this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)

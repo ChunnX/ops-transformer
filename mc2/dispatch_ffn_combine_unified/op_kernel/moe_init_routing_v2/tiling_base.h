@@ -37,10 +37,10 @@ public:
         if (!ret){
             return ret;
         }
-        // ret = PostTiling();
-        // if (!ret){
-        //     return ret;
-        // }
+        ret = PostTiling();
+        if (!ret){
+            return ret;
+        }
         tilingKey_ = GetTilingKey();
         
         return true;
@@ -54,7 +54,7 @@ public:
 
     virtual bool DoOpTiling() = 0;
     virtual bool GetWorkspaceSize() = 0;
-    // virtual bool PostTiling() = 0;
+    virtual bool PostTiling() { return true; }
     virtual uint64_t GetTilingKey() const = 0;
 //protected:
     uint32_t blockDim_{0};

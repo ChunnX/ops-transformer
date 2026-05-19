@@ -38,6 +38,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Mc2Tiling;
 
 #define HCCL_BUFFSIZE "HCCL_BUFFSIZE"
 
@@ -110,6 +111,8 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
     auto activationClampPtr     = attrs->GetAttrPointer<float> (static_cast<int>(config.attrActivationClampIndex));
     auto transposeW1Ptr         = attrs->GetAttrPointer<bool>   (static_cast<int>(config.attrTransposeWeight1Index));
     auto transposeW2Ptr         = attrs->GetAttrPointer<bool>   (static_cast<int>(config.attrTransposeWeight2Index));
+    auto gmm2XDtypePtr          = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrGmm2XDtypeIndex));
+    auto weight1InterleavePtr   = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrWeight1InterleaveIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "moe_expert_num is invalid."), return GRAPH_FAILED);
@@ -168,6 +171,9 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
                                                                        std::numeric_limits<float>::infinity();
     info.isTransposeW1         = (*transposeW1Ptr) ? 1U : 0U;
     info.isTransposeW2         = (*transposeW2Ptr) ? 1U : 0U;
+    info.gmm2XDtype            = (gmm2XDtypePtr        != nullptr) ? static_cast<int32_t>(*gmm2XDtypePtr) :
+                                                                       static_cast<int32_t>(ge::DT_UNDEFINED);
+    info.weight1Interleave     = (weight1InterleavePtr != nullptr) ? static_cast<uint32_t>(*weight1InterleavePtr) : 0U;
 
     OP_LOGD(K_INNER_DEBUG, "moeExpertNum=%u, epWorldSize=%u, cclBufferSize=%u, maxRecvTokenNum=%u",
             info.moeExpertNum, info.epWorldSize, info.cclBufferSize, info.maxRecvTokenNum);
@@ -177,6 +183,10 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
             info.commAlgCode, info.numMaxTokenPerRank, info.activationCode, info.activationClamp);
     OP_LOGD(K_INNER_DEBUG, "isTransposeW1=%u, isTransposeW2=%u",
             info.isTransposeW1, info.isTransposeW2);
+    OP_LOGD(K_INNER_DEBUG, "gmm2XDtype=%d, weight1Interleave=%u",
+            info.gmm2XDtype, info.weight1Interleave);
+    OP_LOGD(K_INNER_DEBUG, "hasBias1=%u, hasBias2=%u",
+            info.hasBias1, info.hasBias2);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -241,6 +251,11 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     auto scalesDesc      = context->GetOptionalInputDesc(config.scalesIndex);
     info.hasXActiveMask = (xActiveMaskDesc != nullptr) ? 1U : 0U;
     info.hasScales      = (scalesDesc      != nullptr) ? 1U : 0U;
+
+    auto bias1Desc = context->GetOptionalInputDesc(config.biasOneIndex);
+    auto bias2Desc = context->GetOptionalInputDesc(config.biasTwoIndex);
+    info.hasBias1 = (bias1Desc != nullptr) ? 1U : 0U;
+    info.hasBias2 = (bias2Desc != nullptr) ? 1U : 0U;
 
     OP_LOGD(K_INNER_DEBUG, "M=%u ", info.M);
     OP_LOGD(K_INNER_DEBUG, "K=%u ", info.K);

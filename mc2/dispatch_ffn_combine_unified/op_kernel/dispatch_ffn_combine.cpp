@@ -29,38 +29,64 @@ template <bool TPL_IS_TRANSPOSE_W1, bool TPL_IS_TRANSPOSE_W2,
 __global__ __aicore__ void dispatch_ffn_combine(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
     GM_ADDR weight1, GM_ADDR weight2, GM_ADDR weightScales1, GM_ADDR weightScales2,
-    GM_ADDR xActiveMask, GM_ADDR scales,
+    GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales,
     GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    constexpr bool isW1Nz = (FORMAT_WEIGHT1 == FORMAT_FRACTAL_NZ);
-    constexpr bool isW2Nz = (FORMAT_WEIGHT2 == FORMAT_FRACTAL_NZ);
+    constexpr bool isNz = (FORMAT_WEIGHT1 == FORMAT_FRACTAL_NZ);
     constexpr bool isA2 = (TPL_ARCH == SOC_ASCEND910B);
 
-    if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
-                  TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
-        REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataQuant);
-        GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
+    if constexpr (isA2) {
+        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
+                      TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
+            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataQuant);
+            GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
-        DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
-                           TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
-                           isW1Nz, isW2Nz, isA2> op;
-        op.Init(context, x, topkIds, topkWeights, weight1, weight2,
-                weightScales1, weightScales2, xActiveMask, scales,
-                yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-        op.Process();
+            DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
+                               TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
+                               isNz, true> op;
+            op.Init(context, x, topkIds, topkWeights, weight1, weight2,
+                    weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
+                    yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+            op.Process();
+        } else {
+            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
+            GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
+
+            DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
+                               TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
+                               isNz, true> op;
+            op.Init(context, x, topkIds, topkWeights, weight1, weight2,
+                    weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
+                    yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+            op.Process();
+        }
     } else {
-        REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
-        GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
+        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
+                      TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
+            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataQuant);
+            GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
-        DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
-                           TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
-                           isW1Nz, isW2Nz, isA2> op;
-        op.Init(context, x, topkIds, topkWeights, weight1, weight2,
-                weightScales1, weightScales2, xActiveMask, scales,
-                yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-        op.Process();
+            DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
+                               TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
+                               isNz, false> op;
+            op.Init(context, x, topkIds, topkWeights, weight1, weight2,
+                    weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
+                    yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+            op.Process();
+        } else {
+            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
+            GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
+
+            DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
+                               TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
+                               isNz, false> op;
+            op.Init(context, x, topkIds, topkWeights, weight1, weight2,
+                    weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
+                    yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+            op.Process();
+        }
     }
 }

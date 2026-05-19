@@ -68,12 +68,11 @@ namespace DispatchFFNCombineImpl {
 //   CType_ : output  element type  (DTYPE_Y)
 //   TB1_   : transpose_weight1 attribute
 //   TB2_   : transpose_weight2 attribute
-//   NzW1_  : whether weight1 is in FRACTAL_NZ format
-//   NzW2_  : whether weight2 is in FRACTAL_NZ format
+//   Nz_    : whether weight1/2 is in FRACTAL_NZ format (both are the same)
 //   IS_A2_ : whether running on Atlas A2 (910B); false means A3 (910_93)
 #define MegaMoeClass                                                                                                  \
-    typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool NzW1_, bool NzW2_, bool IS_A2_
-#define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, NzW1_, NzW2_, IS_A2_
+    typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
+#define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_
 
 using namespace AscendC;
 template <MegaMoeClass>
@@ -82,7 +81,7 @@ public:
     __aicore__ inline DispatchFFNCombine() {};
     __aicore__ inline void Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
                                 GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-                                GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
+                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
                                 GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
@@ -95,6 +94,8 @@ private:
     GM_ADDR weight2GM_;
     GM_ADDR weightScales1GM_;
     GM_ADDR weightScales2GM_;
+    GM_ADDR bias1GM_;
+    GM_ADDR bias2GM_;
     GM_ADDR xActiveMaskGM_;
     GM_ADDR scalesGM_;
     GM_ADDR yGM_;
@@ -133,7 +134,7 @@ template <MegaMoeClass>
 __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Init(
     GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
     GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-    GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
+    GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
     GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
@@ -148,6 +149,8 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Init(
     weight2GM_ = weight2GM;
     weightScales1GM_ = weightScales1GM;
     weightScales2GM_ = weightScales2GM;
+    bias1GM_ = bias1GM;
+    bias2GM_ = bias2GM;
     xActiveMaskGM_ = xActiveMaskGM;
     scalesGM_ = scalesGM;
     yGM_ = yGM;
@@ -233,7 +236,7 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
 
     using LayoutA = layout::RowMajor;
     using LayoutB = typename std::conditional<
-        NzW1_,
+        Nz_,
         layout::zN,
         typename std::conditional<TB1_, layout::ColumnMajor, layout::RowMajor>::type
     >::type;
@@ -372,6 +375,7 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
 
     typename MatmulKernel::Params params;
     if constexpr (kRoutingIsQuant) {
+        // 缺少bias
         params = typename MatmulKernel::Params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
             static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
@@ -386,7 +390,7 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
             yGM_, layoutD1, layoutD2,
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, moeInitRoutingQuantV2TilingData,
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, bias1GM_, bias2GM_, moeInitRoutingQuantV2TilingData,
             epilogueGranularity, activationClamp, winRankAddr_[rank]};
     } else {
         params = typename MatmulKernel::Params{
@@ -403,7 +407,7 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
             yGM_, layoutD1, layoutD2,
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, moeInitRoutingV2TilingData,
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, bias1GM_, bias2GM_, moeInitRoutingV2TilingData,
             epilogueGranularity, activationClamp, winRankAddr_[rank]};
     }
 

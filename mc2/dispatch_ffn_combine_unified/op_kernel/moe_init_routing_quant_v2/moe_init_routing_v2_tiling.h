@@ -2,62 +2,13 @@
 #ifndef ASCENDC_DISPATCH_FFN_COMBINE_INIT_ROUTING_TILING_H
 #define ASCENDC_DISPATCH_FFN_COMBINE_INIT_ROUTING_TILING_H
 
-#include "tiling_base.h"
+#include "../moe_init_routing_v2/moe_init_routing_v2_tiling.h"
 #include <cmath>
 
 namespace optiling {
-const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
-const static int64_t TILING_KEY_DROPLESS_SORT_MULTI_CORE = 10002;
-const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_ONE_CORE = 10011;
-const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_MULTI_CORE = 10012;
-const static int64_t TILING_KEY_HIGH_PERFORMANCE = 20000;
-const static int64_t NUM_TWO = 2;
-const static int64_t NUM_THREE = 3;
-const static int64_t NUM_FOUR = 4;
-const static int64_t MRG_LIST_NUM = 4;
-const static int64_t SORT32_ALIGN_ELEMENT = 32;
-const static int64_t ONE_BLOCK_BYTE = 32;
-const static size_t DIM_ONE = 1;
-const static size_t DIM_TWO = 2;
-const static size_t DIM_THREE = 3;
-const static int32_t SIZE_16 = 16;
-const static int32_t LENGTH_1024 = 1024;
-const static int64_t MAX_COLS_ONE_LOOP = 16376;
-const static int64_t ASSIST_NUM = 256;
-const static int64_t INDEX_INPUT_X = 0;
-const static int64_t INDEX_INPUT_EXPERT_IDX = 1;
-const static int64_t ATTR_ACTIVE_ROWS = 0;
-const static int64_t ATTR_EXPERT_CAPACITY = 1;
-const static int64_t ATTR_EXPERT_NUM = 2;
-const static int64_t ATTR_DROP_PAD_MODE = 3;
-const static int64_t ATTR_EXPERT_TOKENS_COUNT_OR_CUMSUM_FLAG = 4;
-const static int64_t ATTR_EXPERT_TOKENS_BEFORE_CAPACITY_FLAG = 5;
-const static int64_t OUTOUT_EXPANDED_X = 0;
-const static int64_t OUTOUT_EXPANDED_ROW_IDX = 1;
-const static int64_t OUTOUT_EXPERT_TOKENS_COUNT_OR_CUMSUM = 2;
-const static int64_t OUTOUT_EXPERT_TOKENS_BEFORE_CAPACITY = 3;
-const static int64_t KV_FACTOR = 2;
-const static int64_t ONE_CORE_SORT_BUFFER = 6;
-const static int64_t EXPERT_TOKENS_COUNT = 2;
 
-
-inline static int64_t CeilLog4(int64_t x) {
-  return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
-}
-
-inline static int64_t GetPerOrLastValue(int64_t x, int64_t y) {
-  if (y == 0) {
-    return 0;
-  }
-  return x <= y ? x : x % y;
-}
-
-template <class T>
-constexpr T CeilDiv(const T dividend, const T divisor)
-{
-    return (dividend + divisor - 1) / divisor;
-}
-
+// Quant-specific inner types wrapping the canonical Moe* definitions
+// from moe_init_routing_v2_tiling.h
 
 struct InnerMoeV2VBSComputeTilingData {
     int64_t needCoreNum = 0;
@@ -119,7 +70,7 @@ class InnerMoeInitRoutingV2TilingBase : public TilingBaseClass {
 
 protected:
   inline bool GetPlatformInfo(int64_t aivCoreNum, int64_t ubSizePlatForm) override;
-  inline bool GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity, 
+  inline bool GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity,
   int64_t expertNum, int64_t activeNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag,
   bool expertTokensBeforeCapacityFlag, int64_t inuptXDtypeSize, int64_t quantMode, int64_t scaleDim0) override;
 
@@ -177,7 +128,7 @@ inline uint64_t InnerMoeInitRoutingV2TilingBase::GetTilingKey() const {
     return TILING_KEY_HIGH_PERFORMANCE;
   }
   if (dropPadMode == 0) {
-    if (totalLength <= sortLoopMaxElement) {  // Sorting uses only one core
+    if (totalLength <= sortLoopMaxElement) {
       return TILING_KEY_DROPLESS_SORT_ONE_CORE;
     } else {
       return TILING_KEY_DROPLESS_SORT_MULTI_CORE;
@@ -192,10 +143,10 @@ inline uint64_t InnerMoeInitRoutingV2TilingBase::GetTilingKey() const {
   return tilingKey_;
 }
 
-inline bool InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity, 
+inline bool InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity,
   int64_t expertNum, int64_t activateNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag,
   bool expertTokensBeforeCapacityFlag, int64_t inuptXDtypeSize, int64_t quantMode, int64_t scaleDim0) {
-  
+
   this->activateNum = activateNum;
   this->expertCapacity = expertCapacity;
   this->expertNum = expertNum;
@@ -203,10 +154,8 @@ inline bool InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo(int64_t m, int64_
   this->expertTokensCountOrCumsumFlag = expertTokensCountOrCumsumFlag;
   this->expertTokensBeforeCapacityFlag = expertTokensBeforeCapacityFlag;
   if (dropPadMode == 1) {
-    // Do not output expertTokensCountOrCumsum in drop-pad mode
     expertTokensCountOrCumsumFlag = 0;
   } else {
-    // Do not output expertTokensBeforeCapacity in dropless mode
     expertTokensBeforeCapacityFlag = false;
   }
   moeInitRoutingTilingData.cols = cols;
@@ -232,8 +181,7 @@ inline bool InnerMoeInitRoutingV2TilingBase::GetPlatformInfo(int64_t aivCoreNum,
 
 
 inline bool InnerMoeInitRoutingV2TilingBase::GetWorkspaceSize() {
-  // Calculate workspace size
-  size_t sortWorkspaceSize = totalLength * sizeof(float) * NUM_TWO * NUM_THREE;  // Space needed for sorting
+  size_t sortWorkspaceSize = totalLength * sizeof(float) * NUM_TWO * NUM_THREE;
   size_t scatterWorkspaceSize = totalLength * sizeof(int32_t) * NUM_TWO;
   size_t expertTokenFlagSize = aivNum * 2 * sizeof(int32_t);
   workspaceSize_ = sortWorkspaceSize + scatterWorkspaceSize + expertTokenFlagSize + SIZE_16 * LENGTH_1024 * LENGTH_1024;
@@ -253,12 +201,11 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSOneCoreCompute(InnerMoeV2
 }
 
 inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoeV2VBSComputeTilingData* tilingData) {
-      //Tiling4VBSMultiCoreCompute
-      int64_t needCoreNum = CeilDiv(totalLength, sortLoopMaxElement);  // Round up
+      int64_t needCoreNum = CeilDiv(totalLength, sortLoopMaxElement);
       needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));
-      needCoreNum = std::min(needCoreNum, aivNum);                     // Cannot exceed physical core count
+      needCoreNum = std::min(needCoreNum, aivNum);
       if (needCoreNum > 0) {
-          int64_t perCoreElements = totalLength / needCoreNum;  // Elements handled per core
+          int64_t perCoreElements = totalLength / needCoreNum;
           int64_t alineFloorPerCoreElements = perCoreElements - perCoreElements % SORT32_ALIGN_ELEMENT;
           int64_t lastCoreElement = totalLength - (needCoreNum - 1) * alineFloorPerCoreElements;
           int64_t alineCeilPerCoreElements = perCoreElements + SORT32_ALIGN_ELEMENT - perCoreElements % SORT32_ALIGN_ELEMENT;
@@ -271,7 +218,7 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoe
           tilingData->needCoreNum = needCoreNum;
           do {
               tilingData->perCoreElements = perCoreElements;
-              tilingData->perCoreLoops = CeilDiv(tilingData->perCoreElements, sortLoopMaxElement);  // Loops handled per core
+              tilingData->perCoreLoops = CeilDiv(tilingData->perCoreElements, sortLoopMaxElement);
               tilingData->perCorePerLoopElements = std::min(tilingData->perCoreElements, sortLoopMaxElement);
               tilingData->perCoreLastLoopElements = tilingData->perCoreElements - (tilingData->perCoreLoops - 1) * tilingData->perCorePerLoopElements;
               tilingData->lastCoreElements = totalLength - (tilingData->needCoreNum - 1) * tilingData->perCoreElements;
@@ -291,7 +238,7 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoe
 inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSCompute() {
   auto tilingData = &moeInitRoutingTilingData.vbsComputeParamsOp;
   tilingData->oneLoopMaxElements = sortLoopMaxElement;
-  if (totalLength <= sortLoopMaxElement) {  // Only one core is used
+  if (totalLength <= sortLoopMaxElement) {
     Tiling4VBSOneCoreCompute(tilingData);
     return;
   }
@@ -301,11 +248,11 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSCompute() {
 inline void InnerMoeInitRoutingV2TilingBase::Tiling4VMSMiddleCompute() {
   auto vbsComputeTilingData = &moeInitRoutingTilingData.vbsComputeParamsOp;
   auto tilingData = &moeInitRoutingTilingData.vmsMiddleComputeParamsOp;
-  if (vbsComputeTilingData->needCoreNum <= MRG_LIST_NUM) {  // No intermediate merge if queue count fits one VMS
-      tilingData->needCoreNum = 0;                               // Required core count
+  if (vbsComputeTilingData->needCoreNum <= MRG_LIST_NUM) {
+      tilingData->needCoreNum = 0;
   } else {
       int64_t needCoreNum = CeilDiv(vbsComputeTilingData->needCoreNum, MRG_LIST_NUM);
-      tilingData->needCoreNum = needCoreNum;  // Required core count
+      tilingData->needCoreNum = needCoreNum;
   }
 }
 
@@ -330,7 +277,7 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCompute() {
   tilingData->needCoreNum = needCoreNum;
   int64_t lastCoreNum = totalLength - perCoreRows * (tilingData->needCoreNum - 1);
   tilingData->perCoreRows = perCoreRows;
-  if (perLoopMaxRows >= tilingData->perCoreRows) {  // One loop completes
+  if (perLoopMaxRows >= tilingData->perCoreRows) {
       tilingData->perCorePerLoopRows = tilingData->perCoreRows;
       tilingData->perCoreLastLoopRows = tilingData->perCoreRows;
   } else {

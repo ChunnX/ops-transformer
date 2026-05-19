@@ -56,10 +56,15 @@ struct DispatchFFNCombineInfoCommon {
     uint32_t isTransposeW1;
     uint32_t isTransposeW2;
 
+    uint32_t hasBias1;
+    uint32_t hasBias2;
     uint32_t hasXActiveMask;
     uint32_t hasScales;
 
     uint32_t isQuantRouting;
+
+    int32_t  gmm2XDtype;
+    uint32_t weight1Interleave;
 
     uint64_t initRoutingQuantTilingKey;
 };
