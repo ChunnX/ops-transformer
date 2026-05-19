@@ -303,16 +303,20 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 }
 
 // 根据NPU架构计算TilingKey
-static uint64_t CalTilingKey(const std::string & commMode)
+static uint64_t CalTilingKey(const char *nodeName, const std::string & commMode)
 {
+    OP_LOGI(nodeName, "start CalTilingKey");
+    OP_LOGI(nodeName, "commMode = %s", commMode.c_str());
     uint64_t archTag = TILING_KEY_BASE_A5;
-    uint8_t commModeByte = 0;
+    uint8_t commModeByte = TILINGKEY_TPL_MTE;
     if (commMode =="mte") {
         commModeByte = TILINGKEY_TPL_MTE;
     } else if (commMode =="urma") {
         commModeByte = TILINGKEY_TPL_URAMA;
     }
     uint64_t tilingKey = GET_TPL_TILING_KEY(commModeByte, archTag);
+    OP_LOGI(nodeName, "tilingKey = %ld", tilingKey);
+    OP_LOGI(nodeName, "end CalTilingKey");
     return tilingKey;
 }
 
@@ -428,7 +432,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto commModePtr = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     std::string commMode(commModePtr);
 
-    uint64_t tilingKey = CalTilingKey(commMode);
+    uint64_t tilingKey = CalTilingKey(nodeName, commMode);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
@@ -445,7 +449,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 
     OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);
-
+    OP_LOGI(nodeName, "Exit BandwidthTest tiling check func.");
     return ge::GRAPH_SUCCESS;
 }
 
