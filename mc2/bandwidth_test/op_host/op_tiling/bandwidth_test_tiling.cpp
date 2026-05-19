@@ -166,7 +166,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
         *modePtr), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((std::strcmp(commModePtr, "mte") != 0) && (std::strcmp(commModePtr, "urama") != 0)),
+    OP_TILING_CHECK((std::strcmp(commModePtr, "mte") != 0) && (std::strcmp(commModePtr, "urama") != 0),
         OP_LOGE(nodeName, "commMode is invalid, should be mte or urama, but got commMode=%s.",
         *commModePtr), return ge::GRAPH_FAILED);
 
