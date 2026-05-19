@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -12,7 +12,6 @@
 
 import torch
 
-# 定义测试参数组合
 TEST_PARAMS = {
     "decode_first":{
         "Testcase_Name": [None],
@@ -33,7 +32,11 @@ TEST_PARAMS = {
         "block_size1": [128],
         "block_size2": [128],
         "cu_seqlens_q": [None],
-        "seqused_kv": [None],
+        "seqused_ori_kv": [None],
+        "seqused_cmp_kv": [None],
+        "cu_seqlens_ori_kv": [None],
+        "cu_seqlens_cmp_kv": [None],
+        "cmp_residual_kv": [None],
         "softmax_scale": [0.04419417],
         "cmp_ratio": [1],
         "ori_mask_mode": [4],
@@ -43,8 +46,8 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
+        "template_run_mode": ["SWA"],
+        "actlen_mode":["full"],
         "S1EQS2":[False]
     },
 
@@ -57,7 +60,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.float8_e4m3fn],
         "B": [1],
         "S1": [8192],
-        "S2": [8192], 
+        "S2": [8192],
         "N1": [64],
         "N2": [1],
         "D": [512],
@@ -66,8 +69,12 @@ TEST_PARAMS = {
         "block_num2": [None],
         "block_size1": [128],
         "block_size2": [128],
-        "cu_seqlens_q": [None], 
-        "seqused_kv": [None], 
+        "cu_seqlens_q": [None],
+        "seqused_ori_kv": [None],
+        "seqused_cmp_kv": [None],
+        "cu_seqlens_ori_kv": [None],
+        "cu_seqlens_cmp_kv": [None],
+        "cmp_residual_kv": [None],
         "softmax_scale": [0.04419417],
         "cmp_ratio": [1],
         "ori_mask_mode": [4],
@@ -77,8 +84,8 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
+        "template_run_mode": ["SWA"],
+        "actlen_mode":["full"],
         "S1EQS2":[False]
     },
     "decode_first_hif8":{
@@ -100,7 +107,11 @@ TEST_PARAMS = {
         "block_size1": [128],
         "block_size2": [128],
         "cu_seqlens_q": [None],
-        "seqused_kv": [None],
+        "seqused_ori_kv": [None],
+        "seqused_cmp_kv": [None],
+        "cu_seqlens_ori_kv": [None],
+        "cu_seqlens_cmp_kv": [None],
+        "cmp_residual_kv": [None],
         "softmax_scale": [0.04419417],
         "cmp_ratio": [1],
         "ori_mask_mode": [4],
@@ -110,12 +121,11 @@ TEST_PARAMS = {
         "kv_quant_mode": [10],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SWA"], # SWA SCFA CFA
-        "actlen_mode":["full"],       # random full
+        "template_run_mode": ["SWA"],
+        "actlen_mode":["full"],
         "S1EQS2":[False]
     },
 }
 
-# 填入启用的测试参数
 ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

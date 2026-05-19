@@ -41,7 +41,8 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     param_names = [
         "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_kv", "softmax_scale", "cmp_ratio",
+        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
+        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv", "softmax_scale", "cmp_ratio",
         "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
         "template_run_mode", "actlen_mode", "S1EQS2",
     ]
@@ -65,7 +66,11 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_block_size1"],
         locals()["param_block_size2"],
         locals()["param_cu_seqlens_q"],
-        locals()["param_seqused_kv"],
+        locals()["param_seqused_ori_kv"],
+        locals()["param_seqused_cmp_kv"],
+        locals()["param_cu_seqlens_ori_kv"],
+        locals()["param_cu_seqlens_cmp_kv"],
+        locals()["param_cmp_residual_kv"],
         locals()["param_softmax_scale"],
         locals()["param_cmp_ratio"],
         locals()["param_ori_mask_mode"],
@@ -87,7 +92,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     print(locals()["param_combinations"])
 
 case_id = 0
-def sas(param_combinations):   # 初始化参数和tensor
+def sas(param_combinations):
     global case_id
     Testcase_Name = param_combinations['Testcase_Name']
     layout_q = param_combinations['layout_q']
@@ -107,7 +112,11 @@ def sas(param_combinations):   # 初始化参数和tensor
     block_size1 = param_combinations['block_size1']
     block_size2 = param_combinations['block_size2']
     cu_seqlens_q = param_combinations['cu_seqlens_q']
-    seqused_kv = param_combinations['seqused_kv']
+    seqused_ori_kv = param_combinations['seqused_ori_kv']
+    seqused_cmp_kv = param_combinations['seqused_cmp_kv']
+    cu_seqlens_ori_kv = param_combinations['cu_seqlens_ori_kv']
+    cu_seqlens_cmp_kv = param_combinations['cu_seqlens_cmp_kv']
+    cmp_residual_kv = param_combinations['cmp_residual_kv']
     softmax_scale = param_combinations['softmax_scale']
     cmp_ratio = param_combinations['cmp_ratio']
     ori_mask_mode = param_combinations['ori_mask_mode']
@@ -131,21 +140,20 @@ def sas(param_combinations):   # 初始化参数和tensor
     if Testcase_Name ==None :
         Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
 
-    # 生成actLen 
     QS = [0]
     KVS = []
-    if cu_seqlens_q == None or seqused_kv == None:
+    if cu_seqlens_q == None or seqused_ori_kv == None:
         if layout_q == "TND":
             for i in range(B):
                 if actlen_mode == "random":
                     tmpS1 = S1 - random.randint(0, S1 - 1)
                     QS.append(tmpS1 + QS[-1])
-                    if S1EQS2: #  qs=kvs
+                    if S1EQS2:
                         tmpS2 = tmpS1
-                    else: # qs != kvs
+                    else:
                         tmpS2 = S2 - random.randint(0, math.ceil(S2/2) - 1)
                     KVS.append(tmpS2)
-                elif actlen_mode == "full":  ## 走该分支
+                elif actlen_mode == "full":
                     tmpS1 = S1
                     QS.append(tmpS1 + QS[-1])
                     KVS.append(S2)
@@ -159,15 +167,32 @@ def sas(param_combinations):   # 初始化参数和tensor
                 KVS.append(tmpS2)
 
         cu_seqlens_q = QS
-        seqused_kv = KVS
+        seqused_ori_kv = KVS
+
+    if seqused_cmp_kv == None:
+        seqused_cmp_kv = [math.floor(s / cmp_ratio) for s in seqused_ori_kv]
+
+    if cmp_mask_mode == 3 and cmp_ratio != 1:
+        if cmp_residual_kv == None:
+            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv]
+
+    if cu_seqlens_ori_kv == None:
+        cu_seqlens_ori_kv = [0]
+        for s in seqused_ori_kv:
+            cu_seqlens_ori_kv.append(cu_seqlens_ori_kv[-1] + s)
+
+    if cu_seqlens_cmp_kv == None:
+        cu_seqlens_cmp_kv = [0]
+        for s in seqused_cmp_kv:
+            cu_seqlens_cmp_kv.append(cu_seqlens_cmp_kv[-1] + s)
+
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
-    # maxSeqLen / block_size向上取整
-    ori_block_num_per_batch = []
+    # ori_block_num_per_batch = []
     ori_block_num_sum = 0
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
-    for cur_ori_act_kv in seqused_kv:
+    for cur_ori_act_kv in seqused_ori_kv:
         cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
         ori_block_num_per_batch.append(cur_ori_kv_block_num)
         ori_block_num_sum += cur_ori_kv_block_num
@@ -180,7 +205,8 @@ def sas(param_combinations):   # 初始化参数和tensor
     block_num2 = cmp_block_num_sum
     
     params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-             block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
+             block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, \
+             cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
              cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode
 
     # 输入参数的合法性校验
