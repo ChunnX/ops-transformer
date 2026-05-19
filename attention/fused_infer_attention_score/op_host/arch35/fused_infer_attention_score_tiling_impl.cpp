@@ -1953,103 +1953,103 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingCo
 
 void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGD(fiaInfo.opName, "bSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_bSize());
-    OP_LOGD(fiaInfo.opName, "t1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_t1Size());
-    OP_LOGD(fiaInfo.opName, "t2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_t2Size());
-    OP_LOGD(fiaInfo.opName, "n2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_n2Size());
-    OP_LOGD(fiaInfo.opName, "gSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_gSize());
-    OP_LOGD(fiaInfo.opName, "s1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_s1Size());
-    OP_LOGD(fiaInfo.opName, "s2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_s2Size());
-    OP_LOGD(fiaInfo.opName, "alignedS2:%d", faRunTilingAdapter_.inputParamsRegbase.get_alignedS2());
-    OP_LOGD(fiaInfo.opName, "dSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSize());
-    OP_LOGD(fiaInfo.opName, "dSizeV:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSizeV());
-    OP_LOGD(fiaInfo.opName, "dSizeRope:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSizeRope());
-    OP_LOGD(fiaInfo.opName, "keepProb:%d", faRunTilingAdapter_.inputParamsRegbase.get_keepProb());
-    OP_LOGD(fiaInfo.opName, "scaleValue:%d", faRunTilingAdapter_.inputParamsRegbase.get_scaleValue());
-    OP_LOGD(fiaInfo.opName, "preTokens:%d", faRunTilingAdapter_.inputParamsRegbase.get_preTokens());
-    OP_LOGD(fiaInfo.opName, "nextTokens:%d", faRunTilingAdapter_.inputParamsRegbase.get_nextTokens());
-    OP_LOGD(fiaInfo.opName, "pseS1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseS1Size());
-    OP_LOGD(fiaInfo.opName, "pseS2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseS2Size());
-    OP_LOGD(fiaInfo.opName, "pseBSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseBSize());
-    OP_LOGD(fiaInfo.opName, "bandIndex:%d", faRunTilingAdapter_.inputParamsRegbase.get_bandIndex());
-    OP_LOGD(fiaInfo.opName, "layoutType:%d", faRunTilingAdapter_.inputParamsRegbase.get_layoutType());
-    OP_LOGD(fiaInfo.opName, "pseShapeType:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseShapeType());
-    OP_LOGD(fiaInfo.opName, "attenMaskShapeType:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskShapeType());
-    OP_LOGD(fiaInfo.opName, "attenMaskDataType:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskDataType());
-    OP_LOGD(fiaInfo.opName, "attenMaskCompressMode:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskCompressMode());
-    OP_LOGD(fiaInfo.opName, "implMode:%d", faRunTilingAdapter_.inputParamsRegbase.get_implMode());
-    OP_LOGD(fiaInfo.opName, "sparseType:%d", faRunTilingAdapter_.inputParamsRegbase.get_sparseType());
-    OP_LOGD(fiaInfo.opName, "needDropMaskOp:%d", faRunTilingAdapter_.inputParamsRegbase.get_needDropMaskOp());
-    OP_LOGD(fiaInfo.opName, "dropMaskOuter:%d", faRunTilingAdapter_.inputParamsRegbase.get_dropMaskOuter());
-    OP_LOGD(fiaInfo.opName, "pseEncodeType:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseEncodeType());
-    OP_LOGD(fiaInfo.opName, "remain:%d", faRunTilingAdapter_.inputParamsRegbase.get_remain());
-    OP_LOGD(fiaInfo.opName, "attenMaskS2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskS2Size());
-    OP_LOGD(fiaInfo.opName, "pseType:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseType());
-    OP_LOGD(fiaInfo.opName, "rsv1:%d", faRunTilingAdapter_.inputParamsRegbase.get_rsv1());
-    OP_LOGD(fiaInfo.opName, "qStartIdx:%d", faRunTilingAdapter_.inputParamsRegbase.get_qStartIdx());
-    OP_LOGD(fiaInfo.opName, "kvStartIdx:%d", faRunTilingAdapter_.inputParamsRegbase.get_kvStartIdx());
-    OP_LOGD(fiaInfo.opName, "s1SparseValidSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_s1SparseValidSize());
-    OP_LOGD(fiaInfo.opName, "s2SparseValidSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_s2SparseValidSize());
-    OP_LOGD(fiaInfo.opName, "seed:%d", faRunTilingAdapter_.inputParamsRegbase.get_seed());
-    OP_LOGD(fiaInfo.opName, "offset:%d", faRunTilingAdapter_.inputParamsRegbase.get_offset());
-    OP_LOGD(fiaInfo.opName, "keepProbUint8:%d", faRunTilingAdapter_.inputParamsRegbase.get_keepProbUint8());
-    OP_LOGD(fiaInfo.opName, "pseAlibiBaseS1:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseAlibiBaseS1());
-    OP_LOGD(fiaInfo.opName, "pseAlibiBaseS2:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseAlibiBaseS2());
-    OP_LOGD(fiaInfo.opName, "deqScaleFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScaleFlag());
-    OP_LOGD(fiaInfo.opName, "deqScale2Flag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScale2Flag());
-    OP_LOGD(fiaInfo.opName, "isActualSeqLengthsNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsNull());
-    OP_LOGD(fiaInfo.opName, "isActualSeqLengthsKVNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsKVNull());
-    OP_LOGD(fiaInfo.opName, "actualSeqLengthsSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
-    OP_LOGD(fiaInfo.opName, "actualSeqLengthsKVSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsKVSize());
-    OP_LOGD(fiaInfo.opName, "isKvContinuous:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKvContinuous());
-    OP_LOGD(fiaInfo.opName, "fromFused:%d", faRunTilingAdapter_.inputParamsRegbase.get_fromFused());
-    OP_LOGD(fiaInfo.opName, "isBSNDOut:%d", faRunTilingAdapter_.inputParamsRegbase.get_isBSNDOut());
-    OP_LOGD(fiaInfo.opName, "transposeLayout:%d", faRunTilingAdapter_.inputParamsRegbase.get_transposeLayout());
-    OP_LOGD(fiaInfo.opName, "isGqa:%d", faRunTilingAdapter_.inputParamsRegbase.get_isGqa());
-    OP_LOGD(fiaInfo.opName, "isSoftMaxLseEnable:%d", faRunTilingAdapter_.inputParamsRegbase.get_isSoftMaxLseEnable());
-    OP_LOGD(fiaInfo.opName, "isActualSharedPrefixLenNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSharedPrefixLenNull());
-    OP_LOGD(fiaInfo.opName, "isQHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isQHasLeftPadding());
-    OP_LOGD(fiaInfo.opName, "isKVHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKVHasLeftPadding());
-    OP_LOGD(fiaInfo.opName, "prefixSeqInnerSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_prefixSeqInnerSize());
-    OP_LOGD(fiaInfo.opName, "headNumRatio:%d", faRunTilingAdapter_.inputParamsRegbase.get_headNumRatio());
-    OP_LOGD(fiaInfo.opName, "blockSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_blockSize());
-    OP_LOGD(fiaInfo.opName, "blockTableDim2:%d", faRunTilingAdapter_.inputParamsRegbase.get_blockTableDim2());
-    OP_LOGD(fiaInfo.opName, "paBlockNumSum:%d", faRunTilingAdapter_.inputParamsRegbase.get_paBlockNumSum());
-    OP_LOGD(fiaInfo.opName, "paLayoutType:%d", faRunTilingAdapter_.inputParamsRegbase.get_paLayoutType());
-    OP_LOGD(fiaInfo.opName, "attenMaskS1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskS1Size());
-    OP_LOGD(fiaInfo.opName, "isRowInvalid:%d", faRunTilingAdapter_.inputParamsRegbase.get_isRowInvalid());
-    OP_LOGD(fiaInfo.opName, "kvSplitPart:%d", faRunTilingAdapter_.inputParamsRegbase.get_kvSplitPart());
-    OP_LOGD(fiaInfo.opName, "accumOutSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_accumOutSize());
-    OP_LOGD(fiaInfo.opName, "logSumExpSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_logSumExpSize());
-    OP_LOGD(fiaInfo.opName, "isPostQuantPerChnl:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantPerChnl());
-    OP_LOGD(fiaInfo.opName, "isPostQuantBF16:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantBF16());
-    OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
+    OP_LOGI(fiaInfo.opName, "bSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_bSize());
+    OP_LOGI(fiaInfo.opName, "t1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_t1Size());
+    OP_LOGI(fiaInfo.opName, "t2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_t2Size());
+    OP_LOGI(fiaInfo.opName, "n2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_n2Size());
+    OP_LOGI(fiaInfo.opName, "gSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_gSize());
+    OP_LOGI(fiaInfo.opName, "s1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_s1Size());
+    OP_LOGI(fiaInfo.opName, "s2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_s2Size());
+    OP_LOGI(fiaInfo.opName, "alignedS2:%d", faRunTilingAdapter_.inputParamsRegbase.get_alignedS2());
+    OP_LOGI(fiaInfo.opName, "dSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSize());
+    OP_LOGI(fiaInfo.opName, "dSizeV:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSizeV());
+    OP_LOGI(fiaInfo.opName, "dSizeRope:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSizeRope());
+    OP_LOGI(fiaInfo.opName, "keepProb:%d", faRunTilingAdapter_.inputParamsRegbase.get_keepProb());
+    OP_LOGI(fiaInfo.opName, "scaleValue:%d", faRunTilingAdapter_.inputParamsRegbase.get_scaleValue());
+    OP_LOGI(fiaInfo.opName, "preTokens:%d", faRunTilingAdapter_.inputParamsRegbase.get_preTokens());
+    OP_LOGI(fiaInfo.opName, "nextTokens:%d", faRunTilingAdapter_.inputParamsRegbase.get_nextTokens());
+    OP_LOGI(fiaInfo.opName, "pseS1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseS1Size());
+    OP_LOGI(fiaInfo.opName, "pseS2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseS2Size());
+    OP_LOGI(fiaInfo.opName, "pseBSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseBSize());
+    OP_LOGI(fiaInfo.opName, "bandIndex:%d", faRunTilingAdapter_.inputParamsRegbase.get_bandIndex());
+    OP_LOGI(fiaInfo.opName, "layoutType:%d", faRunTilingAdapter_.inputParamsRegbase.get_layoutType());
+    OP_LOGI(fiaInfo.opName, "pseShapeType:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseShapeType());
+    OP_LOGI(fiaInfo.opName, "attenMaskShapeType:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskShapeType());
+    OP_LOGI(fiaInfo.opName, "attenMaskDataType:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskDataType());
+    OP_LOGI(fiaInfo.opName, "attenMaskCompressMode:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskCompressMode());
+    OP_LOGI(fiaInfo.opName, "implMode:%d", faRunTilingAdapter_.inputParamsRegbase.get_implMode());
+    OP_LOGI(fiaInfo.opName, "sparseType:%d", faRunTilingAdapter_.inputParamsRegbase.get_sparseType());
+    OP_LOGI(fiaInfo.opName, "needDropMaskOp:%d", faRunTilingAdapter_.inputParamsRegbase.get_needDropMaskOp());
+    OP_LOGI(fiaInfo.opName, "dropMaskOuter:%d", faRunTilingAdapter_.inputParamsRegbase.get_dropMaskOuter());
+    OP_LOGI(fiaInfo.opName, "pseEncodeType:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseEncodeType());
+    OP_LOGI(fiaInfo.opName, "remain:%d", faRunTilingAdapter_.inputParamsRegbase.get_remain());
+    OP_LOGI(fiaInfo.opName, "attenMaskS2Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskS2Size());
+    OP_LOGI(fiaInfo.opName, "pseType:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseType());
+    OP_LOGI(fiaInfo.opName, "rsv1:%d", faRunTilingAdapter_.inputParamsRegbase.get_rsv1());
+    OP_LOGI(fiaInfo.opName, "qStartIdx:%d", faRunTilingAdapter_.inputParamsRegbase.get_qStartIdx());
+    OP_LOGI(fiaInfo.opName, "kvStartIdx:%d", faRunTilingAdapter_.inputParamsRegbase.get_kvStartIdx());
+    OP_LOGI(fiaInfo.opName, "s1SparseValidSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_s1SparseValidSize());
+    OP_LOGI(fiaInfo.opName, "s2SparseValidSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_s2SparseValidSize());
+    OP_LOGI(fiaInfo.opName, "seed:%d", faRunTilingAdapter_.inputParamsRegbase.get_seed());
+    OP_LOGI(fiaInfo.opName, "offset:%d", faRunTilingAdapter_.inputParamsRegbase.get_offset());
+    OP_LOGI(fiaInfo.opName, "keepProbUint8:%d", faRunTilingAdapter_.inputParamsRegbase.get_keepProbUint8());
+    OP_LOGI(fiaInfo.opName, "pseAlibiBaseS1:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseAlibiBaseS1());
+    OP_LOGI(fiaInfo.opName, "pseAlibiBaseS2:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseAlibiBaseS2());
+    OP_LOGI(fiaInfo.opName, "deqScaleFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScaleFlag());
+    OP_LOGI(fiaInfo.opName, "deqScale2Flag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScale2Flag());
+    OP_LOGI(fiaInfo.opName, "isActualSeqLengthsNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsNull());
+    OP_LOGI(fiaInfo.opName, "isActualSeqLengthsKVNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsKVNull());
+    OP_LOGI(fiaInfo.opName, "actualSeqLengthsSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
+    OP_LOGI(fiaInfo.opName, "actualSeqLengthsKVSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsKVSize());
+    OP_LOGI(fiaInfo.opName, "isKvContinuous:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKvContinuous());
+    OP_LOGI(fiaInfo.opName, "fromFused:%d", faRunTilingAdapter_.inputParamsRegbase.get_fromFused());
+    OP_LOGI(fiaInfo.opName, "isBSNDOut:%d", faRunTilingAdapter_.inputParamsRegbase.get_isBSNDOut());
+    OP_LOGI(fiaInfo.opName, "transposeLayout:%d", faRunTilingAdapter_.inputParamsRegbase.get_transposeLayout());
+    OP_LOGI(fiaInfo.opName, "isGqa:%d", faRunTilingAdapter_.inputParamsRegbase.get_isGqa());
+    OP_LOGI(fiaInfo.opName, "isSoftMaxLseEnable:%d", faRunTilingAdapter_.inputParamsRegbase.get_isSoftMaxLseEnable());
+    OP_LOGI(fiaInfo.opName, "isActualSharedPrefixLenNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSharedPrefixLenNull());
+    OP_LOGI(fiaInfo.opName, "isQHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isQHasLeftPadding());
+    OP_LOGI(fiaInfo.opName, "isKVHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKVHasLeftPadding());
+    OP_LOGI(fiaInfo.opName, "prefixSeqInnerSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_prefixSeqInnerSize());
+    OP_LOGI(fiaInfo.opName, "headNumRatio:%d", faRunTilingAdapter_.inputParamsRegbase.get_headNumRatio());
+    OP_LOGI(fiaInfo.opName, "blockSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_blockSize());
+    OP_LOGI(fiaInfo.opName, "blockTableDim2:%d", faRunTilingAdapter_.inputParamsRegbase.get_blockTableDim2());
+    OP_LOGI(fiaInfo.opName, "paBlockNumSum:%d", faRunTilingAdapter_.inputParamsRegbase.get_paBlockNumSum());
+    OP_LOGI(fiaInfo.opName, "paLayoutType:%d", faRunTilingAdapter_.inputParamsRegbase.get_paLayoutType());
+    OP_LOGI(fiaInfo.opName, "attenMaskS1Size:%d", faRunTilingAdapter_.inputParamsRegbase.get_attenMaskS1Size());
+    OP_LOGI(fiaInfo.opName, "isRowInvalid:%d", faRunTilingAdapter_.inputParamsRegbase.get_isRowInvalid());
+    OP_LOGI(fiaInfo.opName, "kvSplitPart:%d", faRunTilingAdapter_.inputParamsRegbase.get_kvSplitPart());
+    OP_LOGI(fiaInfo.opName, "accumOutSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_accumOutSize());
+    OP_LOGI(fiaInfo.opName, "logSumExpSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_logSumExpSize());
+    OP_LOGI(fiaInfo.opName, "isPostQuantPerChnl:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantPerChnl());
+    OP_LOGI(fiaInfo.opName, "isPostQuantBF16:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantBF16());
+    OP_LOGI(fiaInfo.opName, "antiquantPerTensorFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
+    OP_LOGI(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
+    OP_LOGI(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 
 
-    OP_LOGD(fiaInfo.opName, "coreNum:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_coreNum());
-    OP_LOGD(fiaInfo.opName, "totalSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_totalSize());
-    OP_LOGD(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
-    OP_LOGD(fiaInfo.opName, "splitFactorSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize());
-    OP_LOGD(fiaInfo.opName, "splitFactorTailSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
+    OP_LOGI(fiaInfo.opName, "coreNum:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_coreNum());
+    OP_LOGI(fiaInfo.opName, "totalSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_totalSize());
+    OP_LOGI(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
+    OP_LOGI(fiaInfo.opName, "splitFactorSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize());
+    OP_LOGI(fiaInfo.opName, "splitFactorTailSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
     for (uint32_t i = 0; i < 48; i++) {
-        OP_LOGD(fiaInfo.opName, "bnStartIdx[%d]:%d", i,
+        OP_LOGI(fiaInfo.opName, "bnStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_bnStartIdxPtr()[i]);
     }
     for (uint32_t i = 0; i < 48; i++) {
-        OP_LOGD(fiaInfo.opName, "sparseStartIdx[%d]:%d", i,
+        OP_LOGI(fiaInfo.opName, "sparseStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_sparseStartIdxPtr()[i]);
     }
-    OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
-    OP_LOGD(fiaInfo.opName, "splitCoreMode:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitCoreMode());
+    OP_LOGI(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
+    OP_LOGI(fiaInfo.opName, "splitCoreMode:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitCoreMode());
 
 
-    OP_LOGD(fiaInfo.opName, "singleCoreSize:%d", faRunTilingAdapter_.initOutputParams.get_singleCoreSize());
-    OP_LOGD(fiaInfo.opName, "needInit:%d", faRunTilingAdapter_.initOutputParams.get_needInit());
-    OP_LOGD(fiaInfo.opName, "isOneN:%d", faRunTilingAdapter_.initOutputParams.get_isOneN());
-    OP_LOGD(fiaInfo.opName, "totalOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalOutputSize());
-    OP_LOGD(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
+    OP_LOGI(fiaInfo.opName, "singleCoreSize:%d", faRunTilingAdapter_.initOutputParams.get_singleCoreSize());
+    OP_LOGI(fiaInfo.opName, "needInit:%d", faRunTilingAdapter_.initOutputParams.get_needInit());
+    OP_LOGI(fiaInfo.opName, "isOneN:%d", faRunTilingAdapter_.initOutputParams.get_isOneN());
+    OP_LOGI(fiaInfo.opName, "totalOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalOutputSize());
+    OP_LOGI(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
 
 }
 ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingContext *context,
@@ -2065,6 +2065,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
     }
 
     InitImplParam(fiaInfo);
+
+    for (uint32_t bIdx = 0; bIdx < fiaInfo.bSize; bIdx++) {
+        OP_LOGI(fiaInfo.opName, "bIdx:%d, actseqlenQ:%d, actseqlenKV:%d", bIdx, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx]);
+    }
 
     OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);

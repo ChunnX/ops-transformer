@@ -86,7 +86,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    OP_LOGD("start aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize");
+    OP_LOGI("start aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize");
     const aclTensorList *tensorListKey = key;
     const aclTensorList *tensorListValue = value;
     TensorPreProcess(tensorListKey, tensorListValue);

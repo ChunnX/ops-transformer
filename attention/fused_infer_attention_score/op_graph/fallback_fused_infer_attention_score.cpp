@@ -295,16 +295,16 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
         OP_LOGE(host_api_ctx->GetNodeName(), "invalid innerPrecise(%ld). Only support 0~3 now.", scalarParams.innerPrecise);
         return GRAPH_FAILED;
     }
-    OP_LOGD(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",
+    OP_LOGI(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",
               scalarParams.numHeads, scalarParams.dScaleValue);
-    OP_LOGD(host_api_ctx->GetNodeName(),
+    OP_LOGI(host_api_ctx->GetNodeName(),
               "preTokens = %ld, nextTokens = %ld, kvHeadNum = %ld, sparseMode = %ld, innerPrecise = %ld", scalarParams.preTokens,
               scalarParams.nextTokens, scalarParams.kvHeadNum, scalarParams.sparseMode, scalarParams.innerPrecise);
 
     if (scalarParams.sparseMode >= 10 && scalarParams.sparseMode <= 14) { // 10: min  14: max
         scalarParams.innerPrecise = 0;
         scalarParams.sparseMode -= 10; // subtract 10 to modify sparseMode
-        OP_LOGD(host_api_ctx->GetNodeName(),
+        OP_LOGI(host_api_ctx->GetNodeName(),
                   "because sparseMode in range [10, 14], after modification, sparseMode = %ld, innerPrecise = %ld.",
                   scalarParams.sparseMode, scalarParams.innerPrecise);
     }
