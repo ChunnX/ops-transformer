@@ -1056,6 +1056,16 @@
     <td>mhc_pre算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre_sinkhorn_backward/README.md">mhc_pre_sinkhorn_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
+  </tr>
+  <tr>
     <td>posembedding</td>
     <td><a href="../../posembedding/apply_rotary_pos_emb/README.md">apply_rotary_pos_emb</a></td>
     <td>✓</td>
