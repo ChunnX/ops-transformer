@@ -457,27 +457,6 @@ public:
 
             // Advance workspace offset by the full group M (identical across all cores)
             workspaceBaseRow += static_cast<uint64_t>(groupM);
-
-            if (workspaceBaseRow >= windowSizeRows && groupIdx < groupNum - 1) {
-                End();
-                isVecSetSyncCom_ = false;
-                SyncAll();
-                GMMFRDeterministic::SyncConfig syncConfig{};
-                syncConfig.curM = workspaceBaseRow;
-                syncConfig.lowBoundM = workspaceBaseRow;
-                syncConfig.windowSize = workspaceBaseRow;
-                syncConfig.baseN = params.cyclingParams.baseN;
-
-                GMMFRDeterministic::FRDeterministicA5<float,
-                    typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                    syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
-                    params.cyclingParams.coreNum, params.cyclingParams.n,
-                    globalRowOffset);
-                SyncAll();
-
-                globalRowOffset += workspaceBaseRow;
-                workspaceBaseRow = 0;
-            }
         }
 
         // === Final aggregation (remaining rows) ===
