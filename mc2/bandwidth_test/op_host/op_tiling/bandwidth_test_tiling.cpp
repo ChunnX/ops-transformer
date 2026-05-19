@@ -391,6 +391,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
 static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
+    OP_LOGI(nodeName, "Enter BandwidthTestTilingCheckAttr");
     BandwidthTestTilingData *tilingData = context->GetTilingData<BandwidthTestTilingData>();
     std::string group = "";
 
@@ -408,7 +409,7 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 
     // OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
     //     OP_LOGE(nodeName, "SetHcommCfg failed."), return ge::GRAPH_FAILED);
-
+    OP_LOGI(nodeName, "Exit BandwidthTestTilingCheckAttr");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -429,6 +430,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(BandwidthTestTilingCheckAttr(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "BandwidthTest tiling check failed."), return ge::GRAPH_FAILED);
     
+    OP_LOGI(nodeName, "Enter BandwidthTestTilingFuncImpl START CalTilingKey");
     auto commModePtr = context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     std::string commMode(commModePtr);
 
