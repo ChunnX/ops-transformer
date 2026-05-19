@@ -265,7 +265,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
     }
 
     isSingleServer_ = worldSize_ <= A2_RANK_NUM_PER_SERVER;
-    // 2: 实际上是(dataOffset_+SKIP_OFFSET+sizeof(uint32)) + Mc2A2Kernel::ADUMP_WIN_SIZE，近似计算使用2 * Mc2A2Kernel::ADUMP_WIN_SIZE
+    // 2: 实际上是(dataOffset_+SKIP_OFFSET+sizeof(uint32)) + Mc2A2Kernel::ADUMP_WIN_SIZE
+    // 近似计算使用2 * Mc2A2Kernel::ADUMP_WIN_SIZE
     uint64_t stateSizeMaxSize = 2 * Mc2A2Kernel::ADUMP_WIN_SIZE;
     uint64_t winSizeMin = (axisBS_ * worldSize_ * (localMoeExpertNum_ > axisK_ ? axisK_ : localMoeExpertNum_) *
         axisH_ * sizeof(uint16_t) + stateSizeMaxSize) * BUFFER_NUM; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
@@ -704,8 +705,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::SendToMoe
 }
 
 template <TemplateMC2TypeA2Class>
-__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::CopyStatusToADump(LocalTensor<bool> isVisited,
-                                                                                         LocalTensor<int32_t> dataFlagLocal)
+__aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::
+    CopyStatusToADump(LocalTensor<bool> isVisited, LocalTensor<int32_t> dataFlagLocal)
 {
     DataCopyExtParams copyFlagParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
@@ -720,7 +721,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::CopyStatu
         dataFlagLocal.SetValue(0, Mc2A2Kernel::DUMP_FLAG_VALUE);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(aDumpStatusGM[rankId * countPerRank], dataFlagLocal, copyFlagParams); // 设置AdumpFlag
-        DataCopy(aDumpStatusGM[rankId * countPerRank + 1U], statusTensor_[rankId * statusEntryCount_], statusEntryCount_);
+        DataCopy(aDumpStatusGM[rankId * countPerRank + 1U],
+                 statusTensor_[rankId * statusEntryCount_], statusEntryCount_);
         int32_t statusFlag = statusTensor_(rankId * statusEntryCount_ + statusEntryCount_ - 1);
         if (statusFlag != FLAG_VALUE) {
             continue;
@@ -732,7 +734,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::CopyStatu
         if (tokenCount > globalBs_) {
             continue;
         }
-        uint64_t dataFlagOffset = (rankId * dataSizePerRank_ + dataOffset_ + tokenCount * hCommuSize_ + SKIP_OFFSET) / sizeof(int32_t);
+        uint64_t dataFlagOffset = (rankId * dataSizePerRank_ + dataOffset_ +
+                                   tokenCount * hCommuSize_ + SKIP_OFFSET) / sizeof(int32_t);
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         DataCopyPad(dataFlagLocal, windowInstatusTensor_[dataFlagOffset], copyFlagParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();

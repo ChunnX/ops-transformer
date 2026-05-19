@@ -251,8 +251,8 @@ public:
     // 参数：
     //   localMoeExpertId: 目标卡的第几个Moe专家
     __aicore__ inline GM_ADDR GetIpcDataAddr(uint32_t dstRankId, uint32_t localMoeExpertId,
-                                               uint32_t srcRankId) const
-    {   
+                                             uint32_t srcRankId) const
+    {
         return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcDataAddrStart_[srcRankId / halfWorldSize_] +
                 (localMoeExpertId * halfWorldSize_ + (srcRankId % halfWorldSize_)) * rankSizeOnIpcData_;
     }

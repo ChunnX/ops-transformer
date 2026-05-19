@@ -601,7 +601,8 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CopyStatus
     SyncFunc<AscendC::HardEvent::S_MTE3>();
 
     uint32_t countPerRank = 4;
-    DataCopyExtParams copyDumpParams{static_cast<uint16_t>(countPerRank), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyDumpParams{static_cast<uint16_t>(countPerRank),
+                                     static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
     DataCopyExtParams copyFlagParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
     GlobalTensor<int32_t> aDumpStatusGM;
@@ -614,9 +615,8 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CopyStatus
         GM_ADDR wAddr = windowInGM_ + rankSizeOnWin_ * rankId + SKIP_OFFSET + TOKEN_OFFSET;
         flagGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
         DataCopyPad(aDumpTensor[B32_PER_BLOCK], flagGlobal, copyFlagParams, padParams); // 设置AdumpFlag
-        DataCopyPad(aDumpTensor[B32_PER_BLOCK * 2],
-                    flagGlobal[numRecvTokensPerRankLocal_(rankId - worldSizeTaskInfo_.startTaskId) * axisHExpandXTypeSize_],
-                    copyFlagParams, padParams);
+        uint32_t offset = expertWindowOffsetLocal_(rankId - worldSizeTaskInfo_.startTaskId) * axisHExpandXTypeSize_;
+        DataCopyPad(aDumpTensor[B32_PER_BLOCK * 2], flagGlobal[offset], copyFlagParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         int32_t tokenNum = aDumpTensor(B32_PER_BLOCK);
         if (tokenNum <= axisBS_ * axisK_) {
