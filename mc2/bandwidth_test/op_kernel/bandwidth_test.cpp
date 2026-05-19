@@ -36,6 +36,7 @@ __global__ __aicore__ void bandwidth_test(
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+        GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             BandwidthTest<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
