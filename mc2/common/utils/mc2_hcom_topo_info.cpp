@@ -224,7 +224,6 @@ HcclResult MC2HcomTopology::CommGetHcclBufferByGroup(const char *group, void **b
     HcclResult ret = GetInstance().CallHcomGetCommHandleByGroup(group, &hcclComm);
     if (ret != HCCL_SUCCESS) {
         OP_LOGI("", "Failed to get comm handle.");
-        hcclComm = nullptr;
         return ret;
     }
     ret = GetInstance().CallCommGetHcclBuffer(hcclComm, buffer, size);
