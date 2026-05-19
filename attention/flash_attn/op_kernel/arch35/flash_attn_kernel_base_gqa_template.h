@@ -200,6 +200,7 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
+            vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
@@ -210,7 +211,6 @@ public:
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
             vecFaBlock.ClearOutput();
-            vecFaBlock.isFd = isFd;
         }
 
         if ASCEND_IS_AIC {
@@ -840,10 +840,8 @@ public:
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);
             }
-            if (isFd) {
-                if ASCEND_IS_AIV {
-                    FlashDecode(sectionIdx);
-                }
+            if ASCEND_IS_AIV {
+                FlashDecode(sectionIdx);
             }
         }
 
