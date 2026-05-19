@@ -116,6 +116,8 @@ def tforward_tnd(q, k, v, **kwargs):
     is_pa = layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ")
     if not is_pa:
         cu_kv = kwargs["cu_seqlens_kv"]
+    if is_pa:
+        cu_kv = kwargs.get("cu_seqlens_kv")
 
     sparse_mode = kwargs.get("sparse_mode", None)
     pre_tokens  = kwargs.get("pre_tokens", 2147483647)
@@ -146,7 +148,10 @@ def tforward_tnd(q, k, v, **kwargs):
             continue
 
         q_start = cu_q[i]
-        kv_start = sum(seqused_kv[:i]) if is_pa else cu_kv[i]
+        if is_pa and cu_kv is None:
+            kv_start = sum(seqused_kv[:i])
+        else:
+            kv_start = cu_kv[i]
 
         qi = q[:, :, q_start:q_start + act_q_len]
         ki = k[:, :, kv_start:kv_start + act_kv_len]
