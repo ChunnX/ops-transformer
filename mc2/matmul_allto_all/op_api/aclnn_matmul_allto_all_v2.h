@@ -23,7 +23,7 @@ extern "C" {
 
 /**
  * 算子功能：实现all2all + matmul融合计算
- * @brief aclnnMatmulAlltoAll的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnMatmulAlltoAllV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * @param [in] x1: 左矩阵输入张量。
  * @param [in] x2: 右矩阵输入张量。
@@ -45,9 +45,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMatmulAlltoAllV2GetWorks
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnMatmulAlltoAll的第二段接口，用于执行计算。
+ * @brief aclnnMatmulAlltoAllV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在Device侧申请的workspace内存地址。
- * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnMatmulAlltoAllGetWorkspaceSize获取。
+ * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnMatmulAlltoAllV2GetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码
