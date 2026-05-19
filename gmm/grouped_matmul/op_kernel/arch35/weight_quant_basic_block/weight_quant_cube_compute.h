@@ -500,11 +500,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 
-    aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
+    aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(xType));
     aL1DbOffset_ = l1RemainSize - MX_A8W4_A_L1_RESERVED_KB * 1024;
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_A8W4_A_L1_RESERVED_KB * 1024;
     l1StartSize += MX_A8W4_A_L1_RESERVED_KB * 1024;
-    prefetchL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
+    prefetchL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(xType));
 
     mmObj_.Init();
     InitSync();
@@ -543,6 +543,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(uint64_t totalSize, uint64
     aL1_ = LocalTensor<xType>(TPosition::TSCM, aL1Offset * sizeof(xType), totalSize / sizeof(xType) - aL1Offset);
     aL1Count_ = matmulTiling->Ka / (matmulTiling->baseK * matmulTiling->stepKb);
     aL1MaxHalfCount_ = CeilDivide(aL1Count_, static_cast<uint64_t>(DOUBLE_BUFFER_NUM));
+    PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
 
     // 当前tiling策略的细分场景：
     // 1. stepKa <= stepKb 当前限制baseM的最大值，因此该场景下在L1上A矩阵大小<=128k。可以固定走db分支，保证a矩阵的db载入
