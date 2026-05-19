@@ -963,6 +963,7 @@ public:
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
+                return;
             } else if (taskDealMode != TASK_DEAL_MODE::SKIP) {
                 coreGS1Loops++;
                 accGS1Loops++;
