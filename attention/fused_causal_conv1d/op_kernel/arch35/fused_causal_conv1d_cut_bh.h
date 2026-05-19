@@ -230,14 +230,14 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight
     if (xInputMode_ == 0) {
         xGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * dimSum_);
         if(inplace_) {
-            yGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * dim_);
+            yGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * dimSum_);
         } else {
             yGm.SetGlobalBuffer((__gm__ T *)y, batchSize_ * seqLen_ * dim_);
         }
     } else {
         xGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * dimSum_);
         if(inplace_) {
-            yGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * dim_);
+            yGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * dimSum_);
         } else {
             yGm.SetGlobalBuffer((__gm__ T *)y, cuSeqLen_ * dim_);
         }
