@@ -390,7 +390,7 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
     return ACLNN_SUCCESS;
 }
 
-extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
+extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
@@ -400,7 +400,7 @@ extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
     aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatmulV2(void *workspace, uint64_t workspaceSize,
+extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMul(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -416,7 +416,7 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
     int64_t yDtype = gmmY->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
 
-    aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, commMode, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
@@ -553,7 +553,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
 extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatmulV2(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
-    aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatmulV2(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMul(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnInnerAlltoAllv interface call failed.");
