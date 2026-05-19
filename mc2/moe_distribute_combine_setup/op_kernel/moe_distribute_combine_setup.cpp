@@ -33,6 +33,7 @@ __global__ __aicore__ void moe_distribute_combine_setup(GM_ADDR expandX, GM_ADDR
                                                         GM_ADDR assistInfoForCombine, GM_ADDR quantExpandX,
                                                         GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    AscendC::PRINTF("combine moe_distribute_combine_setup start\n");
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(MoeDistributeCombineSetupTilingData);
     auto tiling = (__gm__ MoeDistributeCombineSetupTilingData *)tilingGM;
