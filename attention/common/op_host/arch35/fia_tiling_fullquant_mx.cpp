@@ -393,8 +393,8 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
                                                   split_core_v2::SplitParam &splitParam)
 {
     baseInfo.bSize = fiaInfo_->bSize;
-    baseInfo.n2Size = fiaInfo_->n2Size;
-    baseInfo.gSize = fiaInfo_->gSize;
+    baseInfo.n2Size = decodeS1GMerge_ ? fiaInfo_->n2Size : fiaInfo_->n1Size;
+    baseInfo.gSize = decodeS1GMerge_ ? fiaInfo_->gSize : 1;
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
@@ -487,6 +487,8 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         fiaInfo_->qkHeadDim == DSIZE_64) {
         sInnerFactor_ = SINNER_256;
     }
+
+    decodeS1GMerge_ = (fiaInfo_->gSize * fiaInfo_->s1Size <= 80); // 80: G*S1<=80 ->decode，MTE2 bound threshold
 
     split_core_v2::BaseInfo baseInfo{};
     split_core_v2::SplitParam splitParam{};
@@ -672,7 +674,11 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyPseMode()
 
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8;
+    if (decodeS1GMerge_) {
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_DECODE;
+    } else {
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_PREFILL;
+    }
 }
 
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyHasRope()

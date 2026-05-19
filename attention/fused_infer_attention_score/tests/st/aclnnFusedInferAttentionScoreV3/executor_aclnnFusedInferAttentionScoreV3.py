@@ -1623,7 +1623,7 @@ def _create_mask_no_sparse(m_shape, npu_m_shape, pre_tokens, next_tokens, batch,
         npu_mask = np.array(re_mask_npu_batch).astype(m_dtype)
         return cpu_mask, npu_mask
     else:
-        if batch ==None:
+        if batch is None:
             cpu_mask = _random_fill_tensor(cpu_mask, m_shape, random_ones, 1)
             return cpu_mask,cpu_mask
         for i in range(batch):

@@ -151,22 +151,13 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     if (!enableMXFP8) {
         return ge::GRAPH_SUCCESS;
     }
-    if (fiaInfo.s1Size == 1U) {
-        OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+    OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
+                ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
                     OP_LOGE(fiaInfo.opName,
-                            "When qs is equal to 1 , only support sparse 0 without mask in MXFP8 fullquant scenario, " 
+                            "Only support sparse 0 without mask or sparse 3 with mask in MXFP8 fullquant scenario, " 
                             "now input sparse mode is %d and there has%smask",
                             fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                     return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
-                    ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
-                    OP_LOGE(fiaInfo.opName,
-                            "When qs is greater than 1 , only support sparse 0 without mask or sparse 3 with mask " 
-                            "in MXFP8 fullquant scenario, now input sparse mode is %d and there has%smask",
-                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                    return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 

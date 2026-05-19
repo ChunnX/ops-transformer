@@ -108,8 +108,8 @@ void MoeFinalizeRoutingV2GradNotSplitHRegbase::CalcMaxHiddenInUb()
     int64_t gradScalesUbSize = blockSize_ * DOUBLE_BUFFER;
     int64_t quotientVcaddNum = binaryAddTilingData_.get_binaryAddQuotient() / this->vlFp32_;
     int64_t binaryAddUbSize = ((quotientVcaddNum * FP32_SIZE + blockSize_ - 1) / blockSize_) * blockSize_;
-    hiddenPrePart_ = (aicoreParams_.ubSize - binaryAddUbSize - gradScalesUbSize) / elementTotalSize *
-                     gradYTypeByteSize_ / blockSize_ * blockSize_ / gradYTypeByteSize_;
+    hiddenPrePart_ = (static_cast<int64_t>(aicoreParams_.ubSize) - binaryAddUbSize - gradScalesUbSize) /
+                     elementTotalSize * gradYTypeByteSize_ / blockSize_ * blockSize_ / gradYTypeByteSize_;
 }
 
 ge::graphStatus MoeFinalizeRoutingV2GradNotSplitHRegbase::PostTiling()
