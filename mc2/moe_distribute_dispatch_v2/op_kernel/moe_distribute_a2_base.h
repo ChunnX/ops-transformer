@@ -193,6 +193,13 @@ public:
         }
         localWindowInGM_ = context_.GetWindowsInAddr(curRankId_);
 
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+        for (uint32_t r = 0; r < worldSize_; r++) {
+            OOMCheckAddrRange<uint8_t>((__gm__ uint8_t *)(context_.GetWindowsInAddr(r)), winSize);
+        }
+        OOMCheckAddrRange<uint8_t>((__gm__ uint8_t *)(context_.GetWindowsOutAddr(curRankId_)), winSize);
+#endif
+
         // rdma addr
         UpdateMagicValue();
         // Get BufferId
