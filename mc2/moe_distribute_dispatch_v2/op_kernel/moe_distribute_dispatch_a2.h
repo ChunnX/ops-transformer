@@ -804,7 +804,6 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::WaitDispa
         if (unDump && (GetCurrentTimestampUs() - startTime) > Mc2A2Kernel::TIMEOUT) {
             CopyStatusToADump(isVisited, dataFlagLocal);
             unDump = false;
-            aDump_.Exception();
         }
     }
     SyncAll<true>();
