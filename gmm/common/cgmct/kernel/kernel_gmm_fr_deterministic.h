@@ -33,7 +33,7 @@
  *   - workspaceBaseRow: workspace window write offset (reset to 0 after each aggregation)
  *   - Epilogue elem[4]: group-inner mOffset (for logit/x1Scale reads)
  *   - Epilogue elem[5]: workspaceBaseRow (for workspace write addressing)
- *   - Inside-tile check: workspaceBaseRow + groupInnerMOffset + tileM > windowSizeRows
+ *   - Inside-tile check: workspaceBaseRow + tileM > windowSizeRows
  *   - Prerequisite: single tile M <= windowSizeRows
  */
 
@@ -466,7 +466,11 @@ public:
                     WaitForCube();
                     epilogueDequantOp_(epilogueShape, epilogueOffset);
                     NotifyCube();
-                    workspaceBaseRow += static_cast<uint64_t>(tileM);
+                    // On A5, AIV subBlock only processes halfSingleM rows (L0C split).
+                    // Advance workspaceBaseRow by the actual rows written, not full tileM.
+                    uint64_t halfSingleM = static_cast<uint64_t>(
+                        CeilDiv(tileM, static_cast<int64_t>(GetTaskRation())));
+                    workspaceBaseRow += halfSingleM;
                 }
             }
             // --- tile loop end ---

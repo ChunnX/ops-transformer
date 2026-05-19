@@ -74,11 +74,8 @@ __aicore__ inline void FRDeterministicA5(
     SyncAll();  // Ensure workspace writes complete
 
     uint64_t totalM = syncConfig.curM;
-    printf("[DET_AGG] ENTER totalM=%lu coreNum=%u n=%u globalRowOffset=%lu myVecId=%lu\n",
-           totalM, coreNum, n, globalRowOffset, static_cast<uint64_t>(GetBlockIdx()));
     // On A5, AIC is subBlock 0, AIV is subBlock 1. This function only runs on AIV.
-    // Use blockIdx directly (not * GetTaskRation + GetSubBlockIdx) to distribute
-    // output rows across all 36 physical cores evenly.
+    // Divide by GetTaskRation() to get physical core ID for row distribution.
     uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
 
     // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
@@ -105,15 +102,6 @@ __aicore__ inline void FRDeterministicA5(
             bindLocal = queBind.DeQue<DTYPE_OUT>();
 
             // Debug: print first 3 workspace values for the first 3 rows owned by this core
-            if (processedRows < 3 && nOffset == 0 && myVecId == 0) {
-                printf("[DET_AGG] mOffset=%lu outRow=%lu ws[0]=%f ws[1]=%f ws[2]=%f globalRowOff=%lu\n",
-                       mOffset, outRow,
-                       static_cast<float>(bindLocal.GetValue(0)),
-                       static_cast<float>(bindLocal.GetValue(1)),
-                       static_cast<float>(bindLocal.GetValue(2)),
-                       globalRowOffset);
-            }
-
             // AtomicAdd workspace -> yGm (single writer per outRow)
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
@@ -124,7 +112,6 @@ __aicore__ inline void FRDeterministicA5(
         }
         processedRows++;
     }
-    printf("[DET_AGG] DONE processedRows=%lu totalM=%lu\n", processedRows, totalM);
     SyncAll();  // Ensure all writes complete
 }
 
