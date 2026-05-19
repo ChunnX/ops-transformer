@@ -75,6 +75,7 @@ constexpr uint32_t DAVID_EP_WORLD_SIZE_FOUR = 4;
 constexpr uint32_t DAVID_EP_WORLD_SIZE_TWO = 2;
 constexpr uint32_t ENABLE = 1;
 constexpr uint32_t NOT_ENABLE = 0;
+constexpr uint32_t INT8_COMM_QUANT = 2U;
 
 const int64_t H_V1 = 7168;
 const int64_t H_UPPER_BOUND_V2 = 8192;
@@ -793,6 +794,22 @@ uint64_t MoeDistributeCombineTilingA5::GetTilingKey() const
     const uint64_t tilingKey = context_->GetTilingKey();
     const char *nodeName = context_->GetNodeName();
     OP_LOGD(nodeName, "MoeDistributeCombineTilingA5 get tiling key %lu", tilingKey);
+    return tilingKey;
+}
+
+uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode,
+    bool isLayered)
+{
+    bool tp = false;
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    uint32_t hierarchy = TILINGKEY_TPL_MTE;
+    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
+        tp = true;
+    }
+    if (commQuantMode >= INT8_COMM_QUANT) {
+        quantMode = commQuantMode;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A5);
     return tilingKey;
 }
 
