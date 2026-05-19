@@ -155,6 +155,7 @@ public:
         pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
         pipe_.InitBuffer(maxFloatBuf_, tiling_->qBlock * sizeof(float));
         pipe_.InitBuffer(denomFloatBuf_, tiling_->qBlock * sizeof(float));
+        pipe_.InitBuffer(rowStateBrcFloatBuf_, tiling_->qBlock * VECTOR_FP32_BLOCK_ELEMS * sizeof(float));
     }
 
     __aicore__ inline void Process()
@@ -424,6 +425,30 @@ private:
         return accTile[static_cast<int64_t>(rowInBlock) * VECTOR_HEAD_DIM_LIMIT];
     }
 
+    __aicore__ inline void NormalizeAccTileRows(int64_t qCount, LocalTensor<float> &denomLocal)
+    {
+        if (qCount <= 0) {
+            return;
+        }
+        LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
+        LocalTensor<float> denomBrc = rowStateBrcFloatBuf_.Get<float>();
+        const uint32_t rowCount = static_cast<uint32_t>(qCount);
+        Brcb(denomBrc, denomLocal, static_cast<uint16_t>((rowCount + VECTOR_FP32_BLOCK_ELEMS - 1) /
+                                                         VECTOR_FP32_BLOCK_ELEMS),
+             BrcbRepeatParams(1, VECTOR_FP32_BLOCK_ELEMS));
+        PipeBarrier<PIPE_V>();
+
+        BinaryRepeatParams divParams;
+        divParams.dstBlkStride = 1;
+        divParams.src0BlkStride = 1;
+        divParams.src1BlkStride = 0;
+        divParams.dstRepStride = VECTOR_HEAD_DIM_LIMIT / VECTOR_FP32_BLOCK_ELEMS;
+        divParams.src0RepStride = VECTOR_HEAD_DIM_LIMIT / VECTOR_FP32_BLOCK_ELEMS;
+        divParams.src1RepStride = 1;
+        Div(accTile, accTile, denomBrc, AlignedHeadDim(), rowCount, divParams);
+        PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline float ExpScalarWithVector(float value, uint32_t bufferIdx)
     {
         LocalTensor<float> expLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
@@ -607,6 +632,9 @@ private:
 
         LocalTensor<float> maxLocal = maxFloatBuf_.Get<float>();
         LocalTensor<float> denomLocal = denomFloatBuf_.Get<float>();
+        Duplicate(maxLocal, NEG_INF, static_cast<uint32_t>(qCount));
+        Duplicate(denomLocal, 0.0F, static_cast<uint32_t>(qCount));
+        PipeBarrier<PIPE_V>();
         for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
@@ -616,8 +644,6 @@ private:
                 continue;
             }
             Duplicate(accRow, 0.0F, AlignedHeadDim());
-            maxLocal.SetValue(row, NEG_INF);
-            denomLocal.SetValue(row, 0.0F);
         }
         PipeBarrier<PIPE_V>();
 
@@ -629,6 +655,7 @@ private:
         ProcessImageKvTiles(head, seq, qCount, tileLoop, maxLocal, denomLocal);
         ProcessTextKvRange(seq, qCount, textBegin, textEnd, tileLoop, maxLocal, denomLocal);
 
+        NormalizeAccTileRows(qCount, denomLocal);
         for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
             const int64_t querySeq = seq + row;
             if (querySeq >= tiling_->validSeqLen) {
@@ -636,14 +663,6 @@ private:
             }
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-            const float denom = denomLocal.GetValue(row);
-            if (denom > 0.0F) {
-                Muls(accRow, accRow, 1.0F / denom, AlignedHeadDim());
-                PipeBarrier<PIPE_V>();
-            } else {
-                Duplicate(accRow, 0.0F, AlignedHeadDim());
-                PipeBarrier<PIPE_V>();
-            }
             StoreFloatRow(qBase, accRow, static_cast<uint32_t>(row % BUFFER_NUM));
         }
     }
@@ -665,6 +684,7 @@ private:
     TBuf<QuePosition::VECCALC> weightFloatBuf_;
     TBuf<QuePosition::VECCALC> maxFloatBuf_;
     TBuf<QuePosition::VECCALC> denomFloatBuf_;
+    TBuf<QuePosition::VECCALC> rowStateBrcFloatBuf_;
     const SlidingTileAttentionTilingData *tiling_ = nullptr;
     float scale_ = 0.0F;
 };
