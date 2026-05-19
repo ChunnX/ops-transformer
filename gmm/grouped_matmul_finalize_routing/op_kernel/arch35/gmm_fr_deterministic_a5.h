@@ -104,6 +104,16 @@ __aicore__ inline void FRDeterministicA5(
             queBind.EnQue(bindLocal);
             bindLocal = queBind.DeQue<DTYPE_OUT>();
 
+            // Debug: print first 3 workspace values for the first 3 rows owned by this core
+            if (processedRows < 3 && nOffset == 0 && myVecId == 0) {
+                printf("[DET_AGG] mOffset=%lu outRow=%lu ws[0]=%f ws[1]=%f ws[2]=%f globalRowOff=%lu\n",
+                       mOffset, outRow,
+                       static_cast<float>(bindLocal.GetValue(0)),
+                       static_cast<float>(bindLocal.GetValue(1)),
+                       static_cast<float>(bindLocal.GetValue(2)),
+                       globalRowOffset);
+            }
+
             // AtomicAdd workspace -> yGm (single writer per outRow)
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};

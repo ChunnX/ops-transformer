@@ -292,11 +292,6 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     uint64_t absRowBase = offsetM;
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        printf("[DET_VSW] absRowBase=%lu i=%u n_=%ld yOffset=%lu offset=%lu "
-               "curBaseN=%u curVecBaseM=%u\n",
-               absRowBase, i, n_, yOffset,
-               (absRowBase + i) * static_cast<uint64_t>(n_) + yOffset,
-               curBaseN, curVecBaseM);
         DataCopyPad(yGlobal_[(absRowBase + i) * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 }
