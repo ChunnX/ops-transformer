@@ -921,7 +921,6 @@ bool ScatterPaKvCacheTiling::IsLastAxisContiguous(const gert::Stride &stride, co
 
 bool ScatterPaKvCacheTiling::IsNonContiguous()
 {
-    return true; //TODO: 当前测试用
     bool keyLastAxisContiguous = IsLastAxisContiguous(keyStride_, inputKeyShape_);
     bool keyCacheLastAxisContiguous = IsLastAxisContiguous(keyCacheStride_, inputKeyCacheInShape_);
     bool valueLastAxisContiguous = true;
@@ -956,8 +955,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     OP_CHECK_IF(GetTensorInfo(inputKeyShape_, keyStride_, inputKey_) != ge::GRAPH_SUCCESS, ,
                 return ge::GRAPH_FAILED;);
     size_t inputKeyDimNum = inputKeyShape_.GetDimNum();
-    OP_CHECK_IF(GetInputDtype() != ge::GRAPH_SUCCESS || GetIndexDtype() != ge::GRAPH_SUCCESS, ,
-                return ge::GRAPH_FAILED;);
     OP_CHECK_IF(GetTensorInfo(inputKeyCacheInShape_, keyCacheStride_, inputKeyCacheIn_) != ge::GRAPH_SUCCESS, ,
                 return ge::GRAPH_FAILED;);
 
@@ -981,15 +978,19 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     if (GetTemplateType(inputKeyDimNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (templateType_ == TEMPLATE_NORMAL && IsNonContiguous()) {
+    if (templateType_ == TEMPLATE_NORMAL) { // && IsNonContiguous()) {
+        printf("TEMPLATE_NORMAL is contiguous :%d\n ", IsNonContiguous());
         templateType_ = TEMPLATE_NORMAL_NON_CONTIGUOUS;
     }
-    if (templateType_ == TEMPLATE_NZ && IsNonContiguous()) {
+    if (templateType_ == TEMPLATE_NZ) { // && IsNonContiguous()) {
         templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS;
+        printf("TEMPLATE_NZ is contiguous :%d\n ", IsNonContiguous());
         if (inputKeyCacheInShape_.GetDimNum() != DIM4) {
             templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM;
         }
     }
+    OP_CHECK_IF(
+        GetInputDtype() != ge::GRAPH_SUCCESS || GetIndexDtype() != ge::GRAPH_SUCCESS, , return ge::GRAPH_FAILED;);
     if (templateType_ == TEMPLATE_NCT) {
         auto attrs = context_->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
