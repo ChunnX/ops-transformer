@@ -696,9 +696,9 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         }
         // ========== F3 convMode: Pangu v2 前 width-1 token 置零 ==========
         if (convMode_ == 1 && hasNumComputedTokens_) {
+            int32_t lastResetIdx = (kernelSize_ - 1) - numComputed;
             if (lastResetIdx > 0) {
                 SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-                int32_t lastResetIdx = (kernelSize_ - 1) - numComputed;
                 lastResetIdx = lastResetIdx < curBatchSeq ? lastResetIdx : curBatchSeq;
                 if(isResidualConnection_ == 1)
                     DataCopy(yLocal[yUbOffset], xLocal[yUbOffset], lastResetIdx * dimSizeInLoop_);
