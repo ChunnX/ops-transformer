@@ -613,7 +613,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CopyStatus
         if (isVisitedLocal_(rankId - worldSizeTaskInfo_.startTaskId)) {
             continue;
         }
-        uint32_t realTokenNum = expertWindowOffsetLocal_(rankId - worldSizeTaskInfo_.startTaskId);
+        uint32_t realTokenNum = numRecvTokensPerRankLocal_(rankId - worldSizeTaskInfo_.startTaskId);
         aDumpTensor.SetValue(B32_PER_BLOCK, realTokenNum);
         GM_ADDR wAddr = windowInGM_ + rankSizeOnWin_ * rankId;
         tokenGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
