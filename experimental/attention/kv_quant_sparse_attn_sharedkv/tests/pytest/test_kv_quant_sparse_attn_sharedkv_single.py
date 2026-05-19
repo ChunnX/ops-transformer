@@ -33,66 +33,55 @@ device_id = 0
 save_pt = False
 result_path = Path('result.xlsx')
 
-locals()["param_combinations"] = []
-for _, params in enumerate(ENABLED_PARAMS):
-    # 将params的所有字段注册为局部变量
-    for key, value in params.items():
-        locals()[f"param_{key}"] = value
+param_combinations = []
+for params in ENABLED_PARAMS:
+    param_values = {
+        "Testcase_Name": params.get("Testcase_Name"),
+        "layout_q": params.get("layout_q"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": params.get("q_type"),
+        "ori_kv_type": params.get("ori_kv_type"),
+        "cmp_kv_type": params.get("cmp_kv_type"),
+        "B": params.get("B"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2"),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K"),
+        "block_num1": params.get("block_num1"),
+        "block_num2": params.get("block_num2"),
+        "block_size1": params.get("block_size1"),
+        "block_size2": params.get("block_size2"),
+        "cu_seqlens_q": params.get("cu_seqlens_q"),
+        "seqused_ori_kv": params.get("seqused_ori_kv"),
+        "seqused_cmp_kv": params.get("seqused_cmp_kv"),
+        "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv"),
+        "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv"),
+        "cmp_residual_kv": params.get("cmp_residual_kv"),
+        "softmax_scale": params.get("softmax_scale"),
+        "cmp_ratio": params.get("cmp_ratio"),
+        "ori_mask_mode": params.get("ori_mask_mode"),
+        "cmp_mask_mode": params.get("cmp_mask_mode"),
+        "ori_win_left": params.get("ori_win_left"),
+        "ori_win_right": params.get("ori_win_right"),
+        "kv_quant_mode": params.get("kv_quant_mode"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "template_run_mode": params.get("template_run_mode"),
+        "actlen_mode": params.get("actlen_mode"),
+        "S1EQS2": params.get("S1EQS2"),
+    }
 
-    param_names = [
-        "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
-        "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv", "softmax_scale", "cmp_ratio",
-        "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
-        "template_run_mode", "actlen_mode", "S1EQS2",
-    ]
+    param_names = list(param_values.keys())
+    values_lists = [param_values[name] for name in param_names]
 
-    param_values = [
-        locals()["param_Testcase_Name"],
-        locals()["param_layout_q"],
-        locals()["param_layout_kv"],
-        locals()["param_q_type"],
-        locals()["param_ori_kv_type"],
-        locals()["param_cmp_kv_type"],
-        locals()["param_B"],
-        locals()["param_S1"],
-        locals()["param_S2"],
-        locals()["param_N1"],
-        locals()["param_N2"],
-        locals()["param_D"],
-        locals()["param_K"],
-        locals()["param_block_num1"],
-        locals()["param_block_num2"],
-        locals()["param_block_size1"],
-        locals()["param_block_size2"],
-        locals()["param_cu_seqlens_q"],
-        locals()["param_seqused_ori_kv"],
-        locals()["param_seqused_cmp_kv"],
-        locals()["param_cu_seqlens_ori_kv"],
-        locals()["param_cu_seqlens_cmp_kv"],
-        locals()["param_cmp_residual_kv"],
-        locals()["param_softmax_scale"],
-        locals()["param_cmp_ratio"],
-        locals()["param_ori_mask_mode"],
-        locals()["param_cmp_mask_mode"],
-        locals()["param_ori_win_left"],
-        locals()["param_ori_win_right"],
-        locals()["param_kv_quant_mode"],
-        locals()["param_tile_size"],
-        locals()["param_rope_head_dim"],
-        locals()["param_template_run_mode"],
-        locals()["param_actlen_mode"],
-        locals()["param_S1EQS2"],
-    ]
-
-    # 生成所有的组合，并转换为字典列表
-    for combo in itertools.product(*param_values):
-        param_dict = dict(zip(param_names, combo))
-        locals()["param_combinations"].append(param_dict)
-    print(locals()["param_combinations"])
+    for combo in itertools.product(*values_lists):
+        combination = dict(zip(param_names, combo))
+        param_combinations.append(combination)
 
 case_id = 0
-def sas(param_combinations):
+def qsas(param_combinations):
     global case_id
     Testcase_Name = param_combinations['Testcase_Name']
     layout_q = param_combinations['layout_q']
@@ -270,7 +259,7 @@ def sas(param_combinations):
 def test_sparse_attn_sharedkv(param_combinations):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(sas, param_combinations)
+        futures = executor.submit(qsas, param_combinations)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:
