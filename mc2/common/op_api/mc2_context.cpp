@@ -511,7 +511,7 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
 }
 
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                            aclTensor *&mc2Context,CommProtocol Protocol = CommProtocol::COMM_PROTOCOL_UB_MEM)
+                                            aclTensor *&mc2Context,CommProtocol Protocol)
 {
     OP_LOGD("Start to get Mc2MoeContext Tensor");
     auto &instance = GetInstance();
