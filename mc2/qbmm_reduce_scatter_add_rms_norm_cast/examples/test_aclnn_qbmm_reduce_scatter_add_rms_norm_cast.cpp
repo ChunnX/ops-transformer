@@ -33,7 +33,7 @@
         printf(message, ##__VA_ARGS__); \
     } while(0)
 
-constexpr int DEV_NUM = 2;
+constexpr int DEV_NUM = 4;
 constexpr int RANK_SIZE = DEV_NUM;
 static bool gPerfMode = false;
 constexpr int PERF_LOOP_COUNT = 20;
@@ -154,16 +154,17 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     // MX 量化规则：每32个元素共享一个 scale (fp8_e8m0)
     // 注意：B矩阵存储shape是 (N, K)，与kernel期望 (K, N) 不同！
 
+    const uint32_t perRankM = 128; // 单卡M, ranges from 20 to 128
 
-    std::vector<int64_t> x1Shape = {256, 2560};           // M x K (A矩阵)
-    std::vector<int64_t> x2Shape = {2560, 5120};           // K x N (kernel期望shape)
-    std::vector<int64_t> yShape = {128, 5120};            // residual per rank (BF16)
+    std::vector<int64_t> x1Shape = {perRankM * RANK_SIZE, 2560};           // M x K (A矩阵)
+    std::vector<int64_t> x2Shape = {2560, 5120};           // K x N (kernel期望shape) -- KN转置
+    std::vector<int64_t> yShape = {perRankM, 5120};            // residual per rank (BF16)
     std::vector<int64_t> gammaShape = {5120};             // RMS Norm gamma
     std::vector<int64_t> scaleShape = {5120, 40, 2};       // Scale B: (N, ceil(K/128), 2) - 存储shape
     std::vector<int64_t> pertokenScaleShape = {256, 40, 2}; // Scale A: (M, ceil(K/128), 2)
-    std::vector<int64_t> y1Shape = {128, 5120};           // output float
-    std::vector<int64_t> y2Shape = {128, 5120};           // output bf16
-    std::vector<int64_t> xOutShape = {128, 5120};         // output bf16
+    std::vector<int64_t> y1Shape = {perRankM, 5120};           // output float
+    std::vector<int64_t> y2Shape = {perRankM, 5120};           // output bf16
+    std::vector<int64_t> xOutShape = {perRankM, 5120};         // output bf16
 
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
