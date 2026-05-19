@@ -3695,7 +3695,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             rp.processM = vec.singleMTail;
             lp.s1OuterInnerNum = (rp.processM + vec.baseM - 1) / vec.baseM;
         }
-        rp.processMAlign = RoundUp(rp.processM, 16);
+        rp.processMAlign = RoundUp<uint32_t>(rp.processM, 16);
 
         // Sparse
         if constexpr (!L1CUSTOM) {
