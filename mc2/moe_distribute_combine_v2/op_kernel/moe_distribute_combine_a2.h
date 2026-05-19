@@ -264,6 +264,13 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Init(
     axisHExpandXTypeSize_ = axisH_ * sizeof(ExpandXType);
     needPerformanceInfo_ = performanceInfo != nullptr;
     worldSizeTaskInfo_.SplitCore(worldSize_, aivNum_, coreIdx_);
+
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+    for (uint32_t r = 0; r < worldSize_; r++) {
+        OOMCheckAddrRange<uint8_t>((__gm__ uint8_t *)(hccl_.GetWindowsInAddr(r)), winContext_->winSize);
+        OOMCheckAddrRange<uint8_t>((__gm__ uint8_t *)(hccl_.GetWindowsOutAddr(r)), winContext_->winSize);
+    }
+#endif
 }
 
 template <TemplateMC2TypeA2Class>

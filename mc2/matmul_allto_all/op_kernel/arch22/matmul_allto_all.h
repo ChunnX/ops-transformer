@@ -123,6 +123,14 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Init(GM_ADDR aGM, GM_A
 
     commUtil.SetArgs(&rank, rank_size, tilingData);
     gm_peer_mem = reinterpret_cast<__gm__ cType *>(commUtil.buff[rank]); // 注意注意，quant是aiv使用，非quant是aic使用
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+    for (uint32_t r = 0; r < commUtil.rank_size; r++) {
+        // gm_a_pingpong_size = m0 * n * p_value为单次CV循环搬运数据量
+        OOMCheckAddrRange<AType>((__gm__ AType *)(commUtil.buff[r]), commUtil.gm_a_pingpong_size * BUFFER_NUM);
+        // 两个flag位，int32类型
+        OOMCheckAddrRange<int32_t>((__gm__ int32_t *)(commUtil.buff[r] + FLAG_OFFSET), BUFFER_NUM);
+    }
+#endif
 }
 
 template <TemplateMMA2AClass>

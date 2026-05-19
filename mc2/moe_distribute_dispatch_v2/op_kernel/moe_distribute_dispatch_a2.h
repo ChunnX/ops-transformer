@@ -261,6 +261,13 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
         axisH_ * sizeof(uint16_t) + stateSizeMaxSize) * BUFFER_NUM; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
 
     worldTaskInfo_.SplitCore(worldSize_, aivNum_, aivId_);
+
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+    for (uint32_t r = 0; r < worldSize_; r++) {
+        OOMCheckAddrRange<uint8_t>((__gm__ uint8_t *)(hccl_.GetWindowsInAddr(r)), winContext_->winSize);
+        OOMCheckAddrRange<uint8_t>((__gm__ uint8_t *)(hccl_.GetWindowsOutAddr(r)), winContext_->winSize);
+    }
+#endif
 }
 
 template <TemplateMC2TypeA2Class>

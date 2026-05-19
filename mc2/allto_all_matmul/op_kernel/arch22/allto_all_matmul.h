@@ -155,6 +155,15 @@ AlltoAllMatmul<TemplateA2AMMFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM
     kBytes = Catlass::BitsToBytes(k * Catlass::SizeOfBits<AType>::value);
     tokenBytes = Catlass::BitsToBytes(tokenSize * Catlass::SizeOfBits<AType>::value);
 
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+    for (uint32_t r = 0; r < worldSize_; r++) {
+        // pingPongBlockSize = tokenSize * mPerLoop为单次CV循环数据量
+        OOMCheckAddrRange<AType>((__gm__ AType *)(buff[r]), pingPongBlockSize * BUFFER_NUM);
+        // 两个flag位，int32类型
+        OOMCheckAddrRange<int32_t>((__gm__ int32_t *)(buff[r] + FLAG_OFFSET), BUFFER_NUM);
+    }
+#endif
+
     AlltoAllMatmul<TemplateA2AMMFunc>::AICInit();
     AlltoAllMatmul<TemplateA2AMMFunc>::AIVInit();
 }
