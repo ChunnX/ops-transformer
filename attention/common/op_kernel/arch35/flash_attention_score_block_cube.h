@@ -1022,7 +1022,6 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
     mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
     mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
-    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
@@ -1032,6 +1031,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                      0,    // isLeftTranspose
                      1     // isRightTranspose 
                     };
+    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B,延迟等待优化MTE2搬运overlap
 
     // 这里base M N K不要写死
     if constexpr (s2BaseSize == 256) {
@@ -1155,7 +1155,6 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
     mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
 
     mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
-    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
@@ -1165,6 +1164,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
                      0,    // isLeftTranspose
                      1     // isRightTranspose
                     };
+    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B,延迟等待优化MTE2搬运overlap
 
     // 这里base M N K不要写死
     MatmulK<INPUT_T, INPUT_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
@@ -1820,7 +1820,6 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
 
     mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1K
-    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1Q
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
@@ -1830,11 +1829,20 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
                      0,    // isLeftTranspose
                      1     // isRightTranspose
     };
-    MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-        mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
-        mmL0ABuffers, mmL0BBuffers,
-        mm1ResL0C.GetTensor<T>(),
-        param);
+    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1Q,延迟等待优化MTE2搬运overlap
+    if constexpr (dBaseSize == 128) {
+        MatmulK<INPUT_T, INPUT_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
+            mmL0ABuffers, mmL0BBuffers,
+            mm1ResL0C.GetTensor<T>(),
+            param);
+    } else {
+        MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
+            mmL0ABuffers, mmL0BBuffers,
+            mm1ResL0C.GetTensor<T>(),
+            param);
+    }
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1Q

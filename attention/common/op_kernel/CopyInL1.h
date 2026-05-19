@@ -444,6 +444,14 @@ __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const
 #endif
     gm2L1Nd2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
     gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
+    DataCopyExtParams dataCopyExtParams;
+    if constexpr (sizeof(INPUT_T) == 2) {
+        if (nValue == 128 && dValue <= 80 && srcDValue == 128) {
+            dataCopyExtParams.sidMode = 0;
+            DataCopy(l1Tensor, gmTensor, gm2L1Nd2NzParams, dataCopyExtParams);
+            return;
+        }
+    }
     DataCopy(l1Tensor, gmTensor, gm2L1Nd2NzParams);
 }
 
