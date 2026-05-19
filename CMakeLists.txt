@@ -157,8 +157,8 @@ if (BUILD_OPEN_PROJECT)
         #include(cmake/third_party/ascend_protobuf.cmake)
 
         add_cann_third_party(eigen)
-        add_cann_third_party(abseil-cp)
-        add_cann_third_party(protobuf)
+        add_cann_third_party(abseil-cpp)
+        add_cann_third_party(ascend_protobuf)
 
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
