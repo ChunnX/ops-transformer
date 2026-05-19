@@ -33,6 +33,11 @@ public:
     bool strongTpBound_ = false;
     bool hasLocalAtFront_ = true;  // local提前计算
 
+    // HCCL限制相关成员
+    uint64_t hcclMaxTileM_ = UINT64_MAX;
+    bool hcclLimited_ = false;
+    static constexpr uint64_t HCCL_MEM_LIMIT = 268435456; // 256MB
+
     // Constructor
     explicit AllGatherPlusMMV2(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
                              SocVersion inputSocVersion = SocVersion::SOC910_B)
@@ -51,12 +56,19 @@ public:
     }
     void EstimateKernelTime() override;
     void SelectTilingMethod() override;
+    void GetTiling() override;
 
 private:
     void SetCommTimeFactorForA5();
     void SetCommTimeFactorForOther();
     void SetCommTimeFactor();
     void PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime);
+
+    // HCCL限制相关函数
+    void CheckHCCLLimit();
+    void AdjustForHCCLLimit();
+    void AdjustForCalcBoundHCCL(uint64_t mValue, uint64_t minTileLen);
+    void AdjustForCommBoundHCCL(uint64_t mValue, uint64_t minTileLen);
 };
 
 #endif //__ALL_GATHER_V2_FORMULAIC_TILING_H__
