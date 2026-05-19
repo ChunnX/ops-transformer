@@ -125,6 +125,7 @@ if (BUILD_OPEN_PROJECT)
             exe_graph
             graph
             graph_base
+            op_base
             register
             ascendalog
             error_manager
