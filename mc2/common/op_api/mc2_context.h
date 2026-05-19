@@ -35,9 +35,8 @@ namespace Mc2Aclnn {
 
 class Mc2Context {
 public:
-    template <CommProtocol Protocol = CommProtocol::COMM_PROTOCOL_UB_MEM>
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                           aclTensor *&mc2Context);
+                                           aclTensor *&mc2Context,CommProtocol Protocol = CommProtocol::COMM_PROTOCOL_UB_MEM);
 private:
     static Mc2Context &GetInstance();
     explicit Mc2Context();

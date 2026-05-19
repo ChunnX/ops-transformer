@@ -114,11 +114,11 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
         aclTensor *mc2Context = nullptr;
         uint64_t hcclBuffSize = 0;
         const char *opName = "bandwidth_test";
-        CommProtocol Protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         if ((commAlg != nullptr && std::strcmp(commAlg, "urma") == 0)) {
-                Protocol = CommProtocol::COMM_PROTOCOL_UBC_TP;
+            auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context,CommProtocol::COMM_PROTOCOL_UBC_TP);
+        } else {
+            auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
         }
-        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor<Protocol>(group, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
             mc2Context, x, expertId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg,
