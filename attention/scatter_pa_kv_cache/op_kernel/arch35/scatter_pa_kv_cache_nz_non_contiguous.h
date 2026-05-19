@@ -21,21 +21,24 @@
 namespace ScatterPaKvCache {
 using namespace AscendC;
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM = false>
 class ScatterPaKvCacheNzNonContiguous {
 public:
-    __aicore__ inline ScatterPaKvCacheNzNonContiguous(TPipe *pipe,
-                                                           const ScatterPaKvCacheTilingData *__restrict tiling)
+    __aicore__ inline ScatterPaKvCacheNzNonContiguous(TPipe *pipe, const ScatterPaKvCacheTilingData *__restrict tiling)
         : pipe_(pipe), tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value,
                                 GM_ADDR key_cache_out, GM_ADDR value_cache_out);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CopyInKeyNz(int64_t tokenIdx, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum);
-    __aicore__ inline void CopyOutKeyNz(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum);
-    __aicore__ inline void CopyInValueNz(int64_t tokenIdx, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum);
-    __aicore__ inline void CopyOutValueNz(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum);
+    __aicore__ inline void CopyInKeyNz(
+        int64_t tokenIdx, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum);
+    __aicore__ inline void CopyOutKeyNz(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx,
+        int64_t headNum, int64_t lastDimNum);
+    __aicore__ inline void CopyInValueNz(
+        int64_t tokenIdx, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum);
+    __aicore__ inline void CopyOutValueNz(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx,
+        int64_t headNum, int64_t lastDimNum);
     __aicore__ inline void InitLoopInfo();
     __aicore__ inline void ProcessKey(int64_t tokenIdx, int64_t blockIdx, int64_t blockOffset);
     __aicore__ inline void ProcessValue(int64_t tokenIdx, int64_t blockIdx, int64_t blockOffset);
@@ -75,7 +78,7 @@ private:
     int64_t vNumHeadTail_{0};
 };
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::Init(
     GM_ADDR key, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR key_cache_out, GM_ADDR value_cache_out)
 {
@@ -99,7 +102,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::InitLoopInfo()
 {
     int64_t ubHandleSize = tilingData_->ubSize / sizeof(T1);
@@ -159,7 +162,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     }
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::CopyInKeyNz(int64_t tokenIdx,
                                                                                                 int64_t headIdx,
                                                                                                 int64_t lastDimIdx,
@@ -184,7 +187,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     que_.EnQue(inputLocal);
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::CopyOutKeyNz(int64_t blockIdx,
                                                                                                  int64_t blockOffset,
                                                                                                  int64_t headIdx,
@@ -198,16 +201,25 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     SetFlag<HardEvent::V_S>(eventIdV2ToS);
     WaitFlag<HardEvent::V_S>(eventIdV2ToS);
 
-    int64_t dstStride = tilingData_->keyCacheStride1 - BLOCK_SIZE;
-    
+    int64_t dstStride = 0;
+    if constexpr (FIVE_DIM)  {
+        dstStride = tilingData_->keyCacheStride2 * sizeof(T1) - BLOCK_SIZE;
+    } else {
+        dstStride = tilingData_->keyCacheStride1 * sizeof(T1) - BLOCK_SIZE;
+    }
+    int64_t keyIdxOffset = blockIdx * tilingData_->keyCacheStride0;
     for (int64_t h = 0; h < headNum; h++) {
         int64_t curHeadIdx = headIdx + h;
-        int64_t keyCacheOffset = blockIdx * tilingData_->keyCacheStride0 +
-                                 (curHeadIdx * kHeadLastDimLoop_ + lastDimIdx) * tilingData_->keyCacheStride1 +
-                                 blockOffset * tilingData_->keyCacheStride2;
+        int64_t keyCacheOffset = keyIdxOffset;
+        if constexpr (FIVE_DIM) {
+            keyCacheOffset += curHeadIdx * tilingData_->keyCacheStride1 + lastDimIdx * tilingData_->keyCacheStride2 +
+                              blockOffset * tilingData_->keyCacheStride3;
+        } else {
+            keyCacheOffset += (curHeadIdx * kHeadLastDimLoop_ + lastDimIdx) * tilingData_->keyCacheStride1 +
+                              blockOffset * tilingData_->keyCacheStride2;
+        }
 
         int64_t ubOffset = h * lastDimNum * lastDimK_;
-
         DataCopyExtParams copyParams = {
             static_cast<uint16_t>(lastDimNum),
             BLOCK_SIZE,
@@ -222,7 +234,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     que_.FreeTensor(inputLocal);
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::CopyInValueNz(int64_t tokenIdx,
                                                                                                   int64_t headIdx,
                                                                                                   int64_t lastDimIdx,
@@ -247,7 +259,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     que_.EnQue(inputLocal);
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::CopyOutValueNz(int64_t blockIdx,
                                                                                                    int64_t blockOffset,
                                                                                                    int64_t headIdx,
@@ -261,13 +273,24 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     SetFlag<HardEvent::V_S>(eventIdV2ToS);
     WaitFlag<HardEvent::V_S>(eventIdV2ToS);
 
-    int64_t dstStride = tilingData_->valueCacheStride1 - BLOCK_SIZE;
-    
+    int64_t dstStride = 0;
+    if constexpr (FIVE_DIM) {
+        dstStride = tilingData_->valueCacheStride2 * sizeof(T2) - BLOCK_SIZE;
+    } else {
+        dstStride = tilingData_->valueCacheStride1 * sizeof(T2) - BLOCK_SIZE;
+    }
+    int64_t blockIdxOffset = blockIdx * tilingData_->valueCacheStride0;
     for (int64_t h = 0; h < headNum; h++) {
         int64_t curHeadIdx = headIdx + h;
-        int64_t valueCacheOffset = blockIdx * tilingData_->valueCacheStride0 +
-                                   (curHeadIdx * vHeadLastDimLoop_ + lastDimIdx) * tilingData_->valueCacheStride1 +
-                                   blockOffset * tilingData_->valueCacheStride2;
+        int64_t valueCacheOffset = blockIdxOffset;
+        if constexpr (FIVE_DIM) {
+            valueCacheOffset += curHeadIdx * tilingData_->valueCacheStride1 +
+                                lastDimIdx * tilingData_->valueCacheStride2 +
+                                blockOffset * tilingData_->valueCacheStride3;
+        } else {
+            valueCacheOffset += (curHeadIdx * vHeadLastDimLoop_ + lastDimIdx) * tilingData_->valueCacheStride1 +
+                                blockOffset * tilingData_->valueCacheStride2;
+        }
 
         int64_t ubOffset = h * lastDimNum * lastDimV_;
 
@@ -285,7 +308,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     que_.FreeTensor(inputLocal);
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::ProcessKey(int64_t tokenIdx,
                                                                                                int64_t blockIdx,
                                                                                                int64_t blockOffset)
@@ -318,7 +341,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     }
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::ProcessValue(int64_t tokenIdx,
                                                                                                  int64_t blockIdx,
                                                                                                  int64_t blockOffset)
@@ -351,7 +374,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     }
 }
 
-template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
+template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {

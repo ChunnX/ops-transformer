@@ -56,6 +56,7 @@
 
 #define NORMAL_NON_CONTIGUOUS 700
 #define NZ_NON_CONTIGUOUS 800
+#define NZ_NON_CONTIGUOUS_FIVE_DIM 900
 
 using namespace ScatterPaKvCache;
 
@@ -118,6 +119,11 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
         op.Process();
     } else if TILING_KEY_IS(NZ_NON_CONTIGUOUS) {
         ScatterPaKvCache::ScatterPaKvCacheNzNonContiguous<keyType, valueType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(
+            &pipe, &tilingData);
+        op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
+        op.Process();
+    }  else if TILING_KEY_IS(NZ_NON_CONTIGUOUS_FIVE_DIM) {
+        ScatterPaKvCache::ScatterPaKvCacheNzNonContiguous<keyType, valueType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT, true> op(
             &pipe, &tilingData);
         op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
         op.Process();

@@ -66,9 +66,11 @@ TILING_DATA_FIELD_DEF(int64_t, vOffset);
 TILING_DATA_FIELD_DEF(int64_t, keyCacheStride0);
 TILING_DATA_FIELD_DEF(int64_t, keyCacheStride1);
 TILING_DATA_FIELD_DEF(int64_t, keyCacheStride2);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride3);
 TILING_DATA_FIELD_DEF(int64_t, valueCacheStride0);
 TILING_DATA_FIELD_DEF(int64_t, valueCacheStride1);
 TILING_DATA_FIELD_DEF(int64_t, valueCacheStride2);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride3);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ScatterPaKvCache, ScatterPaKvCacheTilingData)
@@ -148,9 +150,11 @@ private:
     int64_t keyCacheStride0_ = 0;
     int64_t keyCacheStride1_ = 0;
     int64_t keyCacheStride2_ = 0;
+    int64_t keyCacheStride3_ = 1;
     int64_t valueCacheStride0_ = 0;
     int64_t valueCacheStride1_ = 0;
     int64_t valueCacheStride2_ = 0;
+    int64_t valueCacheStride3_ = 1;
     int64_t kHeadSize_;
     int64_t vHeadSize_;
     int64_t batch_;

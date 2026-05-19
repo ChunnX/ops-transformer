@@ -59,6 +59,7 @@ constexpr int64_t TEMPLATE_NZ = 5;
 constexpr int64_t TEMPLATE_NCT = 6;
 constexpr int64_t TEMPLATE_NORMAL_NON_CONTIGUOUS = 7;
 constexpr int64_t TEMPLATE_NZ_NON_CONTIGUOUS = 8;
+constexpr int64_t TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM = 9;
 
 
 
@@ -155,7 +156,8 @@ ge::graphStatus ScatterPaKvCacheTiling::GetInputDtype()
         auto inputValueCacheInDesc = context_->GetInputDesc(inputValueCacheIn_);
         OP_CHECK_NULL_WITH_CONTEXT(context_, inputValueCacheInDesc);
         ge::DataType inputValueCacheInDtype = inputValueCacheInDesc->GetDataType();
-        if (templateType_ == TEMPLATE_NZ) {
+        if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS ||
+            templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
             bool inputKeyDtypeFailCheck = inputKeyDtype != inputKeyCacheInDtype;
             OP_CHECK_IF(inputKeyDtypeFailCheck, OP_LOGE(context_, "pa_nz mode. key, key_cache dtype must be same"),
                         return ge::GRAPH_FAILED;);
@@ -254,6 +256,9 @@ void ScatterPaKvCacheTiling::GetNonContigousStrideInfo()
     keyCacheStride0_ = keyCacheStride_[DIM0];
     keyCacheStride1_ = keyCacheStride_[DIM1];
     keyCacheStride2_ = keyCacheStride_[DIM2];
+    if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
+        keyCacheStride3_ = keyCacheStride_[DIM3];
+    }
     if (inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2) {
         keyStride0_ /= DIM2;
         keyStride1_ /= DIM2;
@@ -261,6 +266,7 @@ void ScatterPaKvCacheTiling::GetNonContigousStrideInfo()
         keyCacheStride0_ /= DIM2;
         keyCacheStride1_ /= DIM2;
         keyCacheStride2_ /= DIM2;
+        keyCacheStride3_ /= DIM2;
     }
 
     if (inOutMode_ == SINGLE_IN_OUT) {
@@ -274,6 +280,9 @@ void ScatterPaKvCacheTiling::GetNonContigousStrideInfo()
         valueCacheStride0_ = valueCacheStride_[DIM0];
         valueCacheStride1_ = valueCacheStride_[DIM1];
         valueCacheStride2_ = valueCacheStride_[DIM2];
+        if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
+            valueCacheStride3_ = valueCacheStride_[DIM3];
+        }
         if (valueDtype_ == ge::DT_FLOAT4_E2M1 || valueDtype_ == ge::DT_FLOAT4_E1M2) {
             valueStride0_ /= DIM2;
             valueStride1_ /= DIM2;
@@ -281,6 +290,7 @@ void ScatterPaKvCacheTiling::GetNonContigousStrideInfo()
             valueCacheStride0_ /= DIM2;
             valueCacheStride1_ /= DIM2;
             valueCacheStride2_ /= DIM2;
+            valueCacheStride3_ /= DIM2;
         }
     } 
 }
@@ -396,7 +406,7 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
     blockFactor_ = Ops::Base::CeilDiv<int64_t>(numTokens_, totalCoreNum_);
     usedCoreNum_ = std::min(Ops::Base::CeilDiv<int64_t>(numTokens_, blockFactor_), totalCoreNum_);
     tailBlockFactor_ = numTokens_ - blockFactor_ * (usedCoreNum_ - 1);
-    if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS) {
+    if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
         GetNonContigousStrideInfo();
         return ge::GRAPH_SUCCESS;
     }
@@ -610,19 +620,31 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNormal()
 
 ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
 {
-    int64_t tokensK = inputKeyShape_.GetDim(DIM1) * inputKeyShape_.GetDim(DIM2);
-    int64_t lastDimK = inputKeyCacheInShape_.GetDim(DIM3);
+    int64_t numHead = inputKeyShape_.GetDim(DIM1);
+    int64_t kHeadSize = inputKeyShape_.GetDim(DIM2);
+    int64_t tokensK = numHead * kHeadSize;
+    int64_t lastDimK = inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.getDimNum() - DIM1);
     int64_t lastDimKSize = lastDimK * dtypeByteSize_;
     if (inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2) {
         lastDimKSize /= 2;
     }
     OP_CHECK_IF(lastDimKSize != BLOCK_SIZE,
                  OP_LOGE(context_, "the last dim of key cache must be 32 Byte. "), return ge::GRAPH_FAILED;);
-    OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensK, lastDimK) != inputKeyCacheInShape_.GetDim(DIM1),
-                OP_LOGE(context_, "the dim 1 of key cache must be ceil(numHead * kHeadSize / lastDimK). "),
-                return ge::GRAPH_FAILED;);
+
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM0) != slotMappingShape_.GetDim(DIM0),
                 OP_LOGE(context_, "the dim 0 of key and slot_mapping must be equal. "), return ge::GRAPH_FAILED;);
+    if (inputKeyCacheInShape_.GetDimNum() == DIM4) {
+        OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensK, lastDimK) != inputKeyCacheInShape_.GetDim(DIM1),
+                    OP_LOGE(context_, "the dim 1 of key cache must be ceil(numHead * kHeadSize / lastDimK). "),
+                    return ge::GRAPH_FAILED;);
+    } else {
+        OP_CHECK_IF((kHeadSize / lastDimK) != inputKeyCacheInShape_.GetDim(DIM2),
+                    OP_LOGE(context_, "the dim 2 of key cache must be (kHeadSize / lastDimK). "),
+                    return ge::GRAPH_FAILED;);
+        OP_CHECK_IF(numHead != inputKeyCacheInShape_.GetDim(DIM1),
+                    OP_LOGE(context_, "the dim 1 of key cache should be same as numHead. "),
+                    return ge::GRAPH_FAILED;);
+    }
     if (inOutMode_ != DUAL_IN_OUT) {
         return ge::GRAPH_SUCCESS;
     }
@@ -630,13 +652,16 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
                 OP_LOGE(context_, "the dim 0 of key and value must be equal. "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM1) != inputValueShape_.GetDim(DIM1),
                 OP_LOGE(context_, "the dim 1 of key and value must be equal. "), return ge::GRAPH_FAILED;);
-    OP_CHECK_IF(inputKeyCacheInShape_.GetDim(DIM2) != inputValueCacheInShape_.GetDim(DIM2),
-                OP_LOGE(context_, "the dim 2 of key cache and value cache must be equal. "), return ge::GRAPH_FAILED;);
+    OP_CHECK_IF(inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.getDimNum() - DIM2) !=
+                    inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM2),
+                OP_LOGE(context_, "the blockSize of key cache and value cache must be equal. "),
+                return ge::GRAPH_FAILED;);
 
     OP_CHECK_IF(inputKeyCacheInShape_.GetDim(DIM0) != inputValueCacheInShape_.GetDim(DIM0),
                 OP_LOGE(context_, "the dim0 of keycache must be equal to the dim0 of valuecache."),
                 return ge::GRAPH_FAILED;);
-    int64_t tokensV = inputValueShape_.GetDim(DIM1) * inputValueShape_.GetDim(DIM2);
+    int64_t vHeadSize = inputValueShape_.GetDim(DIM2);
+    int64_t tokensV = numHead * vHeadSize;
     int64_t lastDimV = inputValueCacheInShape_.GetDim(DIM3);
     int64_t lastDimVSize = lastDimV * valueDtypeByteSize_;
     if (valueDtype_ == ge::DT_FLOAT4_E2M1 || valueDtype_ == ge::DT_FLOAT4_E1M2) {
@@ -644,9 +669,19 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
     }
     OP_CHECK_IF(lastDimVSize != BLOCK_SIZE,
                 OP_LOGE(context_, "the last dim of value cache must be 32 Byte. "), return ge::GRAPH_FAILED;);
-    OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensV, lastDimV) != inputValueCacheInShape_.GetDim(DIM1),
-                OP_LOGE(context_, "the dim 1 of value cache must be ceil(numHead * vHeadSize / lastDimV). "),
-                return ge::GRAPH_FAILED;);
+    if (inputValueCacheInShape_.GetDimNum() == DIM4) {
+        OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensV, lastDimV) != inputValueCacheInShape_.GetDim(DIM1),
+                    OP_LOGE(context_, "the dim 1 of value cache must be ceil(numHead * vHeadSize / lastDimV). "),
+                    return ge::GRAPH_FAILED;);
+    } else {
+        OP_CHECK_IF((vHeadSize / lastDimV) != inputValueCacheInShape_.GetDim(DIM2),
+                    OP_LOGE(context_, "the dim 2 of value cache must be (vHeadSize / lastDimV). "),
+                    return ge::GRAPH_FAILED;);
+        OP_CHECK_IF(numHead != inputValueCacheInShape_.GetDim(DIM1),
+                    OP_LOGE(context_, "the dim 1 of value cache should be same as numHead. "),
+                    return ge::GRAPH_FAILED;);
+    }
+
 
     return ge::GRAPH_SUCCESS;
 }
@@ -725,7 +760,8 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckDimValid()
     if (templateType_ == TEMPLATE_ALIBI) {
         return CheckAlibi();
     }
-    if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS) {
+    if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS ||
+        templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
         return CheckNz();
     }
     OP_LOGE(context_, "input is not supported, please check input.");
@@ -950,6 +986,9 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     }
     if (templateType_ == TEMPLATE_NZ && IsNonContiguous()) {
         templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS;
+        if (inputKeyCacheInShape_.GetDimNum() != DIM4) {
+            templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM;
+        }
     }
     if (templateType_ == TEMPLATE_NCT) {
         auto attrs = context_->GetAttrs();
@@ -1040,7 +1079,8 @@ ge::graphStatus ScatterPaKvCacheTiling::DoOpTiling()
         return TemplateAlibi();
     } else if (templateType_ == TEMPLATE_OMNI) {
         return TemplateOmni();
-    } else if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS) {
+    } else if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS ||
+               templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
         return TemplateNZ();
     }
     return ge::GRAPH_FAILED;
@@ -1061,7 +1101,9 @@ void ScatterPaKvCacheTiling::GenTilingKey()
 {
     tilingKey_ = static_cast<uint64_t>(templateType_) * HUNDRED + static_cast<uint64_t>(indexDtypeSize_) * TEN +
                  static_cast<uint64_t>(isFullyLoad_);
-    if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_OMNI || templateType_ == TEMPLATE_NCT) {
+    if (templateType_ == TEMPLATE_NZ || templateType_ == TEMPLATE_OMNI || templateType_ == TEMPLATE_NCT ||
+        templateType_ == TEMPLATE_NORMAL_NON_CONTIGUOUS || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS ||
+        templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
         tilingKey_ = static_cast<uint64_t>(templateType_) * HUNDRED + static_cast<uint64_t>(isFullyLoad_);
     }
 }
@@ -1105,10 +1147,12 @@ ge::graphStatus ScatterPaKvCacheTiling::PostTiling()
     tilingData_.set_keyCacheStride0(keyCacheStride0_);
     tilingData_.set_keyCacheStride1(keyCacheStride1_);
     tilingData_.set_keyCacheStride2(keyCacheStride2_);
+    tilingData_.set_keyCacheStride3(keyCacheStride3_);
     if (inOutMode_ == DUAL_IN_OUT) {
         tilingData_.set_valueCacheStride0(valueCacheStride0_);
         tilingData_.set_valueCacheStride1(valueCacheStride1_);
         tilingData_.set_valueCacheStride2(valueCacheStride2_);
+        tilingData_.set_valueCacheStride3(valueCacheStride3_);
     }
     GenTilingKey();
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -1160,13 +1204,15 @@ void ScatterPaKvCacheTiling::DumpTilingInfo()
     info += " vStride: " + std::to_string(vStride_);
     info += " kOffset: " + std::to_string(kOffset_);
     info += " vOffset: " + std::to_string(vOffset_);
-    info += " keyCacheStride0: " + std::to_string(keyCacheStride_[0]);
-    info += " keyCacheStride1: " + std::to_string(keyCacheStride_[1]);
-    info += " keyCacheStride2: " + std::to_string(keyCacheStride_[2]);
+    info += " keyCacheStride0: " + std::to_string(keyCacheStride0_);
+    info += " keyCacheStride1: " + std::to_string(keyCacheStride1_);
+    info += " keyCacheStride2: " + std::to_string(keyCacheStride2_);
+    info += " keyCacheStride3: " + std::to_string(keyCacheStride3_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        info += " valueCacheStride0: " + std::to_string(valueCacheStride_[0]);
-        info += " valueCacheStride1: " + std::to_string(valueCacheStride_[1]);
-        info += " valueCacheStride2: " + std::to_string(valueCacheStride_[2]);
+        info += " valueCacheStride0: " + std::to_string(valueCacheStride0_);
+        info += " valueCacheStride1: " + std::to_string(valueCacheStride1_);
+        info += " valueCacheStride2: " + std::to_string(valueCacheStride2_);
+        info += " valueCacheStride3: " + std::to_string(valueCacheStride3_);
     }
     OP_LOGI(context_->GetNodeName(), "%s", info.c_str());
 }
