@@ -705,12 +705,13 @@ public:
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
-            info.actVecMSizeAlign16 = ((info.actMSize + 31) >> 5 << 5) >> 1;
+            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            info.actVecMSizeAlign16 = (info.actMSize + 15) >> 4 << 4;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
+            info.vecMbaseIdx = info.actVecMSizeAlign16;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 

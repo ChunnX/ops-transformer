@@ -759,15 +759,15 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-        uint32_t vScaleOffset = runInfo.actMSize * runInfo.actSingleLoopS2Size; // VScale在mm1B的偏移量（单位：元素）
-        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(vScaleOffset);
+        uint32_t pScaleOffset = mBaseSize * runInfo.actSingleLoopS2Size; // VScale在mm1B的偏移量（单位：元素）
+        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
-        uint64_t l1ScaleOffset = baseK / 32 * runInfo.actVecMSizeAlign16 * 2;
+        uint64_t l1ScaleOffset = baseK / 32 * runInfo.actMSizeAlign32;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
@@ -824,8 +824,8 @@ public:
         }
 
         if constexpr (!USE_DN) {
-            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-            fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+            fixpipeParams.mSize = (runInfo.actMSize + 31) >> 5 << 5;
+            fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         } else {
             fixpipeParams.mSize = mBaseSize;
             fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
