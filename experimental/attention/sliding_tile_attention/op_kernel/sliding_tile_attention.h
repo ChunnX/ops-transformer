@@ -627,11 +627,11 @@ private:
             LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
             Duplicate(accTile[rowBegin * VECTOR_HEAD_DIM_LIMIT], 0.0F,
                       static_cast<uint32_t>(rowCount * VECTOR_HEAD_DIM_LIMIT));
-            Duplicate(maxLocal[rowBegin], NEG_INF, static_cast<uint32_t>(rowCount));
-            Duplicate(denomLocal[rowBegin], 0.0F, static_cast<uint32_t>(rowCount));
             PipeBarrier<PIPE_V>();
         }
         for (int64_t row = rowBegin; row < rowEnd; ++row) {
+            maxLocal.SetValue(row, NEG_INF);
+            denomLocal.SetValue(row, 0.0F);
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             if (querySeq >= tiling_->validSeqLen) {
