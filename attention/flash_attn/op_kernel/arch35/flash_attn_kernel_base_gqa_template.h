@@ -300,14 +300,25 @@ public:
     {
         if ASCEND_IS_AIC {
             constInfo.aicIdx = GetBlockIdx();
+            if constexpr (PAGE_ATTENTION) {
+                constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
+                constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
+            }
         } else {
             constInfo.aivIdx = GetBlockIdx();
             constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
             constInfo.subBlockIdx = GetSubBlockIdx();
+            constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
+            constInfo.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
+            constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
+            constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
+            constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
+            constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
+            constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
+            constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
+            constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
         }
         constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
-        constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
-        constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;
         constInfo.n2Size = this->tilingData->flashAttnBaseParams.n2Size;
         constInfo.gSize = this->tilingData->flashAttnBaseParams.gSize;
         constInfo.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
@@ -318,34 +329,12 @@ public:
         constInfo.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
         constInfo.seqUsedQSize = this->tilingData->flashAttnBaseParams.seqUsedQSize;
         constInfo.seqUsedKvSize = this->tilingData->flashAttnBaseParams.seqUsedKvSize;
-        constInfo.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
         constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
-        constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
-
-        // if constexpr (HAS_MASK) {
-        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
-        constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
-        constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
-        constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
-        constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
-        // }
-
-        constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
-        constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
-
-        // pageAttention
-        if constexpr (PAGE_ATTENTION) {
-            constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
-            constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
-            constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
-        }
-        // LSE
-        constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
-
-        constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
