@@ -591,6 +591,8 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         yPingPongID_ = (yPingPongID_ + 1) & 1;
     }
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
 }

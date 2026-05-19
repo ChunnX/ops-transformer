@@ -377,43 +377,6 @@ public:
             }
 
             int64_t groupM = Get<MNK_M>(problemShape_);
-            if ASCEND_IS_AIV {
-                printf("[DET_KERNEL] groupIdx=%u groupM=%ld workspaceBaseRow=%lu windowSizeRows=%lu "
-                       "willOverflow=%d globalRowOffset=%lu\n",
-                       groupIdx, groupM, workspaceBaseRow, windowSizeRows,
-                       (workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) ? 1 : 0,
-                       globalRowOffset);
-            }
-
-            // === Group-boundary pre-write check ===
-            // All cores compute identical workspaceBaseRow + groupM, so the
-            // branch decision is uniform across all cores -> SyncAll is safe.
-            if (workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) {
-                // Drain pending pipeline before aggregation
-                if ASCEND_IS_AIC {
-                    if (isVecSetSyncCom_) {
-                        WaitForVector();
-                    }
-                }
-
-                SyncAll();
-                GMMFRDeterministic::SyncConfig syncConfig{};
-                syncConfig.curM = workspaceBaseRow;
-                syncConfig.lowBoundM = workspaceBaseRow;
-                syncConfig.windowSize = workspaceBaseRow;
-                syncConfig.baseN = params.cyclingParams.baseN;
-
-                GMMFRDeterministic::FRDeterministicA5<float,
-                    typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                    syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
-                    params.cyclingParams.coreNum, params.cyclingParams.n,
-                    globalRowOffset);
-                SyncAll();
-
-                globalRowOffset += workspaceBaseRow;
-                workspaceBaseRow = 0;
-                isVecSetSyncCom_ = false;
-            }
 
             // --- Inline ProcessSingleGroup tile loop ---
             int64_t n = Get<MNK_N>(problemShape_);
@@ -447,6 +410,27 @@ public:
                 }
                 isVecSetSyncCom_ = true;
 
+                if (workspaceBaseRow > 0 &&
+                    workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) {
+                    SyncAll();
+                    GMMFRDeterministic::SyncConfig syncConfig{};
+                    syncConfig.curM = workspaceBaseRow;
+                    syncConfig.lowBoundM = workspaceBaseRow;
+                    syncConfig.windowSize = workspaceBaseRow;
+                    syncConfig.baseN = params.cyclingParams.baseN;
+
+                    GMMFRDeterministic::FRDeterministicA5<float,
+                        typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                        syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                        params.cyclingParams.coreNum, params.cyclingParams.n,
+                        globalRowOffset);
+                    SyncAll();
+
+                    globalRowOffset += workspaceBaseRow;
+                    workspaceBaseRow = 0;
+                    UpdateGlobalBuffer(params, workspaceBaseRow);
+                }
+
                 // AIV: Epilogue -> workspace
                 if ASCEND_IS_AIV {
                     AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
@@ -473,6 +457,27 @@ public:
 
             // Advance workspace offset by the full group M (identical across all cores)
             workspaceBaseRow += static_cast<uint64_t>(groupM);
+
+            if (workspaceBaseRow >= windowSizeRows && groupIdx < groupNum - 1) {
+                End();
+                isVecSetSyncCom_ = false;
+                SyncAll();
+                GMMFRDeterministic::SyncConfig syncConfig{};
+                syncConfig.curM = workspaceBaseRow;
+                syncConfig.lowBoundM = workspaceBaseRow;
+                syncConfig.windowSize = workspaceBaseRow;
+                syncConfig.baseN = params.cyclingParams.baseN;
+
+                GMMFRDeterministic::FRDeterministicA5<float,
+                    typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                    syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                    params.cyclingParams.coreNum, params.cyclingParams.n,
+                    globalRowOffset);
+                SyncAll();
+
+                globalRowOffset += workspaceBaseRow;
+                workspaceBaseRow = 0;
+            }
         }
 
         // === Final aggregation (remaining rows) ===
