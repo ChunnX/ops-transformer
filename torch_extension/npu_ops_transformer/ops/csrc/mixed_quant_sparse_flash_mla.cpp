@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_lightning_indexer_v2_metadata.cpp
+ * \file mixed_quant_sparse_flash_mla.cpp
  * \brief
  */
 
@@ -25,7 +25,7 @@ const c10::optional<at::Tensor> qli_v2_get_valid_tensor(const c10::optional<at::
     return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
 };
 
-at::Tensor npu_quant_lightning_indexer_v2_metadata(
+at::Tensor npu_mixed_quant_sparse_flash_mla_metadata(
     int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk, int64_t q_quant_mode,
     int64_t k_quant_mode,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_k,
@@ -71,7 +71,7 @@ at::Tensor npu_quant_lightning_indexer_v2_metadata(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_quant_lightning_indexer_v2_metadata", &npu_quant_lightning_indexer_v2_metadata,
-        "npu_quant_lightning_indexer_v2_metadata");
+    m.def("npu_mixed_quant_sparse_flash_mla_metadata", &npu_mixed_quant_sparse_flash_mla_metadata,
+        "npu_mixed_quant_sparse_flash_mla_metadata");
 }
 } // namespace op_api
