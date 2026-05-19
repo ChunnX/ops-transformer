@@ -591,10 +591,11 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CalRecvCou
     SyncAll<true>();
 }
 
+
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CopyStatusToADump()
 {
-    // AdumpFlag, TokenNum, realFlag, recvFlag
+    // AdumpFlag, realTokenNum, recvTokenNum, realFlag, recvFlag
     uint32_t countPerRank = 5U;
     LocalTensor<int32_t> aDumpTensor = LocalTensor<int32_t>{TPosition::LCM, 0U, B32_PER_BLOCK * countPerRank};
     aDumpTensor.SetValue(0, Mc2A2Kernel::DUMP_FLAG_VALUE);
@@ -606,23 +607,28 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CopyStatus
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
     GlobalTensor<int32_t> aDumpStatusGM;
     aDumpStatusGM.SetGlobalBuffer((__gm__ int32_t*)(adumpStatusGM_));
+    GlobalTensor<int32_t> tokenGlobal;
     GlobalTensor<int32_t> flagGlobal;
     for (uint32_t rankId = worldSizeTaskInfo_.startTaskId; rankId < worldSizeTaskInfo_.endTaskId; rankId++) {
         if (isVisitedLocal_(rankId - worldSizeTaskInfo_.startTaskId)) {
             continue;
         }
-        aDumpTensor.SetValue(B32_PER_BLOCK, expertWindowOffsetLocal_(rankId - worldSizeTaskInfo_.startTaskId));
-        GM_ADDR wAddr = windowInGM_ + rankSizeOnWin_ * rankId + SKIP_OFFSET + TOKEN_OFFSET;
+        uint32_t realTokenNum = expertWindowOffsetLocal_(rankId - worldSizeTaskInfo_.startTaskId);
+        aDumpTensor.SetValue(B32_PER_BLOCK, realTokenNum);
+        GM_ADDR wAddr = windowInGM_ + rankSizeOnWin_ * rankId;
+        tokenGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
+        DataCopyPad(aDumpTensor[B32_PER_BLOCK * 2], tokenGlobal, copyFlagParams, padParams); // tokenNum
+        wAddr = windowInGM_ + rankSizeOnWin_ * rankId + TOKEN_OFFSET + SKIP_OFFSET +
+                realTokenNum * axisHExpandXTypeSize_;
         flagGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
-        DataCopyPad(aDumpTensor[B32_PER_BLOCK * 2], flagGlobal, copyFlagParams, padParams); // 设置AdumpFlag
-        uint32_t offset = expertWindowOffsetLocal_(rankId - worldSizeTaskInfo_.startTaskId) * axisHExpandXTypeSize_;
-        DataCopyPad(aDumpTensor[B32_PER_BLOCK * 3], flagGlobal[offset], copyFlagParams, padParams);
+        DataCopyPad(aDumpTensor[B32_PER_BLOCK * 3], flagGlobal, copyFlagParams, padParams); // target token flag
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        int32_t tokenNum = aDumpTensor(B32_PER_BLOCK);
-        if (tokenNum <= axisBS_ * axisK_) {
-            DataCopyPad(aDumpTensor[B32_PER_BLOCK * 4],
-                        flagGlobal[tokenNum * axisHExpandXTypeSize_],
-                        copyFlagParams, padParams);
+        int32_t recvTokenNum = aDumpTensor(B32_PER_BLOCK * 2);
+        if (recvTokenNum <= axisBS_ * axisK_) {
+            wAddr = windowInGM_ + rankSizeOnWin_ * rankId + TOKEN_OFFSET + SKIP_OFFSET +
+                    recvTokenNum * axisHExpandXTypeSize_;
+            flagGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
+            DataCopyPad(aDumpTensor[B32_PER_BLOCK * 4], flagGlobal, copyFlagParams, padParams);
         } else {
             aDumpTensor.SetValue(B32_PER_BLOCK * 4, 0U);
         }
@@ -675,7 +681,6 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispat
             unDump = false;
         }
     }
-    CopyStatusToADump();
     if (unlikely(needPerformanceInfo_) && worldSizeTaskInfo_.taskNum > 0) {
         AscendC::SetAtomicAdd<int32_t>();
         CopyUb2Gm(performanceInfoI32Global_, performanceInfoI32Local_,
