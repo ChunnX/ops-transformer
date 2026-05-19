@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file moe_token_permute_grad_tiling.h
+ * \file moe_token_permute_with_routing_map_grad_unpermute_tiling.h
  * \brief
  */
-#ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_GRAD_H_
-#define OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_GRAD_H_
+#ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_WITH_ROUTING_MAP_GRAD_UNPERMUTE_H_
+#define OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_WITH_ROUTING_MAP_GRAD_UNPERMUTE_H_
 
 #include "register/op_impl_registry.h"
 #include "tiling/tiling_api.h"
@@ -97,7 +97,8 @@ END_TILING_DATA_DEF;
 // TEMP CODE END
 //===================
 
-REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGradUnpermute, MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
+REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGradUnpermute,
+                           MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
 
 } // namespace optiling
-#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_GRAD_H_
+#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_WITH_ROUTING_MAP_GRAD_UNPERMUTE_H_
