@@ -39,10 +39,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     RegTensor<float> vreg_x_sum_5;
     RegTensor<float> vreg_x_sum_6;
     RegTensor<float> vreg_x_sum_7;
-    RegTensor<float> vreg_x_sum0;
-    RegTensor<float> vreg_x_sum1;
-    RegTensor<float> vreg_x_sum2;
-    RegTensor<float> vreg_x_sum3;
     RegTensor<half> vreg_x_exp_even_f16;
     RegTensor<half> vreg_x_exp_odd_f16;
     RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
@@ -211,6 +207,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         LoadAlign(idx_nd2nz, indexesUb);
     }
 
+    __ubuf__ float *ptr_base0 = input_x_local_UB;
+    __ubuf__ float *ptr_base1 = input_x_local_UB + ubN * m / 4;
+    __ubuf__ float *ptr_base2 = input_x_local_UB + ubN * m / 2;
+    __ubuf__ float *ptr_base3 = input_x_local_UB + ubN * m / 2 + ubN * m / 4;
+
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -224,14 +225,18 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
             LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
             LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
         } else {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_4, input_x_local_UB + (i0 * 2 + 1) * m);
-            LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + (i0 * 2 + 1) * m);
-            LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + (i0 * 2 + 1) * m);
-            LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + (i0 * 2 + 1) * m);
+            LoadAlign(vreg_x_f32_0, ptr_base0);
+            LoadAlign(vreg_x_f32_1, ptr_base1);
+            LoadAlign(vreg_x_f32_2, ptr_base2);
+            LoadAlign(vreg_x_f32_3, ptr_base3);
+            LoadAlign(vreg_x_f32_4, ptr_base0 + m);
+            LoadAlign(vreg_x_f32_5, ptr_base1 + m);
+            LoadAlign(vreg_x_f32_6, ptr_base2 + m);
+            LoadAlign(vreg_x_f32_7, ptr_base3 + m);
+            ptr_base0 += m * 2;
+            ptr_base1 += m * 2;
+            ptr_base2 += m * 2;
+            ptr_base3 += m * 2;
         }
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
@@ -375,15 +380,15 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_4, preg_134);
-    Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_6, preg_134);
     Add(vreg_x_sum_1, vreg_x_sum_1, vreg_x_sum_5, preg_134);
+    Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_6, preg_134);
     Add(vreg_x_sum_3, vreg_x_sum_3, vreg_x_sum_7, preg_134);
-    Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
-    Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
-    Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum1, preg_134);
+    Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_2, preg_134);
+    Add(vreg_x_sum_1, vreg_x_sum_1, vreg_x_sum_3, preg_134);
+    Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+        (__ubuf__ T *&)new_global_sum, vreg_x_sum_0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
@@ -437,10 +442,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     RegTensor<float> vreg_x_sum_5;
     RegTensor<float> vreg_x_sum_6;
     RegTensor<float> vreg_x_sum_7;
-    RegTensor<float> vreg_x_sum0;
-    RegTensor<float> vreg_x_sum1;
-    RegTensor<float> vreg_x_sum2;
-    RegTensor<float> vreg_x_sum3;
     RegTensor<half> vreg_x_exp_even_f16;
     RegTensor<half> vreg_x_exp_odd_f16;
     RegTensor<bfloat16_t> vreg_x_exp_even_bf16;
@@ -614,6 +615,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         LoadAlign(idx_nd2nz, indexesUb);
     }
 
+    __ubuf__ float *ptr_base0 = input_x_local_UB;
+    __ubuf__ float *ptr_base1 = input_x_local_UB + ubN * m / 4;
+    __ubuf__ float *ptr_base2 = input_x_local_UB + ubN * m / 2;
+    __ubuf__ float *ptr_base3 = input_x_local_UB + ubN * m / 2 + ubN * m / 4;
+
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -627,14 +633,18 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
             LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
             LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
         } else {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * 2 * m);
-            LoadAlign(vreg_x_f32_4, input_x_local_UB + (i0 * 2 + 1) * m);
-            LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + (i0 * 2 + 1) * m);
-            LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + (i0 * 2 + 1) * m);
-            LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + (i0 * 2 + 1) * m);
+            LoadAlign(vreg_x_f32_0, ptr_base0);
+            LoadAlign(vreg_x_f32_1, ptr_base1);
+            LoadAlign(vreg_x_f32_2, ptr_base2);
+            LoadAlign(vreg_x_f32_3, ptr_base3);
+            LoadAlign(vreg_x_f32_4, ptr_base0 + m);
+            LoadAlign(vreg_x_f32_5, ptr_base1 + m);
+            LoadAlign(vreg_x_f32_6, ptr_base2 + m);
+            LoadAlign(vreg_x_f32_7, ptr_base3 + m);
+            ptr_base0 += m * 2;
+            ptr_base1 += m * 2;
+            ptr_base2 += m * 2;
+            ptr_base3 += m * 2;
         }
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
@@ -778,16 +788,16 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         }
     }
     Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_4, preg_134);
-    Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_6, preg_134);
     Add(vreg_x_sum_1, vreg_x_sum_1, vreg_x_sum_5, preg_134);
+    Add(vreg_x_sum_2, vreg_x_sum_2, vreg_x_sum_6, preg_134);
     Add(vreg_x_sum_3, vreg_x_sum_3, vreg_x_sum_7, preg_134);
-    Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
-    Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
-    Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum1, preg_134);
+    Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_2, preg_134);
+    Add(vreg_x_sum_1, vreg_x_sum_1, vreg_x_sum_3, preg_134);
+    Add(vreg_x_sum_0, vreg_x_sum_0, vreg_x_sum_1, preg_134);
     RegTensor<float> vreg_l0;
     LoadAlign(vreg_l0, new_global_sum);
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
-    Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
+    Add(vreg_l0, vreg_l0, vreg_x_sum_0, preg_134);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
 }
