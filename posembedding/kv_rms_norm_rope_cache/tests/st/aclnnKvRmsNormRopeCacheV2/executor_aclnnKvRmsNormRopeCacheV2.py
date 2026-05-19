@@ -144,12 +144,12 @@ class FunctionaclnnKvRmsNormRopeCacheV2(AclnnBaseApi):
         if not self.is_output_kv:
             k_embed.zero_()
             v_embed.zero_()
-        print(f'pyaclnn k_cache = {k_cache}')
-        print(f'pyaclnn ckv_cache = {ckv_cache}')
-        print(f'pyaclnn k_embed = {k_embed}')
-        print(f'pyaclnn k_embed shape = {k_embed.shape}')
+        # print(f'pyaclnn k_cache = {k_cache}')
+        # print(f'pyaclnn ckv_cache = {ckv_cache}')
+        # print(f'pyaclnn k_embed = {k_embed}')
+        # print(f'pyaclnn k_embed shape = {k_embed.shape}')
 
-        print(f'pyaclnn v_embed = {v_embed}')
+        # print(f'pyaclnn v_embed = {v_embed}')
         return k_cache, ckv_cache, k_embed, v_embed
 
 
@@ -433,11 +433,11 @@ class FunctionKvRmsNormRopeCache(BaseApi):
                         eps, cache_mode, is_output_kv)
 
         # k_embed = k_embed.permute(0,2,1,3).view(16,8,128,192)
-        print(f'golden k_cache = {k_cache}')
-        print(f'golden ckv_cache = {ckv_cache}')
-        print(f'golden k_embed = {k_embed}')
-        print(f'golden k_embed shape = {k_embed.shape}')
-        print(f'golden v_embed = {v_embed}')
+        # print(f'golden k_cache = {k_cache}')
+        # print(f'golden ckv_cache = {ckv_cache}')
+        # print(f'golden k_embed = {k_embed}')
+        # print(f'golden k_embed shape = {k_embed.shape}')
+        # print(f'golden v_embed = {v_embed}')
         return k_cache, ckv_cache, k_embed.contiguous(), v_embed.contiguous()
     
     def init_by_input_data(self, input_data: InputDataset):
