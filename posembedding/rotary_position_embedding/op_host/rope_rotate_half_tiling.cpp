@@ -730,7 +730,8 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
 
     tilingKey = GetTilingKey(tilingData_.get_tilingMode(), tilingDtype);
     CalcRotateHalfTiling(inputDtype, ubSize);
-    OP_CHECK_IF(!tilingData_.get_tailAxesFLBoost() && tilingData_.get_storeSLines() <= 0, OP_LOGE(context, "head_dim shape is too large to compute."),
+    OP_CHECK_IF(!tilingData_.get_tailAxesFLBoost() && tilingData_.get_storeSLines() <= 0,
+                OP_LOGE(context, "head_dim shape is too large to compute."),
                 return ge::GRAPH_FAILED);
     
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P) {
