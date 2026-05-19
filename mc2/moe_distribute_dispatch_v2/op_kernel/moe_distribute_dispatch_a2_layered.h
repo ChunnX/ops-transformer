@@ -955,7 +955,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
     uint32_t copyNum = FLAG_SIZE / sizeof(uint64_t);
     DataCopy(statusTensor, readStatusTensor, copyNum);
     // 考虑到指令下发与数据实际传输的异步特性，可能出现tokenFlag先于endFlag写入UB的情况，
-    // 且endFlag写入时数据可能已到达。此时若提前读取tokenFlag，可能获取到数据未就绪时的无效值，
+    // 且endFlag写入时数据可能恰好到达。此时若提前读取tokenFlag，可能获取到数据未就绪时的无效值，
     // 因此必须确保endFlag搬运完成后，再进行tokenFlag的读取操作。
     PipeBarrier<PIPE_MTE2>();
     DataCopy(statusTensor[copyNum], TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
