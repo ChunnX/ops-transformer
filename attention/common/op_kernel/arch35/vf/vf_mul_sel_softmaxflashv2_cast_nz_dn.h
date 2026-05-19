@@ -1648,6 +1648,41 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
  * @param [in] oriNRange, originN range
  */
 
+/*
+ * @ingroup ProcessVec1VfOptimized
+ * @brief Optimized version for D <= 72 scenario, reduces unnecessary loops and padding
+ */
+template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, bool hasSink = false>
+__aicore__ inline void ProcessVec1VfDnOptimized72(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                       const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf,
+                                       const LocalTensor<uint8_t>& maskTensor, const uint32_t m, const uint32_t n,
+                                       const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                       float keepProb, bool needAtten, const float pScale = 1.0f,
+                                       const float sinkValue = 0.0f)
+{
+    constexpr uint16_t optimizedUbN = 72;
+    if constexpr (!isUpdate) {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+            IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
+        }
+        ProcessVec1DnNoUpdate<T, T2, hasAtten, optimizedUbN, hasSink>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
+    } else {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+            IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
+        }
+        ProcessVec1DnUpdate<T, T2, hasAtten, optimizedUbN, hasSink>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
+    }
+}
+
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
     bool hasSink = false>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
