@@ -621,7 +621,6 @@ public:
                          kL1Offset);
             CopyInScaleB(scaleBGlobal, scaleBL1Local_[l1BufferScaleBOffset_[scaleL1BufId]], tileL1L0Param.curN,
                          kL1Offset);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
         }
     }
 
@@ -712,9 +711,6 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(aL1BufId);
                 if (kInner == kOuter) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(INPUT_BUFFER_FLAG_2 + bL1BufId);
-                    if (kOuter % scaleKL1_ == 0) {
-                        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
-                    }
                 }
                 Iterate(tileL1L0Param, mmadParams, kInner, aL1BufId, bL1BufId, scaleL1BufId, l0cOffset, 0,
                         kInner - kOuter);
@@ -760,9 +756,6 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
                 if (kInner == kOuter) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(INPUT_BUFFER_FLAG_2 + aL1BufId);
-                    if (kOuter % scaleKL1_ == 0) {
-                        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
-                    }
                 }
                 Iterate(tileL1L0Param, mmadParams, kInner, aL1BufId, bL1BufId, scaleL1BufId, l0cOffset, kInner - kOuter,
                         0);
