@@ -964,11 +964,10 @@ public:
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
                 return;
-            } else if (taskDealMode != TASK_DEAL_MODE::SKIP) {
-                coreGS1Loops++;
-                accGS1Loops++;
-                createdTaskCount = executedTaskCount;
             }
+            coreGS1Loops++;
+            accGS1Loops++;
+            createdTaskCount = executedTaskCount;
             // PRINTF("bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
             S1OutSplitUpdatePos(bN2Cur, gS1Cur);
             // PRINTF("update bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
