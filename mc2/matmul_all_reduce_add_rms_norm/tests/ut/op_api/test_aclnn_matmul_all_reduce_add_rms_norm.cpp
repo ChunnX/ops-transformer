@@ -589,4 +589,293 @@ TEST_F(L2MatmulAllReduceAddRmsNormTest, TestWeightQuantMatmulAllReduceAddRmsNorm
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
+// ==================== 第二阶段函数覆盖 ====================
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMatmulAllReduceAddRmsNormSecondApiEmptyWorkspace)
+{
+    aclnnStatus ret = aclnnMatmulAllReduceAddRmsNorm(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormSecondApiEmptyWorkspace)
+{
+    aclnnStatus ret = aclnnQuantMatmulAllReduceAddRmsNorm(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestWeightQuantMatmulAllReduceAddRmsNormSecondApiEmptyWorkspace)
+{
+    aclnnStatus ret = aclnnWeightQuantMatmulAllReduceAddRmsNorm(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMatmulAllReduceAddRmsNormSecondApiWithExecutor)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(x1Desc, x2Desc, bias, residualDesc, gammaDesc, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    uint64_t fakeWorkspaceSize = (workspaceSize > 0) ? workspaceSize : 1024;
+    void* fakeWorkspace = malloc(fakeWorkspaceSize);
+    ASSERT_NE(fakeWorkspace, nullptr);
+    aclnnStatus ret = aclnnMatmulAllReduceAddRmsNorm(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
+    free(fakeWorkspace);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormSecondApiWithExecutor)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dequantScale = TensorDesc({16}, ACL_UINT64, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(
+        aclnnQuantMatmulAllReduceAddRmsNorm,
+        INPUT(x1Desc, x2Desc, bias, dequantScale, residualDesc, gammaDesc, 0.000001, "test_group", "sum", 8, 1),
+        OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    uint64_t fakeWorkspaceSize = (workspaceSize > 0) ? workspaceSize : 1024;
+    void* fakeWorkspace = malloc(fakeWorkspaceSize);
+    ASSERT_NE(fakeWorkspace, nullptr);
+    aclnnStatus ret = aclnnQuantMatmulAllReduceAddRmsNorm(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
+    free(fakeWorkspace);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestWeightQuantMatmulAllReduceAddRmsNormSecondApiWithExecutor)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc antiquantScale = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc antiquantOffset = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnWeightQuantMatmulAllReduceAddRmsNorm,
+                        INPUT(x1Desc, x2Desc, bias, antiquantScale, antiquantOffset, residualDesc, gammaDesc, 0.000001,
+                              "test_group", "sum", 8, 1, 0),
+                        OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    uint64_t fakeWorkspaceSize = (workspaceSize > 0) ? workspaceSize : 1024;
+    void* fakeWorkspace = malloc(fakeWorkspaceSize);
+    ASSERT_NE(fakeWorkspace, nullptr);
+    aclnnStatus ret = aclnnWeightQuantMatmulAllReduceAddRmsNorm(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
+    free(fakeWorkspace);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormScalarInput)
+{
+    TensorDesc x1Desc = TensorDesc({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 1, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 1, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 1, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(x1Desc, x2Desc, nullptr, residualDesc, gammaDesc, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// ==================== 更多边界场景覆盖 ====================
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormNullX1)
+{
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(nullptr, x2Desc, bias, residualDesc, gammaDesc, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormNullX2)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(x1Desc, nullptr, bias, residualDesc, gammaDesc, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormNullResidual)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(x1Desc, x2Desc, bias, nullptr, gammaDesc, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormNullGamma)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(x1Desc, x2Desc, bias, residualDesc, nullptr, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormNullDequantScale)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(
+        aclnnQuantMatmulAllReduceAddRmsNorm,
+        INPUT(x1Desc, x2Desc, bias, nullptr, residualDesc, gammaDesc, 0.000001, "test_group", "sum", 8, 1),
+        OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestWeightQuantMatmulAllReduceAddRmsNormNullAntiquantScale)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnWeightQuantMatmulAllReduceAddRmsNorm,
+                        INPUT(x1Desc, x2Desc, bias, nullptr, nullptr, residualDesc, gammaDesc, 0.000001,
+                              "test_group", "sum", 8, 1, 0),
+                        OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormKMismatch2D)
+{
+    TensorDesc x1Desc = TensorDesc({16, 31}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMatmulAllReduceAddRmsNorm, INPUT(x1Desc, x2Desc, bias, residualDesc, gammaDesc, 0.000001,
+                        "test_group", "sum", 8, 1), OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormDequantScaleBfloat16)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dequantScale = TensorDesc({16}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_BF16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(
+        aclnnQuantMatmulAllReduceAddRmsNorm,
+        INPUT(x1Desc, x2Desc, bias, dequantScale, residualDesc, gammaDesc, 0.000001, "test_group", "sum", 8, 1),
+        OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormDequantScaleFloat)
+{
+    TensorDesc x1Desc = TensorDesc({16, 32}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({32, 16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dequantScale = TensorDesc({16}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc yDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc residualDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gammaDesc = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc normOutDesc = TensorDesc({1, 16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(
+        aclnnQuantMatmulAllReduceAddRmsNorm,
+        INPUT(x1Desc, x2Desc, bias, dequantScale, residualDesc, gammaDesc, 0.000001, "test_group", "sum", 8, 1),
+        OUTPUT(yDesc, normOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
 } // namespace MatmulAllReduceAddRmsNormUT
