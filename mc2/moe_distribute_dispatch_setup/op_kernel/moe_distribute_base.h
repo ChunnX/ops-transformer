@@ -29,6 +29,7 @@
 #endif
 #include "adv_api/hccl/hccl.h"
 
+using namespace AscendC;
 constexpr uint32_t MAX_RANK_NUM = 64U; // 最大卡数
 constexpr uint32_t MAX_OP_NUM = 8U;    // MC2最大通信算子数
 constexpr uint32_t WRITE_SQE_SIZE = 64U;
