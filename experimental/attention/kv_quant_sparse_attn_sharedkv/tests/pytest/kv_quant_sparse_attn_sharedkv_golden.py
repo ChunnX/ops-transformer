@@ -419,15 +419,16 @@ def get_max_adjacent_diff(cu_seqlens_q):
 
     return max_diff
 
-def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mode):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_cmp_kv, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
-        cur_act_kv = seqused_kv[i_B]
+        cur_cmp_kv = seqused_cmp_kv[i_B]  # 压缩KV长度
+        cur_ori_kv = cur_cmp_kv * cmp_ratio  # 还原原始KV长度用于causal mask计算
         for i_N2 in range(N2):
             for i_S1 in range(S1):
                 if cmp_mask_mode == 3:
-                    cur_valid_s2_max = math.floor((cur_act_kv - S1 + i_S1 + 1) / cmp_ratio)
+                    cur_valid_s2_max = math.floor((cur_ori_kv - S1 + i_S1 + 1) / cmp_ratio)
                 else:
                     raise ValueError(f"cmp_mask_mode only support 3, which is {cmp_mask_mode}")
 
@@ -437,17 +438,18 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mo
                 cmp_sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
-def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, cmp_mask_mode):
+def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_cmp_kv, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
     cmp_sparse_indices = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
         cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        cur_act_kv = seqused_kv[i_B]
+        cur_cmp_kv = seqused_cmp_kv[i_B]  # 压缩KV长度
+        cur_ori_kv = cur_cmp_kv * cmp_ratio  # 还原原始KV长度用于causal mask计算
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 if cmp_mask_mode == 3:
-                    cur_valid_s2_max = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
+                    cur_valid_s2_max = math.floor((cur_ori_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
@@ -849,9 +851,9 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     cmp_sparse_indices = None
     if template_run_mode == "SCFA" and cmp_max_s2 != 0:
         if layout_q == "BSND":
-            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_cmp_kv, cmp_mask_mode)
         elif layout_q == "TND":
-            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_ori_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_cmp_kv, cmp_mask_mode)
 
     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
     cmp_v_bnsd = cmp_k_bnsd.clone()
