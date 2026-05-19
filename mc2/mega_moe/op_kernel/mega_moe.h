@@ -30,9 +30,8 @@ using namespace AscendC;
 
 namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
-                            int64_t, int64_t, int64_t, int64_t, int64_t,
-                            int64_t, int64_t, int64_t>;
+using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                          int64_t, int64_t, int64_t, int64_t>;
 
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename Weight1Type, typename TopkWeightsType, int32_t QuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, Weight1Type, TopkWeightsType, QuantMode
@@ -53,6 +52,9 @@ struct QuantTraits<E2M1_QUANT> {
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
+    static constexpr uint32_t GMM1_INDEX = 0;
+    static constexpr uint32_t GMM2_INDEX = 1;
+
     using QuantOutType = typename QuantTraits<QuantMode>::OutType;
     using ActivationType = typename std::conditional<
         Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value,
@@ -144,7 +146,7 @@ private:
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
     TupleShape problemShape_{};
-    BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     GM_ADDR tokenPerExpertCurRankAddr_;
 
@@ -556,7 +558,6 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         // 使用constexpr系数统一量化模式计算，避免分散的条件分支
         static constexpr uint64_t A_QUANT_DIVISOR = (QuantMode == E2M1_QUANT) ? FP4_NUM : 1U;
         static constexpr uint64_t B_QUANT_DIVISOR = (QuantMode == E2M1_QUANT || (QuantMode == 4U && isWeight4Bit)) ? FP4_NUM : 1U;
-        static constexpr uint64_t B2_QUANT_DIVISOR = (QuantMode == E2M1_QUANT) ? FP4_NUM : 1U;
 
         Get<IDX_A_OFFSET>(baseOffset_) += (m * k) / A_QUANT_DIVISOR;
         Get<IDX_B_OFFSET>(baseOffset_) += (n * k) / B_QUANT_DIVISOR;
@@ -568,11 +569,13 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
             m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_FLAG_OFFSET>(baseOffset_) += 1;
-        Get<IDX_B2_OFFSET>(baseOffset_) += (k * n / SWIGLU_N_HALF) / B2_QUANT_DIVISOR;
+        Get<IDX_B2_OFFSET>(baseOffset_) += (k * n / SWIGLU_N_HALF) / B_QUANT_DIVISOR;
         Get<IDX_B2_SCALE_OFFSET>(baseOffset_) +=
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_Y2_OFFSET>(baseOffset_) += m * k;
         Get<IDX_M_OFFSET>(baseOffset_) += m;
+        Get<IDX_GMM1_OFFSET>(baseOffset_) += m * n;
+        Get<IDX_GMM2_OFFSET>(baseOffset_) += m * k;
     }
 
     int32_t splitValue = 0;
@@ -594,31 +597,38 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex)
 {
-    if (gmmIndex == 0) {
+    if (gmmIndex == GMM1_INDEX) {
         gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffset_) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale +
-        Get<IDX_A_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
+        gmmAddrInfo.aScaleGlobal =
+            params_.workspaceInfo.ptrAScale + Get<IDX_A_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
 
         gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
-        
-        gmmAddrInfo.gmm1OutGlobal = params_.workspaceInfo.ptrMmadTileResFirst + Get<IDX_GMM1_OFFSET>(baseOffset_) * sizeof(float);
-        
-        if constexpr(g_coreType == AIV) {
+
+        gmmAddrInfo.gmm1OutGlobal =
+            params_.workspaceInfo.ptrMmadTileResFirst + Get<IDX_GMM1_OFFSET>(baseOffset_) * sizeof(float);
+
+        if constexpr (g_coreType == AIV) {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(baseOffset_), Get<IDX_C_SCALE_OFFSET>(baseOffset_),
                 Get<IDX_FLAG_OFFSET>(baseOffset_), 0L, 0L, 0L};
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
-    } else if constexpr(g_coreType == AIC) {
-        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrA2Scale + Get<IDX_C_SCALE_OFFSET>(baseOffset_) *
-                                    sizeof(QuantScaleOutType);
+    } else {
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(baseOffset_) * sizeof(ActivationType);
-        gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) *
-                                    sizeof(QuantScaleOutType);
+        gmmAddrInfo.bScaleGlobal =
+            params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
+        gmmAddrInfo.gmm2OutGlobal =
+            params_.workspaceInfo.ptrMmadTileResSecond + Get<IDX_GMM2_OFFSET>(baseOffset_) * sizeof(bfloat16_t);
+        
+        if constexpr (g_coreType == AIC) {
+            gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(ActivationType);
+            gmmAddrInfo.aScaleGlobal =
+                params_.workspaceInfo.ptrA2Scale + Get<IDX_C_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
+        }
     }
+
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2 +
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
@@ -760,14 +770,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
-        UpdateGlobalBuffer(gmmAddrInfo, 0);
+        UpdateGlobalBuffer(gmmAddrInfo, GMM1_INDEX);
         if constexpr(g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1) {
                 DispatchTokens(gmmAddrInfo, expertIdx);
             }
         }
 
-        SyncAll<false>();
         if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
             MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
                 QuantOutType, Weight1Type, float, QuantScaleOutType, QuantScaleOutType>(
@@ -794,16 +803,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
-    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
-        UpdateGlobalBuffer(gmmAddrInfo, 1);
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                rankId_);
+        UpdateGlobalBuffer(gmmAddrInfo, GMM2_INDEX);
+        if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
+            MegaMoeImpl::GroupMatmul2A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                    rankId_, expertIdx);
+        } else {
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                    rankId_);
+            }
         }
     }
     EndGMM2Sync();
