@@ -396,6 +396,10 @@ public:
                     Get<DET_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
                     Get<DET_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
 
+                int64_t tileM = Get<MNK_M>(singleShape);
+                int64_t y = Get<DET_IDX_C_OFFSETS>(blockOffset_);
+                int64_t groupInnerMOffset = y / n;
+
                 // AIC: MMAD
                 if ASCEND_IS_AIC {
                     if (isVecSetSyncCom_) {
@@ -410,8 +414,7 @@ public:
                 }
                 isVecSetSyncCom_ = true;
 
-                if (workspaceBaseRow > 0 &&
-                    workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) {
+                if (workspaceBaseRow + static_cast<uint64_t>(groupInnerMOffset + tileM) > windowSizeRows) {
                     SyncAll();
                     GMMFRDeterministic::SyncConfig syncConfig{};
                     syncConfig.curM = workspaceBaseRow;
@@ -435,8 +438,6 @@ public:
                 if ASCEND_IS_AIV {
                     AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
                         Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
-                    int64_t y = Get<DET_IDX_C_OFFSETS>(blockOffset_);
-                    int64_t groupInnerMOffset = y / n;
                     int64_t nOffset = y - groupInnerMOffset * n;
                     // epilogueOffset:
                     //   elem[4] = groupInnerMOffset (for logit/x1Scale reads)
