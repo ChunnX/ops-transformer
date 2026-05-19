@@ -1214,6 +1214,7 @@ void ScatterPaKvCacheTiling::DumpTilingInfo()
         info += " valueCacheStride2: " + std::to_string(valueCacheStride2_);
         info += " valueCacheStride3: " + std::to_string(valueCacheStride3_);
     }
+    printf("tiling data is : %s\n", , info.c_str());
     OP_LOGI(context_->GetNodeName(), "%s", info.c_str());
 }
 
