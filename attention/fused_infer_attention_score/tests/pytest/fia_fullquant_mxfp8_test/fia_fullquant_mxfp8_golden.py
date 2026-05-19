@@ -10,9 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-MXFP8 Flash Attention Golden 验证脚本 v12
+MXFP8 Flash Attention Golden
 
-功能：生成 BNSD 数据 → CPU golden 计算 → layout 转换 → NPU 算子调用 → 精度对比
+功能：生成 BNSD 数据 → CPU golden 计算 → layout 转换 → 精度对比
 支持：PA / 非PA 场景，rope 分离传入，GQA
 量化：Q/K per-token-group (quant_mode=6), V per-channel-group (quant_mode=8)
 输出：逐元素表格 + 统计汇总 (PctRlt 通过率，双千分之五标准)
@@ -29,7 +29,7 @@ import result_compare_method
 # 配置区
 # ==============================================================================
 B = 1
-N_q = 1           # query heads 
+N_q = 1           # query heads
 N_kv = 1           # kv heads
 D = 128
 
@@ -69,89 +69,60 @@ SEED_KR = 9
 # 量化 scale 计算
 # ==============================================================================
 
-def get_mxfp8_per_token_group_quant_scale_query(tensor, fp8_dtype, group_size=32):
-    """Q/K per-token-group dequant_scale, 输出: (B, N, S, ceil(D/group))"""
-    if fp8_dtype == torch.float8_e4m3fn:
-        MAX_QUANT_VAL = 448.0
-    elif fp8_dtype == torch.float8_e5m2:
-        MAX_QUANT_VAL = 57344.0
-    else:
-        raise ValueError(f"{fp8_dtype} not supported")
-
-    dim1, dim2, dim3, dim4 = tensor.shape
-    scale = torch.zeros([dim1, dim2, dim3, math.ceil(dim4 / group_size)], dtype=torch.float32)
-
-    for b in range(dim1):
-        for n in range(dim2):
-            for s in range(dim3):
-                for d in range(0, dim4, group_size):
-                    chunk = tensor[b, n, s, d:min(d + group_size, dim4)]
-                    max_val = torch.max(torch.abs(chunk)).item()
-                    if max_val == 0:
-                        scale[b, n, s, d // group_size] = 0.0
-                        continue
-                    raw_dequant = max_val / MAX_QUANT_VAL
-                    exp = math.ceil(math.log2(raw_dequant))
-                    # scale[b, n, s, d // group_size] = 2.0 ** exp
-                    scale[b, n, s, d // group_size] = 1
-    return scale
-
 def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
-    """Q/K per-token-group dequant_scale, 输出: (B, N, S, ceil(D/group))"""
+    """Q/K per-token-group quant_scale, 输出: (B, N, S, ceil(D/group))"""
     if fp8_dtype == torch.float8_e4m3fn:
-        MAX_QUANT_VAL = 448.0
+        emax_elem = 8
     elif fp8_dtype == torch.float8_e5m2:
-        MAX_QUANT_VAL = 57344.0
+        emax_elem = 16
     else:
         raise ValueError(f"{fp8_dtype} not supported")
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    scale = torch.zeros([dim1, dim2, dim3, math.ceil(dim4 / group_size)], dtype=torch.float32)
+    scale = torch.ones([dim1, dim2, dim3, math.ceil(dim4 / group_size)], dtype=torch.float32)
 
     for b in range(dim1):
         for n in range(dim2):
             for s in range(dim3):
                 for d in range(0, dim4, group_size):
                     chunk = tensor[b, n, s, d:min(d + group_size, dim4)]
-                    max_val = torch.max(torch.abs(chunk)).item()
-                    if max_val == 0:
-                        scale[b, n, s, d // group_size] = 0.0
+                    if torch.all(chunk == 0):
+                        scale[b, n, s, d // group_size] = 1.0
                         continue
-                    raw_dequant = max_val / MAX_QUANT_VAL
-                    exp = math.ceil(math.log2(raw_dequant))
-                    scale[b, n, s, d // group_size] = 2.0 ** exp
+                    max_val = torch.max(torch.abs(chunk)).clamp(min=1e-12)
+                    shared_exp = torch.floor(torch.log2(max_val)) - emax_elem
+                    scale[b, n, s, d // group_size] = 2 ** shared_exp
     return scale
 
 
 
 def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
-    """V per-channel-group dequant_scale, 输出: (B, N, ceil(S/group), D)"""
+    """V per-channel-group quant_scale, 输出: (B, N, ceil(S/group), D)"""
     if fp8_dtype == torch.float8_e4m3fn:
-        MAX_QUANT_VAL = 448.0
+        emax_elem = 8
     elif fp8_dtype == torch.float8_e5m2:
-        MAX_QUANT_VAL = 57344.0
+        emax_elem = 16
     else:
         raise ValueError(f"{fp8_dtype} not supported")
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    scale = torch.zeros([dim1, dim2, math.ceil(dim3 / group_size), dim4], dtype=torch.float32)
+    scale = torch.ones([dim1, dim2, math.ceil(dim3 / group_size), dim4], dtype=torch.float32)
 
     for b in range(dim1):
         for n in range(dim2):
             for d in range(dim4):
                 for s in range(0, dim3, group_size):
                     chunk = tensor[b, n, s:min(s + group_size, dim3), d]
-                    max_val = torch.max(torch.abs(chunk)).item()
-                    if max_val == 0:
-                        scale[b, n, s // group_size, d] = 0.0
+                    if torch.all(chunk == 0):
+                        scale[b, n, s // group_size, d] = 1.0
                         continue
-                    raw_dequant = max_val / MAX_QUANT_VAL
-                    exp = math.ceil(math.log2(raw_dequant))
-                    scale[b, n, s // group_size, d] = 2.0 ** exp
+                    max_val = torch.max(torch.abs(chunk)).clamp(min=1e-12)
+                    shared_exp = torch.floor(torch.log2(max_val)) - emax_elem
+                    scale[b, n, s // group_size, d] = 2 ** shared_exp
     return scale
 
 
-def mxfp8_per_token_group_quant(tensor, dequant_scale, group_size=32):
+def mxfp8_per_token_group_quant(tensor, quant_scale, group_size=32):
     dim1, dim2, dim3, dim4 = tensor.shape
     result = torch.zeros_like(tensor, dtype=torch.float32)
     for b in range(dim1):
@@ -159,13 +130,12 @@ def mxfp8_per_token_group_quant(tensor, dequant_scale, group_size=32):
             for s in range(dim3):
                 for d in range(0, dim4, group_size):
                     d_end = min(d + group_size, dim4)
-                    ds = dequant_scale[b, n, s, d // group_size].item()
-                    if ds > 0:
-                        result[b, n, s, d:d_end] = tensor[b, n, s, d:d_end] / ds
+                    qs = quant_scale[b, n, s, d // group_size].item()
+                    result[b, n, s, d:d_end] = tensor[b, n, s, d:d_end] * qs
     return result
 
 
-def mxfp8_per_channel_group_quant(tensor, dequant_scale, group_size=32):
+def mxfp8_per_channel_group_quant(tensor, quant_scale, group_size=32):
     dim1, dim2, dim3, dim4 = tensor.shape
     result = torch.zeros_like(tensor, dtype=torch.float32)
     for b in range(dim1):
@@ -173,9 +143,8 @@ def mxfp8_per_channel_group_quant(tensor, dequant_scale, group_size=32):
             for d in range(dim4):
                 for s in range(0, dim3, group_size):
                     s_end = min(s + group_size, dim3)
-                    ds = dequant_scale[b, n, s // group_size, d].item()
-                    if ds > 0:
-                        result[b, n, s:s_end, d] = tensor[b, n, s:s_end, d] / ds
+                    qs = quant_scale[b, n, s // group_size, d].item()
+                    result[b, n, s:s_end, d] = tensor[b, n, s:s_end, d] * qs
     return result
 
 
@@ -316,7 +285,7 @@ def pack_v_scale_for_npu(scale_flat):
     D = scale_flat.shape[-1]
     prefix_shape = scale_flat.shape[:-2]
     
-    # v10: 奇数行 pad 用 E8M0_MIN_POSITIVE，避免 0.0 → e8m0fnu NaN
+    # 奇数行 pad 用 E8M0_MIN_POSITIVE，避免 0.0 转 e8m0fnu 后变 NaN
     if Sg % 2 != 0:
         pad_shape = prefix_shape + (1, D)
         if isinstance(scale_flat, torch.Tensor):
@@ -385,7 +354,7 @@ def convert_v_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, group_size=32):
     max_org_s = max(seq_lens)
     actual_Sg = math.ceil(max_org_s / group_size)
     
-    # v10: 奇数行 pad 用 E8M0_MIN_POSITIVE
+    # 奇数行 pad 用 E8M0_MIN_POSITIVE
     if actual_Sg % 2 != 0:
         actual_Sg_padded = actual_Sg + 1
     else:
@@ -440,7 +409,7 @@ def convert_v_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, group_size=32):
                 continue
             for n in range(N):
                 src = scale_bnsd[b, n, :sg, :]
-                # v10: 奇数行 pad 用 1
+                # 奇数行 pad 用 1
                 if sg % 2 != 0:
                     pad = np.full((1, D), E8M0_MIN_POSITIVE, dtype=src.dtype)
                     src = np.concatenate([src, pad], axis=0)
@@ -515,7 +484,7 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
         tensor_processed = tensor_bnsd
         out_shape = (total_block_num, N, block_size, D)
     
-    # v10: scale 缓存用 E8M0_MIN_POSITIVE 初始化，避免 0.0 → e8m0fnu NaN
+    # scale 缓存用 E8M0_MIN_POSITIVE 初始化，避免 0.0 转 e8m0fnu 后变 NaN
     if is_scale:
         out_cache = np.full(out_shape, E8M0_MIN_POSITIVE, dtype=tensor_bnsd.dtype)
     else:
@@ -583,7 +552,7 @@ def convert_v_scale_for_pa(scale_bnsd, seq_lens, group_size=32):
     # 取实际数据
     transposed = scale_bnsd[:, :, :actual_Sg, :]
     
-    # v10: 奇数行 pad 用 E8M0_MIN_POSITIVE
+    # 奇数行 pad 用 E8M0_MIN_POSITIVE
     if actual_Sg % 2 != 0:
         pad = np.full((B, N, 1, D), E8M0_MIN_POSITIVE, dtype=transposed.dtype)
         transposed = np.concatenate([transposed, pad], axis=2)
@@ -664,16 +633,20 @@ def generate_data():
 
     print(f"[INFO] q_fp16={q_fp16.shape}, k_fp16={k_fp16.shape}, v_fp16={v_fp16.shape}")
 
-    dequant_scale_q = get_mxfp8_per_token_group_quant_scale_query(q_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
-    dequant_scale_k = get_mxfp8_per_token_group_quant_scale(k_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
-    dequant_scale_v = get_mxfp8_per_channel_group_quant_scale(v_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
+    quant_scale_q = get_mxfp8_per_token_group_quant_scale(q_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
+    quant_scale_k = get_mxfp8_per_token_group_quant_scale(k_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
+    quant_scale_v = get_mxfp8_per_channel_group_quant_scale(v_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
+
+    dequant_scale_q = 1 / quant_scale_q
+    dequant_scale_k = 1 / quant_scale_k
+    dequant_scale_v = 1 / quant_scale_v
 
     v_sg = dequant_scale_v.shape[2]
     print(f"[INFO] V scale Sg={v_sg}, 是否奇数={v_sg % 2 != 0}")
 
-    q_fp8 = mxfp8_per_token_group_quant(q_fp16, dequant_scale_q, QUANT_GROUP_SIZE).to(FP8_DTYPE)
-    k_fp8 = mxfp8_per_token_group_quant(k_fp16, dequant_scale_k, QUANT_GROUP_SIZE).to(FP8_DTYPE)
-    v_fp8 = mxfp8_per_channel_group_quant(v_fp16, dequant_scale_v, QUANT_GROUP_SIZE).to(FP8_DTYPE)
+    q_fp8 = mxfp8_per_token_group_quant(q_fp16, quant_scale_q, QUANT_GROUP_SIZE).to(FP8_DTYPE)
+    k_fp8 = mxfp8_per_token_group_quant(k_fp16, quant_scale_k, QUANT_GROUP_SIZE).to(FP8_DTYPE)
+    v_fp8 = mxfp8_per_channel_group_quant(v_fp16, quant_scale_v, QUANT_GROUP_SIZE).to(FP8_DTYPE)
 
     block_table_np = None
     if ENABLE_PA:
@@ -875,7 +848,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
                  actual_seq_q, actual_seq_kv,
                  block_table_np=None,
                  qr_fp16=None, kr_fp16=None):
-    """调用 NPU 算子，v8 支持 N2TGD layout"""
+    """调用 NPU 算子，支持 N2TGD layout"""
     softmax_scale = 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
 
     q_runtime_layout, q_group, q_s1, q_gs1 = resolve_q_scale_layout(actual_seq_q)
