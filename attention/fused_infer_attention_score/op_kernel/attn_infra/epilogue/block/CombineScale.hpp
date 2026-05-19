@@ -83,7 +83,6 @@ public:
         AscendC::SetMaskNorm();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
 
-
         int64_t vectorsubBlockID = AscendC::GetSubBlockIdx();
         int64_t subBlockNum = AscendC::GetBlockNum() * 2;
         int64_t subBlockID = AscendC::GetBlockIdx();
