@@ -910,7 +910,6 @@ public:
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
-    }
 
     __aicore__ inline void BroadCastAndCopyOut(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
