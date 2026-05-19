@@ -26,6 +26,7 @@
 
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_comm_utils.h"
@@ -127,7 +128,11 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    return tileFormulate.GetTiling();
+    CutResult result = tileFormulate.GetTiling();
+    
+    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    
+    return result;
 }
 
 ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
