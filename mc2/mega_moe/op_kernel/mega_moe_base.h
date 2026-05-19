@@ -51,6 +51,59 @@ struct GMMAddrInfo {
     GM_ADDR gmm2OutGlobal;
 };
 
+// ============================================================================
+// DynamicTask — 动态调度的任务描述结构
+// 详细设计见 mega_moe_impl.h 顶部 DYN_SCHED_DESIGN 注释块。
+// ============================================================================
+// 任务编码:
+//   opType : 0=GMM1, 1=GMM2, 2=END (终止哨兵)
+//   waveIdx: 任务属于的 wave (0..waveCnt-1)
+//   nTileIdx: 任务在 wave 内的 N-tile 编号 (0..tileNumGmm1-1 或 tileNumGmm2-1)
+//   waveM  : 该 wave 的实际 M (=L1_TILE_M 或末尾 partial M)
+struct DynamicTask {
+    int32_t opType;
+    int32_t waveIdx;
+    int32_t nTileIdx;
+    int32_t waveM;
+};
+
+constexpr int32_t DYN_OP_GMM1 = 0;
+constexpr int32_t DYN_OP_GMM2 = 1;
+constexpr int32_t DYN_OP_END  = 2;
+constexpr int32_t DYN_CHANNEL_GMM1 = 0;  // AIC → AIV0 channel
+constexpr int32_t DYN_CHANNEL_GMM2 = 1;  // AIC → AIV1 channel
+
+// ============================================================================
+// DynamicTask <-> int32 打包
+// ============================================================================
+// taskSlot 必须用单个 int32 通过 AtomicAdd 写 + ReadGmByPassDCache 读。
+// 原因：AIC(cube) 标量直写 GM 会进 DCache，不保证跨核立即可见 —— 标量写 + 配对 AIV
+// 读会读到旧值。AtomicAdd 是绕 DCache 直达 HBM 的原子操作（静态代码 rowReadyFlags
+// 就用这个模式），配 ReadGmByPassDCache 读，跨核可靠。所以把 4 个字段塞进 1 个 int32。
+//
+// 位域布局:
+//   opType   : bit [0:2)    0=GMM1 / 1=GMM2 / 2=END
+//   waveIdx  : bit [2:10)   8 bit, 上限 256 waves  (m_i < 256*256 = 64K token/expert)
+//   nTileIdx : bit [10:21)  11 bit, 上限 2048 tiles
+//   waveM    : bit [21:32)  11 bit, 上限 2048 (实际 ≤ L1_TILE_M=256)
+// real task 的 waveM ≥ 1 → packed > 0; END task opType=2 → packed ≥ 2 > 0。
+// 因此 slot == 0 唯一表示"空槽"，非 0 表示有 task。
+__aicore__ inline int32_t PackDynamicTask(const DynamicTask& t)
+{
+    return (t.opType & 0x3)
+         | ((t.waveIdx & 0xFF) << 2)
+         | ((t.nTileIdx & 0x7FF) << 10)
+         | ((t.waveM & 0x7FF) << 21);
+}
+
+__aicore__ inline void UnpackDynamicTask(int32_t packed, DynamicTask& t)
+{
+    t.opType   = packed & 0x3;
+    t.waveIdx  = (packed >> 2) & 0xFF;
+    t.nTileIdx = (packed >> 10) & 0x7FF;
+    t.waveM    = (packed >> 21) & 0x7FF;
+}
+
 struct PeermemInfo {
     GM_ADDR ptrBase;
     GM_ADDR ptrTokenPerExpert;
