@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列尾部的数据（长度为卷积核宽减1）更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。<br>
+- 接口功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。相较于标准 causal_conv1d 算子，本算子新增 APC 缓存复用、PD混部、残差连接可选等功能。<br>
 
 - 支持以下场景：
   - 场景一（prefill场景）：
@@ -23,81 +23,251 @@
     ```
     x: [cu_seq_len, dim]
     weight: [K, dim]，其中K=3
-    convStates: [-1, K-1, dim]
-    queryStartLoc: [batch+1]
-    cacheIndices: [batch]
-    initialStateMode: [batch]
+    conv_states: [-1, K-1, dim]
+    query_start_loc: [batch+1]
+    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    initial_state_mode: [batch]
     bias: [dim]（无作用）
-    numAcceptedTokens: [batch]（无作用）
-    y: [cu_seq_len, dim]
-    runMode: 0
+    num_accepted_tokens: [batch]（无作用）
+    num_computed_tokens: [bacth]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
+    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    activation_mode: （无作用）
+    pad_slot_id: 默认值 -1
+    run_mode: （无作用）
+    max_query_len:默认值 1
+    residual_connection: 不做残差: 0, 做残差：1
+    block_size: 典型值 128/256
+    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
+    inplace: 非原地更新: False, 原地更新: True
+    y: 非原地更新: [cu_seq_len, dim], 原地更新: 无作用
+    ```
+
+    其中cu_seq_len为batch内所有变长序列拼接后的总长度。
+  
+  - 场景二（prefill和decode混合场景）：
+    ```
+    x: [cu_seq_len, dim]
+    weight: [K, dim]，其中K=3
+    conv_states: [-1, K-1+m, dim]
+    query_start_loc: [batch+1]
+    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    initial_state_mode: [batch]
+    bias: [dim]（无作用）
+    num_accepted_tokens: [batch]
+    num_computed_tokens: [bacth]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
+    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    activation_mode: （无作用）
+    pad_slot_id: 默认值 -1
+    run_mode: （无作用）
+    max_query_len:默认值 1
+    residual_connection: 不做残差: 0, 做残差：1
+    block_size: 典型值 128/256
+    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
+    inplace: 非原地更新: False, 原地更新: True
+    y: 非原地更新: [cu_seq_len, dim], 原地更新: 无作用
     ```
 
     其中cu_seq_len为batch内所有变长序列拼接后的总长度。
 
-  - 场景二（decode场景 - 变长序列）：
+  - 场景三（decode场景 - 变长序列）：
 
     ```
     x: [cu_seq_len, dim]
     weight: [K, dim]，其中K=3
-    convStates: [-1, state_len, dim]
-    queryStartLoc: [batch+1]
-    cacheIndices: [batch]
-    initialStateMode: [batch]
+    conv_states: [-1, K-1+m, dim]
+    query_start_loc: [batch+1]
+    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    initial_state_mode: [batch]
     bias: [dim]（无作用）
-    numAcceptedTokens: [batch]（用于投机解码）
-    y: [cu_seq_len, dim]
-    runMode: 1
+    num_accepted_tokens: [batch]
+    num_computed_tokens: [bacth]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
+    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    activation_mode: （无作用）
+    pad_slot_id: 默认值 -1
+    run_mode: （无作用）
+    max_query_len:默认值 1
+    residual_connection: 不做残差: 0, 做残差：1
+    block_size: 典型值 128/256
+    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
+    inplace: 非原地更新: False, 原地更新: True
+    y: 非原地更新: [cu_seq_len, dim], 原地更新: 无作用
     ```
 
     其中state_len必须大于所有batch中最大的token个数加1。
 
-  - 场景三（decode场景 - 固定batch）：
+  - 场景四（decode场景 - 固定batch）：
   
     ```
     x: [batch, m+1, dim]
     weight: [K, dim]，其中K=3
-    convStates: [-1, K-1+m, dim]
-    queryStartLoc: [batch+1]（无作用）
-    cacheIndices: [batch]
-    initialStateMode: [batch]
+    conv_states: [-1, K-1+m, dim]
+    query_start_loc: [batch+1]
+    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    initial_state_mode: [batch]
     bias: [dim]（无作用）
-    numAcceptedTokens: [batch]（用于投机解码，m为投机token个数）
+    num_accepted_tokens: [batch]
+    num_computed_tokens: [bacth]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
+    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    activation_mode: （无作用）
+    pad_slot_id: 默认值 -1
+    run_mode: （无作用）
+    max_query_len:默认值 1
+    residual_connection: 不做残差: 0, 做残差：1
+    block_size: 典型值 128/256
+    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
+    inplace: 非原地更新: False, 原地更新: True
     y: [batch, m+1, dim]
-    runMode: 1
     ```
 
 - 计算公式：
 
   K是卷积核宽度（固定为3），L是原始序列长度，dim是特征维度。
 
-  1. 缓存拼接：
+  K是卷积核宽度（固定为3），L是原始序列长度，dim是特征维度。
+  1. 缓存读取
 
-    $$
-    x'[i, dim] =
-    \begin{cases}
-    cacheState[i, dim], & 0 \leq i < K-1 \\
-    x[i - (K-1), dim], & K-1 \leq i < L + K - 1
-    \end{cases}
-    $$
+      缓存行索引：
 
-  2. 因果1维卷积：
+      $$
+      readCacheLine = \begin{cases}
+      cacheIndices[batchId, \; initialStateIdx[batchId]], & \text{APC 模式} \\
+      cacheIndices[batchId], & \text{非 APC 且 cacheIndices 存在} \\
+      batchId, & \text{其他}
+      \end{cases}
+      $$
 
-    $$
-    y[i, dim] = \sum_{k=0}^{K-1} w[k, dim] \cdot x'[i + k, dim]
-    $$
+      Case 1：首次计算（numComputedTokens[batchId] == 0）
 
-  3. 缓存更新：
+      $$
+      cachedState[i, dim] = 0, \quad 0 \leq i < K-1
+      $$
 
-    $$
-    cacheState[i, dim] = x'[L + i, dim], \quad i = 0, 1, \dots, K-2
-    $$
+      $$
+      offset = 0
+      $$
 
-  4. 残差连接（可选）：
+      Case 2：投机解码模式（numAcceptedTokens 存在）
 
-    $$
-    y[i, dim] += x[i, dim]
-    $$
+      $$
+      offset = numAcceptedTokens[batchId] - 1
+      $$
+
+      $$
+      cachedState[i, dim] = convStates[readCacheLine][i, dim], \quad 0 \leq i <   offset + K - 1
+      $$
+
+      Case 3：默认模式
+
+      $$
+      offset = C - (K - 1)
+      $$
+
+      $$
+      cachedState[i, dim] = convStates[readCacheLine][i, dim], \quad 0 \leq i < offset + K - 1
+      $$
+
+  2. 缓存拼接
+
+      $$
+      paddedInput[i, dim] =
+      \begin{cases}
+      cachedState[i, dim], & 0 \leq i < offset + K - 1 \\
+      x[i - (offset + K - 1), dim], & offset + K - 1 \leq i < offset + K - 1 + L
+      \end{cases}
+      $$
+
+  3. 缓存更新
+
+      $$
+      Len = offset + K - 1 + L
+      $$
+
+      $$
+      M = \min(C, \; Len)
+      $$
+
+      $$
+      writeCacheLine = \begin{cases}
+      cacheIndices[batchId, \; idxLast], & \text{APC 模式} \\
+      cacheIndices[batchId], & \text{非 APC 且 cacheIndices 存在} \\
+      batchId, & \text{其他}
+      \end{cases}
+      $$
+
+      $$
+      convStates[writeCacheLine][C - M + i, dim] = paddedInput[Len - M + i, dim], \quad i = 0, 1, \dots, M-1
+      $$
+
+  4. Offset 裁剪
+
+      $$
+      x'[i, dim] = paddedInput[i + offset, dim], \quad 0 \leq i < K - 1 + L
+      $$
+
+  5. APC 缓存填充（可选，APC 模式下）
+
+      $$
+      seqCompletedOffsetToken = numComputedTokens[batchId] \mod B
+      $$
+
+      $$
+      seqCompletedOffset = B - seqCompletedOffsetToken
+      $$
+
+      $$
+      seqEndOffset = (L - seqCompletedOffset) \mod B
+      $$
+
+      $$
+      lastFullBlockTokenIndex = \begin{cases}
+      L - seqEndOffset - B, & seqEndOffset = 0 \\
+      L - seqEndOffset, & \text{otherwise}
+      \end{cases}
+      $$
+
+      $$
+      nBlockToFill = idxLast - idxFirst
+      $$
+
+      对每个 chunk = 0, 1, ..., nBlockToFill - 1：
+
+      $$
+      boundaryIdx = lastFullBlockTokenIndex - (nBlockToFill - chunk - 1) \times B
+      $$
+
+      $$
+      convStates[cacheIndices[batchId, \; idxFirst + chunk]][C-(K-1)+j, \; dim] = x'[boundaryIdx + j, \; dim], \quad j = 0, \dots, K-2
+      $$
+
+  6. 因果1维卷积
+
+      $$
+      y[i, dim] = \sum_{k=0}^{K-1} w[k, dim] \cdot x'[i + k, dim], \quad i = 0, 1, \dots, L-1
+      $$
+
+  7. 零填充重置（可选，当convMode == 1 并且 numComputedTokens不为空时）
+
+      $$
+      resetIdx = \min\!\Big(\max\!\big(K - 1 - numComputedTokens[batchId], \; 0\big), \; L\Big)
+      $$
+
+      $$
+      y[i, dim] = 0, \quad 0 \leq i < resetIdx
+      $$
+
+  8. 残差连接（可选）
+
+      $$
+      y[i, dim] = x[i, dim] + y[i, dim]
+      $$
 
 ## 函数原型
 

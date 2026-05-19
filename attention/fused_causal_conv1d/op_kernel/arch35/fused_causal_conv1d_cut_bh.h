@@ -607,12 +607,23 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             }
         }
 
+        // ========== 计算当前 batch 的序列长度和 UB 偏移 ==========
+        int32_t curBatchSeq = seqLen_;
+        int32_t curBatchUbOffset = b * curBatchSeq * dimSizeInLoop_;
+        if (xInputMode_ == 1) {
+            curBatchSeq = queryStartLocLocal.GetValue(curBatchIdx + 1) - queryStartLocLocal.GetValue(curBatchIdx);
+            curBatchUbOffset =
+                (queryStartLocLocal.GetValue(curBatchIdx) - queryStartLocLocal.GetValue(curBatchIdx - b)) *
+                dimSizeInLoop_;
+        }
+
         // pad_slot_id 仅在 hasCacheIndices_ 有效时生效（APC 模式不涉及 padSlotId）
         if (readCacheLine == padSlotId_) {
             cacheQueueIn.FreeTensor(convStatesLocalIn);
             if (apcEnable_) {
                 indicesQueue.FreeTensor(indicesQueueLocal);
             }
+            yUbOffset += curBatchSeq * dimSizeInLoop_;
             continue;
         }
 
@@ -645,16 +656,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         int32_t cacheRowsCopied = (numComputed == 0) ? (kernelSize_ - 1) : (offset + kernelSize_ - 1);
         DataCopy(convStatesLocalOut, convStatesLocalIn, cacheRowsCopied * dimSizeInLoop_);
         cacheQueueOut.EnQue<T>(convStatesLocalOut);
-
-        // ========== 计算当前 batch 的序列长度和 UB 偏移 ==========
-        int32_t curBatchSeq = seqLen_;
-        int32_t curBatchUbOffset = b * curBatchSeq * dimSizeInLoop_;
-        if (xInputMode_ == 1) {
-            curBatchSeq = queryStartLocLocal.GetValue(curBatchIdx + 1) - queryStartLocLocal.GetValue(curBatchIdx);
-            curBatchUbOffset =
-                (queryStartLocLocal.GetValue(curBatchIdx) - queryStartLocLocal.GetValue(curBatchIdx - b)) *
-                dimSizeInLoop_;
-        }
 
         // ========== F5: 尾对齐机制更新 running cache ==========
         convStatesLocalOut = cacheQueueOut.DeQue<T>();

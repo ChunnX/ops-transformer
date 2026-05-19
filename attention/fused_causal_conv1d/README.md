@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列尾部的数据（长度为卷积核宽减1）更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。相较于标准 causal_conv1d 算子，本算子新增 APC 缓存复用、PD混部、残差连接可选等功能。
+- 算子功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。相较于标准 causal_conv1d 算子，本算子新增 APC 缓存复用、PD混部、残差连接可选等功能。
 
 - 本算子支持以下场景：
 
@@ -100,7 +100,7 @@
 
     其中state_len必须大于所有batch中最大的token个数加1。
 
-  - 场景三（decode场景 - 固定batch）：
+  - 场景四（decode场景 - 固定batch）：
   
     ```
     x: [batch, m+1, dim]
@@ -326,7 +326,7 @@
       <td>query_start_loc</td>
       <td>可选输入</td>
       <td><li>x为二维场景下，序列起始位置索引，记录各序列在拼接张量 x 中的起始位置。</li><li>queryStartLoc[i] 表示第 i 个序列的起始偏移。queryStartLoc[0]必须为0，queryStartLoc[-1]必须为cu_seq_len，相邻两个数据不相等。</li></td>
-      <td>支持空Tensor。x 为2维时不可省略。</td>
+      <td>不支持空Tensor。x 为2维时不可省略。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1 维 [batch+1,]，batch 范围 [1, 1024]。</td>
@@ -339,7 +339,7 @@
       <td><li>不支持空Tensor，APC 开启时不能省略且必须为二维。</li><li>值需要互不相同（除非等于 padSlotId）。</li></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>支持为空指针，1 维 [batch,] 或 2维[batch, maxNumBlocks], maxNumBlocks 范围 [1,1024]
+      <td>不支持空Tensor，1 维 [batch,] 或 2维[batch, maxNumBlocks], maxNumBlocks 范围 [1,1024]
       <td>√</td>
     </tr>
     <tr>
@@ -366,7 +366,7 @@
       <td>num_accepted_tokens</td>
       <td>可选输入</td>
       <td>公式中的numAcceptedTokens。 </td>
-      <td><li>支持空指针。</li><li>1<= numAcceptedTokens 中的值 <= seqlen，seqlen表示该batch的序列长度，numAcceptedTokens的值表示每个 batch 的随机投机数。</li></td>
+      <td></li>1<= numAcceptedTokens 中的值 <= seqlen，seqlen表示该batch的序列长度，numAcceptedTokens的值表示每个 batch 的随机投机数。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1 维 [batch,]</td>
@@ -376,7 +376,7 @@
       <td>num_computed_tokens</td>
       <td>可选输入</td>
       <td>公式中的numComputedTokens，当前 batch 已经处理的 token 总数，用于判断初始状态。</td>
-      <td><li>支持空指针。</li><li>首 token 时使用零初始化缓存；Pangu V2 模式下不能为空。</li></td>
+      <td></li>首 token 时使用零初始化缓存；Pangu V2 模式下不能为空。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1 维 [batch,]</td>
@@ -386,7 +386,7 @@
       <td>block_idx_first_scheduled_token</td>
       <td>可选输入</td>
       <td>当前 batch 的第一个 token 对应的 block 索引。</td>
-      <td><li>支持空指针。</li><li>APC 开启时不能为空。</li></td>
+      <td></li>APC 开启时不能为空。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1 维 [batch,]</td>
@@ -396,7 +396,7 @@
       <td>block_idx_last_scheduled_token</td>
       <td>可选输入</td>
       <td>当前 batch 的最后一个 token 对应的 block 索引。</td>
-      <td><li>支持空指针。</li><li>APC 开启时不能为空。</li></td>
+      <td></li>APC 开启时不能为空。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1 维 [batch,]</td>
@@ -406,7 +406,7 @@
       <td>initial_state_idx</td>
       <td>可选输入</td>
       <td>初始索引块的索引。</td>
-      <td><li>支持空指针。</li><li>APC 开启时不能为空。</li></td>
+      <td></li>APC 开启时不能为空。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1 维 [batch,]</td>
@@ -446,7 +446,7 @@
       <td>max_query_len</td>
       <td>可选输入</td>
       <td>所有 batch 中的最大 seq_len，支持为-1。</td>
-      <td></td>
+      <td>-</td>
       <td>INT64</td>
       <td>-</td>
       <td>默认值1。</td>
@@ -492,35 +492,6 @@
       <td>默认值 False。</td>
       <td>-</td>
     </tr>
-  </tbody>
-</table>
-
-## 返回值说明<a></a>
-
-<table style="undefined;table-layout: fixed; width: 1200px">
-  <colgroup>
-    <col style="width: 160px">
-    <col style="width: 100px">
-    <col style="width: 260px">
-    <col style="width: 260px">
-    <col style="width: 140px">
-    <col style="width: 80px">
-    <col style="width: 280px">
-    <col style="width: 100px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
     <tr>
       <td>y</td>
       <td>输出</td>
@@ -534,7 +505,6 @@
   </tbody>
 </table>
 
-
 ## 约束说明
 
 - 输入shape限制：
@@ -542,25 +512,25 @@
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch。
-    - cache_indices支持空指针，1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
     - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - prefill和decode混合场景：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch。
-    - cache_indices支持空指针，1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
     - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - decode场景（固定batch）：
     - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch。
-    - cache_indices支持空指针，1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
     - m范围[0, 7]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于batch。
-    - cache_indices支持空指针，1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
     - cu_seq_len范围[batch, batch*8]，每个batch的token个数范围为[1, 8]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
 
 - 输入值域限制：
