@@ -110,6 +110,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
 // 校验属性指针非空
 static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, const char *nodeName)
 {
+    OP_LOGI(nodeName, "Enter CheckAttrPointersNotNull");
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
@@ -130,13 +131,15 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commModePtr == nullptr,
         OP_LOGE(nodeName, "commModePtr is null."), return ge::GRAPH_FAILED);
-
+    
+    OP_LOGI(nodeName, "Exit CheckAttrPointersNotNull");
     return ge::GRAPH_SUCCESS;
 }
 
 // 校验属性值范围合法性
 static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const char *nodeName)
 {
+    OP_LOGI(nodeName, "Enter CheckAttrValuesValid");
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
@@ -166,10 +169,11 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
         *modePtr), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((std::strcmp(commModePtr, "mte") != 0) && (std::strcmp(commModePtr, "urama") != 0),
+    OP_TILING_CHECK((std::strcmp(commModePtr, "mte") != 0) && (std::strcmp(commModePtr, "urma") != 0),
         OP_LOGE(nodeName, "commMode is invalid, should be mte or urama, but got commMode=%s.",
         *commModePtr), return ge::GRAPH_FAILED);
 
+    OP_LOGI(nodeName, "Exit CheckAttrValuesValid");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -177,6 +181,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
 static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData, std::string &group)
 {
+    OP_LOGI(nodeName, "Enter GetAttrAndSetTilingData");
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr,
         OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
@@ -204,7 +209,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     // OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
     OP_LOGD(nodeName, "mode = %ld", *modePtr);
-
+    OP_LOGD(nodeName, "commMode = %s", commModePtr);
+    OP_LOGI(nodeName, "Exit GetAttrAndSetTilingData");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -417,6 +423,7 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
 // 执行流程: 参数校验 -> 窗口检查 -> 设置通信配置 -> 填充TilingData
 static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
+    OP_LOGI(nodeName, "Enter BandwidthTestTilingFuncImpl");
     uint32_t batchMode = 1U;
     auto ret = context->SetScheduleMode(batchMode);
     GE_ASSERT_GRAPH_SUCCESS(ret);
