@@ -378,8 +378,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
             using L0TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L0TileShapeK>;
             using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
                                                         CType_, BiasType_, TileCopy>;
-            using MatmulKernel =
-                Gemm::Kernel::MatmulReduceScatterAivModeSmallM<void, void, BlockMmadOpt, void, BlockScheduler30, aicCalBias>;
+            using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivModeSmallM<void, void, BlockMmadOpt, void,
+                                                                                BlockScheduler30, aicCalBias>;
             typename MatmulKernel::Params params{
                 processSize,
                 reinterpret_cast<GM_ADDR>(gm_a_src),
@@ -401,8 +401,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
             using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
             using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
                                                         CType_, BiasType_, TileCopy>;
-            using MatmulKernel =
-                Gemm::Kernel::MatmulReduceScatterAivModeSmallM<void, void, BlockMmadOpt, void, BlockScheduler30, aicCalBias>;
+            using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivModeSmallM<void, void, BlockMmadOpt, void, 
+                                                                                BlockScheduler30, aicCalBias>;
             typename MatmulKernel::Params params{
                 processSize,
                 reinterpret_cast<GM_ADDR>(gm_a_src),

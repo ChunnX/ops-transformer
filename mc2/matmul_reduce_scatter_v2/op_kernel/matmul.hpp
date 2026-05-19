@@ -84,8 +84,13 @@ public:
     using ElementC = typename BlockMmad::ElementC;
     using LayoutC = typename BlockMmad::LayoutC;
 
+<<<<<<< HEAD
     using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape, L0TileShape,
         LayoutA, LayoutB, LayoutC>;
+=======
+    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape,
+        L0TileShape, LayoutA, LayoutB, LayoutC>;
+>>>>>>> 267b641e5 (matmul_reduce_scatter_v2+bias)
 
     /// Parameters structure
     struct Params {
@@ -123,8 +128,8 @@ public:
                LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_, LayoutC layoutPeerMem_,
                GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_, int32_t swizzlDirect_, DequantType dequantType_,
                int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), 
-              ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_), 
+            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
+              ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_),
               ptrPeerMem(ptrPeerMem_), layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_),
               pValue(pValue_), swizzlCount(swizzlCount_), swizzlDirect(swizzlDirect_), dequantType(dequantType_),
               rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_) {}
