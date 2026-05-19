@@ -18,9 +18,9 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "attention_to_ffn.h"
-#include "attention_to_ffn_tiling.h"
-#include "attention_to_ffn_tiling_key.h"
+#include "../attention_to_ffn.h"
+#include "../attention_to_ffn_tiling.h"
+#include "../attention_to_ffn_tiling_key.h"
 
 using namespace AscendC;
 using namespace AttentionToFFNImpl;
