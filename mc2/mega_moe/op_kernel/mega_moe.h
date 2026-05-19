@@ -32,7 +32,7 @@ namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
-                            int64_t, int64_t>;
+                            int64_t, int64_t, int64_t>;
 
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename Weight1Type, typename TopkWeightsType, int32_t QuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, Weight1Type, TopkWeightsType, QuantMode
@@ -144,7 +144,7 @@ private:
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
     TupleShape problemShape_{};
-    BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     GM_ADDR tokenPerExpertCurRankAddr_;
 
@@ -602,6 +602,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
+        
+        gmmAddrInfo.gmm1OutGlobal = params_.workspaceInfo.ptrMmadTileResFirst + Get<IDX_GMM1_OFFSET>(baseOffset_) * sizeof(float);
+        
         if constexpr(g_coreType == AIV) {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(baseOffset_), Get<IDX_C_SCALE_OFFSET>(baseOffset_),
@@ -767,7 +770,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         SyncAll<false>();
         if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
             MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
-                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                QuantOutType, Weight1Type, float, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx);
         } else {
             if (subBlockIdx_ == 0) {
@@ -791,7 +794,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
-    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;

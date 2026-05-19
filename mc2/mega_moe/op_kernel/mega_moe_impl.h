@@ -289,9 +289,8 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     BlockMmad blockMmad{};
     BlockPrologue blockPrologue;
 
-    auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(
-                                       params.workspaceInfo.ptrMmadTileResFirst + expert_id * 192 * 1024 * 2)),
-                                   layoutC); // 用于存储4bit权重的矩阵乘结果，后续改为直接写入最终地址
+    auto l0cOutGm = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm1OutGlobal)), layoutC);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -577,7 +576,7 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2A8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    uint16_t& pingpongIdx, int32_t rankId, int32_t expert_id)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3> || std::is_same_v<ElementA, __fp8e5m2>, "Activation must be fp8");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -640,7 +639,7 @@ __aicore__ inline void GroupMatmul2A8W4(
     // auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
     auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(
-                                       params.workspaceInfo.ptrMmadTileResFirst + expert_id * 192 * 1024 * 2)),
+                                       params.workspaceInfo.ptrMmadTileResFirst + expert_id * 192 * 1024 * 4)),
                                    layoutC); // 用于存储4bit权重的矩阵乘结果，后续改为直接写入最终地址
 
     auto gmA = Te::MakeTensor(

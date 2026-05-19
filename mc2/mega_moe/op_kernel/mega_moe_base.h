@@ -35,6 +35,7 @@ struct GMMAddrInfo {
     GM_ADDR bGlobal;
     GM_ADDR aScaleGlobal;
     GM_ADDR bScaleGlobal;
+    GM_ADDR gmm1OutGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
 };

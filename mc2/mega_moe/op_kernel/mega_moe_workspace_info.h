@@ -39,6 +39,7 @@ constexpr uint64_t IDX_B2_OFFSET = 8UL;
 constexpr uint64_t IDX_B2_SCALE_OFFSET = 9UL;
 constexpr uint64_t IDX_Y2_OFFSET = 10UL;
 constexpr uint64_t IDX_M_OFFSET = 11UL;
+constexpr uint64_t IDX_GMM1_OFFSET = 12UL;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
@@ -111,7 +112,8 @@ struct WorkspaceInfo {
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         expandedRowIdxGather = ptrA;
         ptrMmadTileResFirst = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * 192 * 1024 * 4;
+        uint32_t A = (tilingData->expertPerRank < tilingData->topK) ? tilingData->expertPerRank : tilingData->topK;
+        workspaceSize += SIZE_INT_32 * tilingData->epWorldSize * tilingData->bs * A * tilingData->hiddenDim;
         ptrMmadTileResSecond = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * 192 * 4096 * 4;
     }
