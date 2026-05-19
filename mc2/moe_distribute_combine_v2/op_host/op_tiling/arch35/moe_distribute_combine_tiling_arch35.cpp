@@ -87,6 +87,8 @@ const int64_t K_UPPER_BOUND_V1 = 8;
 const int64_t K_UPPER_BOUND_V2 = 16;
 const int64_t BUFFER_NUM = 2;
 
+constexpr uint32_t INT8_COMM_QUANT = 2U;
+
 const std::string OP_NAME = "MoeDistributeCombineA5";
 } // namespace
 
@@ -804,6 +806,25 @@ bool MoeDistributeCombineTilingA5::IsCapable()
         return true;
     }
     return false;
+}
+
+uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode,
+    bool isLayered)
+{
+    bool tp = false;
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    uint32_t hierarchy = TILINGKEY_TPL_MTE;
+    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
+        tp = true;
+    }
+    if (commQuantMode >= INT8_COMM_QUANT) {
+        quantMode = commQuantMode;
+    }
+    if (isLayered) {
+        hierarchy = TILINGKEY_TPL_HIERARCHY;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A5);
+    return tilingKey;
 }
 
 ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFuncImpl(
