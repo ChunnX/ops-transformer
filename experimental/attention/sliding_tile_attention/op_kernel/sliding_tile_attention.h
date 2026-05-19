@@ -29,7 +29,7 @@ constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t BUFFER_NUM = 1;
-constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 64 * 1024;
+constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 46 * 1024;
 constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
 constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
 constexpr uint64_t SYNC_AIC_TO_AIV_0 = 5;
@@ -307,7 +307,10 @@ private:
     __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
     {
         const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * scoreElems * sizeof(float);
+        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
+        const int64_t sharedElems = MaxInt64(scoreElems, outElems);
+        const int64_t offset =
+            SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * sharedElems * sizeof(float);
         return LocalTensor<float>(TPosition::VECIN, offset, scoreElems);
     }
 
@@ -315,7 +318,9 @@ private:
     {
         const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
+        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
+        const int64_t sharedElems = MaxInt64(scoreElems, outElems);
+        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * sharedElems * sizeof(float) +
                                static_cast<int64_t>(bufferIdx) * probElems * sizeof(DataType);
         return LocalTensor<DataType>(TPosition::VECIN, offset, probElems);
     }
@@ -323,11 +328,10 @@ private:
     __aicore__ inline LocalTensor<float> GetOutHandoffTensor(uint32_t bufferIdx) const
     {
         const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
-        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
-                               BUFFER_NUM * probElems * sizeof(DataType) +
-                               static_cast<int64_t>(bufferIdx) * outElems * sizeof(float);
+        const int64_t sharedElems = MaxInt64(scoreElems, outElems);
+        const int64_t offset =
+            SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * sharedElems * sizeof(float);
         return LocalTensor<float>(TPosition::VECIN, offset, outElems);
     }
 
@@ -874,7 +878,10 @@ private:
     __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
     {
         const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * scoreElems * sizeof(float);
+        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
+        const int64_t sharedElems = MaxInt64(scoreElems, outElems);
+        const int64_t offset =
+            SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * sharedElems * sizeof(float);
         return LocalTensor<float>(TPosition::VECIN, offset, scoreElems);
     }
 
@@ -882,7 +889,9 @@ private:
     {
         const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
+        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
+        const int64_t sharedElems = MaxInt64(scoreElems, outElems);
+        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * sharedElems * sizeof(float) +
                                static_cast<int64_t>(bufferIdx) * probElems * sizeof(DataType);
         return LocalTensor<DataType>(TPosition::VECIN, offset, probElems);
     }
@@ -890,11 +899,10 @@ private:
     __aicore__ inline LocalTensor<float> GetOutHandoffTensor(uint32_t bufferIdx) const
     {
         const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
-        const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
-                               BUFFER_NUM * probElems * sizeof(DataType) +
-                               static_cast<int64_t>(bufferIdx) * outElems * sizeof(float);
+        const int64_t sharedElems = MaxInt64(scoreElems, outElems);
+        const int64_t offset =
+            SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * sharedElems * sizeof(float);
         return LocalTensor<float>(TPosition::VECIN, offset, outElems);
     }
 
