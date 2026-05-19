@@ -208,13 +208,16 @@
 
 ## 约束说明
 
-- 该接口支持图模式。
-- 参数query中的Q_D值仅支持576，即nope\+rope=512\+64。
-- 参数key、value Atlas A2/A3系列产品支持int8数据类型，Ascend 950PR/Ascend 950DT支持float8_e4m3、int8、hifloat8数据类型。Q_N值支持1/2/4/8/16/32/48/64/128。
-- 参数key、value中的KV_D值仅支持656，即nope\+rope\*2\+dequant\_scale\*4=512\+64\*2\+4\*4。KV_N值仅支持1。
-- sparse\_block\_size需要整除block\_size。
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    - 只支持sparse_block_size为1。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - 支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
-- 非PageAttention场景layout\_query和layout\_kv需要保持一致。
+- 参数query shape中：
+  - Q_D值仅支持576，即nope+rope=512+64。
+  - Q_N值支持1/2/4/8/16/32/48/64/128。
+- 参数key、value shape中：
+  - KV_D值仅支持656，即nope+rope2+dequant_scale4=512+642+44。
+  - KV_N值仅支持1。
+- 参数key、value数据类型要求：
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持float8_e4m3、int8、hifloat8数据类型。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持int8数据类型。
+- 参数sparse_block_size：
+  - <term>Ascend 950PR/Ascend 950DT</term>：只支持sparse_block_size为1。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
+- 非PageAttention场景layout_query和layout_kv取值需要保持一致。
