@@ -544,6 +544,42 @@ private:
         denom += reduceLocal.GetValue(0);
     }
 
+    __aicore__ inline void AccumulateFirstVisibleScoreBlock(int64_t kvCount, uint32_t rowInBlock,
+                                                            float &maxScore, float &denom, uint32_t bufferIdx)
+    {
+        const uint32_t calcCount = ScoreCalcCount(kvCount);
+        LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
+        LoadScaledScoreRow(scoreLocal, kvCount, rowInBlock, bufferIdx);
+
+        LocalTensor<float> reduceLocal = GetKvBlockSlice<float>(reduceFloatBuf_, bufferIdx);
+        LocalTensor<float> reduceWorkLocal = GetKvBlockSlice<float>(reduceWorkBuf_, bufferIdx);
+        ReduceMax(reduceLocal, scoreLocal, reduceWorkLocal, calcCount, false);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        const float blockMaxScore = reduceLocal.GetValue(0);
+        maxScore = blockMaxScore;
+
+        LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
+        if (blockMaxScore == NEG_INF) {
+            Duplicate(weightLocal, 0.0F, calcCount);
+            PipeBarrier<PIPE_V>();
+            StoreProbRow(rowInBlock, weightLocal, kvCount, bufferIdx);
+            denom = 0.0F;
+            return;
+        }
+
+        Adds(weightLocal, scoreLocal, -blockMaxScore, calcCount);
+        PipeBarrier<PIPE_V>();
+        Exp(weightLocal, weightLocal, calcCount);
+        PipeBarrier<PIPE_V>();
+        StoreProbRow(rowInBlock, weightLocal, kvCount, bufferIdx);
+
+        ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, calcCount);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        denom = reduceLocal.GetValue(0);
+    }
+
     __aicore__ inline void ProcessVisibleKvBlock(int64_t seq, int64_t qCount, int64_t kvCount,
                                                  int64_t &tileLoop, LocalTensor<float> &maxLocal,
                                                  LocalTensor<float> &denomLocal)
@@ -554,13 +590,26 @@ private:
         int64_t rowEnd = 0;
         GetSubBlockRowRange(qCount, rowBegin, rowEnd);
         const int64_t validRowEnd = GetValidRowEnd(seq, rowBegin, rowEnd);
-        for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-            LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-            float maxScore = maxLocal.GetValue(row);
-            float denom = denomLocal.GetValue(row);
-            AccumulateVisibleScoreBlock(accRow, kvCount, static_cast<uint32_t>(row), maxScore, denom, bufferIdx);
-            maxLocal.SetValue(row, maxScore);
-            denomLocal.SetValue(row, denom);
+        if (tileLoop == 0) {
+            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
+                float maxScore = NEG_INF;
+                float denom = 0.0F;
+                AccumulateFirstVisibleScoreBlock(kvCount, static_cast<uint32_t>(row), maxScore, denom, bufferIdx);
+                maxLocal.SetValue(row, maxScore);
+                denomLocal.SetValue(row, denom);
+            }
+        } else {
+            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
+                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+                float maxScore = maxLocal.GetValue(row);
+                const float oldMaxScore = maxScore;
+                float denom = denomLocal.GetValue(row);
+                AccumulateVisibleScoreBlock(accRow, kvCount, static_cast<uint32_t>(row), maxScore, denom, bufferIdx);
+                if (maxScore != oldMaxScore) {
+                    maxLocal.SetValue(row, maxScore);
+                }
+                denomLocal.SetValue(row, denom);
+            }
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
         CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx));
