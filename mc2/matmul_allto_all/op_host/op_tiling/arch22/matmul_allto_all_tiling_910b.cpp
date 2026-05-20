@@ -482,8 +482,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
             }
         }
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, bias and y",
-                (ToString(x1Dtype) + ", " + ToString(x2Dtype) + ", " + ToString(biasDtype) + " and " + ToString(yDtype)).c_str(),
-                "MatmulAlltoAll: unsupported params data type combination");
+            (ToString(x1Dtype) + ", " + ToString(x2Dtype) + ", " +
+             ToString(biasDtype) + " and " + ToString(yDtype)).c_str(),
+            "MatmulAlltoAll: unsupported params data type combination");
         return ge::GRAPH_FAILED;
     } else {
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
@@ -494,8 +495,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
             }
         }
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2 and y",
-                (ToString(x1Dtype) + ", " + ToString(x2Dtype) + " and " + ToString(yDtype)).c_str(),
-                "MatmulAlltoAll: unsupported params data type combination");
+            (ToString(x1Dtype) + ", " + ToString(x2Dtype) +
+             " and " + ToString(yDtype)).c_str(),
+            "MatmulAlltoAll: unsupported params data type combination");
         return ge::GRAPH_FAILED;
     }
 
@@ -587,7 +589,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
     const gert::StorageShape *yShape = context_->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yShape == nullptr), OP_LOGE(opName_, "The yShape is nullptr."), return ge::GRAPH_FAILED);
     uint64_t yDimNum = yShape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK((yDimNum != 2), OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "y", (std::to_string(yDimNum) + "D").c_str(), "2D"),
+    OP_TILING_CHECK((yDimNum != 2),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "y",
+                        (std::to_string(yDimNum) + "D").c_str(), "2D"),
                     return ge::GRAPH_FAILED);
 
     // 校验shape的维度矩阵是否合法
