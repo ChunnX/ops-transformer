@@ -614,7 +614,7 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignByRow(const SplitContext &splitC
                     assignContext.curS1GIdx++;
                     CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache,
                                  assignContext.s1GCache);
-                } while(assignContext.s1GCache.s1GBlock == 0);
+                } while (assignContext.s1GCache.s1GBlock == 0);
                 assignContext.curS2Idx = assignContext.s1GCache.s2Start;
             }
             return;
