@@ -130,11 +130,11 @@ def normalize_case(raw):
         if c.get(key) == [None] or c.get(key) is None:
             c.pop(key, None)
     if layout_q == "TND":
-        # cu_seqlens_kv 未提供时默认与 cu_seqlens_q 相同（self-attention 场景）
-        c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
         if layout_kv not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+            # cu_seqlens_kv 未提供时默认与 cu_seqlens_q 相同（self-attention 场景，非 PA）
+            c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
             c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
                                          for i in range(len(c["cu_seqlens_kv"]) - 1)])
         c["B"] = 1
