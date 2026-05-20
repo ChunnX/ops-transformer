@@ -1,0 +1,475 @@
+/**
+ * Copyright (c) 2025 Tianjin University, Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * the BSD 3-Clause License (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+/*!
+ * \file causal_conv1d.h
+ * \brief
+ */
+
+#ifndef CAUSAL_CONV1D_H
+#define CAUSAL_CONV1D_H
+
+#include "kernel_operator.h"
+#include "kernel_tiling/kernel_tiling.h"
+#include "causal_conv1d_tiling_data.h"
+#include "causal_conv1d_tiling_key.h"
+#include "causal_conv1d_common.h"
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+#include "arch35/causal_conv1d_regbase.h"
+#endif
+
+namespace NsCausalConv1d {
+
+using namespace AscendC;
+using namespace NsCausalConv1dCommon;
+
+#define CAUSAL_CONV1D_TEMPLATE_ARGS typename T, uint32_t inputModeKey, uint32_t widthKey
+#define CAUSAL_CONV1D_CLASS CausalConv1d<T, inputModeKey, widthKey>
+
+enum SeqTaskWindowMode : int32_t {
+    SEQ_TASK_WINDOW_MODE_VARLEN = 0,
+    SEQ_TASK_WINDOW_MODE_BATCH = 1,
+    SEQ_TASK_WINDOW_MODE_DECODE2D = 2,
+};
+
+inline constexpr int32_t INIT_STATE_SYNCALL_NEED_SIZE = 8;
+inline constexpr int32_t INIT_STATE_SYNCALL_MAX_BLOCKS = 64;
+
+struct SeqTaskWindow {
+    bool valid = false;
+    int32_t start = 0;
+    int32_t len = 0;
+};
+
+__aicore__ inline SeqTaskWindow BuildSeqTaskWindowVarlen(int32_t startVal, int32_t endVal)
+{
+    SeqTaskWindow window;
+    window.start = startVal;
+    window.len = endVal - startVal;
+    window.valid = (window.len > 0);
+    return window;
+}
+
+__aicore__ inline int32_t RetreatRingSlot(int32_t slot, int32_t delta)
+{
+    int32_t prev = slot - delta;
+    return (prev >= 0) ? prev : (prev + RING_SLOTS);
+}
+
+__aicore__ inline SeqTaskWindow BuildSeqTaskWindowBatch(int32_t seq, int32_t seqLen)
+{
+    SeqTaskWindow window;
+    window.start = seq * seqLen;
+    window.len = seqLen;
+    window.valid = (window.len > 0);
+    return window;
+}
+
+__aicore__ inline SeqTaskWindow BuildSeqTaskWindowDecode2D(int32_t seq)
+{
+    SeqTaskWindow window;
+    window.valid = true;
+    window.start = seq;
+    window.len = 1;
+    return window;
+}
+
+__aicore__ inline constexpr int32_t DecodeWidthTplKey(uint32_t widthKey)
+{
+    switch (widthKey) {
+        case CAUSAL_CONV1D_TPL_WIDTH_2:
+            return 2;
+        case CAUSAL_CONV1D_TPL_WIDTH_3:
+            return 3;
+        case CAUSAL_CONV1D_TPL_WIDTH_4:
+            return 4;
+        default:
+            return 0;
+    }
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+class CausalConv1d {
+public:
+    __aicore__ inline CausalConv1d() = default;
+
+protected:
+    static constexpr int32_t kTemplateWidth = DecodeWidthTplKey(widthKey);
+    static constexpr bool kHasCompileTimeWidth =
+        IsFnInputModeKey(inputModeKey) && (kTemplateWidth >= 2) && (kTemplateWidth <= MAX_WIDTH);
+
+    __aicore__ inline void ResetRuntimeState(const CausalConv1dTilingData *tilingData);
+    __aicore__ inline void InitSharedBuffersAndEvents();
+    __aicore__ inline void LoadWeightAndBias(int32_t channelStart, int32_t baseDim);
+    __aicore__ inline void WriteBackState(int32_t cacheIdx, int32_t len, int32_t channelStart, int32_t baseDim,
+                                          int32_t dim);
+    __aicore__ inline void WriteBackStateSpec(int32_t cacheIdx, bool hasInit, int32_t stateTokenOffset, int32_t start,
+                                              int32_t len, int32_t channelStart, int32_t baseDim, int32_t dim);
+    __aicore__ inline void DrainTaskMte3();
+    __aicore__ inline void AllocEvents();
+    __aicore__ inline void ReleaseEvents();
+    template <int32_t kWindowMode>
+    __aicore__ inline bool ResolveSeqTaskWindowByMode(int32_t seq, int32_t seqLen, int32_t &start, int32_t &len) const;
+    __aicore__ inline bool ResolveSeqCacheIndex(int32_t seq, bool hasCacheIndices, int32_t &cacheIdx) const;
+    __aicore__ inline bool ResolveSeqHasInit(int32_t seq, bool hasInitialStateMode) const;
+    __aicore__ inline const CausalConv1dTilingData *GetTilingData() const;
+    __aicore__ inline bool HasActivation() const;
+    __aicore__ inline bool HasBias() const;
+
+protected:
+    TPipe pipe;
+    TBuf<QuePosition::VECIN> inBuf;
+    TBuf<QuePosition::VECOUT> outBuf;
+    TBuf<QuePosition::VECCALC> calcBuf;
+
+    TEventID weightBiasMte2ToVEvent_;
+    TEventID stateMte2ToVEvent_;
+    TEventID inputMte2ToVEvent_[RING_SLOTS];
+    TEventID inputVToMte2Event_;
+    TEventID outMte3ToVEvent_[2];
+    TEventID outVToMte3Event_[2];
+    TEventID stateWritebackMte3ToVEvent_;
+    TEventID stateWritebackMte3ToMte2Event_;
+    TEventID stateShiftMte2ToMte3Event_;
+    TEventID stateShiftVToMte3Event_;
+    TEventID stateShiftMte3ToMte2Event_;
+    TEventID specWritebackMte2ToMte3Event_[2];
+    TEventID specWritebackMte3ToMte2Event_[2];
+
+    GlobalTensor<T> xGm;
+    GlobalTensor<T> weightGm;
+    GlobalTensor<T> biasGm;
+    GlobalTensor<T> convStatesGm;
+    GlobalTensor<int64_t> queryStartLocGm;
+    GlobalTensor<int64_t> cacheIndicesGm;
+    GlobalTensor<int64_t> initialStateModeGm;
+    GlobalTensor<int64_t> numAcceptedTokensGm;
+    GlobalTensor<T> yGm;
+
+    const CausalConv1dTilingData *tilingData_{nullptr};
+};
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::ResetRuntimeState(const CausalConv1dTilingData *tilingData)
+{
+    tilingData_ = tilingData;
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::InitSharedBuffersAndEvents()
+{
+    const int32_t rowStride = static_cast<int32_t>(tilingData_->baseDim);
+    pipe.InitBuffer(inBuf, RING_SLOTS * rowStride * sizeof(T));
+    pipe.InitBuffer(outBuf, 2 * rowStride * sizeof(T));
+    if constexpr (kHasCompileTimeWidth) {
+        pipe.InitBuffer(calcBuf, (kTemplateWidth + 4) * rowStride * sizeof(float));
+    } else {
+        const int32_t width = static_cast<int32_t>(tilingData_->kernelWidth);
+        pipe.InitBuffer(calcBuf, (width + 4) * rowStride * sizeof(float));
+    }
+    AllocEvents();
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::AllocEvents()
+{
+    weightBiasMte2ToVEvent_ = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    stateMte2ToVEvent_ = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    for (int32_t i = 0; i < RING_SLOTS; ++i) {
+        inputMte2ToVEvent_[i] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    }
+    inputVToMte2Event_ = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+    outMte3ToVEvent_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    outMte3ToVEvent_[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    outVToMte3Event_[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    outVToMte3Event_[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    stateWritebackMte3ToVEvent_ = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    stateWritebackMte3ToMte2Event_ = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+    stateShiftMte2ToMte3Event_ = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
+    stateShiftVToMte3Event_ = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    stateShiftMte3ToMte2Event_ = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+    specWritebackMte2ToMte3Event_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
+    specWritebackMte2ToMte3Event_[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
+    specWritebackMte3ToMte2Event_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+    specWritebackMte3ToMte2Event_[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::ReleaseEvents()
+{
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(weightBiasMte2ToVEvent_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(stateMte2ToVEvent_);
+    for (int32_t i = 0; i < RING_SLOTS; ++i) {
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(inputMte2ToVEvent_[i]);
+    }
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(inputVToMte2Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(outMte3ToVEvent_[0]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(outMte3ToVEvent_[1]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(outVToMte3Event_[0]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(outVToMte3Event_[1]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(stateWritebackMte3ToVEvent_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(stateWritebackMte3ToMte2Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(stateShiftMte2ToMte3Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(stateShiftVToMte3Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(stateShiftMte3ToMte2Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(specWritebackMte2ToMte3Event_[0]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(specWritebackMte2ToMte3Event_[1]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(specWritebackMte3ToMte2Event_[0]);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(specWritebackMte3ToMte2Event_[1]);
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::LoadWeightAndBias(int32_t channelStart, int32_t baseDim)
+{
+    const int32_t dim = tilingData_->dim;
+    const int32_t width = static_cast<int32_t>(tilingData_->kernelWidth);
+    const bool hasBias = HasBias();
+    auto cl = CalcBufLayout::FromCalcBuf(calcBuf, width, baseDim);
+    LocalTensor<float> &weightF = cl.weightF;
+    LocalTensor<float> &biasF = cl.biasF;
+    LocalTensor<T> weightT;
+    LocalTensor<T> biasT;
+
+    if constexpr (!std::is_same<T, float>::value) {
+        weightT = weightF.ReinterpretCast<T>();
+        biasT = biasF.ReinterpretCast<T>();
+    }
+
+    for (int32_t j = 0; j < width; ++j) {
+        const int64_t weightOffset = static_cast<int64_t>(j) * dim + channelStart;
+
+        if constexpr (std::is_same<T, float>::value) {
+            DataCopy(weightF[j * baseDim], weightGm[weightOffset], baseDim);
+        } else {
+            DataCopy(weightT[j * baseDim * 2 + baseDim], weightGm[weightOffset], baseDim);
+        }
+    }
+
+    if (hasBias) {
+        if constexpr (std::is_same<T, float>::value) {
+            DataCopy(biasF, biasGm[channelStart], baseDim);
+        } else {
+            DataCopy(biasT[baseDim], biasGm[channelStart], baseDim);
+        }
+    }
+
+    SetFlag<HardEvent::MTE2_V>(weightBiasMte2ToVEvent_);
+    WaitFlag<HardEvent::MTE2_V>(weightBiasMte2ToVEvent_);
+
+    if constexpr (!std::is_same<T, float>::value) {
+        for (int32_t j = 0; j < width; ++j) {
+            Cast(weightF[j * baseDim], weightT[j * baseDim * 2 + baseDim], RoundMode::CAST_NONE,
+                 baseDim);
+        }
+        if (hasBias) {
+            Cast(biasF, biasT[baseDim], RoundMode::CAST_NONE, baseDim);
+        }
+        PipeBarrier<PIPE_V>();
+    }
+
+    if (!hasBias) {
+        Duplicate(biasF, 0.0f, baseDim);
+    }
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::DrainTaskMte3()
+{
+    SetFlag<HardEvent::MTE3_V>(stateWritebackMte3ToVEvent_);
+    WaitFlag<HardEvent::MTE3_V>(stateWritebackMte3ToVEvent_);
+    SetFlag<HardEvent::MTE3_MTE2>(stateWritebackMte3ToMte2Event_);
+    WaitFlag<HardEvent::MTE3_MTE2>(stateWritebackMte3ToMte2Event_);
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::WriteBackState(int32_t cacheIdx, int32_t len, int32_t channelStart,
+                                                           int32_t baseDim, int32_t dim)
+{
+    const int32_t stateLen = tilingData_->stateLen;
+    const int32_t width = static_cast<int32_t>(tilingData_->kernelWidth);
+    if (len <= 0) {
+        return;
+    }
+
+    const int32_t lastT = len - 1;
+    LocalTensor<T> ring = inBuf.Get<T>();
+    const int32_t lastSlot = SlotCurr(lastT);
+    const int64_t stateBaseOffset = static_cast<int64_t>(cacheIdx) * stateLen * dim + channelStart;
+
+    for (int32_t pos = 0; pos < (width - 1); ++pos) {
+        const int32_t tap = (width - 2) - pos;
+        const int32_t slot = RetreatRingSlot(lastSlot, tap);
+        const int64_t stateOffset = stateBaseOffset + static_cast<int64_t>(pos) * dim;
+        DataCopy(convStatesGm[stateOffset], ring[slot * baseDim], baseDim);
+    }
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline void CAUSAL_CONV1D_CLASS::WriteBackStateSpec(int32_t cacheIdx, bool hasInit,
+                                                               int32_t stateTokenOffset, int32_t start, int32_t len,
+                                                               int32_t channelStart, int32_t baseDim, int32_t dim)
+{
+    const int32_t width = static_cast<int32_t>(tilingData_->kernelWidth);
+    const int32_t stateLen = tilingData_->stateLen;
+    if (len <= 0) {
+        return;
+    }
+
+    if (width != 4) {
+        WriteBackState(cacheIdx, len, channelStart, baseDim, dim);
+        return;
+    }
+
+    const int32_t keep = width - 2;
+    const int32_t reqStateLen = keep + len;
+    if (reqStateLen > stateLen) {
+        WriteBackState(cacheIdx, len, channelStart, baseDim, dim);
+        return;
+    }
+
+    LocalTensor<T> ring = inBuf.Get<T>();
+    LocalTensor<T> buf0 = ring[0 * baseDim];
+    LocalTensor<T> buf1 = ring[1 * baseDim];
+
+    if (hasInit) {
+        const int32_t srcPos0 = stateTokenOffset + 1;
+        const int32_t srcPos1 = stateTokenOffset + 2;
+        const int64_t srcOffset0 =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(srcPos0) * dim + channelStart;
+        const int64_t srcOffset1 =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(srcPos1) * dim + channelStart;
+        DataCopy(buf0, convStatesGm[srcOffset0], baseDim);
+        DataCopy(buf1, convStatesGm[srcOffset1], baseDim);
+        SetFlag<HardEvent::MTE2_MTE3>(stateShiftMte2ToMte3Event_);
+        WaitFlag<HardEvent::MTE2_MTE3>(stateShiftMte2ToMte3Event_);
+        const int64_t dstOffset0 =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(0) * dim + channelStart;
+        const int64_t dstOffset1 =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(1) * dim + channelStart;
+        DataCopy(convStatesGm[dstOffset0], buf0, baseDim);
+        DataCopy(convStatesGm[dstOffset1], buf1, baseDim);
+        SetFlag<HardEvent::MTE3_MTE2>(stateShiftMte3ToMte2Event_);
+        WaitFlag<HardEvent::MTE3_MTE2>(stateShiftMte3ToMte2Event_);
+    } else {
+        Duplicate(buf0, static_cast<T>(0), baseDim);
+        SetFlag<HardEvent::V_MTE3>(stateShiftVToMte3Event_);
+        WaitFlag<HardEvent::V_MTE3>(stateShiftVToMte3Event_);
+        const int64_t dstOffset0 =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(0) * dim + channelStart;
+        const int64_t dstOffset1 =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(1) * dim + channelStart;
+        DataCopy(convStatesGm[dstOffset0], buf0, baseDim);
+        DataCopy(convStatesGm[dstOffset1], buf0, baseDim);
+        SetFlag<HardEvent::MTE3_MTE2>(stateShiftMte3ToMte2Event_);
+        WaitFlag<HardEvent::MTE3_MTE2>(stateShiftMte3ToMte2Event_);
+    }
+
+    const int64_t xOffset0 = static_cast<int64_t>(start) * dim + channelStart;
+    DataCopy(buf0, xGm[xOffset0], baseDim);
+    SetFlag<HardEvent::MTE2_MTE3>(specWritebackMte2ToMte3Event_[0]);
+
+    for (int32_t t = 0; t < len; ++t) {
+        const int32_t curr = t & 1;
+        const int32_t next = curr ^ 1;
+        LocalTensor<T> currBuf = (curr == 0) ? buf0 : buf1;
+        LocalTensor<T> nextBuf = (next == 0) ? buf0 : buf1;
+
+        WaitFlag<HardEvent::MTE2_MTE3>(specWritebackMte2ToMte3Event_[curr]);
+
+        if (t + 1 < len) {
+            const int64_t xOffsetNext = static_cast<int64_t>(start + t + 1) * dim + channelStart;
+            if (t > 0) {
+                WaitFlag<HardEvent::MTE3_MTE2>(specWritebackMte3ToMte2Event_[next]);
+            }
+            DataCopy(nextBuf, xGm[xOffsetNext], baseDim);
+            SetFlag<HardEvent::MTE2_MTE3>(specWritebackMte2ToMte3Event_[next]);
+        }
+
+        const int64_t dstOffset =
+            static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(keep + t) * dim + channelStart;
+        DataCopy(convStatesGm[dstOffset], currBuf, baseDim);
+        SetFlag<HardEvent::MTE3_MTE2>(specWritebackMte3ToMte2Event_[curr]);
+    }
+
+    WaitFlag<HardEvent::MTE3_MTE2>(specWritebackMte3ToMte2Event_[0]);
+    if (len > 1) {
+        WaitFlag<HardEvent::MTE3_MTE2>(specWritebackMte3ToMte2Event_[1]);
+    }
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+template <int32_t kWindowMode>
+__aicore__ inline bool CAUSAL_CONV1D_CLASS::ResolveSeqTaskWindowByMode(int32_t seq, int32_t seqLen, int32_t &start,
+                                                                       int32_t &len) const
+{
+    SeqTaskWindow window;
+    if constexpr (kWindowMode == SEQ_TASK_WINDOW_MODE_VARLEN) {
+        const int32_t startVal = queryStartLocGm.GetValue(seq);
+        const int32_t endVal = queryStartLocGm.GetValue(seq + 1);
+        window = BuildSeqTaskWindowVarlen(startVal, endVal);
+    } else if constexpr (kWindowMode == SEQ_TASK_WINDOW_MODE_DECODE2D) {
+        window = BuildSeqTaskWindowDecode2D(seq);
+    } else {
+        window = BuildSeqTaskWindowBatch(seq, seqLen);
+    }
+
+    if (!window.valid) {
+        return false;
+    }
+    start = window.start;
+    len = window.len;
+    return true;
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline bool CAUSAL_CONV1D_CLASS::ResolveSeqCacheIndex(int32_t seq, bool hasCacheIndices,
+                                                                 int32_t &cacheIdx) const
+{
+    cacheIdx = seq;
+    if (!hasCacheIndices) {
+        return true;
+    }
+
+    const int64_t cacheIdx64 = cacheIndicesGm.GetValue(seq);
+    if (cacheIdx64 == tilingData_->padSlotId) {
+        return false;
+    }
+    cacheIdx = static_cast<int32_t>(cacheIdx64);
+    return true;
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline bool CAUSAL_CONV1D_CLASS::ResolveSeqHasInit(int32_t seq, bool hasInitialStateMode) const
+{
+    return hasInitialStateMode ? (initialStateModeGm.GetValue(seq) != 0) : false;
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline const CausalConv1dTilingData *CAUSAL_CONV1D_CLASS::GetTilingData() const
+{
+    return tilingData_;
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline bool CAUSAL_CONV1D_CLASS::HasActivation() const
+{
+    return (tilingData_ != nullptr) && (tilingData_->activationMode != 0);
+}
+
+template <CAUSAL_CONV1D_TEMPLATE_ARGS>
+__aicore__ inline bool CAUSAL_CONV1D_CLASS::HasBias() const
+{
+    return (tilingData_ != nullptr) && (tilingData_->hasBias != 0);
+}
+
+#undef CAUSAL_CONV1D_CLASS
+#undef CAUSAL_CONV1D_TEMPLATE_ARGS
+
+} // namespace NsCausalConv1d
+#endif // CAUSAL_CONV1D_H
