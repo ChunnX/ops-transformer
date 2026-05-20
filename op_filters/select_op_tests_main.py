@@ -13,10 +13,14 @@ MC2 算子测试选择主脚本
 5. 其他 3rd 目录变更触发全量测试
 6. 忽略 .md 文件和 tests 目录的变更
 7. 基于依赖关系选择需要测试的算子
+8. 根据 SOC 类型过滤 arch 限制的算子
 
 使用方法：
     # 使用默认参数（推荐）
     python select_op_tests_main.py --pr changed_files.txt
+    
+    # 指定 SOC 类型
+    python select_op_tests_main.py --pr changed_files.txt --soc ascend910b ascend910_93
     
     # 自定义参数
     python select_op_tests_main.py \
@@ -25,7 +29,8 @@ MC2 算子测试选择主脚本
         --dependency-json custom_result.json \
         --mc2 /path/to/mc2 \
         --output-json custom_op_tests.json \
-        --output-log custom_output.log
+        --output-log custom_output.log \
+        --soc ascend910b ascend910_93
 """
 
 import argparse
@@ -45,7 +50,7 @@ if __name__ == "__main__" and __package__ is None:
     from op_filters.op_ignored_step2 import filter_ignored
     from op_filters.op_non_mc2_step3 import filter_non_mc2
     from op_filters.op_common_3rd_step4 import filter_common_3rd
-    from op_filters.op_extractor_step5 import extract_operators
+    from op_filters.op_extractor_step5 import extract_operators, filter_ops_by_soc
     from op_filters.op_dependency_step6 import build_reverse_dependency_graph, find_dependent_ops
     from op_filters.op_output_step7 import write_output_json, get_all_ops_with_products, get_ops_info_by_names
     from op_filters.mc2_analyzer import analyze_mc2_and_generate_json
@@ -55,7 +60,7 @@ else:
     from .op_ignored_step2 import filter_ignored
     from .op_non_mc2_step3 import filter_non_mc2
     from .op_common_3rd_step4 import filter_common_3rd
-    from .op_extractor_step5 import extract_operators
+    from .op_extractor_step5 import extract_operators, filter_ops_by_soc
     from .op_dependency_step6 import build_reverse_dependency_graph, find_dependent_ops
     from .op_output_step7 import write_output_json, get_all_ops_with_products, get_ops_info_by_names
     from .mc2_analyzer import analyze_mc2_and_generate_json
@@ -129,10 +134,18 @@ def main() -> int:
         default=DEFAULT_OUTPUT_LOG,
         help=f"输出日志文件路径 (默认: {DEFAULT_OUTPUT_LOG})"
     )
+    parser.add_argument(
+        "--soc",
+        nargs="*",
+        choices=["ascend910b", "ascend910_93", "ascend950"],
+        help="SOC 类型列表，用于过滤 arch 限制的算子和最终输出"
+    )
     
     args = parser.parse_args()
     
     logger = setup_logging(args.output_log)
+    
+    soc_types = set(args.soc) if args.soc else set()
     
     try:
         logger.info("=" * 60)
@@ -145,6 +158,8 @@ def main() -> int:
         logger.info(f"mc2 目录: {args.mc2}")
         logger.info(f"输出 JSON: {args.output_json}")
         logger.info(f"输出日志: {args.output_log}")
+        if soc_types:
+            logger.info(f"SOC 类型: {sorted(soc_types)}")
         
         changed_files = read_file_lines(args.pr, logger)
         logger.info(f"读取到 {len(changed_files)} 个变更文件")
@@ -187,6 +202,9 @@ def main() -> int:
         non_mc2_result = filter_non_mc2(remaining_files, mc2_path, dependency_data, logger)
         if non_mc2_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
+            if soc_types:
+                all_ops = [op for op in all_ops if set(op.get("supported_products", [])) & soc_types]
+                logger.info(f"全量测试根据 SOC 类型过滤后: {len(all_ops)} 个算子")
             write_output_json(all_ops, args.output_json, logger)
             logger.info("=" * 60)
             logger.info("处理完成（全量测试模式）")
@@ -196,6 +214,9 @@ def main() -> int:
         common_3rd_result = filter_common_3rd(remaining_files, mc2_path, dependency_data, logger)
         if common_3rd_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
+            if soc_types:
+                all_ops = [op for op in all_ops if set(op.get("supported_products", [])) & soc_types]
+                logger.info(f"全量测试根据 SOC 类型过滤后: {len(all_ops)} 个算子")
             write_output_json(all_ops, args.output_json, logger)
             logger.info("=" * 60)
             logger.info("处理完成（全量测试模式）")
@@ -208,6 +229,12 @@ def main() -> int:
         
         extraction_result = extract_operators(other_files, logger)
         changed_ops = extraction_result["changed_ops"]
+        op_arch_restrictions = extraction_result.get("op_arch_restrictions", {})
+        
+        if soc_types and op_arch_restrictions:
+            logger.info("=" * 60)
+            logger.info("根据 SOC 类型过滤 arch 限制的算子")
+            changed_ops = filter_ops_by_soc(changed_ops, op_arch_restrictions, soc_types, logger)
         
         if not changed_ops and not special_3rd_ops and not special_common_ops:
             logger.warning("没有成功提取到任何算子名称，输出空列表")
@@ -240,6 +267,23 @@ def main() -> int:
         logger.info("=" * 60)
         logger.info("生成最终算子列表")
         final_ops = get_ops_info_by_names(ops_to_run, dependency_data, logger)
+        
+        if soc_types:
+            logger.info("=" * 60)
+            logger.info(f"根据 SOC 类型 {sorted(soc_types)} 过滤最终算子列表")
+            filtered_final_ops = []
+            for op_info in final_ops:
+                supported_products = set(op_info.get("supported_products", []))
+                if supported_products & soc_types:
+                    op_info_copy = {
+                        "op_name": op_info["op_name"],
+                        "supported_products": sorted([p for p in op_info.get("supported_products", []) if p in soc_types])
+                    }
+                    filtered_final_ops.append(op_info_copy)
+                else:
+                    logger.info(f"  算子 {op_info['op_name']} 支持的产品 {supported_products} 不包含 {soc_types}，已过滤")
+            final_ops = filtered_final_ops
+            logger.info(f"SOC 类型过滤后剩余 {len(final_ops)} 个算子")
         
         logger.info(f"最终需要测试的算子数量: {len(final_ops)}")
         for op_info in final_ops:
