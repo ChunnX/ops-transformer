@@ -297,6 +297,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::GatherOutXDynamicQu
 
     int64_t curIndex = startRowIdx;
     int64_t k = 0;
+    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
 
@@ -316,7 +317,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::GatherOutXDynamicQu
 
         for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
             int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-            if (outIndex < this->activeNum_) {
+            if (outIndex >= 0 && outIndex < outputRows) {
                 DataCopyPad(expandedXGm_[outIndex * colsAsInt8_], outLocal, copyOutParams);
                 DataCopyPad(expandedScaleGm_[outIndex], scaleLocal, {1, 4, 0, 0, 0});
             }
