@@ -22,20 +22,16 @@
 #include "kernel_operator.h"
 #endif
 #include "dispatch_layout_tiling.h"
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
-#include "../../common/op_kernel/moe_distribute_base.h"
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
+#include "../../common/inc/op_kernel/moe_distribute_base.h"
+#include "../../common/inc/op_kernel/mc2_kernel_utils.h"
 
 using namespace AscendC;
 namespace MoeDispatchLayout {
 
 constexpr uint32_t UB_32_ALIGN = 32U;
 
-template <typename T> class DispatchLayout {
+template <typename T>
+class DispatchLayout {
 public:
     __aicore__ inline DispatchLayout(){};
 
