@@ -32,7 +32,7 @@ constexpr uint16_t SRCM = 128;
 TEMPLATES_DEF
 class FAGBlockVec {
 private:
- 
+    __aicore__ inline void ComputeSoftmaxL1(FagConstInfo &constInfo, FagRunInfo &runInfo);
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -90,8 +90,7 @@ public:
     GlobalTensor<uint8_t> dropMaskGm, attenMaskU8Gm;
     GlobalTensor<float> pseFloatGm, softmaxLseGm, sinkGm, dsinkGm, oriSoftmaxL1Gm, cmpSoftmaxL1Gm;
     GM_ADDR pseSlope;
-    GlobalTensor<uint8_t> dropMaskWorkspaceGm;
-    GlobalTensor<float> dsAmaxWorkSpaceGm, dsinkWorkSpaceGm;
+    GlobalTensor<float> softmaxL1WorkSpaceGm, dsinkWorkSpaceGm;
 
     // GlobalTensor<int32_t> topkIndicesGm; // 待删除
     GlobalTensor<int32_t> oritopkIndicesGm;
@@ -100,13 +99,15 @@ public:
     // ub buffer
     TQue<QuePosition::VECIN, 1> attenMaskOrYInQue;
     TQue<QuePosition::VECIN, 1> pseOrDyInQue;
+    TQue<QuePosition::VECOUT, 1> sotmaxL1Que[2];
     TQue<QuePosition::VECOUT, 1> dSOutQue;
     TQue<QuePosition::VECOUT, 1> pOutQue;
-    TQue<QuePosition::VECOUT, 1> softmaxL1OutQue;
+    TQue<QuePosition::VECOUT, 2> softmaxL1OutQue;
     TQue<QuePosition::VECIN, 1> LseQue[2];
     TQue<QuePosition::VECIN, 1> sinkQue;
     TQue<QuePosition::VECOUT, 1> dSinkQue;
     TBuf<> softmaxSinkResBuf[2];
+    TBuf<> softmaxL1SumBuf[2];
     TBuf<> softmaxGradResBuf;
     TBuf<> dropMaskBuf;
     TBuf<> dropmaskIndexVecBuf;
@@ -174,6 +175,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ori_
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
         dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->baseParams.dSinkWorkSpaceOffset / sizeof(float)); //todo offset
     }
+    int64_t softmaxL1WSOffset = tilingData->baseParams.softmaxL1WorkspaceOffset / sizeof(float) + this->vBlockIdx * constInfo.selectedBlockCount * constInfo.commonConstInfo.gSize / 2;
+    softmaxL1WorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + softmaxL1WSOffset);
 }
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -190,7 +193,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer(FagConstInfo &co
      * LseQue: forlse double buffer
      **/
     pipe->InitBuffer(attenMaskOrYInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
-    pipe->InitBuffer(pseOrDyInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(OUTDTYPE));
+    pipe->InitBuffer(pseOrDyInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
+    sotmaxL1Que[0] = attenMaskOrYInQue;
+    sotmaxL1Que[1] = pseOrDyInQue;
+
     pipe->InitBuffer(softmaxGradResBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
     pipe->InitBuffer(softmaxSinkResBuf[0], 64 * sizeof(float));
     pipe->InitBuffer(softmaxSinkResBuf[1], 64 * sizeof(float));
@@ -201,7 +207,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer(FagConstInfo &co
 
     pipe->InitBuffer(dSOutQue, 1, VECTOR_BASEM * VREG_SIZE + VREG_SIZE);
     pipe->InitBuffer(pOutQue, 1, VECTOR_BASEM * VREG_SIZE + VREG_SIZE);
-    pipe->InitBuffer(softmaxL1OutQue, 1, 128 * sizeof(float));
+    pipe->InitBuffer(softmaxL1OutQue, 2, 128 * sizeof(float));
+    pipe->InitBuffer(softmaxL1SumBuf[0], 1, 128 * sizeof(float));
+    pipe->InitBuffer(softmaxL1SumBuf[1], 1, 128 * sizeof(float));
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -401,35 +409,83 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
     ///////////////////////////////////////////////////////////////
     // VF2: pse + attenMask + muls + simpleSoftmax copyIn+calculate
     ///////////////////////////////////////////////////////////////
-    LocalTensor<CALC_TYPE> softmaxL1ResTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
+    // LocalTensor<CALC_TYPE> softmaxL1ResTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> softmaxL1SumTensor = softmaxL1SumBuf[0].Get<CALC_TYPE>();
     float pScalar = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.commonConstInfo.gSize));
     if (runInfo.isSparse) {
         CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, CALC_TYPE, false, false, false, VECTOR_BASEM, VECTOR_BASEN, true>(
             constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, LseQue[runInfo.sTaskIdMod2],
-            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1ResTensor, pseSlope, pScalar);
+            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1SumTensor, pseSlope, pScalar, runInfo.needCleanSoftmaxL1);
+        pipe_barrier(PIPE_ALL);
+            // TODO copy p out
+        DataCopyExtParams dataCopyGmParams;
+        dataCopyGmParams.blockCount = 1;
+        dataCopyGmParams.blockLen = runInfo.halfGRealSize * sizeof(CALC_TYPE) * VECTOR_BASEN; // 0.5 * G * 128
+        dataCopyGmParams.srcStride = 0;
+        dataCopyGmParams.dstStride = 0;
+        DataCopyPad(softmaxL1WorkSpaceGm[runInfo.halfGRealSize * runInfo.blkCntOffset], mm2ResTensor, dataCopyGmParams);
     } else {
         CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, CALC_TYPE, false, false, false, VECTOR_BASEM, VECTOR_BASEN, false>(
             constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, LseQue[runInfo.sTaskIdMod2],
-            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1ResTensor, pseSlope, pScalar);
+            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1SumTensor, pseSlope, pScalar, false);
     }
     
-    softmaxL1OutQue.EnQue(softmaxL1ResTensor);
-    softmaxL1OutQue.DeQue<CALC_TYPE>();
+    // softmaxL1OutQue.EnQue(softmaxL1ResTensor);
+    // softmaxL1OutQue.DeQue<CALC_TYPE>();
 
+
+
+    if (runInfo.isSparse && runInfo.needComputeSoftmaxL1) {
+        pipe_barrier(PIPE_ALL);
+        ComputeSoftmaxL1(constInfo, runInfo);
+    }
+
+    // if (runInfo.isOriKV && runInfo.isSparse) {
+    //     DataCopyPad(oriSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
+    // } else if (runInfo.isSparse) {
+    //     DataCopyPad(cmpSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
+    // }
+    // softmaxL1OutQue.FreeTensor(softmaxL1ResTensor);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ComputeSoftmaxL1(FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
     DataCopyExtParams dataCopyGmParams;
     dataCopyGmParams.blockCount = 1;
-    dataCopyGmParams.blockLen = runInfo.commonRunInfo.s2RealSize * sizeof(CALC_TYPE);
     dataCopyGmParams.srcStride = 0;
-    dataCopyGmParams.dstStride = 0;
+    dataCopyGmParams.dstStride = VECTOR_BASEN * sizeof(CALC_TYPE) / 32;
+    DataCopyExtParams dataCopyGmOutParams;
+    dataCopyGmOutParams.blockCount = 1;
 
-    SetAtomicAdd<CALC_TYPE>();
-    if (runInfo.isOriKV && runInfo.isSparse) {
-        DataCopyPad(oriSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
-    } else if (runInfo.isSparse) {
-        DataCopyPad(cmpSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
+    int64_t loopNum = CeilDiv(runInfo.selectedBlockCount, VECTOR_BASEN);
+    int64_t loopSize = VECTOR_BASEN;
+    int64_t loopTailSize = runInfo.selectedBlockCount % VECTOR_BASEN == 0 ? VECTOR_BASEN : runInfo.selectedBlockCount % VECTOR_BASEN;
+    LocalTensor<CALC_TYPE> softmaxL1SumTensor = softmaxL1SumBuf[0].Get<CALC_TYPE>();
+    float pScalar = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.commonConstInfo.gSize));
+    GlobalTensor<float> outputGm = runInfo.isOriKV ? oriSoftmaxL1Gm : cmpSoftmaxL1Gm;
+    
+    for (int64_t i = 0; i < loopNum; i++) {
+        if (i == loopNum - 1) {
+            loopSize = loopTailSize;
+        }
+        LocalTensor<CALC_TYPE> softmaxL1SrcTensor = sotmaxL1Que[i % 2].AllocTensor<CALC_TYPE>();
+        LocalTensor<CALC_TYPE> softmaxL1DstTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
+
+        dataCopyGmParams.blockLen = runInfo.halfGRealSize * VECTOR_BASEN * sizeof(CALC_TYPE); // 0.5 * G * 128
+        DataCopyPad(softmaxL1SrcTensor, softmaxL1WorkSpaceGm[i * runInfo.halfGRealSize * VECTOR_BASEN], dataCopyGmParams);
+        sotmaxL1Que[i % 2].EnQue(softmaxL1SrcTensor);
+        sotmaxL1Que[i % 2].DeQue<CALC_TYPE>();
+        
+        SoftmaxL1Reduce(softmaxL1DstTensor, softmaxL1SrcTensor, softmaxL1SumTensor, runInfo.halfGRealSize, loopSize, pScalar);
+        
+        softmaxL1OutQue.EnQue(softmaxL1DstTensor);
+        softmaxL1OutQue.DeQue<CALC_TYPE>();
+        dataCopyGmOutParams.blockLen = loopSize * sizeof(CALC_TYPE);
+        DataCopyPad(outputGm[runInfo.t1Index * runInfo.selectedBlockCount + i * VECTOR_BASEN], softmaxL1SrcTensor, dataCopyGmOutParams);
+        sotmaxL1Que[i % 2].FreeTensor(softmaxL1SrcTensor);
+        softmaxL1OutQue.FreeTensor(softmaxL1DstTensor);
     }
-    SetAtomicNone();
-    softmaxL1OutQue.FreeTensor(softmaxL1ResTensor);
 }
  
 TEMPLATES_DEF_NO_DEFAULT

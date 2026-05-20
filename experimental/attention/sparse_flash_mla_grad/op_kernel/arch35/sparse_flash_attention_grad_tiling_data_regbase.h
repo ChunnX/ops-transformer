@@ -49,6 +49,7 @@
      int64_t mm4ResWorkSpaceOffset;
      int64_t mm5ResWorkSpaceOffset;
      int64_t dSinkWorkSpaceOffset;
+    int64_t softmaxL1WorkspaceOffset;
      int32_t cmpRatio;
 
      int64_t get_b() const {return b;}
@@ -75,6 +76,7 @@
      int64_t get_mm4ResWorkSpaceOffset() const {return mm4ResWorkSpaceOffset;}
      int64_t get_mm5ResWorkSpaceOffset() const {return mm5ResWorkSpaceOffset;}
      int64_t get_dSinkWorkSpaceOffset() const {return dSinkWorkSpaceOffset;}
+     int64_t get_softmaxL1WorkspaceOffset() const { return softmaxL1WorkspaceOffset; }
      int32_t get_cmpRatio() const {return cmpRatio;}
 
      void set_b(int64_t bParam) { this->b = bParam; }
@@ -101,6 +103,7 @@
      void set_mm4ResWorkSpaceOffset(int64_t mm4ResWorkSpaceOffsetParam) { this->mm4ResWorkSpaceOffset = mm4ResWorkSpaceOffsetParam; }
      void set_mm5ResWorkSpaceOffset(int64_t mm5ResWorkSpaceOffsetParam) { this->mm5ResWorkSpaceOffset = mm5ResWorkSpaceOffsetParam; }
      void set_dSinkWorkSpaceOffset(int64_t dSinkWorkSpaceOffset) { this->dSinkWorkSpaceOffset = dSinkWorkSpaceOffset; }
+     void set_softmaxL1WorkspaceOffset(int64_t value) { this->softmaxL1WorkspaceOffset = value; }
      void set_cmpRatio(int32_t cmpRatio) { this->cmpRatio = cmpRatio; }
  };
  

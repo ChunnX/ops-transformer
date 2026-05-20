@@ -496,12 +496,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if constexpr(IS_ORI_KV) {
         if constexpr(IsOriKVSparse) {
             runInfo.kSelectedWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
+            runInfo.needCleanSoftmaxL1 = runInfo.blkCntOffset == 0;
+            runInfo.needComputeSoftmaxL1 = blkCntOffset + constInfo.selectedCountOffset >= runInfo.actualSelectedBlockCount;
         } else {
             runInfo.kSelectedWsAddr = runInfo.commonRunInfo.keyOffset + (runInfo.blkCntOffset + oriWinStart) * constInfo.dTotalSize;
         }
     } else {
         if constexpr(IsCmpKVSparse) {
             runInfo.kSelectedWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
+            runInfo.needCleanSoftmaxL1 = runInfo.blkCntOffset == 0;
+            runInfo.needComputeSoftmaxL1 = blkCntOffset + constInfo.selectedCountOffset >= runInfo.actualSelectedBlockCount;
         } else {
             runInfo.kSelectedWsAddr = runInfo.commonRunInfo.keyOffset + runInfo.blkCntOffset * constInfo.dTotalSize;
         }
