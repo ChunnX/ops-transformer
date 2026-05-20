@@ -728,8 +728,8 @@ public:
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
-        PRINTF("zzyzzy CP: aicIdx:%u, loop:%llu, gS1Cur:%u, bIdx:%u, n2Idx:%u, actS1:%llu, actS2:%llu\n",
-               constInfo.aicIdx, loop, gS1Cur, info.bIdx, info.n2Idx, info.actS1Size, info.actS2Size);
+        PRINTF("zzyzzy CP: aicIdx:%u, loop:%llu, coreGS1:%u, gS1Cur:%u, bIdx:%u, n2Idx:%u, actS1:%llu, actS2:%llu\n",
+               constInfo.aicIdx, loop, coreGS1Loops, gS1Cur, info.bIdx, info.n2Idx, info.actS1Size, info.actS2Size);
 
         info.actMSize = mBaseSize;
         uint64_t gS1Size = info.actS1Size * constInfo.gSize;
@@ -814,6 +814,7 @@ public:
     __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
     {
         if (bN2Cur / constInfo.n2Size >= constInfo.bSize) {
+            PRINTF("zzyzzy SENTINEL: aicIdx:%u coreGS1:%u varlenCalc:%u\n", constInfo.aicIdx, coreGS1Loops, varlenCalcTimes);
             coreGS1Loops = varlenCalcTimes;
             return;
         }
