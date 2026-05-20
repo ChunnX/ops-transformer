@@ -1042,3 +1042,96 @@ constexpr uint32_t FA_M_END_INDEX = 5;
 constexpr uint32_t FA_S2_END_INDEX = 6;
 ```
 
+---
+
+## 8. Python端直接计算方案（推荐）
+
+### 8.1 方案背景
+
+通过分析实际调用场景发现：
+- `cu_seqlens_q` 和 `seqused_kv` 本来在 CPU 上创建
+- 用户显式调用 `.npu()` 才移到 NPU
+- 直接在 Python 端计算可避免 D2H 传输
+
+### 8.2 使用方式
+
+```python
+from sparse_attn_metadata_compute import compute_metadata
+import torch
+import torch_npu
+
+# Step 1: 数据本来在CPU上创建
+cu_seqlens_q = torch.tensor([0, 128, 256, 384, 512], dtype=torch.int32)  # CPU tensor
+seqused_kv = torch.tensor([4096, 4096, 4096, 4096], dtype=torch.int32)    # CPU tensor
+
+# Step 2: Python端计算Metadata（无需D2H）
+metadata = compute_metadata(
+    cu_seqlens_q=cu_seqlens_q,
+    seqused_kv=seqused_kv,
+    num_heads_q=64,
+    num_heads_kv=1,
+    head_dim=512,
+    batch_size=4,
+    max_seqlen_q=128,
+    max_seqlen_kv=4096,
+    cmp_topk=512,
+    cmp_ratio=4,
+)
+
+# Step 3: 只需一次H2D传输
+metadata_npu = metadata.to("npu")
+
+# Step 4: 调用SparseAttnSharedkv
+output = torch_npu.npu_sparse_attn_sharedkv(
+    query=query_npu,
+    ori_kv=ori_kv_npu,
+    metadata=metadata_npu,
+    ...
+)
+```
+
+### 8.3 性能对比
+
+| 方案 | 延迟组成 | 总延迟 |
+|------|----------|--------|
+| **AICPU原方案** | 算子执行 | ~10-50μs |
+| **Host算子方案** | Launch + D2H + 计算 + Sync + H2D + Sync | ~50-250μs |
+| **Python端方案** | Python计算 + H2D | ~20-100μs |
+
+Python端方案比Host算子方案减少约 50-150μs。
+
+### 8.4 实现文件
+
+| 文件路径 | 功能 |
+|----------|------|
+| `sparse_attn_metadata_compute.py` | Python端Metadata计算实现 |
+
+### 8.5 调用示例对比
+
+**原方案（需要显式传输）**：
+```python
+# 用户需要手动传输数据到NPU
+cu_seqlens_q_npu = cu_seqlens_q.npu()
+seqused_kv_npu = seqused_kv.npu()
+
+# 调用算子，算子内部再D2H取回数据计算
+metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
+    cu_seqlens_q=cu_seqlens_q_npu,
+    seqused_kv=seqused_kv_npu,
+    ...
+)
+```
+
+**Python端方案（无需传输）**：
+```python
+# 数据本来在CPU，直接计算
+metadata = compute_metadata(
+    cu_seqlens_q=cu_seqlens_q,  # CPU tensor，无需传输
+    seqused_kv=seqused_kv,      # CPU tensor，无需传输
+    ...
+)
+
+# 只需传输结果
+metadata_npu = metadata.to("npu")
+```
+
