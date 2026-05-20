@@ -34,6 +34,10 @@ output/
 *.pyc
 __pycache__
 MANIFEST.in
+*.egg-info/
+*.whl
+torch_extension/dist/
+torch_extension/build/
 
 # third_party
 third_party/
