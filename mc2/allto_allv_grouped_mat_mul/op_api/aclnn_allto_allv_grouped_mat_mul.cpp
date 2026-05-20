@@ -17,6 +17,14 @@
 #include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include "mc2_comm_utils.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
+
 using namespace op;
 
 #ifdef __cplusplus
@@ -31,6 +39,37 @@ enum class NnopbaseHcclServerType : uint32_t {
 };
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
+
+static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
+    // 获取卡数
+    uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
+#endif
+
+    // 获取通信引擎参数
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (std::strcmp(commModeStr, "aicpu") == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+        } else if (std::strcmp(commModeStr, "default") == 0) {
+            // default：小于等于8P走CCU，否则走AICPU
+            if (rankSize <= 8) {
+                commModeEnum = Mc2Comm::COMM_MODE_CCU;
+            } else {
+                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+            }
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
 
 // check nullptr
 static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
@@ -122,10 +161,20 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
+    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "aicpu" : "default";
+    char *str_commMode = const_cast<char *>(commMode);
+    uint8_t commModeEnum = 0;
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, "", gmmY, mmYOptional, permuteOutOptional, workspaceSize,
+        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, str_commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
         executor);
+    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize ret %d.", ret);
+    if (*executor != nullptr) {
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
+        NnopbaseSetUserHandle(executor, args);
+    }
     return ret;
 }
 
@@ -134,7 +183,9 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize,
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
                 OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
@@ -145,6 +196,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize,
         }
     }
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
+    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMul ret %d.", ret);
     return ret;
 }
 
