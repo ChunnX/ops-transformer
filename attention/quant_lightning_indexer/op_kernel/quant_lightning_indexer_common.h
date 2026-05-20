@@ -99,6 +99,7 @@ struct ConstInfo {
     uint32_t s2BaseSize = 1ULL;
 
     uint64_t batchSize = 0ULL;
+    uint64_t tSize = 0ULL;
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;

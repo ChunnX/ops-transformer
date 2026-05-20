@@ -150,6 +150,7 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
+    constInfo.tSize = tilingData->tSize;
     constInfo.qHeadNum = constInfo.gSize = tilingData->gSize;
     constInfo.kSeqSize = tilingData->s2Size;
     constInfo.qSeqSize = tilingData->s1Size;
@@ -173,6 +174,11 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.s1BaseSize = S1_BASE_SIZE;
+
+    if (constInfo.tSize <= 64) {
+        constInfo.mBaseSize /= 2;
+        constInfo.s1BaseSize /= 2;
+    }
 }
 
 template <typename QLIT>
