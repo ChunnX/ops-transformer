@@ -907,8 +907,9 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
 
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
-        uint32_t writeSeqStartIdx =
-            Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, constInfo_.cmpRatio) - (coff_ - 1) * constInfo_.cmpRatio;
+        uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, constInfo_.cmpRatio);
+        uint32_t writeSeqStartIdx = compressSeqIdx > (coff_ - 1) * constInfo_.cmpRatio ?
+                                    compressSeqIdx - (coff_ - 1) * constInfo_.cmpRatio : 0;
         if (endSeqIdx <= writeSeqStartIdx) {
             return;
         }
