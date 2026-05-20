@@ -26,9 +26,7 @@ using namespace AscendC;
 enum class SMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2,
-    ORI_SCFA_TEMPLATE_MODE = 3,
-    ORI_CMP_SCFA_TEMPLATE_MODE = 4
+    SCFA_TEMPLATE_MODE = 2
 };
 
 enum class SMLA_LAYOUT {
