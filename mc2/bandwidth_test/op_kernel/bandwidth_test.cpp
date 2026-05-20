@@ -42,10 +42,11 @@ __global__ __aicore__ void bandwidth_test(
             op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process(); 
         } else if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
-            // BandwidthTest<DTYPE_X, DTYPE_Y> op;
-            // op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-            // op.Process(); 
-            PRINTF("URAMA  supported\n");
+            PRINTF("URAMA  start\n");
+            BandwidthUramaTestImpl<DTYPE_X, DTYPE_Y> op;
+            op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process(); 
+            PRINTF("URAMA  end\n");
         }
     }
 }
