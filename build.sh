@@ -323,7 +323,7 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -616,7 +616,7 @@ function build_example()
                 help_info "run_example"
                 return 1
             fi
-            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS} == "ascend950"" ]]; then
+            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS}" == "ascend950" ]]; then
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
             else 
                 ./test_aclnn_${EXAMPLE_NAME}
@@ -837,7 +837,6 @@ package_static() {
         mv "$new_dir_path" "$static_files_dir"
         return 1
     fi
-    make clean
 }
 
 function process_soc_input(){
