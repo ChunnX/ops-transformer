@@ -12,6 +12,7 @@ from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
 from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
+from .dispatch_normal import npu_dispatch_normal
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
@@ -20,6 +21,7 @@ from .mega_moe import (
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
+from .graph_convert.graph_convert_dispatch_normal import convert_npu_dispatch_normal
 from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
 from .flash_attn import npu_flash_attn
 from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
