@@ -27,7 +27,7 @@ class Network(torch.nn.Module):
         super(Network, self).__init__()
 
     def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
-        cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, tile_size, rope_head_dim, 
+        cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, rope_head_dim, 
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
         npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
                                 q=q,
@@ -48,7 +48,6 @@ class Network(torch.nn.Module):
                                 sinks=sinks,
                                 metadata=metadata,
                                 quant_mode=kv_quant_mode,
-                                tile_size=tile_size,
                                 rope_head_dim=rope_head_dim,
                                 softmax_scale=softmax_scale,
                                 cmp_ratio=cmp_ratio,
@@ -126,7 +125,6 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                                 sinks=input['sinks'].npu() if input['sinks'] is not None else None,
                                 metadata=metadata,
                                 kv_quant_mode=input['kv_quant_mode'],
-                                tile_size=input['tile_size'],
                                 rope_head_dim=input['rope_head_dim'],
                                 softmax_scale=input['softmax_scale'],
                                 cmp_ratio=input['cmp_ratio'] if params[-1] != "SWA" else 1,
@@ -151,7 +149,6 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                                 sinks=input['sinks'].npu() if input['sinks'] is not None else None,
                                 metadata=metadata,
                                 kv_quant_mode=input['kv_quant_mode'],
-                                tile_size=input['tile_size'],
                                 rope_head_dim=input['rope_head_dim'],
                                 softmax_scale=input['softmax_scale'],
                                 cmp_ratio=input['cmp_ratio'] if params[-1] != "SWA" else 1,
@@ -219,7 +216,6 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                 sinks=input['sinks'].npu() if input['sinks'] is not None else None,
                                 metadata=metadata,
                                 quant_mode=input['kv_quant_mode'],
-                                tile_size=input['tile_size'],
                                 rope_head_dim=input['rope_head_dim'],
                                 softmax_scale=input['softmax_scale'],
                                 cmp_ratio=input['cmp_ratio'] if params[-1] != "SWA" else 1,
