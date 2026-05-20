@@ -28,7 +28,7 @@
 #include "tiling/tiling_api.h"
 
 using namespace ge;
-using namespace Moe;
+using namespace AscendC;
 
 namespace {
 constexpr const char *OPS_UTILS_LOG_SUB_MOD_NAME = "DISPATCH_LAYOUT";
