@@ -223,11 +223,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else if (std::strcmp(commModeStr, "default") == 0) {
             // default：小于等于8P走CCU，否则走AICPU
-            if (rankSize <= 8) {
-                commModeEnum = Mc2Comm::COMM_MODE_CCU;
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
+            commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         } else {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
             return ACLNN_ERR_PARAM_INVALID;
