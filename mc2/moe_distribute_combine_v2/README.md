@@ -408,7 +408,7 @@
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
         - `commAlg`：当前支持""，"hierarchy"两种输入方式。
             - ""：默认值，使能通信域不跨超模板。
-            - "hierarchy": 使能通信域跨超模板。
+            - "hierarchy": 使能通信域跨超模板，需要根据不同的逻辑超节点设置环境变量`HCCL_LOGIC_SUPERPOD_ID`，例如两机分别设为0和1。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
