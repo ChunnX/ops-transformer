@@ -29,7 +29,13 @@
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #include "hccl/hccl_res.h"
+#if __has_include("hccl/hcomm_res_defs.h")
 #include "hccl/hcomm_res_defs.h"
+#elif __has_include("hcomm/hcomm_res_defs.h")
+#include "hcomm/hcomm_res_defs.h"
+#else
+#error "hcomm_res_defs.h not found under hccl/ or hcomm/"
+#endif
 #include "hccl/hccl_rank_graph.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
     #include "torch_npu/csrc/flopcount/FlopCount.h"
