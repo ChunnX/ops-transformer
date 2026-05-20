@@ -80,6 +80,9 @@ private:
     static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 512;
     static constexpr uint64_t L0C_BUF_SIZE = 256 * 256;
 
+    static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
+    static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
+
     int8_t aL1DbNum_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
     static constexpr uint32_t EVENT_ID_MTE1_TO_MTE2 = 3;
@@ -134,14 +137,14 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1Remain
     aL1DbNum_ = DOUBLE_BUFFER_NUM;
 
     xScaleAL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
-    xScaleAL1DbOffset_ = l1RemainSize - MX_SCALE_K_L1_SIZE;
-    l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_K_L1_SIZE;
-    l1StartSize += MX_SCALE_K_L1_SIZE;
+    xScaleAL1DbOffset_ = l1RemainSize - MX_SCALE_L1_SIZE;
+    l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
+    l1StartSize += MX_SCALE_L1_SIZE;
 
     weightScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
-    weightScaleBL1DbOffset_ = l1RemainSize - MX_SCALE_K_L1_SIZE;
-    l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_K_L1_SIZE;
-    l1StartSize += MX_SCALE_K_L1_SIZE;
+    weightScaleBL1DbOffset_ = l1RemainSize - MX_SCALE_L1_SIZE;
+    l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
+    l1StartSize += MX_SCALE_L1_SIZE;
 
     aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
     aL1DbOffset_ = l1RemainSize >> 1;
@@ -221,6 +224,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
                                     (kSizeAligned - kbL1Offset) / MX_GROUPSIZE :
                                     scaleKL1StandardLen;
 
+    // Copy xScale
     Dn2NzParams scaleAdn2NzParams;
     ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1StandardLen, scaleKL1RealSize, scaleAdn2NzParams);
 
@@ -232,6 +236,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
 
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
 
+    // Copy weightScale part1
     uint64_t swishNOffset = param.nOffset * scaleKGmSize;
     uint64_t gateNOffset = (param.nOffset + param.nSize / 2) * scaleKGmSize;
     uint64_t kScaleOffset = kbL1Offset / MX_GROUPSIZE;
@@ -248,6 +253,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
 
     DataCopy(f16ScaleBSwishLocal, f16ScaleBSwishGlobal, scaleBdn2NzParamsSwish);
 
+    // Copy weightScale part2
     Dn2NzParams scaleBdn2NzParamsGate;
     ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1StandardLen, scaleKL1RealSize,
                            scaleBdn2NzParamsGate);
