@@ -381,6 +381,7 @@ function(add_opapi_modules)
       PRIVATE
       -Dgoogle=ascend_private
       -DACLNN_LOG_FMT_CHECK
+      -DOP_LOG_LIBOPAPI_ONLY
     )
     target_link_libraries(${OPHOST_NAME}_opapi_obj
       PUBLIC
@@ -390,6 +391,7 @@ function(add_opapi_modules)
       ops_aclnn
       -Wl,--no-whole-archive
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+      $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
       nnopbase
       -Wl,-Bsymbolic
       profapi
