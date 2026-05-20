@@ -545,7 +545,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
             -ldl
             gtest
             c_sec
-            Eigen3::EigenMath
+            Eigen3::Eigen
             )
 
     ## add object: math_op_kernel_ut_cases_obj
@@ -565,7 +565,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
             $<TARGET_OBJECTS:${opName}_cases_obj>
             gtest
             c_sec
-            Eigen3::EigenMath
+            Eigen3::Eigen
             )
   endfunction()
 endif()

@@ -888,7 +888,7 @@ function(add_aicpu_cust_kernel_modules target_name)
             PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
             $<BUILD_INTERFACE:dlog_headers>
             -Wl,--no-whole-archive
-            Eigen3::EigenTransformer
+            Eigen3::Eigen
     )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
@@ -921,7 +921,7 @@ function(add_aicpu_host_kernel_modules host_target_name)
       ${host_target_name}
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx14,intf_pub_cxx14>>
               $<BUILD_INTERFACE:dlog_headers>
-              Eigen3::EigenTransformer
+              Eigen3::Eigen
     )
 
     get_property(_host_targets GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
