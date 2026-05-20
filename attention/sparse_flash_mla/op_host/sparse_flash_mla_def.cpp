@@ -115,7 +115,7 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
@@ -127,9 +127,8 @@ public:
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
-        this->Attr("ori_kv_stride").AttrType(OPTIONAL).Int(0);
-        this->Attr("cmp_kv_stride").AttrType(OPTIONAL).Int(0);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
+        this->Attr("batch_invariant").AttrType(OPTIONAL).Int(0); // batch_invariant默认值0
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
