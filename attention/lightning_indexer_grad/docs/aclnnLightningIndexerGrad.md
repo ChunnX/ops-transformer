@@ -1,18 +1,21 @@
 # aclnnLightningIndexerGrad
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/lightning_indexer_grad)
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A3 训练系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
-- 算子功能：训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。
+- 算子功能：`lightning_indexer_grad`为`lightning_indexer`的反向算子，基于正向算子的输出`sparseIndices`计算`query`、`key`、`weights`的梯度。
 
 - 计算公式：
   LightningIndexer反向计算公式如下：
