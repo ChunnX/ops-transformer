@@ -15,14 +15,15 @@ from pathlib import Path
 from typing import Dict, List, Set
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-PROJECT_DIR = SCRIPT_DIR.parent
+PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
 INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
 MC2_DIR = str(PROJECT_DIR / "mc2")
 DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
 OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-OPS_OUTPUT_FILE = str(WORK_DIR / "special_3rd_ops.txt")
+SPECIAL_3RD_OPS_FILE = str(WORK_DIR / "special_3rd_ops.txt")
+SPECIAL_COMMON_OPS_FILE = str(WORK_DIR / "special_common_ops.txt")
 LOG_FILE = str(WORK_DIR / "step4.log")
 
 if __name__ == "__main__" and __package__ is None:
@@ -71,6 +72,109 @@ THIRD_PARTY_OP_MAPPING: Dict[str, List[str]] = {
     ]
 }
 
+COMMON_FILE_OP_MAPPING: Dict[str, List[str]] = {
+    "op_api/mc2_aclnn_util.h": [
+        "all_gather_matmul",
+        "all_gather_matmul_v2",
+        "matmul_all_reduce",
+        "matmul_reduce_scatter_v2",
+        "matmul_reduce_scatter"
+    ],
+    "op_api/mc2_context.h": [
+        "moe_distribute_combine_v2",
+        "moe_distribute_dispatch_v2"
+    ],
+    "op_graph/matmul_all_reduce_gen_task_ops_utils.h": [
+        "inplace_matmul_all_reduce_add_rms_norm",
+        "matmul_all_reduce",
+        "matmul_all_reduce_add_rms_norm"
+    ],
+    "op_host/op_tiling/mc2_fit_based_balance_tiling.cpp": [
+        "all_gather_matmul_v2",
+        "matmul_all_reduce",
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_host/op_tiling/mc2_tiling_struct.h": [
+        "all_gather_matmul_v2",
+        "allto_allv_grouped_mat_mul",
+        "allto_allv_quant_grouped_mat_mul",
+        "batch_mat_mul_reduce_scatter_allto_all"
+    ],
+    "op_host/op_tiling/mc2_tiling_common_var.h": [
+        "allto_all_all_gather_batch_mat_mul",
+        "batch_mat_mul_reduce_scatter_allto_all",
+        "grouped_mat_mul_all_reduce"
+    ],
+    "op_host/op_tiling/mc2_calc_num_blocks.h": [
+        "allto_allv_grouped_mat_mul",
+        "grouped_mat_mul_allto_allv"
+    ],
+    "op_host/op_tiling/one_calc_two_comm_tiling.h": [
+        "allto_all_all_gather_batch_mat_mul",
+        "batch_mat_mul_reduce_scatter_allto_all"
+    ],
+    "op_kernel/mc2_moe_context.h": [
+        "moe_distribute_combine_add_rms_norm",
+        "moe_distribute_combine_v2",
+        "moe_distribute_combine_v3",
+        "moe_distribute_dispatch_v2",
+        "moe_distribute_dispatch_v3"
+    ],
+    "op_kernel/mc2_mat_mul_asw_block.h": [
+        "all_gather_matmul_v2",
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_kernel/mc2_mat_mul_asw_kernel.h": [
+        "all_gather_matmul_v2",
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_kernel/mc2_matmul_compute.h": [
+        "all_gather_matmul",
+        "all_gather_matmul_v2",
+        "matmul_reduce_scatter"
+    ],
+    "op_kernel/mc2_nd_to_nz.h": [
+        "all_gather_matmul",
+        "all_gather_matmul_v2",
+        "matmul_reduce_scatter"
+    ],
+    "op_kernel/mc2_quant_batch_matmul.h": [
+        "all_gather_matmul_v2",
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_kernel/qbmm_mix_perblock_noncontiguous.h": [
+        "all_gather_matmul_v2",
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_kernel/reduce_sum_cast_fp32.h": [
+        "matmul_all_reduce",
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_kernel/gm_ub_gm_copy.h": [
+        "matmul_all_reduce"
+    ],
+    "op_kernel/mc2_common_def.h": [
+        "matmul_reduce_scatter_v2"
+    ],
+    "op_kernel/all_gather_matmul_tiling.h": [
+        "all_gather_matmul",
+        "all_gather_matmul_v2"
+    ],
+    "op_kernel/mc2_templates/scheduler/pipeline_builder.h": [
+        "allto_all_matmul",
+        "matmul_allto_all"
+    ],
+    "op_kernel/mc2_templates/computation/math/mc2_vec_transpose.h": [
+        "allto_all_matmul"
+    ],
+    "op_kernel/mc2_templates/computation/matmul/mc2_fp_matmul.h": [
+        "allto_all_matmul"
+    ],
+    "op_kernel/mc2_templates/communication/comm_stage.h": [
+        "allto_all_matmul"
+    ]
+}
+
 
 def is_in_common(file_path: str, mc2_path: str) -> bool:
     """
@@ -97,6 +201,36 @@ def is_in_common(file_path: str, mc2_path: str) -> bool:
         return True
     
     return False
+
+
+def get_common_relative_path(file_path: str, mc2_path: str) -> str:
+    """
+    获取文件在 mc2/common/ 目录下的相对路径。
+
+    Args:
+        file_path: 文件路径
+        mc2_path: mc2 目录路径
+
+    Returns:
+        common 目录下的相对路径，如果不在 common 目录下则返回空字符串
+    """
+    normalized_file = normalize_path(file_path)
+    normalized_mc2 = normalize_path(mc2_path)
+    
+    common_prefix_abs = normalized_mc2 + "/common/"
+    common_prefix_rel = "mc2/common/"
+    
+    if normalized_file.startswith(common_prefix_abs):
+        return normalized_file[len(common_prefix_abs):]
+    
+    if normalized_file.startswith(common_prefix_rel):
+        return normalized_file[len(common_prefix_rel):]
+    
+    if "/mc2/common/" in normalized_file:
+        idx = normalized_file.index("/mc2/common/") + len("/mc2/common/")
+        return normalized_file[idx:]
+    
+    return ""
 
 
 def is_in_3rd(file_path: str, mc2_path: str) -> bool:
@@ -176,10 +310,12 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
         logger: 日志记录器
 
     Returns:
-        包含 common_files、special_3rd_files、special_3rd_ops、other_3rd_files、
-        other_files、should_full_test 的字典
+        包含 common_files、special_common_files、special_common_ops、special_3rd_files、
+        special_3rd_ops、other_3rd_files、other_files、should_full_test 的字典
     """
-    common_files = []
+    special_common_files = []
+    special_common_ops: Set[str] = set()
+    other_common_files = []
     special_3rd_files = []
     special_3rd_ops: Set[str] = set()
     other_3rd_files = []
@@ -187,7 +323,13 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
     
     for file_path in file_paths:
         if is_in_common(file_path, mc2_path):
-            common_files.append(file_path)
+            common_rel_path = get_common_relative_path(file_path, mc2_path)
+            if common_rel_path in COMMON_FILE_OP_MAPPING:
+                special_common_files.append(file_path)
+                special_common_ops.update(COMMON_FILE_OP_MAPPING[common_rel_path])
+                logger.info(f"特殊 common 文件: {file_path}，关联算子: {COMMON_FILE_OP_MAPPING[common_rel_path]}")
+            else:
+                other_common_files.append(file_path)
         elif is_in_3rd(file_path, mc2_path):
             subdir = get_3rd_subdir(file_path, mc2_path)
             if subdir in THIRD_PARTY_OP_MAPPING:
@@ -201,12 +343,12 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
     
     should_full_test = False
     
-    if common_files:
+    if other_common_files:
         logger.info("=" * 60)
-        logger.info("检测到 common 目录下的变更文件，触发全量测试")
-        logger.info(f"common 文件数量: {len(common_files)}")
-        for f in common_files:
-            logger.info(f"  common 文件: {f}")
+        logger.info("检测到其他 common 目录下的变更文件，触发全量测试")
+        logger.info(f"其他 common 文件数量: {len(other_common_files)}")
+        for f in other_common_files:
+            logger.info(f"  other common 文件: {f}")
         should_full_test = True
     
     if other_3rd_files:
@@ -218,17 +360,25 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
             logger.info(f"  3rd/{subdir} 文件: {f}")
         should_full_test = True
     
+    if special_common_files:
+        logger.info("=" * 60)
+        logger.info(f"检测到特殊 common 文件变更，添加特定算子（不做反向依赖推导）")
+        logger.info(f"特殊 common 文件数量: {len(special_common_files)}")
+        logger.info(f"关联算子: {sorted(special_common_ops)}")
+    
     if special_3rd_files:
         logger.info("=" * 60)
         logger.info(f"检测到特殊 3rd 子目录下的变更文件，添加特定算子")
         logger.info(f"特殊 3rd 文件数量: {len(special_3rd_files)}")
         logger.info(f"关联算子: {sorted(special_3rd_ops)}")
     
-    if not common_files and not other_3rd_files and not special_3rd_files:
+    if not other_common_files and not other_3rd_files and not special_common_files and not special_3rd_files:
         logger.info("变更文件不在 common/3rd 目录下")
     
     return {
-        "common_files": common_files,
+        "other_common_files": other_common_files,
+        "special_common_files": special_common_files,
+        "special_common_ops": special_common_ops,
         "special_3rd_files": special_3rd_files,
         "special_3rd_ops": special_3rd_ops,
         "other_3rd_files": other_3rd_files,
@@ -255,7 +405,8 @@ def main() -> int:
         logger.info(f"mc2 目录: {MC2_DIR}")
         logger.info(f"依赖关系文件: {DEPENDENCY_JSON}")
         logger.info(f"输出文件: {OUTPUT_FILE}")
-        logger.info(f"特殊算子输出文件: {OPS_OUTPUT_FILE}")
+        logger.info(f"特殊 3rd 算子输出文件: {SPECIAL_3RD_OPS_FILE}")
+        logger.info(f"特殊 common 算子输出文件: {SPECIAL_COMMON_OPS_FILE}")
         
         input_files = read_file_lines(INPUT_FILE, logger)
         dependency_data = load_dependency_json(DEPENDENCY_JSON, logger)
@@ -278,19 +429,32 @@ def main() -> int:
             for file_path in output_files:
                 print(file_path)
         
-        if OPS_OUTPUT_FILE and result["special_3rd_ops"]:
-            output_dir = Path(OPS_OUTPUT_FILE).parent
+        if SPECIAL_3RD_OPS_FILE and result["special_3rd_ops"]:
+            output_dir = Path(SPECIAL_3RD_OPS_FILE).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(OPS_OUTPUT_FILE, "w", encoding="utf-8") as f:
+            with open(SPECIAL_3RD_OPS_FILE, "w", encoding="utf-8") as f:
                 for op_name in sorted(result["special_3rd_ops"]):
                     f.write(op_name + "\n")
-            logger.info(f"特殊 3rd 算子已写入: {OPS_OUTPUT_FILE}")
+            logger.info(f"特殊 3rd 算子已写入: {SPECIAL_3RD_OPS_FILE}")
         
-        print(f"\ncommon 文件: {len(result['common_files'])} 个")
+        if SPECIAL_COMMON_OPS_FILE and result["special_common_ops"]:
+            output_dir = Path(SPECIAL_COMMON_OPS_FILE).parent
+            if output_dir and not output_dir.exists():
+                output_dir.mkdir(parents=True, exist_ok=True)
+            with open(SPECIAL_COMMON_OPS_FILE, "w", encoding="utf-8") as f:
+                for op_name in sorted(result["special_common_ops"]):
+                    f.write(op_name + "\n")
+            logger.info(f"特殊 common 算子已写入: {SPECIAL_COMMON_OPS_FILE}")
+        
+        print(f"\n其他 common 文件: {len(result['other_common_files'])} 个")
+        print(f"特殊 common 文件: {len(result['special_common_files'])} 个")
         print(f"特殊 3rd 文件: {len(result['special_3rd_files'])} 个")
         print(f"其他 3rd 文件: {len(result['other_3rd_files'])} 个")
         print(f"其他文件: {len(result['other_files'])} 个")
+        print(f"特殊 common 关联算子: {len(result['special_common_ops'])} 个")
+        if result["special_common_ops"]:
+            print(f"  算子列表: {sorted(result['special_common_ops'])}")
         print(f"特殊 3rd 关联算子: {len(result['special_3rd_ops'])} 个")
         if result["special_3rd_ops"]:
             print(f"  算子列表: {sorted(result['special_3rd_ops'])}")

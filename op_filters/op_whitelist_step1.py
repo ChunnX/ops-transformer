@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import List
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-PROJECT_DIR = SCRIPT_DIR.parent
+PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
 INPUT_FILE = str(SCRIPT_DIR / "changed_files.txt")

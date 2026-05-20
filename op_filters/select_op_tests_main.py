@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Dict, List, Set
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-PROJECT_DIR = SCRIPT_DIR.parent
+PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
 if __name__ == "__main__" and __package__ is None:
@@ -66,6 +66,8 @@ DEFAULT_DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
 DEFAULT_MC2 = str(PROJECT_DIR / "mc2")
 DEFAULT_OUTPUT_JSON = str(WORK_DIR / "op_tests.json")
 DEFAULT_OUTPUT_LOG = str(WORK_DIR / "output.log")
+DEFAULT_SPECIAL_3RD_OPS_FILE = str(WORK_DIR / "special_3rd_ops.txt")
+DEFAULT_SPECIAL_COMMON_OPS_FILE = str(WORK_DIR / "special_common_ops.txt")
 
 
 def main() -> int:
@@ -202,11 +204,12 @@ def main() -> int:
         
         other_files = common_3rd_result["other_files"]
         special_3rd_ops = common_3rd_result["special_3rd_ops"]
+        special_common_ops = common_3rd_result["special_common_ops"]
         
         extraction_result = extract_operators(other_files, logger)
         changed_ops = extraction_result["changed_ops"]
         
-        if not changed_ops and not special_3rd_ops:
+        if not changed_ops and not special_3rd_ops and not special_common_ops:
             logger.warning("没有成功提取到任何算子名称，输出空列表")
             write_output_json([], args.output_json, logger)
             logger.info("=" * 60)
@@ -226,6 +229,12 @@ def main() -> int:
             logger.info("=" * 60)
             logger.info("合并特殊 3rd 子目录关联算子（不做反向依赖处理）")
             ops_to_run = ops_to_run.union(special_3rd_ops)
+            logger.info(f"合并后算子数量: {len(ops_to_run)}")
+        
+        if special_common_ops:
+            logger.info("=" * 60)
+            logger.info("合并特殊 common 文件关联算子（不做反向依赖处理）")
+            ops_to_run = ops_to_run.union(special_common_ops)
             logger.info(f"合并后算子数量: {len(ops_to_run)}")
         
         logger.info("=" * 60)
