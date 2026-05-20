@@ -96,7 +96,8 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     compressorContext.normEps = attrs->GetAttrPointer<float>(NORM_EPS_ATTR_INDEX);
     compressorContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
     compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
-
+    compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
+    
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
                return ge::GRAPH_FAILED);
@@ -151,6 +152,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->reciprocalD = 1.0 / baseParams_->headDim;
     baseParams_->cgSize =
         (baseParams_->seqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
+    baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
 
@@ -789,6 +791,13 @@ ge::graphStatus CompressorTiling::CheckFeature() const
     OP_CHECK_IF(pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
                 OP_LOGE(context_->opName, "blockSize should not be less than 1, but got %u",
                         pageAttentionParams_->blockSize),
+                return ge::GRAPH_FAILED);
+    uint64_t cacheStride = context_->stateCache.shape->GetShape().GetDim(1) *
+                            context_->stateCache.shape->GetShape().GetDim(2);
+    OP_CHECK_IF(cacheStride != baseParams_->stateCacheStrideDim0,
+                OP_LOGE(context_->opName,
+                        "state_cache must be contiguous, first axes stride should be equal to %u, but got %u",
+                        cacheStride, baseParams_->stateCacheStrideDim0),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
