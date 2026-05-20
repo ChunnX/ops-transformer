@@ -15,6 +15,8 @@
 #include "matmul_allto_all_tiling_base.h"
 #include "mc2_log.h"
 
+using namespace Ops::Base;
+
 
 using namespace AscendC;
 using namespace ge;
@@ -150,25 +152,28 @@ ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::Til
     uint64_t nAxis = x2TransFlag ? shapeInfo.x2Dim0 : shapeInfo.x2Dim1;
     // MatmulAlltoAll, n要整除rankSize
     OP_TILING_CHECK(nAxis % static_cast<uint64_t>(rankDim) != 0,
-                    OP_LOGE(opName, "N (%lu) is not divisible by rankSize (%ld).", nAxis, rankDim),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2",
+                        ("[" + std::to_string(shapeInfo.x2Dim0) + "," + std::to_string(shapeInfo.x2Dim1) + "]").c_str(),
+                        "The N axis of input x2 should be divisible by world_size"),
                     return ge::GRAPH_FAILED);
     // MatmulAlltoAll: x1Dim1 = x2 K-axis
-    OP_TILING_CHECK((shapeInfo.x1Dim1 != kAxis),
-                    OP_LOGE(opName,
-                            "The x1 second dim should be the same with the %s dim of x2, "
-                            "the x1 second dim is %lu, the x2 %s dim is %lu.",
-                            x2TransFlag ? "second" : "first", shapeInfo.x1Dim1, x2TransFlag ? "second" : "first",
-                            kAxis),
-                    return ge::GRAPH_FAILED);
+    if (shapeInfo.x1Dim1 != kAxis) {
+        std::string shapeMsg = "[" + std::to_string(shapeInfo.x1Dim0) + "," + std::to_string(shapeInfo.x1Dim1) + "] and [" +
+            std::to_string(shapeInfo.x2Dim0) + "," + std::to_string(shapeInfo.x2Dim1) + "]";
+        std::string reasonMsg = "The K axis (dim 1) of input x1 should be the same as the K axis of input x2";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1 and x2", shapeMsg.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     // MatmulAlltoAll: yDim0 = x1Dim0 * rankDim and x2 N-axis = yDim1 * rankDim
-    OP_TILING_CHECK((((shapeInfo.x1Dim0 * rankDim) != shapeInfo.yDim0) || (nAxis != (shapeInfo.yDim1 * rankDim))),
-                    OP_LOGE(opName,
-                            "The y first dim should be %lu times of the first dim of x1, "
-                            "the x2 %s dim should be %lu times of the second dim of y. "
-                            "rankDim: %lu, x1Dim0: %lu, yDim0: %lu, x2Dim%d: %lu, yDim1: %lu.",
-                            rankDim, x2TransFlag ? "first" : "second", rankDim, rankDim, shapeInfo.x1Dim0,
-                            shapeInfo.yDim0, x2TransFlag ? 0 : 1, nAxis, shapeInfo.yDim1),
-                    return ge::GRAPH_FAILED);
+    if ((shapeInfo.x1Dim0 * rankDim) != shapeInfo.yDim0 || nAxis != (shapeInfo.yDim1 * rankDim)) {
+        std::string shapeMsg = "[" + std::to_string(shapeInfo.x1Dim0) + "," + std::to_string(shapeInfo.x1Dim1) + "], [" +
+            std::to_string(shapeInfo.x2Dim0) + "," + std::to_string(shapeInfo.x2Dim1) + "] and [" +
+            std::to_string(shapeInfo.yDim0) + "," + std::to_string(shapeInfo.yDim1) + "]";
+        std::string reasonMsg = std::string("The M axis of output y should be M axis of input x1 multiplied by world_size, ") +
+            "and the N axis of input x2 should be N axis of output y multiplied by world_size";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1, x2 and y", shapeMsg.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -212,16 +217,14 @@ ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::Ti
     uint64_t x1ScaleDim = x1ScaleShape->GetStorageShape().GetDim(0);
     uint64_t x2ScaleDim = x2ScaleShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK((x1ScaleDim != shapeInfo.x1Dim0),
-                    OP_LOGE(opName,
-                            "the x1Scale dim should be same with the "
-                            "x1 first dim, the x1Scale dim is %lu, the x1 first dim is %lu.",
-                            x1ScaleDim, shapeInfo.x1Dim0),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1_scale",
+                        ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                        "The shape of input x1_scale should match the M axis of input x1"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleDim != nAxis),
-                    OP_LOGE(opName,
-                            "the x2Scale dim should be same with the "
-                            "x2 second dim, the x2Scale dim is %lu, the x2 second dim is %lu.",
-                            x2ScaleDim, nAxis),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2_scale",
+                        ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                        "The shape of input x2_scale should match the N axis of input x2"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
