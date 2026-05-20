@@ -276,8 +276,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             key (torch.Tensor): Key tensor of shape [B, N, T, D] (fp16/bf16)
             value (torch.Tensor): Value tensor of shape [B, N, T, D] (fp16/bf16)
             atten_mask (torch.Tensor, optional): Attention mask of shape [B, N, S, T] (bool)
-            sabi (torch.Tensor, optional): Sparse Attention Block Indices, 
-                  shape [B, N, S / Qtile_size, sparsity * T / KVTileSize] (uint16, padded with 65535, optional)
+            sabi (torch.Tensor, optional): Sparse Attention Block Indices,
+                  shape [B, N, ceil(S / BLOCK_SIZE_Q), kept_kv_tiles] (uint16, padded with 65535).
+                  Each entry indexes a BLOCK_SIZE_KV-wide KV chunk; pad unused slots with 0xFFFF.
             actual_seq_lengths (list, optional): Actual sequence lengths
             actual_seq_lengths_kv (list, optional): Actual sequence lengths for key/value
             num_heads (int, optional): Number of attention heads. Default: 1

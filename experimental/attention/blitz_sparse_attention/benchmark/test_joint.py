@@ -62,7 +62,33 @@ OUT_ATOL = {
 SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA: slight headroom over 0.01
                          # for block-boundary rounding (BSA skips blocks; PFA masks with -inf).
                          # Only bfloat16 is used for sparse tests (see module docstring).
-LSE_ATOL        = 1e-3  # softmax_lse vs FIAS (both dense and sparse)
+# Per-dtype softmax_lse tolerance. bfloat16's online-softmax accumulator runs
+# in fp32, so the BSA vs FIAS diff is at the float32-rounding floor
+# (max observed ≈ 1e-6). float16 keeps the accumulator in fp16; max observed
+# across the sweep is ≈ 0.005.
+LSE_ATOL = {
+    torch.bfloat16: 1e-5,
+    torch.float16:  5e-3,
+}
+
+
+import os as _os
+
+
+def _log_diff(label: str, a, b) -> float:
+    """Compute max |a - b| for every comparison site. When env var
+    BSA_LOG_DIFFS=1 is set, also print a `[DIFF]` line so the suite doubles as
+    a diff-distribution probe (pipe to `grep [DIFF]` to harvest the empirical
+    noise floor at every site). The logging is opt-in because the extra
+    CPU-side print can perturb cube/vector scheduling enough to expose
+    intermittent bf16 allocator-slack noise. Returns the max_diff scalar so
+    the caller can reuse it in `pytest.fail` messages."""
+    diff = (a - b).abs()
+    max_diff = diff.max().item()
+    if _os.environ.get("BSA_LOG_DIFFS"):
+        print(f"[DIFF] {label}: max_diff={max_diff:.6g}", flush=True)
+    return max_diff
+
 
 NO_FRAME = FrameWidths(0, 0, 0, 0)
 
@@ -179,15 +205,22 @@ def test_joint_dense(shape, dtype, block_shape):
     assert bsa_lse.dtype == torch.float32,         f"lse dtype wrong: {bsa_lse.dtype}"
 
     atol = OUT_ATOL[dtype]
-    if not torch.allclose(bsa_out.cpu(), ref_out.cpu(), rtol=0.01, atol=atol):
-        max_diff = (bsa_out.cpu() - ref_out.cpu()).abs().max().item()
+    a, b = bsa_out.cpu(), ref_out.cpu()
+    max_diff_out = _log_diff(
+        f"joint_dense_out {dtype} shape={shape} bs={block_shape}", a, b
+    )
+    if not torch.allclose(a, b, rtol=0.01, atol=atol):
         pytest.fail(f"attention_out: shape={shape} dtype={dtype} "
-                    f"max_diff={max_diff:.5f} > atol={atol}")
+                    f"max_diff={max_diff_out:.5f} > atol={atol}")
 
-    if not torch.allclose(bsa_lse.cpu(), ref_lse.cpu().float(), rtol=1e-3, atol=LSE_ATOL):
-        max_diff = (bsa_lse.cpu() - ref_lse.cpu().float()).abs().max().item()
+    a, b = bsa_lse.cpu(), ref_lse.cpu().float()
+    max_diff_lse = _log_diff(
+        f"joint_dense_lse {dtype} shape={shape} bs={block_shape}", a, b
+    )
+    lse_atol = LSE_ATOL[dtype]
+    if not torch.allclose(a, b, rtol=1e-3, atol=lse_atol):
         pytest.fail(f"softmax_lse:  shape={shape} dtype={dtype} "
-                    f"max_diff={max_diff:.5f} > atol={LSE_ATOL}")
+                    f"max_diff={max_diff_lse:.5f} > atol={lse_atol}")
 
 
 @pytest.mark.parametrize("shape,sparsity", SPARSE_CASES,
@@ -229,15 +262,25 @@ def test_joint_sparse(shape, sparsity, block_shape):
     assert bsa_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {bsa_lse.shape}"
     assert bsa_lse.dtype == torch.float32,         f"lse dtype wrong: {bsa_lse.dtype}"
 
-    if not torch.allclose(bsa_out.cpu(), pfa_out.cpu(), rtol=0.01, atol=SPARSE_OUT_ATOL):
-        max_diff = (bsa_out.cpu() - pfa_out.cpu()).abs().max().item()
+    a, b = bsa_out.cpu(), pfa_out.cpu()
+    max_diff_out = _log_diff(
+        f"joint_sparse_out shape={shape} sp={sparsity} bs={block_shape}", a, b
+    )
+    if not torch.allclose(a, b, rtol=0.01, atol=SPARSE_OUT_ATOL):
         pytest.fail(f"attention_out: shape={shape} sparsity={sparsity} "
-                    f"max_diff={max_diff:.5f} > atol={SPARSE_OUT_ATOL}")
+                    f"max_diff={max_diff_out:.5f} > atol={SPARSE_OUT_ATOL}")
 
-    if not torch.allclose(bsa_lse.cpu(), fias_lse.cpu().float(), rtol=1e-3, atol=LSE_ATOL):
+    a, b = bsa_lse.cpu(), fias_lse.cpu().float()
+    max_diff = _log_diff(
+        f"joint_sparse_lse shape={shape} sp={sparsity} bs={block_shape}", a, b
+    )
+    # sparse tests are bfloat16-only (see module docstring), so look up the
+    # bf16 entry directly.
+    lse_atol = LSE_ATOL[torch.bfloat16]
+    if not torch.allclose(a, b, rtol=1e-3, atol=lse_atol):
         max_diff = (bsa_lse.cpu() - fias_lse.cpu().float()).abs().max().item()
         pytest.fail(f"softmax_lse:  shape={shape} sparsity={sparsity} "
-                    f"max_diff={max_diff:.5f} > atol={LSE_ATOL}")
+                    f"max_diff={max_diff:.5f} > atol={lse_atol}")
 
 
 # ── __main__ smoke tests ──────────────────────────────────────────────────────

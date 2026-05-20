@@ -117,10 +117,11 @@ struct PFAComputeParam {
     bool isFirstComputedIter = false;
     bool isSecondComputedIter = false;
     bool isLastComputedIter = false;
-    // Session 18+: true sub-tile gather. Each queue entry carries up to 4 kept sabi
-    // entries (128-token blocks). The cube tile is built by issuing one narrow N=128
-    // matmul per kept entry, writing the i-th slice at column offset i*128 of the
-    // bmm1 result buffer. packedCount==1 in Stage A; up to 4 in Stage B/C.
+    // True sub-tile gather. Each queue entry carries up to 4 kept sabi entries
+    // (each kvBlockSize tokens wide). The cube tile is built by issuing one
+    // narrow N = kvBlockSize matmul per kept entry, writing the i-th slice at
+    // column offset i * kvBlockSize of the bmm1 result buffer. When the kept
+    // entries are K-contiguous a single wide matmul covers them all instead.
     uint16_t packedSabi[4] = {0, 0, 0, 0};
     uint8_t  packedCount = 0;
 
@@ -149,12 +150,12 @@ struct PFAComputeParam {
     uint32_t pseShiftInnerTailAlign;
     uint32_t pseShiftInnerPrefixTailAlign;
     uint32_t mm1SingleCoreN;
-    // Session 25 Thread A: bmm2's V-load K dimension. Sparse path narrows it to
-    // totalColsActual rounded UP to 8 fp32 lanes (= 1 fp32 BLOCK = 32 B). Decoupled
-    // from `singleProcessSInnerBmmTail` (= softmax srcK) so softmax fast-path
-    // stays on the 64-aligned `totalCols`, while bmm2's V load reaches at most
-    // 7 V tokens past `actualSeqLengthKVPerBatch` per (Q-tile × head). Dense path
-    // keeps it equal to `singleProcessSInnerBmmTail`.
+    // bmm2's V-load K dimension. The sparse path narrows it to totalColsActual
+    // rounded UP to 8 fp32 lanes (= 1 fp32 BLOCK = 32 B). Decoupled from
+    // `singleProcessSInnerBmmTail` (= softmax srcK) so softmax's fast-path
+    // stays on the 64-aligned `totalCols` while bmm2's V load reaches at most
+    // 7 V tokens past `actualSeqLengthKVPerBatch` per (Q-tile × head). The
+    // dense path keeps this equal to `singleProcessSInnerBmmTail`.
     uint32_t bmm2K;
     uint32_t mm2SingleKAlign;
     int64_t tensorAOffset;

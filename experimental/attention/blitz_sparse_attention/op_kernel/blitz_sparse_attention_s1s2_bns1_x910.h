@@ -543,23 +543,20 @@ protected:
         }
 
         if (params->isBlockSparse) {
-            // Session 18 Stage A / 19 Stage B: true sub-tile gather.
-            //
-            // Two paths share this code:
+            // True sub-tile gather. Two paths share this code:
             //   1) Contiguous-K fast path: when the packed sabi indices form a
             //      consecutive run [s, s+1, ..., s+packedCount-1], the kept K
             //      positions span one contiguous HBM region of length
-            //      packedCount*128. Emit ONE wide matmul of N=mm1SingleCoreN
-            //      (= packedCount*128 minus tail truncation) at column offset 0.
-            //      This matches the pre-Stage-18 effective work pattern at
-            //      sparsity 0 (where every coarse tile is fully kept).
+            //      packedCount * kvBlockSize. Emit ONE wide matmul of
+            //      N = mm1SingleCoreN (= packedCount * kvBlockSize minus tail
+            //      truncation) at column offset 0.
             //   2) Gather slow path: when sabis are non-contiguous (mid-sparsity
             //      with sub-blocks skipped within a coarse tile), issue
-            //      packedCount narrow N=128 matmuls, each writing the i-th
-            //      128-wide slice. Intermediate iters use sync=true because
-            //      back-to-back IterateAll<false> hangs the cube on this CANN
-            //      version regardless of waitIterateAll flag — the library
-            //      drops completion-flag state on intermediate iterates.
+            //      packedCount narrow N = kvBlockSize matmuls, each writing the
+            //      i-th kvBlockSize-wide slice. Intermediate iters use
+            //      sync=true because back-to-back IterateAll<false> hangs the
+            //      cube on this CANN version regardless of waitIterateAll —
+            //      the library drops completion-flag state between iterates.
             const uint32_t souterM = params->singleProcessSOuterSize * this->msdIterNum;
             const int64_t kvTokenStride =
                 (PFAT::layout == PFALayout::BNSD)
@@ -578,12 +575,11 @@ protected:
             const uint16_t lastSabi  = params->packedSabi[params->packedCount - 1];
             const bool kContiguous   = ((uint32_t)lastSabi - (uint32_t)firstSabi + 1u
                                         == (uint32_t)params->packedCount);
-            // NOTE: the per-sub-tile token offset for KV>basicSInnerSize is
-            // pre-baked into params->tensorBOffset by the wide-KV packer
-            // branch in SInnerLoopFunc; no extra term needed here. Keeping
-            // this code byte-identical for the existing (KV<=basicSInnerSize)
-            // path avoids any I-cache layout shift (Session 8 rule —
-            // see feedback_premask_must_be_noinline.md).
+            // NOTE: the per-sub-tile token offset for KV > basicSInnerSize is
+            // pre-baked into params->tensorBOffset by the wide-KV packer branch
+            // in SInnerLoopFunc; no extra term needed here. Keeping this code
+            // byte-identical for the existing (KV <= basicSInnerSize) path
+            // avoids an I-cache layout shift in the rest of this function.
             if (kContiguous) {
                 const int64_t kvOffset = kvBase + (int64_t)firstSabi * kvBlockSize * kvTokenStride;
                 this->mm.SetTail(souterM, params->mm1SingleCoreN);
@@ -706,13 +702,10 @@ protected:
         SetFlag<HardEvent::MTE3_MTE2>(this->bmm1ResCopyOutEvent[ubPingpong]);
     }
 
-    // Session 25 Thread A.1 — pre-mask the cube-OOB cols [bmm2K, mm1N) to -10000
-    // before softmax, on the global last batch only. Out-of-line + noinline so
-    // the inlined caller (Res1VecCompute) keeps its instruction layout for the
-    // hot path that doesn't need this scrub. Same I-cache rationale as the
-    // dead `ApplySubBlockMaskCorrection` helper from Session 8 (deleted in
-    // Session 26 — call site removed by Session 18 Stage A's true sub-tile
-    // gather, see comment in Res1VecCompute below).
+    // Pre-mask the cube-OOB cols [bmm2K, mm1N) to -10000 before softmax, on the
+    // global last batch only. Kept out-of-line and `noinline` so the inlined
+    // caller (Res1VecCompute) preserves its instruction layout for the hot
+    // path that doesn't need this scrub.
     //
     // Two stages:
     //   Stage 1 — partial leading BLOCK at floor(bmm2K/8)*8, bitmask form:
@@ -721,8 +714,8 @@ protected:
     //   Stage 2 — full aligned BLOCKs from ceil(bmm2K/8)*8 to mm1N, count form
     //     (writes the FIRST `count` lanes of each repeat).
     //
-    // After the masked write, the vector mask register is restored to "all
-    // lanes on" so subsequent softmax/Muls/Add ops see a normal mask state.
+    // After the masked write the vector mask register is restored to "all
+    // lanes on" so subsequent softmax / Muls / Add ops see a normal mask state.
     __aicore__ __attribute__((noinline)) void ApplyTailKOOBPreMask(
         int32_t ubPingpong, uint32_t bmm2K, uint32_t mm1N, uint32_t souterSize) {
         const uint32_t partialStart = bmm2K & ~uint32_t(7);
@@ -816,15 +809,16 @@ protected:
             this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
                                          params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
 
-            // Session 18+: with true sub-tile gather, every score-buffer column is a
-            // kept K position by construction. The post-matmul Adds(-10000) sub-block
-            // correction is no longer needed — bmm1 only writes packedCount *
-            // kvBlockSize valid columns, all of them active sabi entries.
+            // With true sub-tile gather, every score-buffer column is a kept K
+            // position by construction. The post-matmul Adds(-10000) sub-block
+            // correction is no longer needed — bmm1 only writes
+            // packedCount * kvBlockSize valid columns, all of them active
+            // sabi entries.
 
-            // Session 25 Thread A.1: scrub the cube-OOB workspace cols
+            // Scrub the cube-OOB workspace cols
             // [bmm2K, singleProcessSInnerSizeNow) to -10000 *before* softmax on
-            // the global last batch.  Out-of-line helper to keep the hot
-            // Res1VecCompute layout intact (Session 8 I-cache rationale).
+            // the global last batch. Out-of-line helper to keep the hot
+            // Res1VecCompute layout intact (I-cache stability).
             if (params->isBlockSparse && params->bmm2K < params->singleProcessSInnerSizeNow) {
                 this->ApplyTailKOOBPreMask(
                     ubPingpong, params->bmm2K,
@@ -989,23 +983,21 @@ protected:
         }
 
         if (params->isBlockSparse) {
-            // Session 18 Stage A / 19 Stage B: mirror Bmm1ComputeIterate.
+            // Mirrors Bmm1ComputeIterate above.
             //
-            // Contiguous-K fast path: when packed sabis are consecutive, V slice is
-            // contiguous → ONE bmm2 IterateAll of K = params->bmm2K (Session 25
-            // Thread A.1: = totalColsActual, unaligned). Cube-OOB workspace cols
+            // Contiguous-K fast path: when packed sabis are consecutive, the V
+            // slice is contiguous → ONE bmm2 IterateAll of K = params->bmm2K
+            // (= totalColsActual, unaligned). Cube-OOB workspace cols
             // [bmm2K, mm1SingleCoreN) are pre-masked to -10000 in Res1VecCompute
-            // before softmax, so softmax fast-path runs on the full 64-aligned
-            // totalCols. bmm2's V load uses bmm2K = totalColsActual — V reads stay
-            // strictly inside actualSeqLengthKVPerBatch.
-            // (Session 24 used `singleProcessSInnerBmmTail` here; that is now
-            // = totalCols for the sparse path and would re-introduce the NaN bug.)
+            // before softmax, so softmax's fast-path runs on the full 64-aligned
+            // totalCols. bmm2's V load uses bmm2K = totalColsActual, so V reads
+            // stay strictly inside actualSeqLengthKVPerBatch.
             //
-            // Gather slow path (non-contiguous sabis): packedCount narrow K=128
-            // bmm2 calls, each consuming the matching 128-wide slice from
-            // bmm1ResGmDb and atomic-adding into bmm2ResGmDb. Intermediate iters
-            // use sync=true (back-to-back IterateAll<false> hangs the cube on this
-            // CANN version, same as bmm1).
+            // Gather slow path (non-contiguous sabis): packedCount narrow
+            // K = kvBlockSize bmm2 calls, each consuming the matching slice
+            // from bmm1ResGmDb and atomic-adding into bmm2ResGmDb.
+            // Intermediate iters use sync=true — back-to-back IterateAll<false>
+            // hangs the cube on this CANN version, same as bmm1.
             const uint32_t souterM = params->singleProcessSOuterSize * this->msdIterNum;
             const uint32_t headSize = this->tilingData->promptAttentionBaseParams.headSize;
             const int64_t kvTokenStride =
@@ -1058,8 +1050,8 @@ protected:
             for (int i = 0; i < (int)params->packedCount; ++i) {
                 const int64_t valOffset = valBase
                     + (int64_t)params->packedSabi[i] * kvBlockSize * kvTokenStride;
-                // Last iter uses bmm2K (= totalColsActual, Session 25 Thread A.1)
-                // not mm1SingleCoreN, to keep V reads inside actualSeqLengthKVPerBatch.
+                // Last iter uses bmm2K (= totalColsActual), not mm1SingleCoreN,
+                // to keep V reads inside actualSeqLengthKVPerBatch.
                 uint32_t kCols = (i == (int)params->packedCount - 1)
                     ? (params->bmm2K - (uint32_t)i * (uint32_t)kvBlockSize)
                     : (uint32_t)kvBlockSize;
@@ -2499,14 +2491,14 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
         params->isBlockSparse = false;   // fall back to dense path
     }
     // Note: a "dense-row detection" scan that pre-checks whether rowSabi covers
-    // [startIndex*sabiPerTile, endIndex*sabiPerTile) contiguously (and short-circuits
-    // to the dense path if so) was evaluated and removed. With the lookahead-fusion
-    // in the sparse loop, the sparse path is now efficient enough that the scan cost
-    // exceeded its savings — the sparse path beats "scan + dense" even at 0% sparsity.
-    // Session 6 also tried O(1) last-element-only detection (rowSabi.Get(len-1) !=
-    // kPadU16 => route to dense); it consistently regressed 5–10% by 6–13 ms (likely
-    // I-cache layout shift in the hot sparse loop) while improving 20–90% by 3–9 ms.
-    // Net negative for the 10% sparsity target, so not kept.
+    // [startIndex*sabiPerTile, endIndex*sabiPerTile) contiguously (and short-
+    // circuits to the dense path if so) was evaluated and removed. With the
+    // lookahead-fusion in the sparse loop the sparse path is efficient enough
+    // that the scan cost exceeded its savings — the sparse path beats
+    // "scan + dense" even at 0% sparsity. An O(1) last-element-only detection
+    // (rowSabi.Get(len-1) != kPadU16 => route to dense) was also tested and
+    // consistently regressed low-sparsity cases by 5–10% (likely an I-cache
+    // layout shift in the hot sparse loop), so it was not kept.
     if (!params->isBlockSparse) {    // old loop
         for (int32_t sInnerLoopIdx = startIndex; sInnerLoopIdx < endIndex; sInnerLoopIdx++) {
             params->sInnerLoopOffset = sInnerLoopIdx;  // S2 Align offset
@@ -2631,7 +2623,7 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
         //       kvOffset = kvBase + packedSabi[0]*kvBlockSize*kvTokenStride
         //     formula reaches the correct K/V slice WITHOUT any extra term —
         //     keeping the hot cube path byte-identical to the legacy
-        //     KV<=basicSInnerSize case (Session 8 I-cache rule).
+        //     KV <= basicSInnerSize case (preserves I-cache layout).
         // The contiguous-K fast path in Bmm1/Bmm2ComputeIterate fires because
         // firstSabi == lastSabi (packedCount==1), so one wide matmul of width
         // mm1SingleCoreN = basicSInnerSize (or smaller for tail) is issued.
@@ -2755,17 +2747,12 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
         }
     } else {
         // ===========================================================================
-        // Session 21 Stage D.1: K-contiguous-only packing.
-        // Strict superset of Stage B by construction; subsumes Stage B's
-        // same-coarse-tile guard (a fully-kept coarse tile is K-contiguous, so
-        // it still packs as one batch) and additionally captures cross-coarse-tile
-        // contiguous runs that Stage B left on the table.
-        //
-        // The slow gather path in Bmm1/Bmm2ComputeIterate is therefore unreachable
-        // under D.1 — every packed batch is K-contiguous by construction and takes
-        // the fast path (one wide matmul). The slow gather code is kept compiled
-        // because Stage D.3 will replace it with a hand-rolled L1-managed cube
-        // path that will become reachable again when the packer is later relaxed.
+        // K-contiguous-only packing: each packed batch contains sabi entries
+        // forming a consecutive run [s, s+1, ..., s+packedCount-1]. The slow
+        // gather path in Bmm1/Bmm2ComputeIterate is therefore unreachable in
+        // this packer — every packed batch is K-contiguous by construction
+        // and takes the fast path (one wide matmul). The slow gather code is
+        // kept compiled because a future packer relaxation may reach it.
         // ===========================================================================
         // kPackSize is the max number of sabi entries the cube can absorb in one call.
         // With basicSInnerSize-wide cube tiles and kvBlockSize-token sabi entries,
@@ -2825,26 +2812,21 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             const int32_t lastCols = (lastCols64 >= kvBlockSize) ? kvBlockSize : (int32_t)lastCols64;
             const uint32_t totalCols = (uint32_t)((batchCount - 1) * kvBlockSize + lastCols);
 
-            // Session 25 Thread A.1: keep softmax fast-path firing on the global
-            // last batch (BmmTail = 64-aligned `totalCols`) by pre-masking the
-            // cube-OOB workspace cols [bmm2K, mm1SingleCoreN) to -10000 in
-            // Res1VecCompute. bmm2's V load narrows to bmm2K = totalColsActual
-            // (unaligned), so V reads stay strictly inside actualSeqLengthKVPerBatch
-            // — no allocator-slack dependency.
+            // Keep softmax's fast-path firing on the global last batch
+            // (BmmTail = 64-aligned `totalCols`) by pre-masking the cube-OOB
+            // workspace cols [bmm2K, mm1SingleCoreN) to -10000 in
+            // Res1VecCompute. bmm2's V load narrows to
+            // bmm2K = totalColsActual (unaligned), so V reads stay strictly
+            // inside actualSeqLengthKVPerBatch — no allocator-slack dependency.
             //
-            // Why A.1 and not A.4 (bmm2K = ceil(actual/8)*8): the Session 25 probe
-            // showed PyTorch NPU caching-allocator slack at S=118 806 contains NaN
-            // bit-patterns. Even a 2-token V OOB read poisons every row of the
-            // last head via the atomic-add bmm2.  Keeping the V load tight and
-            // paying for an unaligned pre-mask region (handled with a 2-stage
-            // Duplicate: bitmask form for the partial leading BLOCK + count form
-            // for the full aligned BLOCKs) is the only way to keep softmax fast
-            // AND not depend on allocator behaviour.
-            //
-            // Session 24's split (cube N type-aligned, BmmTail = totalColsActual)
-            // is replaced: BmmTail is back on totalCols, and the unaligned
-            // totalColsActual is captured in the new bmm2K field used only by
-            // bmm2 + the Res1VecCompute pre-mask.
+            // Why bmm2K = totalColsActual (not ceil(actual/8)*8): PyTorch's NPU
+            // caching-allocator slack at large S can contain NaN bit-patterns.
+            // Even a 2-token V OOB read poisons every row of the last head via
+            // the atomic-add in bmm2. Keeping the V load tight and paying for
+            // an unaligned pre-mask region (handled with a 2-stage Duplicate:
+            // bitmask form for the partial leading BLOCK + count form for the
+            // full aligned BLOCKs) is the only way to keep softmax fast AND
+            // not depend on allocator behaviour.
             const int64_t lastColsActual64 =
                 (int64_t)sInnerLastToken - lastSabiTokenStart;
             const int32_t lastColsActual =
@@ -2859,9 +2841,9 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             }
             params->packedCount = static_cast<uint8_t>(batchCount);
 
-            // mm1SingleCoreN = singleProcessSInnerSizeNow = totalCols (64-aligned)
-            // matches Stage A's layout — the bmm1→UB DataCopy stride math (blockLen,
-            // srcStride divided by softmaxTypeByteNum=8) uses these.  totalCols
+            // mm1SingleCoreN = singleProcessSInnerSizeNow = totalCols
+            // (64-aligned) — the bmm1→UB DataCopy stride math (blockLen,
+            // srcStride divided by softmaxTypeByteNum=8) uses these. totalCols
             // is divisible by 8 because lastCols ∈ {64, 128}.
             // singleProcessSInnerBmmTail = totalCols keeps softmax fast-path firing
             // (gate is BmmTail % 64 == 0).  bmm2K = totalColsActual (unaligned)
@@ -2885,7 +2867,7 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             params->isFirstInnerIter   = params->isFirstComputedIter;
             params->isSecondInnerIter  = params->isSecondComputedIter;
             params->isLastInnerIter    = params->isLastComputedIter;
-            params->isPrefixInnerIter  = 0;       // prefix path deferred — Session 22
+            params->isPrefixInnerIter  = 0;       // prefix path not implemented in this packer
             params->isInnerTail        = (lastCols < kvBlockSize);
 
             params->sInnerLoopOffset = (uint32_t)(lastSabi / sabiPerTile);

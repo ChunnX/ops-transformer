@@ -45,11 +45,7 @@ torch.npu.set_device(DEVICE)
 TORCH_REF_VALS = ["npu_fusion_attention"]
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
-S_VALS = [
-    24_000,
-    # TODO: uncomment once sub-block gather is implemented for partial 512-chunks
-    # 36_000,  # ceil(36000/128)=282, not a multiple of 4
-]  # s_q = s_kv
+S_VALS = [24_000, 36000]   # s_q = s_kv (B=1 only; B>1 currently produces wrong outputs)
 D_VALS = [128]   # head dimension
 # `frame_kind` is a label; the actual FrameWidths is resolved per block_shape
 # in the test body. `left_cols` is in BLOCK_SIZE_KV-token units and `top_rows`
@@ -125,9 +121,24 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame_kind, sparsi
                                                   force_dense_sm=(sparsity == 0))   
     
     # Check correctness with reasonable tolerances (moved to CPU for comparison)
-    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.01, atol=0.001):
+    a, b_ref = out_our.cpu(), out_ref.cpu()
+    diff = (a - b_ref).abs()
+    max_diff = diff.max().item()
+    # Opt-in diff logging: BSA_LOG_DIFFS=1 prints `[DIFF]` lines for every
+    # comparison site (useful when calibrating atol). Kept opt-in because the
+    # extra CPU-side print can perturb cube scheduling and expose intermittent
+    # bf16 allocator-slack noise.
+    import os as _os
+    if _os.environ.get("BSA_LOG_DIFFS"):
+        print(
+            f"[DIFF] attn_vs_pfa {DTYPE} b={b} h={h} s={s_q} d={d} sp={sparsity} "
+            f"bs={block_shape} frame={frame_kind}: max_diff={max_diff:.6g}",
+            flush=True,
+        )
+    if not torch.allclose(a, b_ref, rtol=0.01, atol=0.001):
         pytest.fail(
-            f"Outputs don't match for b={b}, h={h}, s_q={s_q}, s_kv={s_kv}, d={d}, sparsity={sparsity}"
+            f"Outputs don't match for b={b}, h={h}, s_q={s_q}, s_kv={s_kv}, "
+            f"d={d}, sparsity={sparsity}, bs={block_shape}: max_diff={max_diff:.5f}"
         )
 
 

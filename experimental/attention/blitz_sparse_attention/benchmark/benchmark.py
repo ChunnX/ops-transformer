@@ -35,25 +35,31 @@ import torch_bsa
 FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
 
 # Configure logging — write to stdout (not the default stderr) so the result
-# table can be piped into `plot.py`:  
-# `python benchmark.py | python plot.py` only produce the figure and discard
-# `python benchmark.py | tee >(python plot.py)` - produce the figure but also keep printing the table to sandard output
+# table can be piped into `plot.py`:
+#   python benchmark.py | python plot.py
+#       → produce the figure only; table is consumed by plot.py.
+#   python benchmark.py | tee bench.log /dev/tty | python plot.py
+#       → produce the figure, also save the table to `bench.log`, AND keep
+#         printing it to the terminal (/dev/tty is an extra tee output).
 logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Global Definitions
 DEVICE = 'npu'
-DTYPE = torch.bfloat16
-INPUT_LAYOUT = "BNSD"  # [batch_size, num_heads, seq_len, head_dim]
-
-# Parameter sweeps (adjust as needed)
-B_VALS = [1]
-H_VALS = [3]
-S_VALS = [118_806]  # s_q = s_kv
-D_VALS = [128]   # head dimension
-
 N_REPEATS = 10
 N_WARMUP = 2
+BLOCK_MASK_SEED = 1234
+
+
+
+# ===== Begin of Parameter Sweep Definitions =====
+
+DTYPE = torch.bfloat16
+INPUT_LAYOUT = "BNSD"  # [batch_size, num_heads, seq_len, head_dim]
+B_VALS = [1]
+H_VALS = [3]
+S_VALS = [118_806]  # S_q = S_kv
+D_VALS = [128]   # head dimension
 
 # Fraction of attention blocks zeroed out per row. 0.0 = dense, 0.9 = ~10 % kept.
 SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -67,17 +73,6 @@ SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 BLOCK_SHAPES = [(bsq, bskv)
                 for bsq  in (128, 256, 512, 1024)
                 for bskv in (128, 256, 512, 1024)]
-# Optional sharding for parallel sweeps across multiple NPUs. Set
-# BSA_SHARD="i/N" (e.g. "0/4") to keep only the i-th of N contiguous slices of
-# BLOCK_SHAPES. Used by the README's "shard across NPUs 0,1,2,3" recipe.
-import os as _os
-_shard_spec = _os.environ.get("BSA_SHARD", "")
-if _shard_spec:
-    _i, _n = (int(x) for x in _shard_spec.split("/"))
-    _per = (len(BLOCK_SHAPES) + _n - 1) // _n
-    BLOCK_SHAPES = BLOCK_SHAPES[_i * _per:(_i + 1) * _per]
-BLOCK_SIZE_Q, BLOCK_SIZE_KV = BLOCK_SHAPES[0]
-BLOCK_MASK_SEED = 1234
 
 # When True, each sabi row is generated with kept block indices sorted ascending
 # (followed by pad_value). When False, the kept indices are shuffled within the row
@@ -122,23 +117,26 @@ FRAMES_BY_BLOCK_SHAPE = {
     for bsq  in _TOP_ROWS_BY_Q
     for bskv in _LEFT_COLS_BY_KV
 }
-# Convenience alias for legacy single-shape callers that still read `FRAME`.
-FRAME = FRAMES_BY_BLOCK_SHAPE[(BLOCK_SIZE_Q, BLOCK_SIZE_KV)]
 
 # Print tensors for manual comparisons
 PRINT_OUTPUTS = False
 PRINT_MASK = False
+
 # For printing tensor differneces in blocks
 PRINT_BLOCK_EQUALITY = False
 PRINT_HEIGHT = 128
 PRINT_WIDTH = 8
 
-RUN_REFERENCE = False  # True <--> enables accuracy compariston
+# True <--> enables accuracy (correctness) comparison
+RUN_REFERENCE = False  
+
 # Which reference kernel to compare/benchmark against. One of:
 #   "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
 #   "npu_fusion_attention"            - torch_npu.npu_fusion_attention (PFA)
 #   "npu_fused_infer_attention_score" - torch_npu.npu_fused_infer_attention_score (FIAS)
 TORCH_REFERENCE = "npu_fusion_attention"
+
+# ===== End of Parameter Sweep Definitions =====
 
 torch.set_printoptions(
     threshold=100_000_000,
@@ -259,9 +257,12 @@ def generate_sparse_blocks_by_row(
         raise ValueError(f"Invalid block configuration: {s_q=}, {s_kv=}, {block_size_q=}, {block_size_kv=}")
 
     if frame is not None:
-        if (frame.left_cols > n_block_cols or frame.right_cols > n_block_cols or 
+        if (frame.left_cols > n_block_cols or frame.right_cols > n_block_cols or
             frame.top_rows > n_block_rows or frame.bottom_rows > n_block_rows):
-            raise ValueError(f"Frame configuration exceeds block dimensions: {frame=}, {n_block_rows=}, {n_block_cols=}")
+            raise ValueError(
+                f"Frame configuration exceeds block dimensions: "
+                f"{frame=}, {n_block_rows=}, {n_block_cols=}"
+            )
 
         # Forced column indices by the frame (left and right borders) for EVERY sparse row:
         sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
@@ -282,17 +283,21 @@ def generate_sparse_blocks_by_row(
     n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
     n_frame_forced_blocks = len(sparse_forced_col_ids) * n_sparse_rows + n_block_cols * n_dense_rows
     if n_frame_forced_blocks / n_total_blocks > (1.0 - sparsity):
-        raise ValueError(f"Target sparsity violation: "
-                        f"Frame forces {n_frame_forced_blocks} blocks out of {n_total_blocks} total attention blocks. "
-                        f"Implying a mimimum density of {n_frame_forced_blocks / n_total_blocks:.2%}, which violates the target "
-                        f"sparsity of {(sparsity):.2%}. And this is even before allocating the random blocks inside "
-                        "the frame. Consider adjusting frame sizes or target sparsity.")
-    
-    # Make sure that allocating "n_kept_row_blocks" in every sparsable row (inside the borders of the frame) will not 
-    # violate the required sparsity
+        raise ValueError(
+            f"Target sparsity violation: frame forces {n_frame_forced_blocks} blocks out of "
+            f"{n_total_blocks} total attention blocks, implying a minimum density of "
+            f"{n_frame_forced_blocks / n_total_blocks:.2%}, which violates the target sparsity "
+            f"of {sparsity:.2%}. And this is even before allocating the random blocks inside the "
+            f"frame. Consider adjusting frame sizes or target sparsity."
+        )
+
+    # Make sure that allocating `n_kept_row_blocks` in every sparsable row (inside the borders of
+    # the frame) will not violate the required sparsity.
     n_max_kept_blocks = int(math.floor(n_total_blocks * (1.0 - sparsity)))
-    n_max_kept_blocks_excluding_frame =  n_max_kept_blocks - n_frame_forced_blocks
-    n_kept_row_blocks_per_row =  math.ceil(n_max_kept_blocks_excluding_frame / n_sparse_rows) if n_sparse_rows > 0 else 0
+    n_max_kept_blocks_excluding_frame = n_max_kept_blocks - n_frame_forced_blocks
+    n_kept_row_blocks_per_row = (
+        math.ceil(n_max_kept_blocks_excluding_frame / n_sparse_rows) if n_sparse_rows > 0 else 0
+    )
     
     # Construct the "sabi" blocks of the current head by choosing the sparse blocks randomly
     rows: list[list[int]] = []
@@ -416,7 +421,7 @@ def block_allclose_map(
     block_h: int,
     block_w: int,
     rtol: float = 0.01,
-    atol: float = 0.01,
+    atol: float = 0.001,
     print_map: bool = False,
 ) -> torch.Tensor:
     """
@@ -599,11 +604,11 @@ def _check_correctness(our_fn: Callable, ref_fn: Callable, b: int, h: int, s_q: 
         logger.info("REF:  ", out_ref.shape)
         logger.info(out_ref)
 
-    equal = torch.allclose(out_our, out_ref, rtol=0.02, atol=0.02)
+    equal = torch.allclose(out_our, out_ref, rtol=0.01, atol=0.001)
     if not equal and PRINT_BLOCK_EQUALITY:
         block_allclose_map(out_our, out_ref,
                            block_h=PRINT_HEIGHT, block_w=PRINT_WIDTH,
-                           rtol=0.02, atol=0.02, print_map=True)
+                           rtol=0.01, atol=0.001, print_map=True)
     return "yes" if equal else "no"
 
 
@@ -654,24 +659,23 @@ def benchmark_blitz_sparse_attention():
         return
 
     # Print table header
-    logger.info("=" * 96)
-    logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}")
-    logger.info(f"  {BLOCK_SHAPES=}  {SABI_SORTED=}")
-    logger.info(f"  FRAMES_BY_BLOCK_SHAPE={FRAMES_BY_BLOCK_SHAPE}")
-    logger.info(f"  {TORCH_REFERENCE=}")
-    logger.info("=" * 96)
+    framed_shapes = sorted(s for s, f in FRAMES_BY_BLOCK_SHAPE.items() if f is not None)
+    logger.info("=" * 120)
+    logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {SABI_SORTED=}  {TORCH_REFERENCE=}")
+    logger.info("=" * 120)
     logger.info(
-        f"{'block_shape':>13} {'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} "
+        f"{'block_shape':>13} {'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} "
+        f"{'frame(L,R,T,B)':>15} {'sparsity':>9} "
         f"{'Outputs_equal':>15} {'Ref_Latency_[usec]':>18} {'Our_Latency_[usec]':>18}"
     )
-    logger.info("-" * 96)
+    logger.info("-" * 120)
 
     for block_shape in BLOCK_SHAPES:
         bs_q, bs_kv = block_shape
         bs_label = f"{bs_q}x{bs_kv}"
         # Scale the frame per (BLOCK_SIZE_Q, BLOCK_SIZE_KV) so the forced-token
         # footprint stays comparable across block shapes.
-        frame_for_shape = FRAMES_BY_BLOCK_SHAPE.get(block_shape, FRAME)
+        frame_for_shape = FRAMES_BY_BLOCK_SHAPE.get(block_shape, None)
         for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
             s_q = s_kv
 
@@ -708,13 +712,22 @@ def benchmark_blitz_sparse_attention():
             if run_ref or run_ref_sparsity_0:
                 ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
 
+            # Frame as a compact 4-tuple (left, right, top, bottom). "-" when the
+            # frame is unset for this block_shape OR when sparsity == 0 (dense ⇒
+            # every block is kept, so the frame has no effect on the actual sabi).
+            if frame_for_shape is None or sparsity == 0:
+                frame_str = "-"
+            else:
+                frame_str = (f"({frame_for_shape.left_cols},{frame_for_shape.right_cols},"
+                             f"{frame_for_shape.top_rows},{frame_for_shape.bottom_rows})")
             # Print one results row
             logger.info(
-                f"{bs_label:>13} {h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} "
+                f"{bs_label:>13} {h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} "
+                f"{frame_str:>15} {sparsity:>9.2f} "
                 f"{are_equal_ref:>15} {_fmt_or_na(ref_duration, 18)} {_fmt_or_na(our_duration, 18)}"
             )
 
-    logger.info("=" * 96)
+    logger.info("=" * 120)
 
 
 if __name__ == "__main__":

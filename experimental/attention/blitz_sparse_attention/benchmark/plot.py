@@ -34,9 +34,11 @@ from collections import defaultdict
 
 
 # Result row format produced by `benchmark.py`:
-#   block_shape   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
-#       128x128   3   1 118806 118806  128      0.00             yes           160225.13          185475.31
-#       128x256   3   1 118806 118806  128      0.05             N/A                N/A          164822.39
+#   block_shape   H   B    s_q   s_kv    D  frame(L,R,T,B)  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
+#       128x128   3   1 118806 118806  128               -      0.00             yes           160225.13          185475.31
+#       128x256   3   1 118806 118806  128     (29,1,29,1)      0.05             N/A                N/A          164822.39
+# The frame column is "-" when sparsity == 0 (dense, frame irrelevant) or
+# "(L,R,T,B)" otherwise; matched as a single non-whitespace token and discarded.
 ROW_RE = re.compile(
     r"^\s*"
     r"(?P<bsq>\d+)x(?P<bskv>\d+)\s+"
@@ -45,6 +47,7 @@ ROW_RE = re.compile(
     r"(?P<sq>\d+)\s+"
     r"(?P<skv>\d+)\s+"
     r"(?P<d>\d+)\s+"
+    r"(?P<frame>\S+)\s+"
     r"(?P<sp>[\d.]+)\s+"
     r"(?P<eq>\S+)\s+"
     r"(?P<ref>\S+)\s+"
@@ -82,9 +85,7 @@ def parse_rows(stream):
 
 
 def _fmt_s(s: int) -> str:
-    """Compact sequence-length label: 118806 -> '118k', 12288 -> '12k', 512 -> '512'."""
-    if s >= 1000:
-        return f"{s // 1000}k"
+    """Sequence-length label: full integer, no thousands separator (118806 -> '118806')."""
     return str(s)
 
 
