@@ -127,8 +127,6 @@ private:
     bool enablePertensorQuant_ = false;
     bool enableIFAMLAFullQuant_ = false;
     bool enableMxfp8FullQuant_ = false;
-    bool enableMxfp8FullQuantPrefill_ = false;
-    bool enableMxfp8FullQuantDecode_ = false;
 };
 
 } // namespace optiling
