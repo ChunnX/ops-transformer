@@ -1018,13 +1018,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                             tileNumGmm1, tileNumGmm2, waveCnt, m_i);
         }
 #endif
-        if constexpr (g_coreType == AscendC::AIC) {
+        // 单核 V 调度: blockIdx_=0 的 AIV0 当 scheduler, 它的 AIC/AIV1 idle (但 sub1 仍
+        // 在外层负责 dispatch prefetch — 这里只是 main loop 不参与 GMM)。workers = bk ∈ [1, blockNum)。
+        if (blockIdx_ == 0U) {
+            if constexpr (g_coreType == AscendC::AIV) {
+                if (subBlockIdx_ == 0) {
+                    MegaMoeImpl::SchedulerLoop<
+                        QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                        params_, problemShape_, baseOffset_,
+                        static_cast<int32_t>(rankId_), expertIdx, blockNum_,
+                        waveCnt, m_i, tileNumGmm1, tileNumGmm2);
+                }
+                // sub1 idle (dispatch prefetch 在外层已做)
+            }
+            // AIC bk=0 idle: 它的 paired AIV0 是 scheduler, 无法做 GMM1 epi
+        } else if constexpr (g_coreType == AscendC::AIC) {
             MegaMoeImpl::DynamicAicLoop<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                 epilogueOp_, params_, problemShape_, baseOffset_,
                 static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
-                expertIdx, static_cast<uint32_t>(maxWavesPerExpert_),
-                waveCnt, m_i, tileNumGmm1, tileNumGmm2);
+                expertIdx, tileNumGmm1, tileNumGmm2);
         } else if (subBlockIdx_ == 0) {
             MegaMoeImpl::DynamicAiv0Loop<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
