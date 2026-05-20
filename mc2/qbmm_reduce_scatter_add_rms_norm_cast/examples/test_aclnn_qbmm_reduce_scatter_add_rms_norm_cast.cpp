@@ -161,7 +161,7 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     std::vector<int64_t> yShape = {perRankM, 5120};            // residual per rank (BF16)
     std::vector<int64_t> gammaShape = {5120};             // RMS Norm gamma
     std::vector<int64_t> scaleShape = {5120, 40, 2};       // Scale B: (N, ceil(K/128), 2) - 存储shape
-    std::vector<int64_t> pertokenScaleShape = {256, 40, 2}; // Scale A: (M, ceil(K/128), 2)
+    std::vector<int64_t> pertokenScaleShape = {perRankM * RANK_SIZE, 40, 2}; // Scale A: (M, ceil(K/128), 2)
     std::vector<int64_t> y1Shape = {perRankM, 5120};           // output float
     std::vector<int64_t> y2Shape = {perRankM, 5120};           // output bf16
     std::vector<int64_t> xOutShape = {perRankM, 5120};         // output bf16
@@ -222,21 +222,22 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     std::vector<uint8_t> scaleHostData;
     std::vector<uint8_t> pertokenScaleHostData;
     
-    ret = LoadBinFile(inputDir + "/input_a_fp8.bin", x1HostData);
+    std::string rankSuffix = "_rank" + std::to_string(args.rankId) + ".bin";
+    ret = LoadBinFile(inputDir + "/input_a_fp8" + rankSuffix, x1HostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_b_fp8.bin", x2HostData);
+    ret = LoadBinFile(inputDir + "/input_b_fp8" + rankSuffix, x2HostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_scaleA.bin", pertokenScaleHostData);
+    ret = LoadBinFile(inputDir + "/input_scaleA" + rankSuffix, pertokenScaleHostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_scaleB.bin", scaleHostData);
+    ret = LoadBinFile(inputDir + "/input_scaleB" + rankSuffix, scaleHostData);
     CHECK_RET(ret == 0, return ret);
     
     // Load y (bf16) and gamma (fp32) from bin files
     std::vector<uint16_t> yHostData;
     std::vector<float> gammaHostData;
-    ret = LoadBinFile(inputDir + "/input_y.bin", yHostData);
+    ret = LoadBinFile(inputDir + "/input_y" + rankSuffix, yHostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_gamma.bin", gammaHostData);
+    ret = LoadBinFile(inputDir + "/input_gamma" + rankSuffix, gammaHostData);
     CHECK_RET(ret == 0, return ret);
     
     // 输出初始化为0
