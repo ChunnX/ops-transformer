@@ -16,6 +16,7 @@
 #include "acl/acl_rt.h"
 #include "acl/acl_dump.h"
 #include "../op_kernel/moe_distribute_comm_ctx.h"
+#include "../op_kernel/mc2_moe_context.h"
 #include "mc2_log.h"
 #include "mc2_tiling_utils.h"
 #include <chrono>
@@ -191,24 +192,50 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf)
     return 0;
 }
 
-inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
+inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, const char *op)
 {
     // Get hccl context from its addr
-    std::vector<uint8_t> hcclArgs(sizeof(HcclCombinOpParam), 0);
-    auto ret = aclrtMemcpy(hcclArgs.data(), sizeof(HcclCombinOpParam), (void *)argsAddr, sizeof(HcclCombinOpParam),
-                           ACL_MEMCPY_DEVICE_TO_HOST);
-    if (ret != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy HcclCombinOpParam from device to host failed. ret = %d", ret);
-        return -1;
-    }
-    HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
-    if (winContext == nullptr) {
-        OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
-        return -1;
-    }
-    OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u", winContext->rankId, winContext->rankDim);
+    // V2分支
+    if (std::strstr(op, "V2") != nullptr) {
+        std::vector<uint8_t> hcclArgs(sizeof(HcclCombinOpParam), 0);
+        auto ret = aclrtMemcpy(hcclArgs.data(), sizeof(HcclCombinOpParam), (void *)argsAddr, sizeof(HcclCombinOpParam),
+                            ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy HcclCombinOpParam from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
+        if (winContext == nullptr) {
+            OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
+            return -1;
+        }
+        OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u", winContext->rankId, winContext->rankDim);
 
-    void* winAddr = reinterpret_cast<void *>(winContext->windowsIn[winContext->rankId]);
+        void* winAddr = reinterpret_cast<void *>(winContext->windowsIn[winContext->rankId]);
+    }
+    // V3分支
+    else if (std::strstr(op, "V3") != nullptr) {
+        std::vector<uint8_t> hcclArgs(sizeof(Mc2MoeContext), 0);
+        auto ret = aclrtMemcpy(hcclArgs.data(), sizeof(Mc2MoeContext), (void *)argsAddr, sizeof(Mc2MoeContext),
+                            ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy Mc2MoeContext from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        Mc2MoeContext* winContext = reinterpret_cast<Mc2MoeContext *>(hcclArgs.data());
+        if (winContext == nullptr) {
+            OP_LOGE(OP_NAME, "Cast to winContext failed. Mc2MoeContext is null.");
+            return -1;
+        }
+        OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u", winContext->epRankId);
+
+        void* winAddr = reinterpret_cast<void *>(winContext->epHcclBuffer_[winContext->epRankId]);
+    }
+    else {
+        OP_LOGE(OP_NAME, "Get winarr does not support this operator, op_name = %s", op);
+        return -1;
+    }
+
     if (winAddr == nullptr) {
         OP_LOGE(OP_NAME, "Get winaddr failed.");
         return -1;
@@ -332,7 +359,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
     } else if (std::strstr(socName, "Ascend950") != nullptr) {
-        if (ProcessArgsForA5(argsAddr, winContent) != 0) {
+        if (ProcessArgsForA5(argsAddr, winContent, op) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }
