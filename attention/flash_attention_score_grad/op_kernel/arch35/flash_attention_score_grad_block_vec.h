@@ -1224,9 +1224,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDq(FagConstInfo &
                     ((dataCopyPadParams.blockCount - 1) * dataCopyPadParams.dstStride));
                 uint64_t writeStartAddr = constInfo.deterConstInfo.dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddr = writeStartAddr + totalCopySizeBytes;
-                uint16_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
+                uint64_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
                     dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
-                if (avaliableRows == 0) {
+                if (avaliableRows <= 0) {
                     continue;
                 }
                 dataCopyPadParams.blockCount = avaliableRows;
@@ -1404,9 +1404,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDqkv(LocalTensor<
                     ((dataCopyPadParams.blockCount - 1) * dataCopyPadParams.dstStride));
                 uint64_t writeStartAddr = constInfo.deterConstInfo.dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddr = writeStartAddr + totalCopySizeBytes;
-                uint16_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
+                uint64_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
                     dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
-                if (avaliableRows == 0) {
+                if (avaliableRows <= 0) {
                     continue;
                 }
                 dataCopyPadParams.blockCount = avaliableRows;
@@ -1506,7 +1506,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::WriteDataToDkv(LocalTensor<CA
                     dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
                 uint16_t avaliableRowsDv = FindAvailableRows<DV_IDX>(constInfo, writeStartAddrDv, writeLastAddrDv,
                     dataCopyDvPadParams.blockCount, dataCopyDvPadParams.blockLen, dataCopyDvPadParams.dstStride);
-                if (avaliableRowsDk == 0 && avaliableRowsDv == 0) {
+                if (avaliableRowsDk <= 0 && avaliableRowsDv <= 0) {
                     continue;
                 }
                 dataCopyPadParams.blockCount = avaliableRowsDk;
