@@ -1,199 +1,168 @@
 # 同名头文件整改技术方案
 
-## 1. 背景与目标
+## 1. 项目背景
 
-项目中存在多组同名头文件（`grouped_matmul_utils.h`、`static_diag_constant.h`、`tool.h`），分布在不同模块目录下。同名文件会带来编译歧义、头文件保护宏冲突、重复代码难以维护等隐患。
+在 `ops-transformer` 仓库中，存在多组**同名头文件**分布在不同模块目录下，主要包括以下三组：
 
-**整改目标：**
-1. 消除所有同名文件；
-2. 不允许存在同名但内容不同的文件；
-3. **将逻辑相同的代码段（常量、函数、结构体）抽取到公共文件**，统一格式与命名；
-4. **逻辑不一致的代码段保留差异**；仅仅是代码格式、变量命名差异的，统一后抽取；
-5. **宏和条件编译宏块不处理重复**，仅处理常量和方法；
-6. 无风险修改，引用方代码无需改动。
+- `grouped_matmul_utils.h`
+- `static_diag_constant.h`
+- `tool.h`
 
----
+同名头文件会带来以下隐患：
 
-## 2. 整改原则
+1. **编译歧义**：不同目录下的同名文件在编译器搜索路径中可能产生冲突，导致包含到错误的文件。
+2. **头文件保护宏冲突**：多个同名文件若使用相同的保护宏，后包含的文件内容会被预处理器跳过，导致符号缺失。
+3. **重复代码难以维护**：逻辑相同的常量、函数模板在多处重复定义，后续修改容易遗漏。
+4. **代码审查困难**：同名文件在 diff、代码搜索时难以区分来源模块。
+
+## 2. 整改目标
+
+1. 消除全仓范围内的同名头文件。
+2. 对逻辑相同的代码段（常量、函数模板、结构体/枚举）抽取到公共文件中统一维护。
+3. 对逻辑不一致的代码段保留差异，不重命名、不强制统一。
+4. 对宏定义和条件编译块保持原样，不参与抽取。
+5. 确保引用方的业务代码**零改动**，访问方式与整改前完全一致。
+6. 裁剪后若头文件仅剩版权头 + 保护宏 + 单条 `#include`，视为空包装文件，直接删除。
+
+## 3. 整改原则
 
 | 原则 | 说明 |
 |------|------|
-| **唯一文件名** | 整改后全仓库范围内不存在同名头文件。 |
-| **逻辑相同则抽取** | 常量、函数模板、结构体/枚举等逻辑相同，仅格式/命名/注释差异的，统一后抽取到公共文件。 |
-| **逻辑不同则保留** | 参数类型不同、条件编译不同、实现逻辑不同、功能差异的代码段，保留在各自的差异文件中。 |
-| **宏与条件编译不处理** | `#define` 宏块、`#if/#ifdef` 条件编译包裹的代码段，保持原样，不参与抽取。 |
-| **零引用方修改** | 通过 `using` 声明将公共符号引入原命名空间，确保引用方的访问方式与整改前完全一致。 |
+| **唯一文件名** | 整改后全仓库范围内不再存在同名头文件。 |
+| **逻辑相同则抽取** | 仅格式、命名、注释差异的代码段，统一后抽取到公共文件。 |
+| **逻辑不同则保留** | 参数类型不同、条件编译不同、实现逻辑不同的代码段保留在各自差异文件中。 |
+| **宏与条件编译不处理** | `#define` 宏块、`#if/#ifdef` 包裹的代码段保持原样。 |
+| **零引用方修改** | 通过 `using` 声明将公共符号引入原命名空间，确保引用方访问方式不变。 |
 | **宏名同步** | 重命名文件时同步更新头文件保护宏，确保全局唯一。 |
-| **空文件删除** | 若裁剪后头文件仅剩版权头 + 保护宏 + 单条 `#include`，视为空包装文件，直接删除，让引用方改引公共文件。 |
+| **空文件删除** | 若裁剪后仅剩单条 `#include`，直接删除，引用方改引公共文件。 |
 
----
+## 4. 总体架构
 
-## 3. grouped_matmul_utils.h
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#0288d1', 'lineColor': '#0288d1', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#e8f5e9'}}}%%
+flowchart TB
+    subgraph BEFORE["整改前：多组同名文件"]
+        direction TB
+        G1["grouped_matmul_utils.h<br/>(mc2 + gmm 各 1 个)"]
+        S1["static_diag_constant.h<br/>(mc2 + gmm 各 1 个)"]
+        T1["tool.h<br/>(mc2 + gmm arch35 +<br/>gmm a16w4_msd +<br/>gmm_finalize_routing 各 1 个)"]
+    end
 
-全仓共存在 **2** 个同名文件。
+    subgraph AFTER["整改后：差异文件 + 公共文件"]
+        direction TB
+        subgraph DIFF1["grouped_matmul_utils 整改结果"]
+            G2["mc2_grouped_matmul_utils.h<br/>差异文件"]
+            G3["grouped_matmul_utils.h<br/>差异文件（gmm 保持原名）"]
+            G4["grouped_matmul_utils_common.h<br/>公共文件"]
+        end
 
-### 3.1 文件分布
+        subgraph DIFF2["static_diag_constant 整改结果"]
+            S2["mc2_weight_quant_static_diag_constant.h<br/>差异文件"]
+            S3["gmm_a16w4_msd_static_diag_constant.h<br/>差异文件"]
+        end
 
-| 文件 | 路径 | 行数 | 头文件保护宏 | 命名空间 |
-|------|------|------|--------------|----------|
-| A | `mc2/3rd/grouped_matmul/op_kernel/grouped_matmul_utils.h` | 370 | `MC2_GROUPED_MATMUL_UTILS_H` | `MC2_GROUPED_MATMUL` |
-| B | `gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h` | 378 | `ASCENDC_GROUPED_MATMUL_UTILS_H` | `GROUPED_MATMUL` |
+        subgraph DIFF3["tool 整改结果"]
+            T2["mc2_weight_quant_tool.h<br/>差异文件"]
+            T3["gmm_a16w4_msd_tool.h<br/>差异文件"]
+            T4["tool_common.h<br/>跨模块公共文件"]
+            T5["gmm_weight_quant_arch35_tool_common.h<br/>gmm 模块内公共文件"]
+        end
+    end
 
-### 3.2 代码段差异分析
-
-| 代码段 | 文件 A | 文件 B | 差异类型 | 处理结论 |
-|--------|--------|--------|----------|----------|
-| 版权头、头文件包含逻辑 | 年份 2026，无 `ASC_DEVKIT_MAJOR` 判断 | 年份 2025，有 `ASC_DEVKIT_MAJOR >= 9` | 文件头基础设施 | 保留差异 |
-| 宏定义块（`DTYPE_L0C_LOCAL`、`V310_GMM_QUANT` 等） | 缩进方式 A | 缩进方式 B | 宏块 | **按原则不处理** |
-| `INT8_BITS` 等常量 | 注释前空格数不同 | 注释前空格数不同 | 格式差异 | **逻辑相同，抽取** |
-| `MMType`、`MMImplType` | 字段排列相同，换行格式不同 | 字段排列相同，换行格式不同 | 格式差异 | **逻辑相同，抽取** |
-| `ActiveType` 枚举 | 换行格式不同 | 换行格式不同 | 格式差异 | **逻辑相同，抽取** |
-| `GreatestCommonDivisor` | 参数名 `(T x, T b)` | 参数名 `(T a, T b)` | 变量命名差异 | **逻辑相同，统一命名后抽取** |
-| `Max`、`Min`、`AlignUp`、`AlignDown`、`GetTensorAddr`、`GetTypeBits` | 签名换行/缩进不同 | 签名换行/缩进不同 | 格式差异 | **逻辑相同，抽取** |
-| `GenGmmConf` | 字段排列相同，缩进不同 | 字段排列相同，缩进不同 | 格式差异 | **逻辑相同，抽取** |
-| `GetSplitValueFromGroupList` | 参数类型 `MC2GMMBaseParams`，条件编译不含 `__NPU_ARCH__ == 3113` | 参数类型 `GMMBaseParams`，条件编译含 `__NPU_ARCH__ == 3113` | 逻辑不一致（类型+条件编译） | **保留差异** |
-| `NZ_CFG_MDL`、`matmulCFGUnitFlag` | 被 `#if/#else/#endif` 包裹 | 被 `#if/#else/#endif` 包裹 | 条件编译包裹 | **按原则不处理** |
-
-### 3.3 公共代码段提取方案
-
-新建公共文件：`common/include/op_kernel/grouped_matmul_utils_common.h`
-
-- **头文件保护宏：** `GROUPED_MATMUL_UTILS_COMMON_H`
-- **命名空间：** `CommonGMMUtils`
-- **内容：** 包含 A、B 中逻辑相同的全部常量、函数模板、结构体/枚举（约 30 个代码段，150+ 行）
-
-公共文件中的 `GreatestCommonDivisor` 统一参数名为 `(T a, T b)`。其余代码统一采用规范格式（4 空格缩进、函数签名换行等）。
-
-### 3.4 文件重命名与裁剪方案
-
-| 原路径 | 新文件名 | 新头文件保护宏 | 裁剪后保留内容 |
-|--------|----------|----------------|----------------|
-| `mc2/3rd/grouped_matmul/op_kernel/grouped_matmul_utils.h` | `mc2_grouped_matmul_utils.h` | `MC2_GROUPED_MATMUL_UTILS_H` | 版权头、头文件包含逻辑、宏定义块、`#include` 公共文件、`using namespace CommonGMMUtils;`、`GetSplitValueFromGroupList`（差异函数）、`NZ_CFG_MDL`（条件编译） |
-| `gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h` | （保持原名） | `ASCENDC_GROUPED_MATMUL_UTILS_H` | 同上，保留各自的差异代码 |
-
-**裁剪后文件内容示例（mc2 版本）：**
-
-```cpp
-#ifndef MC2_GROUPED_MATMUL_UTILS_H
-#define MC2_GROUPED_MATMUL_UTILS_H
-
-#if ((defined(__CCE_AICORE__) && (__CCE_AICORE__ == 310)) && !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3113))
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-#include "kernel_tiling/kernel_tiling.h"
-#include "lib/matmul_intf.h"
-#include "../../../../common/include/op_kernel/grouped_matmul_utils_common.h"
-
-// 宏定义块保持原样（按原则不处理）
-// ...
-
-namespace MC2_GROUPED_MATMUL {
-using namespace AscendC;
-using namespace CommonGMMUtils;  // 引入所有公共常量、函数、结构体
-
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ != 310
-__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset,
-    const MC2GMMBaseParams *__restrict &gmmBaseParams, const GlobalTensor<int64_t> &groupListGm)
-{
-    // 保留原实现
-}
-#endif
-
-// NZ_CFG_MDL、matmulCFGUnitFlag 等条件编译代码保持原样
-// ...
-
-} // namespace MC2_GROUPED_MATMUL
-
-#endif // MC2_GROUPED_MATMUL_UTILS_H
+    BEFORE ==>|重命名 + 抽取公共代码 + 删除空包装| AFTER
 ```
 
-> **设计说明：** `using namespace CommonGMMUtils;` 将公共符号全部引入 `MC2_GROUPED_MATMUL` 命名空间。引用方通过 `using namespace MC2_GROUPED_MATMUL;` 或完全限定名访问时，行为与整改前完全一致，**无需任何修改**。
+## 5. grouped_matmul_utils.h 整改方案
 
-### 3.5 被引用位置与 #include 更新
+### 5.1 问题描述
 
-**共 20 处引用：**
+全仓存在 **2** 个同名文件，分别位于 `mc2` 和 `gmm` 模块。两文件包含约 150+ 行逻辑完全相同的常量、函数模板和结构体，但因分属不同模块而重复定义。
 
-| 序号 | 引用方路径 | 原 #include | 新 #include |
-|------|-----------|-------------|-------------|
-| 1 | `mc2/3rd/grouped_matmul/op_kernel/quant_utils.h` | `"grouped_matmul_utils.h"` | `"mc2_grouped_matmul_utils.h"` |
-| 2 | `mc2/3rd/grouped_matmul/op_kernel/gqmm_cube_on_the_fly.h` | `"grouped_matmul_utils.h"` | `"mc2_grouped_matmul_utils.h"` |
-| 3 | `gmm/grouped_matmul/op_kernel/grouped_matmul_a4w4.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 4 | `gmm/grouped_matmul/op_kernel/grouped_matmul.cpp` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 5 | `gmm/grouped_matmul/op_kernel/grouped_matmul_vector.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 6 | `gmm/grouped_matmul/op_kernel/grouped_matmul_antiquant_a16w8_msd.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 7 | `gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 8 | `gmm/grouped_matmul/op_kernel/grouped_matmul_antiquant_a8w4_msd_new.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 9 | `gmm/grouped_matmul/op_kernel/grouped_matmul_quant_mixcore.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 10 | `gmm/grouped_matmul/op_kernel/grouped_matmul_antiquant_a8w4_msd.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 11 | `gmm/grouped_matmul/op_kernel/grouped_matmul.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 12 | `gmm/grouped_matmul/op_kernel/grouped_matmul_autotiling_a8w4.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 13 | `gmm/grouped_matmul/op_kernel/grouped_matmul_antiquant_a8w4.h` | `"grouped_matmul_utils.h"` | `"grouped_matmul_utils.h"` |
-| 14 | `gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h` | `"../../grouped_matmul_utils.h"` | `"../../grouped_matmul_utils.h"` |
-| 15 | `gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_mix_online_dynamic.h` | `"../../grouped_matmul_utils.h"` | `"../../grouped_matmul_utils.h"` |
-| 16 | `gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h` | `"../../grouped_matmul_utils.h"` | `"../../grouped_matmul_utils.h"` |
-| 17 | `gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_pertile_kernel.h` | `"../../grouped_matmul_utils.h"` | `"../../grouped_matmul_utils.h"` |
-| 18 | `gmm/grouped_matmul/op_kernel/arch35/non_quant/grouped_matmul_basic_kernel.h` | `"../../grouped_matmul_utils.h"` | `"../../grouped_matmul_utils.h"` |
-| 19 | `gmm/grouped_matmul/op_kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_controller.h` | `"../grouped_matmul_utils.h"` | `"../grouped_matmul_utils.h"` |
-| 20 | `examples/fast_kernel_launch_example/csrc/grouped_matmul/ascend910b/op_kernel/grouped_matmul.h` | `"gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h"` | `"gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h"` |
+| 维度 | mc2 版本 | gmm 版本 |
+|------|---------|---------|
+| 路径 | `mc2/3rd/grouped_matmul/op_kernel/grouped_matmul_utils.h` | `gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h` |
+| 头文件保护宏 | `MC2_GROUPED_MATMUL_UTILS_H` | `ASCENDC_GROUPED_MATMUL_UTILS_H` |
+| 命名空间 | `MC2_GROUPED_MATMUL` | `GROUPED_MATMUL` |
+| 行数 | 约 370 | 约 378 |
 
----
+**关键差异：**
+- 版权头年份、`ASC_DEVKIT_MAJOR` 判断逻辑不同（保留差异）。
+- 宏定义块（`DTYPE_L0C_LOCAL`、`V310_GMM_QUANT` 等）属于条件编译，不参与抽取。
+- `GetSplitValueFromGroupList` 函数参数类型和条件编译逻辑不同（保留差异）。
+- 其余常量、函数模板、结构体/枚举逻辑相同，仅存在格式、命名、注释差异。
 
-## 4. static_diag_constant.h
+### 5.2 整改策略
 
-全仓共存在 **2** 个同名文件。
+**新建公共文件：**
 
-### 4.1 文件分布
+- 路径：`common/include/op_kernel/grouped_matmul_utils_common.h`
+- 命名空间：`CommonGMMUtils`
+- 内容：提取两文件中逻辑相同的全部常量、函数模板、结构体/枚举（约 30 个代码段）。
 
-| 文件 | 路径 | 行数 | 头文件保护宏 | 命名空间 | 内容 |
-|------|------|------|--------------|----------|------|
-| A | `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h` | 49 | `WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H` | `Mc2WeightQuantBatchMatmulV2` | `int8_t FIXP_EYE_DIAG[1024]` |
-| B | `gmm/grouped_matmul/op_kernel/a16w4_msd/static_diag_constant.h` | 34 | `GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H` | `GROUPED_MATMUL::A16W4Msd` | `int16_t C1C2_EYE_DIAG[256]` |
+**差异文件处理：**
 
-### 4.2 代码段差异分析
+| 原文件 | 新文件名 | 保护宏 | 保留内容 |
+|--------|---------|--------|---------|
+| mc2 版本 | `mc2_grouped_matmul_utils.h` | `MC2_GROUPED_MATMUL_UTILS_H` | 版权头、头文件包含逻辑、宏定义块、差异函数 `GetSplitValueFromGroupList`、条件编译代码块 |
+| gmm 版本 | 保持原名 `grouped_matmul_utils.h` | 保持 `ASCENDC_GROUPED_MATMUL_UTILS_H` | 同上，保留各自的差异代码 |
 
-| 代码段 | 文件 A | 文件 B | 差异类型 | 处理结论 |
-|--------|--------|--------|----------|----------|
-| 数组类型 | `int8_t[1024]` | `int16_t[256]` | 逻辑不一致 | 保留差异 |
-| 数组数值 | eye 矩阵 `1, 0, 0...` | 缩放后 eye 矩阵 `7176, 0, 0...` | 逻辑不一致 | 保留差异 |
-| `#include` | 无 | 有 `kernel_operator.h` | 文件头差异 | 保留差异 |
-| 命名空间 | `Mc2WeightQuantBatchMatmulV2` | `GROUPED_MATMUL::A16W4Msd` | 模块差异 | 保留差异 |
+**符号引入机制：**
 
-**关键结论：** 两个文件内容完全不同，不存在任何逻辑相同的代码段。**不抽取公共文件**。
+在差异文件的命名空间内通过 `using namespace CommonGMMUtils;` 将公共符号全部引入原命名空间。引用方通过 `using namespace MC2_GROUPED_MATMUL;` 或完全限定名访问时，行为与整改前完全一致，无需任何业务代码修改。
 
-### 4.3 整改方案
+### 5.3 引用方更新
 
-| 原路径 | 新文件名 | 新头文件保护宏 | 处理说明 |
-|--------|----------|----------------|----------|
-| `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h` | `mc2_weight_quant_static_diag_constant.h` | `MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H` | 保留全部内容 |
-| `gmm/grouped_matmul/op_kernel/a16w4_msd/static_diag_constant.h` | `gmm_a16w4_msd_static_diag_constant.h` | `GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H` | 保留全部内容，顺带修复末尾注释与宏名不一致的 bug |
+全仓共 **20** 处引用需要更新 `#include` 路径：
 
-### 4.4 被引用位置与 #include 更新
+- **mc2 模块内（2 处）**：原 `"grouped_matmul_utils.h"` → 新 `"mc2_grouped_matmul_utils.h"`。
+- **gmm 模块内（17 处）**：保持 `"grouped_matmul_utils.h"` 不变（gmm 版本未重命名）。
+- **examples（1 处）**：保持 `"gmm/grouped_matmul/op/kernel/grouped_matmul_utils.h"` 不变。
 
-| 序号 | 引用方路径 | 原 #include | 新 #include |
-|------|-----------|-------------|-------------|
-| 1 | `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe.h` | `"static_diag_constant.h"` | `"mc2_weight_quant_static_diag_constant.h"` |
-| 2 | `gmm/grouped_matmul/op_kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_cube_service.h` | `"static_diag_constant.h"` | `"gmm_a16w4_msd_static_diag_constant.h"` |
+## 6. static_diag_constant.h 整改方案
 
----
+### 6.1 问题描述
 
-## 5. tool.h
+全仓存在 **2** 个同名文件，分别位于 `mc2` 和 `gmm` 模块。但两文件内容完全不同：
 
-全仓共存在 **4** 个同名文件。
+| 维度 | mc2 版本 | gmm 版本 |
+|------|---------|---------|
+| 路径 | `mc2/.../fixpipe/static_diag_constant.h` | `gmm/.../a16w4_msd/static_diag_constant.h` |
+| 数组类型 | `int8_t[1024]` | `int16_t[256]` |
+| 数组含义 | eye 对角阵 | 缩放后 eye 对角阵 |
+| 命名空间 | `Mc2WeightQuantBatchMatmulV2` | `GROUPED_MATMUL::A16W4Msd` |
 
-### 5.1 文件分布
+**关键结论：** 两个文件内容完全不同，不存在任何逻辑相同的代码段，**不抽取公共文件**。
 
-| 文件 | 路径 | 行数 | 头文件保护宏 | 命名空间 |
-|------|------|------|--------------|----------|
-| A | `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/tool.h` | 566 | `TOOL_H` | `Mc2WeightQuantBatchMatmulV2` |
-| B | `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h` | 177 | `GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H` | `WeightQuantBatchMatmulV2::Arch35` |
-| C | `gmm/grouped_matmul/op_kernel/a16w4_msd/tool.h` | 103 | `GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H` | `GROUPED_MATMUL::A16W4Msd` |
-| D | `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/tool.h` | 178 | `GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H` | `WeightQuantBatchMatmulV2::Arch35` |
+### 6.2 整改策略
 
-> **隐患：** B、C、D 三个文件头文件保护宏完全相同，若在同一编译单元被同时包含，后两个文件内容会被预处理器跳过。
+仅执行重命名，添加模块前缀以避免同名冲突：
 
-### 5.2 整改前后结构示意图
+| 原文件 | 新文件名 | 保护宏 |
+|--------|---------|--------|
+| mc2 版本 | `mc2_weight_quant_static_diag_constant.h` | `MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H` |
+| gmm 版本 | `gmm_a16w4_msd_static_diag_constant.h` | `GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H` |
+
+顺带修复 gmm 版本末尾注释与保护宏名不一致的问题。
+
+### 6.3 引用方更新
+
+全仓共 **2** 处引用需要更新 `#include` 路径：
+
+- mc2 模块内（1 处）：原 `"static_diag_constant.h"` → 新 `"mc2_weight_quant_static_diag_constant.h"`。
+- gmm 模块内（1 处）：原 `"static_diag_constant.h"` → 新 `"gmm_a16w4_msd_static_diag_constant.h"`。
+
+## 7. tool.h 整改方案
+
+### 7.1 问题描述
+
+全仓存在 **4** 个同名文件，是本次整改最复杂的组别。隐患包括：
+
+1. **头文件保护宏冲突**：其中 3 个文件使用完全相同的保护宏 `GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H`，在同一编译单元中后两个文件会被跳过。
+2. **跨模块与模块内双重重复**：
+   - 跨模块层面：`mc2`、`gmm arch35`、`gmm a16w4_msd` 之间存在逻辑相同的常量与函数。
+   - 模块内层面：`gmm arch35` 与 `gmm_finalize_routing` 的两份 `tool.h` 内容几乎完全相同。
+
+### 7.2 整改前后结构示意图
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#0288d1', 'lineColor': '#0288d1', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#e8f5e9'}}}%%
@@ -246,478 +215,92 @@ flowchart TB
     BEFORE ==>|裁剪 + 重命名 + 删除空包装| AFTER
 ```
 
-**说明：**
-- **红色删除线文件**：`gmm_arch35_weight_quant_tool.h`、`gmm_finalize_routing_arch35_tool.h` 裁剪后仅剩单条 `#include`，判定为空包装文件，直接删除。
-- **蓝色差异文件**：`mc2_weight_quant_tool.h`、`gmm_a16w4_msd_tool.h` 保留各自独有函数/常量，通过 `#include` 引入公共代码。
-- **绿色公共文件**：`tool_common.h` 供跨模块使用；`gmm_weight_quant_arch35_tool_common.h` 供 gmm arch35 场景内使用。
-- **引用方零改动**：业务代码中访问的符号命名空间与整改前完全一致。
-
-### 5.3 代码段差异分析
-
-#### A（mc2） vs B（gmm/arch35）
-
-| 代码段 | 文件 A | 文件 B | 差异类型 | 处理结论 |
-|--------|--------|--------|----------|----------|
-| `Min` | 完整函数，格式不同 | 完整函数，格式不同 | 格式差异 | **逻辑相同，抽取** |
-| `CeilAlign<T>` | 完整函数，格式不同 | 完整函数，格式不同 | 格式差异 | **逻辑相同，抽取** |
-| `CeilAlign(uint32_t)` | 完整函数，格式不同 | 完整函数，格式不同 | 格式差异 | **逻辑相同，抽取** |
-| `QUADRUPLE_BUFFER_NUM` 等 13 个常量 | 字符级相同 | 字符级相同 | 格式/位置差异 | **逻辑相同，抽取** |
-| `DataCopyPad2D` | 4 个重载，含 `InitAtomicAddr` 等 | 2 个重载，无 `InitAtomicAddr` | 功能差异 | 保留差异 |
-| `CeilDiv` / `CeilDivide` | `CeilDiv`（A 独有） | `CeilDivide`（B 独有） | 函数名差异+跨模块 | A 保留 `CeilDiv`，B 保留 `CeilDivide`，不跨模块抽取 |
-| `SyncProcessor`、`InitAtomicAddr` | A 独有 | B 无 | 功能差异 | 保留差异 |
-| `MatmulL1GmType` | A 有类似定义 | B 有类似定义 | 字段排列/格式差异 | **逻辑相同，抽取到 gmm 模块公共文件** |
-| `using` 声明块 | 部分相同 | 部分相同 | 文件头基础设施 | 保留差异 |
-
-#### B（gmm/arch35） vs C（gmm/a16w4_msd）
-
-| 代码段 | 文件 B | 文件 C | 差异类型 | 处理结论 |
-|--------|--------|--------|----------|----------|
-| `CeilAlign<T>` | 完整函数 | 完整函数 | 格式差异 | **逻辑相同，抽取** |
-| `DataCopyPad2D`（LocalTensor←GlobalTensor） | 支持 `fp4x2` 类型，无中文注释 | 仅支持 `int4b_t`，有中文注释 | 逻辑不一致（支持类型不同） | 保留差异 |
-| `CeilDivide` / `CeilDiv` | `CeilDivide` | `CeilDiv` | 函数名差异 | B 保留 `CeilDivide`，C 保留 `CeilDiv` |
-| `GetKBUnit` | 泛型 `1024/sizeof(T)` | 分支实现（int4/int8/float/half） | 逻辑不一致 | 保留差异 |
-
-#### B（gmm/arch35） vs D（gmm_finalize_routing）
-
-| 代码段 | 文件 B | 文件 D | 差异类型 | 处理结论 |
-|--------|--------|--------|----------|----------|
-| 全部常量、函数、结构体 | 字符级相同 | 字符级相同 | 格式差异 | **逻辑相同，抽取到 gmm 模块公共文件** |
-| `VEC_MAX_ELEM_B32` | **无** | 有 | 功能差异 | 保留在 D（通过公共文件 + 差异常量方式） |
-| 末尾换行 | 无 | 有 | 格式差异 | 公共文件补全换行 |
-
-### 5.4 公共代码段提取方案
-
-**公共文件 1（跨模块公共代码段）：**
-- **路径：** `common/include/op_kernel/tool_common.h`
-- **头文件保护宏：** `TOOL_COMMON_H`
-- **命名空间：** `CommonTool`
-- **内容：** A、B、C 中逻辑相同的常量与函数模板（约 16 个代码段）
-
-```cpp
-#ifndef TOOL_COMMON_H
-#define TOOL_COMMON_H
-
-namespace CommonTool {
-
-static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
-static constexpr int32_t DOUBLE_BUFFER_NUM = 2;
-static constexpr int32_t SINGLE_BUFFER_NUM = 1;
-static constexpr uint32_t FP32_BLOCK_SIZE = 8;
-static constexpr uint32_t FP16_BLOCK_SIZE = 16;
-static constexpr int32_t C0_SIZE_B8 = 32;
-static constexpr uint64_t MX_GROUPSIZE = 32;
-static constexpr uint64_t FLAG_ID_MAX = 16;
-static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
-static constexpr uint64_t SYNC_AIC_FIX_AIV_VF_FLAG = 3;
-static constexpr uint64_t SYNC_AIV_MTE3_AIC_FIX_FLAG = 4;
-static constexpr uint64_t SYNC_MODE4 = 4;
-static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
-
-template <typename T>
-__aicore__ inline T Min(T a, T b)
-{
-    return a < b ? a : b;
-}
-
-template <typename T>
-__aicore__ inline T CeilAlign(T a, T b)
-{
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b * b;
-}
-
-__aicore__ inline uint32_t CeilAlign(uint32_t a, uint32_t b)
-{
-    ASCENDC_ASSERT(
-        a <= (std::numeric_limits<uint32_t>::max() - b), { KERNEL_LOG(KERNEL_ERROR, "CeilAlign uint32 over limit."); });
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b * b;
-}
-
-} // namespace CommonTool
-
-#endif // TOOL_COMMON_H
-```
-
-**公共文件 2（gmm 模块内 arch35 场景公共代码段）：**
-- **路径：** `gmm/common/op_kernel/gmm_weight_quant_arch35_tool_common.h`
-- **头文件保护宏：** `GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H`
-- **命名空间：** `WeightQuantBatchMatmulV2::Arch35`
-- **内容：** B、D 中逻辑相同的全部代码（约 160+ 行），去除已在公共文件 1 中的内容
-
-```cpp
-#ifndef GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
-#define GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
-
-#include "../../../common/include/op_kernel/tool_common.h"
-#include "kernel_operator.h"
-
-using AscendC::CrossCoreSetFlag;
-using AscendC::CrossCoreWaitFlag;
-using AscendC::DataCopyExtParams;
-using AscendC::DataCopyPadExtParams;
-using AscendC::fp8_e8m0_t;
-using AscendC::GetUserWorkspace;
-using AscendC::GlobalTensor;
-using AscendC::int4b_t;
-using AscendC::IsSameType;
-using AscendC::LocalTensor;
-using AscendC::ONE_BLK_SIZE;
-using AscendC::TPosition;
-using AscendC::VECTOR_REG_WIDTH;
-using matmul::MatmulCallBackFunc;
-using matmul::MatmulImpl;
-using matmul::MatmulType;
-using matmul::MatmulTypeWithScale;
-
-#define SHORT_MIX_LOG(format, ...)
-
-namespace WeightQuantBatchMatmulV2::Arch35 {
-
-using namespace CommonTool;
-
-enum class QuantType {
-    NONE = 0,
-    PER_TENSOR = 1,
-    PER_CHANNEL = 2,
-    PER_GROUP = 3,
-    MX = 4,
-};
-
-// buffer 相关定义
-static constexpr int64_t L1_SIZE = 512;
-static constexpr int64_t L1_SIZE_BYTE = L1_SIZE * 1024;
-static constexpr int64_t L1_HALF_SIZE = L1_SIZE / 2;
-static constexpr int64_t L1_SIZE_WITH_QUANTSCALE = 504;
-static constexpr int64_t L1_SIZE_WITH_QUANTSCALE_BYTE = L1_SIZE_WITH_QUANTSCALE * 1024;
-static constexpr int64_t BIAS_L1_SIZE = 4;
-static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
-static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
-static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
-
-// 控制参数定义
-static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
-static constexpr uint64_t SCALE_COPY_GROUP_SIZE = 2;
-static constexpr int32_t SCALE_COPY_DEFAULT_STRIDE = 0;
-static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
-
-// 参数约束定义
-static constexpr uint64_t VEC_MAX_ELEM_B16_LOCAL = VECTOR_REG_WIDTH / sizeof(half);
-static constexpr uint64_t VEC_MAX_ELEM_B32 = VECTOR_REG_WIDTH / sizeof(float);
-static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
-
-// 函数定义
-template <typename T>
-__aicore__ inline T CeilDivide(T a, T b)
-{
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b;
-}
-
-template <typename T>
-__aicore__ inline void DataCopyPad2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint32_t blockCount,
-                                     uint32_t blockLen, uint32_t dstInnerLength, uint32_t srcInnerLength)
-{
-    DataCopyExtParams params;
-    params.blockCount = blockCount;
-    params.blockLen = blockLen * sizeof(T);
-    params.srcStride = (srcInnerLength - blockLen) * sizeof(T);
-    params.dstStride = (dstInnerLength - blockLen) * sizeof(T) / ONE_BLK_SIZE;
-    DataCopyPadExtParams<T> padParams;
-    if (blockLen % (32 / sizeof(T)) != 0) {
-        padParams.isPad = true;
-        padParams.rightPadding = CeilAlign(blockLen, static_cast<uint32_t>(32 / sizeof(T))) - blockLen;
-        padParams.paddingValue = 0;
-    }
-
-    if constexpr (IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value ||
-                  IsSameType<T, fp4x2_e1m2_t>::value) {
-        params.blockLen = params.blockLen >> 1;
-        params.srcStride = params.srcStride >> 1;
-        params.dstStride = params.dstStride >> 1;
-        padParams.rightPadding = padParams.rightPadding >> 1;
-    }
-    DataCopyPad(dst, src, params, padParams);
-}
-
-template <typename T>
-__aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src, uint32_t dim1,
-                                     uint32_t dim0, uint32_t srcFullDim0, uint32_t dstFullDim0)
-{
-    DataCopyExtParams params;
-    params.blockCount = dim1;
-    params.blockLen = dim0 * sizeof(T);
-    params.srcStride = CeilDivide((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
-    params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
-    SHORT_MIX_LOG("dim1 %d dim0 %d dstFullDim0 %d blockCount %d blockLen %d srcStride %d dstStride %d", dim1, dim0,
-                  dstFullDim0, params.blockCount, params.blockLen, params.srcStride, params.dstStride);
-    DataCopyPad(dst, src, params);
-}
-
-template <typename T>
-__aicore__ constexpr uint32_t GetKBUnit()
-{
-    if constexpr (IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value ||
-                  IsSameType<T, fp4x2_e1m2_t>::value) {
-        return 2048;
-    }
-    return 1024 / sizeof(T);
-}
-
-template <typename xType, QuantType antiQuantType>
-__aicore__ constexpr bool IsMxA8W4()
-{
-    return antiQuantType == QuantType::MX && IsSameType<xType, fp8_e4m3fn_t>::value;
-}
-
-template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
-          LayoutMode LAYOUT = LayoutMode::NONE, bool IBSHARE = false>
-struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
-    constexpr static TPosition srcPos = TPosition::GM;
-};
-
-} // namespace WeightQuantBatchMatmulV2::Arch35
-
-#endif // GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
-```
-
-### 5.5 文件重命名与裁剪方案
-
-| 原路径 | 新文件名 | 新头文件保护宏 | 裁剪后保留内容 |
-|--------|----------|----------------|----------------|
-| `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/tool.h` | `mc2_weight_quant_tool.h` | `MC2_WEIGHT_QUANT_TOOL_H` | 版权头、mc2 独有的 `using` 声明、`#include` 公共文件 1、`using namespace CommonTool;`、调试打印模板（`Mc2DoPrintData`、`PRINT_DATA`）、独有常量（`SYNC_MODE0` 等）、独有函数（`CeilDiv`、`FloorDiv`、`InitAtomicAddr`、`SyncProcessor` 等） |
-| `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/tool.h` | ~~`gmm_arch35_weight_quant_tool.h`~~ | ~~`GMM_ARCH35_WEIGHT_QUANT_TOOL_H`~~ | **已删除**（空包装文件） |
-| `gmm/grouped_matmul/op/kernel/a16w4_msd/tool.h` | `gmm_a16w4_msd_tool.h` | `GMM_A16W4_MSD_TOOL_H` | 版权头、a16w4_msd 独有的 `using` 声明、`#include` 公共文件 1、`using CommonTool::CeilAlign;`、独有函数（`CeilDiv`、`DataCopyPad2D`、`GetKBUnit`） |
-| `gmm/grouped_matmul_finalize_routing/op/kernel/arch35/common/tool.h` | ~~`gmm_finalize_routing_arch35_tool.h`~~ | ~~`GMM_FINALIZE_ROUTING_ARCH35_TOOL_H`~~ | **已删除**（空包装文件） |
-
-**裁剪后文件内容示例：**
-
-**`mc2_weight_quant_tool.h`（原 A）：**
-```cpp
-#ifndef MC2_WEIGHT_QUANT_TOOL_H
-#define MC2_WEIGHT_QUANT_TOOL_H
-
-#include <limits>
-#include "kernel_operator.h"
-#include "lib/matmul_intf.h"
-#include "../../../../common/include/op_kernel/tool_common.h"
-
-// ... mc2 独有的 using 声明 ...
-
-namespace Mc2WeightQuantBatchMatmulV2 {
-using namespace CommonTool;  // 引入 Min、CeilAlign、13 个常量
-
-// ... 保留 mc2 独有的调试打印模板、常量、函数 ...
-
-} // namespace Mc2WeightQuantBatchMatmulV2
-
-#endif // MC2_WEIGHT_QUANT_TOOL_H
-```
-
-**`gmm_a16w4_msd_tool.h`（原 C）：**
-```cpp
-#ifndef GMM_A16W4_MSD_TOOL_H
-#define GMM_A16W4_MSD_TOOL_H
-
-#include "kernel_operator.h"
-#include "../../../../common/include/op_kernel/tool_common.h"
-
-// ... a16w4_msd 独有的 using 声明 ...
-
-namespace GROUPED_MATMUL::A16W4Msd {
-using CommonTool::CeilAlign;  // 仅引入公共的 CeilAlign
-
-// ... 保留 a16w4_msd 独有的 CeilDiv、DataCopyPad2D、GetKBUnit ...
-
-} // namespace GROUPED_MATMUL::A16W4Msd
-
-#endif // GMM_A16W4_MSD_TOOL_H
-```
-
-> **设计说明：**
-> - `mc2_weight_quant_tool.h`、`gmm_a16w4_msd_tool.h` 的引用方**无需修改任何业务代码**。
-> - 原 `gmm_arch35_weight_quant_tool.h` 和 `gmm_finalize_routing_arch35_tool.h` 因裁剪后仅剩单条 `#include`，被判定为空包装文件，直接删除。
-> - 它们的引用方改为直接 `#include gmm_weight_quant_arch35_tool_common.h`，所有符号的可见性与整改前完全一致。
-
-### 5.6 被引用位置与 #include 更新
-
-**引用文件 A（共 13 处）：**
-
-| 序号 | 引用方路径 | 原 #include | 新 #include |
-|------|-----------|-------------|-------------|
-| 1 | `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_nz_splitk.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 2 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2.cpp` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 3 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2_msd_multicore.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 4 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2_msd_split_k.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 5 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2_custom.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 6 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2_msd_group.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 7 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2_custom_weight_nz.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 8 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/weight_quant_batch_matmul_v2_custom_mix_splitk.h` | `"tool.h"` | `"mc2_weight_quant_tool.h"` |
-| 9 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe.h` | `"../tool.h"` | `"../mc2_weight_quant_tool.h"` |
-| 10 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe_stage2.h` | `"../tool.h"` | `"../mc2_weight_quant_tool.h"` |
-| 11 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe_stage1.h` | `"../tool.h"` | `"../mc2_weight_quant_tool.h"` |
-| 12 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/arch35/weight_quant_batch_matmul_v2_asw_block.h` | `"../tool.h"` | `"../mc2_weight_quant_tool.h"` |
-| 13 | `mc2/3rd/weight_quant_batch_matmul_v2/op/kernel/arch35/weight_quant_batch_matmul_v2_adaptive_sliding_window.h` | `"../tool.h"` | `"../mc2_weight_quant_tool.h"` |
-
-**原引用文件 B（共 9 处，现已改为直接引用公共文件 2）：**
-
-| 序号 | 引用方路径 | 原 #include | 新 #include |
-|------|-----------|-------------|-------------|
-| 1 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/basic_block_vf_nd.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 2 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/basic_block_vf_nz.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 3 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/weight_quant_basic_block.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 4 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/basic_block_config.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 5 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/weight_quant_cube_compute.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 6 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/weight_quant_vec_compute.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 7 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/anti_quant_y_vf.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 8 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 9 | `gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/basic_api/weight_quant_basic_api_v1.h` | `"../tool.h"` | `"../../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-
-**引用文件 C（共 4 处）：**
-
-| 序号 | 引用方路径 | 原 #include | 新 #include |
-|------|-----------|-------------|-------------|
-| 1 | `gmm/grouped_matmul/op/kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_controller.h` | `"tool.h"` | `"gmm_a16w4_msd_tool.h"` |
-| 2 | `gmm/grouped_matmul/op/kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_vector_service.h` | `"tool.h"` | `"gmm_a16w4_msd_tool.h"` |
-| 3 | `gmm/grouped_matmul/op/kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_cube_service.h` | `"tool.h"` | `"gmm_a16w4_msd_tool.h"` |
-| 4 | `gmm/grouped_matmul/op/kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_basic_block.h` | `"tool.h"` | `"gmm_a16w4_msd_tool.h"` |
-
-**原引用文件 D（共 5 处，现已改为直接引用公共文件 2）：**
-
-| 序号 | 引用方路径 | 原 #include | 新 #include |
-|------|-----------|-------------|-------------|
-| 1 | `gmm/grouped_matmul_finalize_routing/op/kernel/arch35/common/basic_block_config.h` | `"tool.h"` | `"../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 2 | `gmm/grouped_matmul_finalize_routing/op/kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_resplit_controller.h` | `"../common/tool.h"` | `"../../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 3 | `gmm/grouped_matmul_finalize_routing/op/kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_vcv_basic_block.h` | `"../common/tool.h"` | `"../../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 4 | `gmm/grouped_matmul_finalize_routing/op/kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_cube_compute.h` | `"../common/tool.h"` | `"../../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-| 5 | `gmm/grouped_matmul_finalize_routing/op/kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_vec_compute.h` | `"../common/tool.h"` | `"../../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"` |
-
----
-
-## 6. 实施步骤
-
-### Step 1：创建特性分支
-
-```bash
-git checkout -b refactor/unique-header-names
-```
-
-### Step 2：创建公共目录与公共文件
-
-```bash
-mkdir -p common/include/op_kernel
-mkdir -p gmm/common/op_kernel
-```
-
-按 **3.3 节**、**5.4 节** 创建 3 个公共文件并填充内容。
-
-### Step 3：Git 重命名并裁剪原文件
-
-```bash
-# grouped_matmul_utils.h（gmm 保持原名，mc2 重命名）
-git mv mc2/3rd/grouped_matmul/op_kernel/grouped_matmul_utils.h \
-       mc2/3rd/grouped_matmul/op_kernel/mc2_grouped_matmul_utils.h
-# gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h 保持原名
-
-# static_diag_constant.h
-git mv mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/mc2_weight_quant_static_diag_constant.h
-git mv gmm/grouped_matmul/op_kernel/a16w4_msd/static_diag_constant.h \
-       gmm/grouped_matmul/op_kernel/a16w4_msd/gmm_a16w4_msd_static_diag_constant.h
-
-# tool.h
-git mv mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/tool.h \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-git mv gmm/grouped_matmul/op/kernel/a16w4_msd/tool.h \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_tool.h
-# gmm arch35 tool.h 和 gmm finalize_routing tool.h 裁剪后为空包装文件，直接删除
-rm gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/tool.h
-rm gmm/grouped_matmul_finalize_routing/op/kernel/arch35/common/tool.h
-```
-
-### Step 4：同步更新头文件保护宏
-
-```bash
-# mc2 grouped_matmul_utils.h 保持 MC2_GROUPED_MATMUL_UTILS_H 不变
-# gmm grouped_matmul_utils.h 保持 ASCENDC_GROUPED_MATMUL_UTILS_H 不变
-
-# mc2 static_diag_constant.h
-sed -i 's/WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H/MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H/g' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/mc2_weight_quant_static_diag_constant.h
-
-# gmm static_diag_constant.h
-sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H/GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H/g' \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_static_diag_constant.h
-sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H/GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H/' \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_static_diag_constant.h
-
-# mc2 tool.h
-sed -i 's/#ifndef TOOL_H/#ifndef MC2_WEIGHT_QUANT_TOOL_H/' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-sed -i 's/#define TOOL_H/#define MC2_WEIGHT_QUANT_TOOL_H/' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-sed -i 's/#endif$/#endif \/\/ MC2_WEIGHT_QUANT_TOOL_H/' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-
-# gmm a16w4_msd tool.h
-sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H/GMM_A16W4_MSD_TOOL_H/g' \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_tool.h
-```
-
-### Step 5：裁剪原文件内容
-
-按 **3.4 节**、**5.5 节** 的示例，删除原文件中已抽取到公共文件的代码段，添加 `#include` 与 `using` 声明。
-
-### Step 6：批量更新所有 #include
-
-按 **3.5 节**、**4.4 节**、**5.6 节** 的更新总表，对引用方文件进行字符串替换。
-
-### Step 7：删除空包装文件
-
-检查裁剪后的 `gmm_arch35_weight_quant_tool.h` 和 `gmm_finalize_routing_arch35_tool.h`：
-- 若仅剩版权头 + 保护宏 + 单条 `#include`，直接删除；
-- 将其引用方改为直接 `#include gmm_weight_quant_arch35_tool_common.h`。
-
-### Step 8：全量搜索残留
-
-```bash
-grep -rn '"grouped_matmul_utils.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
-grep -rn '"static_diag_constant.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
-grep -rn '"tool.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
-```
-
-### Step 9：编译验证
-
-```bash
-mkdir -p build && cd build
-cmake .. -DENABLE_TEST=ON
-make -j$(nproc)
-```
-
-### Step 10：提交
-
-```bash
-git add -A
-git commit -m "refactor: rename duplicate headers and extract common segments
-
-- grouped_matmul_utils.h: extract common constants/functions into grouped_matmul_utils_common.h
-- static_diag_constant.h: rename only (content completely different)
-- tool.h: extract cross-module common into tool_common.h,
-  extract gmm arch35 common into gmm_weight_quant_arch35_tool_common.h
-- Delete empty wrapper headers (gmm_arch35_weight_quant_tool.h,
-  gmm_finalize_routing_arch35_tool.h) and inline their #include
-- Update all #include paths and header guard macros"
-```
-
----
-
-## 7. 风险与回滚
+### 7.3 代码差异分析
+
+#### 7.3.1 mc2 版本 vs gmm arch35 版本
+
+| 代码段 | 差异类型 | 处理结论 |
+|--------|---------|---------|
+| `Min`、`CeilAlign`、13 个基础常量 | 格式/位置差异 | **抽取到跨模块公共文件** |
+| `DataCopyPad2D` | 重载数量和功能差异 | 保留差异 |
+| `CeilDiv` / `CeilDivide` | 函数名差异 + 跨模块 | 各自保留，不跨模块抽取 |
+| `SyncProcessor`、`InitAtomicAddr` | mc2 独有功能 | 保留差异 |
+| `MatmulL1GmType` | 字段排列/格式差异 | **抽取到 gmm 模块内公共文件** |
+
+#### 7.3.2 gmm arch35 版本 vs gmm a16w4_msd 版本
+
+| 代码段 | 差异类型 | 处理结论 |
+|--------|---------|---------|
+| `CeilAlign` | 格式差异 | **抽取到跨模块公共文件** |
+| `DataCopyPad2D`（LocalTensor←GlobalTensor） | 支持类型不同 | 保留差异 |
+| `CeilDivide` / `CeilDiv` | 函数名差异 | 各自保留 |
+| `GetKBUnit` | 实现逻辑不同 | 保留差异 |
+
+#### 7.3.3 gmm arch35 版本 vs gmm_finalize_routing 版本
+
+| 代码段 | 差异类型 | 处理结论 |
+|--------|---------|---------|
+| 全部常量、函数、结构体 | 字符级相同 | **抽取到 gmm 模块内公共文件** |
+| `VEC_MAX_ELEM_B32` | gmm_finalize_routing 独有 | 保留差异（通过公共文件 + 差异常量方式） |
+
+### 7.4 整改策略
+
+**公共文件 1：跨模块公共代码**
+
+- 路径：`common/include/op_kernel/tool_common.h`
+- 命名空间：`CommonTool`
+- 内容：提取 mc2、gmm arch35、gmm a16w4_msd 中逻辑相同的常量与函数模板（约 16 个代码段）。
+- 被引用方：`mc2_weight_quant_tool.h`、`gmm_a16w4_msd_tool.h`、`gmm_weight_quant_arch35_tool_common.h`。
+
+**公共文件 2：gmm 模块内 arch35 公共代码**
+
+- 路径：`gmm/common/op_kernel/gmm_weight_quant_arch35_tool_common.h`
+- 命名空间：`WeightQuantBatchMatmulV2::Arch35`
+- 内容：提取 gmm arch35 与 gmm_finalize_routing 中逻辑相同的全部代码（约 160+ 行），去除已在公共文件 1 中的内容。
+- 被引用方：原 gmm arch35 的 9 个引用方 + 原 gmm_finalize_routing 的 5 个引用方，**直接引用**。
+
+**差异文件处理：**
+
+| 原文件 | 新文件名 | 保护宏 | 处理结论 |
+|--------|---------|--------|---------|
+| mc2 版本 | `mc2_weight_quant_tool.h` | `MC2_WEIGHT_QUANT_TOOL_H` | 保留 mc2 独有的调试打印、常量、函数；引入公共文件 1 |
+| gmm arch35 版本 | ~~`gmm_arch35_weight_quant_tool.h`~~ | ~~`GMM_ARCH35_WEIGHT_QUANT_TOOL_H`~~ | **已删除**（裁剪后仅剩单条 `#include`，判定为空包装文件） |
+| gmm a16w4_msd 版本 | `gmm_a16w4_msd_tool.h` | `GMM_A16W4_MSD_TOOL_H` | 保留 a16w4_msd 独有函数；引入公共文件 1 |
+| gmm_finalize_routing 版本 | ~~`gmm_finalize_routing_arch35_tool.h`~~ | ~~`GMM_FINALIZE_ROUTING_ARCH35_TOOL_H`~~ | **已删除**（裁剪后仅剩单条 `#include`，判定为空包装文件） |
+
+### 7.5 引用方更新
+
+**mc2 模块内（13 处）：** 原 `"tool.h"` → 新 `"mc2_weight_quant_tool.h"`。
+
+**gmm a16w4_msd 模块内（4 处）：** 原 `"tool.h"` → 新 `"gmm_a16w4_msd_tool.h"`。
+
+**原 gmm arch35 引用方（9 处）：** 原 `"tool.h"` 或 `"../tool.h"` → **直接引用** `gmm_weight_quant_arch35_tool_common.h`。
+
+**原 gmm_finalize_routing 引用方（5 处）：** 原 `"tool.h"` 或 `"../common/tool.h"` → **直接引用** `gmm_weight_quant_arch35_tool_common.h`。
+
+## 8. 实施步骤
+
+1. **创建特性分支**：在独立分支上进行整改，避免影响主干。
+2. **创建公共目录**：新建 `common/include/op_kernel/` 和 `gmm/common/op_kernel/` 子目录。
+3. **创建公共文件**：按第 5、6、7 章的方案填充 3 个公共文件。
+4. **Git 重命名与裁剪**：
+   - 对需要重命名的文件执行 `git mv`。
+   - 对 gmm 的 `grouped_matmul_utils.h` 保持原名。
+   - 对裁剪后为空包装的文件直接 `rm` 并删除。
+5. **同步更新头文件保护宏**：确保每个文件的保护宏全局唯一。
+6. **裁剪原文件内容**：删除已抽取到公共文件的代码段，添加 `#include` 与 `using` 声明。
+7. **批量更新 #include**：按各章节的引用映射表对所有引用方进行字符串替换。
+8. **全量搜索残留**：使用 `grep` 确认旧文件名在仓库中无残留（`build` 目录除外）。
+9. **编译验证**：执行全量编译，确认无编译错误。
+10. **提交代码**：整理 commit message，说明整改范围与影响。
+
+## 9. 风险与应对措施
 
 | 风险项 | 风险等级 | 应对措施 |
-|--------|----------|----------|
-| 遗漏某处 `#include` 未更新 | 中 | Step 8 全量搜索；编译阶段会立即报错（文件找不到），可快速定位。 |
+|--------|---------|---------|
+| 遗漏某处 `#include` 未更新 | 中 | 实施步骤第 8 步全量搜索；编译阶段会立即报错（文件找不到），可快速定位。 |
 | 头文件保护宏替换不完整 | 低 | 宏只在本文件内生效；编译阶段若有冲突会报重定义。 |
-| `using` 引入后符号不可见 | 低 | `using namespace` 在命名空间内部使用，将公共符号引入原命名空间，引用方的访问方式与整改前完全一致。 |
+| `using` 引入后符号不可见 | 低 | `using namespace` 在命名空间内部使用，将公共符号引入原命名空间，引用方访问方式与整改前完全一致。 |
 | 公共文件 `#include` 路径错误 | 中 | 裁剪后的差异文件包含 `#include`，编译时若路径错误会立即报找不到文件。可先 `touch` 空文件验证路径。 |
 | 新目录对编译配置的影响 | 低 | `common/include` 与 `gmm/common` 均为现有目录，新增子目录不影响 CMake 配置。 |
 | 不同分支合并冲突 | 低 | 整改在独立分支进行，合并时若其他分支新增了旧文件名引用，按映射表同步更新。 |
@@ -725,35 +308,31 @@ git commit -m "refactor: rename duplicate headers and extract common segments
 **回滚方案：**
 整改包含公共文件创建、原文件裁剪、字符串替换。若发现问题，可直接丢弃该分支或 `git revert` 整个提交。
 
----
+## 10. 验证 Checklist
 
-## 8. 验证 Checklist
-
-- [ ] 8 个目标旧文件已全部重命名或删除，旧文件名在仓库中不存在（`build` 目录除外）；
+- [ ] 8 个目标旧文件已全部重命名或删除，旧文件名在仓库中不存在（`build` 目录除外）。
 - [ ] 新建 3 个公共文件：
   - `common/include/op_kernel/grouped_matmul_utils_common.h`
   - `common/include/op_kernel/tool_common.h`
   - `gmm/common/op_kernel/gmm_weight_quant_arch35_tool_common.h`
-- [ ] mc2/gmm 的 `grouped_matmul_utils.h` 已裁剪，删除公共代码段，添加 `using namespace CommonGMMUtils;`；
-- [ ] gmm 的 `grouped_matmul_utils.h` 保持原文件名和保护宏；
-- [ ] `gmm_arch35_weight_quant_tool.h`（空包装文件）已删除，其引用方直接引用 `gmm_weight_quant_arch35_tool_common.h`；
-- [ ] `gmm_finalize_routing_arch35_tool.h`（空包装文件）已删除，其引用方直接引用 `gmm_weight_quant_arch35_tool_common.h`；
-- [ ] `mc2_weight_quant_tool.h` 已删除公共代码段，添加 `using namespace CommonTool;`；
-- [ ] `gmm_a16w4_msd_tool.h` 已删除 `CeilAlign<T>`，添加 `using CommonTool::CeilAlign;`；
-- [ ] 所有文件的头文件保护宏已更新，且全局唯一；
-- [ ] 53 处 `#include` 引用已全部更新为新文件名/路径；
-- [ ] `grep` 确认无旧文件名残留；
-- [ ] 全量编译通过；
+- [ ] mc2/gmm 的 `grouped_matmul_utils.h` 已裁剪，删除公共代码段，添加 `using namespace CommonGMMUtils;`。
+- [ ] gmm 的 `grouped_matmul_utils.h` 保持原文件名和保护宏。
+- [ ] `gmm_arch35_weight_quant_tool.h`（空包装文件）已删除，其引用方直接引用 `gmm_weight_quant_arch35_tool_common.h`。
+- [ ] `gmm_finalize_routing_arch35_tool.h`（空包装文件）已删除，其引用方直接引用 `gmm_weight_quant_arch35_tool_common.h`。
+- [ ] `mc2_weight_quant_tool.h` 已删除公共代码段，添加 `using namespace CommonTool;`。
+- [ ] `gmm_a16w4_msd_tool.h` 已删除公共 `CeilAlign`，添加 `using CommonTool::CeilAlign;`。
+- [ ] 所有文件的头文件保护宏已更新，且全局唯一。
+- [ ] 全仓 `#include` 引用已全部更新为新文件名/路径。
+- [ ] `grep` 确认无旧文件名残留。
+- [ ] 全量编译通过。
 - [ ] 单元测试通过（如有）。
 
----
-
-## 9. 附录：整改前后对照总表
+## 11. 附录：整改前后对照总表
 
 | 原文件名 | 原数量 | 整改后文件清单 | 说明 |
 |----------|--------|----------------|------|
-| `grouped_matmul_utils.h` | 2 → 0 | `mc2_grouped_matmul_utils.h` + `grouped_matmul_utils.h` + `grouped_matmul_utils_common.h` | gmm 版本保持原名；逻辑相同的常量/函数/结构体抽取到公共文件 |
-| `static_diag_constant.h` | 2 → 0 | `mc2_weight_quant_static_diag_constant.h` + `gmm_a16w4_msd_static_diag_constant.h` | 内容完全不同，无公共代码段 |
-| `tool.h` | 4 → 0 | `mc2_weight_quant_tool.h` + `gmm_a16w4_msd_tool.h` + `tool_common.h` + `gmm_weight_quant_arch35_tool_common.h` | 跨模块公共代码抽取到 tool_common.h；gmm arch35 公共代码抽取到 gmm_weight_quant_arch35_tool_common.h；空包装文件直接删除 |
+| `grouped_matmul_utils.h` | 2 → 0 | `mc2_grouped_matmul_utils.h` + `grouped_matmul_utils.h` + `grouped_matmul_utils_common.h` | gmm 版本保持原名；逻辑相同的常量/函数/结构体抽取到公共文件。 |
+| `static_diag_constant.h` | 2 → 0 | `mc2_weight_quant_static_diag_constant.h` + `gmm_a16w4_msd_static_diag_constant.h` | 内容完全不同，无公共代码段，仅重命名。 |
+| `tool.h` | 4 → 0 | `mc2_weight_quant_tool.h` + `gmm_a16w4_msd_tool.h` + `tool_common.h` + `gmm_weight_quant_arch35_tool_common.h` | 跨模块公共代码抽取到 `tool_common.h`；gmm arch35 公共代码抽取到 `gmm_weight_quant_arch35_tool_common.h`；空包装文件直接删除。 |
 
 **整改完成后，全仓库范围内上述三个旧文件名将不再存在。**
