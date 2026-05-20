@@ -640,7 +640,7 @@ public:
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         if (likely(runInfo.actVecMSize != 0)) {
             int64_t dstOffset =
-                constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *  + runInfo.actVecMSizeAlign16
+                constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * runInfo.actVecMSizeAlign16 +
                 s2BaseSizeCur * mBaseSize * subLoop;
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor,
                      {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSizeAlign16,
