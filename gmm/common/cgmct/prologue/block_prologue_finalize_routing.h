@@ -156,7 +156,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     uint32_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(vectorCoreNum_));
     singleCount = CeilDiv(singleCount, static_cast<uint64_t>(ONE_CORE_ALIGN_LEN)) * ONE_CORE_ALIGN_LEN;
 
-    uint64_t baseOffset = GetBlockIdx() * singleCount;
+    uint64_t baseOffset = static_cast<uint64_t>(GetBlockIdx() / GetTaskRation()) * singleCount;
     if (baseOffset > totalLen) {
         return;
     }
@@ -259,8 +259,8 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     if ASCEND_IS_AIC {
         return;
     }
-    vectorCoreNum_ = uint32_t(GetBlockNum() * GetTaskRation());
-    if (GetBlockIdx() >= vectorCoreNum_) {
+    vectorCoreNum_ = uint32_t(GetBlockNum() / GetTaskRation());
+    if (GetBlockIdx() / GetTaskRation() >= vectorCoreNum_) {
         return;
     }
     auto sharedInputOffset = params_->sharedInputOffset;
@@ -281,7 +281,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     // one vector core perSize
     auto alignLen = totalOutput > ONE_CORE_ALIGN_LEN ? ONE_CORE_ALIGN_LEN : ONE_CORE_ALIGN_LEN_SMALL;
     singleCount = CeilDiv(singleCount, static_cast<uint64_t>(alignLen)) * alignLen;
-    uint64_t baseOffset = GetBlockIdx() * singleCount;
+    uint64_t baseOffset = static_cast<uint64_t>(GetBlockIdx() / GetTaskRation()) * singleCount;
     if (baseOffset >= totalOutput) {
         return;
     }
