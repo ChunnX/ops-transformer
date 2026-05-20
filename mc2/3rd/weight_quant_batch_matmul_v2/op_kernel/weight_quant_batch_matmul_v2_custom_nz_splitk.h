@@ -23,7 +23,7 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "weight_quant_batch_matmul_v2_constant.h"
-#include "tool.h"
+#include "mc2_weight_quant_tool.h"
 
 using AscendC::AIC;
 using AscendC::AIV;

@@ -12,8 +12,8 @@
  * \file static_diag_constant.h
  * \brief
  */
-#ifndef WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H
-#define WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H
+#ifndef MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
+#define MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
 
 namespace Mc2WeightQuantBatchMatmulV2 {
 // 128*128的eye对角阵
@@ -46,4 +46,4 @@ static constexpr volatile __gm__ int8_t FIXP_EYE_DIAG[1024] = {
     0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 } // namespace Mc2WeightQuantBatchMatmulV2
-#endif // WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H
+#endif // MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H

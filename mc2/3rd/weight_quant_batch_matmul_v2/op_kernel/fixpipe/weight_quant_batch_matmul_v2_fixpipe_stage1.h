@@ -20,7 +20,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../tool.h"
+#include "../mc2_weight_quant_tool.h"
 
 namespace Mc2WeightQuantBatchMatmulV2 {
 

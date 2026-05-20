@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "tool.h"
+#include "../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"
 
 namespace MicroAPI = AscendC::MicroAPI;
 using AscendC::MicroAPI::RegTensor;

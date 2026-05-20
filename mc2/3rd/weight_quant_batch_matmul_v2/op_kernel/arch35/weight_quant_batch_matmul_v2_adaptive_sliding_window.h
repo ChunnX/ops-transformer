@@ -25,7 +25,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../tool.h"
+#include "../mc2_weight_quant_tool.h"
 
 #define LOCAL_TEMPLATE_CLASS_PARAMS                                                                        \
     template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans, \

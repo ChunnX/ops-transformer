@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../tool.h"
+#include "../mc2_weight_quant_tool.h"
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35 {
 struct Mc2ASWTilingParam {

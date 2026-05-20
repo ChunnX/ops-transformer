@@ -233,7 +233,7 @@ __aicore__ inline void LoadBiasToBt(const LocalTensor<DstType> &biasTable, const
                                     const L0CopyAndCalcParams &l0CopyAndCalcParams)
 {
     AscendC::DataCopy(biasTable, biasL1,
-                      {1, static_cast<uint16_t>(CeilDivide(l0CopyAndCalcParams.nL0Size * sizeof(float), 64UL)), 0, 0});
+                      {1, static_cast<uint16_t>(CeilDiv(l0CopyAndCalcParams.nL0Size * sizeof(float), 64UL)), 0, 0});
 }
 
 } // namespace WeightQuantBatchMatmulV2::Arch35
