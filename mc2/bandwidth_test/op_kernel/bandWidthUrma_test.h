@@ -91,7 +91,7 @@ private:
         if (currRankId == epRankId_) {
             currRankId = 0;
         }
-        return (GM_ADDR)urmaCommHandle_[currRankId]->localBufferAddr->bufferInfo->Addr;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->localBufferAddr.bufferInfo.Addr;
     }
 
     __aicore__ inline GM_ADDR GetRemoteBaseAddrByRankId(const int32_t rankId) 
@@ -100,7 +100,7 @@ private:
         if (currRankId == epRankId_) {
             currRankId = 0;
         }
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo->Addr;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr.bufferInfo.Addr;
     }
 
     __aicore__ inline GM_ADDR GetWinWriteLocalAddrByRankId(const int32_t rankId) 
@@ -226,6 +226,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
         urmaCommHandle_[i] = reinterpret_cast<ChannelEntity *>(context_->hcommHandle_[i]); // todo:需要确认
     }
     statusSpaceGm_ = GetLocalBaseAddrByRankId(epRankId_);
+    GlobalTensor<uint32_t> selfDataStatusGMTensor;
     selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + aivId_ * WIN_ADDR_ALIGN)); //1M STATE_SIZE
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankId_, epWorldSize_,
                                                     epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
