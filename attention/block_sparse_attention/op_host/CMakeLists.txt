@@ -22,6 +22,7 @@ if (BUILD_OPS_RTY_KERNEL)
                     -Wno-deprecated-declarations
                     -Werror
                     -fpermissive
+                    -I$(CMAKE_SOURCE_DIR)/3rdparty/catlass/include
     )
 else()
     add_modules_sources(OPTYPE block_sparse_attention ACLNNTYPE aclnn_exclude)
