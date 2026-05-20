@@ -173,6 +173,9 @@ static bool IsTransposePermValid(const ge::GNode &transposeNode, uint32_t parent
 static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, const std::string &patternSuffix)
 {
     std::string patternName = FUSION_PASS_NAME + patternSuffix;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== MakePatternForTransposeD: inputIdx=%u, suffix=%s ===", 
+              inputIdx, patternSuffix.c_str());
+    
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     
     auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensor,
@@ -192,36 +195,45 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     int64_t mmDtype = static_cast<int64_t>(ge::DT_UNDEFINED);
     int64_t commQuantDtype = 0;
     
-    ge::es::EsTensorHolder transposeInput = nullptr;
+    ge::es::EsTensorHolder transposeOutput;  // 存储 TransposeD 的输出
+    ge::es::EsTensorHolder mc2Input;         // 实际传给 MC2 的输入
     bool transGmmWeight = false;
     bool transMmWeight = false;
     
     if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
         auto transposeD = ge::es::TransposeD(gmmWeight, std::vector<int64_t>{0, 2, 1});
-        transposeInput = transposeD;
+        transposeOutput = transposeD;
+        mc2Input = transposeD;
         transGmmWeight = true;
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight, perm=[0,2,1]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
         auto transposeD = ge::es::TransposeD(mmWeight, std::vector<int64_t>{1, 0});
-        transposeInput = transposeD;
+        transposeOutput = transposeD;
+        mc2Input = transposeD;
         transMmWeight = true;
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on mm_weight, perm=[1,0]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
         auto transposeD = ge::es::TransposeD(gmmWeightScale, std::vector<int64_t>{0, 2, 1, 3});
-        transposeInput = transposeD;
+        transposeOutput = transposeD;
+        mc2Input = transposeD;
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight_scale, perm=[0,2,1,3]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
         auto transposeD = ge::es::TransposeD(mmWeightScale, std::vector<int64_t>{1, 0, 2});
-        transposeInput = transposeD;
+        transposeOutput = transposeD;
+        mc2Input = transposeD;
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on mm_weight_scale, perm=[1,0,2]");
     }
     
     auto mc2 = ge::es::QuantGroupedMatMulAlltoAllv(
         gmmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeInput : gmmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? mc2Input : gmmWeight,
         gmmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeInput : gmmWeightScale,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? mc2Input : gmmWeightScale,
         sendCountsTensor, recvCountsTensor,
         mmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? transposeInput : mmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? mc2Input : mmWeight,
         mmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? transposeInput : mmWeightScale,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? mc2Input : mmWeightScale,
         commQuantScale,
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight,
@@ -230,36 +242,84 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     
     auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
+    
+    // 关键：需要捕获两个 tensor - MC2 输出和 TransposeD 输出
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
+    pattern->CaptureTensor({*transposeOutput.GetProducer(), 0});  // 添加捕获 TransposeD
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Pattern created, captured 2 tensors ===");
     return pattern;
 }
 
 std::vector<ge::fusion::PatternUniqPtr> QuantGroupedMatMulAlltoAllvTransposeFusionPass::Patterns()
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for QuantGroupedMatMulAlltoAllvTransposeFusionPass");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Enter Patterns for QuantGroupedMatMulAlltoAllvTransposeFusionPass ===");
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating pattern for GMM_WEIGHT (idx=1)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT), PATTERN_GMM_WEIGHT));
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating pattern for MM_WEIGHT (idx=7)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT), PATTERN_MM_WEIGHT));
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating pattern for GMM_WEIGHT_SCALE (idx=3)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE), PATTERN_GMM_WEIGHT_SCALE));
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating pattern for MM_WEIGHT_SCALE (idx=9)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE), PATTERN_MM_WEIGHT_SCALE));
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Patterns DONE, total %zu patterns ===", patternGraphs.size());
     return patternGraphs;
 }
 
 bool QuantGroupedMatMulAlltoAllvTransposeFusionPass::MeetRequirements(
     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for QuantGroupedMatMulAlltoAllvTransposeFusionPass");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Enter MeetRequirements ===");
 
+    // 1. 平台检查
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Platform check failed (not A5)");
         return false;
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Platform check passed (A5)");
 
+    // 2. 获取 MC2 节点
     ge::fusion::NodeIo mc2NodeIo;
-    OP_LOGE_IF(matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "Get QuantGroupedMatMulAlltoAllv node failed.");
+    if (matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get MC2 node failed");
+        return false;
+    }
     ge::GNode mc2Node = mc2NodeIo.node;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got MC2 node, name=%s", 
+              mc2Node.GetName().GetString());
 
+    // 3. 获取 TransposeD 节点 (idx=1)
+    ge::fusion::NodeIo transposeNodeIo;
+    if (matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIo) != ge::SUCCESS) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get TransposeD node failed");
+        return false;
+    }
+    ge::GNode transposeNode = transposeNodeIo.node;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got TransposeD node, name=%s, type=%s",
+              transposeNode.GetName().GetString(), transposeNode.GetType().GetString());
+
+    // 4. 检查 TransposeD 的 perm 属性
+    std::vector<int64_t> permValue;
+    if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get perm attr failed");
+        return false;
+    }
+    
+    std::string permStr = "[";
+    for (size_t i = 0; i < permValue.size(); ++i) {
+        permStr += std::to_string(permValue[i]);
+        if (i < permValue.size() - 1) permStr += ", ";
+    }
+    permStr += "]";
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: TransposeD perm=%s", permStr.c_str());
+
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== MeetRequirements SUCCESS ===");
     return true;
 }
 
