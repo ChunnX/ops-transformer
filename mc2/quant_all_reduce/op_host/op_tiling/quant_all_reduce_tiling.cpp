@@ -154,7 +154,7 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 
 struct QuantAllReduceCompileInfo {};
 
-ge::graphStatus TilingParseForQuantAllReduce(const gert::TilingParseContext *context)
+ge::graphStatus TilingParseForQuantAllReduce(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

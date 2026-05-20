@@ -160,7 +160,7 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
 
 struct QuantReduceScatterCompileInfo {};
  
-ge::graphStatus TilingParseForQuantReduceScatter(const gert::TilingParseContext *context)
+ge::graphStatus TilingParseForQuantReduceScatter(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
