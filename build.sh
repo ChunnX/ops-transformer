@@ -544,7 +544,7 @@ function build_example()
             echo "We In Mpirun ${n_pes} Processes."
 
             # 生成日志包装脚本（每次运行覆盖，确保最新）
-            LOG_DIR="../logs_${EXAMPLE_NAME}_$(date +%Y%m%d_%H%M%S)"
+            LOG_DIR="../logs_${EXAMPLE_NAME}_$(date +%Y%m%d)"
             mkdir -p "${LOG_DIR}"
             WRAPPER="${LOG_DIR}/wrapper.sh"
             {

@@ -1430,7 +1430,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         __gm__ ACLSHMEMAIVUDMAInfo* udmaInfo = aclshmemi_udma_qp_info_fetch();
         AscendC::printf("====================== Shmem udmaInfo address: %p ====================== \n", udmaInfo);
 
-        __gm__ ACLSHMEMUDMAWQCtx* qpCtxEntry = aclshmemi_udma_get_qp_ctx(udmaInfo, aclshmem_n_pes() - aclshmem_my_pe(), 0, 0);
+        __gm__ ACLSHMEMUDMAWQCtx* qpCtxEntry = aclshmemi_udma_get_qp_ctx(udmaInfo, (aclshmem_my_pe() + 1) % aclshmem_n_pes(), 0, 0);
         AscendC::printf("====================== Shmem udma qpCtxEntry address: %p ====================== \n", qpCtxEntry);
 
         auto wqeSize = 1 << qpCtxEntry->baseBkShift; // basebk_shift
@@ -1440,7 +1440,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         AscendC::printf("====================== Shmem udma curHead: %d ====================== \n", curHead);
 
         __gm__ uint32_t* doorBellAddr = (__gm__ uint32_t*)qpCtxEntry->dbAddr;
-        AscendC::printf("====================== Shmem udma doorBel: %d ====================== \n", (*doorBellAddr));
+        AscendC::printf("====================== Shmem udma doorBell: %d ====================== \n", (*doorBellAddr));
 
         AscendC::TBuf<AscendC::TPosition::VECOUT> buf;
         tpipe_->InitBuffer(buf, UB_ALIGN_SIZE * 2);
@@ -1473,25 +1473,29 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         // }
         // aclshmemx_udma_quiet(target_pe);
 
-        // aclshmemx_barrier_all_vec();
+        aclshmemx_barrier_all_vec();
 
-        // if (AscendC::GetBlockIdx() == 0) {
-        //     start = AscendC::GetSystemCycle();
-        //     for (int32_t idx = 0; idx < benchIter; idx++) {
-        //         aclshmemx_udma_put_nbi(
-        //             custom_ptr + my_pe * message_length, custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
-        //             message_length, target_pe);
-        //         aclshmemx_udma_quiet(target_pe);
-        //     }
-        //     end = AscendC::GetSystemCycle();
-        //     end2 = AscendC::GetSystemCycle();
+        if (AscendC::GetBlockIdx() == 0) {
+            start = AscendC::GetSystemCycle();
+            for (int32_t pe = 0; pe < aclshmem_n_pes(); pe++) {
+                if (pe == aclshmem_my_pe()) {
+                    continue;
+                }
+                aclshmemx_udma_put_nbi(
+                    custom_ptr + my_pe * message_length, custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
+                    message_length, pe);
+                aclshmemx_udma_quiet(pe);
+            }
+            end = AscendC::GetSystemCycle();
+            end2 = AscendC::GetSystemCycle();
 
-        //     *((__gm__ int64_t*)(expertIdsGMTensor_.GetPhyAddr())) = end - start;
-        //     *((__gm__ int64_t*)((expertIdsGMTensor_.GetPhyAddr()) + 8)) = end2 - start;
-        //     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
-        // }
+            *((__gm__ int64_t*)(expertIdsGMTensor_.GetPhyAddr())) = end - start;
+            *((__gm__ int64_t*)((expertIdsGMTensor_.GetPhyAddr()) + 8)) = end2 - start;
 
-        // aclshmemx_barrier_all_vec();
+            AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
+        }
+
+        aclshmemx_barrier_all_vec();
 
         // if (aivId_ < aivUsedAllToAll_) {
         //     AllToAllDispatch(); // 前面核all2all发送
