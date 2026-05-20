@@ -298,8 +298,6 @@ class FunctionKvRmsNormRopeCache(BaseApi):
                 v_cache[index[batch], :, :] = v[batch, :, :].to(v_cache.dtype)
             k_cache = rearrange(k_cache, '(b s) n d -> b s n d', b=k_cache_shape[0])
             v_cache = rearrange(v_cache, '(b s) n d -> b s n d', b=v_cache_shape[0])
-            k_cache = k_cache
-            v_cache = v_cache
 
         elif cache_mode == "PA_NZ":
             # print("isPA_NZ")

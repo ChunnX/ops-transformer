@@ -75,7 +75,7 @@ class Functionaclnnqkvrmsnormropecache(AclnnBaseApi):
 
 @register("function_qkv_rms_norm_rope_cache")
 class FunctionAdanceStep(BaseApi):
-    def qkvRmsNormRopeCache_gloden(self, qkv, gamma_q, gamma_k, cos, sin, index, q_out_ori, k_cache_ori, v_cache_ori, k_scale, v_scale, k_offset, v_offset, qkv_size, headNums, eps, cache_mode):
+    def qkvRmsNormRopeCache_golden(self, qkv, gamma_q, gamma_k, cos, sin, index, q_out_ori, k_cache_ori, v_cache_ori, k_scale, v_scale, k_offset, v_offset, qkv_size, headNums, eps, cache_mode):
         q_out = copy.deepcopy(q_out_ori) # q_out_ori为np，
         k_cache = copy.deepcopy(k_cache_ori)
         v_cache = copy.deepcopy(v_cache_ori)
@@ -164,7 +164,7 @@ class FunctionAdanceStep(BaseApi):
         random.seed(idx)
         index = input_funcs(qkv_size[0], qkv_size[1], kCache.shape[0], kCache.shape[2])
 
-        qOut, kCache, vCache, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant = self.qkvRmsNormRopeCache_gloden(qkv, qGamma, kGamma, cos, sin, index, qOut, 
+        qOut, kCache, vCache, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant = self.qkvRmsNormRopeCache_golden(qkv, qGamma, kGamma, cos, sin, index, qOut, 
                         kCache, vCache, kScaleOptional, vScaleOptional, kOffsetOptional, vOffsetOptional, qkv_size, num_heads, epslison, cacheModeOptional)
         return qOut, kCache, vCache, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant
 

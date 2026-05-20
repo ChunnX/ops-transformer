@@ -1,4 +1,4 @@
-# Copyright (c) Huawei Technologies Co., Ltd. 2012-2023. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 import numpy as np
 import torch
