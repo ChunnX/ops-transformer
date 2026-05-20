@@ -27,8 +27,8 @@
  * 仅执行 SendToMoeExpert，用于单向带宽测试
  */
 
-#ifndef BANDWIDTH_TEST_H
-#define BANDWIDTH_TEST_H
+#ifndef BANDWIDTH_URMA_TEST_H
+#define BANDWIDTH_URMA_TEST_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
