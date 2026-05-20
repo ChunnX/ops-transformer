@@ -1301,9 +1301,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
             (__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
-    } else {
-        FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134);
-        LoadAlign(vreg_x_max_f32_b, pre_loop_max);
     }
     
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
@@ -1312,9 +1309,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Muls(vreg_x_max_f32_b, vreg_x_max_f32_b, dScale, preg_108);
     Sub(vreg_x_max_f32_b, vreg_x_max_f32_b, vreg_ln_p_scale, preg_108);
-    FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -1483,6 +1477,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         LoadAlign(vreg_l0, new_global_sum);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)pre_loop_sum, vreg_l0, preg_134);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
         Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
         Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -1493,6 +1488,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         RegTensor<float> vreg_l1;
         LoadAlign(vreg_l0, first_loop_sum);
         LoadAlign(vreg_l1, pre_loop_sum);
+        FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134);
+        LoadAlign(vreg_x_max_f32_b, pre_loop_max);
+        Muls(vreg_x_max_f32_b, vreg_x_max_f32_b, dScale, preg_108);
+        Sub(vreg_x_max_f32_b, vreg_x_max_f32_b, vreg_ln_p_scale, preg_108);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
         Mul(vreg_l0, vreg_subloop_update, vreg_l0, preg_134);
         Add(vreg_x_sum0, vreg_l0, vreg_x_sum0, preg_134);
         Mul(vreg_l1, vreg_x_max_f32_b, vreg_l1, preg_134);
@@ -1500,6 +1500,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
     }
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
+        (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
