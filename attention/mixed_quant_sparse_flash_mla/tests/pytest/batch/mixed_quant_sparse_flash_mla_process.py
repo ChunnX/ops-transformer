@@ -84,7 +84,7 @@ def test_sas_quant_process_graph(test_data, device_id=0):
 
     print("test_data:", params)
     print("npu_mixed_quant_sparse_flash_mla_metadata...")
-    metadata = torch.ops.custom.npu_mixed_quant_sparse_flash_mla_metadata(
+    metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
                                 head_dim = metadata_input['head_dim'],
@@ -169,7 +169,7 @@ def test_sas_quant_process_ci(test_data, device_id=0):
     
     print("test_data:", params)
     print("npu_mixed_quant_sparse_flash_mla_metadata...")
-    metadata = torch.ops.custom.npu_mixed_quant_sparse_flash_mla_metadata(
+    metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
                                 head_dim = metadata_input['head_dim'],
@@ -209,7 +209,7 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                 cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None,
                                 seqused_q=None,
-                                seqused_ori_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,,
+                                seqused_ori_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
                                 seqused_cmp_kv=None,
                                 ori_topk_length=None,
                                 cmp_topk_length=None,
