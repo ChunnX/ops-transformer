@@ -101,8 +101,10 @@ static ge::graphStatus CheckAxisKShapeForMatmulAlltoAll(const gert::InferShapeCo
     if (shape.k1 != shape.k2) {
         const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
         const auto x2Shape = context->GetInputShape(INDEX_IN_X2);
-        std::string x1ShapeStr = "[" + std::to_string(x1Shape->GetDim(0U)) + "," + std::to_string(x1Shape->GetDim(1U)) + "]";
-        std::string x2ShapeStr = "[" + std::to_string(x2Shape->GetDim(0U)) + "," + std::to_string(x2Shape->GetDim(1U)) + "]";
+        std::string x1ShapeStr = "[" + std::to_string(x1Shape->GetDim(0U)) + "," +
+                                 std::to_string(x1Shape->GetDim(1U)) + "]";
+        std::string x2ShapeStr = "[" + std::to_string(x2Shape->GetDim(0U)) + "," +
+                                 std::to_string(x2Shape->GetDim(1U)) + "]";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x1 and x2",
             (x1ShapeStr + " and " + x2ShapeStr).c_str(),
             "The K axis of x1 should match the K axis of x2");
