@@ -1013,8 +1013,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // -- 分发到三个 dynamic loop --
 #if MEGA_MOE_DYN_DEBUG
         if (blockIdx_ == MegaMoeImpl::DBG_BK_A || blockIdx_ == MegaMoeImpl::DBG_BK_B) {
-            AscendC::PRINTF("[DISPATCH bk=%u ct=%d sub=%u] expert=%u tnG1=%u tnG2=%u waveCnt=%lu m_i=%lu\n",
-                            blockIdx_, g_coreType, subBlockIdx_, expertIdx,
+            AscendC::PRINTF("[rank=%u DISPATCH bk=%u ct=%d sub=%u] expert=%u tnG1=%u tnG2=%u waveCnt=%lu m_i=%lu\n",
+                            rankId_, blockIdx_, g_coreType, subBlockIdx_, expertIdx,
                             tileNumGmm1, tileNumGmm2, waveCnt, m_i);
         }
 #endif
