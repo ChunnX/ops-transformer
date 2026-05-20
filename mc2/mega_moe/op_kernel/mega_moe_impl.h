@@ -62,7 +62,11 @@ constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 // 只看两组 (AIC + AIV0 + AIV1) 的 PRINTF, 32 核全打日志噪音太大且会爆缓冲。
 // 调试别的核改这两个即可。
 constexpr int32_t DBG_BK_A = 0;
-constexpr int32_t DBG_BK_B = 30;
+constexpr int32_t DBG_BK_B = 25;  // 之前是 30, 改成 25 因为日志显示 bk=25 出现 -2 over-clear, 重点观察
+
+// spin 超时阈值 (单位: cycle); 超过这个时间没等到就打日志 + break, 不再死等。
+// 1GHz 时钟下 50_000_000 cycle ≈ 50ms — 远超正常 spin 几 us, 但远短于框架 15min watchdog。
+constexpr int64_t SPIN_TIMEOUT_CYCLES = 50000000LL;
 
 // ============================================================================
 // DYN_SCHED_DESIGN — 去中心化原子认领 (Decentralized Atomic Work-Stealing)
@@ -182,6 +186,7 @@ __aicore__ inline bool ClaimNextTask(
     __gm__ int32_t* flagBase = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
                                 flagOffsetForExpert;
 
+    int64_t _outerSpinStart = AscendC::GetSystemCycle();
     while (true) {
         // === 优先级 1: GMM2 已解锁的 wave ===
         for (uint64_t w = 0; w < waveCnt; ++w) {
@@ -234,8 +239,19 @@ __aicore__ inline bool ClaimNextTask(
             return false;  // 真的没活了
         }
         // 还有 GMM2 没解锁 (sw 没跑完) → spin 一会再重试
-        // (不在 spin 里打 PRINTF: 缓冲会被刷爆把外面的关键打印挤掉, 卡在哪一步通过
-        //  ClaimNextTask 外面的打印就能看出来——上一条 CLAIM 之后没新打印就是卡这了)
+        if (AscendC::GetSystemCycle() - _outerSpinStart > SPIN_TIMEOUT_CYCLES) {
+            // 超时: 打印每个 wave 的 flag / counter 状态后强制 return false (假装没活了, 让本核退出)
+            int dbgBk = static_cast<int>(GetBlockIdx() / GetTaskRation());
+            AscendC::PRINTF("[AIC bk=%d] *** TIMEOUT ClaimNextTask exp=%u waveCnt=%lu tnG1=%u tnG2=%u\n",
+                            dbgBk, expertIdx, waveCnt, tileNumGmm1, tileNumGmm2);
+            for (uint64_t w = 0; w < waveCnt; ++w) {
+                AscendC::PRINTF("  wave=%lu flag=%d g1cnt=%d g2cnt=%d\n", w,
+                                AscendC::ReadGmByPassDCache(flagBase + w),
+                                AscendC::ReadGmByPassDCache(gmm1Counter + w),
+                                AscendC::ReadGmByPassDCache(gmm2Counter + w));
+            }
+            return false;  // 强制退出 main loop, 让 AIC 走 END 流程 — 至少能跑完一些
+        }
         int64_t st = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - st < 100) {}
     }
@@ -285,6 +301,15 @@ __aicore__ inline void ClearTaskSlot(
     AscendC::AtomicAdd(p, -packed);  // 清回 0
     // ★ 同 WriteTaskSlot, 保证 AtomicAdd commit 后才发 NotifyCube
     PipeBarrier<PIPE_ALL>();
+#if MEGA_MOE_DYN_DEBUG
+    // 诊断 over-clear: 如果 clear 完 slot 变负, 说明这次 clear 是冗余的 (AIV 对同一 slot 多 clear 了一次)。
+    // 打印不限 DBG_BK, 任何核出现都要看到。
+    int32_t after = AscendC::ReadGmByPassDCache(p);
+    if (after < 0) {
+        AscendC::PRINTF("*** ClearTaskSlot OVER-CLEAR: bk=%d ch=%d pp=%d packed=%d slot_after=%d\n",
+                        blockIdx, channel, pp, packed, after);
+    }
+#endif
 }
 
 
@@ -430,7 +455,14 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             if (loopIdx == coreInGroup) {
                 uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
+                int64_t _spinStart = AscendC::GetSystemCycle();
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                    if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                        AscendC::PRINTF("[static GMM1 AIC bk=%d] *** TIMEOUT spin dispatch flag target=%u cur=%d\n",
+                                        (int)(GetBlockIdx() / GetTaskRation()), targetValue,
+                                        AscendC::ReadGmByPassDCache(flagValueAddr));
+                        break;
+                    }
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
@@ -729,7 +761,14 @@ __aicore__ inline void GroupMatmul2(
                         static_cast<int64_t>(L1_TILE_N))});
                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
+                int64_t _spinStart = AscendC::GetSystemCycle();
                 while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                    if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                        AscendC::PRINTF("[static GMM2 AIC bk=%d] *** TIMEOUT spin swiglu→gmm2 flag target=%u cur=%d (动态调度下: 说明某个 wave 的 GMM1 epi atomic_add 没跑齐)\n",
+                                        (int)(GetBlockIdx() / GetTaskRation()), targetLoops,
+                                        AscendC::ReadGmByPassDCache(flagValueAddr));
+                        break;
+                    }
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
@@ -777,9 +816,18 @@ __aicore__ inline void GroupMatmul2(
             }
         } else {
             // AIV: 等待对应C核完成并combine发送
-            while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
-                int64_t st = GetSystemCycle();
-                while (GetSystemCycle() - st < 100) {}
+            {
+                int64_t _spinStart = GetSystemCycle();
+                while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
+                    if (GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                        AscendC::PRINTF("[static GMM2 AIV1 bk=%d] *** TIMEOUT spin rowReadyFlags loopIdx=%u cur=%d (AIC 未 atomic_add 或顺序问题)\n",
+                                        (int)blockIdx, (unsigned)loopIdx,
+                                        ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx));
+                        break;
+                    }
+                    int64_t st = GetSystemCycle();
+                    while (GetSystemCycle() - st < 100) {}
+                }
             }
             // [TRACE] sp7: AIV1 第一个 tile 等到 rowReady flag
             if (isFirstTile) {
@@ -866,7 +914,14 @@ __aicore__ inline void DynamicAicLoop(
     __gm__ int32_t* dispatchFlagAddr = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
     {
         uint32_t targetValue = params.tilingData->epWorldSize * params.tilingData->blockNumPerEP;
+        int64_t _spinStart = AscendC::GetSystemCycle();
         while (targetValue != AscendC::ReadGmByPassDCache(dispatchFlagAddr)) {
+            if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT spin dispatch flag exp=%u target=%u cur=%d\n",
+                                rankId, blockIdx, expertIdx, targetValue,
+                                AscendC::ReadGmByPassDCache(dispatchFlagAddr));
+                break;
+            }
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {}
         }
@@ -960,7 +1015,14 @@ __aicore__ inline void DynamicAicLoop(
                 int32_t gmm2SlotIdx = blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + 0;
                 __gm__ int32_t* gmm2SlotPtr =
                     (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + gmm2SlotIdx;
+                int64_t _spinStart = AscendC::GetSystemCycle();
                 while (AscendC::ReadGmByPassDCache(gmm2SlotPtr) != 0) {
+                    if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                        AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT spin G2 slot==0 exp=%u iter=%d slot=%d\n",
+                                        rankId, blockIdx, expertIdx, taskSeq + 1,
+                                        AscendC::ReadGmByPassDCache(gmm2SlotPtr));
+                        break;
+                    }
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 50) {}
                 }
@@ -1035,7 +1097,14 @@ __aicore__ inline void DynamicAicLoop(
         int32_t gmm1SlotIdx = blockIdx * 4 + DYN_CHANNEL_GMM1 * 2 + 0;
         __gm__ int32_t* gmm1SlotPtr =
             (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + gmm1SlotIdx;
+        int64_t _spinStart = AscendC::GetSystemCycle();
         while (AscendC::ReadGmByPassDCache(gmm1SlotPtr) != 0) {
+            if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT end-of-exp G1 END drain exp=%u slot=%d\n",
+                                rankId, blockIdx, expertIdx,
+                                AscendC::ReadGmByPassDCache(gmm1SlotPtr));
+                break;
+            }
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 50) {}
         }
@@ -1051,7 +1120,14 @@ __aicore__ inline void DynamicAicLoop(
         int32_t gmm2SlotIdx = blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + 0;
         __gm__ int32_t* gmm2SlotPtr =
             (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + gmm2SlotIdx;
+        int64_t _spinStart = AscendC::GetSystemCycle();
         while (AscendC::ReadGmByPassDCache(gmm2SlotPtr) != 0) {
+            if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT G2 final drain (last task ack) exp=%u slot=%d\n",
+                                rankId, blockIdx, expertIdx,
+                                AscendC::ReadGmByPassDCache(gmm2SlotPtr));
+                break;
+            }
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 50) {}
         }
@@ -1068,7 +1144,14 @@ __aicore__ inline void DynamicAicLoop(
         int32_t gmm2SlotIdx = blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + 0;
         __gm__ int32_t* gmm2SlotPtr =
             (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + gmm2SlotIdx;
+        int64_t _spinStart = AscendC::GetSystemCycle();
         while (AscendC::ReadGmByPassDCache(gmm2SlotPtr) != 0) {
+            if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT end-of-exp G2 END drain exp=%u slot=%d\n",
+                                rankId, blockIdx, expertIdx,
+                                AscendC::ReadGmByPassDCache(gmm2SlotPtr));
+                break;
+            }
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 50) {}
         }
@@ -1125,11 +1208,22 @@ __aicore__ inline void DynamicAiv0Loop(
     while (true) {
         // 1. spin-read slot (AIC 写完 AtomicAdd, 立即 HBM 可见)
         int32_t packed = 0;
-        while (true) {
-            packed = AscendC::ReadGmByPassDCache(slotPtr);
-            if (packed != 0) break;
-            int64_t st = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - st < 50) {}
+        {
+            int64_t _spinStart = AscendC::GetSystemCycle();
+            bool _timedOut = false;
+            while (true) {
+                packed = AscendC::ReadGmByPassDCache(slotPtr);
+                if (packed != 0) break;
+                if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                    AscendC::PRINTF("[rank=%d AIV0 bk=%d] *** TIMEOUT spin slot exp=%u iter=%d slot=%d\n",
+                                    rankId, blockIdx, expertIdx, taskSeq + 1, packed);
+                    _timedOut = true;
+                    break;
+                }
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 50) {}
+            }
+            if (_timedOut) break;  // 跳出整个 main while: 把这核当 END 处理, 不再处理任何 task
         }
         UnpackDynamicTask(packed, task);
         taskSeq++;
@@ -1238,11 +1332,22 @@ __aicore__ inline void DynamicAiv1Loop(
     while (true) {
         // 1. spin-read slot
         int32_t packed = 0;
-        while (true) {
-            packed = AscendC::ReadGmByPassDCache(slotPtr);
-            if (packed != 0) break;
-            int64_t st = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - st < 50) {}
+        {
+            int64_t _spinStart = AscendC::GetSystemCycle();
+            bool _timedOut = false;
+            while (true) {
+                packed = AscendC::ReadGmByPassDCache(slotPtr);
+                if (packed != 0) break;
+                if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                    AscendC::PRINTF("[rank=%d AIV1 bk=%d] *** TIMEOUT spin slot exp=%u iter=%d slot=%d\n",
+                                    rankId, blockIdx, expertIdx, taskSeq + 1, packed);
+                    _timedOut = true;
+                    break;
+                }
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 50) {}
+            }
+            if (_timedOut) break;
         }
         UnpackDynamicTask(packed, task);
         taskSeq++;
