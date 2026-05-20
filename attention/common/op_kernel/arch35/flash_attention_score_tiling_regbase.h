@@ -126,6 +126,7 @@ public:
     int32_t blockTableDim2;
     int32_t paBlockNumSum;
     int32_t attenMaskS1Size;
+    int32_t maskBatch;
     uint32_t kvSplitPart;
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
@@ -268,6 +269,8 @@ public:
     void set_paLayoutType(uint8_t paLayoutTypeParam) {this->paLayoutType = paLayoutTypeParam;}
     uint32_t get_attenMaskS1Size() const {return attenMaskS1Size;}
     void set_attenMaskS1Size(int32_t attenMaskS1SizeParam) {this->attenMaskS1Size = attenMaskS1SizeParam;}
+    uint32_t get_maskBatch() const {return maskBatch;}
+    void set_maskBatch(int32_t maskBatchParam) {this->maskBatch = maskBatchParam;}
     uint8_t get_isRowInvalid() const {return isRowInvalid;}
     void set_isRowInvalid(uint8_t isRowInvalidParam) {this->isRowInvalid = isRowInvalidParam;}
     uint32_t get_kvSplitPart() const {return kvSplitPart;}

@@ -47,6 +47,7 @@ struct AttenMaskInfo {
     int64_t nextTokens;
     uint8_t compressMode;
     int64_t attenMaskShapeType;
+    int64_t maskBatch;
     int64_t attenMaskS1Size;
     int64_t attenMaskS2Size;
     int64_t bandIndex;
@@ -59,12 +60,12 @@ struct AttenMaskInfo {
 template <bool isInfer = false, bool hasRope = false>
 __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
     int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size, int64_t s2BaseSize, 
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo)
 {
     if (s1Size == 0 || s2Size == 0) {
         return;
     }
-
+    
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = s1Size;
     dataCopyParams.blockLen = CeilDiv(s2Size, blockBytes);
@@ -74,9 +75,13 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
         if constexpr (isInfer == true) {
             if (constInfo.isGqa) {
                 dataCopyParams.blockCount = 1;
-                // IFA GS1合轴后, s1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
+                // 针对sparsemode 0 , maskbatch = 1场景，更正srcOffset
+                if ((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) && (attenMaskInfo.maskBatch == 1)) {
+                    srcOffset = srcOffset % (attenMaskInfo.attenMaskS1Size * attenMaskInfo.attenMaskS2Size);
+                }
+                 // IFA GS1合轴后, s1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
                 for (uint32_t i = 0; i < s1Size; ++i) {
-                    // 需要用 s2BaseSize, 兼容S2方向有尾块情况
+                // 需要用 s2BaseSize, 兼容S2方向有尾块情况
                     DataCopy(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyParams);
                 }
                 return;
@@ -93,9 +98,13 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
         if constexpr (isInfer == true) {
             if (constInfo.isGqa) {
                 dataCopyExtParams.blockCount = 1;
+                // 针对sparsemode 0 , maskbatch = 1场景，更正srcOffset
+                if ((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) && (attenMaskInfo.maskBatch == 1)) {
+                    srcOffset = srcOffset % (attenMaskInfo.attenMaskS1Size * attenMaskInfo.attenMaskS2Size);
+                }
                 // IFA GS1合轴后, 1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
                 for (uint32_t i = 0; i < s1Size; ++i) {
-                    // 需要用 s2BaseSize, 兼容S2方向有尾块情况
+                // 需要用 s2BaseSize, 兼容S2方向有尾块情况
                     DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
                 }
                 return;
@@ -536,7 +545,7 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo);
         BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
-                          attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
+                          attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, attenMaskInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
         return;
     }
@@ -558,12 +567,12 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
                 maskOffset = attenMaskInfo.attenMaskOffsetPre;
             }
             BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
-                              attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
+                              attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, attenMaskInfo);
             attenMaskInQue.template EnQue(attenMaskUb);
             if (attenMaskInfo.computeMode == AttenMaskComputeMode::PREFIX_COMPUTE_MODE) {
                 LocalTensor<uint8_t> attenMaskUbPre = attenMaskInQuePre.template AllocTensor<uint8_t>();
                 BoolCopyInRegbase<isInfer>(attenMaskUbPre, srcTensor, attenMaskInfo.attenMaskOffsetPre, runInfo.halfS1RealSize,
-                    runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
+                    runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, attenMaskInfo);
                 attenMaskInQuePre.template EnQue(attenMaskUbPre);
                 attenMaskInQuePre.template DeQue<uint8_t>();
                 attenMaskInQue.template DeQue<uint8_t>();
@@ -575,7 +584,7 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
             return;
         }
         BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
-            attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
+            attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, attenMaskInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
         if (((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) ||
             (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_BAND_MODE) &&
@@ -586,7 +595,7 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
              attenMaskInfo.computeMode == AttenMaskComputeMode::PRE_AND_NEXT_MODE)) {
             LocalTensor<uint8_t> attenMaskUbPre = attenMaskInQuePre.template AllocTensor<uint8_t>();
             BoolCopyInRegbase<isInfer>(attenMaskUbPre, srcTensor, attenMaskInfo.attenMaskOffsetPre, runInfo.halfS1RealSize,
-                runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
+                runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, attenMaskInfo);
             attenMaskInQuePre.template EnQue(attenMaskUbPre);
             attenMaskInQuePre.template DeQue<uint8_t>();
             attenMaskInQue.template DeQue<uint8_t>();
@@ -615,7 +624,7 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                 }
             }
             BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize,
-                                       constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+                                       constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo, attenMaskInfo);
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }
