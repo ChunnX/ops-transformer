@@ -18,6 +18,8 @@
 #include "mc2_log.h"
 #include "mc2_comm_utils.h"
 
+using namespace Ops::Base;
+
 using namespace Mc2Log;
 using namespace AscendC;
 using namespace Mc2Tiling;
