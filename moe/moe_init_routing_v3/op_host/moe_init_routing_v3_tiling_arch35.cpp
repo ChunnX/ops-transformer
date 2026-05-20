@@ -106,9 +106,9 @@ const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
 const static int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
 const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
 
-const static int64_t TILINGKEY_BASE = 1000000LL;
+const static int64_t TILINGKEY_BASE = 10000000LL;
 const static int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
-const static int64_t SORT_CORE_TILINGKEY_BASE = 100000LL;
+const static int64_t SORT_CORE_TILINGKEY_BASE = 1000000LL;
 const static int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
 const static int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
 const static int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
@@ -459,20 +459,13 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
 
-    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
-        quantMode_ == QUANT_MODE_MXFP4_E2M1) {
+    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
         // 其余非量化为0，静态量化为1，动态量化为2，即都是quantMode_+1
         // 可以用与最低的UNQUANT的数值的差值来作为quantModeFactor，这里值就为3
         quantModeFactor = QUANT_MODE_MXFP8_E5M2 - QUANT_MODE_UNQUANT;
     } else if (quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN) {
-        quantModeFactor = QUANT_MODE_FP8_PERBLOCK_E4M3FN - QUANT_MODE_UNQUANT;
-        // quantMode >= 9时，都可以走这个TilingKey的计算
-        if (quantMode_ >= QUANT_MODE_MXFP4_E2M1) {
-            return static_cast<uint64_t>(quantMode_ * TILINGKEY_BASE + sortMode_ * SORT_CORE_TILINGKEY_BASE +
-                                         QUANT_MODE_TILINGKEY_BASE + rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE +
-                                         dropPadMode_ * DROP_MODE_TILINGKEY_BASE);
-        }
+        quantModeFactor = QUANT_MODE_FP8_PERBLOCK_E5M2 - QUANT_MODE_UNQUANT;
     }
     return static_cast<uint64_t>(TILINGKEY_BASE + sortMode_ * SORT_CORE_TILINGKEY_BASE +
                                  quantModeFactor * QUANT_MODE_TILINGKEY_BASE +
