@@ -254,7 +254,10 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::PostTiling()
     OP_LOGI(context_, "baseParams_.formerCoreProcessNNum is: [%ld]", baseParams_->get_formerCoreProcessNNum());
     OP_LOGI(context_, "baseParams_.remainCoreProcessNNum is: [%ld]", baseParams_->get_remainCoreProcessNNum());
     OP_LOGI(context_, "baseParams_.layout is: [%ld]", baseParams_->get_layout());
-    OP_LOGI(context_, "baseParams_.sparseMode is: [%ld]", baseParams_->get_sparseMode());
+    OP_LOGI(context_, "baseParams_.cmpSparseMode is: [%ld]", baseParams_->get_cmpSparseMode());
+    OP_LOGI(context_, "baseParams_.oriSparseMode is: [%ld]", baseParams_->get_oriSparseMode());
+    OP_LOGI(context_, "baseParams_.oriWinLeft is: [%ld]", baseParams_->get_oriWinLeft());
+    OP_LOGI(context_, "baseParams_.oriWinRight is: [%ld]", baseParams_->get_oriWinRight());
     OP_LOGI(context_, "baseParams_.scaleValue is: [%f]", baseParams_->get_scaleValue());
     OP_LOGI(context_, "baseParams_.selectedKWorkSpaceOffset is: [%ld]", baseParams_->get_selectedKWorkSpaceOffset());
     OP_LOGI(context_, "baseParams_.mm4ResWorkSpaceOffset is: [%ld]", baseParams_->get_mm4ResWorkSpaceOffset());
@@ -526,7 +529,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     // TND: query [t1, n1, d]   ori_kv [t2, n2, d]  cmp_kv [t2, n2, d/d1]   d_out/out [t1, n1, d/d1]
     // BSND: query [b, s1, n1, d]   ori_kv [b, s2, n2, d]  cmp_kv [b, s3, n2, d/d1]   d_out/out [b, s1, n1, d/d1]
     const gert::Shape &qShape = context_->GetInputShape(static_cast<size_t>(InputIndex::Q))->GetStorageShape();
-    const gert::Shape &softmaxLseShape = context_->GetInputShape(static_cast<size_t>(InputIndex::SOFTMAX_LSE))->GetStorageShape();
     const gert::Shape &dqueryShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &doriKVShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DORI_KV))->GetStorageShape();
     const gert::Shape &dcmpKVShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DCMP_KV))->GetStorageShape();
@@ -652,29 +654,53 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         tmpData.usedSeqOriKV = true;
         const gert::Shape &usedSeqOriKVShape = usedSeqOriKV->GetStorageShape();
     }
-
+    auto oriWinLeft = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_WIN_LEFT));
+    baseParams_->set_oriWinLeft(oriWinLeft);
+    auto oriWinRight = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_WIN_RIGHT));
+    baseParams_->set_oriWinRight(oriWinRight);
+    auto oriMaskMode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_MASK_MODE));
+    baseParams_->set_oriSparseMode(oriMaskMode);
     auto cmpMaskMode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
+    baseParams_->set_cmpSparseMode(cmpMaskMode);
     auto cmpRatio = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::CMP_RATIO));
+    if (cmpRatio < 1 || cmpRatio > 128) {
+        OP_LOGE(context_, "cmp_ratio must be range [1,128], but now get input cmp_ratio [%ld]!", cmpRatio);
+        return ge::GRAPH_FAILED;
+    }
     auto usedSeqCmpKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
     if (usedSeqCmpKV != nullptr){
         tmpData.usedSeqCmpKV = true;
         const gert::Shape &usedSeqCmpKVShape = usedSeqCmpKV->GetStorageShape();
     }
     auto cmpResidualKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CMP_RESIDUAL_KV));
-    // if (cmpMaskMode == 3 && cmpRatio != 1 && cmpResidualKV == nullptr){
-    //     OP_LOGE(context_, "cmp_residual_kv is required when cmp_mask_mode is 3 with cmp_ratio is not equal to 1!");
-    //     return ge::GRAPH_FAILED;
-    // }
+    if (cmpMaskMode == 3 && cmpRatio != 1 && cmpResidualKV == nullptr){
+        OP_LOGE(context_, "cmp_residual_kv is required when cmp_mask_mode is 3 with cmp_ratio not equal to 1!");
+        return ge::GRAPH_FAILED;
+    }
     auto oriTopkLength = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ORI_TOPK_LENGTH));
+    if (oriSparseIndices != nullptr && oriMaskMode == 0 && oriTopkLength == nullptr){
+        OP_LOGE(context_, "ori_topk_length is required when ori_sparse_indices exist with ori_mask_mode equal to 0!");
+        return ge::GRAPH_FAILED;
+    }
     if (oriTopkLength != nullptr){
         tmpData.oriTopK = true;
         const gert::Shape &oriTopkLengthShape = oriTopkLength->GetStorageShape();
     }
 
     auto cmpTopkLength = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CMP_TOPK_LENGTH));
+    if (cmpSparseIndices != nullptr && cmpMaskMode == 0 && cmpTopkLength == nullptr){
+        OP_LOGE(context_, "cmp_topk_length is required when cmp_sparse_indices exist with cmp_mask_mode equal to 0!");
+        return ge::GRAPH_FAILED;
+    }
     if (cmpTopkLength != nullptr){
         tmpData.cmpTopK = true;
         const gert::Shape &cmpTopkLengthShape = cmpTopkLength->GetStorageShape();
+    }
+
+    auto softmaxLseShape = context_->GetInputShape(static_cast<size_t>(InputIndex::SOFTMAX_LSE))->GetStorageShape();
+    if (softmaxLseShape.GetDimNum() == 0) {
+        OP_LOGE(context_, "The shape of softmax_lse cannot be zero! ");
+        return ge::GRAPH_FAILED;
     }
 
     auto sinks = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINKS));
@@ -689,7 +715,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
 
-    auto oriMaskMode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_MASK_MODE));
     tmpData.deterministic = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
 
     if (strcmp(layoutQ, TND_STR) != 0 && strcmp(layoutQ, BSND_STR) != 0 && strcmp(layoutKV, TND_STR) != 0 && strcmp(layoutKV, BSND_STR) != 0 && strcmp(layoutQ, layoutKV) != 0) {
@@ -744,7 +769,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     baseParams_->set_d(dimDq);
     baseParams_->set_d1(dimDq);
     baseParams_->set_layout(tmpData.layout);
-    baseParams_->set_sparseMode(oriMaskMode);
     baseParams_->set_scaleValue(
         *context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::SOFTMAX_SCALE)));
     baseParams_->set_cmpRatio(cmpRatio);
