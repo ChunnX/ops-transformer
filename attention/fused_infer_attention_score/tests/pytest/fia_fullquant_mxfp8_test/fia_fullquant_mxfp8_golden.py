@@ -733,6 +733,8 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             S_ij = torch.matmul(Qi * deq_scale_q_i_expanded, (Kj * deq_scale_k_j_expanded).permute(0, 1, 3, 2))
             if ENABLE_ROPE and qr_bf16 is not None:
                 Qri, Krj = Qr_BLOCKS[i], Kr_BLOCKS[j]
+                Qri = Qri.to(torch.float32)
+                Krj = Krj.to(torch.float32)
                 S_ij += torch.matmul(Qri, Krj.permute(0, 1, 3, 2))
 
             S_ij = S_ij / math.sqrt(d_total)
@@ -756,6 +758,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 S_ij1 = torch.matmul(Qi * deq_scale_q_i_expanded, (Kj1 * deq_scale_k_j1_expanded).permute(0, 1, 3, 2))
                 if ENABLE_ROPE and qr_bf16 is not None:
                     Krj1 = Kr_BLOCKS[j + 1]
+                    Krj1 = Krj1.to(torch.float32)
                     S_ij1 += torch.matmul(Qri, Krj1.permute(0, 1, 3, 2))
 
                 S_ij1 = S_ij1 / math.sqrt(d_total)
