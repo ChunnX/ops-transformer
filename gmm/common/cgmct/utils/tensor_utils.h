@@ -132,10 +132,13 @@ __aicore__ inline AscendC::GlobalTensor<CTensorTrait_> GetWorkSpaceGlobal(BlockS
 }
 
 template <typename T>
-__aicore__ inline __gm__ T* GetTensorAddr(uint64_t index, GM_ADDR tensorPtr)
+__aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
-    AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void*>(tensorPtr));
-    return listTensorDesc.GetDataPtr<T>(index);
+    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorPtr);
+    uint64_t tensorPtrOffset = *dataAddr;
+
+    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
+    return reinterpret_cast<__gm__ T*>(*(retPtr + index));
 }
 
 template <class T, AscendC::TPosition Pos, class Layout, class Coord, class Shape>
