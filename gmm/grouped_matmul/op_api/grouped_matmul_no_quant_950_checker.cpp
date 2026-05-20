@@ -9,16 +9,26 @@
  */
 
 #include "grouped_matmul_no_quant_950_checker.h"
+#include "log/log.h"
+#include "gmm/common/op_host/op_tiling/format_string_util.h"
 
 using namespace gmm;
 
 constexpr int64_t MAX_LENGTH = 1024UL;
 
 aclnnStatus AclnnGroupedMatmulNoQuantDAV3510Checker::CheckGroupedMatmulGroupSizeNoQuantDAV3510() {
-  CHECK_COND(CheckTensorListLength(gmmParams_.x) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-             "Invalid length of tensorList x in no quant case.");
-  CHECK_COND(CheckTensorListLength(gmmParams_.weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-             "Invalid length of tensorList weight in no quant case.");
+  if (!(CheckTensorListLength(gmmParams_.x) == ACLNN_SUCCESS)) {
+    OP_LOGE_FOR_INVALID_LISTSIZE("grouped_matmul", "x",
+        std::to_string(gmmParams_.x != nullptr ? gmmParams_.x->Size() : 0).c_str(),
+        std::to_string(MAX_LENGTH).c_str());
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (!(CheckTensorListLength(gmmParams_.weight) == ACLNN_SUCCESS)) {
+    OP_LOGE_FOR_INVALID_LISTSIZE("grouped_matmul", "weight",
+        std::to_string(gmmParams_.weight != nullptr ? gmmParams_.weight->Size() : 0).c_str(),
+        std::to_string(MAX_LENGTH).c_str());
+    return ACLNN_ERR_PARAM_INVALID;
+  }
   return ACLNN_SUCCESS;
 }
 
@@ -27,8 +37,11 @@ aclnnStatus AclnnGroupedMatmulNoQuantDAV3510Checker::CheckTensorListLength(const
   if (tensorList != nullptr) {
       groupSize = tensorList->Size();
   }
-  CHECK_COND(
-    groupSize <= MAX_LENGTH, ACLNN_ERR_PARAM_INVALID, "Length of tensorList should not exceed %lu, but actually got %lu.",
-             MAX_LENGTH, groupSize);
+  if (!(groupSize <= MAX_LENGTH)) {
+    OP_LOGE_FOR_INVALID_LISTSIZE("grouped_matmul", "tensorList",
+        std::to_string(groupSize).c_str(),
+        std::to_string(MAX_LENGTH).c_str());
+    return ACLNN_ERR_PARAM_INVALID;
+  }
   return ACLNN_SUCCESS;
 }

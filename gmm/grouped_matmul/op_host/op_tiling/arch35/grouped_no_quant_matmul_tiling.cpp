@@ -14,6 +14,8 @@
  */
 #include "grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/non_quant/grouped_matmul_tiling_key.h"
+#include "log/log.h"
+#include "gmm/common/op_host/op_tiling/format_string_util.h"
 
 enum class GmmTrans {
     NoTrans = 0,
@@ -21,6 +23,7 @@ enum class GmmTrans {
     BTrans = 2,
     ABTrans = 3
 };
+
 namespace optiling {
 bool GroupedNoQuantMatmulTiling::SetTiling(gert::TilingContext *context)
 {
@@ -203,7 +206,9 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
 
     OP_CHECK_IF(wDimNum < MIN_DIM || xDimNum_ < MIN_DIM,
-                OP_LOGE(context->GetNodeName(), "The dimension of x or weight should be at least 2"), return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, weight",
+                    FormatString("%u, %u", xDimNum_, wDimNum).c_str(),
+                    FormatString("The shape dims of %s must be at least %d", "x, weight", 2).c_str()), return false);
     xKDim_ = transposeX_ ? 0U : xDimNum_ - 1U;
     weightNDim_ = transposeWeight_ ? wDimNum - DIM_TWO : wDimNum - DIM_ONE;
 
@@ -237,9 +242,9 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         }
         return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupType_",
+            FormatString("%d", groupType_).c_str(),
+            FormatString("The value of %s cannot be %s", "groupType_, isSingleWeight_, isSingleX_, isSingleY_ combination", "this combination").c_str());
     return false;
 }
 
@@ -254,8 +259,10 @@ bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *c
         size_t kValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 1 : 2));
         size_t nValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 2 : 1));
         OP_CHECK_IF((kValue % numInOneBlk != 0 || nValue % numInOneBlk != 0),
-                    OP_LOGE(context->GetNodeName(),
-                    "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "weight",
+                        FormatString("[%zu, %zu]", kValue, nValue).c_str(),
+                        FormatString("when the format of %s is %s, %s of %s must be exactly divisible by %s",
+                            "weight", "FRACTAL_NZ", "n-axis and k-axis", "weight", "32B (numInOneBlk)").c_str()),
                     return false);
     }
     return true;
@@ -298,9 +305,9 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     // common API check does not need extra quant-state parameters just to distinguish
     // no-quant from weight-quant cases.
     OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
-                OP_LOGE(context->GetNodeName(),
-                        "In no quant case, groupListType does not support value %u(sparse), but actual is %u.",
-                        GroupedMatmul::GROUPLIST_TYPE_SPARSE_M, groupListType_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupListType",
+                    FormatString("%u", groupListType_).c_str(),
+                    FormatString("The value of %s cannot be %s", "groupListType", "SPARSE_M (value 2) in no-quant case").c_str()),
                 return false);
     return true;
 }
@@ -309,10 +316,14 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
                                                  const GMMCompileInfo *compileInfoPtr)
 {
     if (groupNum_ < 1U || groupNum_ > MAX_TENSOR) {
-        OP_LOGE(context->GetNodeName(), "GMM no quant group num cannot less than 1 or larger than 1024.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "groupList",
+            FormatString("%u", groupNum_).c_str(),
+            FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList (groupNum)", 1, 1024).c_str());
         return false;
     }
-    OP_CHECK_IF(kZero, OP_LOGE(context->GetNodeName(), "GMM no quant case does not support input K is 0."),
+    OP_CHECK_IF(kZero, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x",
+        FormatString("%s", "0").c_str(),
+        FormatString("%s of %s must be a positive number", "K-axis", "x").c_str()),
                 return false);
     OP_CHECK_IF(!CalBaseMMTiling(context, compileInfoPtr),
                 OP_LOGE(context->GetNodeName(), "Unable to calculate BaseMMTiling."), return false);
@@ -421,9 +432,10 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // split M, s-s-s
         return SplitMSingleXSingleWeightSingleY(xShape, wShape);
     }
-    OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
+            FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
+            FormatString("The value of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY combination",
+                "this combination under SPLIT_M scene").c_str());
     return false;
 }
 
@@ -439,99 +451,11 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
-    OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
+            FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
+            FormatString("The value of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY combination",
+                "this combination under SPLIT_K scene").c_str());
     return false;
-}
-
-/** @brief split M：single-single-single(s-s-s)
- */
-bool GroupedNoQuantMatmulTiling::SplitMSingleXSingleWeightSingleY(const gert::Shape xShape, const gert::Shape wShape)
-{
-    groupNum_ = static_cast<int32_t>(wShape.GetDim(0));
-    int64_t m = xShape.GetDim(0);
-    int64_t k = xShape.GetDim(xKDim_);
-    int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
-    m_ = static_cast<uint64_t>(m);
-    k_ = static_cast<uint64_t>(k);
-    n_ = static_cast<uint64_t>(n);
-    kZero = kZero || (k == 0);
-    weightNoL2Cache_ = true;
-    return true;
-}
-
-/** @brief split M：single-multi-single(s-m-s)/single-multi-multi(s-m-m), share the same function.
- */
-bool GroupedNoQuantMatmulTiling::SplitMSingleXSeparatedWeight(const gert::TilingContext *context,
-                                                              const gert::Shape xShape)
-{
-    int64_t m = xShape.GetDim(0);
-    int64_t k = xShape.GetDim(xKDim_);
-    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
-        auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i);
-        if (wTensor == nullptr) {
-            break;
-        } // when x has multi tensors, xTensor is allowed to be empty
-        auto wShape = wTensor->GetOriginShape();
-
-        groupNum_ += 1U;
-        int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
-        n_ = std::max(n_, static_cast<uint64_t>(n));
-    }
-    m_ = static_cast<uint64_t>(m);
-    k_ = static_cast<uint64_t>(k);
-    kZero = kZero || (k == 0);
-    weightNoL2Cache_ = isSingleY_;
-    return true;
-}
-
-/** @brief split M：multi-multi-single(m-m-s); no split: multi-multi-multi(m-m-m), share the same function
- */
-bool GroupedNoQuantMatmulTiling::SeparatedXSeparatedWeight(const gert::TilingContext *context)
-{
-    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
-        auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i);
-        auto xTensor = context->GetDynamicInputTensor(INDEX_X, i);
-        if (wTensor == nullptr || xTensor == nullptr) {
-            break;
-        }
-        auto wShape = wTensor->GetOriginShape();
-        auto xShape = xTensor->GetStorageShape();
-        groupNum_ += 1U;
-        int64_t m = xShape.GetDim(0);
-        int64_t k = xShape.GetDim(xKDim_);
-        kZero = kZero || (k == 0);
-        int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
-        m_ = std::max(m_, static_cast<uint64_t>(m));
-        k_ = std::max(k_, static_cast<uint64_t>(k));
-        n_ = std::max(n_, static_cast<uint64_t>(n));
-    }
-    groupType_ = NO_SPLIT;
-    return true;
-}
-
-/** @brief split M : multi-single-multi(m-s-m), split K : multi-single-multi(m-s-m), share the same function
- */
-bool GroupedNoQuantMatmulTiling::SeparatedXSingleWeight(const gert::TilingContext *context, const gert::Shape wShape)
-{
-    int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
-    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
-        auto xTensor = context->GetDynamicInputTensor(INDEX_X, i);
-        if (xTensor == nullptr) {
-            break;
-        } // when x has multi tensors, xTensor is allowed to be empty
-        auto xShape = xTensor->GetStorageShape();
-        groupNum_ += 1U;
-        int64_t m = xShape.GetDim(0);
-        int64_t k = xShape.GetDim(xKDim_);
-        kZero = kZero || (k == 0);
-        m_ = std::max(m_, static_cast<uint64_t>(m));
-        k_ = std::max(k_, static_cast<uint64_t>(k));
-    }
-    n_ = static_cast<uint64_t>(n);
-    groupType_ = NO_SPLIT;
-    return true;
 }
 
 /** @brief split K single-single-single
