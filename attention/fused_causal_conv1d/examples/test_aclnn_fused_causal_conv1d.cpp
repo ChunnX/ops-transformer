@@ -19,16 +19,16 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_fused_causal_conv1d.h"
 
-#define CHECK_RET(cond, return_expr)                                \
-    do {                                                            \
-        if (!(cond)) {                                              \
-            return_expr;                                            \
-        }                                                           \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                     \
-    do {                                                            \
-        printf(message, ##__VA_ARGS__);                             \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -55,7 +55,7 @@ int Init(int32_t deviceId, aclrtStream *stream)
 float Fp16ToFloat(uint16_t raw)
 {
     uint32_t sign = (raw >> 15) & 0x1;
-    uint32_t exp  = (raw >> 10) & 0x1F;
+    uint32_t exp = (raw >> 10) & 0x1F;
     uint32_t mant = raw & 0x3FF;
     float val;
     if (exp == 0) {
@@ -65,16 +65,15 @@ float Fp16ToFloat(uint16_t raw)
         // infinity or NaN
         val = (mant == 0) ? (sign ? -HUGE_VALF : HUGE_VALF) : NAN;
     } else {
-        val = (sign ? -1.0f : 1.0f) *
-              (1.0f + static_cast<float>(mant) / 1024.0f) *
+        val = (sign ? -1.0f : 1.0f) * (1.0f + static_cast<float>(mant) / 1024.0f) *
               ldexpf(1.0f, static_cast<int>(exp) - 15);
     }
     return val;
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape,
-                    void **deviceAddr, aclDataType dataType, aclTensor **tensor, aclFormat format)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor, aclFormat format)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -87,8 +86,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
         strides[i] = shape[i + 1] * strides[i + 1];
     }
 
-    *tensor = aclCreateTensor(shape.data(), static_cast<int64_t>(shape.size()),
-                              dataType, strides.data(), 0, format,
+    *tensor = aclCreateTensor(shape.data(), static_cast<int64_t>(shape.size()), dataType, strides.data(), 0, format,
                               shape.data(), static_cast<int64_t>(shape.size()), *deviceAddr);
     return 0;
 }
@@ -110,11 +108,11 @@ int main()
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    int64_t K = 3;               // kernel width
-    int64_t dim = 128;           // feature dimension
-    int64_t batch = 4;           // number of sequences
-    int64_t numSlots = 8;        // total cache slots (>= batch for non-APC)
-    int64_t stateLen = K - 1;    // cache state length per slot (= 2)
+    int64_t K = 3;            // kernel width
+    int64_t dim = 128;        // feature dimension
+    int64_t batch = 4;        // number of sequences
+    int64_t numSlots = 8;     // total cache slots (>= batch for non-APC)
+    int64_t stateLen = K - 1; // cache state length per slot (= 2)
     // prefill: seq_lens = [5, 3, 7, 4], cuSeqLen = 19
     int64_t cuSeqLen = 19;
 
@@ -123,7 +121,7 @@ int main()
     std::vector<int64_t> weightShape = {K, dim};
     std::vector<int64_t> convStatesShape = {numSlots, stateLen, dim};
     std::vector<int64_t> queryStartLocShape = {batch + 1};
-    std::vector<int64_t> cacheIndicesShape = {batch};       // 1D: non-APC
+    std::vector<int64_t> cacheIndicesShape = {batch}; // 1D: non-APC
     std::vector<int64_t> initialStateModeShape = {batch};
     std::vector<int64_t> biasShape = {dim};
     std::vector<int64_t> numAcceptedTokensShape = {batch};
@@ -174,93 +172,82 @@ int main()
     ret = CreateAclTensor(hostX, xShape, &xDev, ACL_FLOAT16, &xTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(hostWeight, weightShape, &weightDev, ACL_FLOAT16,
-                          &weightTensor, ACL_FORMAT_ND);
+    ret = CreateAclTensor(hostWeight, weightShape, &weightDev, ACL_FLOAT16, &weightTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(hostConvStates, convStatesShape, &convStatesDev, ACL_FLOAT16,
-                          &convStatesTensor, ACL_FORMAT_ND);
+    ret =
+        CreateAclTensor(hostConvStates, convStatesShape, &convStatesDev, ACL_FLOAT16, &convStatesTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(hostQueryStartLoc, queryStartLocShape, &queryStartLocDev, ACL_INT32,
-                          &queryStartLocTensor, ACL_FORMAT_ND);
+    ret = CreateAclTensor(hostQueryStartLoc, queryStartLocShape, &queryStartLocDev, ACL_INT32, &queryStartLocTensor,
+                          ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(hostCacheIndices, cacheIndicesShape, &cacheIndicesDev, ACL_INT32,
-                          &cacheIndicesTensor, ACL_FORMAT_ND);
+    ret = CreateAclTensor(hostCacheIndices, cacheIndicesShape, &cacheIndicesDev, ACL_INT32, &cacheIndicesTensor,
+                          ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(hostInitialStateMode, initialStateModeShape,
-                          &initialStateModeDev, ACL_INT32,
+    ret = CreateAclTensor(hostInitialStateMode, initialStateModeShape, &initialStateModeDev, ACL_INT32,
                           &initialStateModeTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor(hostBias, biasShape, &biasDev, ACL_FLOAT16, &biasTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(hostNumAcceptedTokens, numAcceptedTokensShape,
-                          &numAcceptedTokensDev, ACL_INT32,
+    ret = CreateAclTensor(hostNumAcceptedTokens, numAcceptedTokensShape, &numAcceptedTokensDev, ACL_INT32,
                           &numAcceptedTokensTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor(hostY, yShape, &yDev, ACL_FLOAT16, &yTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    int64_t activationMode = 0;      // 0: None
-    int64_t padSlotId = -1;          // -1: no pad-slot skipping
-    int64_t runMode = 0;             // 0: prefill
+    int64_t activationMode = 0; // 0: None
+    int64_t padSlotId = -1;     // -1: no pad-slot skipping
+    int64_t runMode = 0;        // 0: prefill
     int64_t maxQueryLen = cuSeqLen;
-    int64_t residualConnection = 0;  // 0: no residual
-    int64_t blockSize = 0;           // 0: non-APC
-    int64_t convMode = 0;            // 0: Qwen/Pangu7B
+    int64_t residualConnection = 0; // 0: no residual
+    int64_t blockSize = 0;          // 0: non-APC
+    int64_t convMode = 0;           // 0: Qwen/Pangu7B
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    ret = aclnnFusedCausalConv1dGetWorkspaceSize(
-        xTensor, weightTensor, convStatesTensor,
-        queryStartLocTensor, cacheIndicesTensor,
-        initialStateModeTensor, biasTensor,
-        numAcceptedTokensTensor,
-        nullptr,  // num_computed_tokens (non-APC: nullptr)
-        nullptr,  // block_idx_first_scheduled_token
-        nullptr,  // block_idx_last_scheduled_token
-        nullptr,  // initial_state_idx
-        activationMode, padSlotId, runMode,
-        maxQueryLen, residualConnection, blockSize, convMode,
-        yTensor, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnFusedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
+    ret = aclnnFusedCausalConv1dGetWorkspaceSize(xTensor, weightTensor, convStatesTensor, queryStartLocTensor,
+                                                 cacheIndicesTensor, initialStateModeTensor, biasTensor,
+                                                 numAcceptedTokensTensor,
+                                                 nullptr, // num_computed_tokens (non-APC: nullptr)
+                                                 nullptr, // block_idx_first_scheduled_token
+                                                 nullptr, // block_idx_last_scheduled_token
+                                                 nullptr, // initial_state_idx
+                                                 activationMode, padSlotId, runMode, maxQueryLen, residualConnection,
+                                                 blockSize, convMode, yTensor, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS,
-                  LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
     ret = aclnnFusedCausalConv1d(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnFusedCausalConv1d failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1d failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     auto ySize = GetShapeSize(yShape);
     std::vector<uint16_t> yResult(ySize, 0);
-    ret = aclrtMemcpy(yResult.data(), ySize * sizeof(uint16_t), yDev,
-                      ySize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("copy y from device to host failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMemcpy(yResult.data(), ySize * sizeof(uint16_t), yDev, ySize * sizeof(uint16_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy y from device to host failed. ERROR: %d\n", ret); return ret);
 
     auto csSize = GetShapeSize(convStatesShape);
     std::vector<uint16_t> csResult(csSize, 0);
-    ret = aclrtMemcpy(csResult.data(), csSize * sizeof(uint16_t), convStatesDev,
-                      csSize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("copy convStates from device to host failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMemcpy(csResult.data(), csSize * sizeof(uint16_t), convStatesDev, csSize * sizeof(uint16_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy convStates from device to host failed. ERROR: %d\n", ret);
+              return ret);
 
     LOG_PRINT("=== y output (first 10 elements) ===\n");
     for (int64_t i = 0; i < 10 && i < ySize; i++) {
