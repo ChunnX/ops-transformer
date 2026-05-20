@@ -150,7 +150,6 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
-    constInfo.tSize = tilingData->tSize;
     constInfo.qHeadNum = constInfo.gSize = tilingData->gSize;
     constInfo.kSeqSize = tilingData->s2Size;
     constInfo.qSeqSize = tilingData->s1Size;
@@ -167,6 +166,9 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     if (K_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS2 = true;
     }
+
+    constInfo.tSize = Q_LAYOUT_T == LI_LAYOUT::TND?
+        constInfo.qSeqSize : constInfo.batchSize * constInfo.qSeqSize;
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
@@ -574,8 +576,13 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
-        uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+        uint64_t totalOutputSize;
+        if constexpr (Q_LAYOUT_T == LI_LAYOUT::BSND) {
+ 	        totalOutputSize = constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+ 	    } else {
+ 	        uint32_t tBase = constInfo.batchSize == 0 ? 0 : actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1);
+ 	        totalOutputSize = tBase * constInfo.kHeadNum * constInfo.sparseCount;
+ 	    }
         uint64_t singleCoreSize =
             QLICommon::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
         uint64_t baseSize = tmpBlockIdx * singleCoreSize;
