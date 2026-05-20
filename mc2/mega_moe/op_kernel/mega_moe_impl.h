@@ -825,8 +825,11 @@ __aicore__ inline void GroupMatmul2(
 //   GroupMatmulSwigluQuant(..., funcSync, ...)  // 内部: mmad + NotifyVector(0)
 //   g1ExternalSync = true
 //
-// GMM2 静态没用 cube/vec flag (用 rowReadyFlags HBM 计数器)，slot 同步另起一对 flag:
-//   AIV1 ClearTaskSlot 完后 NotifyCube(0)，AIC 用 WaitForVectorFromAIV1(0) 等它 (+16 自动)。
+// GMM2 静态没用 cube/vec flag (用 rowReadyFlags HBM 计数器), slot 同步走纯 HBM:
+//   AIC 写 slot 前 spin "slot == 0" 直到 AIV1 ClearTaskSlot 把它清回 0。
+//   不用 NotifyVectorAIV1/WaitForVectorFromAIV1, 因为这块硬件的 +16 flag 映射实测不阻塞
+//   (会让 AIC 两次写累加, AIV1 读到 packed_A+packed_B 误判 op=END 提前退出)。
+//   GMM2 mmad 本身的 cube↔vec sync 仍由静态 GroupMatmul2 内部的 rowReadyFlags 处理。
 // ============================================================================
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB,
@@ -942,8 +945,18 @@ __aicore__ inline void DynamicAicLoop(
                 funcSync, 0);
             g1ExternalSync = true;
         } else {  // DYN_OP_GMM2
-            if (g2ExternalSync) {
-                WaitForVectorFromAIV1(0);
+            // ★ GMM2 slot 同步: 不用 cube-vec flag (WaitForVectorFromAIV1 靠的 +16 映射在
+            //   这块硬件上实测不阻塞, 会导致 AIC 两次写累加, AIV1 误读 op=END 提前退出)。
+            //   改为直接 spin slot==0: AIV1 的 ClearTaskSlot 会把 slot 清 0, AIC spin 等即可。
+            //   ClaimNextTask 已经在用同样的 HBM spin 模式, 证明可靠。
+            {
+                int32_t gmm2SlotIdx = blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + 0;
+                __gm__ int32_t* gmm2SlotPtr =
+                    (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + gmm2SlotIdx;
+                while (AscendC::ReadGmByPassDCache(gmm2SlotPtr) != 0) {
+                    int64_t st = AscendC::GetSystemCycle();
+                    while (AscendC::GetSystemCycle() - st < 50) {}
+                }
             }
             WriteTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, 0, task);
 
@@ -1010,10 +1023,17 @@ __aicore__ inline void DynamicAicLoop(
     if (g2ExternalSync) {
         #if MEGA_MOE_DYN_DEBUG
         if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
-            AscendC::PRINTF("[AIC bk=%d] G2 final drain WaitForVectorFromAIV1(0)...\n", blockIdx);
+            AscendC::PRINTF("[AIC bk=%d] G2 final drain (spin slot==0)...\n", blockIdx);
         }
         #endif
-        WaitForVectorFromAIV1(0);
+        // 同上, 用 spin slot==0 代替 WaitForVectorFromAIV1
+        int32_t gmm2SlotIdx = blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + 0;
+        __gm__ int32_t* gmm2SlotPtr =
+            (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + gmm2SlotIdx;
+        while (AscendC::ReadGmByPassDCache(gmm2SlotPtr) != 0) {
+            int64_t st = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - st < 50) {}
+        }
     }
     #if MEGA_MOE_DYN_DEBUG
     if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
@@ -1102,12 +1122,6 @@ __aicore__ inline void DynamicAiv0Loop(
             break;  // END 不调函数, 也不 NotifyCube (AIC 不等)
         }
 
-        // 合法性自检 — slot 通信出错时立刻能看到
-        if (task.opType != DYN_OP_GMM1 ||
-            task.waveM <= 0 || task.waveM > static_cast<int32_t>(L1_TILE_M) ||
-            task.nTileIdx < 0 || task.nTileIdx >= static_cast<int32_t>(tileNumGmm1)) {
-        }
-
         // 3. 组装 problemShape (M=waveM) + gmmAddrInfo (wave 地址)
         auto taskProblemShape = problemShape;
         Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
@@ -1163,13 +1177,10 @@ __aicore__ inline void DynamicAiv0Loop(
 // ============================================================================
 // DynamicAiv1Loop — AIV1 端 GMM2 combine 主循环（复用静态实现）
 // ============================================================================
-// 协议:
+// 协议 (纯 HBM, 不用 cube-vec flag, 因为这块硬件上 AIV1↔AIC 的 +16 flag 映射不工作):
 //   spin-read slot != 0
-//   read & ClearTaskSlot
-//   NotifyCube(0)  // 告诉 AIC: slot 已清干净, AIC 下个 task 可以安全写 slot 了
-//                 // (GMM2 静态函数内部用 rowReadyFlags HBM 计数器做 cube/vec, 不用 cube/vec flag,
-//                 //  所以外部 flag 通道独立给 slot 同步用)
-//   若 END: break (不发 NotifyCube — AIC drain 完上一个就直接 WriteTaskSlot(END))
+//   read & ClearTaskSlot  // 把 slot 清回 0 — AIC 端通过 spin slot==0 自动看到
+//   若 END: break
 //   组装 problemShape + gmmAddrInfo, 调静态 GroupMatmul2
 //     内部 AIV 分支: spin rowReadyFlags>=1 → AtomicSub → CombineTile
 template <typename ElementA, typename ElementB, typename ElementC,
@@ -1223,22 +1234,14 @@ __aicore__ inline void DynamicAiv1Loop(
         }
 #endif
 
-        // 2. ClearTaskSlot 必须在 NotifyCube 之前: AIC WaitForVectorFromAIV1(0) 返回后立刻
-        //    WriteTaskSlot(下一 task), 此时 slot 必须已经 0
+        // 2. ClearTaskSlot 把 slot 清回 0; AIC 端通过 spin slot==0 检测到清完毕。
+        //    (原先用 NotifyCube(0)+WaitForVectorFromAIV1(0) 做 slot 同步, 但 +16 flag 映射在
+        //     本硬件上不工作 — AIC 端 wait 不阻塞导致两次写累加, AIV1 误读 op=END 提前退出。
+        //     现改成纯 HBM spin 协议, 不依赖 cube-vec flag。)
         ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, 0, packed);
 
         if (task.opType == DYN_OP_END) {
-            break;  // 不发 NotifyCube; AIC 不等 END 的 ack
-        }
-
-        // 3. 通知 AIC slot 已清 (AIV1 → AIC, NotifyCube(0) 设 flag 6, AIC 用 WaitForVectorFromAIV1(0)
-        //    自带 +16 等 flag 22, 硬件路由匹配)
-        NotifyCube(0);
-
-        // 合法性自检
-        if (task.opType != DYN_OP_GMM2 ||
-            task.waveM <= 0 || task.waveM > static_cast<int32_t>(L1_TILE_M) ||
-            task.nTileIdx < 0 || task.nTileIdx >= static_cast<int32_t>(tileNumGmm2)) {
+            break;
         }
 
         // 4. 组装 problemShape + gmmAddrInfo (照静态 UpdateGlobalBuffer gmmIndex=1 路径)
