@@ -17,7 +17,7 @@
 ### 1.2 代码重复
 
 - **文件 2 与文件 3 几乎 100% 重复**：namespace、常量定义、枚举、模板函数实现完全一致，仅有注释格式差异。
-- **文件 1 与文件 2/3 存在大量重复代码**：`CeilAlign`、`DataCopyPad2D`、`GetKBUnit` 等核心工具函数逻辑高度重合，仅有细微差异（如 `CeilDiv` 与 `CeilDivide` 命名、是否包含 `fp4x2` 类型判断等）。
+- **文件 1 与文件 2/3 存在大量重复代码**：`CeilAlign`、`DataCopyPad2D`、`GetKBUnit` 等核心工具函数逻辑高度重合，仅有细微差异（如 `CeilDiv` 与 `CeilDiv` 命名、是否包含 `fp4x2` 类型判断等）。
 
 这种重复导致：
 - 修改一处工具函数（如修复 `CeilAlign` 溢出检查）需要同步修改多份拷贝，维护成本高。
@@ -41,7 +41,7 @@
 | 对比项 | 文件 1（a16w4_msd） | 文件 2/3（arch35） | 兼容性结论 |
 |--------|---------------------|---------------------|------------|
 | namespace | `GROUPED_MATMUL::A16W4Msd` | `WeightQuantBatchMatmulV2::Arch35` | 需保留各自 namespace，公共函数放在独立公共 namespace |
-| `CeilDiv` / `CeilDivide` | `CeilDiv` | `CeilDivide` | 统一为 `CeilDivide`，修改文件 1 的 4 处引用 |
+| `CeilDiv` / `CeilDiv` | `CeilDiv` | `CeilDiv` | 统一为 `CeilDiv`，修改文件 1 的 4 处引用 |
 | `CeilAlign` 重载 | 仅模板版本 | 模板 + `uint32_t` 溢出检查版本 | 保留两者，无冲突 |
 | `DataCopyPad2D` 4bit 判断 | 仅 `int4b_t` | `int4b_t` + `fp4x2_e2m1_t` + `fp4x2_e1m2_t` | 统一为后者，`if constexpr` 不会编译失败 |
 | `GetKBUnit` | 显式 `int8_t`(1024)、`float`(256)、default(512) | `int4b_t/fp4x2`(2048)、`default(1024/sizeof(T))` | 统一为后者，数学结果一致 |
@@ -63,7 +63,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    gmm/common/gmm_kernel_utils.h                      │
-│  (最通用工具层：CeilAlign, CeilDivide, Min, DataCopyPad2D, GetKBUnit)  │
+│  (最通用工具层：CeilAlign, CeilDiv, Min, DataCopyPad2D, GetKBUnit)  │
 │                    namespace GmmOpKernel                               │
 ├──────────────────────────────────────────────────────────────────────┤
 │              gmm/common/arch35_weight_quant_common.h                  │
@@ -115,7 +115,7 @@ __aicore__ inline uint32_t CeilAlign(uint32_t a, uint32_t b)
 }
 
 template <typename T>
-__aicore__ inline T CeilDivide(T a, T b)
+__aicore__ inline T CeilDiv(T a, T b)
 {
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b;
@@ -161,7 +161,7 @@ __aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTens
     DataCopyExtParams params;
     params.blockCount = dim1;
     params.blockLen = dim0 * sizeof(T);
-    params.srcStride = CeilDivide((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
+    params.srcStride = CeilDiv((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
     params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
     DataCopyPad(dst, src, params);
 }
@@ -181,7 +181,7 @@ __aicore__ constexpr uint32_t GetKBUnit()
 ```
 
 **关键兼容性处理**：
-- `CeilDiv` 统一改名为 `CeilDivide`，后续在文件 1 的引用侧同步修改。
+- `CeilDiv` 统一改名为 `CeilDiv`，后续在文件 1 的引用侧同步修改。
 - `GetKBUnit` 采用通用公式 `1024 / sizeof(T)`，经推算对 `int8_t`(1024)、`float`(256)、`half`(512) 的结果与文件 1 原实现完全一致。
 - `DataCopyPad2D` 统一包含 `fp4x2` 分支，因 `if constexpr` 在类型不匹配时不生成代码，对 A16W4 MSD 无副作用。
 
@@ -261,7 +261,7 @@ static constexpr uint64_t FLAG_ID_MAX = 16;
 
 // 引入通用工具函数到本 namespace（可选，保持既有代码写法兼容）
 using GmmOpKernel::CeilAlign;
-using GmmOpKernel::CeilDivide;
+using GmmOpKernel::CeilDiv;
 using GmmOpKernel::DataCopyPad2D;
 using GmmOpKernel::GetKBUnit;
 using GmmOpKernel::Min;
@@ -289,7 +289,7 @@ struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSH
 **处理方式**：
 - **删除**原 `tool.h`。
 - 由于该文件原内容经差异合并后，其工具函数已全部被 `gmm/common/gmm_kernel_utils.h` 覆盖，A16W4 MSD 特有的仅有 namespace 差异。
-- 因此 A16W4 MSD 各源文件不再需要一个本地 `tool.h`，直接 `#include "gmm/common/gmm_kernel_utils.h"`，并在代码中使用 `GmmOpKernel::CeilDivide`（替代原 `CeilDiv`）等。
+- 因此 A16W4 MSD 各源文件不再需要一个本地 `tool.h`，直接 `#include "gmm/common/gmm_kernel_utils.h"`，并在代码中使用 `GmmOpKernel::CeilDiv`（替代原 `CeilDiv`）等。
 - 若未来 A16W4 MSD 需要补充 MSD 特有的工具函数，再新建 `a16w4_msd_utils.h`（或 `a16w4_msd_tool.h`，保证全局唯一即可）。
 
 ### 4.4 Arch35 WeightQuant 两侧头文件删除
@@ -336,8 +336,8 @@ touch gmm/common/arch35_weight_quant_common.h
 修改点：
 1. 删除 `#include "tool.h"`。
 2. 新增 `#include "gmm/common/gmm_kernel_utils.h"`。
-3. 若文件中使用了 `CeilDiv`，替换为 `GmmOpKernel::CeilDivide`。
-4. 若文件中使用了 `DataCopyPad2D`、`GetKBUnit` 等，添加 `GmmOpKernel::` 前缀或在文件中添加 `using GmmOpKernel::CeilDivide;` 等。
+3. 若文件中使用了 `CeilDiv`，替换为 `GmmOpKernel::CeilDiv`。
+4. 若文件中使用了 `DataCopyPad2D`、`GetKBUnit` 等，添加 `GmmOpKernel::` 前缀或在文件中添加 `using GmmOpKernel::CeilDiv;` 等。
 
 ### Step 3：修改 Arch35 WeightQuant 侧引用
 

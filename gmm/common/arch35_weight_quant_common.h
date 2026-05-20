@@ -82,7 +82,7 @@ static constexpr uint64_t FLAG_ID_MAX = 16;
 
 // 引入通用工具函数到本 namespace
 using GmmOpKernel::CeilAlign;
-using GmmOpKernel::CeilDivide;
+using GmmOpKernel::CeilDiv;
 using GmmOpKernel::DataCopyPad2D;
 using GmmOpKernel::GetKBUnit;
 using GmmOpKernel::Min;

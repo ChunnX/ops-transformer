@@ -25,7 +25,7 @@
 
 namespace GROUPED_MATMUL::A16W4Msd {
 using GmmOpKernel::CeilAlign;
-using GmmOpKernel::CeilDivide;
+using GmmOpKernel::CeilDiv;
 using GmmOpKernel::DataCopyPad2D;
 using GmmOpKernel::GetKBUnit;
 using GmmOpKernel::Min;

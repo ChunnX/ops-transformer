@@ -23,7 +23,7 @@
 
 namespace GROUPED_MATMUL::A16W4Msd {
 using GmmOpKernel::CeilAlign;
-using GmmOpKernel::CeilDivideide;
+using GmmOpKernel::CeilDiv;
 using GmmOpKernel::DataCopyPad2D;
 using GmmOpKernel::GetKBUnit;
 using GmmOpKernel::Min;
@@ -393,7 +393,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadWeightS8ToL0b(
     uint64_t realL1LoopId = kL1Offset >= KL1_BASE_SIZE ? loopIdx_ + 1 : loopIdx_;
     LoadData2DParams l1ToL0bParams;
     l1ToL0bParams.startIndex = 0;
-    l1ToL0bParams.repeatTimes = CeilDivide(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE);
+    l1ToL0bParams.repeatTimes = CeilDiv(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE);
     l1ToL0bParams.srcStride = 1;
     l1ToL0bParams.dstGap = 0;
     LoadData(s8l0b_[(loopL0abIdx_ % L0AB_BUF_NUM) * L0AB_S8_4BUFF_OFFSET],
@@ -439,7 +439,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadAS8ToL0a(
     uint64_t realL1LoopId = kL1Offset >= KL1_BASE_SIZE ? loopIdx_ + 1 : loopIdx_;
     LoadData2DParams l1ToL0aParams;
     l1ToL0aParams.startIndex = 0;
-    l1ToL0aParams.repeatTimes = CeilDivide(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);
+    l1ToL0aParams.repeatTimes = CeilDiv(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);
     l1ToL0aParams.srcStride = 1;
     l1ToL0aParams.dstGap = 0;
     // 跳过a1,需要补m * K_L1_BASE_SIZE
@@ -476,7 +476,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::LoadCF16ToL0b(
 {
     AscendC::LoadData3DParamsV2<half> loadData3DParams;
     // SetFmatrixParams
-    loadData3DParams.l1H = CeilDivide(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);            // Hin=M1=8
+    loadData3DParams.l1H = CeilDiv(curOffsetParam.mL1Size, (uint64_t)BLOCK_CUBE);            // Hin=M1=8
     loadData3DParams.l1W = BLOCK_CUBE;                                                       // Win=M0
     loadData3DParams.channelSize = CeilAlign(curOffsetParam.nL1Size, (uint64_t)BLOCK_CUBE);  // Cin=K
 

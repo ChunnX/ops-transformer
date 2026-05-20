@@ -368,7 +368,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyGmToU
                                                           UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
                               .template ReinterpretCast<wType>(),
                           wGlobal_[ubMte2KOffset * offsetParam.nAlign + ubMte2NOffset * static_cast<uint64_t>(C0_SIZE)],
-                          CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+                          CeilDiv(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
                           CeilAlign(ubMte2NSize, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
                           CeilAlign(ubMte2NSize, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
                           offsetParam.nAlign * C0_SIZE);
@@ -422,7 +422,7 @@ GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightGmToUb(uint64_t ubMte2
                                                           UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
                               .template ReinterpretCast<wType>(),
                           wGlobal_[ubMte2NOffset * offsetParam.kAlign + ubMte2KOffset * static_cast<uint64_t>(C0_SIZE)],
-                          CeilDivide(ubMte2NSize, static_cast<uint64_t>(C0_SIZE)),
+                          CeilDiv(ubMte2NSize, static_cast<uint64_t>(C0_SIZE)),
                           CeilAlign(ubMte2KSize, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
                           vecConfig.ubMte2InnerSize * C0_SIZE, offsetParam.kAlign * C0_SIZE);
         }
@@ -465,7 +465,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyAntiQ
         DataCopyPad2D(ubAntiQuantScaleTotalBuffer_[(ubMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                                                    UB_BUFFER_INFO.antiQuantScaleUbSingleBufferSize],
                       antiQuantScaleGlobal_[ubMte2KOffset / antiQuantGroupSize_ * offsetParam.nSize + ubMte2NOffset],
-                      CeilDivide(ubMte2KSize, antiQuantGroupSize_), ubMte2NSize, VEC_MAX_ELEM_B16, offsetParam.nSize);
+                      CeilDiv(ubMte2KSize, antiQuantGroupSize_), ubMte2NSize, VEC_MAX_ELEM_B16, offsetParam.nSize);
     } else if constexpr (wqmmConfig.antiQuantType == QuantType::MX) {
         CopyMxAntiQuantParamsGmToUb(ubMte2NSize, ubMte2KSize, ubMte2NOffset, ubMte2KOffset, offsetParam);
     }
@@ -476,24 +476,24 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyMxAnt
     uint64_t ubMte2NSize, uint64_t ubMte2KSize, uint64_t ubMte2NOffset, uint64_t ubMte2KOffset,
     const BasicBlockOffsetParam &offsetParam)
 {
-    uint64_t mxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
+    uint64_t mxGroupNum = CeilDiv(offsetParam.kSize, MX_GROUPSIZE);
     LocalTensor<fp8_e8m0_t> ubAntiQuantScaleBuffer =
         ubAntiQuantScaleTotalBuffer_[(ubMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                                      UB_BUFFER_INFO.antiQuantScaleUbSingleBufferSize]
             .template ReinterpretCast<fp8_e8m0_t>();
     if constexpr (wqmmConfig.bTrans) {
         DataCopyPad2D(ubAntiQuantScaleBuffer,
-                      antiQuantScaleGlobal_[ubMte2NOffset * mxGroupNum + CeilDivide(ubMte2KOffset, MX_GROUPSIZE)],
-                      ubMte2NSize, CeilDivide(ubMte2KSize, MX_GROUPSIZE),
-                      CeilDivide(vecConfig.ubMte2InnerSize, MX_GROUPSIZE), mxGroupNum);
+                      antiQuantScaleGlobal_[ubMte2NOffset * mxGroupNum + CeilDiv(ubMte2KOffset, MX_GROUPSIZE)],
+                      ubMte2NSize, CeilDiv(ubMte2KSize, MX_GROUPSIZE),
+                      CeilDiv(vecConfig.ubMte2InnerSize, MX_GROUPSIZE), mxGroupNum);
     } else {
         uint64_t scaleInnerSize = wqmmConfig.weightFormat != CubeFormat::NZ
                                       ? vecConfig.ubMte2InnerSize
                                       : 128UL;  // nz场景当前不会合并，固定对齐到128即可
         DataCopyPad2D(
             ubAntiQuantScaleBuffer,
-            antiQuantScaleGlobal_[CeilDivide(ubMte2KOffset, MX_GROUPSIZE) * offsetParam.nSize + ubMte2NOffset],
-            CeilDivide(ubMte2KSize, MX_GROUPSIZE), ubMte2NSize, scaleInnerSize, offsetParam.nSize);
+            antiQuantScaleGlobal_[CeilDiv(ubMte2KOffset, MX_GROUPSIZE) * offsetParam.nSize + ubMte2NOffset],
+            CeilDiv(ubMte2KSize, MX_GROUPSIZE), ubMte2NSize, scaleInnerSize, offsetParam.nSize);
     }
 
     event_t eventIdScaleMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
@@ -523,14 +523,14 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::MxScalePr
         mxFp4NdScaleParams.antiQuantScaleF16PhyAddr0 + (VECTOR_REG_WIDTH >> 1);
     if constexpr (wqmmConfig.bTrans) {
         mxFp4NdScaleParams.ubLoopExternalAxis =
-            CeilDivide(ubMte2NSize, static_cast<uint64_t>(4));  // 按照4行共128个数进行处理
+            CeilDiv(ubMte2NSize, static_cast<uint64_t>(4));  // 按照4行共128个数进行处理
     } else {
         if constexpr (wqmmConfig.weightFormat != CubeFormat::NZ) {
             // nd场景scale采取对齐到默认值策略
-            mxFp4NdScaleParams.ubLoopExternalAxis = CeilDivide(ubMte2KSize, MX_GROUPSIZE);
+            mxFp4NdScaleParams.ubLoopExternalAxis = CeilDiv(ubMte2KSize, MX_GROUPSIZE);
         } else {
             // nz场景，scale采取内轴128 element对齐的策略，vf一次做256个数，此处直接除以2向上对齐
-            mxFp4NdScaleParams.ubLoopExternalAxis = CeilDivide(CeilDivide(ubMte2KSize, MX_GROUPSIZE), 2UL);
+            mxFp4NdScaleParams.ubLoopExternalAxis = CeilDiv(CeilDiv(ubMte2KSize, MX_GROUPSIZE), 2UL);
         }
     }
     if constexpr (wqmmConfig.bTrans) {
@@ -776,12 +776,12 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
     if constexpr (wqmmConfig.bTrans) {
         weightLowBitOffset = nWeightLowBitUbOffset * vecConfig.ubMte2InnerSize + kWeightLowBitUbOffset;
         antiQuantScaleAfterCastOffset = (nWeightLowBitUbOffset * vecConfig.ubMte2InnerSize / MX_GROUPSIZE +
-                                         CeilDivide(kWeightLowBitUbOffset, MX_GROUPSIZE)) *
+                                         CeilDiv(kWeightLowBitUbOffset, MX_GROUPSIZE)) *
                                         2;  // 在经过e8m0-->f16后，偏移需要乘2
     } else {
         weightLowBitOffset = kWeightLowBitUbOffset * vecConfig.ubMte2InnerSize + nWeightLowBitUbOffset;
         antiQuantScaleAfterCastOffset =
-            CeilDivide(kWeightLowBitUbOffset, MX_GROUPSIZE) * vecConfig.ubMte2InnerSize + nWeightLowBitUbOffset;
+            CeilDiv(kWeightLowBitUbOffset, MX_GROUPSIZE) * vecConfig.ubMte2InnerSize + nWeightLowBitUbOffset;
     }
 
     if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
@@ -807,7 +807,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
         AscendC::VF_CALL<MxNkWeightVf<xType, wType, vecConfig>>(mxFp4NdWeightParams);
 
     } else {
-        mxFp4NdWeightParams.ubLoopExternalAxis = CeilDivide(vfExternalRealLen, MX_GROUPSIZE);
+        mxFp4NdWeightParams.ubLoopExternalAxis = CeilDiv(vfExternalRealLen, MX_GROUPSIZE);
         mxFp4NdWeightParams.antiQuantScaleF16PhyAddr1 =
             mxFp4NdWeightParams.antiQuantScaleF16PhyAddr0 + (VECTOR_REG_WIDTH >> 1);
         AscendC::VF_CALL<MxKnWeightVf<xType, wType, vecConfig>>(mxFp4NdWeightParams);
@@ -838,16 +838,16 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
                                       VEC_MAX_ELEM_B16]
                     .GetPhyAddr();
 
-        fp4NzParams.loopN1 = CeilDivide(vfExternalRealLen, static_cast<uint64_t>(C0_SIZE));
+        fp4NzParams.loopN1 = CeilDiv(vfExternalRealLen, static_cast<uint64_t>(C0_SIZE));
         // 跳写UB避免bank冲突
         fp4NzParams.innerDstStride = VEC_MAX_ELEM_B16 * UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum;
 
-        fp4NzParams.loopGroupNum = CeilDivide(vfInnerRealLen, MX_GROUPSIZE);
+        fp4NzParams.loopGroupNum = CeilDiv(vfInnerRealLen, MX_GROUPSIZE);
         // 小数据量vfInnerRealLen对齐到BLOCK_CUBE，再计算循环次数
         fp4NzParams.loopInnerNum =
             vfInnerRealLen < MX_GROUPSIZE
-                ? CeilDivide(CeilAlign(vfInnerRealLen, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, VEC_MAX_ELEM_B16)
-                : CeilDivide(MX_GROUPSIZE * C0_SIZE, VEC_MAX_ELEM_B16);
+                ? CeilDiv(CeilAlign(vfInnerRealLen, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, VEC_MAX_ELEM_B16)
+                : CeilDiv(MX_GROUPSIZE * C0_SIZE, VEC_MAX_ELEM_B16);
         fp4NzParams.groupDstStride = fp4NzParams.loopInnerNum * fp4NzParams.innerDstStride;
         fp4NzParams.loopN1DstStride = fp4NzParams.loopGroupNum * fp4NzParams.groupDstStride;
         AscendC::VF_CALL<AntiQuantFp4NzKnVf<xType, wType, vecConfig.ubMte2InnerSize>>(fp4NzParams);
@@ -871,8 +871,8 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
             ubHighBitTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) *
                                   VECTOR_REG_WIDTH]
                 .GetPhyAddr();
-    mxA8W4NzParams.loopKNum = CeilDivide(ubConsumeConfig.l1RequireVfComputeRealK, static_cast<uint64_t>(C0_SIZE));
-    mxA8W4NzParams.innerLoopNum = CeilDivide(CeilAlign(ubConsumeConfig.l1RequireVfComputeRealN, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
+    mxA8W4NzParams.loopKNum = CeilDiv(ubConsumeConfig.l1RequireVfComputeRealK, static_cast<uint64_t>(C0_SIZE));
+    mxA8W4NzParams.innerLoopNum = CeilDiv(CeilAlign(ubConsumeConfig.l1RequireVfComputeRealN, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
                                           static_cast<uint64_t>(VECTOR_REG_WIDTH));
     // 跳写UB避免bank冲突
     mxA8W4NzParams.innerDstStride = VECTOR_REG_WIDTH * UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum;
@@ -885,7 +885,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
             (__ubuf__ biasType *)ubBiasOutTotalBuffer_[ubMte2BufferIdx * UB_BUFFER_INFO.biasReducedSingleBufferSize]
                 .GetPhyAddr();
         if (ubConsumeConfig.isBiasSingleVector) {
-            mxA8W4NzParams.biasLoopNum = CeilDivide(ubConsumeConfig.ubMxBiasNsize, VEC_MAX_ELEM_B16);
+            mxA8W4NzParams.biasLoopNum = CeilDiv(ubConsumeConfig.ubMxBiasNsize, VEC_MAX_ELEM_B16);
             AntiQuantMxA8W4NzNkVf<xType, wType, biasType, true, true>(mxA8W4NzParams);
         } else {
             AntiQuantMxA8W4NzNkVf<xType, wType, biasType, true, false>(mxA8W4NzParams);
@@ -947,24 +947,24 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
     if constexpr (!wqmmConfig.bTrans) {
         Int4NzParams<xType, wType, antiQuantScaleType> int4NzParams;
         CalInt4NzKnLocalAddrForVf(nWeightLowBitUbOffset, kWeightLowBitUbOffset, int4NzParams);
-        int4NzParams.loopN1 = CeilDivide(vfExternalRealLen, static_cast<uint64_t>(C0_SIZE));
+        int4NzParams.loopN1 = CeilDiv(vfExternalRealLen, static_cast<uint64_t>(C0_SIZE));
         // 跳写UB避免bank冲突，A16跳1024B，A8跳512B; MTE3对应跳读
         int4NzParams.innerDstStride = VEC_MAX_ELEM_B16 * UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum;
 
         if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP) {
             int4NzParams.antiQuantGroupSize = antiQuantGroupSize_;
-            int4NzParams.loopGroupNum = CeilDivide(vfInnerRealLen, antiQuantGroupSize_);
+            int4NzParams.loopGroupNum = CeilDiv(vfInnerRealLen, antiQuantGroupSize_);
             int4NzParams.loopInnerNum =
                 vfInnerRealLen < antiQuantGroupSize_ ?
-                    CeilDivide(CeilAlign(vfInnerRealLen, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
+                    CeilDiv(CeilAlign(vfInnerRealLen, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
                                VEC_MAX_ELEM_B16) :
-                    CeilDivide(antiQuantGroupSize_ * C0_SIZE, VEC_MAX_ELEM_B16);
+                    CeilDiv(antiQuantGroupSize_ * C0_SIZE, VEC_MAX_ELEM_B16);
             int4NzParams.groupDstStride = int4NzParams.loopInnerNum * int4NzParams.innerDstStride;
             int4NzParams.loopN1DstStride = int4NzParams.loopGroupNum * int4NzParams.groupDstStride;
             AscendC::VF_CALL<AntiQuantS8S4NzKnGroupVf<xType, wType, antiQuantScaleType, wqmmConfig.hasAntiQuantOffset,
                                                       vecConfig.ubMte2InnerSize>>(int4NzParams);
         } else {
-            int4NzParams.loopInnerNum = CeilDivide(
+            int4NzParams.loopInnerNum = CeilDiv(
                 static_cast<uint64_t>(CeilAlign(vfInnerRealLen, static_cast<uint64_t>(BLOCK_CUBE))) * C0_SIZE,
                 VEC_MAX_ELEM_B16);
             int4NzParams.loopN1DstStride = int4NzParams.loopInnerNum * int4NzParams.innerDstStride;
@@ -1073,12 +1073,12 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WeightHig
     if constexpr (wqmmConfig.weightFormat != CubeFormat::NZ) {
         if constexpr (wqmmConfig.bTrans) {
             params.blockLen = antiQuantRealN;
-            params.blockCount = CeilDivide(antiQuantRealK, static_cast<uint64_t>(BLOCK_CUBE));
+            params.blockCount = CeilDiv(antiQuantRealK, static_cast<uint64_t>(BLOCK_CUBE));
             params.srcStride = WEIGHT_F16_UB_NZ_STRIDE - antiQuantRealN;
             params.dstStride = CeilAlign(l1RealExternalLen, static_cast<uint64_t>(BLOCK_CUBE)) - antiQuantRealN;
         } else {
             params.blockLen = antiQuantRealK;
-            params.blockCount = CeilDivide(antiQuantRealN, static_cast<uint64_t>(BLOCK_CUBE));
+            params.blockCount = CeilDiv(antiQuantRealN, static_cast<uint64_t>(BLOCK_CUBE));
             params.srcStride = WEIGHT_F16_UB_NZ_STRIDE - antiQuantRealK;
             params.dstStride = CeilAlign(l1RealExternalLen, static_cast<uint64_t>(BLOCK_CUBE)) - antiQuantRealK;
         }
@@ -1136,7 +1136,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeigh
     uint64_t innerDstStride = VEC_MAX_ELEM_B16 * UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum;
     uint64_t blockCubeAlignOfk = CeilAlign(antiQuantRealK, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t mxGroupSizeAlignOfk = CeilAlign(antiQuantRealK, static_cast<uint64_t>(MX_GROUPSIZE));
-    for (int i = 0; i < CeilDivide(antiQuantRealN, static_cast<uint64_t>(C0_SIZE)); i++) {
+    for (int i = 0; i < CeilDiv(antiQuantRealN, static_cast<uint64_t>(C0_SIZE)); i++) {
         params.blockCount =
             CeilAlign(antiQuantRealK, static_cast<uint64_t>(BLOCK_CUBE)) / (VEC_MAX_ELEM_B16 / BLOCK_CUBE);
         params.blockLen = VEC_MAX_ELEM_B16 / BLOCK_CUBE;
@@ -1164,7 +1164,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
 
     LocalAddressYParam<yType> addressParam;
     CalLocalAddrForYVf(addressParam);
-    uint16_t loopN = CeilDivide(nRealL0Size, ANTIQUANT_Y_STANDARD_N_SIZE);
+    uint16_t loopN = CeilDiv(nRealL0Size, ANTIQUANT_Y_STANDARD_N_SIZE);
 
     if (hasBias_) {
         AntiQuantYB32<yType, true>(addressParam, CeilAlign(nRealL0Size, ANTIQUANT_Y_STANDARD_N_SIZE),
