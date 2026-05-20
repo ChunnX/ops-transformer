@@ -12,7 +12,6 @@ from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
-
 class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
         super(MixedQuantSparseFlashMlaOpBuilder, self).__init__("npu_mixed_quant_sparse_flash_mla")
@@ -32,11 +31,13 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, "         \
             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "         \
             "Tensor? sinks=None, Tensor? metadata=None, "         \
-            "int quant_mode, int num_heads_k, int head_dim, int topk, " \
-            "int q_quant_mode, int rope_head_dim, double softmax_scale=0, "       \
-            "int cmp_ratio=0, int ori_mask_mode=0, int cmp_mask_mode=0, int ori_win_left=0, " \
-            "int ori_win_right=0, str layout_q='BSND', str layout_kv='BSND', int topk_value_mode=0, "   \
-            "bool return_softmax_lse=1, int key_dtype=1, int value_dtype=1) -> Tensor"
+            "int quant_mode=1, int rope_head_dim=64, " \
+            "double softmax_scale=1.0, int cmp_ratio=1, " \
+            "int ori_mask_mode=4, int cmp_mask_mode=3, " \
+            "int ori_win_left=127, int ori_win_right=0, " \
+            "str layout_q='BSND', str layout_kv='PA_ND', " \
+            "int topk_value_mode=1, bool return_softmax_lse=False, " \
+            "int? key_dtype=None, int? value_dtype=None) -> Tensor"
 
     def register_meta(self):
         """
