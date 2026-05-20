@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file aclnn_sparse_lightning_indexer_grad_metadata.cpp
+ * \file aclnn_sparse_lightning_indexer_klloss_grad_metadata.cpp
  * \brief
  */
 
-#include "aclnn_sparse_lightning_indexer_grad_metadata.h"
+#include "aclnn_sparse_lightning_indexer_klloss_grad_metadata.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
-#include "l0_sparse_lightning_indexer_grad_metadata.h"
+#include "l0_sparse_lightning_indexer_klloss_grad_metadata.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -40,20 +40,20 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
                                char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, 
                                int64_t cmpRatioOptional) 
 {
-    if (CheckSingleParamSlig(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK, 
+    if (CheckSingleParamSlikg(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK, 
                          layoutQOptional, layoutKOptional, maskModeOptional) == ACLNN_SUCCESS && 
-        CheckExistenceSlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, 
+        CheckExistenceSlikg(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, 
                            cmpResidualKOptional, maskModeOptional, cmpRatioOptional) == ACLNN_SUCCESS && 
-        CheckConsistencySlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, 
+        CheckConsistencySlikg(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, 
                              sequsedKOptional, cmpResidualKOptional, batchSizeOptional) == ACLNN_SUCCESS && 
-        CheckFeatureSlig(cmpRatioOptional) == ACLNN_SUCCESS) {
+        CheckFeatureSlikg(cmpRatioOptional) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
     }
 }
 
-aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
+aclnnStatus CheckSingleParamSlikg(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
                                  int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, 
                                  int64_t maskModeOptional)
 {
@@ -100,7 +100,7 @@ aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOp
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckExistenceSlikg(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
                                const aclTensor* cuSeqLensKOptional, const aclTensor* cmpResidualKOptional, 
                                int64_t maskModeOptional, int64_t cmpRatioOptional)
 {
@@ -134,7 +134,7 @@ aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, con
     return ACLNN_SUCCESS;
 }
 
-int64_t GetQueryBatchSizeSlig(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
+int64_t GetQueryBatchSizeSlikg(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
                               char* layoutQOptional, int64_t batchSizeOptional)
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
@@ -161,7 +161,7 @@ int64_t GetQueryBatchSizeSlig(const aclTensor* cuSeqLensQOptional, const aclTens
     return batchSizeOptional;
 }
 
-int64_t GetKeyBatchSizeSlig(const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedKOptional, 
+int64_t GetKeyBatchSizeSlikg(const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedKOptional, 
                            char* layoutKOptional, int64_t batchSizeOptional)
 {
     // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
@@ -188,7 +188,7 @@ int64_t GetKeyBatchSizeSlig(const aclTensor* cuSeqLensKOptional, const aclTensor
     return batchSizeOptional;
 }
 
-aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckConsistencySlikg(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
                                  const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
                                  const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, 
                                  int64_t batchSizeOptional)
@@ -276,9 +276,9 @@ aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, c
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    int64_t queryBatchSize = GetQueryBatchSizeSlig(cuSeqLensQOptional, sequsedQOptional, layoutQOptional, 
+    int64_t queryBatchSize = GetQueryBatchSizeSlikg(cuSeqLensQOptional, sequsedQOptional, layoutQOptional, 
                                                    batchSizeOptional);
-    int64_t keyBatchSize = GetKeyBatchSizeSlig(cuSeqLensKOptional, sequsedKOptional, layoutKOptional, batchSizeOptional);
+    int64_t keyBatchSize = GetKeyBatchSizeSlikg(cuSeqLensKOptional, sequsedKOptional, layoutKOptional, batchSizeOptional);
     if (queryBatchSize != keyBatchSize) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
                 "that obtained from k tensor, but got %ld and %ld", queryBatchSize, keyBatchSize);
@@ -287,26 +287,18 @@ aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, c
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckFeatureSlig(int64_t cmpRatioOptional)
+aclnnStatus CheckFeatureSlikg(int64_t cmpRatioOptional)
 {
     // 压缩率校验
     if (cmpRatioOptional < 1 || cmpRatioOptional > 128) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be [1, 128], but got %d", cmpRatioOptional);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
-    const char* socVersion = npuInfo.GetSocLongVersion().c_str();
-    // 校验 2 的幂次方: 1, 2, 4, ..., 128
-    if ((cmpRatioOptional & (cmpRatioOptional - 1)) != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be 1/2/4/8/16/32/64/128, but got %d", 
-                cmpRatioOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     return ACLNN_SUCCESS;
 }
 
 __attribute__((visibility("default")))
-aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
+aclnnStatus aclnnSparseLightningIndexerKllossGradMetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
     const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK, 
     int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
@@ -314,7 +306,7 @@ aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     int64_t cmpRatioOptional, int64_t deterministicOptional, const aclTensor* metaData, uint64_t* workspaceSize, 
     aclOpExecutor** executor) 
 {
-    L2_DFX_PHASE_1(aclnnSparseLightningIndexerGradMetadata,
+    L2_DFX_PHASE_1(aclnnSparseLightningIndexerKllossGradMetadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional, 
                           numHeadsQ, numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, 
                           topkOptional, layoutQOptional, layoutKOptional, maskModeOptional, cmpRatioOptional, 
@@ -349,7 +341,7 @@ aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     CHECK_RET(sequsedKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto cmpResidualKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
     CHECK_RET(cmpResidualKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto output = l0op::SparseLightningIndexerGradMetadata(
+    auto output = l0op::SparseLightningIndexerKllossGradMetadata(
         cuSeqLensQOptionalContiguous, cuSeqLensKOptionalContiguous, sequsedQOptionalContiguous, 
         sequsedKOptionalContiguous, cmpResidualKOptionalContiguous, aicCoreNum, aivCoreNum, socVersion, numHeadsQ, 
         numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, topkOptional, layoutQOptional, 
@@ -362,9 +354,9 @@ aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
 }
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnSparseLightningIndexerGradMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream) 
+aclnnSparseLightningIndexerKllossGradMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream) 
 {
-    L2_DFX_PHASE_2(aclnnSparseLightningIndexerGradMetadata);
+    L2_DFX_PHASE_2(aclnnSparseLightningIndexerKllossGradMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
-#define L0_SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
+#ifndef L0_SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H
+#define L0_SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* SparseLightningIndexerGradMetadata(
+const aclTensor* SparseLightningIndexerKllossGradMetadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t aicCoreNum, int64_t aivCoreNum, 
     const char* socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, 

@@ -10,15 +10,15 @@
 
 #include <cstdio>
 #include <cmath>
-#include "sparse_lightning_indexer_grad_metadata.h"
+#include "sparse_lightning_indexer_klloss_grad_metadata.h"
 #include "../../common/aicpu/cpu_context_util.h"
-#include "sparse_lightning_indexer_grad_metadata_aicpu.h"
+#include "sparse_lightning_indexer_klloss_grad_metadata_aicpu.h"
 
 using namespace optiling;
 
 namespace aicpu {
 uint32_t
-SparseLightningIndexerGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+SparseLightningIndexerKllossGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -29,7 +29,7 @@ SparseLightningIndexerGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     // input
     actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
@@ -63,12 +63,12 @@ bool SparseLightningIndexerGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return (ParamsCheck() && ParamsInit());
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::ParamsCheck() 
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::ParamsCheck() 
 {
     return CheckTensorData();
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::CheckTensorData()
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::CheckTensorData()
 {
     auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
                                           t->GetTensorShape()->GetDimSize(0) != 0; };
@@ -95,7 +95,7 @@ bool SparseLightningIndexerGradMetadataCpuKernel::CheckTensorData()
     return true;
 }
 
-int32_t SparseLightningIndexerGradMetadataCpuKernel::GetQueryBatchSize()
+int32_t SparseLightningIndexerKllossGradMetadataCpuKernel::GetQueryBatchSize()
 {
     // 1. 如果seqUsedQ_传了，使用seqUsedQ_获取BatchSize
     if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
@@ -116,7 +116,7 @@ int32_t SparseLightningIndexerGradMetadataCpuKernel::GetQueryBatchSize()
     return batchSize_;
 }
 
-ValidSocVersion SparseLightningIndexerGradMetadataCpuKernel::ProcessSocVersion()
+ValidSocVersion SparseLightningIndexerKllossGradMetadataCpuKernel::ProcessSocVersion()
 {
     const std::string ascend950 = "Ascend950";
     if (socVersion_.find(ascend950) != std::string::npos) {
@@ -128,7 +128,7 @@ ValidSocVersion SparseLightningIndexerGradMetadataCpuKernel::ProcessSocVersion()
     return ValidSocVersion::RESERVED_VERSION;
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::ParamsInit()
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
     auto mode = static_cast<SparseMode>(maskMode_);
@@ -152,7 +152,7 @@ bool SparseLightningIndexerGradMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t SparseLightningIndexerGradMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
+uint32_t SparseLightningIndexerKllossGradMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
     // 1. 如果 seqUsedQ_ 传了，直接使用
     if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
@@ -171,7 +171,7 @@ uint32_t SparseLightningIndexerGradMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx
     return static_cast<uint32_t>(maxSeqlenQ_);
 }
 
-uint32_t SparseLightningIndexerGradMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
+uint32_t SparseLightningIndexerKllossGradMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
     // 如果 seqUsedKv_ 传了，直接使用
     if (seqUsedK_ != nullptr && seqUsedK_->GetData() != nullptr) {
@@ -190,7 +190,7 @@ uint32_t SparseLightningIndexerGradMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx
     return static_cast<uint32_t>(maxSeqlenK_);
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
@@ -209,7 +209,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitInfo(SplitContext &sp
     return;
 }
 
-int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcPreTokenLeftUp(
+int64_t SparseLightningIndexerKllossGradMetadataCpuKernel::CalcPreTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(maskMode_);
@@ -219,7 +219,7 @@ int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcPreTokenLeftUp(
     return preToken_;
 }
 
-int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcNextTokenLeftUp(
+int64_t SparseLightningIndexerKllossGradMetadataCpuKernel::CalcNextTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(maskMode_);
@@ -237,7 +237,7 @@ int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcNextTokenLeftUp(
     }
 }
 
-int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcCost(
+int64_t SparseLightningIndexerKllossGradMetadataCpuKernel::CalcCost(
     uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignBasicM = basicM / groupSize_;
@@ -258,7 +258,7 @@ int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcCost(
     }
 }
 
-BlockCost<int64_t> SparseLightningIndexerGradMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
+BlockCost<int64_t> SparseLightningIndexerKllossGradMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
     uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
 {
     BlockCost<int64_t> typeCost {};
@@ -269,7 +269,7 @@ BlockCost<int64_t> SparseLightningIndexerGradMetadataCpuKernel::CalcCostTable(ui
     return typeCost;
 }
 
-Range<int64_t> SparseLightningIndexerGradMetadataCpuKernel::CalcS2TokenRange(
+Range<int64_t> SparseLightningIndexerKllossGradMetadataCpuKernel::CalcS2TokenRange(
         uint32_t s1GIdx, const BatchCache &batchCache) {
 
     // no mask
@@ -303,7 +303,7 @@ Range<int64_t> SparseLightningIndexerGradMetadataCpuKernel::CalcS2TokenRange(
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::CalcBatchCache(
+void SparseLightningIndexerKllossGradMetadataCpuKernel::CalcBatchCache(
     uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -317,7 +317,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcBatchCache(
         splitInfo.s2TailSize[bIdx]);
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
+void SparseLightningIndexerKllossGradMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -384,7 +384,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::CalcBatchCost(
+void SparseLightningIndexerKllossGradMetadataCpuKernel::CalcBatchCost(
     uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -415,7 +415,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcBatchCost(
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     CostInfo &costInfo = splitContext.costInfo;
@@ -434,7 +434,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcCostInfo(SplitContext &spl
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
@@ -482,7 +482,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::UpdateCursor(const SplitContex
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -517,7 +517,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::AssignByBatch(const SplitConte
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -543,7 +543,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::AssignByRow(const SplitContext
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -568,7 +568,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::AssignByBlock(const SplitConte
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -591,7 +591,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::ForceAssign(const SplitContext
     UpdateCursor(splitContext, assignContext);
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes)
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -610,7 +610,7 @@ bool SparseLightningIndexerGradMetadataCpuKernel::IsNeedRecordFDInfo(const Assig
     return true;
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
@@ -632,7 +632,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::RecordFDInfo(const SplitContex
     result.numOfFdHead++;
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, 
+void SparseLightningIndexerKllossGradMetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, 
                                                                AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -672,7 +672,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::AssignBlockToCore(uint32_t cor
     }
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
+void SparseLightningIndexerKllossGradMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -703,7 +703,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
-void SparseLightningIndexerGradMetadataCpuKernel::SplitFD(SplitResult &splitRes)
+void SparseLightningIndexerKllossGradMetadataCpuKernel::SplitFD(SplitResult &splitRes)
 {
     // 计算FD的总数据量
     uint64_t totalFDLoad = 0;
@@ -728,7 +728,7 @@ void SparseLightningIndexerGradMetadataCpuKernel::SplitFD(SplitResult &splitRes)
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 {
     SplitContext splitContext(batchSize_);
     // 1、划分基本块，统计信息
@@ -736,9 +736,9 @@ bool SparseLightningIndexerGradMetadataCpuKernel::BalanceSchedule(SplitResult &s
     return true;
 }
 
-bool SparseLightningIndexerGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
+bool SparseLightningIndexerKllossGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
 {
-    optiling::detail::SligMetaData* gradMetadataPtr = (optiling::detail::SligMetaData*)metaData_->GetData();
+    optiling::detail::SlikgMetaData* gradMetadataPtr = (optiling::detail::SlikgMetaData*)metaData_->GetData();
     // Grad Metadata Generate
     uint32_t formerCoreProcessNum = CeilDiv(totalNum, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
@@ -754,7 +754,7 @@ bool SparseLightningIndexerGradMetadataCpuKernel::GenMetaData(SplitResult &split
 }
 
 namespace {
-    static const char *kernelType = "SparseLightningIndexerGradMetadata";
-    REGISTER_CPU_KERNEL(kernelType, SparseLightningIndexerGradMetadataCpuKernel);
+    static const char *kernelType = "SparseLightningIndexerKllossGradMetadata";
+    REGISTER_CPU_KERNEL(kernelType, SparseLightningIndexerKllossGradMetadataCpuKernel);
 }
 }; // namespace aicpu

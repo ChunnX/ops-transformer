@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file l0_sparse_lightning_indexer_grad_metadata.cpp
+ * \file l0_sparse_lightning_indexer_klloss_grad_metadata.cpp
  * \brief
  */
 
-#include "l0_sparse_lightning_indexer_grad_metadata.h"
+#include "l0_sparse_lightning_indexer_klloss_grad_metadata.h"
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
@@ -24,24 +24,24 @@
 
 using namespace op;
 namespace l0op {
-OP_TYPE_REGISTER(SparseLightningIndexerGradMetadata);
+OP_TYPE_REGISTER(SparseLightningIndexerKllossGradMetadata);
 
-const aclTensor* SparseLightningIndexerGradMetadata(
+const aclTensor* SparseLightningIndexerKllossGradMetadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t aicCoreNum, int64_t aivCoreNum, 
     const char* socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, 
     int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, 
     char* layoutKOptional, int64_t maskModeOptional, int64_t cmpRatioOptional, int64_t deterministicOptional, 
     const aclTensor* metaData, aclOpExecutor* executor) {
-  L0_DFX(SparseLightningIndexerGradMetadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, 
+  L0_DFX(SparseLightningIndexerKllossGradMetadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, 
          cmpResidualKOptional, aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, batchSizeOptional, 
          maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, topkOptional, maskModeOptional, 
          cmpRatioOptional, deterministicOptional, metaData);
 
-  static internal::AicpuTaskSpace space("SparseLightningIndexerGradMetadata");
+  static internal::AicpuTaskSpace space("SparseLightningIndexerKllossGradMetadata");
 
   auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-      SparseLightningIndexerGradMetadata,
+      SparseLightningIndexerKllossGradMetadata,
       OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", 
                      "batch_size", "max_seqlen_q", "max_seqlen_k", "topk", "layout_q", "layout_k", "mask_mode", 
                      "cmp_ratio", "deterministic"}),
@@ -52,7 +52,7 @@ const aclTensor* SparseLightningIndexerGradMetadata(
               deterministicOptional));
   OP_CHECK(ret == ACL_SUCCESS,
            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                   "SparseLightningIndexerGradMetadata"
+                   "SparseLightningIndexerKllossGradMetadata"
                    " ADD_TO_LAUNCHER_LIST_AICPU failed."),
            return nullptr);
   return metaData;

@@ -9,12 +9,12 @@
  */
 
  /*!
- * \file sparse_lightning_indexer_grad_metadata_aicpu.h
+ * \file sparse_lightning_indexer_klloss_grad_metadata_aicpu.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
-#define SPARSE_LIGHTNING_INDEXER_GRAD_METADATA_AICPU_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H
+#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_METADATA_AICPU_H
 
 #include <string>
 #include <vector>
@@ -209,10 +209,10 @@ struct AssignContext {
     S1GCache s1GCache {};
     CoreCache coreCache {};
 };
-class SparseLightningIndexerGradMetadataCpuKernel : public CpuKernel {
+class SparseLightningIndexerKllossGradMetadataCpuKernel : public CpuKernel {
 public:
-    SparseLightningIndexerGradMetadataCpuKernel() = default;
-    ~SparseLightningIndexerGradMetadataCpuKernel() = default;
+    SparseLightningIndexerKllossGradMetadataCpuKernel() = default;
+    ~SparseLightningIndexerKllossGradMetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
