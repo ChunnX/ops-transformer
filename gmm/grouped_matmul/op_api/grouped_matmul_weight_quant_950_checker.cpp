@@ -9,6 +9,7 @@
  */
 
 #include "grouped_matmul_weight_quant_950_checker.h"
+#include "log/log.h"
 
 using namespace gmm;
 
@@ -546,6 +547,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
     }
     // 当前伪量化仅支持groupsize为32整数倍
     if (IsS8S4NZ()) {
+        OP_LOGE_FOR_INVALID_SHAPE("opName111", "paramName", "incorrectShape", "correctShape");
         // 伪量化S8S4场景支持groupsize为128/192/256/512
         CHECK_COND(groupSize == 128 || groupSize == 256 || groupSize == 512 || groupSize == 192,
                    ACLNN_ERR_PARAM_INVALID, "GroupSize must be 128/192/256/512, but the actual groupSize is [%ld].",
@@ -711,6 +713,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupedMatmulWeigh
         CHECK_RET(CheckAntiQuantDtype(i) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckAntiQuantShape(i) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
+        OP_LOGE_FOR_INVALID_SHAPE("opName", "paramName", "incorrectShape", "correctShape");
         CHECK_COND(CheckGroupSize(i) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckGroupSize failed");
     }
     return ACLNN_SUCCESS;
