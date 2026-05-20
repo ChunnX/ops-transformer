@@ -65,7 +65,9 @@ __aicore__ inline void FRDeterministicA5(
     uint32_t n,
     uint64_t globalRowOffset = 0)
 {
-    if (g_coreType == AIC) {
+    // On A5, g_coreType is unreliable. Use compile-time ASCEND_IS_AIC instead.
+    // AIC subBlock must participate in SyncAll barriers to match AIV's count.
+    if ASCEND_IS_AIC {
         SyncAll();
         SyncAll();
         return;
