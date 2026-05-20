@@ -1,0 +1,40 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+set(OPTENSOR_TAG_ID 6383a70883c4ab339b3de521a5c80fc961f6e5be) # 20260520
+
+if(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
+  get_filename_component(OPTENSOR_SOURCE_PATH
+                         ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
+  message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
+  execute_process(
+    COMMAND git checkout ${OPTENSOR_TAG_ID}
+    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+    RESULT_VARIABLE EXEC_RESULT
+    OUTPUT_VARIABLE EXEC_INFO
+    ERROR_VARIABLE EXEC_ERROR
+  )
+  if(${EXEC_RESULT})
+    message(FATAL_ERROR "Git checkout failed! error: ${EXEC_ERROR}")
+  endif()
+else()
+  include(FetchContent)
+
+  FetchContent_Declare(
+    ops-tensor
+    GIT_REPOSITORY https://gitcode.com/cann/ops-tensor.git
+    GIT_TAG ${OPTENSOR_TAG_ID}
+    GIT_PROGRESS TRUE
+    SOURCE_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
+
+  FetchContent_Populate(ops-tensor)
+
+  set(OPS_TENSOR_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
+
+endif()
