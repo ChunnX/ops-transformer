@@ -17,7 +17,7 @@
 
 #include "./gmm_fr_weight_quant_tiling_data.h"
 #include "./gmm_fr_weight_quant_vcv_basic_block.h"
-#include "gmm/common/arch35_weight_quant_common.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 using AscendC::CeilAlign;
 using AscendC::SyncAll;

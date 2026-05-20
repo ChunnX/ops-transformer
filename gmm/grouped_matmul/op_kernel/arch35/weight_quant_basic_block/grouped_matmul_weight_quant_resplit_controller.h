@@ -15,7 +15,7 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_RESPLIT_CONTROLLER_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_RESPLIT_CONTROLLER_H
 
-#include "gmm/common/arch35_weight_quant_common.h"
+#include "gmm/common/gmm_kernel_tool.h"
 #include "weight_quant_vcv_basic_block_base.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 

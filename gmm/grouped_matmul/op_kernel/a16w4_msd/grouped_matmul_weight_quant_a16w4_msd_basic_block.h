@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "lib/matmul_intf.h"
-#include "gmm/common/gmm_kernel_utils.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 using GmmOpKernel::CeilAlign;

@@ -58,34 +58,32 @@
 
 ## 4. 方案设计
 
-采用 **"两层公共提取 + 业务层去壳"** 的策略。
+采用 **"单一公共头文件提取"** 的策略。
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                    gmm/common/gmm_kernel_utils.h                      │
-│  (最通用工具层：CeilAlign, CeilDiv, Min, DataCopyPad2D, GetKBUnit)  │
-│                    namespace GmmOpKernel                               │
-├──────────────────────────────────────────────────────────────────────┤
-│              gmm/common/arch35_weight_quant_common.h                  │
-│  (Arch35 WeightQuant 专用：QuantType, 常量, IsMxA8W4, MatmulL1GmType)  │
-│              namespace WeightQuantBatchMatmulV2::Arch35                │
+│                    gmm/common/gmm_kernel_tool.h                      │
+│  公共工具层（GmmOpKernel）：CeilAlign, CeilDiv, Min, DataCopyPad2D,   │
+│  GetKBUnit                                                           │
+│  Arch35 业务层（WeightQuantBatchMatmulV2::Arch35）：QuantType, 常量,  │
+│  IsMxA8W4, MatmulL1GmType                                            │
 ├──────────────────────────────────────────────────────────────────────┤
 │  业务层（仅保留各自特有逻辑，无 tool.h）                                │
-│  ├── gmm/grouped_matmul/op_kernel/a16w4_msd/a16w4_msd_utils.h         │
+│  ├── gmm/grouped_matmul/op_kernel/a16w4_msd/...                       │
 │  ├── gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/    │
 │  └── gmm/grouped_matmul_finalize_routing/op_kernel/arch35/...         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 新建公共头文件 1：`gmm/common/gmm_kernel_utils.h`
+### 4.1 新建公共头文件：`gmm/common/gmm_kernel_tool.h`
 
 **职责**：存放所有 GMM kernel 可能复用的纯数学/数据搬运工具函数，与具体业务场景解耦。
 
 **内容构成**（基于三份 `tool.h` 的并集与兼容性统一）：
 
 ```cpp
-#ifndef GMM_COMMON_GMM_KERNEL_UTILS_H
-#define GMM_COMMON_GMM_KERNEL_UTILS_H
+#ifndef GMM_COMMON_GMM_KERNEL_TOOL_H
+#define GMM_COMMON_GMM_KERNEL_TOOL_H
 
 #include "kernel_operator.h"
 
@@ -185,114 +183,17 @@ __aicore__ constexpr uint32_t GetKBUnit()
 - `GetKBUnit` 采用通用公式 `1024 / sizeof(T)`，经推算对 `int8_t`(1024)、`float`(256)、`half`(512) 的结果与文件 1 原实现完全一致。
 - `DataCopyPad2D` 统一包含 `fp4x2` 分支，因 `if constexpr` 在类型不匹配时不生成代码，对 A16W4 MSD 无副作用。
 
-### 4.2 新建公共头文件 2：`gmm/common/arch35_weight_quant_common.h`
-
-**职责**：存放 Arch35 WeightQuant 场景（包括 `grouped_matmul` 与 `grouped_matmul_finalize_routing`）共享的业务常量、枚举与模板。
-
-**内容构成**（原文件 2/3 中除通用工具函数外的全部内容）：
-
-```cpp
-#ifndef GMM_COMMON_ARCH35_WEIGHT_QUANT_COMMON_H
-#define GMM_COMMON_ARCH35_WEIGHT_QUANT_COMMON_H
-
-#include "kernel_operator.h"
-#include "gmm/common/gmm_kernel_utils.h"
-
-using AscendC::CrossCoreSetFlag;
-using AscendC::CrossCoreWaitFlag;
-using AscendC::fp8_e8m0_t;
-using AscendC::GetUserWorkspace;
-using AscendC::int4b_t;
-using AscendC::IsSameType;
-using AscendC::TPosition;
-using AscendC::VECTOR_REG_WIDTH;
-using matmul::MatmulCallBackFunc;
-using matmul::MatmulImpl;
-using matmul::MatmulType;
-using matmul::MatmulTypeWithScale;
-
-#define SHORT_MIX_LOG(format, ...)
-
-namespace WeightQuantBatchMatmulV2::Arch35 {
-
-enum class QuantType {
-    NONE = 0,
-    PER_TENSOR = 1,
-    PER_CHANNEL = 2,
-    PER_GROUP = 3,
-    MX = 4,
-};
-
-// buffer 相关定义
-static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
-static constexpr int32_t DOUBLE_BUFFER_NUM = 2;
-static constexpr int32_t SINGLE_BUFFER_NUM = 1;
-static constexpr int64_t L1_SIZE = 512;
-static constexpr int64_t L1_SIZE_BYTE = L1_SIZE * 1024;
-static constexpr int64_t L1_HALF_SIZE = L1_SIZE / 2;
-static constexpr int64_t L1_SIZE_WITH_QUANTSCALE = 504;
-static constexpr int64_t L1_SIZE_WITH_QUANTSCALE_BYTE = L1_SIZE_WITH_QUANTSCALE * 1024;
-static constexpr int64_t BIAS_L1_SIZE = 4;
-static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
-static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
-static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
-
-// 控制参数定义
-static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
-static constexpr uint64_t SCALE_COPY_GROUP_SIZE = 2;
-static constexpr int32_t SCALE_COPY_DEFAULT_STRIDE = 0;
-static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
-
-// 参数约束定义
-static constexpr uint64_t MX_GROUPSIZE = 32;
-static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
-static constexpr uint32_t FP32_BLOCK_SIZE = 8;
-static constexpr uint32_t FP16_BLOCK_SIZE = 16;
-static constexpr int32_t C0_SIZE_B8 = 32;
-static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
-
-// 同步定义
-static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
-static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
-static constexpr uint64_t SYNC_AIC_FIX_AIV_VF_FLAG = 3;
-static constexpr uint64_t SYNC_AIV_MTE3_AIC_FIX_FLAG = 4;
-static constexpr uint64_t SYNC_MODE4 = 4;
-static constexpr uint64_t FLAG_ID_MAX = 16;
-
-// 引入通用工具函数到本 namespace（可选，保持既有代码写法兼容）
-using GmmOpKernel::CeilAlign;
-using GmmOpKernel::CeilDiv;
-using GmmOpKernel::DataCopyPad2D;
-using GmmOpKernel::GetKBUnit;
-using GmmOpKernel::Min;
-
-template <typename xType, QuantType antiQuantType>
-__aicore__ constexpr bool IsMxA8W4()
-{
-    return antiQuantType == QuantType::MX && IsSameType<xType, fp8_e4m3fn_t>::value;
-}
-
-template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
-          LayoutMode LAYOUT = LayoutMode::NONE, bool IBSHARE = false>
-struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
-    constexpr static TPosition srcPos = TPosition::GM;
-};
-
-} // namespace WeightQuantBatchMatmulV2::Arch35
-#endif
-```
-
-### 4.3 A16W4 MSD 侧头文件重命名与重构
+### 4.2 A16W4 MSD 侧头文件重命名与重构
 
 **原文件**：`gmm/grouped_matmul/op_kernel/a16w4_msd/tool.h`
 
 **处理方式**：
 - **删除**原 `tool.h`。
-- 由于该文件原内容经差异合并后，其工具函数已全部被 `gmm/common/gmm_kernel_utils.h` 覆盖，A16W4 MSD 特有的仅有 namespace 差异。
-- 因此 A16W4 MSD 各源文件不再需要一个本地 `tool.h`，直接 `#include "gmm/common/gmm_kernel_utils.h"`，并在代码中使用 `GmmOpKernel::CeilDiv`（替代原 `CeilDiv`）等。
+- 由于该文件原内容经差异合并后，其工具函数已全部被 `gmm/common/gmm_kernel_tool.h` 覆盖，A16W4 MSD 特有的仅有 namespace 差异。
+- 因此 A16W4 MSD 各源文件不再需要一个本地 `tool.h`，直接 `#include "gmm/common/gmm_kernel_tool.h"`，并在代码中使用 `GmmOpKernel::CeilDiv`（替代原 `CeilDiv`）等。
 - 若未来 A16W4 MSD 需要补充 MSD 特有的工具函数，再新建 `a16w4_msd_utils.h`（或 `a16w4_msd_tool.h`，保证全局唯一即可）。
 
-### 4.4 Arch35 WeightQuant 两侧头文件删除
+### 4.3 Arch35 WeightQuant 两侧头文件删除
 
 **删除文件**：
 1. `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h`
@@ -302,11 +203,12 @@ struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSH
 
 | 原引用 | 新引用 |
 |--------|--------|
-| `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/*` 中的 `#include "tool.h"` | `#include "gmm/common/arch35_weight_quant_common.h"` |
-| `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/basic_block_config.h` 中的 `#include "tool.h"` | `#include "gmm/common/arch35_weight_quant_common.h"` |
-| `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/weight_quant_basic_block/*` 中的 `#include "../common/tool.h"` | `#include "gmm/common/arch35_weight_quant_common.h"` |
+| `gmm/grouped_matmul/op_kernel/a16w4_msd/*` 中的 `#include "tool.h"` | `#include "gmm/common/gmm_kernel_tool.h"` |
+| `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/*` 中的 `#include "tool.h"` | `#include "gmm/common/gmm_kernel_tool.h"` |
+| `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/basic_block_config.h` 中的 `#include "tool.h"` | `#include "gmm/common/gmm_kernel_tool.h"` |
+| `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/weight_quant_basic_block/*` 中的 `#include "../common/tool.h"` | `#include "gmm/common/gmm_kernel_tool.h"` |
 
-由于 `arch35_weight_quant_common.h` 内部已通过 `using` 将 `GmmOpKernel` 中的工具函数引入到 `WeightQuantBatchMatmulV2::Arch35` namespace，既有代码中直接写 `CeilAlign`、`DataCopyPad2D` 等无需修改。
+由于 `gmm_kernel_tool.h` 内部已通过 `using` 将 `GmmOpKernel` 中的工具函数引入到 `WeightQuantBatchMatmulV2::Arch35` namespace，既有代码中直接写 `CeilAlign`、`DataCopyPad2D` 等无需修改。
 
 ---
 
@@ -315,18 +217,13 @@ struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSH
 ### Step 1：新建公共头文件
 
 ```bash
-# 1. 新建通用工具层
-touch gmm/common/gmm_kernel_utils.h
+touch gmm/common/gmm_kernel_tool.h
 # 写入 4.1 节内容
-
-# 2. 新建 Arch35 业务公共层
-touch gmm/common/arch35_weight_quant_common.h
-# 写入 4.2 节内容
 ```
 
 ### Step 2：修改 A16W4 MSD 侧引用
 
-修改以下 4 个文件中的 `#include "tool.h"` 及 `CeilDiv` 调用：
+修改以下 4 个文件中的 `#include "tool.h"`：
 
 - `gmm/grouped_matmul/op_kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_controller.h`
 - `gmm/grouped_matmul/op_kernel/a16w4_msd/grouped_matmul_weight_quant_a16w4_msd_vector_service.h`
@@ -335,7 +232,7 @@ touch gmm/common/arch35_weight_quant_common.h
 
 修改点：
 1. 删除 `#include "tool.h"`。
-2. 新增 `#include "gmm/common/gmm_kernel_utils.h"`。
+2. 新增 `#include "gmm/common/gmm_kernel_tool.h"`。
 3. 若文件中使用了 `CeilDiv`，替换为 `GmmOpKernel::CeilDiv`。
 4. 若文件中使用了 `DataCopyPad2D`、`GetKBUnit` 等，添加 `GmmOpKernel::` 前缀或在文件中添加 `using GmmOpKernel::CeilDiv;` 等。
 
@@ -363,7 +260,7 @@ touch gmm/common/arch35_weight_quant_common.h
 
 统一修改：
 - 删除 `#include "tool.h"` 或 `#include "../common/tool.h"`。
-- 新增 `#include "gmm/common/arch35_weight_quant_common.h"`。
+- 新增 `#include "gmm/common/gmm_kernel_tool.h"`。
 - 由于公共头文件内已通过 `using` 引入工具函数，业务代码中现有调用无需改动。
 
 ### Step 4：删除旧头文件
@@ -391,8 +288,8 @@ rm gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/tool.h
    - `a16w4_msd_utils.h`
    - `weight_quant_basic_block_config.h`
 3. 跨业务共享的头文件应上提到 `gmm/common/` 或 `gmm/op_kernel/common/`，并以 `gmm_` 前缀命名，例如：
-   - `gmm_kernel_utils.h`
-   - `gmm_arch35_weight_quant_common.h`
+   - `gmm_kernel_tool.h`
+   - `gmm_gmm_kernel_tool.h`
 4. 头文件保护宏（include guard）必须与文件路径关联，禁止使用简单的 `TOOL_H`、`COMMON_H` 等，推荐格式：
    ```cpp
    #ifndef GMM_COMMON_GMM_KERNEL_UTILS_H

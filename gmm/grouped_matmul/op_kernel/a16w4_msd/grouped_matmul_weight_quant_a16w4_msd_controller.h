@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block_config.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block.h"
-#include "gmm/common/gmm_kernel_utils.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 using GmmOpKernel::CeilAlign;
