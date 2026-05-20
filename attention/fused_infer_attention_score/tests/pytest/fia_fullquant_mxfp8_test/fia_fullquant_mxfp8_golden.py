@@ -453,9 +453,11 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
     if is_scale:
         if is_vscale:
             tensor_processed = convert_v_scale_to_pa(tensor_bnsd, seq_lens, group_size)
-            pack_seq_lens = [math.ceil(act_s / 64) for act_s in seq_lens]
-            pack_block_size = math.ceil(block_size / 64)
-            out_shape = (sum(math.ceil(act_s / 64) for act_s in seq_lens), N, pack_block_size, D, 2)
+            v_scale_pack_ratio = group_size * 2
+            pack_seq_lens = [math.ceil(act_s / v_scale_pack_ratio) for act_s in seq_lens]
+            pack_block_size = math.ceil(block_size / v_scale_pack_ratio)
+            total_block_num = sum(math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens)
+            out_shape = (total_block_num, N, pack_block_size, D, 2)
         else:
             if D % 2 != 0:
                 raise ValueError("K scale D must be even for packing")
@@ -673,7 +675,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     dv = v_tensor.shape[-1]
     Sq, Skv = q_tensor.shape[2], k_tensor.shape[2]
 
-    out = torch.zeros([b, n, Sq, dv], dtype=torch.float32)
+    out = torch.zeros([b, n, Sq, dv], dtype=torch.float32)  # numerator buffer; normalize once at the end
     o_sum = torch.zeros(q_tensor.shape[:-1])[..., None]
     o_max = torch.ones(q_tensor.shape[:-1])[..., None] * torch.finfo(torch.float).min
 
@@ -788,7 +790,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 P_ij_Vj = torch.matmul(P_ij_drop, V_part1) + torch.matmul(P_ij1_drop, V_part2)
 
                 si_new = update_mul_si * si + s_block_j * update_mul_j + s_block_j1
-                o_BLOCKS[i] = (update_mul_si * oi * si + P_ij_Vj) / (si_new + EPSILON)
+                o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
                 s_BLOCKS[i] = si_new
                 m_BLOCKS[i] = m_block_j1
             else:
@@ -807,11 +809,13 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 P_ij_Vj = torch.matmul(P_ij_drop, Vj_dequant)
                 update_mul_si = torch.exp(mi - m_block_j)
                 si_new = update_mul_si * si + s_block_j
-                o_BLOCKS[i] = (update_mul_si * oi * si + P_ij_Vj) / (si_new + EPSILON)
+                o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
                 s_BLOCKS[i] = si_new
                 m_BLOCKS[i] = m_block_j
 
     out = torch.cat(o_BLOCKS, dim=2)
+    out_sum = torch.cat(s_BLOCKS, dim=2)
+    out = out / (out_sum + EPSILON)
     print(f"[CPU Golden] output={out.shape}")
     return out
 
