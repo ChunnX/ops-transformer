@@ -291,12 +291,6 @@ static constexpr uint32_t L0C_MAX_SIZE_910B = 128 * 1024;
 static constexpr uint32_t BIAS_TABLE_MAX_SIZE_910B = 1024;
 static constexpr uint32_t FIXPIPE_TABLE_MAX_SIZE_910B = 2048;
 
-template <typename T>
-__aicore__ inline T CeilDiv(T a, T b)
-{
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b;
-}
 
 template <typename T>
 __aicore__ inline T FloorDiv(T a, T b)

@@ -72,13 +72,7 @@ static constexpr uint64_t VEC_MAX_ELEM_B16_LOCAL = VECTOR_REG_WIDTH / sizeof(hal
 static constexpr uint64_t VEC_MAX_ELEM_B32 = VECTOR_REG_WIDTH / sizeof(float);
 static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
 
-// function definitions
-template <typename T>
-__aicore__ inline T CeilDivide(T a, T b)
-{
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
-    return (a + b - 1) / b;
-}
+// function definitions (CeilDiv is provided by tool_common.h via using namespace CommonTool)
 
 template <typename T>
 __aicore__ inline void DataCopyPad2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint32_t blockCount,
@@ -113,7 +107,7 @@ __aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTens
     DataCopyExtParams params;
     params.blockCount = dim1;
     params.blockLen = dim0 * sizeof(T);
-    params.srcStride = CeilDivide((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
+    params.srcStride = CeilDiv((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
     params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
     SHORT_MIX_LOG("dim1 %d dim0 %d dstFullDim0 %d blockCount %d blockLen %d srcStride %d dstStride %d", dim1, dim0,
                   dstFullDim0, params.blockCount, params.blockLen, params.srcStride, params.dstStride);

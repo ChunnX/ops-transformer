@@ -55,6 +55,14 @@ __aicore__ inline uint32_t CeilAlign(uint32_t a, uint32_t b)
     return (a + b - 1) / b * b;
 }
 
+
+template <typename T>
+__aicore__ inline T CeilDiv(T a, T b)
+{
+    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
+    return (a + b - 1) / b;
+}
+
 } // namespace CommonTool
 
 #endif // TOOL_COMMON_H

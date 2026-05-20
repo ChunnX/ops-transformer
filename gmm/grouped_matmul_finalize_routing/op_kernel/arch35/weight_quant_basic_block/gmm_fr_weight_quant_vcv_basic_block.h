@@ -248,7 +248,7 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOf
 
     vecCompute_.WaitSToMTE2(rlLoopIdx_);
     vecCompute_.WaitFrVToMTE2(rlLoopIdx_);
-    uint64_t mSingleVec = CeilDivide(curOffsetParam.mL1Size, 2UL);
+    uint64_t mSingleVec = CeilDiv(curOffsetParam.mL1Size, 2UL);
     vecCompute_.CopyRowIndexLogitsGmToUb(curOffsetParam.mOffset + GetSubBlockIdx() * mSingleVec,
                                          GetSubBlockIdx() == 0 ? mSingleVec : curOffsetParam.mL1Size - mSingleVec,
                                          rlLoopIdx_);

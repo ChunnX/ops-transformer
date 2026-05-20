@@ -249,7 +249,7 @@ flowchart TB
 | `CeilAlign(uint32_t)` | 完整函数，格式不同 | 完整函数，格式不同 | 格式差异 | **逻辑相同，抽取** |
 | `QUADRUPLE_BUFFER_NUM` 等 13 个常量 | 字符级相同 | 字符级相同 | 格式/位置差异 | **逻辑相同，抽取** |
 | `DataCopyPad2D` | 4 个重载，含 `InitAtomicAddr` 等 | 2 个重载，无 `InitAtomicAddr` | 功能差异 | 保留差异 |
-| `CeilDiv` / `CeilDivide` | `CeilDiv`（A 独有） | `CeilDivide`（B 独有） | 函数名差异+跨模块 | A 保留 `CeilDiv`，B 保留 `CeilDivide`，不跨模块抽取 |
+| `CeilDiv` | `CeilDiv`（A 已有） | `CeilDiv`（B 原有） | 函数名差异 | 统一改名为 `CeilDiv`，抽取到 `tool_common.h` |
 | `SyncProcessor`、`InitAtomicAddr` | A 独有 | B 无 | 功能差异 | 保留差异 |
 | `MatmulL1GmType` | A 有类似定义 | B 有类似定义 | 字段排列/格式差异 | **逻辑相同，抽取到 gmm 模块公共文件** |
 | `using` 声明块 | 部分相同 | 部分相同 | 文件头基础设施 | 保留差异 |
@@ -260,7 +260,7 @@ flowchart TB
 |--------|--------|--------|----------|----------|
 | `CeilAlign<T>` | 完整函数 | 完整函数 | 格式差异 | **逻辑相同，抽取** |
 | `DataCopyPad2D`（LocalTensor←GlobalTensor） | 支持 `fp4x2` 类型，无中文注释 | 仅支持 `int4b_t`，有中文注释 | 逻辑不一致（支持类型不同） | 保留差异 |
-| `CeilDivide` / `CeilDiv` | `CeilDivide` | `CeilDiv` | 函数名差异 | B 保留 `CeilDivide`，C 保留 `CeilDiv` |
+| `CeilDiv` | `CeilDiv`（B 改名后） | `CeilDiv`（C 已有） | 已统一 | 统一为 `CeilDiv`，抽取到 `tool_common.h` |
 | `GetKBUnit` | 泛型 `1024/sizeof(T)` | 分支实现（int4/int8/float/half） | 逻辑不一致 | 保留差异 |
 
 #### B（gmm/arch35） vs D（gmm_finalize_routing）
@@ -394,7 +394,7 @@ static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
 
 // 函数定义
 template <typename T>
-__aicore__ inline T CeilDivide(T a, T b)
+__aicore__ inline T CeilDiv(T a, T b)
 {
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b;
@@ -433,7 +433,7 @@ __aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTens
     DataCopyExtParams params;
     params.blockCount = dim1;
     params.blockLen = dim0 * sizeof(T);
-    params.srcStride = CeilDivide((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
+    params.srcStride = CeilDiv((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
     params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
     SHORT_MIX_LOG("dim1 %d dim0 %d dstFullDim0 %d blockCount %d blockLen %d srcStride %d dstStride %d", dim1, dim0,
                   dstFullDim0, params.blockCount, params.blockLen, params.srcStride, params.dstStride);
