@@ -1,0 +1,25 @@
+2026-05-20 17:38:23 - INFO - 输入文件: M:\Users\ywx944900\fork-transformer\ops-transformer\op_filters\changed_files.txt
+2026-05-20 17:38:23 - INFO - 输出文件: M:\Users\ywx944900\fork-transformer\ops-transformer\operators.txt
+2026-05-20 17:38:23 - DEBUG - 成功读取文件: M:\Users\ywx944900\fork-transformer\ops-transformer\op_filters\changed_files.txt, 共 17 行, 编码: utf-16
+2026-05-20 17:38:23 - INFO - 读取到 17 个输入文件
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/common/utils/mc2_exception_dump.h -> common
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/common/utils/mc2_hcom_topo_info.cpp -> common
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/common/utils/mc2_hcom_topo_info.h -> common
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/moe_distribute_combine_v2/op_host/op_tiling/arch22/moe_distribute_combine_tiling_arch22.cpp -> moe_distribute_combine_v2
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_v2_tiling.cpp -> moe_distribute_combine_v2
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/moe_distribute_dispatch_v2/op_host/op_tiling/arch22/moe_distribute_dispatch_v2_tiling_arch22.cpp -> moe_distribute_dispatch_v2
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_v2_tiling.cpp -> moe_distribute_dispatch_v2
+2026-05-20 17:38:23 - WARNING - 无法从路径提取算子名称: tests/ut/framework_normal/common/mc2_hcom_topology_mocker.cpp
+2026-05-20 17:38:23 - WARNING - 无法提取算子名称: tests/ut/framework_normal/common/mc2_hcom_topology_mocker.cpp
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: moe/moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV3.md -> moe_finalize_routing_v2
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: moe/moe_finalize_routing/op_host/moe_finalize_routing_def.cpp -> moe_finalize_routing
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/allto_all_matmul/op_kernel/allto_all_matmul_apt.cpp -> allto_all_matmul
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/allto_all_matmul/op_kernel/arch35/allto_all_mx_quant_matmul_arch35.h -> allto_all_matmul
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV2.md -> grouped_matmul_swiglu_quant_v2
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/matmul_allto_all/tests/st/aclnnMatmulAlltoAll/arch22_atk_aclnnMatmulAlltoAll.json -> matmul_allto_all
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/matmul_allto_all/tests/st/aclnnMatmulAlltoAll/executor_aclnnMatmulAlltoAll.py -> matmul_allto_all
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/matmul_allto_all/tests/st/aclnnQuantMatmulAlltoAll/arch22_atk_aclnnQuantMatmulAlltoAll.json -> matmul_allto_all
+2026-05-20 17:38:23 - INFO - 从文件提取算子名称: mc2/matmul_allto_all/tests/st/aclnnQuantMatmulAlltoAll/executor_aclnnQuantMatmulAlltoAll.py -> matmul_allto_all
+2026-05-20 17:38:23 - WARNING - 共有 1 个文件无法提取算子名称
+2026-05-20 17:38:23 - INFO - 提取到 8 个直接变更的算子: ['allto_all_matmul', 'common', 'grouped_matmul_swiglu_quant_v2', 'matmul_allto_all', 'moe_distribute_combine_v2', 'moe_distribute_dispatch_v2', 'moe_finalize_routing', 'moe_finalize_routing_v2']
+2026-05-20 17:38:23 - INFO - 结果已写入: M:\Users\ywx944900\fork-transformer\ops-transformer\operators.txt

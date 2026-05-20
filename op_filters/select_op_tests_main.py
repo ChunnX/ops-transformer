@@ -8,9 +8,11 @@ MC2 算子测试选择主脚本
 该脚本实现了以下功能：
 1. 检测 mc2 目录外的变更，触发全量测试
 2. 白名单过滤
-3. common/3rd 目录变更触发全量测试
-4. 忽略 .md 文件和 tests 目录的变更
-5. 基于依赖关系选择需要测试的算子
+3. common 目录变更触发全量测试
+4. 特殊 3rd 子目录变更添加特定算子
+5. 其他 3rd 目录变更触发全量测试
+6. 忽略 .md 文件和 tests 目录的变更
+7. 基于依赖关系选择需要测试的算子
 
 使用方法：
     # 使用默认参数（推荐）
@@ -30,25 +32,40 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List
-
-from op_filters.utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
-from op_filters.whitelist_filter import filter_whitelist
-from op_filters.ignored_filter import filter_ignored
-from op_filters.non_mc2_filter import filter_non_mc2
-from op_filters.common_3rd_filter import filter_common_3rd
-from op_filters.operator_extractor import extract_operators
-from op_filters.dependency_search import build_reverse_dependency_graph, find_dependent_ops
-from op_filters.output_formatter import write_output_json, get_all_ops_with_products, get_ops_info_by_names
-from op_filters.mc2_analyzer import analyze_mc2_and_generate_json
-
+from typing import Dict, List, Set
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
+PROJECT_DIR = SCRIPT_DIR.parent
+WORK_DIR = Path.cwd()
+
+if __name__ == "__main__" and __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from op_filters.utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
+    from op_filters.op_whitelist_step1 import filter_whitelist
+    from op_filters.op_ignored_step2 import filter_ignored
+    from op_filters.op_non_mc2_step3 import filter_non_mc2
+    from op_filters.op_common_3rd_step4 import filter_common_3rd
+    from op_filters.op_extractor_step5 import extract_operators
+    from op_filters.op_dependency_step6 import build_reverse_dependency_graph, find_dependent_ops
+    from op_filters.op_output_step7 import write_output_json, get_all_ops_with_products, get_ops_info_by_names
+    from op_filters.mc2_analyzer import analyze_mc2_and_generate_json
+else:
+    from .utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
+    from .op_whitelist_step1 import filter_whitelist
+    from .op_ignored_step2 import filter_ignored
+    from .op_non_mc2_step3 import filter_non_mc2
+    from .op_common_3rd_step4 import filter_common_3rd
+    from .op_extractor_step5 import extract_operators
+    from .op_dependency_step6 import build_reverse_dependency_graph, find_dependent_ops
+    from .op_output_step7 import write_output_json, get_all_ops_with_products, get_ops_info_by_names
+    from .mc2_analyzer import analyze_mc2_and_generate_json
+
+
 DEFAULT_WHITELIST = str(SCRIPT_DIR / "whitelist.txt")
 DEFAULT_DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
-DEFAULT_MC2 = str(SCRIPT_DIR / "mc2")
-DEFAULT_OUTPUT_JSON = str(SCRIPT_DIR / "op_tests.json")
-DEFAULT_OUTPUT_LOG = str(SCRIPT_DIR / "output.log")
+DEFAULT_MC2 = str(PROJECT_DIR / "mc2")
+DEFAULT_OUTPUT_JSON = str(WORK_DIR / "op_tests.json")
+DEFAULT_OUTPUT_LOG = str(WORK_DIR / "output.log")
 
 
 def main() -> int:
@@ -127,8 +144,6 @@ def main() -> int:
         logger.info(f"输出 JSON: {args.output_json}")
         logger.info(f"输出日志: {args.output_log}")
         
-        analyze_mc2_and_generate_json(args.mc2, args.dependency_json, logger)
-        
         changed_files = read_file_lines(args.pr, logger)
         logger.info(f"读取到 {len(changed_files)} 个变更文件")
         for i, f in enumerate(changed_files, 1):
@@ -143,7 +158,6 @@ def main() -> int:
         
         mc2_path = normalize_path(args.mc2)
         
-        # Step 1: 白名单过滤
         whitelist_result = filter_whitelist(changed_files, whitelist_paths, logger)
         filtered_files = whitelist_result["filtered_files"]
         
@@ -156,7 +170,6 @@ def main() -> int:
             logger.info("=" * 60)
             return 0
         
-        # Step 2: 忽略 .md 文件和 tests 目录
         ignored_result = filter_ignored(filtered_files, mc2_path, logger)
         remaining_files = ignored_result["remaining_files"]
         
@@ -169,7 +182,6 @@ def main() -> int:
             logger.info("=" * 60)
             return 0
         
-        # Step 3: 检测非 mc2 目录文件
         non_mc2_result = filter_non_mc2(remaining_files, mc2_path, dependency_data, logger)
         if non_mc2_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
@@ -179,7 +191,6 @@ def main() -> int:
             logger.info("=" * 60)
             return 0
         
-        # Step 4: 检测 common/3rd 目录文件
         common_3rd_result = filter_common_3rd(remaining_files, mc2_path, dependency_data, logger)
         if common_3rd_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
@@ -190,12 +201,12 @@ def main() -> int:
             return 0
         
         other_files = common_3rd_result["other_files"]
+        special_3rd_ops = common_3rd_result["special_3rd_ops"]
         
-        # Step 5: 提取算子名称
         extraction_result = extract_operators(other_files, logger)
         changed_ops = extraction_result["changed_ops"]
         
-        if not changed_ops:
+        if not changed_ops and not special_3rd_ops:
             logger.warning("没有成功提取到任何算子名称，输出空列表")
             write_output_json([], args.output_json, logger)
             logger.info("=" * 60)
@@ -203,17 +214,20 @@ def main() -> int:
             logger.info("=" * 60)
             return 0
         
-        # Step 6: 构建反向依赖图
         logger.info("=" * 60)
         logger.info("开始构建反向依赖图")
         reverse_graph = build_reverse_dependency_graph(dependency_data, logger)
         
-        # Step 7: 反向依赖搜索
         logger.info("=" * 60)
         logger.info("开始反向依赖搜索")
         ops_to_run = find_dependent_ops(changed_ops, reverse_graph, logger)
         
-        # Step 8: 生成最终算子列表
+        if special_3rd_ops:
+            logger.info("=" * 60)
+            logger.info("合并特殊 3rd 子目录关联算子（不做反向依赖处理）")
+            ops_to_run = ops_to_run.union(special_3rd_ops)
+            logger.info(f"合并后算子数量: {len(ops_to_run)}")
+        
         logger.info("=" * 60)
         logger.info("生成最终算子列表")
         final_ops = get_ops_info_by_names(ops_to_run, dependency_data, logger)

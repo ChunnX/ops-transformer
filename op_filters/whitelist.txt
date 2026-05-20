@@ -1,4 +1,5 @@
 mc2/common
+mc2/common/op_kernel/allto_all_matmul_apt.cpp
 tests/
 mc2/*/tests/
 mc2/allto_all_matmul/op_kernel/allto_all_matmul_apt.cpp
