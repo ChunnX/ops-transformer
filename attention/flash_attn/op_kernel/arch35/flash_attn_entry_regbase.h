@@ -58,7 +58,6 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 
     // 其余参数硬编码
     constexpr bool hasRopeConst = false;
-    constexpr bool isFdConst = true;
     constexpr bool emptyTensorConst = false;
     constexpr uint8_t pFAMaskConst = 0;
     constexpr uint8_t pFAMatMulTypeConst = 0;
@@ -84,14 +83,14 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     using VecFaBlock =
         BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
                                       s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                      isFdConst, useDn, bmm2Write2Ub, splitD>;
+                                      useDn, bmm2Write2Ub, splitD>;
     using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                                                        hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
     // 4. AIC/AIV分别编译：用Dummy Block避免交叉编译不需要的代码
     using VecBlockDummy =
         BaseApi::VecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType,
-                              dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, isFdConst, useDn,
+                              dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
                               bmm2Write2Ub, splitD>;
     using CubeBlockDummy =
         BaseApi::CubeBlockBase<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
