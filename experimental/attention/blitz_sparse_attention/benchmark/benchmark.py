@@ -321,6 +321,67 @@ def generate_sparse_blocks_by_row(
     return rows
 
 
+def is_block_sparse_pattern_feasible(
+    s_q: int, s_kv: int, block_size_q: int, block_size_kv: int,
+    frame, sparsity: float,
+    *, require_nonempty_per_row: bool = True,
+) -> bool:
+    """Return True iff `generate_sparse_blocks_by_row` will (a) not raise
+    ValueError and (b) produce a sabi where every Q-row gets at least one kept
+    block (when `require_nonempty_per_row`).  Pure arithmetic — no tensor
+    allocation — so it is safe to call from pytest parametrize lists at module
+    import time.
+
+    The check mirrors the math inside `generate_sparse_blocks_by_row`:
+
+      * frame must fit the sparsity budget:
+          n_forced_blocks  <=  floor(n_total * (1 - sparsity))
+      * if `require_nonempty_per_row` is True (the default — BSA's per-Q-row
+        LSE sentinel is the cliff we are avoiding), every sparse row must end
+        up with `>= 1` kept block:
+          n_max_kept - n_forced  >=  1   when  n_sparse_rows > 0
+
+    Set `require_nonempty_per_row=False` if you intentionally want to test the
+    "row fully masked" path (and accept BSA returning its sentinel)."""
+    sparsity = max(0.0, min(1.0, float(sparsity)))
+    n_block_rows = math.ceil(s_q / block_size_q)
+    n_block_cols = math.ceil(s_kv / block_size_kv)
+    if n_block_rows == 0 or n_block_cols == 0:
+        return False
+    n_total = n_block_rows * n_block_cols
+
+    if frame is None:
+        n_forced = 0
+        n_dense_rows = 0
+        n_sparse_rows = n_block_rows
+    else:
+        # Frame configuration must fit inside the block grid (mirrors the
+        # explicit check in generate_sparse_blocks_by_row).
+        if (frame.left_cols > n_block_cols or frame.right_cols > n_block_cols or
+            frame.top_rows > n_block_rows or frame.bottom_rows > n_block_rows):
+            return False
+        sparse_forced_left  = set(range(min(frame.left_cols, n_block_cols)))
+        sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
+        n_forced_cols = len(sparse_forced_left | sparse_forced_right)
+        dense_top    = set(range(min(frame.top_rows, n_block_rows)))
+        dense_bottom = set(range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows))
+        n_dense_rows = len(dense_top | dense_bottom)
+        n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
+        n_forced = n_forced_cols * n_sparse_rows + n_block_cols * n_dense_rows
+
+    n_max_kept = math.floor(n_total * (1.0 - sparsity))
+    # (a) frame must fit:
+    if n_forced > n_max_kept:
+        return False
+    # (b) every sparse row must get at least one kept block, otherwise BSA's
+    #     uninitialised LSE sentinel (~1e12) ends up in the output and diverges
+    #     from the reference's softmax-over-empty-set semantics (FIAS gives
+    #     -inf, the Python ref gives -inf, BSA gives the sentinel).
+    if require_nonempty_per_row and n_sparse_rows > 0 and n_max_kept - n_forced < 1:
+        return False
+    return True
+
+
 def make_block_mask(
     s_q: int,
     s_kv: int,

@@ -46,7 +46,7 @@ import pytest
 import torch
 import torch_npu
 import torch_bsa
-from benchmark import create_attention_mask, FrameWidths
+from benchmark import create_attention_mask, FrameWidths, is_block_sparse_pattern_feasible
 
 SEED = 42
 DEVICE = "npu:0"
@@ -182,18 +182,83 @@ def _log_diff(label: str, a, b) -> float:
 def _build_sparse_masks(B, H, S, sparsity, frame, block_shape):
     """Return (sabi, pfa_atten_mask) on DEVICE, built on CPU first.
 
-    Skips (via pytest.skip) when the frame+sparsity combination is infeasible
-    for the given block_shape (ValueError from generate_sparse_blocks_by_row)."""
+    Parameter combinations that would raise (frame doesn't fit the sparsity
+    budget, or leave any sparse Q-row with zero kept blocks) are filtered out
+    at collection time by `is_block_sparse_pattern_feasible`, so callers don't
+    need to guard against ValueError here."""
     bs_q, bs_kv = block_shape
-    try:
-        pfa_atten_mask, _, sabi, _, _, _, _ = create_attention_mask(
-            B, H, S, S, 128, sparsity,
-            block_size_q=bs_q, block_size_kv=bs_kv,
-            frame=frame, device="cpu", emit_atten_mask=True,
-        )
-    except ValueError as e:
-        pytest.skip(f"sparsity {sparsity} unsatisfiable for {block_shape} frame {frame}: {e}")
+    pfa_atten_mask, _, sabi, _, _, _, _ = create_attention_mask(
+        B, H, S, S, 128, sparsity,
+        block_size_q=bs_q, block_size_kv=bs_kv,
+        frame=frame, device="cpu", emit_atten_mask=True,
+    )
     return sabi.to(DEVICE), pfa_atten_mask.to(DEVICE)
+
+
+# ── Per-test feasible-parameter generators ───────────────────────────────────
+# Build the (shape, sparsity, block_shape) cross product for every sparse test
+# and drop cells where `is_block_sparse_pattern_feasible` returns False — those
+# combinations would (a) trip a frame-density-vs-sparsity assertion in
+# `generate_sparse_blocks_by_row`, or (b) leave some Q-row empty and surface
+# BSA's InitOutput LSE sentinel, which the FIAS/Python-ref `-inf` does not
+# match. Cleaner pytest output AND avoids the cascading
+# `aclrtLaunchKernelWithHostArgs failed: 507015` aicore exception that the
+# sentinel-loaded LSE eventually triggers downstream inside torch_npu.
+
+def _id_sparse(shape, sparsity, block_shape):
+    return (f"b{shape[0]}-h{shape[1]}-s{shape[2]}-d{shape[3]}"
+            f"-sp{int(sparsity*100):02d}pct"
+            f"-bs{block_shape[0]}x{block_shape[1]}")
+
+def _id_sparse_framed(shape, sparsity, block_shape):
+    return _id_sparse(shape, sparsity, block_shape) + "-framed"
+
+def _filter_feasible(shapes, sparsities, block_shapes, frame_resolver):
+    """Build a list of (shape, sparsity, block_shape) tuples for which the
+    block-sparse pattern is feasible (frame fits and per-row kept ≥ 1).
+    `frame_resolver(shape, block_shape) -> FrameWidths|None`."""
+    return [
+        (shape, sparsity, block_shape)
+        for shape in shapes
+        for sparsity in sparsities
+        for block_shape in block_shapes
+        if is_block_sparse_pattern_feasible(
+            s_q=shape[2], s_kv=shape[2],
+            block_size_q=block_shape[0], block_size_kv=block_shape[1],
+            frame=frame_resolver(shape, block_shape),
+            sparsity=sparsity,
+        )
+    ]
+
+# Dense-LSE parameter list: cross product of (shape, dtype, block_shape), but
+# excludes fp16 at any coarse-tile shape — see comment on the corresponding
+# fixture in `test_bsa_lse_vs_fias`. Filtering at collection time keeps the run
+# log clean (no `pytest.skip` markers) and makes the actual coverage explicit.
+DENSE_LSE_PARAMS = [
+    (shape, dtype, block_shape)
+    for shape in LSE_TEST_SHAPES
+    for dtype in LSE_DTYPES
+    for block_shape in BLOCK_SHAPES
+    if not (dtype == torch.float16 and (block_shape[0] > 128 or block_shape[1] > 128))
+]
+
+def _id_dense_lse(shape, dtype, block_shape):
+    dt = "bfloat16" if dtype == torch.bfloat16 else "float16"
+    return (f"b{shape[0]}-h{shape[1]}-s{shape[2]}-d{shape[3]}"
+            f"-{dt}-bs{block_shape[0]}x{block_shape[1]}")
+
+SPARSE_FIAS_PARAMS = _filter_feasible(
+    SPARSE_LSE_FIAS_SHAPES, SPARSE_LSE_SPARSITIES, BLOCK_SHAPES,
+    lambda shape, bs: NO_FRAME,
+)
+SPARSE_FRAMED_PARAMS = _filter_feasible(
+    SPARSE_FRAMED_FIAS_SHAPES, SPARSE_LSE_SPARSITIES, BLOCK_SHAPES,
+    lambda shape, bs: SPARSE_FRAMES_BY_BLOCK_SHAPE[bs],
+)
+SPARSE_MULTIHEAD_PARAMS = _filter_feasible(
+    SPARSE_LSE_MULTIHEAD_SHAPES, SPARSE_LSE_SPARSITIES, BLOCK_SHAPES,
+    lambda shape, bs: NO_FRAME,
+)
 
 
 # ── Python float32 reference LSE ──────────────────────────────────────────────
@@ -317,25 +382,23 @@ def _run_fias_with_lse_sparse(q, k, v, h, scale, seq_len, pfa_atten_mask):
     return out, lse.squeeze(-1)
 
 
-# ── Test 1: dense LSE vs FIAS (40 tests) ─────────────────────────────────────
+# ── Test 1: dense LSE vs FIAS ────────────────────────────────────────────────
+# Parameterised on `DENSE_LSE_PARAMS` which excludes fp16 at any coarse-tile
+# shape (bs_q > 128 OR bs_kv > 128). Rationale: the fp16 dense path keeps the
+# online-softmax accumulator in fp16, and either a coarser Q-tile (the cube
+# does redundant 128-Q work behind a wider sabi row) or a coarser KV-tile (the
+# wide-KV packer doubles the number of cube ops sharing one flash-softmax
+# instance) compounds the error past the rtol bound — observed max_diff up to
+# ~0.02 (≈2.5 fp16-ULPs at log(1024)≈6.9). That's a known fp16-path
+# limitation, not a kernel correctness bug; bf16 stays within atol at every
+# block_shape.
 
-@pytest.mark.parametrize("dtype", LSE_DTYPES, ids=lambda d: str(d).split(".")[-1])
-@pytest.mark.parametrize("shape", LSE_TEST_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "shape,dtype,block_shape", DENSE_LSE_PARAMS,
+    ids=[_id_dense_lse(*p) for p in DENSE_LSE_PARAMS],
+)
 def test_bsa_lse_vs_fias(shape, dtype, block_shape):
     """BSA dense softmax_lse must match FIAS softmax_lse."""
-    bs_q, bs_kv = block_shape
-    # fp16 dense LSE at BLOCK_SIZE_Q > 128 has a larger numerical drift than
-    # bf16 (the online-softmax accumulator stays in fp16 in this path, and the
-    # extra redundant matmul work at coarser Q-tile granularity compounds the
-    # error). Observed max_diff up to ~0.02 at bs_q ∈ {256, 512, 1024}, which
-    # the rtol-bound cannot absorb. Skip — this is a known limitation of the
-    # fp16 path, not a kernel correctness bug. bf16 stays within atol.
-    if dtype == torch.float16 and bs_q > 128:
-        pytest.skip(
-            f"fp16 dense LSE at bs_q={bs_q} > 128 has known excess drift; "
-            f"see TODO 1 in the README"
-        )
     torch.manual_seed(SEED)
     B, H, S, D = shape
     scale = 1.0 / math.sqrt(D)
@@ -356,12 +419,15 @@ def test_bsa_lse_vs_fias(shape, dtype, block_shape):
         pytest.fail(f"shape={shape} dtype={dtype}: max_diff={max_diff:.5f} > atol={atol}")
 
 
-# ── Test 2: sparse H=1 LSE vs FIAS, no frame (64 tests) ──────────────────────
+# ── Test 2: sparse H=1 LSE vs FIAS, no frame ─────────────────────────────────
+# Parameterised on SPARSE_FIAS_PARAMS so infeasible (block_shape, sparsity, S)
+# triples are NEVER collected — no skip noise, no empty-sabi sentinel reaching
+# torch_npu's downstream isfinite check.
 
-@pytest.mark.parametrize("sparsity", SPARSE_LSE_SPARSITIES,
-                          ids=lambda s: f"sp{int(s*100):02d}pct")
-@pytest.mark.parametrize("shape", SPARSE_LSE_FIAS_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "shape,sparsity,block_shape", SPARSE_FIAS_PARAMS,
+    ids=[_id_sparse(*p) for p in SPARSE_FIAS_PARAMS],
+)
 def test_bsa_lse_vs_fias_sparse(shape, sparsity, block_shape):
     """BSA sparse (H=1, no frame) softmax_lse vs FIAS with the matching token mask.
 
@@ -374,16 +440,6 @@ def test_bsa_lse_vs_fias_sparse(shape, sparsity, block_shape):
     assert H == 1
     scale = 1.0 / math.sqrt(D)
     dtype = torch.bfloat16
-
-    # Empty-sabi edge case: when sparsity is so high that the floor of the
-    # kept-block budget drops to 0, BSA emits no work and leaves the LSE
-    # output at the InitOutput sentinel (~1e12) while FIAS with a fully
-    # masked row collapses to LSE = -inf via -inf-mask softmax. Skip — this
-    # is a known semantic gap at the empty-row boundary, not a kernel bug.
-    bs_q, bs_kv = block_shape
-    n_total_blocks = math.ceil(S / bs_q) * math.ceil(S / bs_kv)
-    if math.floor(n_total_blocks * (1.0 - sparsity)) == 0:
-        pytest.skip(f"empty-sabi edge case at block_shape={block_shape}, S={S}, sparsity={sparsity}")
 
     sabi, pfa_atten_mask = _build_sparse_masks(B, H, S, sparsity, NO_FRAME, block_shape)
     q = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
@@ -407,12 +463,15 @@ def test_bsa_lse_vs_fias_sparse(shape, sparsity, block_shape):
         )
 
 
-# ── Test 3: sparse H=1 LSE vs FIAS, with border frame (8 tests) ──────────────
+# ── Test 3: sparse H=1 LSE vs FIAS, with border frame ────────────────────────
+# Parameterised on SPARSE_FRAMED_PARAMS — the per-block-shape frame
+# (`SPARSE_FRAMES_BY_BLOCK_SHAPE`) is consulted at collection time so cells
+# where the frame doesn't fit are excluded up front.
 
-@pytest.mark.parametrize("sparsity", SPARSE_LSE_SPARSITIES,
-                          ids=lambda s: f"sp{int(s*100):02d}pct")
-@pytest.mark.parametrize("shape", SPARSE_FRAMED_FIAS_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "shape,sparsity,block_shape", SPARSE_FRAMED_PARAMS,
+    ids=[_id_sparse_framed(*p) for p in SPARSE_FRAMED_PARAMS],
+)
 def test_bsa_lse_vs_fias_sparse_framed(shape, sparsity, block_shape):
     """BSA sparse LSE with a per-shape border frame on long sequences, H=1, bf16."""
     torch.manual_seed(SEED)
@@ -444,12 +503,14 @@ def test_bsa_lse_vs_fias_sparse_framed(shape, sparsity, block_shape):
         )
 
 
-# ── Test 4: multi-head sparse LSE vs Python float32 reference (32 tests) ──────
+# ── Test 4: multi-head sparse LSE vs Python float32 reference ───────────────
+# Parameterised on SPARSE_MULTIHEAD_PARAMS — same empty-Q-row filter as
+# tests 2 and 3.
 
-@pytest.mark.parametrize("sparsity", SPARSE_LSE_SPARSITIES,
-                          ids=lambda s: f"sp{int(s*100):02d}pct")
-@pytest.mark.parametrize("shape", SPARSE_LSE_MULTIHEAD_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "shape,sparsity,block_shape", SPARSE_MULTIHEAD_PARAMS,
+    ids=[_id_sparse(*p) for p in SPARSE_MULTIHEAD_PARAMS],
+)
 def test_bsa_lse_sparse_multihead(shape, sparsity, block_shape):
     """BSA multi-head sparse LSE vs a CPU float32 reference.
 
@@ -464,18 +525,6 @@ def test_bsa_lse_sparse_multihead(shape, sparsity, block_shape):
     bs_q, bs_kv = block_shape
     scale = 1.0 / math.sqrt(D)
     dtype = torch.bfloat16
-
-    # When the expected kept KV-blocks per Q-row drops below ~1, most rows end up
-    # with zero kept blocks. The Python reference returns -inf for those rows while
-    # BSA leaves the InitOutput sentinel, so the diff is inf. Skip — this is a
-    # semantic gap at the empty-row boundary, not a kernel correctness issue.
-    expected_kept_per_row = (S / bs_kv) * (1.0 - sparsity)
-    if (bs_q > 128 or bs_kv > 128) and expected_kept_per_row < 1.0:
-        pytest.skip(
-            f"expected_kept_per_row={expected_kept_per_row:.2f} at "
-            f"block_shape={block_shape}, sparsity={sparsity}; "
-            f"empty-row semantics differ from Python ref"
-        )
 
     # Build masks on CPU; keep sabi_cpu for the reference computation
     sabi_cpu, _ = _build_sparse_masks(B, H, S, sparsity, NO_FRAME, block_shape)

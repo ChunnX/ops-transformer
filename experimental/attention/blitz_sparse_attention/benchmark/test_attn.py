@@ -23,6 +23,7 @@ import torch_npu
 import torch_bsa
 from benchmark import gen_pfa_inputs, create_attention_mask, FrameWidths  # data gen
 from benchmark import ref_blitz_sparse_attention_launcher  # baseline kernel
+from benchmark import is_block_sparse_pattern_feasible
 
 # Global test configurations
 SEED = 42
@@ -66,14 +67,41 @@ for _bsq in (128, 256, 512, 1024):
         )
 SPARSITY_VALS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 SHAPES = list(itertools.product(B_VALS, H_VALS, S_VALS, D_VALS))
-FRAME_SPARSITY_COMBOS = list(itertools.product(FRAME_KINDS, SPARSITY_VALS))
-FRAME_SPARSITY_IDS = [f"{kind}-sparsity{s:.2f}" for kind, s in FRAME_SPARSITY_COMBOS]
 
-@pytest.mark.parametrize("torch_ref", TORCH_REF_VALS)
-@pytest.mark.parametrize("block_shape", BLOCK_SHAPES, ids=lambda bs: f"bs{bs[0]}x{bs[1]}")
-@pytest.mark.parametrize("frame_kind,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
-@pytest.mark.parametrize("shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
-def test_blitz_sparse_attention_correctness(torch_ref, shape, frame_kind, sparsity, block_shape):
+# Pre-filter the (shape, frame_kind, sparsity, block_shape, torch_ref) cross
+# product so that infeasible cells are NEVER collected by pytest — no skip
+# noise in the run log and no risk of leaking BSA's empty-Q-row LSE sentinel
+# into a downstream torch_npu op that aborts the device with an aicore
+# exception (see is_block_sparse_pattern_feasible doc-string).
+def _attn_param_id(p):
+    shape, frame_kind, sparsity, block_shape, torch_ref = p
+    return (f"b{shape[0]}-h{shape[1]}-s{shape[2]}-d{shape[3]}"
+            f"-{frame_kind}-sparsity{sparsity:.2f}"
+            f"-bs{block_shape[0]}x{block_shape[1]}"
+            f"-{torch_ref}")
+
+ATTN_PARAMS = [
+    (shape, frame_kind, sparsity, block_shape, torch_ref)
+    for shape in SHAPES
+    for frame_kind in FRAME_KINDS
+    for sparsity in SPARSITY_VALS
+    for block_shape in BLOCK_SHAPES
+    for torch_ref in TORCH_REF_VALS
+    if is_block_sparse_pattern_feasible(
+        s_q=shape[2], s_kv=shape[2],
+        block_size_q=block_shape[0], block_size_kv=block_shape[1],
+        frame=FRAMES_BY_KIND_BLOCK_SHAPE[(frame_kind, block_shape)],
+        sparsity=sparsity,
+    )
+]
+ATTN_PARAM_IDS = [_attn_param_id(p) for p in ATTN_PARAMS]
+
+
+@pytest.mark.parametrize(
+    "shape,frame_kind,sparsity,block_shape,torch_ref",
+    ATTN_PARAMS, ids=ATTN_PARAM_IDS,
+)
+def test_blitz_sparse_attention_correctness(shape, frame_kind, sparsity, block_shape, torch_ref):
     """Test correctness of torch_bsa.blitz_sparse_attention vs reference implementation"""
     # Set random seed for reproducible test inputs
     torch.manual_seed(SEED)
@@ -87,18 +115,11 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame_kind, sparsi
     # top_rows is in BLOCK_SIZE_Q-token units).
     frame = FRAMES_BY_KIND_BLOCK_SHAPE[(frame_kind, block_shape)]
 
-    # Generate attention mask and parameters.  Some extreme (block_shape, frame,
-    # sparsity) cells have a forced-frame density that exceeds (1 − sparsity);
-    # `generate_sparse_blocks_by_row` raises ValueError when that happens.  Treat
-    # those as parameterisation-infeasible and skip rather than fail.
-    try:
-        pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-            b, h, s_q, s_kv, d, sparsity, frame=frame,
-            block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
-            device=DEVICE, emit_atten_mask=True
-        )
-    except ValueError as e:
-        pytest.skip(f"sparsity {sparsity} unsatisfiable for {block_shape} {frame_kind}: {e}")
+    pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
+        b, h, s_q, s_kv, d, sparsity, frame=frame,
+        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
+        device=DEVICE, emit_atten_mask=True,
+    )
 
     # Generate input tensors
     q, k, v, actseqlen, actseqlenkv = gen_pfa_inputs(
