@@ -197,6 +197,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
 
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
         PipeBarrier<PIPE_V>();
+        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
         float scaleVal = scaleLocal.GetValue(0);
         float quantFactor = (scaleVal != 0.0f) ? (1.0f / scaleVal) : 0.0f;
         __local_mem__ int4x2_t *outUbAddrInt4 = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
