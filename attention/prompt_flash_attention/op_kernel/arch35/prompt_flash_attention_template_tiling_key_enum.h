@@ -205,8 +205,6 @@ static constexpr ConfigParams ConfigValue[] ={
 // PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
 #define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
-#define PSE_MODE_PSE_INNER_MUL_ADD_TYPE 2
-#define PSE_MODE_PSE_INNER_MUL_ADD_SQRT_TYPE 3
 #define PSE_MODE_PSE_INVALID_TYPE 4
 #define PSE_MODE_PSE_NONE_TYPE 9
 
