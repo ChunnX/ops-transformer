@@ -94,6 +94,9 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor);
 // 检查x2是否合法，空指针、空tensor和维度
 aclnnStatus CheckX2Valid(const aclTensor* x2);
 
+// 检查commMode参数是否合法，并获取commMode对应枚举值
+aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum);
+
 // 检查是否有alltoallout输出
 bool IsAll2AllOut(const aclTensor *alltoAllOut);
 
