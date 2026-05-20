@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_MX_H_
-#define FIA_KERNEL_FULLQUANT_MX_H_
+#ifndef FIA_KERNEL_FULLQUANT_MX_PA_TEST_H_
+#define FIA_KERNEL_FULLQUANT_MX_PA_TEST_H_
 
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
@@ -45,6 +45,8 @@ public:
     __gm__ uint8_t *valuePtr = nullptr;
     __gm__ uint8_t *keyGm;
     __gm__ uint8_t *valueGm;
+    __gm__ uint8_t *deScaleKGm;
+    __gm__ uint8_t *deScaleVGm;
     __gm__ int32_t *blockTableGm;
     __gm__ uint32_t *fiaMetaDataGm;
     __cbuf__ void *k1[4], *v1[4];
@@ -55,14 +57,18 @@ public:
 
     __aicore__ inline void InitBuffer()
     {
+        constexpr uint32_t mm1KSize = 128 * 256;
+        constexpr uint32_t mm1KScaleSize = 128 * 256 / 32;
+        constexpr uint32_t mm2VSize = 128 * 256;
+        constexpr uint32_t mm2VScaleSize = 128 * 256 / 32;
         k1[0] = (__cbuf__ void *)get_imm(0);
-        k1[1] = (__cbuf__ void *)get_imm(128 * 256);
-        k1[2] = (__cbuf__ void *)get_imm(128 * 512);
-        k1[3] = (__cbuf__ void *)get_imm(128 * 768);
-        v1[0] = (__cbuf__ void *)get_imm(128 * 512 * 2);
-        v1[1] = (__cbuf__ void *)get_imm(128 * 512 * 2 + 128 * 256);
-        v1[2] = (__cbuf__ void *)get_imm(128 * 512 * 2 + 128 * 512);
-        v1[3] = (__cbuf__ void *)get_imm(128 * 512 * 2 + 128 * 768);
+        k1[1] = (__cbuf__ void *)get_imm(mm1KSize + mm1KScaleSize);
+        k1[2] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 2);
+        k1[3] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 3);
+        v1[0] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4);
+        v1[1] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize));
+        v1[2] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize) * 2);
+        v1[3] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize) * 3);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -122,8 +128,12 @@ public:
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ void *blockTable, __gm__ uint8_t *attentionOut,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
+                                __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
+                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope,
+                                __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *workspace)
     {
         // gs1,现在固定case是b=48,g=8,qs=4,kvs=10240  ,qn=64,kvn=8
@@ -133,6 +143,8 @@ public:
         InitConstInfo();
         keyPtr = key;
         valuePtr = value;
+        deScaleKGm = dequantScaleKey;
+        deScaleVGm = dequantScaleValue;
         ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
         keyGm = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
         ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
@@ -187,8 +199,21 @@ public:
         // intriParams.srcStride = 256;
         /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
                                      leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
+        // uint64_t gmOffset = bIdx * (128 * 10240 * 8) + n2Idx * (128 * 10240) + s2Offset * 128;
         copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)k1[ivkuse], (__gm__ float8_e4m3_t *)(keyGm + gmOffset), 0, 4,
                                  256 * 32, 0, 0, true, 0, 256 * 32 * 2, 0);
+        // uint32_t kScaleOffset = 256 * 128;
+        
+        // intriParams.blockCount = 16;修改成1
+        // intriParams.blockLen = 2;修改成32
+        // intriParams.dstStride = 0;
+        // intriParams.srcStride = 0;
+        uint64_t blockKScaleId =
+            *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
+                                s2Offset / 512);
+        uint64_t gmKeyScaleOffset = blockKScaleId * 512 * 64 * 8 + n2Idx * 512 * 64 + bsIdx / 16 * 64 + bsIdx % 16;
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)k1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKeyScaleOffset), 0, 1,
+                                 32 * 32, 0, 0, true, 0, 0, 0);
 
         set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
@@ -208,7 +233,7 @@ public:
             uint64_t blockId =
                 *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
                                     s2Offset / 512);
-            uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+            // uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
 
             // intriParams.blockCount = 4;
             // intriParams.blockLen = 256;
@@ -216,8 +241,22 @@ public:
             // intriParams.srcStride = 256;
             /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
                                      leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
+            uint64_t gmOffset = bIdx * (128 * 10240 * 8) + n2Idx * (128 * 10240) + s2Offset * 128;
             copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)v1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmOffset),
-                                     0, 4, 256 * 32, 0, 0, true, 0, 256 * 32 * 2, 0);
+                                     0, 4, 256 * 32, 0, 0, true, 0, 4 * 32 * 2, 0);
+            // intriParams.blockCount = 8;
+            // intriParams.blockLen = 4;
+            // intriParams.dstStride = 0;
+            // intriParams.srcStride = 4;
+            uint32_t s2VscaleScaleOffset = (inner * 512 + k * 256) / 32;
+            uint64_t blockVscaleIdxInBatch = s2VscaleScaleOffset / 8;  // 获取block table上的索引
+            uint64_t bsVscaleIdx = s2VscaleScaleOffset % 8;            // 获取在单个块上超出的行数
+            uint64_t blockVscaleId =
+                *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
+                                    blockVscaleIdxInBatch);
+            uint64_t gmValueScaleOffset = blockVscaleId * 32 * 8 * 8 * 8 + n2Idx * 32 * 8 * 8 + bsVscaleIdx * 32;
+            copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)v1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleVGm + gmValueScaleOffset), 0, 8,
+                                 4 * 32, 0, 0, true, 0, 4 * 32 * 2, 0);
             set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
@@ -232,31 +271,40 @@ public:
             uint64_t id = 0;
             uint64_t outerp[4], innerp[4];
             uint64_t total = outer_loop_limit * inner_loop_limit;
-
             uint32_t bN2Cur = constInfo.bN2Start;
-            for (uint64_t bn2 = 0; bn2 < 12; bn2++) {
-                int64_t bIdx = bN2Cur / 8; //bN2Cur / 8;
-                int64_t n2Idx = bN2Cur % 8; //bN2Cur % 8
-                for (uint64_t outer = 0; outer < outer_loop_limit; outer++) {
-                    for (uint64_t inner = 0; inner < inner_loop_limit; inner++) {
+            uint64_t bn2 = 0;
+            uint64_t outer = 0;
+            uint64_t inner = 0;
+            int64_t bIdx = bN2Cur / 8; //bN2Cur / 8;
+            int64_t n2Idx = bN2Cur % 8; //bN2Cur % 8
+            
+            while (bn2 < 12) {
+                while(outer < outer_loop_limit) {
+                    while (inner < inner_loop_limit) {
                         outerp[id & 3] = outer;
                         innerp[id & 3] = inner;
                         for (uint32_t subLoop = 0; subLoop < 2; ++subLoop) {
                             mm1(inner, outer, bIdx, n2Idx, subLoop);
                         }
-
-                        if (id >= 2) {
-                            mm2(innerp[(id + 2) & 3], outerp[(id + 2) & 3], bIdx, n2Idx);
+                        if (id >= (bn2 * total +2)) {
+                            mm2(innerp[(id - 2) & 3], outerp[(id - 2) & 3], bIdx, n2Idx);
                         }
-                        id++;
+                        inner ++;
+                        id ++;
                     }
+                    inner = 0;
+                    outer ++;
                 }
-
-                for (; id < total + 2; id++) {
+                uint64_t j = 0;
+                while (j < 2) {
                     if (id >= 2) {
-                        mm2(innerp[(id + 2) & 3], outerp[(id + 2) & 3], bIdx, n2Idx);
+                        mm2(innerp[(id - 2 + j) & 3], outerp[(id - 2 + j) & 3], bIdx, n2Idx);
+                        j ++;
                     }
                 }
+                bn2++;
+                inner = 0;
+                outer = 0;
             }
 
             postalloc_kv_l1();
