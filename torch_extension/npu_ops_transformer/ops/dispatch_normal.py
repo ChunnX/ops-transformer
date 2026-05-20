@@ -197,6 +197,12 @@ def npu_dispatch_normal(
 
     Prepare context via update_context(group_name, ep_world_size, ccl_buffer_size, context_tensor) first.
     Typical flow: notify_dispatch -> npu_dispatch_normal -> expert compute -> combine.
+
+    Returns:
+        recv_x: expanded tokens (num_recv_tokens, H)
+        x_scales: per-token scales (num_recv_tokens,)
+        assist_info_for_combine: 1D int32, numel = num_recv_tokens * 3 (combine token_src_info)
+        ext_handle_data: placeholder 1D int32 with numel 0 (not recv_count; use recv_offset[1] from notify)
     """
     return op_module.npu_dispatch_normal(
         context, x, topk_idx, send_offset, send_token_idx, recv_offset, expert_output_offset, ep_world_size,

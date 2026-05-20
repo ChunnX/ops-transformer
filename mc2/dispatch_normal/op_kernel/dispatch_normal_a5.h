@@ -11,13 +11,20 @@
 #ifndef DISPATCH_NORMAL_A5_H
 #define DISPATCH_NORMAL_A5_H
 
+#define MC2_EP_NORMAL_WIN_LAYOUT
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_distribute_base.h"
+#if __has_include("../common/mc2_ep_kernel_deps.h")
+#include "../common/mc2_ep_kernel_deps.h"
+#else
+#include "../../common/op_kernel/mc2_ep_kernel_deps.h"
+#endif
+#if __has_include("../common/mc2_ep_v2_base.h")
+#include "../common/mc2_ep_v2_base.h"
+#else
+#include "../../common/op_kernel/mc2_ep_v2_base.h"
+#endif
 #include "dispatch_normal_tiling.h"
-#include "comm_args.h"
-#include "moe_distribute_v2_base.h"
-#include "mc2_moe_context.h"
 
 namespace DispatchNormalA5Impl {
 constexpr uint8_t BUFFER_NUM = 2;
@@ -215,7 +222,7 @@ DispatchNormalA5<CamTypeFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR exper
     blockIdx = GetBlockIdx();
 
     mc2Context_ = (__gm__ Mc2Aclnn::Mc2MoeContext *)mc2Context;
-    baseWindSize = tilingData->dispatchNormalInfo.totalWinSize - A5_MTE_STATE_WIN_SIZE;
+    baseWindSize = tilingData->dispatchNormalInfo.totalWinSize - Mc2Kernel::A5_EP_NORMAL_MTE_STATE_WIN_SIZE;
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[mc2Context_->epRankId]);
     selfDataStatusTensor.SetGlobalBuffer(
