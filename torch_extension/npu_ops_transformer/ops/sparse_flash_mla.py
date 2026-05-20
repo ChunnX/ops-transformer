@@ -35,7 +35,6 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                             "Tensor? cmp_residual_kv=None, " \
                                             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, " \
                                             "Tensor? sinks=None, Tensor? metadata=None, " \
-                                            "int quant_mode = 1, int tile_size=64, int rope_head_dim=64, " \
                                             "float softmax_scale= 1.0, int cmp_ratio=1, " \
                                             "int ori_mask_mode=4, int cmp_mask_mode=3, " \
                                             "int ori_win_left=127, int ori_win_right=0, " \
@@ -59,7 +58,6 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                                 cmp_residual_kv=None,
                                                 ori_topk_length=None, cmp_topk_length=None,
                                                 sinks=None, metadata=None,
-                                                quant_mode=1, tile_size=128, rope_head_dim=64,
                                                 softmax_scale=1.0, cmp_ratio=1,
                                                 ori_mask_mode=4, cmp_mask_mode=3,
                                                 ori_win_left=127, ori_win_right=0,
@@ -102,7 +100,6 @@ def npu_sparse_flash_mla(q,
                                     cmp_residual_kv=None,
                                     ori_topk_length=None, cmp_topk_length=None,
                                     sinks=None, metadata=None,
-                                    quant_mode=1, tile_size=128, rope_head_dim=64,
                                     softmax_scale=1.0, cmp_ratio=1,
                                     ori_mask_mode=4, cmp_mask_mode=3,
                                     ori_win_left=127, ori_win_right=0,
