@@ -1,0 +1,147 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file gmm_weight_quant_arch35_tool_common.h
+ * \brief Common tool functions and constants for GMM weight quant arch35 scenes.
+ */
+#ifndef GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
+#define GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
+
+#include "../../../common/include/op_kernel/tool_common.h"
+#include "kernel_operator.h"
+
+using AscendC::CrossCoreSetFlag;
+using AscendC::CrossCoreWaitFlag;
+using AscendC::DataCopyExtParams;
+using AscendC::DataCopyPadExtParams;
+using AscendC::fp8_e8m0_t;
+using AscendC::GetUserWorkspace;
+using AscendC::GlobalTensor;
+using AscendC::int4b_t;
+using AscendC::IsSameType;
+using AscendC::LocalTensor;
+using AscendC::ONE_BLK_SIZE;
+using AscendC::TPosition;
+using AscendC::VECTOR_REG_WIDTH;
+using matmul::MatmulCallBackFunc;
+using matmul::MatmulImpl;
+using matmul::MatmulType;
+using matmul::MatmulTypeWithScale;
+
+#define SHORT_MIX_LOG(format, ...)
+
+namespace WeightQuantBatchMatmulV2::Arch35 {
+
+using namespace CommonTool;
+
+enum class QuantType {
+    NONE = 0,
+    PER_TENSOR = 1,
+    PER_CHANNEL = 2,
+    PER_GROUP = 3,
+    MX = 4,
+};
+
+// buffer related definitions
+static constexpr int64_t L1_SIZE = 512;
+static constexpr int64_t L1_SIZE_BYTE = L1_SIZE * 1024;
+static constexpr int64_t L1_HALF_SIZE = L1_SIZE / 2;
+static constexpr int64_t L1_SIZE_WITH_QUANTSCALE = 504;
+static constexpr int64_t L1_SIZE_WITH_QUANTSCALE_BYTE = L1_SIZE_WITH_QUANTSCALE * 1024;
+static constexpr int64_t BIAS_L1_SIZE = 4;
+static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
+static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
+static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
+
+// control parameter definitions
+static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
+static constexpr uint64_t SCALE_COPY_GROUP_SIZE = 2;
+static constexpr int32_t SCALE_COPY_DEFAULT_STRIDE = 0;
+static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
+
+// constraint definitions
+static constexpr uint64_t VEC_MAX_ELEM_B16_LOCAL = VECTOR_REG_WIDTH / sizeof(half);
+static constexpr uint64_t VEC_MAX_ELEM_B32 = VECTOR_REG_WIDTH / sizeof(float);
+static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
+
+// function definitions
+template <typename T>
+__aicore__ inline T CeilDivide(T a, T b)
+{
+    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
+    return (a + b - 1) / b;
+}
+
+template <typename T>
+__aicore__ inline void DataCopyPad2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint32_t blockCount,
+                                     uint32_t blockLen, uint32_t dstInnerLength, uint32_t srcInnerLength)
+{
+    DataCopyExtParams params;
+    params.blockCount = blockCount;
+    params.blockLen = blockLen * sizeof(T);
+    params.srcStride = (srcInnerLength - blockLen) * sizeof(T);
+    params.dstStride = (dstInnerLength - blockLen) * sizeof(T) / ONE_BLK_SIZE;
+    DataCopyPadExtParams<T> padParams;
+    if (blockLen % (32 / sizeof(T)) != 0) {
+        padParams.isPad = true;
+        padParams.rightPadding = CeilAlign(blockLen, static_cast<uint32_t>(32 / sizeof(T))) - blockLen;
+        padParams.paddingValue = 0;
+    }
+
+    if constexpr (IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value ||
+                  IsSameType<T, fp4x2_e1m2_t>::value) {
+        params.blockLen = params.blockLen >> 1;
+        params.srcStride = params.srcStride >> 1;
+        params.dstStride = params.dstStride >> 1;
+        padParams.rightPadding = padParams.rightPadding >> 1;
+    }
+    DataCopyPad(dst, src, params, padParams);
+}
+
+template <typename T>
+__aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src, uint32_t dim1,
+                                     uint32_t dim0, uint32_t srcFullDim0, uint32_t dstFullDim0)
+{
+    DataCopyExtParams params;
+    params.blockCount = dim1;
+    params.blockLen = dim0 * sizeof(T);
+    params.srcStride = CeilDivide((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
+    params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
+    SHORT_MIX_LOG("dim1 %d dim0 %d dstFullDim0 %d blockCount %d blockLen %d srcStride %d dstStride %d", dim1, dim0,
+                  dstFullDim0, params.blockCount, params.blockLen, params.srcStride, params.dstStride);
+    DataCopyPad(dst, src, params);
+}
+
+template <typename T>
+__aicore__ constexpr uint32_t GetKBUnit()
+{
+    if constexpr (IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value ||
+                  IsSameType<T, fp4x2_e1m2_t>::value) {
+        return 2048;
+    }
+    return 1024 / sizeof(T);
+}
+
+template <typename xType, QuantType antiQuantType>
+__aicore__ constexpr bool IsMxA8W4()
+{
+    return antiQuantType == QuantType::MX && IsSameType<xType, fp8_e4m3fn_t>::value;
+}
+
+template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
+          LayoutMode LAYOUT = LayoutMode::NONE, bool IBSHARE = false>
+struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
+    constexpr static TPosition srcPos = TPosition::GM;
+};
+
+} // namespace WeightQuantBatchMatmulV2::Arch35
+
+#endif // GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
