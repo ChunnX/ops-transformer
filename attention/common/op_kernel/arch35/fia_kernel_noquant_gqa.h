@@ -528,16 +528,16 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
+        if (SkipForS1OutSplit()) {
+            return TASK_DEAL_MODE::SKIP_S1OUT;
+        }
+
         if (s2Cur < curS2Start) {
             return TASK_DEAL_MODE::NOT_START;
         }
 
         if (s2Cur >= curS2End) {
             return TASK_DEAL_MODE::S2_END;
-        }
-
-        if (SkipForS1OutSplit()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
         if (curS2Start >= curS2End) {
@@ -971,6 +971,7 @@ public:
         if (enableS1OutSplit) {
             if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
                 accGS1Loops = ComputeFlatTaskIdx();
+                S1OutSplitUpdatePos(bN2Cur, gS1Cur);
                 return;
             }
             coreGS1Loops++;
