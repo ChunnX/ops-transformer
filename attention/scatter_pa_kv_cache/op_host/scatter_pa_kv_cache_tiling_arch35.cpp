@@ -325,8 +325,8 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNormal()
     blockFactor_ = Ops::Base::CeilDiv<int64_t>(numTokens_, totalCoreNum_);
     usedCoreNum_ = std::min(Ops::Base::CeilDiv<int64_t>(numTokens_, blockFactor_), totalCoreNum_);
     tailBlockFactor_ = numTokens_ - blockFactor_ * (usedCoreNum_ - 1);
+    GetNonContigousStrideInfo();
     if (templateType_ == TEMPLATE_NORMAL_NON_CONTIGUOUS) {
-        GetNonContigousStrideInfo();
         return ge::GRAPH_SUCCESS;
     }
     int64_t maxHandleNumPerLoop = ubSize_ / dtypeByteSize_;
@@ -402,8 +402,8 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
     blockFactor_ = Ops::Base::CeilDiv<int64_t>(numTokens_, totalCoreNum_);
     usedCoreNum_ = std::min(Ops::Base::CeilDiv<int64_t>(numTokens_, blockFactor_), totalCoreNum_);
     tailBlockFactor_ = numTokens_ - blockFactor_ * (usedCoreNum_ - 1);
+    GetNonContigousStrideInfo();
     if (templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS || templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM) {
-        GetNonContigousStrideInfo();
         return ge::GRAPH_SUCCESS;
     }
     int64_t maxHandleNumPerLoop = ubSize_ - RESERVED_UB_SIZE;
