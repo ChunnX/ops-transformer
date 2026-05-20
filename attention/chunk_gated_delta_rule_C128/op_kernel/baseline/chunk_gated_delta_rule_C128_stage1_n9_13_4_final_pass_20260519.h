@@ -30,26 +30,14 @@ using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
 
 constexpr uint64_t UB_REST_BYTES = 120 * 1024; // Stage1 keeps one [c/2,c] slice plus [c/2,c/2] inverse scratch.
 constexpr uint64_t INVERSE_SHAPE = 16;         // 16x16 Neumann basic block inside one C64 inverse.
-constexpr uint64_t C64_BLOCK32 = 32;
-constexpr uint64_t C64_PACKED_SHAPE = 64;
 constexpr uint32_t C64_PACKED_SIZE_U32 = 64;
-constexpr uint64_t C128_BLOCK64 = 64;
 constexpr uint64_t C128_PACKED_SHAPE = 128;
 constexpr uint32_t C128_PACKED_SIZE_U32 = 128;
 constexpr uint32_t C64_FRACTAL_U32 = 16;
-constexpr uint32_t C64_PACKED_BLOCK_COUNT = C64_PACKED_SIZE_U32 / C64_FRACTAL_U32;
 constexpr uint32_t C128_PACKED_BLOCK_COUNT = C128_PACKED_SIZE_U32 / C64_FRACTAL_U32;
-constexpr uint64_t AIC_LOW_L1_TILE_ELEMS = C64_PACKED_SHAPE * C64_PACKED_SHAPE;
 constexpr uint64_t AIC_FULL128_L1_TILE_ELEMS = C128_PACKED_SHAPE * C128_PACKED_SHAPE;
-constexpr uint64_t C128_RESIDENT_TILE_COUNT = 3;
-constexpr uint64_t C128_RESIDENT_PARA_SLOTS = 1;
-constexpr uint64_t C128_LOW_L1_TILE_COUNT = 10;
-constexpr uint64_t C128_FULL_L1_TILE_COUNT = 6;
-constexpr uint64_t AIC_LOW_L1_BYTES =
-    (AIC_LOW_L1_TILE_ELEMS * C128_LOW_L1_TILE_COUNT +
-     AIC_FULL128_L1_TILE_ELEMS * C128_FULL_L1_TILE_COUNT) *
-    sizeof(half);
-constexpr uint32_t C64_L0C_TILE_ELEMS = C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32;
+constexpr uint64_t C128_FULL_L1_TILE_COUNT = 7;
+constexpr uint64_t AIC_L1_BYTES = AIC_FULL128_L1_TILE_ELEMS * C128_FULL_L1_TILE_COUNT * sizeof(half);
 constexpr uint32_t C128_L0C_TILE_ELEMS = C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32;
 constexpr uint64_t AIC_RAW_L0_AB_BYTES = 64 * 1024;
 constexpr uint64_t AIC_RAW_L0_AB_HALF_PINGPONG_BYTES = AIC_RAW_L0_AB_BYTES / 2;
@@ -63,50 +51,33 @@ constexpr uint32_t RAW_HALF_FRACTAL_ELEMS = RAW_FRACTAL_BYTES / sizeof(half);
 static constexpr IsResetLoad3dConfig RAW_LOAD3DV2_CONFIG = {true, true};
 constexpr uint8_t RAW_MMAD_NON_FINAL_UNIT_FLAG = 2;
 constexpr uint8_t RAW_MMAD_FINAL_UNIT_FLAG = 3;
+constexpr uint8_t RAW_FIXPIPE_POST_ACCUM_UNIT_FLAG = 0;
 constexpr bool RAW_MMAD_CMATRIX_SOURCE_L0C = false;
 constexpr bool RAW_MMAD_INIT_C = true;
 constexpr bool RAW_MMAD_ACCUMULATE_C = false;
 constexpr uint32_t RAW_L0AB_DB_FREE_EVENT0 = EVENT_ID3;
 constexpr uint32_t RAW_L0AB_DB_FREE_EVENT1 = EVENT_ID4;
-constexpr uint32_t C128_FULL128_DEBUG_STAGE = 0;
+constexpr uint32_t C128_L1_TILE_INV_INIT = 0;
+constexpr uint32_t C128_L1_TILE_DIAG_WORK = 1;
+constexpr uint32_t C128_L1_TILE_POWER_WORK = 2;
+constexpr uint32_t C128_L1_TILE_IDENTITY = 3;
+constexpr uint32_t C128_L1_TILE_ZERO = 4;
+constexpr uint32_t C128_L1_TILE_PACKED_INV = 5;
+constexpr uint32_t C128_L1_TILE_RESIDENT_INV = 6;
 
-constexpr uint32_t C64_DIAG_BASE0 = 0;
-constexpr uint32_t C64_DIAG_BASE1 = C64_FRACTAL_U32;
-constexpr uint32_t C64_DIAG_BASE2 = C64_BLOCK32;
-constexpr uint32_t C64_DIAG_BASE3 = C64_BLOCK32 + C64_FRACTAL_U32;
-constexpr uint32_t C64_DIAG_NZ_OFFSET0 = 0;
-constexpr uint32_t C64_DIAG_NZ_OFFSET1 = 1 * (C64_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS;
-constexpr uint32_t C64_DIAG_NZ_OFFSET2 = 2 * (C64_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS;
-constexpr uint32_t C64_DIAG_NZ_OFFSET3 = 3 * (C64_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS;
-constexpr uint32_t C64_DIAG_NZ_STRIDE_FRACTALS = C64_PACKED_BLOCK_COUNT + 1;
 constexpr uint32_t C128_DIAG_NZ_OFFSET0 = 0;
 constexpr uint32_t C128_DIAG_NZ_OFFSET1 = 1 * (C128_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS;
 constexpr uint32_t C128_DIAG_NZ_OFFSET4 = 4 * (C128_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS;
 constexpr uint32_t C128_DIAG_NZ_STRIDE_FRACTALS = C128_PACKED_BLOCK_COUNT + 1;
-constexpr uint32_t C64_DIAG_IDENTITY_COPY_BLOCKS = RAW_FRACTAL_BYTES / BLOCK_SIZE;
-constexpr uint32_t C64_DIAG_IDENTITY_DST_GAP_BLOCKS =
-    (C64_DIAG_NZ_OFFSET1 - C64_DIAG_NZ_OFFSET0 - RAW_HALF_FRACTAL_ELEMS) * sizeof(half) / BLOCK_SIZE;
+constexpr uint32_t DIAG_IDENTITY_COPY_BLOCKS = RAW_FRACTAL_BYTES / BLOCK_SIZE;
 constexpr uint32_t C128_DIAG_IDENTITY_DST_GAP_BLOCKS =
     (C128_DIAG_NZ_OFFSET1 - C128_DIAG_NZ_OFFSET0 - RAW_HALF_FRACTAL_ELEMS) * sizeof(half) / BLOCK_SIZE;
-constexpr uint32_t C64_DIAG_L0_LOAD_DST_GAP_FRACTALS = C64_DIAG_NZ_STRIDE_FRACTALS - 1;
 constexpr uint32_t C128_DIAG_L0_LOAD_DST_GAP_FRACTALS = C128_DIAG_NZ_STRIDE_FRACTALS - 1;
-constexpr uint32_t C64_ODD_EVEN_PAIR_L0_LOAD_DST_GAP_FRACTALS =
-    (C64_DIAG_NZ_OFFSET2 - C64_DIAG_NZ_OFFSET0) / RAW_HALF_FRACTAL_ELEMS - 1;
-constexpr uint32_t C64_L0_ROW1_COL0_OFFSET = C64_PACKED_BLOCK_COUNT * RAW_HALF_FRACTAL_ELEMS;
-constexpr uint32_t C64_FULL_L0_BLOCK_DST_GAP_FRACTALS = C64_PACKED_BLOCK_COUNT - 1;
-constexpr uint32_t C64_FIXPIPE_HALF_DST_STRIDE = C64_PACKED_SIZE_U32 * C64_FRACTAL_U32 * sizeof(half) / BLOCK_SIZE;
-constexpr uint32_t C64_FIXPIPE_BF16_DST_STRIDE =
-    C64_PACKED_SIZE_U32 * C64_FRACTAL_U32 * sizeof(bfloat16_t) / BLOCK_SIZE;
 constexpr uint32_t C128_FIXPIPE_HALF_DST_STRIDE =
     C128_PACKED_SIZE_U32 * C64_FRACTAL_U32 * sizeof(half) / BLOCK_SIZE;
 constexpr uint32_t C128_FIXPIPE_BF16_DST_STRIDE =
     C128_PACKED_SIZE_U32 * C64_FRACTAL_U32 * sizeof(bfloat16_t) / BLOCK_SIZE;
 constexpr uint32_t C32_PACKED_SIZE_U32 = 32;
-constexpr uint32_t C32_PACKED_BLOCK_COUNT = C32_PACKED_SIZE_U32 / C64_FRACTAL_U32;
-constexpr uint32_t C32_DIAG_NZ_OFFSET0 = 0;
-constexpr uint32_t C32_DIAG_NZ_OFFSET1 = 1 * (C32_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS;
-constexpr uint32_t C32_DIAG_NZ_STRIDE_FRACTALS = C32_PACKED_BLOCK_COUNT + 1;
-constexpr uint32_t C32_DIAG_L0_LOAD_DST_GAP_FRACTALS = C32_DIAG_NZ_STRIDE_FRACTALS - 1;
 constexpr int16_t FP16_ONE_BITS = 15360;
 
 #define CGDR_C128_I16_NZ_ROW0 FP16_ONE_BITS, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -130,9 +101,6 @@ constexpr int16_t FP16_ONE_BITS = 15360;
         CGDR_C128_I16_NZ_ROW5, CGDR_C128_I16_NZ_ROW6, CGDR_C128_I16_NZ_ROW7, CGDR_C128_I16_NZ_ROW8,                    \
         CGDR_C128_I16_NZ_ROW9, CGDR_C128_I16_NZ_ROW10, CGDR_C128_I16_NZ_ROW11, CGDR_C128_I16_NZ_ROW12,                 \
         CGDR_C128_I16_NZ_ROW13, CGDR_C128_I16_NZ_ROW14, CGDR_C128_I16_NZ_ROW15
-
-static constexpr volatile __gm__ int16_t CGDR_C128_IDENTITY16_NZ4[RAW_HALF_FRACTAL_ELEMS * C64_PACKED_BLOCK_COUNT] = {
-    CGDR_C128_I16_NZ_FRACTAL, CGDR_C128_I16_NZ_FRACTAL, CGDR_C128_I16_NZ_FRACTAL, CGDR_C128_I16_NZ_FRACTAL};
 
 static constexpr volatile __gm__ int16_t CGDR_C128_IDENTITY16_NZ8[RAW_HALF_FRACTAL_ELEMS * C128_PACKED_BLOCK_COUNT] = {
     CGDR_C128_I16_NZ_FRACTAL, CGDR_C128_I16_NZ_FRACTAL, CGDR_C128_I16_NZ_FRACTAL, CGDR_C128_I16_NZ_FRACTAL,
@@ -235,14 +203,6 @@ public:
         vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
         workSpaceOffset += coreNum_ * paraNum_ * cvOffset_ * sizeof(bfloat16_t);
 
-        curWS = coreIdx_ * paraNum_ * ckOffset_ * sizeof(half);
-        gBKHalfWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(initParams.ws + workSpaceOffset + curWS));
-        workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(half);
-
-        curWS = coreIdx_ * paraNum_ * cvOffset_ * sizeof(half);
-        vBetaHalfWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(initParams.ws + workSpaceOffset + curWS));
-        workSpaceOffset += coreNum_ * paraNum_ * cvOffset_ * sizeof(half);
-
         curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(half);
         L_powHalfWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(initParams.ws + workSpaceOffset + curWS));
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(half);
@@ -302,8 +262,7 @@ public:
         gCumExpUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * paraNum_), buffOffset);
         buffOffset += chunkSize_ * sizeof(float) * paraNum_;
 
-        uint64_t inverseWorkElementNum = AscendC::Std::max(
-            subBlockElementNum_, static_cast<uint64_t>(halfChunkSize_ * halfChunkSize_ * 3 + halfChunkSize_ * 2));
+        uint64_t inverseWorkElementNum = subBlockElementNum_;
         inverseBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(inverseWorkElementNum), buffOffset);
         qPrimeUbFloat_ = inverseBuffer_;
         vBetaUbFloat_ = inverseBuffer_;
@@ -312,9 +271,6 @@ public:
         kkLocal_ = inverseBuffer_;
         buffOffset += inverseWorkElementNum * sizeof(float);
 
-        inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(halfChunkSize_), buffOffset);
-        buffOffset += halfChunkSize_ * sizeof(uint32_t);
-
         inverseRes_ = gBroadUbFloat_;
     }
 
@@ -322,9 +278,6 @@ public:
     {
         for (uint32_t i = 0; i < chunkSize_; ++i) {
             inputGatherBuffer_.SetValue(i, i * BLOCK_SIZE);
-        }
-        for (uint32_t i = 0; i < halfChunkSize_; ++i) {
-            inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
         }
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -355,10 +308,8 @@ public:
         subOffset_ = subBlockIdx_ * halfChunkSize_;
         coreIdx_ = GetBlockIdx();
         aicLocalBuffersReady_ = false;
-        packed64IdentityPrepared_ = false;
         packed128IdentityPrepared_ = false;
-        preparedHalfIdentityBlockSize_ = 0;
-        halfL1ZeroPreparedSize_ = 0;
+        halfL1ZeroPreparedSize128_ = 0;
         rawL0AbDbEventsReady_ = false;
         rawL0AbDbCursor_ = 0;
         ccOffset_ = chunkSize_ * chunkSize_;
@@ -457,23 +408,26 @@ private:
 
         // 求逆左下角矩阵
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            if (validLenBatch_[i] >= chunkSize_) {
-                C128InverseBy16x16Neumann(i);
-            }
-        }
-        for (uint32_t i = 0; i < curParaNum; ++i) {
-            if (validLenBatch_[i] > C64_PACKED_SIZE_U32 && validLenBatch_[i] < chunkSize_) {
-                ComposeTailC128LowerLeftGm(i);
-            }
+            C128InverseBy16x16Neumann(i);
         }
         AscendC::CrossCoreWaitFlag(0x6); // 同步3
+        RestoreRawMmadState();
 
         bool hasTail = ParaHasTail(curParaNum);
 
         // attn @ k_cumdecay
+        if (curParaNum > 0 && (!hasTail || validLenBatch_[0] >= chunkSize_)) {
+            PrepareRhsPacked128Bf16L1NoWait(gBKWsGm_[0], GetRhsPrefetchGbk128(),
+                                            dk_ < chunkSize_ ? dk_ : chunkSize_, dk_);
+        }
         for (uint32_t i = 0; i < curParaNum; ++i) {
             if (!hasTail || validLenBatch_[i] >= chunkSize_) {
-                FusedRhsC128AICProcess(i, gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_], dk_);
+                bool hasNextPara = (i + 1 < static_cast<uint32_t>(curParaNum)) &&
+                                   (!hasTail || validLenBatch_[i + 1] >= chunkSize_);
+                FusedRhsC128AICProcess(i, gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_],
+                                        dk_, GetRhsPrefetchGbk128(),
+                                        hasNextPara ? gBKWsGm_[(i + 1) * ckOffset_] : gBKWsGm_[i * ckOffset_],
+                                        hasNextPara);
             }
         }
         bool splitSingleTailRhs = hasTail && curParaNum == 1 && HasFullChunkBeforeTail();
@@ -483,9 +437,18 @@ private:
         AscendC::CrossCoreWaitFlag(0x5); // 同步4
 
         // attn @ v_beta    stage1 out
+        if (curParaNum > 0 && (!hasTail || validLenBatch_[0] >= chunkSize_)) {
+            PrepareRhsPacked128Bf16L1NoWait(vBetaWsGm_[0], GetRhsPrefetchVBeta128(),
+                                            dv_ < chunkSize_ ? dv_ : chunkSize_, dv_);
+        }
         for (uint32_t i = 0; i < curParaNum; ++i) {
             if (!hasTail || validLenBatch_[i] >= chunkSize_) {
-                FusedRhsC128AICProcess(i, vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_], dv_);
+                bool hasNextPara = (i + 1 < static_cast<uint32_t>(curParaNum)) &&
+                                   (!hasTail || validLenBatch_[i + 1] >= chunkSize_);
+                FusedRhsC128AICProcess(i, vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_],
+                                        dv_, GetRhsPrefetchVBeta128(),
+                                        hasNextPara ? vBetaWsGm_[(i + 1) * cvOffset_] : vBetaWsGm_[i * cvOffset_],
+                                        hasNextPara);
             }
         }
         if (hasTail) {
@@ -522,8 +485,10 @@ private:
             if (validLenBatch_[i] >= chunkSize_) {
                 continue;
             }
-            TailRhsC128AICProcess(i, gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_], dk_);
-            TailRhsC128AICProcess(i, vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_], dv_);
+            TailRhsC128AICProcess(i, gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_], dk_,
+                                  GetRhsPrefetchGbk128());
+            TailRhsC128AICProcess(i, vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_], dv_,
+                                  GetRhsPrefetchVBeta128());
         }
     }
 
@@ -533,7 +498,8 @@ private:
             if (validLenBatch_[i] >= chunkSize_) {
                 continue;
             }
-            TailRhsC128AICProcess(i, gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_], dk_);
+            TailRhsC128AICProcess(i, gBKWsGm_[i * ckOffset_], outKCumdecayGm_[chunkRowBase_[i] * dk_], dk_,
+                                  GetRhsPrefetchGbk128());
         }
     }
 
@@ -543,7 +509,8 @@ private:
             if (validLenBatch_[i] >= chunkSize_) {
                 continue;
             }
-            TailRhsC128AICProcess(i, vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_], dv_);
+            TailRhsC128AICProcess(i, vBetaWsGm_[i * cvOffset_], outVInnerGm_[chunkRowBase_[i] * dv_], dv_,
+                                  GetRhsPrefetchVBeta128());
         }
     }
 
@@ -579,8 +546,8 @@ private:
         for (uint32_t i = 0; i < curParaNum; ++i) {
             // attn_1 = kkt * attn_1
             KKBetaCompute(kkWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
-            // AIV prepares FP16 L and initial I-L for the two 64x64 diagonal inverses.
-            InverseCompute(attnWsGm_[i * ccOffset_], L_powHalfWsGm_[i * ccOffset_], INVInitHalfWsGm_[i * ccOffset_],
+            // AIV prepares FP16 L and initial/exact inverse pieces. AIC materializes BF16 resident inverse.
+            InverseCompute(L_powHalfWsGm_[i * ccOffset_], INVInitHalfWsGm_[i * ccOffset_],
                            gammaUbFloat_[i * subBlockElementNum_], validLenBatch_[i]);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // 同步2
@@ -590,8 +557,7 @@ private:
             // k_cumdecay = -1.0 * k * beta * g_cum_exp
             outKgGm_ = outKgBaseGm_[chunkRowBase_[i] * dk_];
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
-            GBKCompute(gBKWsGm_[i * ckOffset_], gBKHalfWsGm_[i * ckOffset_], outKgGm_,
-                       betaUbFloat_[i * halfChunkSize_],
+            GBKCompute(gBKWsGm_[i * ckOffset_], outKgGm_, betaUbFloat_[i * halfChunkSize_],
                        gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], keyConGm_[wsOffset_]);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3
@@ -601,8 +567,7 @@ private:
             uint64_t betaUbOffset = i * halfChunkSize_;
             uint64_t vOffset = chunkStartRowBatch_[i] * vRowStride_ + nIdBatch_[i] * dv_;
             uint64_t valueUbOffset = i * subBlockElementNum_;
-            VBetaCompute(valueGm_[vOffset], vBetaWsGm_[i * cvOffset_], vBetaHalfWsGm_[i * cvOffset_],
-                         betaUbFloat_[betaUbOffset],
+            VBetaCompute(valueGm_[vOffset], vBetaWsGm_[i * cvOffset_], betaUbFloat_[betaUbOffset],
                          valueUbFloat_[valueUbOffset], subValidLenBatch_[i]);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4
@@ -725,9 +690,8 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void InverseCompute(const GlobalTensor<bfloat16_t> dst, const GlobalTensor<half> lPowGm,
-                                          const GlobalTensor<half> invGm, LocalTensor<float> gammaUbFloat,
-                                          uint32_t validLen)
+    __aicore__ inline void InverseCompute(const GlobalTensor<half> lPowGm, const GlobalTensor<half> invGm,
+                                          LocalTensor<float> gammaUbFloat, uint32_t validLen)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
         if (gOptional_) {
@@ -739,6 +703,7 @@ private:
             inQueue_.FreeTensor(maskLocal);
         }
         PipeBarrier<PIPE_V>();
+        ApplyTailPaddingToAttn(validLen);
 
         auto lPowLocal = outQueue_.AllocTensor<half>();
         Cast(lPowLocal, attnUbFloat_, RoundMode::CAST_NONE, curVecLen);
@@ -747,7 +712,7 @@ private:
         DataCopyOutHalfRect(halfChunkSize_, halfChunkSize_, chunkSize_, chunkSize_, subOffset_,
                             lPowGm[subOffset_ * chunkSize_ + subOffset_]);
 
-        BuildInitialOrExactInverse(validLen);
+        BuildInitialInverse();
 
         auto invLocal = outQueue_.AllocTensor<half>();
         Cast(invLocal, inverseRes_, RoundMode::CAST_NONE, curVecLen);
@@ -756,72 +721,59 @@ private:
         uint32_t invInitCols = (subBlockIdx_ == 0) ? halfChunkSize_ : chunkSize_;
         DataCopyOutHalfRect(halfChunkSize_, invInitCols, chunkSize_, chunkSize_, 0, invGm[subOffset_ * chunkSize_]);
 
-        auto tmp = outQueue_.AllocTensor<bfloat16_t>();
-        Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
-        outQueue_.EnQue(tmp);
-        DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
 
-    __aicore__ inline void BuildInitialOrExactInverse(uint32_t validLen)
+    __aicore__ inline void BuildInitialInverse()
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
         PipeBarrier<PIPE_V>();
-        if (validLen < chunkSize_) {
-            InverseAIV(subOffset_, halfChunkSize_);
-            return;
-        }
         for (uint32_t row = 0; row < halfChunkSize_; ++row) {
             inverseRes_.SetValue(row * chunkSize_ + subOffset_ + row, static_cast<float>(1.0f));
         }
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void InverseAIV(uint64_t offset, uint32_t inverseVecLen)
+    __aicore__ inline void ApplyTailPaddingToAttn(uint32_t validLen)
     {
-        PipeBarrier<PIPE_V>();
-        uint64_t inverseBufferOffset = 0;
-        auto row = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto col = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
-        auto yLocal = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto ei = inverseBuffer_[inverseBufferOffset];
-
-        Duplicate(ei, static_cast<float>(0.0), inverseVecLen);
-        Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        inverseRes_.SetValue(offset, static_cast<float>(1.0));
-
-        uint32_t srcShape[2] = {1, inverseVecLen};
-        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventID);
-        WaitFlag<HardEvent::S_V>(eventID);
-        for (int i = 1; i < inverseVecLen; ++i) {
-            uint32_t curI = i - 1;
-            uint32_t validRows = inverseVecLen - i;
-            Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI], inverseGatherBuffer_, static_cast<uint32_t>(0),
-                   validRows);
-            PipeBarrier<PIPE_V>();
-            uint32_t dstShape[2] = {validRows, inverseVecLen};
-            uint32_t colSrcShape[2] = {validRows, 1};
-            Broadcast<float, BROADCAST_AXIS, 1>(col[inverseVecLen], col, dstShape, colSrcShape);
-            Broadcast<float, BROADCAST_AXIS, 0>(row, inverseRes_[offset + curI * chunkSize_], dstShape, srcShape);
-            PipeBarrier<PIPE_V>();
-            MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
-            PipeBarrier<PIPE_V>();
-            ei.SetValue(i - 1, static_cast<float>(0.0));
-            ei.SetValue(i, static_cast<float>(1.0));
-            eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-            SetFlag<HardEvent::S_V>(eventID);
-            WaitFlag<HardEvent::S_V>(eventID);
-            Sub(inverseRes_[offset + i * chunkSize_], ei, yLocal[i * inverseVecLen], inverseVecLen);
-            PipeBarrier<PIPE_V>();
+        if (validLen >= chunkSize_) {
+            return;
         }
+        if (validLen <= subOffset_) {
+            Duplicate(attnUbFloat_, static_cast<float>(0.0f), halfChunkSize_ * chunkSize_);
+            PipeBarrier<PIPE_V>();
+            return;
+        }
+
+        uint32_t validRows = validLen - subOffset_;
+        if (validRows > halfChunkSize_) {
+            validRows = halfChunkSize_;
+        }
+        constexpr uint32_t maskCols = 64;
+        uint8_t rowStride = static_cast<uint8_t>(chunkSize_ * sizeof(float) / BLOCK_SIZE);
+        if (validLen < maskCols) {
+            uint64_t firstHalfMask[1] = {~0ULL << validLen};
+            uint64_t secondHalfMask[1] = {~0ULL};
+            Duplicate(attnUbFloat_, static_cast<float>(0.0f), firstHalfMask, static_cast<uint8_t>(validRows), 1,
+                      rowStride);
+            Duplicate(attnUbFloat_[maskCols], static_cast<float>(0.0f), secondHalfMask,
+                      static_cast<uint8_t>(validRows), 1, rowStride);
+        } else {
+            uint32_t tailCol = validLen - maskCols;
+            if (tailCol < maskCols) {
+                uint64_t secondHalfMask[1] = {~0ULL << tailCol};
+                Duplicate(attnUbFloat_[maskCols], static_cast<float>(0.0f), secondHalfMask,
+                          static_cast<uint8_t>(validRows), 1, rowStride);
+            }
+        }
+        if (validRows < halfChunkSize_) {
+            Duplicate(attnUbFloat_[validRows * chunkSize_], static_cast<float>(0.0f),
+                      (halfChunkSize_ - validRows) * chunkSize_);
+        }
+        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm,
-                                      const GlobalTensor<half> gBKHalfWsGm,
                                       const GlobalTensor<bfloat16_t> outKgGm, LocalTensor<float> betaUbFloat,
                                       LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat,
                                       const GlobalTensor<bfloat16_t> keyContinousGm)
@@ -854,10 +806,6 @@ private:
         outQueue_.EnQue<bfloat16_t>(gBKLocal_);
         uint64_t gBKBeginOffset = subOffset_ * dk_;
         DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, gBKWsGm[gBKBeginOffset]);
-        auto gBKHalfLocal = outQueue_.AllocTensor<half>();
-        Cast(gBKHalfLocal, gBKUbFloat_, RoundMode::CAST_NONE, halfChunkSize_ * dkAligned_);
-        outQueue_.EnQue<half>(gBKHalfLocal);
-        DataCopyOutHalf(halfChunkSize_, dk_, dkAligned_, gBKHalfWsGm[gBKBeginOffset]);
         PipeBarrier<PIPE_V>();
         if (gOptional_) {
             // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
@@ -883,10 +831,8 @@ private:
     }
 
     __aicore__ inline void VBetaCompute(const GlobalTensor<bfloat16_t> valueGm,
-                                        const GlobalTensor<bfloat16_t> vBetaWsGm,
-                                        const GlobalTensor<half> vBetaHalfWsGm,
-                                        LocalTensor<float> betaUbFloat, LocalTensor<float> valueUbFloat,
-                                        uint32_t subValidRows)
+                                        const GlobalTensor<bfloat16_t> vBetaWsGm, LocalTensor<float> betaUbFloat,
+                                        LocalTensor<float> valueUbFloat, uint32_t subValidRows)
     {
         if (subValidRows == 0) {
             Duplicate(vBetaUbFloat_, static_cast<float>(0.0f), halfChunkSize_ * dvAligned_);
@@ -895,10 +841,6 @@ private:
             Cast(vBetaLocal_, vBetaUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dvAligned_);
             outQueue_.EnQue<bfloat16_t>(vBetaLocal_);
             DataCopyOutBf16(halfChunkSize_, dv_, dvAligned_, vBetaWsGm[subOffset_ * dv_]);
-            auto vBetaHalfLocal = outQueue_.AllocTensor<half>();
-            Cast(vBetaHalfLocal, vBetaUbFloat_, RoundMode::CAST_NONE, halfChunkSize_ * dvAligned_);
-            outQueue_.EnQue<half>(vBetaHalfLocal);
-            DataCopyOutHalf(halfChunkSize_, dv_, dvAligned_, vBetaHalfWsGm[subOffset_ * dv_]);
             return;
         }
         uint64_t vBeginOffset = subOffset_ * vRowStride_;
@@ -922,10 +864,6 @@ private:
         Cast(vBetaLocal_, vBetaUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dvAligned_);
         outQueue_.EnQue<bfloat16_t>(vBetaLocal_);
         DataCopyOutBf16(halfChunkSize_, dv_, dvAligned_, vBetaWsGm[subOffset_ * dv_]);
-        auto vBetaHalfLocal = outQueue_.AllocTensor<half>();
-        Cast(vBetaHalfLocal, vBetaUbFloat_, RoundMode::CAST_NONE, halfChunkSize_ * dvAligned_);
-        outQueue_.EnQue<half>(vBetaHalfLocal);
-        DataCopyOutHalf(halfChunkSize_, dv_, dvAligned_, vBetaHalfWsGm[subOffset_ * dv_]);
     }
 
     __aicore__ inline void QPrimeCompute(const GlobalTensor<bfloat16_t> outQPrimeGm, LocalTensor<float> gCumSumUbFloat,
@@ -1046,16 +984,6 @@ private:
         inQueue_.EnQue<bfloat16_t>(bf16InLocal_);
     }
 
-    __aicore__ inline void DataCopyOutHalf(uint32_t rows, uint32_t cols, uint32_t colsAligned, GlobalTensor<half> y)
-    {
-        auto outLocal = outQueue_.DeQue<half>();
-        uint32_t srcStride = (colsAligned - cols) * sizeof(half) / BLOCK_SIZE;
-        DataCopyExtParams yGMParams{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(half)),
-                                    static_cast<uint32_t>(srcStride), 0, 0};
-        DataCopyPad(y, outLocal, yGMParams);
-        outQueue_.FreeTensor(outLocal);
-    }
-
     __aicore__ inline void DataCopyOutBf16(uint32_t rows, uint32_t cols, uint32_t colsAligned,
                                            GlobalTensor<bfloat16_t> y)
     {
@@ -1101,57 +1029,32 @@ private:
 
     __aicore__ inline void InitAicLocalBuffers()
     {
-        pipe_->InitBuffer(aicHalfL1Buff_, AIC_LOW_L1_BYTES);
+        pipe_->InitBuffer(aicHalfL1Buff_, AIC_L1_BYTES);
 
-        uint32_t halfL1Offset = 0;
-        aicHalfL1Scratch_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicHalfL1TileInv_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicHalfL1TilePower_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicHalfL1Identity_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicHalfL1Zero_ = aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicHalfL1PackedInv64_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicHalfL1Identity64_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * sizeof(half));
-        aicBf16L1ResidentInv_ = aicHalfL1Buff_.GetWithOffset<bfloat16_t>(
-            static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * C128_RESIDENT_TILE_COUNT * C128_RESIDENT_PARA_SLOTS),
-            halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS * C128_RESIDENT_TILE_COUNT *
-                                              C128_RESIDENT_PARA_SLOTS * sizeof(half));
         aicHalfL1Scratch128_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS * sizeof(half));
+            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS),
+                                               Full128L1TileByteOffset(C128_L1_TILE_INV_INIT));
         aicHalfL1TileInv128_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS * sizeof(half));
+            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS),
+                                               Full128L1TileByteOffset(C128_L1_TILE_DIAG_WORK));
         aicHalfL1TilePower128_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS * sizeof(half));
+            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS),
+                                               Full128L1TileByteOffset(C128_L1_TILE_POWER_WORK));
         aicHalfL1Identity128_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS * sizeof(half));
+            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS),
+                                               Full128L1TileByteOffset(C128_L1_TILE_IDENTITY));
         aicHalfL1Zero128_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), halfL1Offset);
-        halfL1Offset += static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS * sizeof(half));
+            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS),
+                                               Full128L1TileByteOffset(C128_L1_TILE_ZERO));
         aicHalfL1PackedInv128_ =
-            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), halfL1Offset);
+            aicHalfL1Buff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS),
+                                               Full128L1TileByteOffset(C128_L1_TILE_PACKED_INV));
+        aicBf16L1ResidentInv128_ = aicHalfL1Buff_.GetWithOffset<bfloat16_t>(
+            static_cast<uint32_t>(AIC_FULL128_L1_TILE_ELEMS), Full128L1TileByteOffset(C128_L1_TILE_RESIDENT_INV));
 
         pipe_->InitBuffer(aicL0ABuff_, AIC_RAW_L0_AB_BYTES);
         pipe_->InitBuffer(aicL0BBuff_, AIC_RAW_L0_AB_BYTES);
         pipe_->InitBuffer(aicL0CBuff_, AIC_RAW_L0_C_BYTES);
-        aicL0A_ = aicL0ABuff_.Get<float>();
-        aicL0B_ = aicL0BBuff_.Get<float>();
         aicL0C_ = aicL0CBuff_.Get<float>();
         aicHalfL0A_ =
             aicL0ABuff_.GetWithOffset<half>(static_cast<uint32_t>(AIC_RAW_L0_AB_HALF_PINGPONG_BYTES / sizeof(half)), 0);
@@ -1165,31 +1068,27 @@ private:
                                             static_cast<uint32_t>(AIC_RAW_L0_AB_HALF_PINGPONG_BYTES));
     }
 
+    __aicore__ inline uint32_t Full128L1TileByteOffset(uint32_t tileIdx)
+    {
+        return static_cast<uint32_t>(tileIdx * AIC_FULL128_L1_TILE_ELEMS * sizeof(half));
+    }
+
     __aicore__ inline void InitRawMmadLocalBuffers()
     {
         ReleaseRawL0AbDbEvents();
-        pipe_->Reset();
+        ResetStage1MatmulPipe();
         InitAicLocalBuffers();
         aicLocalBuffersReady_ = true;
-        packed64IdentityPrepared_ = false;
-        packed128IdentityPrepared_ = false;
-        preparedHalfIdentityBlockSize_ = 0;
-        halfL1ZeroPreparedSize_ = 0;
-        rawL0AbDbCursor_ = 0;
+        ResetPacked128AuxState();
         PrepareRawMmadAuxiliaryTiles();
     }
 
     __aicore__ inline void RestoreStage1MatmulLocalBuffers()
     {
         ReleaseRawL0AbDbEvents();
-        pipe_->Reset();
-        aicLocalBuffersReady_ = false;
-        packed64IdentityPrepared_ = false;
-        packed128IdentityPrepared_ = false;
-        preparedHalfIdentityBlockSize_ = 0;
-        halfL1ZeroPreparedSize_ = 0;
-        rawL0AbDbCursor_ = 0;
-        mm.Init(&tiling_->matmulTilingFp32, pipe_);
+        ResetStage1MatmulPipe();
+        ResetStage1MatmulRuntimeState(true);
+        ReInitStage1Matmul();
     }
 
     __aicore__ inline void EnsureAicLocalBuffers()
@@ -1209,78 +1108,6 @@ private:
         params.disableGemv = true;
 #endif
         return params;
-    }
-
-    __aicore__ inline void CopyL0CMatrixToHalfL1(LocalTensor<half> l1, LocalTensor<float> l0c, uint32_t mSize,
-                                                 uint32_t nSize, uint8_t unitFlag)
-    {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = nSize;
-        fixParams.mSize = mSize;
-        fixParams.srcStride = AlignUp(mSize, BLOCK_CUBE);
-        fixParams.dstStride = AlignUp(mSize, BLOCK_CUBE) * BLOCK_CUBE * sizeof(half) / BLOCK_SIZE;
-        fixParams.ndNum = 1;
-        fixParams.srcNdStride = 0;
-        fixParams.dstNdStride = 0;
-        fixParams.reluEn = false;
-        fixParams.quantPre = QuantMode_t::F322F16;
-        fixParams.unitFlag = unitFlag;
-        fixParams.isChannelSplit = false;
-        Fixpipe<half, float, CFG_NZ>(l1, l0c, fixParams);
-    }
-
-    __aicore__ inline void CopyL0CMatrixToPackedHalfL1(LocalTensor<half> l1, LocalTensor<float> l0c, uint32_t dstRow,
-                                                       uint32_t dstCol, uint32_t mSize, uint32_t nSize,
-                                                       uint32_t dstPackedSize, uint8_t unitFlag)
-    {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = nSize;
-        fixParams.mSize = mSize;
-        fixParams.srcStride = AlignUp(mSize, BLOCK_CUBE);
-        fixParams.dstStride = AlignUp(dstPackedSize, BLOCK_CUBE) * BLOCK_CUBE * sizeof(half) / BLOCK_SIZE;
-        fixParams.ndNum = 1;
-        fixParams.srcNdStride = 0;
-        fixParams.dstNdStride = 0;
-        fixParams.reluEn = false;
-        fixParams.quantPre = QuantMode_t::F322F16;
-        fixParams.unitFlag = unitFlag;
-        fixParams.isChannelSplit = false;
-        Fixpipe<half, float, CFG_NZ>(l1[CompactMatrixNzOffset(dstRow, dstCol, dstPackedSize)], l0c, fixParams);
-    }
-
-    __aicore__ inline void FixpipePacked64FullToHalfL1(LocalTensor<half> l1, LocalTensor<float> l0c, uint8_t unitFlag)
-    {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = C64_PACKED_SIZE_U32;
-        fixParams.mSize = C64_PACKED_SIZE_U32;
-        fixParams.srcStride = C64_PACKED_SIZE_U32;
-        fixParams.dstStride = C64_FIXPIPE_HALF_DST_STRIDE;
-        fixParams.ndNum = 1;
-        fixParams.srcNdStride = 0;
-        fixParams.dstNdStride = 0;
-        fixParams.reluEn = false;
-        fixParams.quantPre = QuantMode_t::F322F16;
-        fixParams.unitFlag = unitFlag;
-        fixParams.isChannelSplit = false;
-        Fixpipe<half, float, CFG_NZ>(l1[C64_DIAG_NZ_OFFSET0], l0c, fixParams);
-    }
-
-    __aicore__ inline void FixpipePacked64FullToBf16L1(LocalTensor<bfloat16_t> l1, LocalTensor<float> l0c,
-                                                       uint8_t unitFlag)
-    {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = C64_PACKED_SIZE_U32;
-        fixParams.mSize = C64_PACKED_SIZE_U32;
-        fixParams.srcStride = C64_PACKED_SIZE_U32;
-        fixParams.dstStride = C64_FIXPIPE_BF16_DST_STRIDE;
-        fixParams.ndNum = 1;
-        fixParams.srcNdStride = 0;
-        fixParams.dstNdStride = 0;
-        fixParams.reluEn = false;
-        fixParams.quantPre = QuantMode_t::F322BF16;
-        fixParams.unitFlag = unitFlag;
-        fixParams.isChannelSplit = false;
-        Fixpipe<bfloat16_t, float, CFG_NZ>(l1[C64_DIAG_NZ_OFFSET0], l0c, fixParams);
     }
 
     __aicore__ inline void FixpipePacked128FullToHalfL1(LocalTensor<half> l1, LocalTensor<float> l0c,
@@ -1319,26 +1146,6 @@ private:
         Fixpipe<bfloat16_t, float, CFG_NZ>(l1[C128_DIAG_NZ_OFFSET0], l0c, fixParams);
     }
 
-    __aicore__ inline void FixpipePacked128Sub64ToBf16L1(LocalTensor<bfloat16_t> l1, LocalTensor<float> l0c,
-                                                         uint32_t srcRow, uint32_t srcCol, uint8_t unitFlag)
-    {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = C64_PACKED_SIZE_U32;
-        fixParams.mSize = C64_PACKED_SIZE_U32;
-        fixParams.srcStride = C128_PACKED_SIZE_U32;
-        fixParams.dstStride = C64_FIXPIPE_BF16_DST_STRIDE;
-        fixParams.ndNum = 1;
-        fixParams.srcNdStride = 0;
-        fixParams.dstNdStride = 0;
-        fixParams.reluEn = false;
-        fixParams.quantPre = QuantMode_t::F322BF16;
-        fixParams.unitFlag = unitFlag;
-        fixParams.isChannelSplit = false;
-        Fixpipe<bfloat16_t, float, CFG_NZ>(l1[C64_DIAG_NZ_OFFSET0],
-                                           l0c[L0MatrixBlockOffset(srcRow, srcCol, C128_PACKED_SIZE_U32)],
-                                           fixParams);
-    }
-
     __aicore__ inline void CopyL0CMatrixToGmBf16(GlobalTensor<bfloat16_t> gm, LocalTensor<float> l0c, uint32_t mSize,
                                                  uint32_t nSize, uint32_t dstStride, uint8_t unitFlag)
     {
@@ -1372,52 +1179,25 @@ private:
         DataCopy(l1[C128_DIAG_NZ_OFFSET0], gm, copyParams);
     }
 
-    __aicore__ inline void LoadGmHalfPacked64FullToPackedL1NoWait(GlobalTensor<half> gm, LocalTensor<half> l1,
-                                                                  uint32_t srcStride)
-    {
-        Nd2NzParams copyParams;
-        copyParams.ndNum = 1;
-        copyParams.nValue = C64_PACKED_SIZE_U32;
-        copyParams.dValue = C64_PACKED_SIZE_U32;
-        copyParams.srcNdMatrixStride = 0;
-        copyParams.srcDValue = srcStride;
-        copyParams.dstNzC0Stride = C64_PACKED_SIZE_U32;
-        copyParams.dstNzNStride = 1;
-        copyParams.dstNzMatrixStride = 0;
-        DataCopy(l1, gm, copyParams);
-    }
-
-    __aicore__ inline void LoadGmHalfPacked128FullToPackedL1NoWait(GlobalTensor<half> gm, LocalTensor<half> l1,
-                                                                   uint32_t srcStride)
-    {
-        Nd2NzParams copyParams;
-        copyParams.ndNum = 1;
-        copyParams.nValue = C128_PACKED_SIZE_U32;
-        copyParams.dValue = C128_PACKED_SIZE_U32;
-        copyParams.srcNdMatrixStride = 0;
-        copyParams.srcDValue = srcStride;
-        copyParams.dstNzC0Stride = C128_PACKED_SIZE_U32;
-        copyParams.dstNzNStride = 1;
-        copyParams.dstNzMatrixStride = 0;
-        DataCopy(l1, gm, copyParams);
-    }
-
     __aicore__ inline void LoadPacked128InputsToL1(uint32_t paraIdx)
     {
         uint64_t base = paraIdx * ccOffset_;
-        ZeroHalfL1(aicHalfL1Scratch128_, C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
-        ZeroHalfL1(aicHalfL1TilePower128_, C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
-        LoadGmHalfBlockToPackedHalfL1WithStrideNoWait(INVInitHalfWsGm_[base], aicHalfL1Scratch128_, 0, 0,
+        LocalTensor<half> invInit128 = GetFull128InvInitTile();
+        LocalTensor<half> powerWork128 = GetFull128PowerWorkTile();
+
+        ZeroHalfL1(invInit128, C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
+        ZeroHalfL1(powerWork128, C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
+        LoadGmHalfBlockToPackedHalfL1WithStrideNoWait(INVInitHalfWsGm_[base], invInit128, 0, 0,
                                                       C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, chunkSize_,
                                                       C128_PACKED_SIZE_U32);
         LoadGmHalfBlockToPackedHalfL1WithStrideNoWait(
-            INVInitHalfWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, 0)], aicHalfL1Scratch128_,
-            C64_PACKED_SIZE_U32, 0, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, chunkSize_, C128_PACKED_SIZE_U32);
+            INVInitHalfWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, 0)], invInit128, C64_PACKED_SIZE_U32, 0,
+            C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, chunkSize_, C128_PACKED_SIZE_U32);
         LoadGmHalfBlockToPackedHalfL1WithStrideNoWait(
-            INVInitHalfWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32)], aicHalfL1Scratch128_,
+            INVInitHalfWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32)], invInit128,
             C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, chunkSize_,
             C128_PACKED_SIZE_U32);
-        LoadGmHalfPacked128DiagonalBlocksToPackedL1NoWait(L_powHalfWsGm_[base], aicHalfL1TilePower128_, chunkSize_);
+        LoadGmHalfPacked128DiagonalBlocksToPackedL1NoWait(L_powHalfWsGm_[base], powerWork128, chunkSize_);
         SyncMte2ToMte1();
     }
 
@@ -1456,42 +1236,51 @@ private:
         DataCopy(l1[CompactMatrixNzOffset(rowBase, colBase, packedRows)], gm, copyParams);
     }
 
-    __aicore__ inline void LoadGmBf16Packed64FullToPackedL1NoWait(GlobalTensor<bfloat16_t> gm,
-                                                                  LocalTensor<bfloat16_t> l1,
-                                                                  uint32_t srcStride)
+    __aicore__ inline LocalTensor<half> GetFull128InvInitTile()
     {
-        LoadGmBf16BlockToPackedBf16L1WithStrideNoWait(gm, l1, 0, 0, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32,
-                                                      srcStride, C64_PACKED_SIZE_U32);
+        return aicHalfL1Scratch128_;
     }
 
-    __aicore__ inline LocalTensor<bfloat16_t> GetRhsPacked64TopStageByIdx(uint32_t stageIdx)
+    __aicore__ inline LocalTensor<half> GetFull128DiagWorkTile()
     {
-        return (stageIdx == 0) ? aicHalfL1TilePower_.template ReinterpretCast<bfloat16_t>()
-                               : aicHalfL1Identity_.template ReinterpretCast<bfloat16_t>();
+        return aicHalfL1TileInv128_;
     }
 
-    __aicore__ inline LocalTensor<bfloat16_t> GetRhsPacked64BottomStageByIdx(uint32_t stageIdx)
+    __aicore__ inline LocalTensor<half> GetFull128PowerWorkTile()
     {
-        return (stageIdx == 0) ? aicHalfL1Scratch_.template ReinterpretCast<bfloat16_t>()
-                               : aicHalfL1Identity64_.template ReinterpretCast<bfloat16_t>();
+        return aicHalfL1TilePower128_;
     }
 
-    __aicore__ inline void PrepareRhsPacked64Bf16L1NoWait(GlobalTensor<bfloat16_t> rhsGm,
-                                                           LocalTensor<bfloat16_t> rhsL1,
-                                                           uint32_t tileCols, uint32_t rhsStride)
+    __aicore__ inline LocalTensor<half> GetFull128PackedInvTile()
     {
-        if (tileCols < C64_PACKED_SIZE_U32) {
-            ZeroHalfL1(rhsL1.template ReinterpretCast<half>(), C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32);
+        return aicHalfL1PackedInv128_;
+    }
+
+    __aicore__ inline LocalTensor<bfloat16_t> GetRhsPrefetchGbk128()
+    {
+        return GetFull128InvInitTile().template ReinterpretCast<bfloat16_t>();
+    }
+
+    __aicore__ inline LocalTensor<bfloat16_t> GetRhsPrefetchVBeta128()
+    {
+        return GetFull128PowerWorkTile().template ReinterpretCast<bfloat16_t>();
+    }
+
+    __aicore__ inline LocalTensor<bfloat16_t> GetRhsPacked128StageByIdx(uint32_t stageIdx)
+    {
+        return (stageIdx == 0) ? GetFull128DiagWorkTile().template ReinterpretCast<bfloat16_t>()
+                               : GetFull128PackedInvTile().template ReinterpretCast<bfloat16_t>();
+    }
+
+    __aicore__ inline void PrepareRhsPacked128Bf16L1NoWait(GlobalTensor<bfloat16_t> rhsGm,
+                                                            LocalTensor<bfloat16_t> rhsL1,
+                                                            uint32_t tileCols, uint32_t rhsStride)
+    {
+        if (tileCols < C128_PACKED_SIZE_U32) {
+            ZeroHalfL1(rhsL1.template ReinterpretCast<half>(), C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
         }
-        LoadGmBf16BlockToPackedBf16L1WithStrideNoWait(rhsGm, rhsL1, 0, 0, C64_PACKED_SIZE_U32, tileCols, rhsStride,
-                                                      C64_PACKED_SIZE_U32);
-    }
-
-    __aicore__ inline void PrepareRhsPacked64Bf16L1(GlobalTensor<bfloat16_t> rhsGm, LocalTensor<bfloat16_t> rhsL1,
-                                                    uint32_t tileCols, uint32_t rhsStride)
-    {
-        PrepareRhsPacked64Bf16L1NoWait(rhsGm, rhsL1, tileCols, rhsStride);
-        SyncMte2ToMte1();
+        LoadGmBf16BlockToPackedBf16L1WithStrideNoWait(rhsGm, rhsL1, 0, 0, C128_PACKED_SIZE_U32, tileCols,
+                                                      rhsStride, C128_PACKED_SIZE_U32);
     }
 
     __aicore__ inline void ZeroHalfL1(LocalTensor<half> l1, uint32_t elems)
@@ -1508,44 +1297,25 @@ private:
         InitConstValue(l1, zeroParams);
     }
 
-    __aicore__ inline void ZeroPacked64UpperTriangularBlocksSingleSync(LocalTensor<half> l1)
+    __aicore__ inline void EnsureHalfL1Zero128(uint32_t elems)
     {
-        ZeroHalfL1NoSync(l1[C64_DIAG_NZ_OFFSET1 - RAW_HALF_FRACTAL_ELEMS], RAW_HALF_FRACTAL_ELEMS);
-        ZeroHalfL1NoSync(l1[C64_DIAG_NZ_OFFSET2 - 2 * RAW_HALF_FRACTAL_ELEMS], 2 * RAW_HALF_FRACTAL_ELEMS);
-        ZeroHalfL1NoSync(l1[C64_DIAG_NZ_OFFSET3 - 3 * RAW_HALF_FRACTAL_ELEMS], 3 * RAW_HALF_FRACTAL_ELEMS);
+        if (halfL1ZeroPreparedSize128_ >= elems) {
+            return;
+        }
+        ZeroHalfL1(aicHalfL1Zero128_, elems);
+        halfL1ZeroPreparedSize128_ = elems;
+    }
+
+    __aicore__ inline void ZeroPacked128UpperTriangularBlocksSingleSync(LocalTensor<bfloat16_t> l1)
+    {
+        LocalTensor<half> halfView = l1.template ReinterpretCast<half>();
+        for (uint32_t row = 0; row < C128_PACKED_SIZE_U32; row += BLOCK_CUBE) {
+            for (uint32_t col = row + BLOCK_CUBE; col < C128_PACKED_SIZE_U32; col += BLOCK_CUBE) {
+                uint32_t offset = static_cast<uint32_t>(CompactMatrixNzOffset(row, col, C128_PACKED_SIZE_U32));
+                ZeroHalfL1NoSync(halfView[offset], RAW_HALF_FRACTAL_ELEMS);
+            }
+        }
         SyncMToMte1();
-    }
-
-    __aicore__ inline void EnsureHalfL1Zero(uint32_t elems)
-    {
-        if (halfL1ZeroPreparedSize_ >= elems) {
-            return;
-        }
-        ZeroHalfL1(aicHalfL1Zero_, elems);
-        halfL1ZeroPreparedSize_ = elems;
-    }
-
-    __aicore__ inline void EnsurePacked64Identity()
-    {
-        if (packed64IdentityPrepared_) {
-            return;
-        }
-
-        ZeroHalfL1(aicHalfL1Identity64_, C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32);
-        GlobalTensor<half> identity16Nz4Gm;
-        identity16Nz4Gm.SetGlobalBuffer((__gm__ half *)(CGDR_C128_IDENTITY16_NZ4));
-#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-        AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(CGDR_C128_IDENTITY16_NZ4),
-                                   RAW_FRACTAL_BYTES * C64_PACKED_BLOCK_COUNT);
-#endif
-        DataCopyParams copyParams;
-        copyParams.blockCount = C64_PACKED_BLOCK_COUNT;
-        copyParams.blockLen = C64_DIAG_IDENTITY_COPY_BLOCKS;
-        copyParams.srcStride = 0;
-        copyParams.dstStride = C64_DIAG_IDENTITY_DST_GAP_BLOCKS;
-        DataCopy(aicHalfL1Identity64_[C64_DIAG_NZ_OFFSET0], identity16Nz4Gm, copyParams);
-        SyncMte2ToMte1();
-        packed64IdentityPrepared_ = true;
     }
 
     __aicore__ inline void EnsurePacked128Identity()
@@ -1563,7 +1333,7 @@ private:
 #endif
         DataCopyParams copyParams;
         copyParams.blockCount = C128_PACKED_BLOCK_COUNT;
-        copyParams.blockLen = C64_DIAG_IDENTITY_COPY_BLOCKS;
+        copyParams.blockLen = DIAG_IDENTITY_COPY_BLOCKS;
         copyParams.srcStride = 0;
         copyParams.dstStride = C128_DIAG_IDENTITY_DST_GAP_BLOCKS;
         DataCopy(aicHalfL1Identity128_[C128_DIAG_NZ_OFFSET0], identity16Nz8Gm, copyParams);
@@ -1573,10 +1343,33 @@ private:
 
     __aicore__ inline void PrepareRawMmadAuxiliaryTiles()
     {
-        EnsureHalfL1Zero(C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32);
-        EnsurePacked64Identity();
-        ZeroHalfL1(aicHalfL1Zero128_, C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
+        EnsureHalfL1Zero128(C128_PACKED_SIZE_U32 * C128_PACKED_SIZE_U32);
         EnsurePacked128Identity();
+    }
+
+    __aicore__ inline void ResetPacked128AuxState()
+    {
+        packed128IdentityPrepared_ = false;
+        halfL1ZeroPreparedSize128_ = 0;
+    }
+
+    __aicore__ inline void ResetStage1MatmulRuntimeState(bool resetLocalBuffersReady)
+    {
+        if (!resetLocalBuffersReady) {
+            return;
+        }
+        aicLocalBuffersReady_ = false;
+        ResetPacked128AuxState();
+    }
+
+    __aicore__ inline void ResetStage1MatmulPipe()
+    {
+        pipe_->Reset();
+    }
+
+    __aicore__ inline void ReInitStage1Matmul()
+    {
+        mm.Init(&tiling_->matmulTilingFp32, pipe_);
     }
 
     __aicore__ inline void CopyHalfL1MatrixToL0A(LocalTensor<half> l1, LocalTensor<half> l0, uint32_t blockSize)
@@ -1612,24 +1405,6 @@ private:
         }
     }
 
-    __aicore__ inline void CopyBf16L1MatrixToL0A(LocalTensor<bfloat16_t> l1, LocalTensor<bfloat16_t> l0,
-                                                 uint32_t blockSize)
-    {
-        uint32_t blockCount = AlignUp(blockSize, BLOCK_CUBE) / BLOCK_CUBE;
-        LoadData2DParams loadParams;
-        loadParams.startIndex = 0;
-        loadParams.repeatTimes = static_cast<uint16_t>(blockCount);
-        loadParams.srcStride = static_cast<uint16_t>(blockCount);
-        loadParams.sid = 0;
-        loadParams.dstGap = 0;
-        loadParams.ifTranspose = false;
-        loadParams.addrMode = 0;
-        for (uint32_t rowBlock = 0; rowBlock < blockCount; ++rowBlock) {
-            LoadData(l0[rowBlock * blockCount * RAW_HALF_FRACTAL_ELEMS], l1[rowBlock * RAW_HALF_FRACTAL_ELEMS],
-                     loadParams);
-        }
-    }
-
     __aicore__ inline void CopyPackedBf16L1RectToL0(LocalTensor<bfloat16_t> l1, LocalTensor<bfloat16_t> l0,
                                                     uint32_t srcRow, uint32_t srcCol, uint32_t rows, uint32_t cols,
                                                     uint32_t srcPackedSize, bool transpose)
@@ -1652,44 +1427,6 @@ private:
             uint32_t dstOffset = rowBlock * colBlockCount * RAW_HALF_FRACTAL_ELEMS;
             LoadData(l0[dstOffset], l1[srcOffset], loadParams);
         }
-    }
-
-    __aicore__ inline void LoadPacked16PairToL0OffsetWithGap(LocalTensor<half> l1, LocalTensor<half> l0,
-                                                             uint32_t srcRow0, uint32_t srcCol0, uint32_t srcRow1,
-                                                             uint32_t srcCol1, uint32_t srcPackedSize,
-                                                             uint32_t dstOffset, uint32_t dstGap, bool transpose)
-    {
-        uint64_t srcOffset0 = CompactMatrixNzOffset(srcRow0, srcCol0, srcPackedSize);
-        uint64_t srcOffset1 = CompactMatrixNzOffset(srcRow1, srcCol1, srcPackedSize);
-        LoadData2DParams loadParams;
-        loadParams.startIndex = 0;
-        loadParams.repeatTimes = C32_PACKED_BLOCK_COUNT;
-        loadParams.srcStride = static_cast<uint16_t>((srcOffset1 - srcOffset0) / RAW_HALF_FRACTAL_ELEMS);
-        loadParams.sid = 0;
-        loadParams.dstGap = static_cast<uint16_t>(dstGap);
-        loadParams.ifTranspose = transpose;
-        loadParams.addrMode = 0;
-        LoadData(l0[dstOffset], l1[srcOffset0], loadParams);
-    }
-
-    template <uint32_t srcRow, uint32_t srcCol, uint32_t srcPackedSize, bool transpose>
-    __aicore__ inline void LoadPacked32BlockToL0Fixed(LocalTensor<half> l1, LocalTensor<half> l0)
-    {
-        constexpr uint32_t srcBlockStride = srcPackedSize / C64_FRACTAL_U32;
-        constexpr uint32_t srcOffset0 = (srcCol / C64_FRACTAL_U32) * srcPackedSize * C64_FRACTAL_U32 +
-                                        srcRow * C64_FRACTAL_U32 + (srcCol % C64_FRACTAL_U32);
-        constexpr uint32_t srcOffset1 = (srcCol / C64_FRACTAL_U32) * srcPackedSize * C64_FRACTAL_U32 +
-                                        (srcRow + C64_FRACTAL_U32) * C64_FRACTAL_U32 + (srcCol % C64_FRACTAL_U32);
-        LoadData2DParams loadParams;
-        loadParams.startIndex = 0;
-        loadParams.repeatTimes = C32_PACKED_BLOCK_COUNT;
-        loadParams.srcStride = static_cast<uint16_t>(srcBlockStride);
-        loadParams.sid = 0;
-        loadParams.dstGap = 0;
-        loadParams.ifTranspose = transpose;
-        loadParams.addrMode = 0;
-        LoadData(l0[0], l1[srcOffset0], loadParams);
-        LoadData(l0[C32_PACKED_BLOCK_COUNT * RAW_HALF_FRACTAL_ELEMS], l1[srcOffset1], loadParams);
     }
 
     __aicore__ inline void LoadPackedBlockToFullL0(LocalTensor<half> l1, LocalTensor<half> l0, uint32_t srcRow,
@@ -1716,45 +1453,6 @@ private:
                 static_cast<uint32_t>(L0MatrixBlockOffset(dstRow + rowOffset, dstCol, dstPackedSize));
             LoadData(l0[dstOffset], l1[srcOffset], loadParams);
         }
-    }
-
-    template <bool transpose>
-    __aicore__ inline void LoadPacked64DiagOnlyToL0(LocalTensor<half> l1, LocalTensor<half> l0)
-    {
-        LoadData2DParams loadParams;
-        loadParams.startIndex = 0;
-        loadParams.repeatTimes = C64_PACKED_BLOCK_COUNT;
-        loadParams.srcStride = C64_DIAG_NZ_STRIDE_FRACTALS;
-        loadParams.sid = 0;
-        loadParams.dstGap = C64_DIAG_L0_LOAD_DST_GAP_FRACTALS;
-        loadParams.ifTranspose = transpose;
-        loadParams.addrMode = 0;
-        LoadData(l0[C64_DIAG_NZ_OFFSET0], l1[C64_DIAG_NZ_OFFSET0], loadParams);
-    }
-
-    template <bool transpose>
-    __aicore__ inline void LoadPacked64DiagOnlyToL0PairedLoads(LocalTensor<half> l1, LocalTensor<half> l0)
-    {
-        LoadData2DParams loadParams;
-        loadParams.startIndex = 0;
-        loadParams.repeatTimes = 2;
-        loadParams.srcStride = C64_DIAG_NZ_STRIDE_FRACTALS;
-        loadParams.sid = 0;
-        loadParams.dstGap = C64_DIAG_L0_LOAD_DST_GAP_FRACTALS;
-        loadParams.ifTranspose = transpose;
-        loadParams.addrMode = 0;
-        LoadData(l0[C64_DIAG_NZ_OFFSET0], l1[C64_DIAG_NZ_OFFSET0], loadParams);
-        LoadData(l0[C64_DIAG_NZ_OFFSET2], l1[C64_DIAG_NZ_OFFSET2], loadParams);
-    }
-
-    __aicore__ inline void LoadPacked64DiagOnlyToL0A(LocalTensor<half> l1, LocalTensor<half> l0)
-    {
-        LoadPacked64DiagOnlyToL0PairedLoads<false>(l1, l0);
-    }
-
-    __aicore__ inline void LoadPacked64DiagOnlyToL0B(LocalTensor<half> l1, LocalTensor<half> l0)
-    {
-        LoadPacked64DiagOnlyToL0<true>(l1, l0);
     }
 
     template <bool transpose>
@@ -1820,11 +1518,21 @@ private:
 
     __aicore__ inline void ReleaseRawL0AbDbEvents()
     {
+        WaitRawL0AbDbEvents();
+        ResetRawL0AbDbState();
+    }
+
+    __aicore__ inline void WaitRawL0AbDbEvents()
+    {
         if (!rawL0AbDbEventsReady_) {
             return;
         }
         WaitFlag<HardEvent::M_MTE1>(rawL0AbFreeEvents_[0]);
         WaitFlag<HardEvent::M_MTE1>(rawL0AbFreeEvents_[1]);
+    }
+
+    __aicore__ inline void ResetRawL0AbDbState()
+    {
         rawL0AbDbEventsReady_ = false;
         rawL0AbDbCursor_ = 0;
     }
@@ -1855,27 +1563,6 @@ private:
     __aicore__ inline void WaitRawL0AbLoadReady(uint32_t l0BufferIdx)
     {
         WaitFlag<HardEvent::MTE1_M>(RawL0AbFreeEvent(l0BufferIdx));
-    }
-
-    __aicore__ inline void LoadPacked64DiagOnlyOperandsToL0(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                                            uint32_t l0BufferIdx, bool clearL0 = true)
-    {
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        if (clearL0) {
-            CopyHalfL1MatrixToL0A(aicHalfL1Zero_, l0A, C64_PACKED_SIZE_U32);
-            CopyHalfL1MatrixToL0B(aicHalfL1Zero_, l0B, C64_PACKED_SIZE_U32);
-        }
-        LoadPacked64DiagOnlyToL0A(lhsL1, l0A);
-        LoadPacked64DiagOnlyToL0B(rhsL1, l0B);
-    }
-
-    __aicore__ inline void IssuePacked64DiagOnlyOperandsToL0Db(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                                               uint32_t l0BufferIdx, bool clearL0 = true)
-    {
-        WaitRawL0AbDbFree(l0BufferIdx);
-        LoadPacked64DiagOnlyOperandsToL0(lhsL1, rhsL1, l0BufferIdx, clearL0);
-        MarkRawL0AbLoadReady(l0BufferIdx);
     }
 
     __aicore__ inline void LoadPacked128DiagOnlyOperandsToL0(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
@@ -1909,10 +1596,10 @@ private:
              MakeRawMmadParams(mSize, nSize, kSize, initCMatrix, unitFlag));
     }
 
-    __aicore__ inline void BeginMmadRawL0AbDbBf16(LocalTensor<float> cTile, uint32_t l0BufferIdx, uint32_t mSize,
-                                                  uint32_t nSize, uint32_t kSize, bool initCMatrix, uint8_t unitFlag)
+    __aicore__ inline void BeginMmadRawL0AbDbBf16AfterLoadReady(LocalTensor<float> cTile, uint32_t l0BufferIdx,
+                                                                uint32_t mSize, uint32_t nSize, uint32_t kSize,
+                                                                bool initCMatrix, uint8_t unitFlag)
     {
-        WaitRawL0AbLoadReady(l0BufferIdx);
         PipeBarrier<PIPE_M>();
         SetHF32Mode(HF32Mode::DISABLE);
         Mmad(cTile, GetPacked64Bf16L0AByDbIdx(l0BufferIdx), GetPacked64Bf16L0BByDbIdx(l0BufferIdx),
@@ -1923,20 +1610,6 @@ private:
     {
         PipeBarrier<PIPE_M>();
         ReleaseRawL0AbDb(l0BufferIdx);
-    }
-
-    __aicore__ inline void BeginMmadRawL0AbDbPacked64(LocalTensor<float> cTile, uint32_t l0BufferIdx, bool initCMatrix,
-                                                      uint8_t unitFlag)
-    {
-        BeginMmadRawL0AbDb(cTile, l0BufferIdx, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32,
-                           initCMatrix, unitFlag);
-    }
-
-    __aicore__ inline void MmadRawL0AbDbPacked64(LocalTensor<float> cTile, uint32_t l0BufferIdx, bool initCMatrix,
-                                                 uint8_t unitFlag)
-    {
-        BeginMmadRawL0AbDbPacked64(cTile, l0BufferIdx, initCMatrix, unitFlag);
-        FinishMmadRawL0AbDb(l0BufferIdx);
     }
 
     __aicore__ inline void BeginMmadRawL0AbDbPacked128(LocalTensor<float> cTile, uint32_t l0BufferIdx,
@@ -1950,14 +1623,6 @@ private:
                                                   uint8_t unitFlag)
     {
         BeginMmadRawL0AbDbPacked128(cTile, l0BufferIdx, initCMatrix, unitFlag);
-        FinishMmadRawL0AbDb(l0BufferIdx);
-    }
-
-    __aicore__ inline void MmadRawL0AbDbPacked32(LocalTensor<float> cTile, uint32_t l0BufferIdx, bool initCMatrix,
-                                                 uint8_t unitFlag)
-    {
-        BeginMmadRawL0AbDb(cTile, l0BufferIdx, C32_PACKED_SIZE_U32, C32_PACKED_SIZE_U32, C32_PACKED_SIZE_U32,
-                           initCMatrix, unitFlag);
         FinishMmadRawL0AbDb(l0BufferIdx);
     }
 
@@ -1995,122 +1660,23 @@ private:
         FinishMmadRawL0AbDb(l0BufferIdx1);
     }
 
-    __aicore__ inline void LoadPacked64FullOperandsToL0(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                                        uint32_t l0BufferIdx)
-    {
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(lhsL1, l0A, C64_PACKED_SIZE_U32);
-        CopyHalfL1MatrixToL0B(rhsL1, l0B, C64_PACKED_SIZE_U32);
-    }
-
-    __aicore__ inline void LoadPacked128FullOperandsToL0(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                                         uint32_t l0BufferIdx)
-    {
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(lhsL1, l0A, C128_PACKED_SIZE_U32);
-        CopyHalfL1MatrixToL0B(rhsL1, l0B, C128_PACKED_SIZE_U32);
-    }
-
-    __aicore__ inline void LoadRhs64OperandsToL0(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1, uint32_t tileCols,
-                                                 uint32_t l0BufferIdx)
-    {
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(lhsL1, l0A, C64_PACKED_SIZE_U32);
-        if (tileCols < C64_PACKED_SIZE_U32) {
-            CopyHalfL1MatrixToL0B(aicHalfL1Zero_, l0B, C64_PACKED_SIZE_U32);
-        }
-        CopyHalfL1MatrixToL0B(rhsL1, l0B, C64_PACKED_SIZE_U32);
-    }
-
-    __aicore__ inline void LoadRhs64Bf16OperandsToL0(LocalTensor<bfloat16_t> lhsL1, LocalTensor<bfloat16_t> rhsL1,
-                                                     uint32_t lhsRows, uint32_t tileCols, uint32_t l0BufferIdx)
+    __aicore__ inline void LoadRhs128Bf16OperandsToL0(LocalTensor<bfloat16_t> lhsL1, LocalTensor<bfloat16_t> rhsL1,
+                                                      uint32_t tileCols, uint32_t l0BufferIdx)
     {
         LocalTensor<bfloat16_t> l0A = GetPacked64Bf16L0AByDbIdx(l0BufferIdx);
         LocalTensor<bfloat16_t> l0B = GetPacked64Bf16L0BByDbIdx(l0BufferIdx);
-        CopyPackedBf16L1RectToL0(lhsL1, l0A, 0, 0, lhsRows, C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, false);
-        CopyPackedBf16L1RectToL0(rhsL1, l0B, 0, 0, C64_PACKED_SIZE_U32, tileCols, C64_PACKED_SIZE_U32, true);
+        CopyPackedBf16L1RectToL0(lhsL1, l0A, 0, 0, C128_PACKED_SIZE_U32, C128_PACKED_SIZE_U32,
+                                 C128_PACKED_SIZE_U32, false);
+        CopyPackedBf16L1RectToL0(rhsL1, l0B, 0, 0, C128_PACKED_SIZE_U32, tileCols, C128_PACKED_SIZE_U32, true);
     }
 
-    __aicore__ inline void IssueRhsPacked64Bf16RectToL0Db(LocalTensor<bfloat16_t> lhsL1,
-                                                          LocalTensor<bfloat16_t> rhsL1, uint32_t tileCols,
-                                                          uint32_t l0BufferIdx,
-                                                          uint32_t lhsRows = C64_PACKED_SIZE_U32)
-    {
-        WaitRawL0AbDbFree(l0BufferIdx);
-        LoadRhs64Bf16OperandsToL0(lhsL1, rhsL1, lhsRows, tileCols, l0BufferIdx);
-        MarkRawL0AbLoadReady(l0BufferIdx);
-    }
-
-    __aicore__ inline void RawMmadRhs64Bf16(LocalTensor<bfloat16_t> lhsL1, LocalTensor<bfloat16_t> rhsL1,
-                                           LocalTensor<float> cTile, uint32_t tileCols, bool initCMatrix,
-                                           uint8_t unitFlag, uint32_t l0BufferIdx)
-    {
-        IssueRhsPacked64Bf16RectToL0Db(lhsL1, rhsL1, tileCols, l0BufferIdx);
-        BeginMmadRawL0AbDbBf16(cTile, l0BufferIdx, C64_PACKED_SIZE_U32, tileCols, C64_PACKED_SIZE_U32, initCMatrix,
-                               unitFlag);
-        FinishMmadRawL0AbDb(l0BufferIdx);
-    }
-
-    __aicore__ inline void IssuePacked64FullOperandsToL0Db(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
+    __aicore__ inline void IssueRhsPacked128Bf16RectToL0Db(LocalTensor<bfloat16_t> lhsL1,
+                                                           LocalTensor<bfloat16_t> rhsL1, uint32_t tileCols,
                                                            uint32_t l0BufferIdx)
     {
         WaitRawL0AbDbFree(l0BufferIdx);
-        LoadPacked64FullOperandsToL0(lhsL1, rhsL1, l0BufferIdx);
+        LoadRhs128Bf16OperandsToL0(lhsL1, rhsL1, tileCols, l0BufferIdx);
         MarkRawL0AbLoadReady(l0BufferIdx);
-    }
-
-    __aicore__ inline void IssuePacked128FullOperandsToL0Db(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                                            uint32_t l0BufferIdx)
-    {
-        WaitRawL0AbDbFree(l0BufferIdx);
-        LoadPacked128FullOperandsToL0(lhsL1, rhsL1, l0BufferIdx);
-        MarkRawL0AbLoadReady(l0BufferIdx);
-    }
-
-    __aicore__ inline void RawMmadPacked64Full(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                               LocalTensor<float> cTile, bool initCMatrix, uint8_t unitFlag,
-                                               uint32_t l0BufferIdx)
-    {
-        IssuePacked64FullOperandsToL0Db(lhsL1, rhsL1, l0BufferIdx & 1U);
-        MmadRawL0AbDbPacked64(cTile, l0BufferIdx & 1U, initCMatrix, unitFlag);
-    }
-
-    __aicore__ inline void RawMmadPacked128Full(LocalTensor<half> lhsL1, LocalTensor<half> rhsL1,
-                                                LocalTensor<float> cTile, bool initCMatrix, uint8_t unitFlag,
-                                                uint32_t l0BufferIdx)
-    {
-        IssuePacked128FullOperandsToL0Db(lhsL1, rhsL1, l0BufferIdx & 1U);
-        MmadRawL0AbDbPacked128(cTile, l0BufferIdx & 1U, initCMatrix, unitFlag);
-    }
-
-    __aicore__ inline void LoadIdentity64Packed128Sub64OperandsToL0(uint32_t srcRow, uint32_t srcCol,
-                                                                    uint32_t l0BufferIdx)
-    {
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(aicHalfL1Zero_, l0A, C64_PACKED_SIZE_U32);
-        CopyHalfL1MatrixToL0B(aicHalfL1Zero_, l0B, C64_PACKED_SIZE_U32);
-        CopyHalfL1MatrixToL0A(aicHalfL1Identity64_, l0A, C64_PACKED_SIZE_U32);
-        LoadPackedBlockToFullL0(aicHalfL1PackedInv128_, l0B, srcRow, srcCol, 0, 0, C64_PACKED_SIZE_U32,
-                                C128_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, true);
-    }
-
-    __aicore__ inline void IssueIdentity64Packed128Sub64ToL0Db(uint32_t srcRow, uint32_t srcCol,
-                                                               uint32_t l0BufferIdx)
-    {
-        WaitRawL0AbDbFree(l0BufferIdx);
-        LoadIdentity64Packed128Sub64OperandsToL0(srcRow, srcCol, l0BufferIdx);
-        MarkRawL0AbLoadReady(l0BufferIdx);
-    }
-
-    __aicore__ inline void RawMmadIdentity64Packed128Sub64(uint32_t srcRow, uint32_t srcCol, LocalTensor<float> cTile,
-                                                           bool initCMatrix, uint8_t unitFlag, uint32_t l0BufferIdx)
-    {
-        IssueIdentity64Packed128Sub64ToL0Db(srcRow, srcCol, l0BufferIdx & 1U);
-        MmadRawL0AbDbPacked64(cTile, l0BufferIdx & 1U, initCMatrix, unitFlag);
     }
 
     __aicore__ inline void HalfL1PowerPacked128DiagOnlyOnC(LocalTensor<half> lhs, LocalTensor<half> rhs,
@@ -2130,23 +1696,12 @@ private:
         uint32_t oddBase = pairBase + levelSize;
         LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
         LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(aicHalfL1Zero128_, l0A, levelSize);
-        CopyHalfL1MatrixToL0B(aicHalfL1Zero128_, l0B, levelSize);
-        LoadPackedBlockToFullL0(lower, l0A, oddBase, pairBase, 0, 0, levelSize, fullSize, levelSize, false);
-        LoadPackedBlockToFullL0(inv, l0B, pairBase, pairBase, 0, 0, levelSize, fullSize, levelSize, true);
-    }
-
-    __aicore__ inline void LoadRecursiveOddInvTmpOperandsToL0(LocalTensor<half> inv, LocalTensor<half> tmp,
-                                                              uint32_t levelSize, uint32_t pairBase,
-                                                              uint32_t fullSize, uint32_t l0BufferIdx)
-    {
-        uint32_t oddBase = pairBase + levelSize;
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(aicHalfL1Zero128_, l0A, levelSize);
-        CopyHalfL1MatrixToL0B(aicHalfL1Zero128_, l0B, levelSize);
-        LoadPackedBlockToFullL0(inv, l0A, oddBase, oddBase, 0, 0, levelSize, fullSize, levelSize, false);
-        LoadPackedBlockToFullL0(tmp, l0B, oddBase, pairBase, 0, 0, levelSize, fullSize, levelSize, true);
+        CopyHalfL1MatrixToL0A(aicHalfL1Zero128_, l0A, C128_PACKED_SIZE_U32);
+        CopyHalfL1MatrixToL0B(aicHalfL1Zero128_, l0B, C128_PACKED_SIZE_U32);
+        LoadPackedBlockToFullL0(lower, l0A, oddBase, pairBase, oddBase, pairBase, levelSize, fullSize,
+                                C128_PACKED_SIZE_U32, false);
+        LoadPackedBlockToFullL0(inv, l0B, pairBase, pairBase, pairBase, pairBase, levelSize, fullSize,
+                                C128_PACKED_SIZE_U32, true);
     }
 
     __aicore__ inline void IssueRecursiveLowerEvenInv(LocalTensor<half> lower, LocalTensor<half> inv,
@@ -2155,27 +1710,6 @@ private:
     {
         WaitRawL0AbDbFree(l0BufferIdx);
         LoadRecursiveLowerEvenInvOperandsToL0(lower, inv, levelSize, pairBase, fullSize, l0BufferIdx);
-        MarkRawL0AbLoadReady(l0BufferIdx);
-    }
-
-    __aicore__ inline void PrepareRecursiveOddInvTmpL0A(LocalTensor<half> inv, uint32_t levelSize,
-                                                        uint32_t pairBase, uint32_t fullSize, uint32_t l0BufferIdx)
-    {
-        uint32_t oddBase = pairBase + levelSize;
-        WaitRawL0AbDbFree(l0BufferIdx);
-        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
-        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
-        CopyHalfL1MatrixToL0A(aicHalfL1Zero128_, l0A, levelSize);
-        CopyHalfL1MatrixToL0B(aicHalfL1Zero128_, l0B, levelSize);
-        LoadPackedBlockToFullL0(inv, l0A, oddBase, oddBase, 0, 0, levelSize, fullSize, levelSize, false);
-    }
-
-    __aicore__ inline void CompleteRecursiveOddInvTmpL0B(LocalTensor<half> tmp, uint32_t levelSize,
-                                                         uint32_t pairBase, uint32_t fullSize, uint32_t l0BufferIdx)
-    {
-        uint32_t oddBase = pairBase + levelSize;
-        LoadPackedBlockToFullL0(tmp, GetPacked64L0BByDbIdx(l0BufferIdx), oddBase, pairBase, 0, 0, levelSize, fullSize,
-                                levelSize, true);
         MarkRawL0AbLoadReady(l0BufferIdx);
     }
 
@@ -2212,219 +1746,164 @@ private:
         SyncFixToMte1();
     }
 
-    __aicore__ inline void ComposeOddEvenLowerLevelAccumFull128(uint32_t levelSize)
+    __aicore__ inline void IssueRecursiveLowerEvenInvFull128Level(LocalTensor<half> lower, LocalTensor<half> inv,
+                                                                  uint32_t levelSize, uint32_t l0BufferIdx)
+    {
+        WaitRawL0AbDbFree(l0BufferIdx);
+        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
+        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
+        CopyHalfL1MatrixToL0A(aicHalfL1Zero128_, l0A, C128_PACKED_SIZE_U32);
+        CopyHalfL1MatrixToL0B(aicHalfL1Zero128_, l0B, C128_PACKED_SIZE_U32);
+        uint32_t pairSpan = levelSize * 2;
+        for (uint32_t pairBase = 0; pairBase < C128_PACKED_SIZE_U32; pairBase += pairSpan) {
+            uint32_t oddBase = pairBase + levelSize;
+            LoadPackedBlockToFullL0(lower, l0A, oddBase, pairBase, oddBase, pairBase, levelSize,
+                                    C128_PACKED_SIZE_U32, C128_PACKED_SIZE_U32, false);
+            LoadPackedBlockToFullL0(inv, l0B, pairBase, pairBase, pairBase, pairBase, levelSize,
+                                    C128_PACKED_SIZE_U32, C128_PACKED_SIZE_U32, true);
+        }
+        MarkRawL0AbLoadReady(l0BufferIdx);
+    }
+
+    __aicore__ inline void PrepareRecursiveOddInvTmpFull128LevelL0A(LocalTensor<half> inv, uint32_t levelSize,
+                                                                    uint32_t l0BufferIdx)
+    {
+        WaitRawL0AbDbFree(l0BufferIdx);
+        LocalTensor<half> l0A = GetPacked64L0AByDbIdx(l0BufferIdx);
+        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
+        CopyHalfL1MatrixToL0A(aicHalfL1Zero128_, l0A, C128_PACKED_SIZE_U32);
+        CopyHalfL1MatrixToL0B(aicHalfL1Zero128_, l0B, C128_PACKED_SIZE_U32);
+        uint32_t pairSpan = levelSize * 2;
+        for (uint32_t pairBase = 0; pairBase < C128_PACKED_SIZE_U32; pairBase += pairSpan) {
+            uint32_t oddBase = pairBase + levelSize;
+            LoadPackedBlockToFullL0(inv, l0A, oddBase, oddBase, oddBase, oddBase, levelSize,
+                                    C128_PACKED_SIZE_U32, C128_PACKED_SIZE_U32, false);
+        }
+    }
+
+    __aicore__ inline void CompleteRecursiveOddInvTmpFull128LevelL0B(LocalTensor<half> tmp, uint32_t levelSize,
+                                                                     uint32_t l0BufferIdx)
+    {
+        LocalTensor<half> l0B = GetPacked64L0BByDbIdx(l0BufferIdx);
+        uint32_t pairSpan = levelSize * 2;
+        for (uint32_t pairBase = 0; pairBase < C128_PACKED_SIZE_U32; pairBase += pairSpan) {
+            uint32_t oddBase = pairBase + levelSize;
+            LoadPackedBlockToFullL0(tmp, l0B, oddBase, pairBase, oddBase, pairBase, levelSize,
+                                    C128_PACKED_SIZE_U32, C128_PACKED_SIZE_U32, true);
+        }
+        MarkRawL0AbLoadReady(l0BufferIdx);
+    }
+
+    __aicore__ inline void ComposeOddEvenLowerLevelFull128(uint32_t levelSize)
     {
         LocalTensor<float> cInv = aicL0C_;
         LocalTensor<float> cTmp = aicL0C_[C128_L0C_TILE_ELEMS];
         LocalTensor<half> tmp128 = aicHalfL1TileInv128_;
-        uint32_t pairSpan = levelSize * 2;
-        for (uint32_t pairBase = 0; pairBase < C128_PACKED_SIZE_U32; pairBase += pairSpan) {
-            uint32_t firstL0BufferIdx = NextRawL0AbDbIdx();
-            uint32_t secondL0BufferIdx = NextRawL0AbDbIdx();
-            IssueRecursiveLowerEvenInv(aicHalfL1Scratch128_, aicHalfL1PackedInv128_, levelSize, pairBase,
-                                       C128_PACKED_SIZE_U32, firstL0BufferIdx);
-            PrepareRecursiveOddInvTmpL0A(aicHalfL1PackedInv128_, levelSize, pairBase, C128_PACKED_SIZE_U32,
-                                         secondL0BufferIdx);
-            BeginMmadRawL0AbDb(cTmp, firstL0BufferIdx, levelSize, levelSize, levelSize, RAW_MMAD_INIT_C,
-                               RAW_MMAD_FINAL_UNIT_FLAG);
-            FinishMmadRawL0AbDb(firstL0BufferIdx);
-            SyncMToFix();
-            CopyL0CMatrixToPackedHalfL1(tmp128, cTmp, pairBase + levelSize, pairBase, levelSize, levelSize,
-                                        C128_PACKED_SIZE_U32, RAW_MMAD_FINAL_UNIT_FLAG);
-            SyncFixToMte1();
-            CompleteRecursiveOddInvTmpL0B(tmp128, levelSize, pairBase, C128_PACKED_SIZE_U32, secondL0BufferIdx);
-            BeginMmadRawL0AbDb(cInv, secondL0BufferIdx, levelSize, levelSize, levelSize, RAW_MMAD_INIT_C,
-                               RAW_MMAD_FINAL_UNIT_FLAG);
-            FinishMmadRawL0AbDb(secondL0BufferIdx);
-            SyncMToFix();
-            CopyL0CMatrixToPackedHalfL1(aicHalfL1PackedInv128_, cInv, pairBase + levelSize, pairBase, levelSize,
-                                        levelSize, C128_PACKED_SIZE_U32, RAW_MMAD_FINAL_UNIT_FLAG);
-            SyncFixToM();
-            SyncFixToMte1();
-        }
+        uint32_t firstL0BufferIdx = NextRawL0AbDbIdx();
+        uint32_t secondL0BufferIdx = NextRawL0AbDbIdx();
+
+        IssueRecursiveLowerEvenInvFull128Level(aicHalfL1Scratch128_, aicHalfL1PackedInv128_, levelSize,
+                                               firstL0BufferIdx);
+        PrepareRecursiveOddInvTmpFull128LevelL0A(aicHalfL1PackedInv128_, levelSize, secondL0BufferIdx);
+        BeginMmadRawL0AbDbPacked128(cTmp, firstL0BufferIdx, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
+        FinishMmadRawL0AbDb(firstL0BufferIdx);
+        SyncMToFix();
+        FixpipePacked128FullToHalfL1(tmp128, cTmp, RAW_MMAD_FINAL_UNIT_FLAG);
+        SyncFixToMte1();
+
+        CompleteRecursiveOddInvTmpFull128LevelL0B(tmp128, levelSize, secondL0BufferIdx);
+        BeginMmadRawL0AbDbPacked128(cInv, secondL0BufferIdx, RAW_MMAD_ACCUMULATE_C, RAW_MMAD_FINAL_UNIT_FLAG);
+        FinishMmadRawL0AbDb(secondL0BufferIdx);
+        SyncMToFix();
+        FixpipePacked128FullToHalfL1(aicHalfL1PackedInv128_, cInv, RAW_MMAD_FINAL_UNIT_FLAG);
+        SyncFixToM();
+        SyncFixToMte1();
     }
 
     __aicore__ inline void ComposeOddEvenLower16To32AccumFull128()
     {
-        ComposeOddEvenLowerLevelAccumFull128(INVERSE_SHAPE);
+        ComposeOddEvenLowerLevelFull128(INVERSE_SHAPE);
     }
 
     __aicore__ inline void ComposeOddEvenLower32To64AccumFull128()
     {
-        ComposeOddEvenLowerLevelAccumFull128(C32_PACKED_SIZE_U32);
+        ComposeOddEvenLowerLevelFull128(C32_PACKED_SIZE_U32);
     }
 
     __aicore__ inline void ComposeOddEvenLower64To128AccumFull128()
     {
-        ComposeOddEvenLowerLevelAccumFull128(C64_PACKED_SIZE_U32);
+        ComposeOddEvenLowerLevelFull128(C64_PACKED_SIZE_U32);
     }
 
-    __aicore__ inline void StorePacked128InverseToResidentViews(uint32_t paraIdx)
+    __aicore__ inline LocalTensor<bfloat16_t> GetPacked128InverseResident()
     {
-        uint32_t residentBase = paraIdx * C128_RESIDENT_TILE_COUNT;
-        LocalTensor<bfloat16_t> topResident =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>(residentBase * AIC_LOW_L1_TILE_ELEMS)];
-        LocalTensor<bfloat16_t> bottomResident =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>((residentBase + 1) * AIC_LOW_L1_TILE_ELEMS)];
-        LocalTensor<bfloat16_t> lowerLeftResident =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>((residentBase + 2) * AIC_LOW_L1_TILE_ELEMS)];
+        return aicBf16L1ResidentInv128_;
+    }
 
-        RawMmadIdentity64Packed128Sub64(0, 0, aicL0C_, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG,
-                                        NextRawL0AbDbIdx());
+    __aicore__ inline void StorePacked128InverseToFullResident()
+    {
+        LocalTensor<float> cInv = aicL0C_;
+        LocalTensor<bfloat16_t> inv128 = GetPacked128InverseResident();
         SyncMToFix();
-        FixpipePacked64FullToBf16L1(topResident, aicL0C_, RAW_MMAD_FINAL_UNIT_FLAG);
+        FixpipePacked128FullToBf16L1(inv128, cInv, RAW_FIXPIPE_POST_ACCUM_UNIT_FLAG);
         SyncFixToM();
         SyncFixToMte1();
-
-        RawMmadIdentity64Packed128Sub64(C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32, aicL0C_, RAW_MMAD_INIT_C,
-                                        RAW_MMAD_FINAL_UNIT_FLAG, NextRawL0AbDbIdx());
-        SyncMToFix();
-        FixpipePacked64FullToBf16L1(bottomResident, aicL0C_, RAW_MMAD_FINAL_UNIT_FLAG);
-        SyncFixToM();
-        SyncFixToMte1();
-
-        RawMmadIdentity64Packed128Sub64(C64_PACKED_SIZE_U32, 0, aicL0C_, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG,
-                                        NextRawL0AbDbIdx());
-        SyncMToFix();
-        FixpipePacked64FullToBf16L1(lowerLeftResident, aicL0C_, RAW_MMAD_FINAL_UNIT_FLAG);
-        SyncFixToM();
-        SyncFixToMte1();
+        ZeroPacked128UpperTriangularBlocksSingleSync(inv128);
     }
 
-    __aicore__ inline void DebugZeroC128ResidentViews(uint32_t paraIdx)
+    __aicore__ inline void ComputeRhsPacked128Bf16Tiles(LocalTensor<bfloat16_t> inv128,
+                                                        GlobalTensor<bfloat16_t> rhsGm,
+                                                        GlobalTensor<bfloat16_t> outGm, uint32_t rhsCols,
+                                                        LocalTensor<bfloat16_t> firstRhsStage,
+                                                        GlobalTensor<bfloat16_t> nextParaRhsGm,
+                                                        bool hasNextPara)
     {
-        uint32_t residentBase = paraIdx * C128_RESIDENT_TILE_COUNT;
-        LocalTensor<half> top =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>(residentBase * AIC_LOW_L1_TILE_ELEMS)]
-                .template ReinterpretCast<half>();
-        LocalTensor<half> bottom =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>((residentBase + 1) * AIC_LOW_L1_TILE_ELEMS)]
-                .template ReinterpretCast<half>();
-        LocalTensor<half> lowerLeft =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>((residentBase + 2) * AIC_LOW_L1_TILE_ELEMS)]
-                .template ReinterpretCast<half>();
-        ZeroHalfL1NoSync(top, C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32);
-        ZeroHalfL1NoSync(bottom, C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32);
-        ZeroHalfL1NoSync(lowerLeft, C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32);
-        SyncMToMte1();
-    }
-
-    __aicore__ inline void ComposeTailC128LowerLeftGm(uint32_t paraIdx)
-    {
-        EnsureAicLocalBuffers();
-        PrepareRawMmadState();
-
-        uint64_t base = paraIdx * ccOffset_;
-        LocalTensor<half> lowerLeftNeg = aicHalfL1Scratch_;
-        LocalTensor<half> topInv = aicHalfL1TilePower_;
-        LocalTensor<half> bottomInv = aicHalfL1PackedInv64_;
-        LocalTensor<half> tmp64 = aicHalfL1TileInv_;
-        LocalTensor<float> cTmp = aicL0C_;
-        LocalTensor<float> cOut = aicL0C_[C64_L0C_TILE_ELEMS];
-
-        LoadGmHalfPacked64FullToPackedL1NoWait(INVInitHalfWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, 0)],
-                                               lowerLeftNeg, chunkSize_);
-        LoadGmHalfPacked64FullToPackedL1NoWait(INVInitHalfWsGm_[base], topInv, chunkSize_);
-        LoadGmHalfPacked64FullToPackedL1NoWait(
-            INVInitHalfWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, C64_PACKED_SIZE_U32)], bottomInv, chunkSize_);
-        SyncMte2ToMte1();
-
-        RawMmadPacked64Full(lowerLeftNeg, topInv, cTmp, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG, NextRawL0AbDbIdx());
-        SyncMToFix();
-        FixpipePacked64FullToHalfL1(tmp64, cTmp, RAW_MMAD_FINAL_UNIT_FLAG);
-        SyncFixToM();
-        SyncFixToMte1();
-
-        RawMmadPacked64Full(bottomInv, tmp64, cOut, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG, NextRawL0AbDbIdx());
-        SyncMToFix();
-        CopyL0CMatrixToGmBf16(attnWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, 0)], cOut, C64_PACKED_SIZE_U32,
-                              C64_PACKED_SIZE_U32, chunkSize_, RAW_MMAD_FINAL_UNIT_FLAG);
-        SyncFixToM();
-        SyncFixToMte2();
-        SyncFixToS();
-    }
-
-    __aicore__ inline uint32_t C64ValidLen(uint32_t paraIdx, uint32_t diagBase)
-    {
-        if (validLenBatch_[paraIdx] <= diagBase) {
-            return 0;
-        }
-        uint32_t remain = validLenBatch_[paraIdx] - diagBase;
-        return remain >= C64_PACKED_SIZE_U32 ? C64_PACKED_SIZE_U32 : remain;
-    }
-
-    __aicore__ inline void ComputeRhsPacked64Bf16Tiles(LocalTensor<bfloat16_t> topInv,
-                                                       LocalTensor<bfloat16_t> bottomInv,
-                                                       LocalTensor<bfloat16_t> lowerLeftInv,
-                                                       GlobalTensor<bfloat16_t> rhsGm,
-                                                       GlobalTensor<bfloat16_t> outGm, uint32_t rhsCols,
-                                                       bool hasBottom,
-                                                       uint32_t topRows = C64_PACKED_SIZE_U32,
-                                                       uint32_t bottomRows = C64_PACKED_SIZE_U32)
-    {
-        LocalTensor<float> cTop = aicL0C_;
-        LocalTensor<float> cBottom = aicL0C_[C64_L0C_TILE_ELEMS];
+        LocalTensor<float> cOut = aicL0C_[C128_L0C_TILE_ELEMS];
         uint32_t stageIdx = 0;
         uint32_t colBase = 0;
-        uint32_t tileCols = rhsCols > C64_PACKED_SIZE_U32 ? C64_PACKED_SIZE_U32 : rhsCols;
-        LocalTensor<bfloat16_t> rhsTop = GetRhsPacked64TopStageByIdx(stageIdx);
-        LocalTensor<bfloat16_t> rhsBottom = GetRhsPacked64BottomStageByIdx(stageIdx);
-
-        PrepareRhsPacked64Bf16L1NoWait(rhsGm[colBase], rhsTop, tileCols, rhsCols);
-        if (hasBottom) {
-            PrepareRhsPacked64Bf16L1NoWait(rhsGm[C64_PACKED_SIZE_U32 * rhsCols + colBase], rhsBottom, tileCols,
-                                          rhsCols);
-        }
+        uint32_t tileCols = rhsCols > C128_PACKED_SIZE_U32 ? C128_PACKED_SIZE_U32 : rhsCols;
+        LocalTensor<bfloat16_t> rhsStage = firstRhsStage;
         SyncMte2ToMte1();
+        uint32_t l0BufferIdx = NextRawL0AbDbIdx();
+        IssueRhsPacked128Bf16RectToL0Db(inv128, rhsStage, tileCols, l0BufferIdx);
 
         while (true) {
-            uint32_t nextColBase = colBase + C64_PACKED_SIZE_U32;
+            uint32_t curColBase = colBase;
+            uint32_t curTileCols = tileCols;
+            uint32_t curL0BufferIdx = l0BufferIdx;
+            uint32_t nextColBase = colBase + C128_PACKED_SIZE_U32;
             bool hasNextTile = nextColBase < rhsCols;
             uint32_t nextTileCols = 0;
             uint32_t nextStageIdx = stageIdx ^ 1U;
+            uint32_t nextL0BufferIdx = 0;
 
             if (hasNextTile) {
                 nextTileCols = rhsCols - nextColBase;
-                nextTileCols = nextTileCols > C64_PACKED_SIZE_U32 ? C64_PACKED_SIZE_U32 : nextTileCols;
-                LocalTensor<bfloat16_t> nextRhsTop = GetRhsPacked64TopStageByIdx(nextStageIdx);
-                LocalTensor<bfloat16_t> nextRhsBottom = GetRhsPacked64BottomStageByIdx(nextStageIdx);
-                PrepareRhsPacked64Bf16L1NoWait(rhsGm[nextColBase], nextRhsTop, nextTileCols, rhsCols);
-                if (hasBottom) {
-                    PrepareRhsPacked64Bf16L1NoWait(rhsGm[C64_PACKED_SIZE_U32 * rhsCols + nextColBase], nextRhsBottom,
-                                                   nextTileCols, rhsCols);
-                }
+                nextTileCols = nextTileCols > C128_PACKED_SIZE_U32 ? C128_PACKED_SIZE_U32 : nextTileCols;
+                LocalTensor<bfloat16_t> nextRhsStage = GetRhsPacked128StageByIdx(nextStageIdx);
+                PrepareRhsPacked128Bf16L1NoWait(rhsGm[nextColBase], nextRhsStage, nextTileCols, rhsCols);
+                nextL0BufferIdx = NextRawL0AbDbIdx();
             }
 
-            uint32_t topL0BufferIdx = NextRawL0AbDbIdx();
-            uint32_t bottomL0BufferIdx = NextRawL0AbDbIdx();
-            IssueRhsPacked64Bf16RectToL0Db(topInv, rhsTop, tileCols, topL0BufferIdx, topRows);
-            if (hasBottom) {
-                IssueRhsPacked64Bf16RectToL0Db(bottomInv, rhsBottom, tileCols, bottomL0BufferIdx, bottomRows);
+            WaitRawL0AbLoadReady(curL0BufferIdx);
+            if (curColBase == 0 && hasNextPara) {
+                SyncMte1ToMte2();
+                uint32_t nextParaTileCols = rhsCols > C128_PACKED_SIZE_U32 ? C128_PACKED_SIZE_U32 : rhsCols;
+                PrepareRhsPacked128Bf16L1NoWait(nextParaRhsGm, firstRhsStage, nextParaTileCols, rhsCols);
             }
-
-            BeginMmadRawL0AbDbBf16(cTop, topL0BufferIdx, topRows, tileCols, C64_PACKED_SIZE_U32,
-                                   RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
-            FinishMmadRawL0AbDb(topL0BufferIdx);
+            BeginMmadRawL0AbDbBf16AfterLoadReady(cOut, curL0BufferIdx, C128_PACKED_SIZE_U32, curTileCols,
+                                                 C128_PACKED_SIZE_U32, RAW_MMAD_INIT_C,
+                                                 RAW_MMAD_FINAL_UNIT_FLAG);
+            if (hasNextTile) {
+                LocalTensor<bfloat16_t> nextRhsStage = GetRhsPacked128StageByIdx(nextStageIdx);
+                IssueRhsPacked128Bf16RectToL0Db(inv128, nextRhsStage, nextTileCols, nextL0BufferIdx);
+            }
+            FinishMmadRawL0AbDb(curL0BufferIdx);
             SyncMToFix();
-            CopyL0CMatrixToGmBf16(outGm[colBase], cTop, topRows, tileCols, rhsCols,
+            CopyL0CMatrixToGmBf16(outGm[curColBase], cOut, C128_PACKED_SIZE_U32, curTileCols, rhsCols,
                                   RAW_MMAD_FINAL_UNIT_FLAG);
             SyncFixToM();
             SyncFixToMte2();
-
-            if (hasBottom) {
-                BeginMmadRawL0AbDbBf16(cBottom, bottomL0BufferIdx, bottomRows, tileCols, C64_PACKED_SIZE_U32,
-                                       RAW_MMAD_INIT_C, RAW_MMAD_NON_FINAL_UNIT_FLAG);
-                IssueRhsPacked64Bf16RectToL0Db(lowerLeftInv, rhsTop, tileCols, topL0BufferIdx, bottomRows);
-                FinishMmadRawL0AbDb(bottomL0BufferIdx);
-                BeginMmadRawL0AbDbBf16(cBottom, topL0BufferIdx, bottomRows, tileCols, C64_PACKED_SIZE_U32,
-                                       RAW_MMAD_ACCUMULATE_C, RAW_MMAD_FINAL_UNIT_FLAG);
-                FinishMmadRawL0AbDb(topL0BufferIdx);
-                SyncMToFix();
-                CopyL0CMatrixToGmBf16(outGm[C64_PACKED_SIZE_U32 * rhsCols + colBase], cBottom, bottomRows,
-                                      tileCols, rhsCols, RAW_MMAD_FINAL_UNIT_FLAG);
-                SyncFixToM();
-                SyncFixToMte2();
-            }
 
             if (!hasNextTile) {
                 break;
@@ -2433,14 +1912,17 @@ private:
             colBase = nextColBase;
             tileCols = nextTileCols;
             stageIdx = nextStageIdx;
-            rhsTop = GetRhsPacked64TopStageByIdx(stageIdx);
-            rhsBottom = GetRhsPacked64BottomStageByIdx(stageIdx);
+            rhsStage = GetRhsPacked128StageByIdx(stageIdx);
+            l0BufferIdx = nextL0BufferIdx;
         }
         SyncFixToS();
     }
 
     __aicore__ inline void FusedRhsC128AICProcess(uint32_t paraIdx, GlobalTensor<bfloat16_t> rhsGm,
-                                                  GlobalTensor<bfloat16_t> outGm, uint32_t rhsCols)
+                                                  GlobalTensor<bfloat16_t> outGm, uint32_t rhsCols,
+                                                  LocalTensor<bfloat16_t> firstRhsStage,
+                                                  GlobalTensor<bfloat16_t> nextParaRhsGm,
+                                                  bool hasNextPara)
     {
         if (validLenBatch_[paraIdx] < chunkSize_) {
             return;
@@ -2448,18 +1930,13 @@ private:
         EnsureAicLocalBuffers();
         PrepareRawMmadState();
 
-        uint32_t residentBase = paraIdx * C128_RESIDENT_TILE_COUNT;
-        LocalTensor<bfloat16_t> topInv =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>(residentBase * AIC_LOW_L1_TILE_ELEMS)];
-        LocalTensor<bfloat16_t> bottomInv =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>((residentBase + 1) * AIC_LOW_L1_TILE_ELEMS)];
-        LocalTensor<bfloat16_t> lowerLeftInv =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>((residentBase + 2) * AIC_LOW_L1_TILE_ELEMS)];
-        ComputeRhsPacked64Bf16Tiles(topInv, bottomInv, lowerLeftInv, rhsGm, outGm, rhsCols, true);
+        LocalTensor<bfloat16_t> inv128 = GetPacked128InverseResident();
+        ComputeRhsPacked128Bf16Tiles(inv128, rhsGm, outGm, rhsCols, firstRhsStage, nextParaRhsGm, hasNextPara);
     }
 
     __aicore__ inline void TailRhsC128AICProcess(uint32_t paraIdx, GlobalTensor<bfloat16_t> rhsGm,
-                                                 GlobalTensor<bfloat16_t> outGm, uint32_t rhsCols)
+                                                 GlobalTensor<bfloat16_t> outGm, uint32_t rhsCols,
+                                                 LocalTensor<bfloat16_t> firstRhsStage)
     {
         uint32_t tailLen = validLenBatch_[paraIdx];
         if (tailLen == 0 || tailLen >= chunkSize_) {
@@ -2468,78 +1945,22 @@ private:
         EnsureAicLocalBuffers();
         PrepareRawMmadState();
 
-        uint64_t base = paraIdx * ccOffset_;
-        LocalTensor<bfloat16_t> topInv = aicBf16L1ResidentInv_;
-        LocalTensor<bfloat16_t> bottomInv =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>(AIC_LOW_L1_TILE_ELEMS)];
-        LocalTensor<bfloat16_t> lowerLeftInv =
-            aicBf16L1ResidentInv_[static_cast<uint32_t>(2 * AIC_LOW_L1_TILE_ELEMS)];
-
-        LoadGmBf16Packed64FullToPackedL1NoWait(attnWsGm_[base], topInv, chunkSize_);
-        if (tailLen > C64_PACKED_SIZE_U32) {
-            LoadGmBf16Packed64FullToPackedL1NoWait(attnWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32,
-                                                                                 C64_PACKED_SIZE_U32)],
-                                                   bottomInv, chunkSize_);
-            LoadGmBf16Packed64FullToPackedL1NoWait(attnWsGm_[base + MatrixOffset(C64_PACKED_SIZE_U32, 0)],
-                                                   lowerLeftInv, chunkSize_);
-        }
-        SyncMte2ToMte1();
-
-        bool hasBottom = tailLen > C64_PACKED_SIZE_U32;
-        uint32_t topRows = hasBottom ? C64_PACKED_SIZE_U32 : AlignUp(tailLen, BLOCK_CUBE);
-        uint32_t bottomRows = hasBottom ? AlignUp(tailLen - C64_PACKED_SIZE_U32, BLOCK_CUBE) : 0;
-        ComputeRhsPacked64Bf16Tiles(topInv, bottomInv, lowerLeftInv, rhsGm, outGm, rhsCols,
-                                    hasBottom, topRows, bottomRows);
+        uint32_t tileCols = rhsCols > C128_PACKED_SIZE_U32 ? C128_PACKED_SIZE_U32 : rhsCols;
+        PrepareRhsPacked128Bf16L1NoWait(rhsGm, firstRhsStage, tileCols, rhsCols);
+        ComputeRhsPacked128Bf16Tiles(GetPacked128InverseResident(), rhsGm, outGm, rhsCols, firstRhsStage, rhsGm,
+                                     false);
     }
 
     __aicore__ inline void C128InverseBy16x16Neumann(uint32_t paraIdx)
     {
-        if (validLenBatch_[paraIdx] < chunkSize_) {
-            return;
-        }
         EnsureAicLocalBuffers();
         PrepareRawMmadState();
-        if constexpr (C128_FULL128_DEBUG_STAGE == 1) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
         LoadPacked128InputsToL1(paraIdx);
-        if constexpr (C128_FULL128_DEBUG_STAGE == 2) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
         InvertPacked128DiagonalNeumannToResult();
-        if constexpr (C128_FULL128_DEBUG_STAGE == 3) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
         ComposeOddEvenLower16To32AccumFull128();
-        if constexpr (C128_FULL128_DEBUG_STAGE == 4) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
         ComposeOddEvenLower32To64AccumFull128();
-        if constexpr (C128_FULL128_DEBUG_STAGE == 5) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
         ComposeOddEvenLower64To128AccumFull128();
-        if constexpr (C128_FULL128_DEBUG_STAGE == 6) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
-        StorePacked128InverseToResidentViews(paraIdx);
-        if constexpr (C128_FULL128_DEBUG_STAGE == 7) {
-            DebugZeroC128ResidentViews(paraIdx);
-            return;
-        }
-    }
-
-    __aicore__ inline void SyncScalarToMte2()
-    {
-        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_MTE2));
-        SetFlag<HardEvent::S_MTE2>(eventID);
-        WaitFlag<HardEvent::S_MTE2>(eventID);
+        StorePacked128InverseToFullResident();
     }
 
     __aicore__ inline void SyncFixToMte2()
@@ -2561,6 +1982,13 @@ private:
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::MTE2_MTE1));
         SetFlag<HardEvent::MTE2_MTE1>(eventID);
         WaitFlag<HardEvent::MTE2_MTE1>(eventID);
+    }
+
+    __aicore__ inline void SyncMte1ToMte2()
+    {
+        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::MTE1_MTE2));
+        SetFlag<HardEvent::MTE1_MTE2>(eventID);
+        WaitFlag<HardEvent::MTE1_MTE2>(eventID);
     }
 
     __aicore__ inline void SyncMte1ToM()
@@ -2645,10 +2073,8 @@ private:
     float scale_;
     bool gOptional_;
     bool aicLocalBuffersReady_ = false;
-    bool packed64IdentityPrepared_ = false;
     bool packed128IdentityPrepared_ = false;
-    uint32_t preparedHalfIdentityBlockSize_ = 0;
-    uint32_t halfL1ZeroPreparedSize_ = 0;
+    uint32_t halfL1ZeroPreparedSize128_ = 0;
     uint32_t paraNum_;
     uint64_t ccOffset_;
     uint64_t ckOffset_;
@@ -2674,11 +2100,9 @@ private:
     GlobalTensor<bfloat16_t> outKgGm_;
     GlobalTensor<bfloat16_t> outQkGm_;
     GlobalTensor<bfloat16_t> vBetaWsGm_;
-    GlobalTensor<half> vBetaHalfWsGm_;
     GlobalTensor<bfloat16_t> kkWsGm_;
     GlobalTensor<bfloat16_t> attnWsGm_;
     GlobalTensor<bfloat16_t> gBKWsGm_;
-    GlobalTensor<half> gBKHalfWsGm_;
     GlobalTensor<bfloat16_t> queryConGm_;
     GlobalTensor<bfloat16_t> keyConGm_;
     GlobalTensor<float> stageOneMask_;
@@ -2703,23 +2127,14 @@ private:
     LocalTensor<float> attnUbFloat_;
     LocalTensor<float> inverseBuffer_;
     LocalTensor<float> inverseRes_;
-    LocalTensor<float> aicL0A_;
-    LocalTensor<float> aicL0B_;
     LocalTensor<float> aicL0C_;
-    LocalTensor<half> aicHalfL1Scratch_;
-    LocalTensor<half> aicHalfL1TileInv_;
-    LocalTensor<half> aicHalfL1TilePower_;
-    LocalTensor<half> aicHalfL1Identity_;
-    LocalTensor<half> aicHalfL1Identity64_;
-    LocalTensor<half> aicHalfL1Zero_;
-    LocalTensor<half> aicHalfL1PackedInv64_;
-    LocalTensor<bfloat16_t> aicBf16L1ResidentInv_;
     LocalTensor<half> aicHalfL1Scratch128_;
     LocalTensor<half> aicHalfL1TileInv128_;
     LocalTensor<half> aicHalfL1TilePower128_;
     LocalTensor<half> aicHalfL1Identity128_;
     LocalTensor<half> aicHalfL1Zero128_;
     LocalTensor<half> aicHalfL1PackedInv128_;
+    LocalTensor<bfloat16_t> aicBf16L1ResidentInv128_;
     LocalTensor<half> aicHalfL0A_;
     LocalTensor<half> aicHalfL0B_;
     LocalTensor<half> aicHalfL0AAlt_;
@@ -2744,7 +2159,6 @@ private:
     LocalTensor<float> vBetaUbFloat_;
     LocalTensor<float> qPrimeUbFloat_;
     LocalTensor<uint32_t> inputGatherBuffer_;
-    LocalTensor<uint32_t> inverseGatherBuffer_;
 
     LocalTensor<bfloat16_t> betaLocal_;
     LocalTensor<bfloat16_t> valueLocal_;

@@ -681,3 +681,90 @@ N9.10 / N9.8 ratios `S=1024/2048/4096/8192/10240/12288/16384/20480 = 1.0210 / 1.
 `stageOneParaNum=1` 且 `C128_RESIDENT_PARA_SLOTS=1`，full128 RHS 本身只面对单个
 `128` 列 tile，没有 C64 那种可吃到收益的跨 para / next tile 重叠空间；再叠加多出的
 调度事件和准备步骤，反而变慢。
+
+## Step 018 - N9.13 resident/RHS/restore final pass
+
+- 日期：2026-05-19
+- 状态：N9.13.0 到 N9.13.4 全部完成，build / 4-case / ladder / 30-case / profiling 均已完成。
+- 当前 Stage1 SHA256：
+  `ecec2438b0c69b112199c8e2b748587c7fac681a6cdbe830f097a8c5edeaf5e2`
+- final baseline：
+  `op_kernel/baseline/chunk_gated_delta_rule_C128_stage1_n9_13_4_final_pass_20260519.h`
+- 构建包 `.run` SHA256：
+  `5eaab89d74a4278295daccef83a07d6c1c4d52f5b4e17b1bd5a31f918e0e80e2`
+- installed `libcust_opapi.so` SHA256：
+  `552341a934dde044b5d568d1c951cdc9d3e905872d4adb5bf9d2be8c14bf772f`
+- installed C128 object SHA256：
+  `975ae44a2cac890ef0920c703e038c8868484f2fc201254e75d1a90833b1f5eb`
+- 性能数据来源：
+  `tests/pytest/prof_out/neumann_vs_c128_n9_13_final_20260519/c128_vs_neumann_compare.csv`
+- C128 raw CSV SHA256：
+  `5b766dc822147c2a6965d4c19a8b3b4ba73fdbf9cbf24ed5655d3aba86e04131`
+- Neumann raw CSV SHA256：
+  `68d2c6eccb6f018d90cf2571c56c81eadd80f5eb40b6239373469a7086c1c65d`
+- 对比 CSV SHA256：
+  `5ea7603e7136e22f01d2663d7b3ed1b2561bb7cd3463e03be40fa02affdde057`
+
+### 本步修改
+
+- full128 L1 footprint 固化为 7 个 tile：
+  `invInit / diagWork / powerWork / identity / zero / packedInv / residentInv`。
+- inverse epoch 完成后复用 `invInit` / `powerWork` 作为 GBK / VBeta 首块 RHS prefetch buffer。
+- `ComputeRhsPacked128Bf16Tiles()` 保持 C64 式 first issue + wait current + prepare next tile / next para 的 DB 顺序。
+- `ReleaseRawL0AbDbEvents()` 统一 raw event wait 与 cursor/state reset。
+- `RestoreStage1MatmulLocalBuffers()` 保留 `pipe_->Reset()` 和 `mm.Init()`，并在 reset 后显式清
+  `aicLocalBuffersReady_` 与 packed128 aux state，避免 reset 后复用旧 local tensor 句柄。
+
+### 精度 gate
+
+- 4 个 known regression case：
+  `b4_s256_d64_h16_h4 / b2_s160_d64_h32_h8 / b1_s384_d128_h8_h4 / b1_s16384_d128_h4_h4` 全部 PASS。
+- full / tail ladder：
+  `S=64/80/96/112/128/160/256/1024` 全部 PASS。
+- 30-case CPU golden：
+  `30 passed, 2 warnings in 7.67s`。
+
+### C128 vs Neumann 长序列 8-shape
+
+| case | C128_us | Neumann_us | C128/Neumann |
+| --- | ---: | ---: | ---: |
+| `S=1024` | 2536.36 | 2391.70 | 1.0605 |
+| `S=2048` | 4330.28 | 4282.28 | 1.0112 |
+| `S=4096` | 8175.22 | 8612.04 | 0.9493 |
+| `S=8192` | 16398.84 | 16793.96 | 0.9765 |
+| `S=10240` | 20372.36 | 20447.50 | 0.9963 |
+| `S=12288` | 24133.48 | 24590.90 | 0.9814 |
+| `S=16384` | 32333.44 | 32932.06 | 0.9818 |
+| `S=20480` | 40235.24 | 41141.30 | 0.9780 |
+
+结论：N9.13 final 版在 8 个长序列上的平均 `C128/Neumann = 0.9919`。
+`S=1024/2048` 仍慢，`S>=4096` 整体快于 Neumann。后续若继续优化，应聚焦
+`S=1024/2048` 的 inverse / compose MAC 和 AIV vec 开销；不要再走直接删除
+`ResetRawL0AbDbState()` / `pipe_->Reset()` / `mm.Init()` 的方向。
+
+## Step 019 - N9.13 cleanup validation
+
+- 日期：2026-05-20
+- 状态：清理 active Stage1 的 dead helper / dead buffer，并删除不再保留的早期 baseline；保留
+  `N9.8` 冻结基线与 `N9.13.4` final baseline。
+- 当前 Stage1 SHA256：
+  `ffa00a838eef0958dca49d5ca9ae1648ef2c1b04cde745dec11ea2965ce0b2f8`
+- 构建包 `.run` SHA256：
+  `0de1bc3c3f3fcb53984871f7c843c8cd1b8e8c6b2b6be83679c4ca6faa0f46ef`
+- installed C128 object SHA256：
+  `b5e5d86694885a363742da36f738c6c600e26ec30585d00cec78c29e228b38e8`
+
+### 本步修改
+
+- 删除 legacy AIV inverse helper、half output helper 与旧 grouped accumulation 数据流。
+- 收缩 active Stage1 的无用 UB/L1/L0 buffer 与 queue 成员。
+- 删除 2026-05-16/17 的早期 baseline 快照；`N9.8` 作为冻结基线保留。
+
+### 精度 gate
+
+```bash
+cd /mnt/workspace/gitCode/cann/ops-transformer/attention/chunk_gated_delta_rule_C128/tests/pytest
+python3 -m pytest -rA -s compare_chunk_gdr_C128_cpu_golden.py -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+```
+
+结果：`30 passed in 9.41s`。
