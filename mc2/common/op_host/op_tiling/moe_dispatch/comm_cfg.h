@@ -27,15 +27,15 @@ namespace moe_dispatch_comm_cfg {
 
 // 版本1：简化接口（dispatch_v2 使用，不需要 URMA 参数）
 void SetEpAllToAllCfg(
-    Mc2InitTiling& mc2InitTiling,
-    Mc2CcTiling& mc2CcTiling,
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
     bool isLayered);
 
 // 版本2：完整接口（teardown/setup 使用，支持 URMA）
 void SetEpAllToAllCfgWithUrma(
-    Mc2InitTiling& mc2InitTiling,
-    Mc2CcTiling& mc2CcTiling,
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
     bool isLayered,
     bool isUrma);
@@ -43,23 +43,27 @@ void SetEpAllToAllCfgWithUrma(
 // ========== TP AllGather 配置 ==========
 // 仅 dispatch_v2 TP=2 场景
 void SetTpAllGatherCfg(
-    Mc2InitTiling& mc2InitTiling,
-    Mc2CcTiling& mc2CcTiling,
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupTp);
 
-// ========== CCU 专用通信配置 ==========
-// 仅 dispatch_v2 arch35 CCU 模式
+// ========== CCU 配置 ==========
 void SetCcuCommCfg(
-    gert::TilingContext* ctx,
-    const std::string& groupEp);
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling1,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling2,
+    const std::string& groupEp,
+    const std::string& groupTp);
 
 // ========== BatchWrite 配置 ==========
-// 仅 dispatch_setup A3 模式
+// 注：当前未接入，声明与实现均暂用 #if 0 保留
+#if 0
 void SetBatchWriteCfg(
     gert::TilingContext* ctx,
     const std::string& groupEp,
     uint32_t aivNum,
     uint32_t sdmaUsedStreamPerCore);
+#endif
 
 } // namespace moe_dispatch_comm_cfg
 

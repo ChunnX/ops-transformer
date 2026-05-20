@@ -16,6 +16,8 @@
 #include "comm_cfg.h"
 #include "defs.h"
 #include "tiling/tiling_api.h"
+#include "exe_graph/runtime/tiling_context.h"
+#include "../mc2_tiling_utils.h"
 
 namespace moe_dispatch_comm_cfg {
 
@@ -40,8 +42,8 @@ struct Mc2CcTilingInner {
 
 // ========== 版本1：简化接口（dispatch_v2 使用）==========
 void SetEpAllToAllCfg(
-    Mc2InitTiling& mc2InitTiling,
-    Mc2CcTiling& mc2CcTiling,
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
     bool isLayered) {
 
@@ -63,8 +65,8 @@ void SetEpAllToAllCfg(
 
 // ========== 版本2：完整接口（teardown/setup 使用，支持 URMA）==========
 void SetEpAllToAllCfgWithUrma(
-    Mc2InitTiling& mc2InitTiling,
-    Mc2CcTiling& mc2CcTiling,
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
     bool isLayered,
     bool isUrma) {
@@ -95,8 +97,8 @@ void SetEpAllToAllCfgWithUrma(
 
 // ========== TP AllGather 配置 ==========
 void SetTpAllGatherCfg(
-    Mc2InitTiling& mc2InitTiling,
-    Mc2CcTiling& mc2CcTiling,
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupTp) {
 
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_GATHER;
@@ -108,30 +110,29 @@ void SetTpAllGatherCfg(
     mc2CcTilingConfig.GetTiling(mc2CcTiling);
 }
 
-// ========== CCU 专用通信配置 ==========
+// ========== CCU 配置 ==========
 void SetCcuCommCfg(
-    gert::TilingContext* ctx,
-    const std::string& groupEp) {
+    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling1,
+    AscendC::tiling::Mc2CcTiling& mc2CcTiling2,
+    const std::string& groupEp,
+    const std::string& groupTp) {
 
-    if (ctx == nullptr) {
-        return;
-    }
-
-    uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
+    uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_HALFALLTOALLV);
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
-    // CCU 引擎
-    mc2CcTilingConfig.SetCommEngine(moe_dispatch_defs::A5_CCU_ENGINE);
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
+    mc2CcTilingConfig.GetTiling(mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(mc2CcTiling1);
 
-    auto* tilingData = ctx->GetTilingData();
-    if (tilingData != nullptr) {
-        mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-        mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling1);
-    }
+    mc2CcTilingConfig.SetGroupName(groupTp);
+    mc2CcTilingConfig.GetTiling(mc2CcTiling2);
 }
 
 // ========== BatchWrite 配置 ==========
+// 注：当前未接入，暂用 #if 0 保留
+#if 0
 void SetBatchWriteCfg(
     gert::TilingContext* ctx,
     const std::string& groupEp,
@@ -150,11 +151,13 @@ void SetBatchWriteCfg(
     mc2CcTilingConfig.SetQueueNum(sdmaUsedStreamPerCore);
     mc2CcTilingConfig.SetCommBlockNum(aivNum);
 
-    auto* tilingData = ctx->GetTilingData();
-    if (tilingData != nullptr) {
-        mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-        mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
-    }
+    // TODO: 需指定 GetTilingData<T>() 模板参数
+    // auto* tilingData = ctx->GetTilingData<XXX>();
+    // if (tilingData != nullptr) {
+    //     mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
+    //     mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    // }
 }
+#endif
 
 } // namespace moe_dispatch_comm_cfg
