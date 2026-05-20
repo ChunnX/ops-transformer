@@ -20,22 +20,22 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         return ['ops/csrc/mixed_quant_sparse_flash_mla.cpp']
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_mixed_quant_sparse_flash_mla(Tensor q, *," \
-                                            "Tensor? ori_kv=None, Tensor? cmp_kv=None, " \
-                                            "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, " \
-                                            "Tensor? ori_block_table=None, Tensor? cmp_block_table=None, " \
-                                            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, " \
-                                            "Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, " \
-                                            "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, " \
-                                            "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, " \
-                                            "Tensor? sinks=None, Tensor? metadata=None, " \
-                                            "int quant_mode = 1, int tile_size=64, int rope_head_dim=64, " \
-                                            "float softmax_scale= 1.0, int cmp_ratio=1, " \
-                                            "int ori_mask_mode=4, int cmp_mask_mode=3, " \
-                                            "int ori_win_left=127, int ori_win_right=0, " \
-                                            "str layout_q=\"BSND\", str layout_kv=\"PA_ND\", " \
-                                            "int topk_value_mode=1, bool return_softmax_lse=False, " \
-                                            "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
+        return "npu_mixed_quant_sparse_flash_mla(Tensor q, *,"                   \
+                                "Tensor? ori_kv=None, Tensor? cmp_kv=None, "                         \
+                                "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, " \
+                                "Tensor? ori_block_table=None, Tensor? cmp_block_table=None, "       \
+                                "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, "        \
+                                "Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, "           \
+                                "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, "         \
+                                "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "       \
+                                "Tensor? sinks=None, Tensor? metadata=None, "                        \
+                                "int quant_mode = 1, int rope_head_dim=64, "                         \
+                                "float softmax_scale= 1.0, int cmp_ratio=1, "                        \
+                                "int ori_mask_mode=4, int cmp_mask_mode=3, "                         \
+                                "int ori_win_left=127, int ori_win_right=0, "                        \
+                                "str layout_q=\"BSND\", str layout_kv=\"PA_ND\", "                   \
+                                "int topk_value_mode=1, bool return_softmax_lse=False, "             \
+                                "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
         """
@@ -44,21 +44,21 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_mixed_quant_sparse_flash_mla_meta(q,
-                                                ori_kv=None, cmp_kv=None,
-                                                ori_sparse_indices=None, cmp_sparse_indices=None,
-                                                ori_block_table=None, cmp_block_table=None,
-                                                cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                                cu_seqlens_cmp_kv=None, seqused_q=None,
-                                                seqused_ori_kv=None, seqused_cmp_kv=None,
-                                                ori_topk_length=None, cmp_topk_length=None,
-                                                sinks=None, metadata=None,
-                                                quant_mode = 1, tile_size=64, rope_head_dim=64,
-                                                softmax_scale= 1.0, cmp_ratio=1,
-                                                ori_mask_mode=4, cmp_mask_mode=3,
-                                                ori_win_left=127, ori_win_right=0,
-                                                layout_q='BSND', layout_kv='PA_ND',
-                                                topk_value_mode=1, return_softmax_lse=False,
-                                                key_dtype=None, value_dtype=None):
+                                ori_kv=None, cmp_kv=None,
+                                ori_sparse_indices=None, cmp_sparse_indices=None,
+                                ori_block_table=None, cmp_block_table=None,
+                                cu_seqlens_q=None, cu_seqlens_ori_kv=None,
+                                cu_seqlens_cmp_kv=None, seqused_q=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                ori_topk_length=None, cmp_topk_length=None,
+                                sinks=None, metadata=None,
+                                quant_mode = 1, rope_head_dim=64,
+                                softmax_scale= 1.0, cmp_ratio=1,
+                                ori_mask_mode=4, cmp_mask_mode=3,
+                                ori_win_left=127, ori_win_right=0,
+                                layout_q='BSND', layout_kv='PA_ND',
+                                topk_value_mode=1, return_softmax_lse=False,
+                                key_dtype=None, value_dtype=None):
             if layout_q == "BSND":
                 ## 添加softmax_lse
                 attn_out = torch.empty(q.shape, dtype = q.dtype, device="meta")
@@ -84,38 +84,38 @@ op_module = npu_mixed_quant_sparse_flash_mla_op_builder.load()  # Compiles/loads
 
 @impl(AS_LIBRARY, npu_mixed_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
 def npu_mixed_quant_sparse_flash_mla(q,
-                                    ori_kv=None, cmp_kv=None,
-                                    ori_sparse_indices=None, cmp_sparse_indices=None,
-                                    ori_block_table=None, cmp_block_table=None,
-                                    cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                    cu_seqlens_cmp_kv=None, seqused_q=None,
-                                    seqused_ori_kv=None, seqused_cmp_kv=None,
-                                    ori_topk_length=None, cmp_topk_length=None,
-                                    sinks=None, metadata=None,
-                                    quant_mode = 1, tile_size=64, rope_head_dim=64,
-                                    softmax_scale= 1.0, cmp_ratio=1,
-                                    ori_mask_mode=4, cmp_mask_mode=3,
-                                    ori_win_left=127, ori_win_right=0,
-                                    layout_q='BSND', layout_kv='PA_ND',
-                                    topk_value_mode=1, return_softmax_lse=False,
-                                    key_dtype=None, value_dtype=None):
+                                ori_kv=None, cmp_kv=None,
+                                ori_sparse_indices=None, cmp_sparse_indices=None,
+                                ori_block_table=None, cmp_block_table=None,
+                                cu_seqlens_q=None, cu_seqlens_ori_kv=None,
+                                cu_seqlens_cmp_kv=None, seqused_q=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                ori_topk_length=None, cmp_topk_length=None,
+                                sinks=None, metadata=None,
+                                quant_mode = 1, rope_head_dim=64,
+                                softmax_scale= 1.0, cmp_ratio=1,
+                                ori_mask_mode=4, cmp_mask_mode=3,
+                                ori_win_left=127, ori_win_right=0,
+                                layout_q='BSND', layout_kv='PA_ND',
+                                topk_value_mode=1, return_softmax_lse=False,
+                                key_dtype=None, value_dtype=None):
     """
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.npu_mixed_quant_sparse_flash_mla(q,
-                                                ori_kv, cmp_kv,
-                                                ori_sparse_indices, cmp_sparse_indices,
-                                                ori_block_table, cmp_block_table,
-                                                cu_seqlens_q, cu_seqlens_ori_kv,
-                                                cu_seqlens_cmp_kv, seqused_q,
-                                                seqused_ori_kv, seqused_cmp_kv,
-                                                ori_topk_length, cmp_topk_length,
-                                                sinks, metadata,
-                                                quant_mode, tile_size, rope_head_dim,
-                                                softmax_scale, cmp_ratio,
-                                                ori_mask_mode, cmp_mask_mode,
-                                                ori_win_left, ori_win_right,
-                                                layout_q, layout_kv,
-                                                topk_value_mode, return_softmax_lse,
-                                                key_dtype, value_dtype)
+                                ori_kv, cmp_kv,
+                                ori_sparse_indices, cmp_sparse_indices,
+                                ori_block_table, cmp_block_table,
+                                cu_seqlens_q, cu_seqlens_ori_kv,
+                                cu_seqlens_cmp_kv, seqused_q,
+                                seqused_ori_kv, seqused_cmp_kv,
+                                ori_topk_length, cmp_topk_length,
+                                sinks, metadata,
+                                quant_mode, rope_head_dim,
+                                softmax_scale, cmp_ratio,
+                                ori_mask_mode, cmp_mask_mode,
+                                ori_win_left, ori_win_right,
+                                layout_q, layout_kv,
+                                topk_value_mode, return_softmax_lse,
+                                key_dtype, value_dtype)
