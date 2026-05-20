@@ -75,6 +75,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitCommStatus(GM_ADDR context);
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
@@ -214,7 +215,7 @@ private:
 };
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ InitCommStatus(GM_ADDR context)
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::InitCommStatus(GM_ADDR context)
 {
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ = context_->epRankId;
@@ -737,4 +738,4 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 }
 
 } // namespace BandwidthTestImpl
-#endif // BANDWIDTH_TEST_H
+#endif // BANDWIDTH_URMA_TEST_H
