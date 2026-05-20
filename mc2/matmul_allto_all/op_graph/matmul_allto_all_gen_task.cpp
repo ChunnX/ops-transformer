@@ -13,7 +13,6 @@
  * \brief
  */
 #include <vector>
-#include <cstring>
 #include <platform/platform_info.h>
 #include "common/utils/op_mc2.h"
 
@@ -28,17 +27,17 @@ namespace ops {
 
 static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *context, uint8_t &commMode)
 {
-    const char *commModeStr = nullptr;
-    if (!context->GetStrAttrVal("comm_mode", commModeStr) || commModeStr == nullptr) {
+    ge::AscendString commModeStr;
+    if (!context->GetStrAttrVal("comm_mode", commModeStr)) {
         OPS_LOG_E(context->GetNodeName(), "Failed to get comm_mode attr.");
         return ge::GRAPH_FAILED;
     }
 
-    if (std::strcmp(commModeStr, "ccu") == 0) {
+    if (commModeStr == ge::AscendString("ccu")) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strcmp(commModeStr, "aicpu") == 0) {
+    } else if (commModeStr == ge::AscendString("aicpu")) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strcmp(commModeStr, "default") == 0) {
+    } else if (commModeStr == ge::AscendString("default")) {
         int64_t worldSize = 0;
         if (!context->GetIntAttrVal("world_size", worldSize) || worldSize <= 0) {
             OPS_LOG_E(context->GetNodeName(), "Failed to get valid world_size for default comm_mode.");
@@ -46,7 +45,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         }
         commMode = (worldSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
-        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", commModeStr);
+        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", commModeStr.GetString());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -61,7 +60,7 @@ ge::Status MatmulAlltoAllGenTaskCallback(const gert::ExeResGenerationContext *co
 static ge::Status MatmulAlltoAllCalcOpParamFunc(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+        uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
         auto ret = GetCommModeFromAttrs(context, commMode);
         if (ret != ge::GRAPH_SUCCESS) {
             return ret;
@@ -81,7 +80,7 @@ static ge::Status MatmulAlltoAllGenTaskFunc(const gert::ExeResGenerationContext 
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+        uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
         auto ret = GetCommModeFromAttrs(context, commMode);
         if (ret != ge::GRAPH_SUCCESS) {
             return ret;
