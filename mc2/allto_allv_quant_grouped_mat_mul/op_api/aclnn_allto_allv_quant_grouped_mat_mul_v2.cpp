@@ -55,9 +55,6 @@ enum class QuantModeType : int64_t {
     MX_QUANT = 6,
 };
 
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);
-
 // 需要使用的常量定义
 static constexpr size_t TWO_DIMS = 2U;
 static constexpr size_t THREE_DIMS = 3U;
@@ -115,7 +112,7 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
 
 static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
     if (gmmWeight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmulV2, input gmmWeight should not be null.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
         return false;
     }
     OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
@@ -386,7 +383,7 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
     // 检查参数是否为空
     CHECK_RET(CheckNotNull(gmmX, gmmWeight, gmmY, gmmXScale, gmmWeightScale, gmmXQuantMode, gmmWeightQuantMode),
               ACLNN_ERR_PARAM_INVALID);
-    OP_LOGD("AlltoAllvQuantGroupedMatmulV2 checkParams success");
+    OP_LOGD("AlltoAllvQuantGroupedMatmul checkParams success");
     return ACLNN_SUCCESS;
 }
 
@@ -394,17 +391,48 @@ extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype,
+    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype, const char *commMode,
     aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMul(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
+static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
+    // 获取卡数
+    uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
+#endif
+
+    // 获取通信引擎参数
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (std::strcmp(commModeStr, "aicpu") == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+        } else if (std::strcmp(commModeStr, "default") == 0) {
+            // default：小于等于8P走CCU，否则走AICPU
+            if (rankSize <= 8) {
+                commModeEnum = Mc2Comm::COMM_MODE_CCU;
+            } else {
+                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+            }
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
@@ -413,20 +441,28 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
     int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, aclTensor *gmmY, aclTensor *mmYOptional,
     aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    char *str_commMode = const_cast<char *>(commMode);
     int64_t yDtype = gmmY->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
 
+    uint8_t commModeEnum = 0;
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
-        mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, commMode, epWorldSize, sendCounts,
+        mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
-        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, gmmY, mmYOptional, permuteOutOptional,
+        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional, permuteOutOptional,
         workspaceSize, executor);
-    OP_LOGD("AlltoAllvQuantGroupedMatmulV2, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    if (*executor != nullptr) {
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
+        NnopbaseSetUserHandle(executor, args);
+    }
+    OP_LOGD("AlltoAllvQuantGroupedMatmul, aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize ret %d.", ret);
     return ret;
 }
 
-extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
+extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
@@ -504,61 +540,36 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
         mmXQuantMode, mmWeightQuantMode, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
-    aclnnStatus ret = InnerAlltoAllvQuantGroupedMatmulV2GetWorkspaceSize(
+    aclnnStatus ret = InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, transposeGmmWeight, gmmXScale, transposeGmmWeightScale,
         sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
         mmXScaleOptional, transMmWeightScaleOptional, group, commMode, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight,
         permuteOutFlag, mmXQuantMode, mmWeightQuantMode, groupSize, gmmY, mmYOptional,
         permuteOutOptional, workspaceSize, executor);
-
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
-        char* commModePtr = new char[strlen(commMode) + 1];
-        if (commModePtr != nullptr) {
-            strcpy(commModePtr, commMode);
-            NnopbaseSetUserHandle(*executor, commModePtr);
-            OP_LOGD("A2AV_QUANT_GMM_V2 GetWorkspaceSize set commMode=%s", commMode);
-        }
-    }
-
-    //获取卡数待补充
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(aclnnRet = ACLNN_SUCCESS, aclnnRet);
-#endif
-
-    char* commModePtr = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+    OP_LOGD("AlltoAllvQuantGroupedMatmul, InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize ret %d.", ret);
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (commModePtr != nullptr) {
-                OP_LOGD("A2AV_QUANT_GMM_V2 Execute commMode=%s", commModePtr);
-                if (strcmp(commModePtr, "aicpu") == 0) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-                } else if (strcmp(commModePtr, "ccu") == 0) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-                }
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
-                if (rankSize <= 8) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-                } else {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-                }
+                OP_LOGD("arch35, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }
     }
     return ret;
 }
 
-extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatmulV2(void *workspace, uint64_t workspaceSize,
+extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
+    
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMul(workspace, workspaceSize, executor, stream);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnInnerAlltoAllv interface call failed.");
-        return ACLNN_ERR_INNER;
-    }
     return ret;
 }
 } // namespace
