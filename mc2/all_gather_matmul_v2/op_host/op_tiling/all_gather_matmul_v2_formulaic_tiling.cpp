@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file all_gather_formulaic_tiling.cpp
+ * \file all_gather_matmul_v2_formulaic_tiling.cpp
  * \brief
  */
 #include <iostream>
 #include "mc2_log.h"
-#include "all_gather_formulaic_tiling.h"
+#include "all_gather_matmul_v2_formulaic_tiling.h"
 
 void AllGatherPlusMMV2::PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime)
 {
