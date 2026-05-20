@@ -950,11 +950,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
+        // valid=false 不能直接 continue, 否则该核跳过本 expert 的 SyncAll 而其它核还在等
+        // → 死锁。改成 if(valid){ ...dispatch... } 包住主体, 末尾的 SyncAll<true>() 大家都到达。
+        uint64_t m_i = valid ? Get<M_VALUE>(problemShape_) : 0;
+        uint64_t waveCnt = valid ? (m_i + L1_TILE_M - 1) / L1_TILE_M : 0;
         if (!valid) {
+            // SyncAll<true>() 在 if(valid) 之外, 保证 invalid 路径也会 sync
+            SyncAll<true>();
             continue;
         }
-        uint64_t m_i = Get<M_VALUE>(problemShape_);
-        uint64_t waveCnt = (m_i + L1_TILE_M - 1) / L1_TILE_M;
 
         // 按本 expert 的 waveCnt 决定分组：让 wavesParallel 尽量等于 waveCnt
         uint32_t maxGroups = blockNum_ / minCoresPerWaveGmm1;
@@ -1018,13 +1022,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                             tileNumGmm1, tileNumGmm2, waveCnt, m_i);
         }
 #endif
-        if constexpr (g_coreType == AscendC::AIC) {
+        // 单核 V 调度: blockIdx_=0 的 AIV0 当 scheduler, 它的 AIC/AIV1 idle (但 sub1 仍
+        // 在外层负责 dispatch prefetch — 这里只是 main loop 不参与 GMM)。workers = bk ∈ [1, blockNum)。
+        if (blockIdx_ == 0U) {
+            if constexpr (g_coreType == AscendC::AIV) {
+                if (subBlockIdx_ == 0) {
+                    MegaMoeImpl::SchedulerLoop<
+                        QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                        params_, problemShape_, baseOffset_,
+                        static_cast<int32_t>(rankId_), expertIdx, blockNum_,
+                        waveCnt, m_i, tileNumGmm1, tileNumGmm2);
+                }
+                // sub1 idle (dispatch prefetch 在外层已做)
+            }
+            // AIC bk=0 idle: 它的 paired AIV0 是 scheduler, 无法做 GMM1 epi
+        } else if constexpr (g_coreType == AscendC::AIC) {
             MegaMoeImpl::DynamicAicLoop<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                 epilogueOp_, params_, problemShape_, baseOffset_,
                 static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
-                expertIdx, static_cast<uint32_t>(maxWavesPerExpert_),
-                waveCnt, m_i, tileNumGmm1, tileNumGmm2);
+                expertIdx, tileNumGmm1, tileNumGmm2);
         } else if (subBlockIdx_ == 0) {
             MegaMoeImpl::DynamicAiv0Loop<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
@@ -1041,6 +1058,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         waveTraceIdx_ += static_cast<int>(waveCnt);  // 给 trace 留 waveCnt 个 slot
         Get<M_VALUE>(problemShape_) = m_i;
+
+        // ★ Expert 边界 SyncAll: scheduler 和 worker 必须步调一致进下一 expert,
+        //   否则 scheduler 在本 expert timeout 期间 worker 已进下一 expert 空轮也 timeout,
+        //   级联到下个 expert 时彻底卡死 (实测 print7.log 现象)。
+        //   开销: 每 expert 一次 SyncAll<true>() ≈ 几 us, 总共几次, 可接受。
+        SyncAll<true>();
     }
 
     // ★ 全部 expert 跑完后：dynamic 路径在每个 expert 内部已经自己 drain 干净 NotifyCube
