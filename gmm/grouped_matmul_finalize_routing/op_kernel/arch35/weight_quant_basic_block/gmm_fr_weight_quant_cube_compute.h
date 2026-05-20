@@ -24,7 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common/tool.h"
+#include "../common/finalize_routing_arch35_common.h"
 
 using AscendC::Dn2NzParams;
 using AscendC::GetBlockIdx;
