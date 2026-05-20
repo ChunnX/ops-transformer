@@ -246,6 +246,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
     GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
 {
+    PRINTF("BandwidthUramaTestImpl Init start\n");
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
     // ============ 从tiling获取配置参数 ============
@@ -261,94 +262,94 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
 
     // ============ 初始化窗口状态 ============
     // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
-    InitCommStatus(context);
+    //InitCommStatus(context);
 
-    // ============ 设置全局张量 ============
-    xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
-    expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
-    yGMTensor_.SetGlobalBuffer((__gm__ YType*)y);
-    receiveCntGMTensor_.SetGlobalBuffer((__gm__ int32_t*)receiveCnt);
+    // // ============ 设置全局张量 ============
+    // xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
+    // expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
+    // yGMTensor_.SetGlobalBuffer((__gm__ YType*)y);
+    // receiveCntGMTensor_.SetGlobalBuffer((__gm__ int32_t*)receiveCnt);
 
-    yGM_ = y;
-    receiveCntGM_ = receiveCnt;
+    // yGM_ = y;
+    // receiveCntGM_ = receiveCnt;
 
-    // ============ 计算对齐参数 ============
-    hOutSize_ = axisH_ * sizeof(XType);                             // 原始hidden size
-    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
-    hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
-    hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
-    hOutAlignUbSize_ = hAlignSize_;
+    // // ============ 计算对齐参数 ============
+    // hOutSize_ = axisH_ * sizeof(XType);                             // 原始hidden size
+    // hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
+    // hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
+    // hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
+    // hOutAlignUbSize_ = hAlignSize_;
 
-    // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
-    uint32_t axisMaxBS = globalBS_ / epWorldSize_;
-    expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
-
-
-    // ============ 计算状态等待的任务分发 ============
-    // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
-    stateOffset_ = 32UL;  // 32字节
-    rscvStatusNum_ = epWorldSize_;
-    recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
-    remainderRankNum_ = rscvStatusNum_ % aivNum_;
-    startStatusIndex_ = recStatusNumPerCore_ * aivId_;
-    if (aivId_ < remainderRankNum_) {
-        recStatusNumPerCore_ += 1;
-        startStatusIndex_ += aivId_;
-    } else {
-        startStatusIndex_ += remainderRankNum_;
-    }
-
-    // ============ 初始化状态缓冲区 ============
-    uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
-    uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
-    tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    totalUsedUB_ += statusBufSize;
-    statusTensor_ = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
-    // statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
-
-    // 初始化状态为 1.0f (0x3F800000)，用于状态同步
-    sumTarget_ = static_cast<float>(1.0);
-    uint64_t mask[2] = { 0x101010101010101, 0 };
-    PipeBarrier<PIPE_V>();
-    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
-
-    // ============ 计算窗口数据区偏移 ============
-    // uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    // winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
-    // windowGM_ = GetWindAddrByRankId(epRankId_);
-    // windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
+    // // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
+    // uint32_t axisMaxBS = globalBS_ / epWorldSize_;
+    // expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
 
 
+    // // ============ 计算状态等待的任务分发 ============
+    // // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
+    // stateOffset_ = 32UL;  // 32字节
+    // rscvStatusNum_ = epWorldSize_;
+    // recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
+    // remainderRankNum_ = rscvStatusNum_ % aivNum_;
+    // startStatusIndex_ = recStatusNumPerCore_ * aivId_;
+    // if (aivId_ < remainderRankNum_) {
+    //     recStatusNumPerCore_ += 1;
+    //     startStatusIndex_ += aivId_;
+    // } else {
+    //     startStatusIndex_ += remainderRankNum_;
+    // }
 
-    // ============ 初始化其他缓冲区 ============
-    uint32_t expertIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-    uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
-    tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize);
-    totalUsedUB_ += expertIdsBufSize;
-    expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
+    // // ============ 初始化状态缓冲区 ============
+    // uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
+    // uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
+    // tpipe_->InitBuffer(statusBuf_, statusBufSize);
+    // totalUsedUB_ += statusBufSize;
+    // statusTensor_ = statusBuf_.Get<int32_t>();
+    // Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
+    // // statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
 
-    uint32_t hFp32Size = axisH_ * sizeof(float);
-    uint32_t maxSize = expertIdsSize;
-    maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
-    tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
-    totalUsedUB_ += maxSize;
+    // // 初始化状态为 1.0f (0x3F800000)，用于状态同步
+    // sumTarget_ = static_cast<float>(1.0);
+    // uint64_t mask[2] = { 0x101010101010101, 0 };
+    // PipeBarrier<PIPE_V>();
+    // Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
 
-    workLocalTensor_ = gatherMaskOutBuf_.Get<float>();
+    // // ============ 计算窗口数据区偏移 ============
+    // // uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    // // winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
+    // // windowGM_ = GetWindAddrByRankId(epRankId_);
+    // // windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
 
-    tpipe_->InitBuffer(dstExpBuf_, maxSize);
-    totalUsedUB_ += maxSize;
-    tpipe_->InitBuffer(subExpBuf_, maxSize);
-    totalUsedUB_ += maxSize;
 
-    // ============ 初始化数据队列 ============
-    uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
-    bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
-    tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
 
-    dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
-    subExpIdTensor_ = subExpBuf_.Get<int32_t>();
+    // // ============ 初始化其他缓冲区 ============
+    // uint32_t expertIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    // uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    // uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
+    // tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize);
+    // totalUsedUB_ += expertIdsBufSize;
+    // expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
+
+    // uint32_t hFp32Size = axisH_ * sizeof(float);
+    // uint32_t maxSize = expertIdsSize;
+    // maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
+    // tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
+    // totalUsedUB_ += maxSize;
+
+    // workLocalTensor_ = gatherMaskOutBuf_.Get<float>();
+
+    // tpipe_->InitBuffer(dstExpBuf_, maxSize);
+    // totalUsedUB_ += maxSize;
+    // tpipe_->InitBuffer(subExpBuf_, maxSize);
+    // totalUsedUB_ += maxSize;
+
+    // // ============ 初始化数据队列 ============
+    // uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
+    // bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
+    // tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+
+    // dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
+    // subExpIdTensor_ = subExpBuf_.Get<int32_t>();
 }
 
 template <TemplateBandwidthTestTypeClass>
