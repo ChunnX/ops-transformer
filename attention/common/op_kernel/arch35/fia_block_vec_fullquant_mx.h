@@ -640,11 +640,11 @@ public:
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         if (likely(runInfo.actVecMSize != 0)) {
             int64_t dstOffset =
-                constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * (runInfo.actMSize - runInfo.actVecMSize) +
+                constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *  + runInfo.actVecMSizeAlign16
                 s2BaseSizeCur * mBaseSize * subLoop;
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor,
-                     {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSize,
-                      (uint16_t)(vec1Srcstride - runInfo.actVecMSize), (uint16_t)(mBaseSize - runInfo.actVecMSize)});
+                     {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSizeAlign16,
+                      (uint16_t)(vec1Srcstride - runInfo.actVecMSizeAlign16), (uint16_t)(mBaseSize - runInfo.actVecMSizeAlign16)});
         }
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
@@ -665,7 +665,7 @@ public:
             return;
         }
 
-        int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
+        int64_t vec2CalcSize = runInfo.actVecMSizeAlign16 * dTemplateAlign64;
         float deSCaleVValue = 1.0f;
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
@@ -680,11 +680,11 @@ public:
             float deSCalePreVValue = 1.0f;
             if (!runInfo.isLastS2Loop) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64, 1.0, 1.0);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSizeAlign16, dTemplateAlign64, 1.0, 1.0);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64, 1.0,
+                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSizeAlign16, dTemplateAlign64, 1.0,
                     1.0);
             }
         }
@@ -693,9 +693,9 @@ public:
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
+                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSizeAlign16, (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
-            CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
+            CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSizeAlign16);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }

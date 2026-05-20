@@ -922,7 +922,7 @@ public:
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MMParam param = MakeMMParam((uint32_t)((mBaseSize + 31) >> 5 << 5), (uint32_t)constInfo.dSizeV,
+            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
                                         (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE,
                                         false, false, k == 0, k == 0);
             if constexpr (!USE_DN) {
