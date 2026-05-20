@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/dispatch_layout_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_log.h"
