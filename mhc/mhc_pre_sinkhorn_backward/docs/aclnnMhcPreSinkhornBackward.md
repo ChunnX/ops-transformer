@@ -542,7 +542,6 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
       <tr>
         <td>C不符合大于0 小于 100000 且可以被128整除的要求。</td>
       </tr>
-
         </tbody>
     </table>
 
