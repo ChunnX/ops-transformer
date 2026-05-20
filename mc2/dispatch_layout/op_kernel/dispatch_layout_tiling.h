@@ -19,7 +19,6 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-namespace Moe {
 struct DispatchLayoutInfo {
     uint32_t numTokens;
     uint32_t numRanks;
@@ -34,6 +33,5 @@ struct DispatchLayoutTilingData {
     Mc2CcTiling mc2CcTiling1;
     DispatchLayoutInfo dispatchLayoutInfo;
 };
-} // namespace Moe
 
 #endif // DISPATCH_LAYOUT_TILING_H

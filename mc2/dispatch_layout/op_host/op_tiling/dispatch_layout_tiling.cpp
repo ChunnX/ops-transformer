@@ -27,11 +27,13 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 
+using namespace Mc2Tiling;
 using namespace ge;
 using namespace AscendC;
 
 namespace {
-constexpr const char *OPS_UTILS_LOG_SUB_MOD_NAME = "DISPATCH_LAYOUT";
+constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 4U * 1024UL * 1024UL;
+constexpr uint64_t NOTIFY_DISPATCH_WIN_OFFSET = 204U * 1024UL * 1024UL;
 constexpr uint32_t INPUT_TOPK_IDX_INDEX = 0;
 
 constexpr uint32_t OUTPUT_NUM_TOKEN_PER_RANK_INDEX = 0;
