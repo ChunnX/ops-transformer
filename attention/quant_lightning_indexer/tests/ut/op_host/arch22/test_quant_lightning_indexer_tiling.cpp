@@ -100,7 +100,7 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_1)
 
     int64_t expectTilingKey = 570622466;
     std::string expectTilingData =
-        "3 16 2199023255936 0 64 0 ";
+        "3 824633720848 2199023255936 0 64 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
