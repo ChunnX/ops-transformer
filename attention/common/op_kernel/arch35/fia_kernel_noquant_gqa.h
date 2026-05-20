@@ -100,6 +100,7 @@ public:
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
     int64_t task_i_prev_ = 0;
+    int64_t task_i_curr = 0;
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -367,7 +368,7 @@ public:
         }
     }
 
-    __aicore__ inline uint32_t ComputeFlatTaskIdx()
+    __aicore__ inline int64_t ComputeFlatTaskIdx()
     {
         if (coreGS1Loops % 2 == 0) {
             return coreGS1Loops * constInfo.coreNum + constInfo.aicIdx;
@@ -426,12 +427,12 @@ public:
 
         if (enableS1OutSplit) {
             ClacS1OutSplitLoopTimes();
-            task_i_prev_ = static_cast<int64_t>(ComputeFlatTaskIdx());
+            task_i_prev_ = 0;
         }
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
-        // PRINTF("zzyzzy constInfo.aicIdx:%d, varlenCalcTimes:%lld, bSize:%d, n2Size:%d, gSize:%d\n", constInfo.aicIdx, varlenCalcTimes, constInfo.bSize, constInfo.n2Size, constInfo.gSize);
+        PRINTF("zzyzzy constInfo.aicIdx:%d, varlenCalcTimes:%lld, bSize:%d, n2Size:%d, gSize:%d\n", constInfo.aicIdx, varlenCalcTimes, constInfo.bSize, constInfo.n2Size, constInfo.gSize);
         while (shouldDispatchTask || shouldExecuteTask) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
@@ -456,7 +457,7 @@ public:
             // 执行任务
             shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
             if (shouldExecuteTask) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
+                // ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
             }
         }
@@ -465,7 +466,7 @@ public:
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if (enableS1OutSplit) {
-            return bN2Cur < constInfo.bSize * constInfo.n2Size;
+            return coreGS1Loops < varlenCalcTimes;
         }
         return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
     }
@@ -503,6 +504,11 @@ public:
                    bIdx, constInfo.bSize, constInfo.actualSeqLenKVSize,
                    rawActSeqLenKv, (uint64_t)constInfo.actualKVPrefixSize, actSeqLensKv, actSeqLensQ);
         }
+
+        if (SkipForS1OutSplit()) {
+            return TASK_DEAL_MODE::SKIP_S1OUT;
+        }
+
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
@@ -528,8 +534,8 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (SkipForS1OutSplit()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
+        if (curS2Start >= curS2End) {
+            return TASK_DEAL_MODE::SKIP;
         }
 
         if (s2Cur < curS2Start) {
@@ -538,10 +544,6 @@ public:
 
         if (s2Cur >= curS2End) {
             return TASK_DEAL_MODE::S2_END;
-        }
-
-        if (curS2Start >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
         }
 
         if (s2Cur == curS2Start) {
@@ -663,7 +665,7 @@ public:
 
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
-                // PRINTF("zzyzzy ET:%lld Vec2 aicIdx:%u bloop:%lld bIdx:%u gS1Cur:%u\n", loop, constInfo.aicIdx, runInfoNegN.loop, runInfoNegN.bIdx, runInfoNegN.gS1Idx / mBaseSize);
+                PRINTF("zzyzzy ET:%lld Vec2 aicIdx:%u bloop:%lld bIdx:%u gS1Cur:%u\n", loop, constInfo.aicIdx, runInfoNegN.loop, runInfoNegN.bIdx, runInfoNegN.gS1Idx / mBaseSize);
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
                 } else {
@@ -813,146 +815,84 @@ public:
 
     __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
     {
-        if (bN2Cur / constInfo.n2Size >= constInfo.bSize) {
-            PRINTF("zzyzzy SENTINEL: aicIdx:%u coreGS1:%u varlenCalc:%u\n", constInfo.aicIdx, coreGS1Loops, varlenCalcTimes);
-            coreGS1Loops = varlenCalcTimes;
+        if (coreGS1Loops >= varlenCalcTimes) {
+            PRINTF("zzyzzy FINISHED\n");
             return;
         }
-        uint32_t task_i_curr = ComputeFlatTaskIdx();
-        int64_t gS1Skip = static_cast<int64_t>(task_i_curr) - task_i_prev_;
-        // PRINTF("task_i_curr:%u, task_i_prev_:%lld\n", task_i_curr, task_i_prev_);
+        // if (bN2Cur / constInfo.n2Size >= constInfo.bSize) {
+        //     PRINTF("zzyzzy ERROR: aicIdx:%u coreGS1:%u varlenCalc:%u\n", constInfo.aicIdx, coreGS1Loops, varlenCalcTimes);
+        //     coreGS1Loops = varlenCalcTimes;
+        //     return;
+        // }
+        task_i_curr = ComputeFlatTaskIdx();
+
+        int64_t gS1Skip = task_i_curr - task_i_prev_;
+        accGS1Loops += gS1Skip;
+        PRINTF("bN2Cur:%d, gS1Cur:%d, task_i_curr:%u, task_i_prev_:%lld, gS1Skip:%lld, accGS1Loops:%lld\n", bN2Cur, gS1Cur, task_i_curr, task_i_prev_, gS1Skip, accGS1Loops);
         task_i_prev_ = task_i_curr;
-        if (gS1Skip <= 0) {
-            int64_t rawQLen = static_cast<int64_t>(actSeqLensQ);
-            if (rawQLen <= 0) {
-                return;
-            }
 
-            uint64_t gS1Size = static_cast<uint64_t>(rawQLen) * constInfo.gSize;
-            uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
-            uint32_t oldGS1Cur = gS1Cur;
-
-            int64_t preTokenLeftUp = 0;
-            int64_t nextTokenLeftUp = 0;
-            GetPreNextTokenLeftUp(rawQLen, static_cast<int64_t>(actSeqLensKv),
-                                  preTokenLeftUp, nextTokenLeftUp);
-
-            int64_t nextTokensError = (nextTokenLeftUp < 0) ? -nextTokenLeftUp : 0;
-            nextTokensError = nextTokensError > rawQLen ? rawQLen : nextTokensError;
-
-            uint32_t gS1Offset;
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                          LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                gS1Offset = nextTokensError * static_cast<int64_t>(constInfo.gSize) / mBaseSize;
-                if (gS1Cur < gS1Offset) {
-                    gS1Cur = gS1Offset;
-                }
-                if (gS1Cur >= gS1LoopTimes) {
-                    gS1Cur = (gS1LoopTimes > 0U) ? (gS1LoopTimes - 1U) : 0U;
-                }
-            } else {
-                gS1Offset = static_cast<uint32_t>(nextTokensError / mBaseSize);
-                uint32_t gS1PerGroup = (static_cast<uint32_t>(rawQLen) + mBaseSize - 1) / mBaseSize;
-                uint32_t gS1CurInGroup = gS1Cur % gS1PerGroup;
-                if (gS1CurInGroup < gS1Offset) {
-                    gS1Cur = (gS1Cur / gS1PerGroup) * gS1PerGroup + gS1Offset;
-                }
-                if (gS1Cur >= gS1LoopTimes) {
-                    gS1Cur = (gS1LoopTimes > 0U) ? (gS1LoopTimes - 1U) : 0U;
-                }
-            }
-
-            // sparse调整未推进gS1Cur时(SKIP场景), 手动推进避免死循环
-            if (gS1Cur == oldGS1Cur && gS1LoopTimes > 0U) {
-                if (gS1Cur + 1 < gS1LoopTimes) {
-                    gS1Cur++;
-                } else {
-                    // 已到当前batch末尾, 转为gS1Skip>0走跨batch逻辑
-                    gS1Skip = 1;
-                }
-            }
-            if (gS1Skip <= 0) {
-            // PRINTF("gS1Skip<=0, bN2Cur:%u, rawQLen:%lld, preT:%lld, nextT:%lld, nextTokErr:%lld, gS1LT:%llu, gS1Off:%u, gS1Cur:%u\n", bN2Cur, rawQLen, preTokenLeftUp, nextTokenLeftUp, nextTokensError, gS1LoopTimes, gS1Offset, gS1Cur);
-                return;
-            }
+        if(gS1Skip == 0) {
+            return;
         }
+
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = actSeqLensQ == 0 ? gS1Size : (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t gS1RemainCurBN2 = gS1LoopTimes - gS1Cur;
+        PRINTF("gS1Skip:%d, gS1RemainCurBN2:%d\n", gS1Skip, gS1RemainCurBN2);
+        // gS1Skip 不超过当前BN2剩余的S1G，则只需要更新gS1Cur
+        if (gS1Skip < gS1RemainCurBN2) {
+            gS1Cur += gS1Skip;
+            return;
+        }
+
+        // 先跳过当前BN2剩余的S1G，再跳N2
+        gS1Skip = gS1Skip - gS1RemainCurBN2;
+        gS1Cur = 0;
+        bN2Cur++;
 
         uint32_t n2Size = constInfo.n2Size;
         uint32_t bIdx = bN2Cur / n2Size;
         uint32_t n2Idx = bN2Cur % n2Size;
-
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (gS1LoopTimes == 0) {
-            uint32_t gS1RemainN2 = n2Size - n2Idx - 1;
-            if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
-                bN2Cur = bIdx * n2Size + n2Idx + static_cast<uint32_t>(gS1Skip);
-                gS1Cur = 0;
-                return;
-            }
-            gS1Skip -= gS1RemainN2;
-        } else {
-            uint32_t gS1First = 0;
-            uint32_t gS1Last = gS1LoopTimes - 1;
-            uint32_t gS1Valid = gS1LoopTimes;
-
-            uint32_t gS1Remain = (gS1Cur < gS1Last) ? (gS1Last - gS1Cur) : 0;
-            if (static_cast<uint32_t>(gS1Skip) <= gS1Remain) {
-                gS1Cur += gS1Skip;
-                return;
-            }
-            gS1Skip -= gS1Remain;
-
-            uint32_t gS1RemainN2 = gS1Valid * (n2Size - n2Idx - 1);
-            if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
-                uint32_t pos = (gS1Skip > 0) ? (static_cast<uint32_t>(gS1Skip) - 1) : 0;
-                uint32_t n2IdxNew = n2Idx + 1 + pos / gS1Valid;
-                gS1Cur = gS1First + pos % gS1Valid;
-                bN2Cur = bIdx * n2Size + n2IdxNew;
-                return;
-            }
-            gS1Skip -= gS1RemainN2;
+        // 跳N2
+        uint64_t gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
+        PRINTF("update n2Idx:%d, n2Size:%d, gS1RemainCurBatch:%d, gS1Skip:%d, bIdx:%d \n", n2Idx, n2Size, gS1RemainCurBatch, gS1Skip, bIdx);
+        // 这个batch剩余的N2足够 gS1Skip
+        if (gS1Skip < gS1RemainCurBatch) {
+            bN2Cur += gS1Skip / gS1LoopTimes;
+            gS1Cur = gS1Skip % gS1LoopTimes;
+            return;
         }
+        // 先跳过当前Batch剩余的N2，再跳batch
+        gS1Skip -= gS1RemainCurBatch;
+        n2Idx = 0;
+        bIdx++;
+        PRINTF("update bIdx:%d, n2Idx:%d, gS1Skip:%d\n", bIdx, n2Idx, gS1Skip);
 
-        // PRINTF("after gS1RemainN2 gS1Skip:%lld, gS1LoopTimes:%lld\n", gS1Skip, gS1LoopTimes);
-        while (true) {
-            bIdx++;
-            if (bIdx >= constInfo.bSize) {
-                bN2Cur = constInfo.bSize * n2Size;
-                gS1Cur = 0;
-                return;
-            }
+        // 跳batch
+        while (bIdx < constInfo.bSize) {
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
-            PRINTF("S1OUSP set: bIdx:%u bSize:%u kvSize:%u rawKv:%llu +prefix:%llu -> actKv:%llu actQ:%llu\n",
+            PRINTF("update Batch bIdx:%u bSize:%u kvSize:%u rawKv:%llu +prefix:%llu -> actKv:%llu actQ:%llu\n",
                    bIdx, constInfo.bSize, constInfo.actualSeqLenKVSize,
                    actSeqLensKv, (uint64_t)constInfo.actualKVPrefixSize, actSeqLensKv + constInfo.actualKVPrefixSize, actSeqLensQ);
             actSeqLensKv += constInfo.actualKVPrefixSize;
             gS1Size = actSeqLensQ * constInfo.gSize;
-            gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-            uint32_t gS1RemainN2;
-            if (gS1LoopTimes == 0) {
-                gS1RemainN2 = n2Size;
-            } else {
-                gS1RemainN2 = gS1LoopTimes * n2Size;
+            gS1LoopTimes = actSeqLensQ == 0 ? gS1Size : (gS1Size + mBaseSize - 1) / mBaseSize;
+            if (n2Size * gS1LoopTimes < gS1Skip) {
+                bIdx++;
+                gS1Skip -= n2Size * gS1LoopTimes;
+                continue;
             }
-            // PRINTF("bIdx:%u, actSeqLensQ:%llu, gS1Cur:%u, gS1Skip:%lld, gS1RemainN2:%u, gS1LoopTimes:%llu\n", bIdx, actSeqLensQ, gS1Cur, gS1Skip, gS1RemainN2, gS1LoopTimes);
-            if (static_cast<uint32_t>(gS1Skip) <= gS1RemainN2) {
-                uint32_t pos = (gS1Skip > 0) ? (static_cast<uint32_t>(gS1Skip) - 1) : 0;
-                if (gS1LoopTimes == 0) {
-                    bN2Cur = bIdx * n2Size + pos;
-                    gS1Cur = 0;
-                } else {
-                    uint32_t gS1Valid = gS1LoopTimes;
-                    uint32_t n2IdxNew = pos / gS1Valid;
-                    gS1Cur = pos % gS1Valid;
-                    bN2Cur = bIdx * n2Size + n2IdxNew;
-                }
-                return;
-            }
-            gS1Skip -= gS1RemainN2;
+
+            gS1Cur = gS1Skip % gS1LoopTimes;
+            n2Idx = (gS1Skip / gS1LoopTimes) % n2Size;
+            bN2Cur = bIdx * n2Size + n2Idx;
+            return;
         }
+
+        // 所有batch已经执行完
+        bN2Cur = constInfo.bSize * n2Size;
+        PRINTF("zzyzzy update FINISHED\n");
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
@@ -970,28 +910,12 @@ public:
         // 当前BN2未处理完
         s2Cur = 0;
         if (enableS1OutSplit) {
-            if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-                accGS1Loops = ComputeFlatTaskIdx();
-                S1OutSplitUpdatePos(bN2Cur, gS1Cur);
-                return;
+            if (taskDealMode != TASK_DEAL_MODE::SKIP_S1OUT) {
+                coreGS1Loops++;
             }
-            coreGS1Loops++;
-            accGS1Loops = ComputeFlatTaskIdx();
-            if (taskDealMode != TASK_DEAL_MODE::SKIP) {
-                createdTaskCount = executedTaskCount;
-            }
-            // PRINTF("bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
+            PRINTF("befor bN2Cur:%d, gS1Cur:%d, coreGS1Loops:%d, accGS1Loops:%d\n", bN2Cur, gS1Cur, coreGS1Loops, accGS1Loops);
             S1OutSplitUpdatePos(bN2Cur, gS1Cur);
-            if (bN2Cur / constInfo.n2Size < constInfo.bSize) {
-                uint64_t gS1Sz = actSeqLensQ * constInfo.gSize;
-                uint64_t gS1LT = (gS1Sz + mBaseSize - 1) / mBaseSize;
-                if (gS1LT > 0U && gS1Cur >= gS1LT) {
-                    PRINTF("zzyzzy FATAL: S1OUSP gS1Cur(%u)>=gS1LT(%llu) aicIdx:%u bN2Cur:%u coreGS1:%u\n",
-                           gS1Cur, gS1LT, constInfo.aicIdx, bN2Cur, coreGS1Loops);
-                    while (1) {}
-                }
-            }
-            // PRINTF("update bN2Cur:%d, gS1Cur:%d\n", bN2Cur, gS1Cur);
+            PRINTF("after bN2Cur:%d, gS1Cur:%d, coreGS1Loops:%d, accGS1Loops:%d\n", bN2Cur, gS1Cur, coreGS1Loops, accGS1Loops);
             return;
         }
 
@@ -1003,12 +927,12 @@ public:
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-            if (!SkipForS1OutSplit()) {
-                coreGS1Loops++;
-            }
-            accGS1Loops++;
-        }
+        // if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+        //     if (!SkipForS1OutSplit()) {
+        //         coreGS1Loops++;
+        //     }
+        //     accGS1Loops++;
+        // }
 
         // 当前BN2已处理完
         gS1Cur = 0;
