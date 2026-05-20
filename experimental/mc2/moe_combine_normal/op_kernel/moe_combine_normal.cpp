@@ -19,7 +19,7 @@
 #include "moe_combine_normal_tiling.h"
 
 using namespace AscendC;
-using namespace ops::experimental::moe;
+using namespace MoeCombineNormalImpl;
 
 extern "C" __global__ __aicore__ void moe_combine_normal(GM_ADDR recvX, GM_ADDR tokenSrcInfo, GM_ADDR epRecvCount,
                                                          GM_ADDR topkWeights, GM_ADDR tpRecvCount, GM_ADDR XOut,
