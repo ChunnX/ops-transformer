@@ -213,9 +213,8 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessVec(const DenseLISoftm
                 scaleBuf_.EnQue<float>(mmInUb);
                 mmInUb = scaleBuf_.DeQue<float>();
                 weightsInUb = mmInUb[procGnum * s2BaseSize_];
-                LocalTensor<float> brcUb = mmInUb[groupInner_ * s2BaseSize_ + s2BaseSize_];
-                DenseLISoftmaxLseServiceVec::DoScale(reduceCacheUb[REDUCE_BANK_CONFLICT_NUM], mmInUb, weightsInUb,
-                                                  weightsInTUb, brcUb, procGnum, s2BaseSize_, outerGidx);
+                DoScaleVfWrapper<W_T>(reduceCacheUb[REDUCE_BANK_CONFLICT_NUM], mmInUb, weightsInUb, weightsInTUb,
+                               procGnum, s2BaseSize_, outerGidx);
                 scaleBuf_.FreeTensor(mmInUb);
             }
 
@@ -362,15 +361,8 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessReduceSum(uint32_t pin
                 SOFTMAX_MIN_NUM, REDUCE_BASE_BLOCK_SIZE - DenseLISoftmaxLseCommon::Align(curBlockSize, uint32_t(8)));
             AscendC::PipeBarrier<PIPE_V>();
         }
-
-        AscendC::Sub(reduceSumSrc0, reduceSumSrc0, subMaxTensor, REDUCE_BASE_BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
-        
-        AscendC::Exp(reduceSumSrc0, reduceSumSrc0, REDUCE_BASE_BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        AscendC::Add(reduceSumDstTensor, reduceSumSrc0, reduceSumSrc1, REDUCE_BASE_BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
+        DoReduceSumBlockVfWrapper(reduceSumDstTensor, reduceSumSrc0, subMaxTensor,
+            reduceSumSrc1, REDUCE_BASE_BLOCK_SIZE);
         SetFlag<HardEvent::V_S>(EVENT_ID4);
     }
     WaitFlag<HardEvent::V_S>(EVENT_ID4);
@@ -398,20 +390,22 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessOutput(uint64_t outOff
         return;
     }
     uint32_t blockNum = DenseLISoftmaxLseCommon::CeilDiv(aivCoreDealSize, (uint64_t)REST_ZERO_BASE_BLOCK_SIZE);
+    LocalTensor<float> resetZeroTensor = resetZeroQueue_.AllocTensor<float>();
+    Duplicate(resetZeroTensor, 0.0f, REST_ZERO_BASE_BLOCK_SIZE);
+    event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(vToMte3);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3);
     for (uint32_t blockIdx = 0; blockIdx <= blockNum - 1; blockIdx++) {
-        LocalTensor<float> resetZeroTensor = resetZeroQueue_.AllocTensor<float>();
         uint32_t curBlockSize = blockIdx != blockNum - 1 ? REST_ZERO_BASE_BLOCK_SIZE :
                                 aivCoreDealSize - REST_ZERO_BASE_BLOCK_SIZE * blockIdx;
-        Duplicate(resetZeroTensor, 0.0f, REST_ZERO_BASE_BLOCK_SIZE);
-        resetZeroQueue_.EnQue<float>(resetZeroTensor);
-        resetZeroTensor = resetZeroQueue_.DeQue<float>();
         DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(curBlockSize * sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPad(softmaxMaxGm[aivOutOffset + REST_ZERO_BASE_BLOCK_SIZE * blockIdx],
                              resetZeroTensor, copyOutParams);
         AscendC::DataCopyPad(softmaxSumGm[aivOutOffset + REST_ZERO_BASE_BLOCK_SIZE * blockIdx],
                              resetZeroTensor, copyOutParams);
-        resetZeroQueue_.FreeTensor(resetZeroTensor);
     }
+    resetZeroQueue_.FreeTensor(resetZeroTensor);
+    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
 }
 }
 #endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_VECTOR_H

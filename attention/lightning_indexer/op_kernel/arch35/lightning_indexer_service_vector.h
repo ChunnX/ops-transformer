@@ -105,9 +105,6 @@ private:
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<uint16_t> vec1OutUB_;
 
-    // tmp buff for returnValue bfloat16
-    TBuf<TPosition::VECCALC> uIntToBfloat16Buf_;
-    LocalTensor<bfloat16_t> uIntToBfloat16Local_;
     // tmp buff for returnValue K_T
     TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<K_T> valueOutLocal_;
@@ -167,16 +164,10 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     // returnvalue
     if (topkCount_ <= 2048) {
-        pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));
-        uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>();
         pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));
         valueOutLocal_ = valueOutBuf_.Get<K_T>();
     } else { // sparseCount > 2k时，复用return value相关UB
         valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
-        if (std::is_same_v<K_T, half>) {
-            uIntToBfloat16Local_ = // returnValue bfloat16
-                valueOutLocal_.template ReinterpretCast<bfloat16_t>()[topkCountAlign256_];
-        }
     }
 
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
@@ -541,13 +532,14 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
         
         // 是否返回Value值
         if (returnValueFlag) {
+            WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             // uint16_t -> bfloat16
             if (std::is_same_v<K_T, bfloat16_t>) {
                 vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
                     scoreOutLocal_, topkCountAlign256_);
             } else {
-                vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal_, topkCountAlign256_);
-                Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
+                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<half>(),
+                    scoreOutLocal_, topkCountAlign256_);
             }
 
             if (validS2Len < topkCount_) {
@@ -563,6 +555,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
                             constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
             }
+            SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             AscendC::DataCopyParams copyOutValueParams;

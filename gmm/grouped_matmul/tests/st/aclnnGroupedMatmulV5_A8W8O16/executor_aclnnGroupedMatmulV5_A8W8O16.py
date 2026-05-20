@@ -171,7 +171,7 @@ class AclnnFunctionApi(AclnnBaseApi):
         if self.device == 'pyaclnn':
             input_data.kwargs.pop('wformat')
         import ctypes
-        # self.task_result.output_info_list = [self.task_result.output_info_list]
+        self.task_result.output_info_list = [self.task_result.output_info_list]
         input_args, output_pac = super().init_by_input_data(input_data)
         # input_args.insert(2, ctypes.c_void_p(0)) # bias
         # input_args.insert(3, ctypes.c_void_p(0)) # scale

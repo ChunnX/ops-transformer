@@ -268,7 +268,7 @@ if [ "$SOC_VERSION" = "$SOC_VERSION_910_93" ]; then
     fi
 elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
     echo "进入 A5 处理流程"
-    if ls "$TARGET_DIR/mc2_exception_info"* >/dev/null 2>&1; then
+    if ls "$TARGET_DIR/exception_info"* >/dev/null 2>&1; then
         echo "开始解析:单卡dump数据"
         if ls "$TARGET_DIR/exception_info."*.workspace.* >/dev/null 2>&1; then
             python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR $SOC_VERSION
@@ -288,7 +288,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
                 fi
             done
         fi
-    elif ls "$TARGET_DIR/1/mc2_exception_info"* >/dev/null 2>&1; then
+    elif ls "$TARGET_DIR/1/exception_info"* >/dev/null 2>&1; then
         echo "开始解析多卡dump数据"
         for ((i = 0; i < file_num; i++))
         do
@@ -313,7 +313,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
                 done
             fi
         done
-    elif ls "$TARGET_DIR/0/mc2_exception_info"* >/dev/null 2>&1; then
+    elif ls "$TARGET_DIR/0/exception_info"* >/dev/null 2>&1; then
         echo "开始解析:单卡dump数据"
         if ls "$TARGET_DIR/0/exception_info."*.workspace.* >/dev/null 2>&1; then
             python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM 1 0 $TARGET_DIR/0/ $SOC_VERSION
@@ -334,7 +334,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
             done
         fi
     else
-        echo "error:路径 $TARGET_DIR 下没有以mc2_exception_info开头的dump数据"
+        echo "error:路径 $TARGET_DIR 下没有以exception_info开头的dump数据"
     fi
 fi
 

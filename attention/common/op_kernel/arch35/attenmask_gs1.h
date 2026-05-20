@@ -425,4 +425,51 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
         AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     }
 }
+
+__aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info, uint32_t s1StartIdx)
+{
+    int64_t nextToken = 0; // sparse2 本身原点就是左上角
+    if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
+        nextToken =
+            static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
+    } else if (info.sparseMode == BAND) {                                          // 4
+        nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
+    }
+    uint64_t offset = 0;
+    int64_t delta = nextToken + s1StartIdx - info.s2StartIdx;
+    uint32_t attenMaskSizeAlign = info.gs1dealNum;
+    if (delta >= 0) {
+        offset = (delta) < static_cast<int64_t>(info.nBaseSize) ? (delta) : info.nBaseSize; // min (-delta, s1Size)
+    } else {
+        offset = (-delta < static_cast<int64_t>(attenMaskSizeAlign) ? -delta : attenMaskSizeAlign) *
+                 info.attenMaskS1Stride; // min(delta, s2inner)
+    }
+    return offset + 1;
+}
+
+template <typename T, LAYOUT_Q layoutQ, bool isReconstructTemp, uint32_t s2BaseSize>
+__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info)
+{
+    uint64_t maskOffset = ComputeAttenMaskOffsetCompressDn(info, info.gs1StartIdx);
+    if (info.s2Size % 32U == 0) { // 32： datablock size is 32B
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = info.s2dealNum;
+        dataCopyParams.blockLen = (info.gs1dealNum >> 1) >> 5;
+        dataCopyParams.srcStride = (info.attenMaskS1Stride - (info.gs1dealNum >> 1)) >> 5;
+        dataCopyParams.dstStride = info.attenMaskDstStride;
+        DataCopy(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams);
+    } else {
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = info.s2dealNum;
+        dataCopyParams.blockLen = info.gs1dealNum >> 1;
+        dataCopyParams.srcStride = info.attenMaskS1Stride - (info.gs1dealNum >> 1);
+        dataCopyParams.dstStride = info.attenMaskDstStride;
+        DataCopyPadExtParams<T> padParams;
+        DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+    }
+
+    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
+    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+}
 #endif
