@@ -389,3 +389,235 @@ CANN Version: 1.0.0, TimeStamp: 202604
 [AIV Block 61/64] [DISPATCH bk=30 ct=2 sub=1] expert=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
 [AIV Block 61/64] [AIV1 bk=30] >>> DynamicAiv1Loop ENTRY exp=3 tnG2=28
 
+
+
+
+
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+schema entrance ========================
+
+ninja: no work to do.
+ninja: no work to do.
+===============================================================
+cur run case: MOE_Dispatch_FFN_Combine_RedLine046, bs: 512, h: 7168, k: 8, local_moe: 4
+dispatch_quant_out_type: 24, quant_dtype: torch.float8_e4m3fn, quant_mode: 4
+===============================================================
+[INTERLEAVE CHECK in GenInputAndGolden] h=7168 256对齐 ✓, n=3072 256对齐 ✓; tile 数=12, 每 tile = 128 gate + 128 up
+The transpose flag is true, need to trans last 2 dim
+The transpose flag is true, need to trans last 2 dim
+The transpose flag is true, need to trans last 2 dim
+The transpose flag is true, need to trans last 2 dim
+[INTERLEAVE] 交织前 w1_npu shape=(8, 3072, 7168), weight_scale1_npu_cpu shape=(8, 3072, 112, 2)
+[INTERLEAVE] 交织后 w1_npu shape=(8, 3072, 7168), weight_scale1_npu_cpu shape=(8, 3072, 112, 2)
+---------------start to caculate Matmul_1 ------------- 
+---INF_num = 0, NAN_num = 0, Ratio = 0.0 %
+---------------start to process swiglu ------------- 
+---------------start to process swiglu_quant ------------- 
+The transpose flag is false, no need to trans
+---------------start to caculate Matmul_2 ------------- 
+single_server scene!!!!!
+rank list is: [0, 1]
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+schema entrance ========================
+
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+schema entrance ========================
+
+ninja: no work to do.
+ninja: no work to do.
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=0
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=0 wave=2 nTile=0 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=0)
+[AIC Block 0/32] [AIC bk=0] main loop DONE (6 tasks), sending END
+[AIC Block 0/32] [AIC bk=0] G1 final drain WaitForVector(0)...
+[AIC Block 0/32] [AIC bk=0] write GMM1 END
+[AIC Block 0/32] [AIC bk=0] G2 final drain (spin slot==0)...
+[AIC Block 0/32] [AIC bk=0] write GMM2 END
+[AIC Block 0/32] [AIC bk=0] <<< DynamicAicLoop EXIT exp=0
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=1
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=1 wave=1 nTile=10 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=1)
+[AIC Block 0/32] [AIC bk=0] main loop DONE (3 tasks), sending END
+[AIC Block 0/32] [AIC bk=0] write GMM1 END
+[AIC Block 0/32] [AIC bk=0] G2 final drain (spin slot==0)...
+[AIC Block 0/32] [AIC bk=0] write GMM2 END
+[AIC Block 0/32] [AIC bk=0] <<< DynamicAicLoop EXIT exp=1
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=2
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=0 wave=1 nTile=10 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=0)
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=0 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=536870920 op=0 wave=2 nTile=0 waveM=256
+[AIV Block 0/64] [AIV0 bk=0] FIRST TASK DONE
+[AIV Block 0/64] [AIV0 bk=0] <<< DynamicAiv0Loop EXIT
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=1 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=2 op=2 wave=0 nTile=0 waveM=0
+[AIV Block 0/64] [AIV0 bk=0] <<< DynamicAiv0Loop EXIT
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=2 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=536881156 op=0 wave=1 nTile=10 waveM=256
+[AIV Block 0/64] [AIV0 bk=0] FIRST TASK DONE
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=0 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536875009 op=1 wave=0 nTile=4 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+[AIV Block 1/64] [AIV1 bk=0] <<< DynamicAiv1Loop EXIT
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=1 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536881157 op=1 wave=1 nTile=10 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+[AIV Block 1/64] [AIV1 bk=0] <<< DynamicAiv1Loop EXIT
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=2 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536879105 op=1 wave=0 nTile=8 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIC Block 30/32] [DISPATCH bk=30 ct=1 sub=0] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] >>> DynamicAicLoop ENTRY exp=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] dispatch flag DONE exp=0
+[AIC Block 30/32] [AIC bk=30] FIRST CLAIM op=0 wave=2 nTile=4 waveM=256
+[AIC Block 30/32] [AIC bkCANN Version: 1.0.0, TimeStamp: 202604
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=0
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=0 wave=2 nTile=0 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=0)
+[AIC Block 0/32] [AIC bk=0] main loop DONE (3 tasks), sending END
+[AIC Block 0/32] [AIC bk=0] G1 final drain WaitForVector(0)...
+[AIC Block 0/32] [AIC bk=0] write GMM1 END
+[AIC Block 0/32] [AIC bk=0] G2 final drain (spin slot==0)...
+[AIC Block 0/32] [AIC bk=0] write GMM2 END
+[AIC Block 0/32] [AIC bk=0] <<< DynamicAicLoop EXIT exp=0
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=1
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=1 wave=1 nTile=11 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=1)
+[AIC Block 0/32] [AIC bk=0] main loop DONE (2 tasks), sending END
+[AIC Block 0/32] [AIC bk=0] write GMM1 END
+[AIC Block 0/32] [AIC bk=0] G2 final drain (spin slot==0)...
+[AIC Block 0/32] [AIC bk=0] write GMM2 END
+[AIC Block 0/32] [AIC bk=0] <<< DynamicAicLoop EXIT exp=1
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=2
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=1 wave=2 nTile=6 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=1)
+[AIC Block 0/32] [AIC bk=0] main loop DONE (2 tasks), sending END
+[AIC Block 0/32] [AIC bk=0] write GMM1 END
+[AIC Block 0/32] [AIC bk=0] G2 final drain (spin slot==0)...
+[AIC Block 0/32] [AIC bk=0] write GMM2 END
+[AIC Block 0/32] [AIC bk=0] <<< DynamicAicLoop EXIT exp=2
+[AIC Block 0/32] [DISPATCH bk=0 ct=1 sub=0] expert=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] >>> DynamicAicLoop ENTRY exp=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 0/32] [AIC bk=0] dispatch flag DONE exp=3
+[AIC Block 0/32] [AIC bk=0] FIRST CLAIM op=1 wave=0 nTile=19 waveM=256
+[AIC Block 0/32] [AIC bk=0] FIRST TASK DONE (op=1)
+[AIC Block 0/32] [AIC bk=0] main loop DONE (4 tasks), sending END
+[AIC Block 0/32] [AIC bk=0] write GMM1 END
+[AIC Block 0/32] [AIC bk=0] G2 final drain (spin slot==0)...
+[AIC Block 0/32] [AIC bk=0] write GMM2 END
+[AIC Block 0/32] [AIC bk=0] <<< DynamicAicLoop EXIT exp=3
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=0 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=536870920 op=0 wave=2 nTile=0 waveM=256
+[AIV Block 0/64] [AIV0 bk=0] FIRST TASK DONE
+[AIV Block 0/64] [AIV0 bk=0] <<< DynamicAiv0Loop EXIT
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=1 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=2 op=2 wave=0 nTile=0 waveM=0
+[AIV Block 0/64] [AIV0 bk=0] <<< DynamicAiv0Loop EXIT
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=2 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=2 op=2 wave=0 nTile=0 waveM=0
+[AIV Block 0/64] [AIV0 bk=0] <<< DynamicAiv0Loop EXIT
+[AIV Block 0/64] [DISPATCH bk=0 ct=2 sub=0] expert=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 0/64] [AIV0 bk=0] >>> DynamicAiv0Loop ENTRY exp=3 tnG1=12
+[AIV Block 0/64] [AIV0 bk=0] FIRST SLOT READ packed=2 op=2 wave=0 nTile=0 waveM=0
+[AIV Block 0/64] [AIV0 bk=0] <<< DynamicAiv0Loop EXIT
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=0 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536885249 op=1 wave=0 nTile=14 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+[AIV Block 1/64] [AIV1 bk=0] <<< DynamicAiv1Loop EXIT
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=1 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536882181 op=1 wave=1 nTile=11 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+[AIV Block 1/64] [AIV1 bk=0] <<< DynamicAiv1Loop EXIT
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=2 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536877065 op=1 wave=2 nTile=6 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+[AIV Block 1/64] [AIV1 bk=0] <<< DynamicAiv1Loop EXIT
+[AIV Block 1/64] [DISPATCH bk=0 ct=2 sub=1] expert=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIV Block 1/64] [AIV1 bk=0] >>> DynamicAiv1Loop ENTRY exp=3 tnG2=28
+[AIV Block 1/64] [AIV1 bk=0] FIRST SLOT READ packed=536890369 op=1 wave=0 nTile=19 waveM=256
+[AIV Block 1/64] [AIV1 bk=0] FIRST TASK DONE
+[AIV Block 1/64] [AIV1 bk=0] <<< DynamicAiv1Loop EXIT
+CANN Version: 1.0.0, TimeStamp: 202604
+[AIC Block 30/32] [DISPATCH bk=30 ct=1 sub=0] expert=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] >>> DynamicAicLoop ENTRY exp=0 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] dispatch flag DONE exp=0
+[AIC Block 30/32] [AIC bk=30] FIRST CLAIM op=0 wave=2 nTile=3 waveM=256
+[AIC Block 30/32] [AIC bk=30] FIRST TASK DONE (op=0)
+[AIC Block 30/32] [AIC bk=30] main loop DONE (5 tasks), sending END
+[AIC Block 30/32] [AIC bk=30] G1 final drain WaitForVector(0)...
+[AIC Block 30/32] [AIC bk=30] write GMM1 END
+[AIC Block 30/32] [AIC bk=30] G2 final drain (spin slot==0)...
+[AIC Block 30/32] [AIC bk=30] write GMM2 END
+[AIC Block 30/32] [AIC bk=30] <<< DynamicAicLoop EXIT exp=0
+[AIC Block 30/32] [DISPATCH bk=30 ct=1 sub=0] expert=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] >>> DynamicAicLoop ENTRY exp=1 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] dispatch flag DONE exp=1
+[AIC Block 30/32] [AIC bk=30] FIRST CLAIM op=0 wave=2 nTile=10 waveM=256
+[AIC Block 30/32] [AIC bk=30] FIRST TASK DONE (op=0)
+[AIC Block 30/32] [AIC bk=30] main loop DONE (7 tasks), sending END
+[AIC Block 30/32] [AIC bk=30] G1 final drain WaitForVector(0)...
+[AIC Block 30/32] [AIC bk=30] write GMM1 END
+[AIC Block 30/32] [AIC bk=30] G2 final drain (spin slot==0)...
+[AIC Block 30/32] [AIC bk=30] write GMM2 END
+[AIC Block 30/32] [AIC bk=30] <<< DynamicAicLoop EXIT exp=1
+[AIC Block 30/32] [DISPATCH bk=30 ct=1 sub=0] expert=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] >>> DynamicAicLoop ENTRY exp=2 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] dispatch flag DONE exp=2
+[AIC Block 30/32] [AIC bk=30] FIRST CLAIM op=0 wave=1 nTile=9 waveM=256
+[AIC Block 30/32] [AIC bk=30] FIRST TASK DONE (op=0)
+[AIC Block 30/32] [AIC bk=30] main loop DONE (5 tasks), sending END
+[AIC Block 30/32] [AIC bk=30] G1 final drain WaitForVector(0)...
+[AIC Block 30/32] [AIC bk=30] write GMM1 END
+[AIC Block 30/32] [AIC bk=30] G2 final drain (spin slot==0)...
+[AIC Block 30/32] [AIC bk=30] write GMM2 END
+[AIC Block 30/32] [AIC bk=30] <<< DynamicAicLoop EXIT exp=2
+[AIC Block 30/32] [DISPATCH bk=30 ct=1 sub=0] expert=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] >>> DynamicAicLoop ENTRY exp=3 tnG1=12 tnG2=28 waveCnt=4 m_i=1024
+[AIC Block 30/32] [AIC bk=30] dispatch flag DONE exp=3
+[AIC Block 30/32] [AIC bk=30] FIRST CLAIM op=0 wave=2 nTile=1 waveM=256
+[AIC Block 30/32] [AIC bk=30] FIRST TASK DONE (op=0)
+[AIC Block 30/32] [AIC bk=30] main loop DONE (5 tasks), sending END
+[AIC Block 30/32] [AIC bk=30] G1 final drain WaitForVector(0)...
+[AIC Block 30/32] [AIC bk=30] write GMM1 END
+[AIC Block 30/32] [AIC bk=30] G2 final drain (spin slot==0)...
+[AIC Block 30/32] [AIC bk=30] write GMM2 END
+[AIC Block 30/32] [AIC bk=30] <<< DynamicAicLoop EXI
+
