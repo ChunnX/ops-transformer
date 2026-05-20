@@ -41,6 +41,36 @@ enum class NnopbaseHcclServerType : uint32_t {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
+
+static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
+    // 获取卡数
+    uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
+#endif
+
+    // 获取通信引擎参数
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (std::strcmp(commModeStr, "aicpu") == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+        } else if (std::strcmp(commModeStr, "default") == 0) {
+            // default：小于等于8P走CCU，否则走AICPU
+            if (rankSize <= 8) {
+                commModeEnum = Mc2Comm::COMM_MODE_CCU;
+            } else {
+                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+            }
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 // check nullptr
 static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
                             const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
@@ -115,24 +145,6 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
     return ACLNN_SUCCESS;
 }
 
-extern "C" aclnnStatus InnerAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                        const aclTensor* sendCountsTensorOptional, 
-                                                        const aclTensor* recvCountsTensorOptional, 
-                                                        const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                                                        const char* group, const char* commMode, int64_t epWorldSize, 
-                                                        const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
-                                                        bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, 
-                                                        aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                        uint64_t* workspaceSize, aclOpExecutor** executor)
-{
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
-        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, const_cast<char *>(commMode), gmmY, mmYOptional, permuteOutOptional, workspaceSize,
-        executor);
-    OP_LOGD("AlltoAllvGroupedMatMul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
-    return ret;
-}
-
 aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
                                                         const aclTensor* sendCountsTensorOptional, 
                                                         const aclTensor* recvCountsTensorOptional, 
@@ -149,44 +161,30 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = InnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
-        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), const_cast<char *>(commMode), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
+    char *str_commMode = const_cast<char *>(commMode);
+    uint8_t commModeEnum = 0;
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
+        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
+        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, str_commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
         executor);
-    
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
-        char* commModePtr = new char[strlen(commMode) + 1];
-        if (commModePtr != nullptr) {
-            strcpy(commModePtr, commMode);
-            NnopbaseSetUserHandle(*executor, commModePtr);
-            OP_LOGD("A2AV_GMM_V2 GetWorkspaceSize set commMode=%s", commMode);
-        }
+    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize ret %d.", ret);
+    if (*executor != nullptr) {
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
+        NnopbaseSetUserHandle(executor, args);
     }
-
-    //获取卡数待补充
-    uint32_t rankSize = 0;
-
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(aclnnRet = ACLNN_SUCCESS, aclnnRet);
-#endif
-
-    char* commModePtr = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (commModePtr != nullptr) {
-                OP_LOGD("A2AV_GMM_V2 Execute commMode=%s", commModePtr);
-                if (strcmp(commModePtr, "aicpu") == 0) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-                } else if (strcmp(commModePtr, "ccu") == 0) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-                }
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
-                if (rankSize <= 8) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-                } else {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-                }
+                OP_LOGD("arch35, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }
     }
@@ -197,11 +195,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSiz
                                         aclrtStream stream)
 {
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnInnerAlltoAllv interface call failed.");
-        return ACLNN_ERR_INNER;
-    }
+    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMul ret %d.", ret);
     return ret;
 }
 
