@@ -996,9 +996,14 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
     endif()
 endforeach(    )
 
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/log
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+
     install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
+
     install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/op_kernel
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
