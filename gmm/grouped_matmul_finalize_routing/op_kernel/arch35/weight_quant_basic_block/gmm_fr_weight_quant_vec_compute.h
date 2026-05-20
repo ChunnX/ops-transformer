@@ -23,7 +23,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "../common/tool.h"
+#include "gmm/common/gmm_kernel_tool.h"
 #include "gmm_fr_mx_a8w4_vf.h"
 
 using AscendC::BLOCK_CUBE;
@@ -241,7 +241,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitGm
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V + bufId);
 
     InitZeroVf((__ubuf__ float *)weightHighBit_.GetPhyAddr(bufId * VECTOR_REG_WIDTH),
-               CeilDivide(initZeroSize, VEC_MAX_ELEM_B32));
+               CeilDiv(initZeroSize, VEC_MAX_ELEM_B32));
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
@@ -294,7 +294,7 @@ GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyShareInputUbToGm(uint64_t
         (__ubuf__ float *)weightHighBit_.GetPhyAddr(vfBufId * VECTOR_REG_WIDTH),
         (__ubuf__ sharedInputDType *)weightLowBit_.GetPhyAddr((weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                                                               UB_BUFFER_INFO.weightLowBitSingleBufferSize),
-        CeilDivide(initSharedInputRealSize, VEC_MAX_ELEM_B32), sharedInputWeight_);
+        CeilDiv(initSharedInputRealSize, VEC_MAX_ELEM_B32), sharedInputWeight_);
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
@@ -397,7 +397,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyGm
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize]
             .template ReinterpretCast<wType>(),
         wGlobal_[(kGmOffset + kL1Offset) * offsetParam.nAlign + offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE)],
-        CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+        CeilDiv(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
         CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
         CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, offsetParam.nAlign * C0_SIZE);
 
@@ -447,9 +447,9 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQu
         (__ubuf__ xType *)
             weightHighBit_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.weightHighBitBufferNum - 1)) * VECTOR_REG_WIDTH]
                 .GetPhyAddr();
-    mxA8W4NzParams.loopKNum = CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE));
+    mxA8W4NzParams.loopKNum = CeilDiv(ubMte2KSize, static_cast<uint64_t>(C0_SIZE));
     mxA8W4NzParams.innerLoopNum =
-        CeilDivide(CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
+        CeilDiv(CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
                    static_cast<uint64_t>(VECTOR_REG_WIDTH));
     // 跳写UB避免bank冲突
     mxA8W4NzParams.innerDstStride = VECTOR_REG_WIDTH * UB_BUFFER_INFO.weightHighBitBufferNum;
@@ -461,7 +461,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQu
                 (weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize);
             mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
                 (ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
-            mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
+            mxA8W4NzParams.biasLoopNum = CeilDiv(biasRealSize, VEC_MAX_ELEM_B16);
             FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
         } else {
             FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
@@ -494,7 +494,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::MulLog
     if (mRealSize == 0) {
         return;
     }
-    FrMulLogitsVf(static_cast<uint16_t>(mRealSize), CeilDivide(offsetParam.nL1Size, VEC_MAX_ELEM_B32),
+    FrMulLogitsVf(static_cast<uint16_t>(mRealSize), CeilDiv(offsetParam.nL1Size, VEC_MAX_ELEM_B32),
                   (__ubuf__ float *)logits_.GetPhyAddr((rlLoopIdx & 1) * UB_BUFFER_INFO.logitsSingleBufferSize),
                   (__ubuf__ float *)ubOutputF32Buffer.GetPhyAddr());
 }

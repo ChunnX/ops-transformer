@@ -19,9 +19,15 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "static_diag_constant.h"
-#include "tool.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
+using GmmOpKernel::CeilAlign;
+using GmmOpKernel::CeilDiv;
+using GmmOpKernel::DataCopyPad2D;
+using GmmOpKernel::GetKBUnit;
+using GmmOpKernel::Min;
+
 #define GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM template <typename mm1InputType, typename mm1OutputType>
 
 #define GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS GMMA16W4MsdCubeService<mm1InputType, mm1OutputType>

@@ -17,7 +17,7 @@
 
 #include "./gmm_fr_weight_quant_tiling_data.h"
 #include "./gmm_fr_weight_quant_vcv_basic_block.h"
-#include "../common/tool.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 using AscendC::CeilAlign;
 using AscendC::SyncAll;
@@ -26,7 +26,7 @@ using WeightQuantBatchMatmulV2::Arch35::A_L1_MAX_SIZE_WITH_BIAS_QUANT;
 using WeightQuantBatchMatmulV2::Arch35::BASIC_BLOCK_PROCESS_NUM;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
+using WeightQuantBatchMatmulV2::Arch35::CeilDiv;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
@@ -151,9 +151,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
         // groupIdx 根据splitItem对M轴进行切分
         ctrlParam.mSize = GetSplitValueFromGroupList(groupIdx);
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
-            uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
+            uint64_t mBlkNum = CeilDiv(ctrlParam.mSize, M_L1);
             // 划分M轴在L1上的大小
-            ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
+            ctrlParam.mL1Size = CeilDiv(ctrlParam.mSize, mBlkNum);
             basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, nullptr, perTokenScaleGm_, biasGm_, yGm_,
                                          logitsAddr_, rowIndexAddr_,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
@@ -163,8 +163,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
                 // 主块
-                SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize, N_L1), N_L1);
-                ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize, N_L1);
+                SplitNByMultiCore(offsetParam, ctrlParam, CeilDiv(offsetParam[0].nSize, N_L1), N_L1);
+                ctrlParam.basicBlockLimit += CeilDiv(offsetParam[0].nSize, N_L1);
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % tiling_->coreNum;
         }
@@ -222,7 +222,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::SplitNByMul
 
         uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
         // 实际A矩阵通过ND2NZ搬运实现，B矩阵通过MOVE_ALIGN搬运实现，两者效率不同。为了平衡两者的搬运效率，折算系数2简化计算。
-        uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
+        uint64_t kaDepth = CeilDiv(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
         // L1的空间，在有Bias时，预留124 Kb, 其他场景预留128 Kb
         uint64_t aL1Size = 0;
         if constexpr (hasBias) {
@@ -251,9 +251,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAdd
     xGm_ += mSize * kSize;
     weightGm_ += (nSize * kSize) >> 1;
     uint64_t kAlignSize = CeilAlign(kSize, K_ALIGNMENT64);
-    antiquantScaleGm_ += nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
+    antiquantScaleGm_ += nSize * CeilDiv(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
 
-    perTokenScaleGm_ += mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
+    perTokenScaleGm_ += mSize * CeilDiv(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
 
     biasGm_ += nSize;
     yGm_ += mSize * nSize;

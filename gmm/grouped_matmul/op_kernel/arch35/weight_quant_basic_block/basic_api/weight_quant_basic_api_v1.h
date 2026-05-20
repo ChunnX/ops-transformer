@@ -22,7 +22,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../tool.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 using AscendC::BLOCK_CUBE;
 using AscendC::fp8_e8m0_t;
@@ -141,23 +141,23 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadAL1ToL0A(uint64_t baseK, ui
     AscendC::LoadData2DParamsV2 aL0Load2dParams;
     aL0Load2dParams.mStartPosition = 0;
     aL0Load2dParams.kStartPosition =
-        CeilDivide((l1KOffset + basicApiParams.gmKOffset) % basicApiParams.l1KaSize * sizeof(xType), 32UL); // 单位32B
+        CeilDiv((l1KOffset + basicApiParams.gmKOffset) % basicApiParams.l1KaSize * sizeof(xType), 32UL); // 单位32B
     aL0Load2dParams.mStep =
-        CeilDivide(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
-    aL0Load2dParams.kStep = CeilDivide(baseK, 32UL);                                    // 单位32B
-    aL0Load2dParams.srcStride = CeilDivide(basicApiParams.l0MSize * 32, 512UL);         // 32为K0，stride单位为512B
+        CeilDiv(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
+    aL0Load2dParams.kStep = CeilDiv(baseK, 32UL);                                    // 单位32B
+    aL0Load2dParams.srcStride = CeilDiv(basicApiParams.l0MSize * 32, 512UL);         // 32为K0，stride单位为512B
     aL0Load2dParams.dstStride = aL0Load2dParams.srcStride; // L1和L0 M大小一样，k方向stride也一样
 
     AscendC::LoadData2DMxParams aL0Load2dMx;
     aL0Load2dMx.xStartPosition = 0;
-    aL0Load2dMx.yStartPosition = CeilDivide((l1KOffset + basicApiParams.gmKOffset) % MX_SCALE_K_L1_SIZE,
+    aL0Load2dMx.yStartPosition = CeilDiv((l1KOffset + basicApiParams.gmKOffset) % MX_SCALE_K_L1_SIZE,
                                             MX_GROUP_SIZE * MX_UNIT_BYTES); // 单位是32B
     aL0Load2dMx.xStep =
-        CeilDivide(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形
+        CeilDiv(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形
     aL0Load2dMx.yStep =
-        CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES); // mxK = K/32, (baseK / MX_GROUP_SIZE) / MX_UNIT_BYTES
-    aL0Load2dMx.srcStride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUP_SIZE * MX_UNIT_BYTES);
-    aL0Load2dMx.dstStride = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
+        CeilDiv(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES); // mxK = K/32, (baseK / MX_GROUP_SIZE) / MX_UNIT_BYTES
+    aL0Load2dMx.srcStride = CeilDiv(MX_SCALE_K_L1_SIZE, MX_GROUP_SIZE * MX_UNIT_BYTES);
+    aL0Load2dMx.dstStride = CeilDiv(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
     AscendC::LoadData(l0a_[loopId * L0_BUF_OFFSET_B8], aL1Tensor, scaleAL1Tensor, aL0Load2dParams, aL0Load2dMx);
 }
 
@@ -169,22 +169,22 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadBL1ToL0B(uint64_t baseK, ui
 {
     AscendC::LoadData2DParamsV2 bL0Load2dParams;
     bL0Load2dParams.mStartPosition = 0;
-    bL0Load2dParams.kStartPosition = CeilDivide(static_cast<uint64_t>(l1KOffset * sizeof(xType)), 32UL); // 单位32B
+    bL0Load2dParams.kStartPosition = CeilDiv(static_cast<uint64_t>(l1KOffset * sizeof(xType)), 32UL); // 单位32B
     bL0Load2dParams.mStep =
-        CeilDivide(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
-    bL0Load2dParams.kStep = CeilDivide(baseK, 32UL);                                    // 单位32B
-    bL0Load2dParams.srcStride = CeilDivide(basicApiParams.l0NSize * 32, 512UL);         // 32为K0，stride单位为512B
+        CeilDiv(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位16元素
+    bL0Load2dParams.kStep = CeilDiv(baseK, 32UL);                                    // 单位32B
+    bL0Load2dParams.srcStride = CeilDiv(basicApiParams.l0NSize * 32, 512UL);         // 32为K0，stride单位为512B
     bL0Load2dParams.dstStride = bL0Load2dParams.srcStride; // L1和L0 N方向大小一样，k方向stride也一样
 
     AscendC::LoadData2DMxParams bL0Load2dMx;
     bL0Load2dMx.xStartPosition = 0;
-    bL0Load2dMx.yStartPosition = CeilDivide((l1KOffset + basicApiParams.gmKOffset) % MX_SCALE_K_L1_SIZE,
+    bL0Load2dMx.yStartPosition = CeilDiv((l1KOffset + basicApiParams.gmKOffset) % MX_SCALE_K_L1_SIZE,
                                             MX_GROUP_SIZE * MX_UNIT_BYTES); // 单位是32B
     bL0Load2dMx.xStep =
-        CeilDivide(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形，
-    bL0Load2dMx.yStep = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);               // baseK / 32 / 2
-    bL0Load2dMx.srcStride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUP_SIZE * MX_UNIT_BYTES);
-    bL0Load2dMx.dstStride = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
+        CeilDiv(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形，
+    bL0Load2dMx.yStep = CeilDiv(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);               // baseK / 32 / 2
+    bL0Load2dMx.srcStride = CeilDiv(MX_SCALE_K_L1_SIZE, MX_GROUP_SIZE * MX_UNIT_BYTES);
+    bL0Load2dMx.dstStride = CeilDiv(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
     AscendC::LoadData(l0b_[loopId * L0_BUF_OFFSET_B8], bL1Tensor, scaleBL1Tensor, bL0Load2dParams, bL0Load2dMx);
 }
 
@@ -193,7 +193,7 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadBiasToBt(uint64_t nL0Size, 
                                                               const LocalTensor<biasType> &biasL1Tensor)
 {
     AscendC::DataCopy(biasTable_[loopId * BIAS_TABLE_OFFSET_B32], biasL1Tensor,
-                      {1, static_cast<uint16_t>(CeilDivide(nL0Size * sizeof(float), 64UL)), 0, 0});
+                      {1, static_cast<uint16_t>(CeilDiv(nL0Size * sizeof(float), 64UL)), 0, 0});
 }
 
 WQBMM_BASIC_API_V1_TEMPLATE_PARAM

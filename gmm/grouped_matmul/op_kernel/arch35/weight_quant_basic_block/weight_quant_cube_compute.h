@@ -24,7 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "tool.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 #include "basic_api/weight_quant_basic_api_v1.h"
 
@@ -364,11 +364,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t
 {
     dn2NzParams.dnNum = 1;
     dn2NzParams.dValue = rowNum;  // 矩阵的行数，即待搬运的mxScaleA的m或mxScaleB的n
-    dn2NzParams.nValue = CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);  // 矩阵的列数，使用B16搬B8需要除以2向上取整
+    dn2NzParams.nValue = CeilDiv(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);  // 矩阵的列数，使用B16搬B8需要除以2向上取整
     dn2NzParams.srcDnMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
-    dn2NzParams.srcDValue = CeilDivide(scaleKGmSize, SCALE_COPY_GROUP_SIZE);  // 源矩阵一行所含B16元素个数
+    dn2NzParams.srcDValue = CeilDiv(scaleKGmSize, SCALE_COPY_GROUP_SIZE);  // 源矩阵一行所含B16元素个数
     // 目标矩阵行方向两个相邻分形起始地址之间的间隔，单位32B
-    dn2NzParams.dstNzC0Stride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUPSIZE * SCALE_COPY_GROUP_SIZE);
+    dn2NzParams.dstNzC0Stride = CeilDiv(MX_SCALE_K_L1_SIZE, MX_GROUPSIZE * SCALE_COPY_GROUP_SIZE);
     // 目标矩阵列方向两个相邻分形起始地址之间的间隔，单位32B
     dn2NzParams.dstNzNStride = SCALE_COPY_DEFAULT_N_STRIDE;
     dn2NzParams.dstNzMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
@@ -549,7 +549,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(uint64_t totalSize, uint64
     }
     aL1_ = LocalTensor<xType>(TPosition::TSCM, aL1Offset * sizeof(xType), totalSize / sizeof(xType) - aL1Offset);
     aL1Count_ = matmulTiling->Ka / (matmulTiling->baseK * matmulTiling->stepKb);
-    aL1MaxHalfCount_ = CeilDivide(aL1Count_, static_cast<uint64_t>(DOUBLE_BUFFER_NUM));
+    aL1MaxHalfCount_ = CeilDiv(aL1Count_, static_cast<uint64_t>(DOUBLE_BUFFER_NUM));
 
     PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
     // 当前tiling策略的细分场景：

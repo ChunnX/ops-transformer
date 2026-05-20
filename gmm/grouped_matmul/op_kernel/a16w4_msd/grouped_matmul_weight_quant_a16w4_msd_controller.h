@@ -20,9 +20,15 @@
 #include "kernel_operator.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block_config.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block.h"
-#include "tool.h"
+#include "gmm/common/gmm_kernel_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
+using GmmOpKernel::CeilAlign;
+using GmmOpKernel::CeilDiv;
+using GmmOpKernel::DataCopyPad2D;
+using GmmOpKernel::GetKBUnit;
+using GmmOpKernel::Min;
+
 #define GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM \
     template <typename xType, typename wType, typename biasType, int groupListType>
 
@@ -112,8 +118,8 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::Process(GM_ADDR worksp
             basicBlock.UpdateGlobalAddr(aUnfoldS8WsAddr_, weightGm_, antiquantScaleGm_, biasGm_, yGm_, aMaxWs_,
                                         gmmBaseTiling_->withOffset);
 
-            uint32_t mBlockNum = A16W4Msd::CeilDiv(mSize, BASE_ML1_SIZE);
-            uint32_t nBlockNum = A16W4Msd::CeilDiv(constParams.nSize, constParams.nL1BaseSize);
+            uint32_t mBlockNum = CeilDiv(mSize, BASE_ML1_SIZE);
+            uint32_t nBlockNum = CeilDiv(constParams.nSize, constParams.nL1BaseSize);
 
             uint32_t totalBasicBlockCount = startBasicBlockId + mBlockNum * nBlockNum;
             uint32_t curCoreStartBlockId =
