@@ -64,6 +64,7 @@ __simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ Data
                                     uint16_t oneRowRepeatTimes, uint16_t sizePerRepeat)
 {
     const float scalarOne = 1.0;
+    const float mulFactor = 64.0;
     for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
         uint32_t elementNum = nSize;
         AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
@@ -76,6 +77,7 @@ __simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ Data
 
             // 1. Load Swish branch
             AscendC::MicroAPI::DataCopy(swishInput, firstSrc + l0cOutOffset);
+            MicroAPI::Muls(swishInput, swishInput, mulFactor, mask);
 
             // 2. Swish: x / (1 + exp(-x))
             AscendC::MicroAPI::Muls(verg0, swishInput, -(scalarOne), mask);
@@ -85,6 +87,7 @@ __simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ Data
 
             // 3. Load Gate branch
             AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset);
+            MicroAPI::Muls(gateInput, gateInput, mulFactor, mask);
 
             // 4. SwiGLU: Swish(x) * gate
             AscendC::MicroAPI::Mul(verg3, swishOutput, gateInput, mask);
