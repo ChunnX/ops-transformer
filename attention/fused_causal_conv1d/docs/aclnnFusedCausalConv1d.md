@@ -471,7 +471,7 @@ aclnnStatus aclnnFusedCausalConv1d(
     <tr>
       <td>runMode（int64_t）</td>
       <td>属性</td>
-      <td>用于判断是prefill场景或decode场景</td>
+      <td>用于判断是prefill场景或decode场景。</td>
       <td>历史遗留接口，不支持此字段。</td>
       <td>INT64</td>
       <td>-</td>
@@ -521,8 +521,8 @@ aclnnStatus aclnnFusedCausalConv1d(
     <tr>
       <td>y（aclTensor*）</td>
       <td>输出</td>
-      <td>计算公式中的y，代表输出序列</td>
-      <td>shape与x一致</td>
+      <td>计算公式中的y，代表输出序列。</td>
+      <td>shape与x一致。</td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>2-3</td>
@@ -531,7 +531,7 @@ aclnnStatus aclnnFusedCausalConv1d(
     <tr>
       <td>workspaceSize（int64_t*）</td>
       <td>输出</td>
-      <td>返回用户需要在Device侧申请的workspace大小</td>
+      <td>返回用户需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -541,7 +541,7 @@ aclnnStatus aclnnFusedCausalConv1d(
     <tr>
       <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

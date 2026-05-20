@@ -477,8 +477,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::LoadMetadata()
         acceptTokenLocal_ = acceptTokenBuf_.Get<int32_t>();
         DataCopyPad(acceptTokenLocal_, acceptTokenGM_[0], metaCp, metaPad);
     }
-
-    PipeBarrier<PIPE_ALL>();
 }
 
 template <typename T>
@@ -576,6 +574,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
     }
 
     LoadMetadata();
+
+    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     uint32_t K = kernelWidth_;
 

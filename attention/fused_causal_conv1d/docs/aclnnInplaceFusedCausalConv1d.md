@@ -466,7 +466,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>runMode（int64_t）</td>
       <td>属性</td>
-      <td>用于判断是prefill场景或decode场景</td>
+      <td>用于判断是prefill场景或decode场景。</td>
       <td>历史遗留接口，不支持此字段。</td>
       <td>INT64</td>
       <td>-</td>
@@ -516,7 +516,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>workspaceSize（int64_t*）</td>
       <td>输出</td>
-      <td>返回用户需要在Device侧申请的workspace大小</td>
+      <td>返回用户需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -526,7 +526,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
