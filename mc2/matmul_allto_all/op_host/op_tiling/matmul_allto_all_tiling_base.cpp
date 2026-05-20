@@ -158,19 +158,25 @@ ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::Til
                     return ge::GRAPH_FAILED);
     // MatmulAlltoAll: x1Dim1 = x2 K-axis
     if (shapeInfo.x1Dim1 != kAxis) {
-        std::string shapeMsg = "[" + std::to_string(shapeInfo.x1Dim0) + "," + std::to_string(shapeInfo.x1Dim1) + "] and [" +
-            std::to_string(shapeInfo.x2Dim0) + "," + std::to_string(shapeInfo.x2Dim1) + "]";
+        std::string shapeMsg = "[" + std::to_string(shapeInfo.x1Dim0) + "," +
+                               std::to_string(shapeInfo.x1Dim1) + "] and [" +
+                               std::to_string(shapeInfo.x2Dim0) + "," +
+                               std::to_string(shapeInfo.x2Dim1) + "]";
         std::string reasonMsg = "The K axis (dim 1) of input x1 should be the same as the K axis of input x2";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1 and x2", shapeMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     // MatmulAlltoAll: yDim0 = x1Dim0 * rankDim and x2 N-axis = yDim1 * rankDim
     if ((shapeInfo.x1Dim0 * rankDim) != shapeInfo.yDim0 || nAxis != (shapeInfo.yDim1 * rankDim)) {
-        std::string shapeMsg = "[" + std::to_string(shapeInfo.x1Dim0) + "," + std::to_string(shapeInfo.x1Dim1) + "], [" +
-            std::to_string(shapeInfo.x2Dim0) + "," + std::to_string(shapeInfo.x2Dim1) + "] and [" +
-            std::to_string(shapeInfo.yDim0) + "," + std::to_string(shapeInfo.yDim1) + "]";
-        std::string reasonMsg = std::string("The M axis of output y should be M axis of input x1 multiplied by world_size, ") +
-            "and the N axis of input x2 should be N axis of output y multiplied by world_size";
+        std::string shapeMsg = "[" + std::to_string(shapeInfo.x1Dim0) + "," +
+                               std::to_string(shapeInfo.x1Dim1) + "], [" +
+                               std::to_string(shapeInfo.x2Dim0) + "," +
+                               std::to_string(shapeInfo.x2Dim1) + "] and [" +
+                               std::to_string(shapeInfo.yDim0) + "," +
+                               std::to_string(shapeInfo.yDim1) + "]";
+        std::string reasonMsg = std::string("The M axis of output y should be M axis of input x1 ") +
+            "multiplied by world_size, and the N axis of input x2 should be N axis of output y " +
+            "multiplied by world_size";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1, x2 and y", shapeMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
