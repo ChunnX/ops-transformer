@@ -15,25 +15,19 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
-from .update_context import update_context
-
-
-class IntWrapper:
-    def __init__(self, value=0):
-        self.value = value
+from .update_context import CommContextManager
 
 
 class MoeDistributeBuffer:
-    def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0):
+    def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0, backend="kfc"):
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
-        context_struct_size = (2 + 1024)
-        context_tensor_size = ((context_struct_size * 8) + 3) // 4
-        self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
-        self.ccl_buffer_size = IntWrapper()
-        res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        self._backend = backend
+        self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend)
+        self.context = self._ctx_manager.create_context()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
     @staticmethod
     def get_low_latency_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,
@@ -100,9 +94,11 @@ class MoeDistributeBuffer:
         torch._check(new_world_size == self.world_size,
                     lambda: (f"New world size should be the same as orginal world size, "
                             f"but got {new_world_size=}, orginial={self.world_size}"
-                            f"{ops_error(ErrCode.VALUE)}."),)
-        res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
-        return res
+                            f"{ops_error(ErrCode.VALUE)}.").)
+        self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend=self._backend)
+        self._ctx_manager.update_context(self.context)
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
+        return True
 
     def npu_low_latency_dispatch(self, x, topk_idx, num_experts: int, *,
                              quant_mode=0, comm_alg="", x_smooth_scale=None,
@@ -117,7 +113,7 @@ class MoeDistributeBuffer:
                                              ep_world_size=self.world_size,
                                              ep_rank_id=self.rank_id,
                                              moe_expert_num=num_experts,
-                                             ccl_buffer_size=self.ccl_buffer_size.value,
+                                             ccl_buffer_size=self.ccl_buffer_size,
                                              scales=x_smooth_scale,
                                              x_active_mask=x_active_mask,
                                              expert_scales=topk_weights,
@@ -151,7 +147,7 @@ class MoeDistributeBuffer:
                                              ep_world_size=self.world_size,
                                              ep_rank_id=self.rank_id,
                                              moe_expert_num=num_experts,
-                                             ccl_buffer_size=self.ccl_buffer_size.value,
+                                             ccl_buffer_size=self.ccl_buffer_size,
                                              tp_send_counts=None,
                                              x_active_mask=x_active_mask,
                                              expand_scales=expand_scales,
