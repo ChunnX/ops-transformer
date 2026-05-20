@@ -68,6 +68,7 @@ UT_SOC_ARRAY=()
 UT_TEST_CNT=0
 PR_UT_FLAG=FALSE
 CI_MODE=FALSE
+SPECIFIC_EXAMPLE_NAME=""  # 指定运行特定的 example 文件名
 
 if [ "${USER_ID}" != "0" ]; then
     DEFAULT_TOOLKIT_INSTALL_DIR="${HOME}/Ascend/ascend-toolkit/latest"
@@ -262,12 +263,13 @@ function help_info() {
             run_example)
                 echo "Run examples Options:"
                 echo $dotted_line
-                echo "    --run_example op_type  mode[eager:graph] [pkg_mode --vendor_name=name  --soc=soc_version]     Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
+                echo "    --run_example op_type  mode[eager:graph] [pkg_mode --vendor_name=name --example_name=name --soc=soc_version]     Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --run_example abs eager"
                 echo "    bash build.sh --run_example abs eager --soc=ascend950"
                 echo "    bash build.sh --run_example abs graph"
+                echo "    bash build.sh --run_example abs eager --example_name=name"
                 echo "    bash build.sh --run_example abs eager cust"
                 echo "    bash build.sh --run_example abs eager cust --vendor_name=custom"
                 return
@@ -321,7 +323,7 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -561,7 +563,21 @@ function build_example()
         ABSOLUTE_MC2_PATH=$(realpath ${BUILD_PATH}/../mc2) # mc2目录绝对路径
         ABSOLUTE_EXAMPLES_MC2_PATH=$(realpath ${BUILD_PATH}/../examples/mc2)
         ABSOLUTE_EXPERIMENTAL_MC2_PATH=$(realpath ${BUILD_PATH}/../experimental/mc2)
+        found_specific_example=false
         for file in "${files[@]}"; do
+            # 如果指定了特定的 example 文件名，只运行该文件
+            if [[ -n "${SPECIFIC_EXAMPLE_NAME}" ]]; then
+                file_basename=$(basename "$file" .cpp)
+                specific_name_without_suffix="${SPECIFIC_EXAMPLE_NAME%.cpp}"
+                # 如果不以 pattern 开头，自动加上 pattern
+                if [[ ! "${specific_name_without_suffix}" =~ ^${pattern} ]]; then
+                    specific_name_without_suffix="${pattern}${specific_name_without_suffix}"
+                fi
+                if [[ "${file_basename}" != "${specific_name_without_suffix}" ]]; then
+                    continue
+                fi
+                found_specific_example=true
+            fi
             echo "Start compile and run example file: $file"
             REAL_FILE_PATH=$(realpath "$file")
             MC2_APPEND_INCLUDE_AND_LIBRARY=""
@@ -600,7 +616,7 @@ function build_example()
                 help_info "run_example"
                 return 1
             fi
-            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS} == "ascend950"" ]]; then
+            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS}" == "ascend950" ]]; then
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
             else 
                 ./test_aclnn_${EXAMPLE_NAME}
@@ -613,12 +629,31 @@ function build_example()
                 echo "run test_aclnn_${EXAMPLE_NAME}, execute samples success"
             fi
         done
+        # 如果指定了特定的 example 文件名但没有找到，给出错误提示
+        if [[ -n "${SPECIFIC_EXAMPLE_NAME}" && "${found_specific_example}" == "false" ]]; then
+            echo "Error: Specified example '${SPECIFIC_EXAMPLE_NAME}' not found in ${EXAMPLE_NAME}/examples/"
+            return 2
+        fi
     elif [[ "${EXAMPLE_MODE}" == "graph" ]]; then
         if [ -z "$files" ]; then
             echo "${EXAMPLE_NAME} do not have graph example"
             return 2
         fi
+        found_specific_example=false
         for file in "${files[@]}"; do
+            # 如果指定了特定的 example 文件名，只运行该文件
+            if [[ -n "${SPECIFIC_EXAMPLE_NAME}" ]]; then
+                file_basename=$(basename "$file" .cpp)
+                specific_name_without_suffix="${SPECIFIC_EXAMPLE_NAME%.cpp}"
+                # 如果不以 pattern 开头，自动加上 pattern (支持 operator name 格式)
+                if [[ ! "${specific_name_without_suffix}" =~ ^${pattern} ]]; then
+                    specific_name_without_suffix="${pattern}${specific_name_without_suffix}"
+                fi
+                if [[ "${file_basename}" != "${specific_name_without_suffix}" ]]; then
+                    continue
+                fi
+                found_specific_example=true
+            fi
             echo "Start compile and run example file: $file"
             g++ ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
             ./test_geir_${EXAMPLE_NAME}
@@ -630,36 +665,16 @@ function build_example()
                 echo "run test_geir_${EXAMPLE_NAME}, execute samples success"
             fi
         done
+        # 如果指定了特定的 example 文件名但没有找到，给出错误提示
+        if [[ -n "${SPECIFIC_EXAMPLE_NAME}" && "${found_specific_example}" == "false" ]]; then
+            echo "Error: Specified example '${SPECIFIC_EXAMPLE_NAME}' not found in ${EXAMPLE_NAME}/examples/"
+            return 2
+        fi
     else
         help_info "run_example"
         return 1
     fi
     return 0
-}
-
-function gen_bisheng(){
-    local ccache_program=$1
-    local gen_bisheng_dir=${BUILD_DIR}/gen_bisheng_dir
-
-    if [ ! -d "${gen_bisheng_dir}" ];then
-        mkdir -p ${gen_bisheng_dir}
-    fi
-
-    pushd ${gen_bisheng_dir}
-    $(> bisheng)
-    echo "#!/bin/bash" >> bisheng
-    echo "ccache_args=""\"""${ccache_program} ${BISHENG_REAL_PATH}""\"" >> bisheng
-    echo "args=""$""@" >> bisheng
-
-    if [ "${VERBOSE}" == "true" ];then
-        echo "echo ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    fi
-
-    echo "eval ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    chmod +x bisheng
-
-    export PATH=${gen_bisheng_dir}:$PATH
-    popd
 }
 
 function build_package(){
@@ -822,7 +837,6 @@ package_static() {
         mv "$new_dir_path" "$static_files_dir"
         return 1
     fi
-    make clean
 }
 
 function process_soc_input(){
@@ -1161,6 +1175,11 @@ while [[ $# -gt 0 ]]; do
         step=1
         set_example_opt $2 $3 $4
         shift $step
+        ;;
+    --example_name=*)
+        OPTARG=$1
+        SPECIFIC_EXAMPLE_NAME=${OPTARG#*=}
+        shift
         ;;
     --experimental) 
         ENABLE_EXPERIMENTAL=TRUE
@@ -1699,14 +1718,14 @@ if [ -n "${CCACHE_PROGRAM}" ]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=OFF"
     elif [ -f "${CCACHE_PROGRAM}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${CCACHE_PROGRAM}"
-        gen_bisheng ${CCACHE_PROGRAM}
+        export ASCENDC_CCACHE_EXECUTABLE=${CCACHE_PROGRAM}
     fi
 else
     # 判断有无默认的ccache 如果有则使用
     ccache_system=$(which ccache || true)
     if [ -n "${ccache_system}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${ccache_system}"
-        gen_bisheng ${ccache_system}
+        export ASCENDC_CCACHE_EXECUTABLE=${ccache_system}
     fi
 fi
 build_ut() {

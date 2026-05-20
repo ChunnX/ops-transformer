@@ -14,11 +14,12 @@
  */
 #ifndef _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
-#include "common/utils/op_mc2.h"
-#include "mc2_log.h"
 #include "all_gather_quant_bmm_tiling.h"
-#include "../../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "common/utils/op_mc2.h"
+#include "mc2_comm_utils.h"
+#include "mc2_log.h"
+#include "../../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -405,6 +406,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                         algConfig, 0, 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)), 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
+    // Set hccl comm engine with environment variable
+    uint8_t commEngine = Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU ?
+                         Mc2Comm::ENGINE_AICPU : Mc2Comm::ENGINE_CCU;
+    mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ? 
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
@@ -479,12 +484,18 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     }
     
     uint8_t quanMmMode = static_cast<uint8_t>(quantMmMode_) - 1;
+    uint8_t commMode = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)?
+                        Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
+    // Non-A5 platform must use AICPU mode
+    if (npuArch_ != NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        inputIsBf16Fp16_, args_.isBTrans, outputType, quanMmMode, scaleType);
+        inputIsBf16Fp16_, args_.isBTrans, outputType, quanMmMode, scaleType, commMode);
     OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, outputType, "        \
-        "args_.isBTrans, quanMmMode, scaleType: [%d,%u,%d,%u,%u]",              \
-        inputIsBf16Fp16_, outputType, args_.isBTrans, quanMmMode, scaleType);
-    OP_LOGD(opName_, "Tiling Key=%lu", tilingKey);
+        "args_.isBTrans, quanMmMode, scaleType, commMode: [%d,%u,%d,%u,%u,%u]",              \
+        inputIsBf16Fp16_, outputType, args_.isBTrans, quanMmMode, scaleType, commMode);
+    OP_LOGD(opName_, "tilingkey=%lu", tilingKey);
     return tilingKey;
 }
 

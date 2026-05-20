@@ -429,7 +429,13 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
 
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        commMode = Mc2Comm::GetCommModeFromEnv();
+    }
+    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
@@ -523,7 +529,7 @@ ge::graphStatus AlltoAllvGmmTiling::Init()
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -531,7 +537,6 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
     }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
-    
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
     OP_LOGD(A_INNER_DEBUG, "AGENT AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
             tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);

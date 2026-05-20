@@ -77,6 +77,8 @@ public:
         // comm hccl datatype
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
+        } else if constexpr (AscendC::IsSameType<hcclDataType, half>::value) {
+            hcclDataType_ = HCCL_DATA_TYPE_FP16;
         } else if constexpr (AscendC::IsSameType<hcclDataType, hifloat8_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_HIF8;
         } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e5m2_t>::value) {

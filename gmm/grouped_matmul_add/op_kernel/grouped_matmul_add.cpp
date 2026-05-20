@@ -363,6 +363,7 @@ __aicore__ inline void GmmAddCompute<mmType, sync>::MmCompute(MNConfig& mnConfig
         static_cast<uint32_t>((mnConfig.n - curSingleN) * sizeof(CT)), 0};
     AscendC::DataCopyPad<CT>(yGm[outOffset], tensorIn, copyParams);
     AscendC::SetAtomicNone();
+
     cubeNum++;
 }
 template <typename mmType, bool sync>

@@ -33,15 +33,15 @@ constexpr uint32_t ALIGN_SIZE_KN = 32; // K/N alignment requirement for MX-A8W4 
 constexpr int64_t MX_INNER_DIM = 2;
 constexpr int64_t MIN_KN_SIZE = 32;       // Minimum K or N dimension size for MX-A8W4 weight quant
 constexpr uint32_t DIM_NUM_WEIGHT_NZ = 5; // FRACTAL_NZ format: [E, K/32, N/16, 16, 32]
-enum DataSize GetSizeByDataType(ge::DataType dType)
+DataSize GetSizeByDataType(ge::DataType dType)
 {
     if (dType == ge::DT_FLOAT4_E2M1 || dType == ge::DT_FLOAT4_E1M2 || dType == ge::DT_INT4) {
-        return B4_DATA_SIZE;
+        return DataSize::B4_DATA_SIZE;
     }
-    if (ge::GetSizeByDataType(dType) == B8_DATA_SIZE) {
-        return B8_DATA_SIZE;
+    if (ge::GetSizeByDataType(dType) == static_cast<int>(DataSize::B8_DATA_SIZE)) {
+        return DataSize::B8_DATA_SIZE;
     }
-    return RESERVED;
+    return DataSize::RESERVED;
 }
 
 bool GMMFRWeightQuantTiling::IsCapable()
@@ -347,14 +347,14 @@ static bool ValidateWShape(gert::TilingContext *contex, ge::Format wFormat, int6
                     return false);
         const gert::Shape &wOriginShape = wShape->GetOriginShape();
         nSize = wOriginShape.GetDim(1);
-        kFromW = wOriginShape.GetDim(2);
+        kFromW = wOriginShape.GetDim(2); // w origin shape is [E, N, K], dim 2 is K axis
     } else {
         OP_CHECK_IF(wStorageDimNum != DIM_NUM_WEIGHT,
                     OP_LOGE(contex->GetNodeName(), "The dimension of w must be %u, actual is %zu", DIM_NUM_WEIGHT,
                             wStorageDimNum),
                     return false);
         nSize = wStorageShape.GetDim(1);
-        kFromW = wStorageShape.GetDim(2);
+        kFromW = wStorageShape.GetDim(2); // w storage shape is [E, N, K], dim 2 is K axis
     }
     eFromW = wStorageShape.GetDim(0);
     return true;

@@ -14,6 +14,7 @@
  */
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
+#include "mc2_comm_utils.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
 
@@ -601,10 +602,15 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
     Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
-    AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig = 
+
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    // 0代表默认走调度模式
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : Mc2Comm::ENGINE_AICPU;
+
+    AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType)
-            .withCommEngine(0)
+            .withCommEngine(engineType)
             .build();
     if (!matmulAllToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Mx quant matmul allto all build hccl tiling config failed: %s", matmulAllToAllBuilder.errorMsg().c_str());
@@ -929,9 +935,12 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", MX_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
+    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", MX_QUANT_MODE,
+            x2TransposeFlag, biasDType, commMode, tilingKey);
     return tilingKey;
 }
 
