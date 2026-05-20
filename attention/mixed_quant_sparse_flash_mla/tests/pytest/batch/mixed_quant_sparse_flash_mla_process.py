@@ -18,6 +18,7 @@ import pytest
 import random
 import numpy as np
 import math
+import npu_ops_transformer
 import custom_ops as ops
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
