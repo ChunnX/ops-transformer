@@ -189,10 +189,12 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     ge::DataType x1Dtype = x1TensorDesc->GetDataType();
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x1Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1", ToString(x1Dtype).c_str(), "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1"),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1", ToString(x1Dtype).c_str(),
+                        "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x2Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2", ToString(x2Dtype).c_str(), "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1"),
+                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2", ToString(x2Dtype).c_str(),
+                        "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1"),
                     return ge::GRAPH_FAILED);
     if (x1Dtype == ge::DataType::DT_FLOAT4_E2M1 || x2Dtype == ge::DataType::DT_FLOAT4_E2M1) {
         isMxfp4_ = true;
@@ -512,25 +514,36 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const g
         uint64_t x1Dim1DivMxFp4Size = static_cast<uint64_t>(((static_cast<int64_t>(shapeInfo.x1Dim1) +
                                                               MX_GROUP_SIZE_K - 1) / MX_GROUP_SIZE_K));
         if (shapeInfo.x1Dim1 % 2 != 0 || x1Dim1DivMxFp4Size % 2 != 0) {
-            std::string x1ShapeStr = "[" + std::to_string(shapeInfo.x1Dim0) + "," + std::to_string(shapeInfo.x1Dim1) + "]";
+            std::string x1ShapeStr = "[" + std::to_string(shapeInfo.x1Dim0) + "," +
+                                 std::to_string(shapeInfo.x1Dim1) + "]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", x1ShapeStr.c_str(),
                 "In the mxfp4 scenario, the K axis and ceil(K/32) of input x1 should both be even");
             return ge::GRAPH_FAILED;
         }
     }
     if ((x1ScaleDim0 != shapeInfo.x1Dim0) || (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN)) {
-        std::string expectedShape = "[" + std::to_string(shapeInfo.x1Dim0) + "," + std::to_string(x1Dim1DivMxFp8Size) + "," + std::to_string(EVEN_ALIGN) + "]";
-        std::string actualShape = "[" + std::to_string(x1ScaleDim0) + "," + std::to_string(x1ScaleDim1) + "," + std::to_string(x1ScaleDim2) + "]";
+        std::string expectedShape = "[" + std::to_string(shapeInfo.x1Dim0) + "," +
+                                 std::to_string(x1Dim1DivMxFp8Size) + "," +
+                                 std::to_string(EVEN_ALIGN) + "]";
+        std::string actualShape = "[" + std::to_string(x1ScaleDim0) + "," +
+                                  std::to_string(x1ScaleDim1) + "," +
+                                  std::to_string(x1ScaleDim2) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1_scale", actualShape.c_str(),
-            "The shape of input x1_scale should match the shape of input x1, where dim 1 should be ceil(x1Dim1/32) and dim 2 should be 2");
+            "The shape of input x1_scale should match the shape of input x1, " +
+            "where dim 1 should be ceil(x1Dim1/32) and dim 2 should be 2");
         return ge::GRAPH_FAILED;
     }
     // Transposed Scenario
     if ((x2ScaleDim0 != shapeInfo.x2Dim0) || (x2ScaleDim1 != x2Dim1DivMxFp8Size) || (x2ScaleDim2 != EVEN_ALIGN)) {
-        std::string expectedShape = "[" + std::to_string(shapeInfo.x2Dim0) + "," + std::to_string(x2Dim1DivMxFp8Size) + "," + std::to_string(EVEN_ALIGN) + "]";
-        std::string actualShape = "[" + std::to_string(x2ScaleDim0) + "," + std::to_string(x2ScaleDim1) + "," + std::to_string(x2ScaleDim2) + "]";
+        std::string expectedShape = "[" + std::to_string(shapeInfo.x2Dim0) + "," +
+                                 std::to_string(x2Dim1DivMxFp8Size) + "," +
+                                 std::to_string(EVEN_ALIGN) + "]";
+        std::string actualShape = "[" + std::to_string(x2ScaleDim0) + "," +
+                                  std::to_string(x2ScaleDim1) + "," +
+                                  std::to_string(x2ScaleDim2) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2_scale", actualShape.c_str(),
-            "The shape of input x2_scale should match the shape of input x2, where dim 1 should be ceil(x2Dim1/32) and dim 2 should be 2");
+            "The shape of input x2_scale should match the shape of input x2, " +
+            "where dim 1 should be ceil(x2Dim1/32) and dim 2 should be 2");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
