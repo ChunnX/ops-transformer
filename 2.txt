@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_MX_PA_TEST_H_
-#define FIA_KERNEL_FULLQUANT_MX_PA_TEST_H_
+#ifndef FIA_KERNEL_FULLQUANT_MX_PA_Q_QKVSCALE_H_
+#define FIA_KERNEL_FULLQUANT_MX_PA_Q_QKVSCALE_H_
 
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
@@ -43,32 +43,39 @@ public:
     ConstInfoX constInfo;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
+    __gm__ uint8_t* queryGm;
     __gm__ uint8_t *keyGm;
     __gm__ uint8_t *valueGm;
+    __gm__ uint8_t* deScaleQGm;
     __gm__ uint8_t *deScaleKGm;
     __gm__ uint8_t *deScaleVGm;
     __gm__ int32_t *blockTableGm;
     __gm__ uint32_t *fiaMetaDataGm;
-    __cbuf__ void *k1[4], *v1[4];
+    __cbuf__ void *q1[2], *k1[4], *v1[4];
     int ikv{-1};
+    int iq{3};
+    int iquse = -1;
     uint64_t inner_loop_limit;
     uint64_t outer_loop_limit;
     __aicore__ inline FlashAttentionFullQuantMxKernel(){};
 
     __aicore__ inline void InitBuffer()
     {
+        constexpr uint32_t mm1QSize = 128 * 128;
+        constexpr uint32_t mm1QScaleSize = 128 * 128 / 32 ;
         constexpr uint32_t mm1KSize = 128 * 256;
         constexpr uint32_t mm1KScaleSize = 128 * 256 / 32;
         constexpr uint32_t mm2VSize = 128 * 256;
         constexpr uint32_t mm2VScaleSize = 128 * 256 / 32;
-        k1[0] = (__cbuf__ void *)get_imm(0);
-        k1[1] = (__cbuf__ void *)get_imm(mm1KSize + mm1KScaleSize);
-        k1[2] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 2);
-        k1[3] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 3);
-        v1[0] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4);
-        v1[1] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize));
-        v1[2] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize) * 2);
-        v1[3] = (__cbuf__ void *)get_imm((mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize) * 3);
+        q1[0] = (__cbuf__ void *)get_imm(0);
+        q1[1] = (__cbuf__ void *)get_imm(mm1QSize + mm1QScaleSize);
+        k1[1] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + mm1KSize + mm1KScaleSize);
+        k1[2] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + (mm1KSize + mm1KScaleSize) * 2);
+        k1[3] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + (mm1KSize + mm1KScaleSize) * 3);
+        v1[0] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + (mm1KSize + mm1KScaleSize) * 4);
+        v1[1] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + (mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize));
+        v1[2] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + (mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize) * 2);
+        v1[3] = (__cbuf__ void *)get_imm((mm1QSize + mm1QScaleSize) + (mm1KSize + mm1KScaleSize) * 4 + (mm2VSize + mm2VScaleSize) * 3);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -141,8 +148,10 @@ public:
         outer_loop_limit = (32 + 127) >> 7; // constInfo.gS1OEnd
         
         InitConstInfo();
+        queryGm = query;
         keyPtr = key;
         valuePtr = value;
+        deScaleQGm = dequantScaleQuery;
         deScaleKGm = dequantScaleKey;
         deScaleVGm = dequantScaleValue;
         ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
@@ -177,20 +186,75 @@ public:
         wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)6);
         wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)7);
     }
-
-    __aicore__ inline void mm1(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop)
+    __aicore__ inline void gm_l1_q(uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
-        ikv++;
-        int ivkuse = ikv % 4;
-        wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+        uint64_t gmQOffset = (bIdx * 4 + outer *  128 / 8) * 8 * 128 * 8 + n2Idx * 8 * 128;
+        // Nd2NzParams nd2nzPara;
+        // nd2nzPara.ndNum = 1;
+        // nd2nzPara.nValue = 8; // nd矩阵的行数
+        // nd2nzPara.dValue = 128;       // nd矩阵的列数
+        // nd2nzPara.srcDValue = 128; // 同一nd矩阵相邻行起始地址间的偏移
+        // nd2nzPara.dstNzC0Stride = 32;
+        // nd2nzPara.dstNzNStride = 1;
+        // nd2nzPara.srcNdMatrixStride = 0;
+        // nd2nzPara.dstNzMatrixStride = 0;
+        uint64_t mte2QNzPara = 0 << 48; // MTE2_NZ_PARA[63:48]
+        mte2QNzPara |= 32 << 32;         // MTE2_NZ_PARA[47:32]
+        mte2QNzPara |= 1 << 16;         // MTE2_NZ_PARA[31:16]
+        mte2QNzPara |= 1;            // MTE2_NZ_PARA[15:0]
+        set_mte2_nz_para(mte2QNzPara); // CCE: store parameters for ND2NZ DMA instructions
+        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[iquse % 5], (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, 128, 0, 8, 128, 0, false);
 
+        gmQOffset +=  8 * 128 * 8;
+        // Nd2NzParams nd2nzPara;
+        // nd2nzPara.ndNum = 3;
+        // nd2nzPara.nValue = 8; // nd矩阵的行数
+        // nd2nzPara.dValue = 128;       // nd矩阵的列数
+        // nd2nzPara.srcDValue = 128; // 同一nd矩阵相邻行起始地址间的偏移
+
+        // nd2nzPara.dstNzC0Stride = 32;
+        // nd2nzPara.dstNzNStride = 1;
+        // nd2nzPara.srcNdMatrixStride = 8 * 128 * 8;
+        // nd2nzPara.dstNzMatrixStride = 8 * 32;
+
+        uint64_t mte2Q2NzPara = 8 << 48; // MTE2_NZ_PARA[63:48]
+        mte2Q2NzPara |= 32 << 32;         // MTE2_NZ_PARA[47:32]
+        mte2Q2NzPara |= 1 << 16;         // MTE2_NZ_PARA[31:16]
+        mte2Q2NzPara |= 3;            // MTE2_NZ_PARA[15:0]
+        set_mte2_nz_para(mte2Q2NzPara); // CCE: store parameters for ND2NZ DMA instructions
+        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[iquse % 5] + 8 * 32, (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, 128, 0, 8, 128, 8 * 128 * 8,false);
+    }
+        __aicore__ inline void gm_l1_qscale(uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
+    {
+        uint32_t qScaleOffset = 32 * 128;//((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize;runInfo.actMSize=gs1=8*4
+        uint64_t gmQScaleOffset = (bIdx * 4 + outer *  128 / 8) * 4 * 8 + n2Idx * 4 * 8 * (1 + 48) * 48 /2 *4;
+        // Dn2NzParams dn2nzPara;
+        // dn2nzPara.dnNum = 1;                 // ND矩阵的个数
+        // dn2nzPara.nValue = 2;       // 单个DN矩阵的实际列数，单位为元素个数
+        // dn2nzPara.dValue = 32;           // 单个DN矩阵的实际行数，单位为元素个数
+        // dn2nzPara.srcDnMatrixStride = 0;     // 相邻Dn矩阵起始地址之间的偏移， 单位为元素个数
+        // dn2nzPara.srcDValue = 2; // 同一个Dn矩阵中相邻行起始地址之间的偏移， 单位为元素个数
+        // dn2nzPara.dstNzC0Stride = 2;
+        // dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+        // dn2nzPara.dstNzMatrixStride = 2;
+
+        uint64_t mte2QScaleNzPara = static_cast<uint64_t>(2 * 2 / 32) << 48; // MTE2_NZ_PARA[63:48]
+        mte2QScaleNzPara |= static_cast<uint64_t>(2) << 32;         // MTE2_NZ_PARA[47:32]
+        mte2QScaleNzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
+        mte2QScaleNzPara |= static_cast<uint64_t>(1);            // MTE2_NZ_PARA[15:0]
+        set_mte2_nz_para(mte2QScaleNzPara); // CCE: store parameters for DN2NZ DMA instructions
+        copy_gm_to_cbuf_multi_dn2nz((__cbuf__ bfloat16_t *)((__cbuf__ float8_e8m0_t *)q1[iquse % 5] + qScaleOffset), 
+                                    (__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset), 0, 2 * 2, 0, 2, 32, 0, false);
+    }
+    __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
+    {
         uint32_t s2Offset = (subLoop % 2 == 0) ? inner * 512 : inner * 512 + 256;
         uint64_t blockIdxInBatch = s2Offset / 512;  // 获取block table上的索引
         uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
         uint64_t blockId =
             *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
                                 s2Offset / 512);
-        uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+        uint64_t gmKOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
 
         // DataCopyParams intriParams;
         // intriParams.blockCount = 4;
@@ -199,9 +263,13 @@ public:
         // intriParams.srcStride = 256;
         /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
                                      leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
-        // uint64_t gmOffset = bIdx * (128 * 10240 * 8) + n2Idx * (128 * 10240) + s2Offset * 128;
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)k1[ivkuse], (__gm__ float8_e4m3_t *)(keyGm + gmOffset), 0, 4,
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)k1[ivkuse], (__gm__ float8_e4m3_t *)(keyGm + gmKOffset), 0, 4,
                                  256 * 32, 0, 0, true, 0, 256 * 32 * 2, 0);
+    }
+    __aicore__ inline void gm_l1_kscale(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
+    {
+        uint32_t s2Offset = (subLoop % 2 == 0) ? inner * 512 : inner * 512 + 256;
+        uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
         // uint32_t kScaleOffset = 256 * 128;
         
         // intriParams.blockCount = 16;修改成1
@@ -211,15 +279,73 @@ public:
         uint64_t blockKScaleId =
             *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
                                 s2Offset / 512);
-        uint64_t gmKeyScaleOffset = blockKScaleId * 512 * 64 * 8 + n2Idx * 512 * 64 + bsIdx / 16 * 64 + bsIdx % 16;
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)k1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKeyScaleOffset), 0, 1,
+        uint64_t gmKScaleOffset = blockKScaleId * 512 * 64 * 8 + n2Idx * 512 * 64 + bsIdx / 16 * 64 + bsIdx % 16;
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)k1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset), 0, 1,
                                  32 * 32, 0, 0, true, 0, 0, 0);
+    }
+    __aicore__ inline void mm1(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop)
+    {
+        //q and qscale:gm->l1
+        if (inner == 0 && subLoop == 0){
+            iq ++;
+            iquse =  5 + (iq % 2);
+            wait_flag(PIPE_MTE1, PIPE_MTE2, iquse);
+            gm_l1_q(outer, bIdx, n2Idx);
+            gm_l1_qscale(outer, bIdx, n2Idx);
+            set_flag(PIPE_MTE2, PIPE_MTE1, iquse);
+        } else {
+            set_flag(PIPE_MTE2, PIPE_MTE1, iquse);
+        }
+        //k and kscale:gm->l1
+        ikv++;
+        int ivkuse = ikv % 4;
+        wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+        gm_l1_k(inner, bIdx, n2Idx, subLoop, ivkuse);
+        gm_l1_kscale(inner, bIdx, n2Idx, subLoop, ivkuse);
 
         set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
+        wait_flag(PIPE_MTE2, PIPE_MTE1, iquse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
+        if (inner == 19 && (subLoop % 2 == 1)) {
+            set_flag(PIPE_MTE1, PIPE_MTE2, iquse);
+        }
         set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
     }
-
+    __aicore__ inline void gm_l1_v(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t k, int ivkuse)
+    {
+        uint32_t s2Offset = inner * 512 + k * 256;
+        uint64_t blockIdxInBatch = s2Offset / 512;  // 获取block table上的索引
+        uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
+        uint64_t blockId =
+            *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
+                                s2Offset / 512);
+        // uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+        // intriParams.blockCount = 4;
+        // intriParams.blockLen = 256;
+        // intriParams.dstStride = 0;
+        // intriParams.srcStride = 256;
+        /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
+                                 leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
+        uint64_t gmVOffset = bIdx * (128 * 10240 * 8) + n2Idx * (128 * 10240) + s2Offset * 128;
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)v1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmVOffset),
+                                 0, 4, 256 * 32, 0, 0, true, 0, 4 * 32 * 2, 0);
+    }
+     __aicore__ inline void gm_l1_vscale(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t k, int ivkuse)
+    {
+        // intriParams.blockCount = 8;
+        // intriParams.blockLen = 4;
+        // intriParams.dstStride = 0;
+        // intriParams.srcStride = 4;
+        uint32_t s2VscaleScaleOffset = (inner * 512 + k * 256) / 32;
+        uint64_t blockVscaleIdxInBatch = s2VscaleScaleOffset / 8;  // 获取block table上的索引
+        uint64_t bsVscaleIdx = s2VscaleScaleOffset % 8;            // 获取在单个块上超出的行数
+        uint64_t blockVscaleId =
+            *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
+                                blockVscaleIdxInBatch);
+        uint64_t gmVScaleOffset = blockVscaleId * 32 * 8 * 8 * 8 + n2Idx * 32 * 8 * 8 + bsVscaleIdx * 32;
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)v1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset), 0, 8,
+                                 4 * 32, 0, 0, true, 0, 4 * 32 * 2, 0);
+    }
     __aicore__ inline void mm2(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
         for (uint32_t k = 0; k < 2; k++) {
@@ -227,36 +353,9 @@ public:
             int ivkuse = ikv % 4;
             wait_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
 
-            uint32_t s2Offset = inner * 512 + k * 256;
-            uint64_t blockIdxInBatch = s2Offset / 512;  // 获取block table上的索引
-            uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
-            uint64_t blockId =
-                *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
-                                    s2Offset / 512);
-            // uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+            gm_l1_v(inner, bIdx, n2Idx, k, ivkuse);
+            gm_l1_vscale(inner, bIdx, n2Idx, k, ivkuse);
 
-            // intriParams.blockCount = 4;
-            // intriParams.blockLen = 256;
-            // intriParams.dstStride = 0;
-            // intriParams.srcStride = 256;
-            /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
-                                     leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
-            uint64_t gmOffset = bIdx * (128 * 10240 * 8) + n2Idx * (128 * 10240) + s2Offset * 128;
-            copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)v1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmOffset),
-                                     0, 4, 256 * 32, 0, 0, true, 0, 4 * 32 * 2, 0);
-            // intriParams.blockCount = 8;
-            // intriParams.blockLen = 4;
-            // intriParams.dstStride = 0;
-            // intriParams.srcStride = 4;
-            uint32_t s2VscaleScaleOffset = (inner * 512 + k * 256) / 32;
-            uint64_t blockVscaleIdxInBatch = s2VscaleScaleOffset / 8;  // 获取block table上的索引
-            uint64_t bsVscaleIdx = s2VscaleScaleOffset % 8;            // 获取在单个块上超出的行数
-            uint64_t blockVscaleId =
-                *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
-                                    blockVscaleIdxInBatch);
-            uint64_t gmValueScaleOffset = blockVscaleId * 32 * 8 * 8 * 8 + n2Idx * 32 * 8 * 8 + bsVscaleIdx * 32;
-            copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)v1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleVGm + gmValueScaleOffset), 0, 8,
-                                 4 * 32, 0, 0, true, 0, 4 * 32 * 2, 0);
             set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
