@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -15,7 +15,12 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+#include "kernel_utils.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -59,6 +64,14 @@ static constexpr int64_t BIAS_L1_SIZE = 4;
 static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
 static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
 static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
+static constexpr uint64_t PREFETCH_A_MAX_M_SIZE = 512;
+static constexpr uint64_t MX_A8W4_L1_PREFETCH_SIZE_KB = 88;
+static constexpr uint64_t GMM_CACHE_LINE_SIZE = 128;
+static constexpr uint64_t MX_A8W4_A_L1_RESERVED_KB = 80;
+static constexpr uint64_t A_B_BALANCE_FACTOR = 2;
+static constexpr uint64_t MX_SCALE_L1_SIZE_KB = 32;
+static constexpr uint64_t VEC_CORE_MIN_N_SPLIT = 16;
+static constexpr uint64_t VEC_CORE_NUM = 2;
 
 // 控制参数定义
 static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
