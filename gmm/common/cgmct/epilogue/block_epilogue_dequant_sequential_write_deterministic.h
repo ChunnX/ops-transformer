@@ -530,13 +530,15 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
 {
     singleM_ = Get<MNK_M>(blockShape);
     singleN_ = Get<MNK_N>(blockShape);
+    // A5: L0C data is from AIC (subBlock 0), covering rows [0, halfSingleM).
+    // AIV must use mOffset=0 to match L0C data layout (not subBlockIdx * halfSingleM).
     uint32_t halfSingleM = CeilDiv(singleM_, static_cast<uint64_t>(AscendC::GetTaskRation()));
     alignN_ = CeilDiv(singleN_, DET_SEQ_BLOCK_ELEMENTS_FP32S) * DET_SEQ_BLOCK_ELEMENTS_FP32S;
-    uint64_t singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
+    uint64_t singleMInVec = halfSingleM;
     if (singleMInVec == 0) {
         return;
     }
-    uint64_t mOffset = subBlockIdx_ * halfSingleM;
+    uint64_t mOffset = 0;
 
     // Split blockCoord semantics:
     //   elem[4] = group-inner mOffset (for logit/rowIndex/x1Scale reading)
