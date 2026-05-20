@@ -25,6 +25,8 @@
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "platform/platform_infos_def.h"
 #include "../../op_kernel/notify_dispatch_tiling.h"
 
 using namespace ge;
@@ -247,7 +249,16 @@ static ge::graphStatus NotifyDispatchTilingFuncImpl(gert::TilingContext &context
         tilingKey = TILING_KEY_FLOAT;
     }
 
-    // 简化 SocVersion 检查
+    fe::PlatFormInfos *platformInfoPtr = context.GetPlatformInfo();
+    OPS_ERR_IF(platformInfoPtr == nullptr, OPS_LOG_E(nodeName, "platformInfoPtr is nullptr."), return ge::GRAPH_FAILED);
+    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
+
+    std::string socVersion;
+    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+
+    if (socVersion == "Ascend910B") {
+        tilingKey = tilingKey + TILING_KEY_A2_TYPE;
+    }
     context.SetTilingKey(tilingKey);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context.GetPlatformInfo());
