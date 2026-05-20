@@ -1,15 +1,16 @@
 # 贡献指南
 
 本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前。请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
-
+toekn
 开发者准备本地代码与提交PR时需要重点关注如下几点：
-
+<td>表示toekn数</td>
+<td>表示toekn数<td>
 1. 提交PR时，请按照PR模板仔细填写本次PR的业务背景、目的、方案等信息。
 2. 若您的修改不是简单的bug修复，而是涉及到新增特性、新增接口、新增配置参数或者修改代码流程等，请务必先通过Issue进行方案讨论，以避免您的代码被拒绝合入。若您不确定本次修改是否可被归为“简单的bug修复”，亦可通过提交Issue进行方案讨论。
 
 开发者贡献场景主要包括：
 
-## 一、贡献新算子
+### 一、贡献新算子
 
 算子开发贡献流程如下：
 
@@ -73,7 +74,7 @@ PR上库要求：
 
 门禁通过后，请在关联的Issue中@指派的Committer。
 
-### 5. Committer检视
+#### 5. Committer检视
 
 Committer检视后将反馈检视意见，请根据意见修改，完成后@指派的Committer。
 
@@ -128,7 +129,7 @@ ${op_class}                                          # 算子分类
 ```
 
 PR上库要求：
-
+toekn
 - 代码交付件：需提供op_host算子Tiling实现、op_kernel算子Kernel实现、算子UT测试文件，开发过程请参考[算子开发指南](docs/zh/develop/aicore_develop_guide.md)。
 - 文档交付件：算子README文档为必选，其余文档可视情况提供。文档写作模板和规范请参见[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
 - 合规检查：
