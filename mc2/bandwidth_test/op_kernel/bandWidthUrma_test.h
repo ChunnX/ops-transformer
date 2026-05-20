@@ -177,7 +177,7 @@ private:
 
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
-    ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
+    __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
 
     AscendC::Hcomm<CommEngine::AIV, CommProtocol::URMA> hcomm_; // todo:
 
@@ -223,7 +223,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
 
     for (uint32_t i = 0; i < epWorldSize_ - 1; i++) {
-        urmaCommHandle_[i] = reinterpret_cast<ChannelEntity *>(context_->hcommHandle_[i]); // todo:需要确认
+        urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]); // todo:需要确认
         PRINTF("i is %u, local addr is %u, remote addr is %u\n", i, urmaCommHandle_[i]->localBufferAddr->bufferInfo.rma.addr, urmaCommHandle_[i]->remoteBufferAddr->bufferInfo.rma.addr);
     }
 
