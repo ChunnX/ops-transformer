@@ -73,10 +73,10 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     REGISTER_TILING_DEFAULT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData);
     GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
 
-    using namespace GMMSQWeightQuant;
-    GMMSQWeightQuant::GMMSQWeightQuantResplitController<
-        fp8_e4m3fn_t, fp4x2_e2m1_t, fp8_e8m0_t,
-        fp8_e8m0_t, float, fp8_e4m3fn_t, fp8_e8m0_t, false,
+    using namespace WeightQuantBatchMatmulV2::Arch35;
+    GMMSQ::GMMSQWeightQuantResplitController<
+        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE,
+        DTYPE_X_SCALE, DTYPE_BIAS, DTYPE_Y, DTYPE_Y_SCALE, false,
         MXA8W4_NZNK,
         VEC_ANTIQUANT_CONFIG_DYNAMIC>
         controller;
