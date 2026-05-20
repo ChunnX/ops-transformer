@@ -35,6 +35,7 @@ constexpr uint32_t MAX_MODULE_DEVICE_NUM = 32;
 
 namespace Mc2Kernel {
 constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
+constexpr uint64_t A5_EP_NORMAL_MTE_STATE_WIN_SIZE = 4096UL * 1024UL;
 }
 
 struct HcclSignalInfo {
@@ -448,7 +449,7 @@ __aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> perf
 }
 
 namespace Mc2Kernel {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A5 implmentation
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) || defined(__DAV_C310__) // A5 implementation
 using HcclOpParam = HcclCombinOpParam;
 
 __aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam * winContext)
@@ -466,6 +467,24 @@ __aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam * winContext)
     return winContext->winSize;
 }
 
+#if defined(MC2_EP_NORMAL_WIN_LAYOUT)
+__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
+{
+    return (GM_ADDR)(winContext->windowsIn[winContext->rankId]);
+}
+
+__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+{
+    (void)curRankId;
+    return (GM_ADDR)(winContext->windowsIn[rankId] + A5_EP_NORMAL_MTE_STATE_WIN_SIZE);
+}
+
+__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+{
+    (void)curRankId;
+    return (GM_ADDR)(winContext->windowsIn[rankId]);
+}
+#else
 __aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
 {
     return (GM_ADDR)(winContext->windowsIn[winContext->rankId]);
@@ -480,6 +499,7 @@ __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winC
 {
     return (GM_ADDR)(winContext->windowsIn[rankId]);
 }
+#endif // MC2_EP_NORMAL_WIN_LAYOUT
 #else // A3 implementation
 using HcclOpParam = HcclOpResParam;
 
@@ -518,6 +538,6 @@ __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winC
     }
     return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext->remoteRes[rankId].nextDevicePtr))->windowsExp);
 }
-#endif // __NPU_ARCH__ == 3510
+#endif // A5 implementation
 } // Mc2Kernel
 #endif // MOE_DISTRIBUTE_BASE_H

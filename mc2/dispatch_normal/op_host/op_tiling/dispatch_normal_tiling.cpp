@@ -19,7 +19,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/dispatch_normal_tiling.h"
 #include "../../op_kernel/dispatch_normal_tiling_key.h"
-#include "../tiling_args.h"
+#include "tiling_args.h"
 
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/hccl/hccl_tiling.h"

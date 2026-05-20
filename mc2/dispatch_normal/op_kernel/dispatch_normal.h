@@ -1,12 +1,15 @@
 #ifndef DISPATCH_NORMAL_H
 #define DISPATCH_NORMAL_H
 
+#define MC2_EP_NORMAL_WIN_LAYOUT
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_distribute_base.h"
+#if __has_include("../common/mc2_ep_kernel_deps.h")
+#include "../common/mc2_ep_kernel_deps.h"
+#else
+#include "../../common/op_kernel/mc2_ep_kernel_deps.h"
+#endif
 #include "dispatch_normal_tiling.h"
-#include "comm_args.h"
-#include "mc2_moe_context.h"
 
 namespace DispatchNormalImpl {
 constexpr uint8_t BUFFER_NUM = 2;
