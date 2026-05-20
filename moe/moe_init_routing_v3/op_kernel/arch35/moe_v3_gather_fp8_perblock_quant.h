@@ -30,18 +30,18 @@ constexpr uint32_t FP32_INF_VALUE = 0x7f800000;
 constexpr uint16_t FP16_MAX_VALUE_MASK = 0x7fff;
 
 template <typename T, typename U>
-__simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr, uint32_t xElemNum,
-                                  float fp8MaxValue)
+__simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
+                                  uint32_t blockElemNum, float fp8MaxValue)
 {
     using namespace AscendC::MicroAPI;
 
     uint32_t dtypeSize = sizeof(T);
     uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / dtypeSize;
     uint16_t vfNum = AscendC::VECTOR_REG_WIDTH / sizeof(float);
-    uint16_t inputVfLoop = (xElemNum + vfLen - 1) / vfLen;
-    uint16_t outputVfLoop = (xElemNum + vfNum - 1) / vfNum;
-    uint32_t inputNum = xElemNum;
-    uint32_t outputNum = xElemNum;
+    uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
+    uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
+    uint32_t inputNum = blockElemNum;
+    uint32_t outputNum = blockElemNum;
 
     static constexpr DivSpecificMode mode = {MaskMergeMode::ZEROING, false};
     static constexpr CastTrait castTrait0 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
@@ -101,8 +101,8 @@ class MoeGatherOutFP8PerBlockQuant {
 public:
     __aicore__ inline MoeGatherOutFP8PerBlockQuant(){};
 
-    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR expandedRowIdxAddr,
-                                GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, GM_ADDR sortedExpertIdxAddr,
+    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR sortedExpertIdxAddr,
+                                GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
     __aicore__ inline void Process();
@@ -115,7 +115,7 @@ private:
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
     __aicore__ inline void CopyExpandedXandFP8Quant(int64_t progress);
     __aicore__ inline void CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols);
-    __aicore__ inline void Compute(int64_t loopCols);
+    __aicore__ inline void Compute(int64_t loopCols, int64_t loopScaleCols);
     __aicore__ inline void CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols, int64_t loopScaleCols);
 
 private:
@@ -166,8 +166,8 @@ private:
 
 template <typename T, typename U>
 __aicore__ inline void
-MoeGatherOutFP8PerBlockQuant<T, U>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR expandedRowIdxAddr,
-                                         GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, GM_ADDR sortedExpertIdxAddr,
+MoeGatherOutFP8PerBlockQuant<T, U>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR sortedExpertIdxAddr,
+                                         GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                          const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
@@ -300,7 +300,7 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyExpandedXandFP8Qu
             int64_t loopScaleCols = (j == colLoops_ - 1) ? lastLoopScaleCols_ : perLoopScaleCols_;
 
             CopyIn(srcIdx / k_, j, loopCols);
-            Compute(loopCols);
+            Compute(loopCols, loopScaleCols);
             CopyOut(dstIdx, j, loopCols, loopScaleCols);
         }
     }
@@ -331,7 +331,7 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyIn(int64_t srcIdx
 }
 
 template <typename T, typename U>
-__aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopCols)
+__aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopCols, int64_t loopScaleCols)
 {
     LocalTensor<T> xLocal = inQueue_.DeQue<T>();
     __ubuf__ T *xAddr = reinterpret_cast<__ubuf__ T *>(xLocal.GetPhyAddr());
@@ -342,8 +342,13 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopC
     LocalTensor<float> scaleLocal = scaleQueue_.AllocTensor<float>();
     __ubuf__ float *scaleAddr = reinterpret_cast<__ubuf__ float *>(scaleLocal.GetPhyAddr());
 
-    uint32_t xElemNum = static_cast<uint32_t>(loopCols);
-    VF_CALL<ComputeVF<T, U>>(xAddr, scaleAddr, outAddr, xElemNum, fp8MaxValue_);
+    for (int64_t blockIdx = 0; blockIdx < loopScaleCols; blockIdx++) {
+        int64_t blockOffset = blockIdx * FP8_PERBLOCK_BLOCK_SIZE;
+        int64_t blockElemNum = (blockIdx == loopScaleCols - 1) ? (loopCols - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
+
+        VF_CALL<ComputeVF<T, U>>(xAddr + blockOffset, scaleAddr + blockIdx, outAddr + blockOffset,
+                                 static_cast<uint32_t>(blockElemNum), fp8MaxValue_);
+    }
 
     inQueue_.FreeTensor(xLocal);
     outQueue_.EnQue(outLocal);
