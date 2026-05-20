@@ -483,6 +483,15 @@ public:
 
         // Final aggregation: all cores must participate (SyncAll is global barrier).
         SyncAll();
+        if ASCEND_IS_AIV {
+            uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
+            if (physId < 4) {
+                printf("[KER] physId=%lu wsBaseRow=%lu globalRowOff=%lu windowSize=%lu coreNum=%u\n",
+                       physId, workspaceBaseRow, globalRowOffset,
+                       params.cyclingParams.windowSizeRows,
+                       params.cyclingParams.coreNum);
+            }
+        }
         {
             GMMFRDeterministic::SyncConfig syncConfig{};
             syncConfig.curM = workspaceBaseRow;

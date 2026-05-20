@@ -78,10 +78,25 @@ __aicore__ inline void FRDeterministicA5(
     // Divide by GetTaskRation() to get physical core ID for row distribution.
     uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
 
+    // Debug: print aggregation parameters (limit to first 4 AIV cores to reduce output)
+    uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
+    if (physId < 4) {
+        printf("[AGG] physId=%lu totalM=%lu globalRowOffset=%lu coreNum=%u myVecId=%lu baseN=%lu n=%u\n",
+               physId, totalM, globalRowOffset, coreNum, myVecId,
+               static_cast<uint64_t>(syncConfig.baseN), n);
+    }
+
     // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
     uint64_t processedRows = 0;
     for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
         auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
+
+        // Debug: print first 3 outRow values for first 4 cores
+        if (physId < 4 && processedRows < 3) {
+            printf("[AGG] physId=%lu m=%lu outRow=%lu wsAddr=%lu yAddr=%lu\n",
+                   physId, mOffset, outRow,
+                   mOffset * n, outRow * n);
+        }
 
         // Row ownership: only the core matching outRow % coreNum handles this row
         if (static_cast<uint64_t>(outRow % coreNum) != myVecId) {
@@ -101,7 +116,6 @@ __aicore__ inline void FRDeterministicA5(
             queBind.EnQue(bindLocal);
             bindLocal = queBind.DeQue<DTYPE_OUT>();
 
-            // Debug: print first 3 workspace values for the first 3 rows owned by this core
             // AtomicAdd workspace -> yGm (single writer per outRow)
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
@@ -111,6 +125,10 @@ __aicore__ inline void FRDeterministicA5(
             queBind.FreeTensor(bindLocal);
         }
         processedRows++;
+    }
+    // Debug: print completion
+    if (physId < 4) {
+        printf("[AGG] physId=%lu DONE processedRows=%lu\n", physId, processedRows);
     }
     SyncAll();  // Ensure all writes complete
 }
