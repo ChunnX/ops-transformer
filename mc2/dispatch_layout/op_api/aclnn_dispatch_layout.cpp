@@ -14,7 +14,6 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
-#include "opdev/data_type.h"
 
 using namespace op;
 
@@ -72,7 +71,7 @@ static aclnnStatus CheckParams(const aclTensor* topkIdx,
     OP_CHECK(topkIdxDataType == op::DataType::DT_INT64,
              OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                      "topkIdx dtype must be INT64, but got %s.",
-                     op::ToString(topkIdxDataType).c_str()),
+                     op::ToString(topkIdxDataType).GetString()),
              return ACLNN_ERR_PARAM_INVALID);
 
     OP_CHECK(num_tokens > 0,

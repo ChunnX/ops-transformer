@@ -23,3 +23,8 @@ from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
 from .flash_attn import npu_flash_attn
 from .flash_attn_metadata import npu_flash_attn_metadata
 from .dispatch_layout import dispatch_layout
+from .moe_combine_normal import (
+    moe_combine_normal,
+    get_moe_combine_buffer,
+    MoeCombineBuffer
+)
