@@ -1942,11 +1942,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         if (maskDimNum != 2 || fiaInfo.s1Size == 1) {
             maskBatch = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(0);
         }
-        if (fiaInfo.antiQuantFlag && fiaInfo.s1Size == 1) {
-            inputParams.set_attenMaskShapeType(1);
-        } else {
-            inputParams.set_attenMaskShapeType(maskBatch > 1 ? 1 : 2);
-        }
+        inputParams.set_attenMaskShapeType(maskBatch > 1 ? 1 : 2);
         singleCoreParams.set_attenMaskBatch(maskBatch);
         maskS2Size = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
         maskS1Size = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
