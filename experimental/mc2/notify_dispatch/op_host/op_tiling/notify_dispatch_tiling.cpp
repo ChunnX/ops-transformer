@@ -65,6 +65,7 @@ constexpr static int TILING_KEY_INT = 23;
 constexpr static int TILING_KEY_A2_TYPE = 100;
 
 constexpr static int ALL_TO_ALL_CORE_NUM = 32;
+constexpr uint64_t MAX_WINDOW_SIZE = 512UL * 1024UL * 1024UL;
 } // namespace optiling
 
 namespace optiling {
@@ -140,7 +141,6 @@ static void SetHcommCfg(const gert::TilingContext &context, NotifyDispatchTiling
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(commGroup, opType1, algConfigAllToAllStr);
     mc2CcTilingConfig.GetTiling(tiling.mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tiling.mc2CcTiling1);
 }
 
 static ge::graphStatus SetWorkSpace(gert::TilingContext &context, const char *nodeName)
@@ -200,7 +200,7 @@ static bool CheckTensorDataType(gert::TilingContext &context, const char *nodeNa
     // Verify the size of the win area
     NotifyDispatchTilingData *tilingData = context.GetTilingData<NotifyDispatchTilingData>();
     OPS_ERR_IF(tilingData == nullptr, OPS_LOG_E(nodeName, "tilingData is nullptr."), return false);
-    uint64_t maxWindowSize = Mc2TilingUtils::GetMaxWindowSize();
+    uint64_t maxWindowSize = MAX_WINDOW_SIZE;
     uint64_t actualSize = dataSize * tilingData->notifyDispatchInfo.sendCount + 2 * 1024 * 1024; // 2MB flag位
     if (actualSize > maxWindowSize) {
         OPS_LOG_E(nodeName, "HCCL_BUFFSIZE is too SMALL, should larger than %luMB.", actualSize / MB_SIZE);
@@ -247,16 +247,7 @@ static ge::graphStatus NotifyDispatchTilingFuncImpl(gert::TilingContext &context
         tilingKey = TILING_KEY_FLOAT;
     }
 
-    fe::PlatFormInfos *platformInfoPtr = context.GetPlatformInfo();
-    OPS_ERR_IF(platformInfoPtr == nullptr, OPS_LOG_E(nodeName, "platformInfoPtr is nullptr."), return ge::GRAPH_FAILED);
-    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
-
-    std::string socVersion;
-    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
-
-    if (socVersion == "Ascend910B") {
-        tilingKey = tilingKey + TILING_KEY_A2_TYPE;
-    }
+    // 简化 SocVersion 检查
     context.SetTilingKey(tilingKey);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context.GetPlatformInfo());

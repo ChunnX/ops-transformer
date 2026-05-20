@@ -11,10 +11,10 @@
 #include "kernel_operator.h"
 #include "notify_dispatch_tiling.h"
 
-#define TILING_KEY_FLOAT16  20
+#define TILING_KEY_FLOAT16 20
 #define TILING_KEY_BFLOAT16 21
-#define TILING_KEY_FLOAT    22
-#define TILING_KEY_INT      23
+#define TILING_KEY_FLOAT 22
+#define TILING_KEY_INT 23
 
 #define KERNEL_USE_WORKSPACE (1 * 1024 * 1024)
 
@@ -23,8 +23,8 @@ extern "C" __global__ __aicore__ void notify_dispatch(GM_ADDR sendData, GM_ADDR 
                                                       GM_ADDR recvCount, GM_ADDR recvOffset, GM_ADDR maxBs,
                                                       GM_ADDR recvTokensPerExpert, GM_ADDR workspace, GM_ADDR tiling)
 {
-    REGISTER_TILING_DEFAULT(Cam::NotifyDispatchTilingData);
-    GET_TILING_DATA_WITH_STRUCT(Cam::NotifyDispatchTilingData, tilingData, tiling);
+    REGISTER_TILING_DEFAULT(optiling::NotifyDispatchTilingData);
+    GET_TILING_DATA_WITH_STRUCT(optiling::NotifyDispatchTilingData, tilingData, tiling);
 
     int localRank = tilingData.notifyDispatchInfo.localRankId;
     int localRankSize = tilingData.notifyDispatchInfo.localRankSize;
@@ -51,20 +51,20 @@ extern "C" __global__ __aicore__ void notify_dispatch(GM_ADDR sendData, GM_ADDR 
     if (TILING_KEY_IS(TILING_KEY_FLOAT16)) {
         NotifyDispatch<float16_t> opKernel(rank, rankSize, extraFlag);
         opKernel.Init(sendDataInput, tokenPerExpertDataInput, sendDataOffsetOutput, recvDataOutput, totalRecvTokens,
-            recvCount, recvOffset, maxBs, recvTokensPerExpert, len, numTokens, op, root, cycleCount, scale,
-            scaleCount, offset, localRank, localRankSize);
+                      recvCount, recvOffset, maxBs, recvTokensPerExpert, len, numTokens, op, root, cycleCount, scale,
+                      scaleCount, offset, localRank, localRankSize);
         opKernel.Process();
     } else if (TILING_KEY_IS(TILING_KEY_FLOAT)) {
         NotifyDispatch<float> opKernel(rank, rankSize, extraFlag);
         opKernel.Init(sendDataInput, tokenPerExpertDataInput, sendDataOffsetOutput, recvDataOutput, totalRecvTokens,
-            recvCount, recvOffset, maxBs, recvTokensPerExpert, len, numTokens, op, root, cycleCount, scale,
-            scaleCount, offset, localRank, localRankSize);
+                      recvCount, recvOffset, maxBs, recvTokensPerExpert, len, numTokens, op, root, cycleCount, scale,
+                      scaleCount, offset, localRank, localRankSize);
         opKernel.Process();
     } else if (TILING_KEY_IS(TILING_KEY_INT)) {
         NotifyDispatch<int> opKernel(rank, rankSize, extraFlag);
         opKernel.Init(sendDataInput, tokenPerExpertDataInput, sendDataOffsetOutput, recvDataOutput, totalRecvTokens,
-            recvCount, recvOffset, maxBs, recvTokensPerExpert, len, numTokens, op, root, cycleCount, scale,
-            scaleCount, offset, localRank, localRankSize);
+                      recvCount, recvOffset, maxBs, recvTokensPerExpert, len, numTokens, op, root, cycleCount, scale,
+                      scaleCount, offset, localRank, localRankSize);
         opKernel.Process();
     }
 }

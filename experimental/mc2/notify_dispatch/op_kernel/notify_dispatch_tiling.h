@@ -26,8 +26,7 @@ struct NotifyDispatchInfo {
 };
 
 struct NotifyDispatchTilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling1;
+    ::Mc2InitTiling mc2InitTiling;
     NotifyDispatchInfo notifyDispatchInfo;
 };
 } // namespace optiling
