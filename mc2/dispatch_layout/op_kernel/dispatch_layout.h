@@ -16,13 +16,21 @@
 #ifndef DISPATCH_LAYOUT_H
 #define DISPATCH_LAYOUT_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
-#include <climits>
-
+#endif
 #include "dispatch_layout_tiling.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
 #include "../common/op_kernel/mc2_kernel_utils.h"
+#else
+#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
+#endif
 
-using namespace Moe;
+using namespace AscendC;
 namespace MoeDispatchLayout {
 
 constexpr uint32_t UB_32_ALIGN = 32U;
