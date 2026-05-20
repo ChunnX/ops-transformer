@@ -532,16 +532,13 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     singleM_ = Get<MNK_M>(blockShape);
     singleN_ = Get<MNK_N>(blockShape);
     alignN_ = CeilDiv(singleN_, DET_SEQ_BLOCK_ELEMENTS_FP32S) * DET_SEQ_BLOCK_ELEMENTS_FP32S;
-    // Split rows by subBlock (same pattern as non-deterministic epilogue):
-    //   subBlock 0 (AIC): rows [0, halfSingleM)
-    //   subBlock 1 (AIV): rows [halfSingleM, singleM)
-    // Together they cover all rows.
-    uint32_t halfSingleM = CeilDiv(singleM_, static_cast<uint64_t>(AscendC::GetTaskRation()));
-    uint64_t singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
+    // A5: AIV processes ALL rows (AIC cannot execute vector operations like DataCopyPad).
+    // No subBlockIdx split — AIV handles the full tile.
+    uint64_t singleMInVec = singleM_;
     if (singleMInVec == 0) {
         return;
     }
-    uint64_t mOffset = subBlockIdx_ * halfSingleM;
+    uint64_t mOffset = 0;
 
     // Split blockCoord semantics:
     //   elem[4] = group-inner mOffset (for logit/rowIndex/x1Scale reading)
@@ -552,11 +549,9 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     uint64_t yOffset = Get<DET_SEQ_Y_IDXS>(blockCoord);
 
     // DEBUG: print key offsets
-    if (subBlockIdx_ == 1) {
-        printf("[EPI] singleM=%lu halfM=%u subIdx=%u singleMInVec=%lu mOffset=%lu logitBase=%lu wsBaseRow=%lu yOffset=%lu n_=%lu\n",
-               static_cast<uint64_t>(singleM_), halfSingleM, subBlockIdx_, singleMInVec, mOffset,
-               logitBase, workspaceBaseRow, yOffset, static_cast<uint64_t>(n_));
-    }
+    printf("[EPI] singleM=%lu singleMInVec=%lu mOffset=%lu logitBase=%lu wsBaseRow=%lu yOffset=%lu n_=%lu\n",
+           static_cast<uint64_t>(singleM_), singleMInVec, mOffset,
+           logitBase, workspaceBaseRow, yOffset, static_cast<uint64_t>(n_));
 
     // Rebase yGlobal_ by workspaceBaseRow to keep element offsets small
     // (A5 DataCopyPad has limited GM element offset range)
