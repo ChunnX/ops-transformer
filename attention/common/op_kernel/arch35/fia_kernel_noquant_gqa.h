@@ -528,10 +528,6 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
-        }
-
         if (s2Cur < curS2Start) {
             return TASK_DEAL_MODE::NOT_START;
         }
@@ -542,6 +538,10 @@ public:
 
         if (SkipForS1OutSplit()) {
             return TASK_DEAL_MODE::SKIP_S1OUT;
+        }
+
+        if (curS2Start >= curS2End) {
+            return TASK_DEAL_MODE::SKIP;
         }
 
         if (s2Cur == curS2Start) {
