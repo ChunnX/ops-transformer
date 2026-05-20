@@ -1578,6 +1578,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::AllG
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Process()
 {
+    for (int i = 0; i < g_oomAddrArange.count; i++) {
+        PRINTF("[start] [%d} g_oomAddrArange.addr: %p, gm len: %d\n", i, g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+    }
     if ASCEND_IS_AIV { // 全aiv处理	 
         AlltoAllDispatch();	 
         SetStatus();	 
@@ -1590,6 +1593,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
             AllgatherProcessOut();	 
             AllGatherSetExpertTokenNumsAndTpRecvCount(); 
         }
+    }
+    for (int i = 0; i < g_oomAddrArange.count; i++) {
+        PRINTF("[end] [%d} g_oomAddrArange.addr: %p, gm len: %d\n", i, g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
     }
 }
 } // MoeDistributeDispatchV2Impl
