@@ -594,161 +594,80 @@ using CommonTool::CeilAlign;  // 仅引入公共的 CeilAlign
 
 ---
 
-## 6. 实施步骤
+## 6. 测试方案
 
-### Step 1：创建特性分支
+### 6.1 编译测试
 
-```bash
-git checkout -b refactor/unique-header-names
-```
+**目标：** 验证所有文件重命名、路径修改、头文件保护宏变更后，全仓能够编译通过。
 
-### Step 2：创建公共目录与公共文件
+**步骤：**
+1. 清理历史构建缓存：`rm -rf build/`。
+2. 重新执行 CMake 配置：`mkdir -p build && cd build && cmake .. -DENABLE_TEST=ON`。
+3. 执行全量编译：`make -j$(nproc)`。
+4. 若编译失败，根据报错定位遗漏的 `#include` 更新或保护宏冲突，修复后重新编译。
 
-```bash
-mkdir -p common/include/op_kernel
-mkdir -p gmm/common/op_kernel
-```
+**通过标准：** 全量编译零报错、零警告（与整改前基线一致）。
 
-按 **3.3 节**、**5.4 节** 创建 3 个公共文件并填充内容。
+### 6.2 头文件残留检查
 
-### Step 3：Git 重命名并裁剪原文件
+**目标：** 确认旧文件名在全仓源码中已无残留。
 
-```bash
-# grouped_matmul_utils.h（gmm 保持原名，mc2 重命名）
-git mv mc2/3rd/grouped_matmul/op_kernel/grouped_matmul_utils.h \
-       mc2/3rd/grouped_matmul/op_kernel/mc2_grouped_matmul_utils.h
-# gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h 保持原名
+**步骤：**
+1. 执行全量搜索（排除 `build/`、`.git/` 目录）：
+   ```bash
+   grep -rn '"grouped_matmul_utils.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
+   grep -rn '"static_diag_constant.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
+   grep -rn '"tool.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
+   ```
+2. 若搜索结果不为空，检查是否为误匹配（如第三方库、文档中的文字描述），否则补充更新对应的 `#include`。
 
-# static_diag_constant.h
-git mv mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/mc2_weight_quant_static_diag_constant.h
-git mv gmm/grouped_matmul/op_kernel/a16w4_msd/static_diag_constant.h \
-       gmm/grouped_matmul/op_kernel/a16w4_msd/gmm_a16w4_msd_static_diag_constant.h
+**通过标准：** 三个 `grep` 命令在源码目录中返回空结果。
 
-# tool.h
-git mv mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/tool.h \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-git mv gmm/grouped_matmul/op/kernel/a16w4_msd/tool.h \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_tool.h
-# gmm arch35 tool.h 和 gmm finalize_routing tool.h 裁剪后为空包装文件，直接删除
-rm gmm/grouped_matmul/op/kernel/arch35/weight_quant_basic_block/tool.h
-rm gmm/grouped_matmul_finalize_routing/op/kernel/arch35/common/tool.h
-```
+### 6.3 头文件保护宏唯一性检查
 
-### Step 4：同步更新头文件保护宏
+**目标：** 确认新增/修改的保护宏不存在全局冲突。
 
-```bash
-# mc2 grouped_matmul_utils.h 保持 MC2_GROUPED_MATMUL_UTILS_H 不变
-# gmm grouped_matmul_utils.h 保持 ASCENDC_GROUPED_MATMUL_UTILS_H 不变
+**步骤：**
+1. 提取全仓所有 `.h` 文件的保护宏定义：
+   ```bash
+   grep -rh '^#define [A-Z].*_H$' --include="*.h" . | sort | uniq -d
+   ```
+2. 检查是否有重复项。
 
-# mc2 static_diag_constant.h
-sed -i 's/WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H/MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H/g' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/mc2_weight_quant_static_diag_constant.h
+**通过标准：** 无重复的保护宏定义。
 
-# gmm static_diag_constant.h
-sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H/GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H/g' \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_static_diag_constant.h
-sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H/GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H/' \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_static_diag_constant.h
+### 6.4 功能回归测试
 
-# mc2 tool.h
-sed -i 's/#ifndef TOOL_H/#ifndef MC2_WEIGHT_QUANT_TOOL_H/' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-sed -i 's/#define TOOL_H/#define MC2_WEIGHT_QUANT_TOOL_H/' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
-sed -i 's/#endif$/#endif \/\/ MC2_WEIGHT_QUANT_TOOL_H/' \
-       mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/mc2_weight_quant_tool.h
+**目标：** 验证整改后的代码行为与整改前完全一致。
 
-# gmm a16w4_msd tool.h
-sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H/GMM_A16W4_MSD_TOOL_H/g' \
-       gmm/grouped_matmul/op/kernel/a16w4_msd/gmm_a16w4_msd_tool.h
-```
+**步骤：**
+1. 运行仓库已有的单元测试套件：`cd build && ctest --output-on-failure`。
+2. 若仓库无单元测试，至少编译并运行与整改模块相关的示例程序或集成测试脚本。
+3. 对比整改前后的测试输出，确认无新增失败用例。
 
-### Step 5：裁剪原文件内容
+**通过标准：** 测试通过率不低于整改前基线。
 
-按 **3.4 节**、**5.5 节** 的示例，删除原文件中已抽取到公共文件的代码段，添加 `#include` 与 `using` 声明。
+### 6.5 静态检查
 
-### Step 6：批量更新所有 #include
+**目标：** 排查因头文件结构调整可能引入的隐式依赖问题。
 
-按 **3.5 节**、**4.4 节**、**5.6 节** 的更新总表，对引用方文件进行字符串替换。
+**步骤：**
+1. 使用 `clang-tidy` 或 `cppcheck` 对整改涉及的模块执行静态分析（若项目已配置）。
+2. 重点关注未使用头文件、循环依赖、符号未定义等警告。
 
-### Step 7：删除空包装文件
+**通过标准：** 静态检查无新增高危问题。
 
-检查裁剪后的 `gmm_arch35_weight_quant_tool.h` 和 `gmm_finalize_routing_arch35_tool.h`：
-- 若仅剩版权头 + 保护宏 + 单条 `#include`，直接删除；
-- 将其引用方改为直接 `#include gmm_weight_quant_arch35_tool_common.h`。
+### 6.6 代码审查 checklist
 
-### Step 8：全量搜索残留
+- [ ] 所有旧文件名已在源码中清除。
+- [ ] 所有新文件的头文件保护宏全局唯一。
+- [ ] 公共文件中无模块特有逻辑混入。
+- [ ] 差异文件中无重复代码残留（已通过 `using` 正确引入公共符号）。
+- [ ] 空包装文件已删除，引用方已改为直接引用公共文件。
+- [ ] 全量编译通过。
+- [ ] 全量测试通过。
 
-```bash
-grep -rn '"grouped_matmul_utils.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
-grep -rn '"static_diag_constant.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
-grep -rn '"tool.h"' --include="*.h" --include="*.cpp" --include="*.c" . | grep -v build | grep -v '.git/'
-```
-
-### Step 9：编译验证
-
-```bash
-mkdir -p build && cd build
-cmake .. -DENABLE_TEST=ON
-make -j$(nproc)
-```
-
-### Step 10：提交
-
-```bash
-git add -A
-git commit -m "refactor: rename duplicate headers and extract common segments
-
-- grouped_matmul_utils.h: extract common constants/functions into grouped_matmul_utils_common.h
-- static_diag_constant.h: rename only (content completely different)
-- tool.h: extract cross-module common into tool_common.h,
-  extract gmm arch35 common into gmm_weight_quant_arch35_tool_common.h
-- Delete empty wrapper headers (gmm_arch35_weight_quant_tool.h,
-  gmm_finalize_routing_arch35_tool.h) and inline their #include
-- Update all #include paths and header guard macros"
-```
-
----
-
-## 7. 风险与回滚
-
-| 风险项 | 风险等级 | 应对措施 |
-|--------|----------|----------|
-| 遗漏某处 `#include` 未更新 | 中 | Step 8 全量搜索；编译阶段会立即报错（文件找不到），可快速定位。 |
-| 头文件保护宏替换不完整 | 低 | 宏只在本文件内生效；编译阶段若有冲突会报重定义。 |
-| `using` 引入后符号不可见 | 低 | `using namespace` 在命名空间内部使用，将公共符号引入原命名空间，引用方的访问方式与整改前完全一致。 |
-| 公共文件 `#include` 路径错误 | 中 | 裁剪后的差异文件包含 `#include`，编译时若路径错误会立即报找不到文件。可先 `touch` 空文件验证路径。 |
-| 新目录对编译配置的影响 | 低 | `common/include` 与 `gmm/common` 均为现有目录，新增子目录不影响 CMake 配置。 |
-| 不同分支合并冲突 | 低 | 整改在独立分支进行，合并时若其他分支新增了旧文件名引用，按映射表同步更新。 |
-
-**回滚方案：**
-整改包含公共文件创建、原文件裁剪、字符串替换。若发现问题，可直接丢弃该分支或 `git revert` 整个提交。
-
----
-
-## 8. 验证 Checklist
-
-- [ ] 8 个目标旧文件已全部重命名或删除，旧文件名在仓库中不存在（`build` 目录除外）；
-- [ ] 新建 3 个公共文件：
-  - `common/include/op_kernel/grouped_matmul_utils_common.h`
-  - `common/include/op_kernel/tool_common.h`
-  - `gmm/common/op_kernel/gmm_weight_quant_arch35_tool_common.h`
-- [ ] mc2/gmm 的 `grouped_matmul_utils.h` 已裁剪，删除公共代码段，添加 `using namespace CommonGMMUtils;`；
-- [ ] gmm 的 `grouped_matmul_utils.h` 保持原文件名和保护宏；
-- [ ] `gmm_arch35_weight_quant_tool.h`（空包装文件）已删除，其引用方直接引用 `gmm_weight_quant_arch35_tool_common.h`；
-- [ ] `gmm_finalize_routing_arch35_tool.h`（空包装文件）已删除，其引用方直接引用 `gmm_weight_quant_arch35_tool_common.h`；
-- [ ] `mc2_weight_quant_tool.h` 已删除公共代码段，添加 `using namespace CommonTool;`；
-- [ ] `gmm_a16w4_msd_tool.h` 已删除 `CeilAlign<T>`，添加 `using CommonTool::CeilAlign;`；
-- [ ] 所有文件的头文件保护宏已更新，且全局唯一；
-- [ ] 53 处 `#include` 引用已全部更新为新文件名/路径；
-- [ ] `grep` 确认无旧文件名残留；
-- [ ] 全量编译通过；
-- [ ] 单元测试通过（如有）。
-
----
-
-## 9. 附录：整改前后对照总表
+## 7. 附录：整改前后对照总表
 
 | 原文件名 | 原数量 | 整改后文件清单 | 说明 |
 |----------|--------|----------------|------|
