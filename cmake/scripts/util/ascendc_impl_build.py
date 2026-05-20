@@ -208,6 +208,7 @@ def {}({}, kernel_name="{}"{}):
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "impl"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "interface"))
     options.append("-I" + os.path.join(tikcpp_path, "..", "ascendc", "act"))
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
     toolkit_path = os.environ.get('ASCEND_HOME_PATH')
     if toolkit_path is None:

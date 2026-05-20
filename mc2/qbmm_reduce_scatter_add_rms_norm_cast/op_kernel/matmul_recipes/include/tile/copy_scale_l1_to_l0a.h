@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "tensor_api/include/tensor_api/tensor.h"
+#include "include/tensor_api/tensor.h"
 #include "kernel_utils/common_utils.h"
 #include "../utils/constant.h"
 

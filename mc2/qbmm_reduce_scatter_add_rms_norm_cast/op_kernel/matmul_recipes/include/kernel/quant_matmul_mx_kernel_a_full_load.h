@@ -24,7 +24,7 @@
 
 #include "kernel_utils/common_utils.h"
 #include "kernel_utils/tuple_utils.h"
-#include "tensor.h"
+#include "include/tensor_api/tensor.h"
 
 #include "../block/quant_matmul_mx_block_mmad_a_full_load.h"
 #include "../block/quant_matmul_mx_block_scheduler_a_full_load.h"

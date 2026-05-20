@@ -17,7 +17,7 @@
 
 #include "kernel_utils/common_utils.h"
 #include "kernel_utils/tuple_utils.h"
-#include "tensor_api/include/tensor_api/tensor.h"
+#include "include/tensor_api/tensor.h"
 #include "../policy/dispatch_policy.h"
 #include "../utils/constant.h"
 #include "../tile/tile_mmad_mx.h"
