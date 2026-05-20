@@ -89,13 +89,16 @@ class SymmBuffer:
         dispatch_quant_out_type: int = 28,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
-        backend="kfc"
     ):
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         self.ep_world_size = torch.distributed.get_world_size(group)
-        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend)
+        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend={
+            "Ascend910B": "kfc",
+            "Ascend910_93": "kfc",
+            "Ascend950": "channel"
+        })
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.num_experts = num_experts

@@ -53,13 +53,13 @@
 | `hcclContextAddr` | `uint64_t` | KFC 模式下由 `HcclCreateOpResCtx` 返回的操作资源上下文地址；Channel 模式下为 0 |
 | `epHcclBuffer_[]` | `uint64_t[1024]` | 通信域内所有 rank 的 CCL Buffer 地址。本卡通过 `HcclGetHcclBuffer` 获取，远端卡的获取方式因后端而异 |
 
-该结构体在 Host 侧填充完成后，通过 `CopyContextToTensor` 拷贝到 NPU 设备侧的 int32 Tensor 中，供后续通信算子的 Kernel 直接读取。Tensor 的大小等于 `sizeof(CommContext)` 向上取整到 `sizeof(int32_t)` 的倍数，由 `create_context()` 内部自动计算和分配。
+该结构体在 Host 侧填充完成后，通过 `CopyContextToTensor` 拷贝到 NPU 设备侧的 int32 Tensor 中，供后续通算算子的 Kernel 直接读取。Tensor 的大小等于 `sizeof(CommContext)` 向上取整到 `sizeof(int32_t)` 的倍数，由 `create_context()` 内部自动计算和分配。
 
 ---
 
 ## 4. KFC 模式
 
-KFC 模式的资源创建流程遵循通信算子开发指南的标准步骤：定义算子接口 → 查询拓扑信息 → 算法选择 → 创建资源。
+KFC 模式的 MC2 通信上下文创建流程为如下。
 
 ### 4.1 初始化通信函数
 
@@ -94,10 +94,9 @@ KFC 模式的资源创建流程遵循通信算子开发指南的标准步骤：�
 `CollectRankBuffers` 遍历通信域内所有 rank，收集每个 rank 的 CCL Buffer 地址：
 
 1. 调用 `HcclGetRankId` 获取本卡编号，存入 `CommContext::epRankId`。
-2. **Ascend910B 且 worldSize > 8 时跳过收集**：在此场景下，`HcclGetRemoteIpcHcclBuf` 不支持在存在RDMA链路的通信域中调用，故直接返回，`epHcclBuffer_[]` 数组保持全零。后续通算算子kernel
-侧需要获取每个 rank 的 CCL Buffer 地址时，通过解析hcclContext中的ibverbsData进行获取。
+2. **Ascend910B 且 worldSize > 8 时跳过收集**：在此场景下，`HcclGetRemoteIpcHcclBuf` 不支持在存在RDMA链路的通信域中调用，故直接返回，`epHcclBuffer_[]` 数组保持全零。后续通算算子kernel侧需要获取每个 rank 的 CCL Buffer 地址时，通过解析hcclContext中的ibverbsData进行获取。
 3. 对于本卡，调用 `HcclGetHcclBuffer` 获取 buffer 地址和大小，buffer 大小即为 `cclBufferSize`。
-4. 对于远端卡，调用 `HcclGetRemoteIpcHcclBuf` 通过 IPC 机制获取远端 buffer 的映射地址。
+4. 对于远端卡，调用 `HcclGetRemoteIpcHcclBuf` 获取远端 buffer 的虚拟首地址。
 
 所有 buffer 地址存入 `CommContext::epHcclBuffer_[]` 数组。
 
@@ -105,7 +104,7 @@ KFC 模式的资源创建流程遵循通信算子开发指南的标准步骤：�
 
 ## 5. HCCL Channel 模式
 
-Channel 模式使用 HCCL EngineCtx 控制面 API，遵循 AIV 通信算子开发流程：查询拓扑信息 → 协议协商 → 创建资源（Context + Channel + Buffer）。
+Channel 模式使用 HCCL EngineCtx 控制面 API，遵循 AIV 通信算子开发流程如下。
 
 ### 5.1 初始化通信函数
 
