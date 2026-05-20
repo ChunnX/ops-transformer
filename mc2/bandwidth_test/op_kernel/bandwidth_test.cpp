@@ -20,7 +20,7 @@
 #endif
 #include "bandwidth_test_tiling_key.h"
 #include "bandwidth_test.h"
-#include "bandwidth_URAMA_test.h"
+#include "bandWidthUrma_test.h"
 
 using namespace BandwidthTestImpl;
 using namespace BandwidthTestTiling;
