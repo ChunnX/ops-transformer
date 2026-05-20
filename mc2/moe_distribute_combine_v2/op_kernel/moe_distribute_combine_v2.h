@@ -297,6 +297,7 @@ private:
     uint32_t scaleNum_{0};
     MoeDistributeCombineQuant<CombineMC2TypeFunc> quantInst_;
     MoeDistributeElastic elasticInst_;
+    constexpr static uint32_t DISPATCH_BUFFER_NUM = 4;
 };
 
 template <CombineMC2TypeClass>
@@ -570,9 +571,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
         }
     } else {
         if constexpr (QuantMode > UNQUANT) {
-            tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, hExpandXAlignSize_);   // 28K 存储搬入token
+            tpipe_->InitBuffer(gmTpSendCountQueue_, DISPATCH_BUFFER_NUM, hExpandXAlignSize_);   // 28K 存储搬入token
             uint32_t tokenScaleAlign32Size = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
-            tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, tokenScaleAlign32Size);              // 28K 输出token搬运
+            tpipe_->InitBuffer(xOutQueue_, DISPATCH_BUFFER_NUM, tokenScaleAlign32Size);              // 28K 输出token搬运
             tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_);                              // 28K blockReduceMax计算及后续Cast计算，256对齐
             uint32_t hFloatAlign256Cnt = hFloatAlign256Size_ / sizeof(float);
             tpipe_->InitBuffer(xMaxBuf_, (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float));  // 3.5K 存储ReduceMax结果
@@ -892,8 +893,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t loop = 0; loop < sendCntNum_; loop += BUFFER_NUM) {
-        for (uint32_t curLoop = loop; curLoop < loop + BUFFER_NUM && curLoop < sendCntNum_; curLoop ++){
+    for (uint32_t loop = 0; loop < sendCntNum_; loop += DISPATCH_BUFFER_NUM) {
+        for (uint32_t curLoop = loop; curLoop < loop + DISPATCH_BUFFER_NUM && curLoop < sendCntNum_; curLoop ++){
             uint32_t tkIndex = startTokenId_ + ((curLoop + epRankId_) % sendCntNum_); // 错位发送
             uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
             uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));     // 位置0是rank_id
@@ -906,7 +907,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
             ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
         }
         PipeBarrier<PIPE_MTE3>();
-        for (uint32_t curLoop = loop; curLoop < loop + BUFFER_NUM && curLoop < sendCntNum_; curLoop ++){
+        for (uint32_t curLoop = loop; curLoop < loop + DISPATCH_BUFFER_NUM && curLoop < sendCntNum_; curLoop ++){
             uint32_t tkIndex = startTokenId_ + ((curLoop + epRankId_) % sendCntNum_); // 错位发送
             uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
             uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));     // 位置0是rank_id
