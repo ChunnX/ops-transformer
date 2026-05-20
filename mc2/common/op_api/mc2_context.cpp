@@ -308,6 +308,10 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             OP_LOGE(ACLNN_ERR_INNER, "Get HCCL urma channel ptr failed");
             return ACLNN_ERR_INNER;
         }
+        OP_LOGI("Get HCCL urma channel ptr success");
+        for (uint32_t i =0; i < channels.size(); ++i) {
+            OP_LOGI("hcommHandle_[%u] = %u", i, mc2ContextStruct->hcommHandle_[i]);
+        }
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
