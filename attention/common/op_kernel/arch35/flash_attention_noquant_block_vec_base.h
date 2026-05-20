@@ -278,12 +278,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
         outputBuf.SetCrossCore();
         return;
     }
-    if (constInfo.learnableSinkFlag) {
-        if constexpr (!isInfer) {
+    if constexpr (!isInfer) {
+        if (constInfo.learnableSinkFlag) {
             constInfo.sinkValue = this->sinkGm.GetValue(runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx);
-        } else {
-            uint32_t tmp = NEGATIVE_MIN_VALUE_FP32;
-            constInfo.sinkValue = *((float *)&tmp);
         }
     }
     if constexpr (useDn) {
