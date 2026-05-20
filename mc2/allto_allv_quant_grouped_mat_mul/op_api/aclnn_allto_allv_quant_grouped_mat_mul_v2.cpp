@@ -1,436 +1,19 @@
 /* *
  * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <algorithm>
-#include <cstdlib>
-
-#include "securec.h"
-#include "common/utils/op_mc2.h"
-#include "acl/acl.h"
-#include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
-#include "opdev/op_log.h"
-#include "opdev/platform.h"
-#include "opdev/common_types.h"
-#include "opdev/format_utils.h"
-#include "aclnn_kernels/transdata.h"
-#include "common/utils/hccl_util.h"
-#include "opdev/op_executor.h"
-#include "opdev/op_dfx.h"
-#include "opdev/make_op_executor.h"
 #include "aclnn_allto_allv_quant_grouped_mat_mul_v2.h"
+#include "aclnn_allto_allv_quant_grouped_mat_mul_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
 namespace {
 using namespace op;
-
-#include "mc2_comm_utils.h"
-
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
-enum class QuantModeType : int64_t {
-    NO_QUANT = 0,
-    PERTENSOR_QUANT = 1,
-    PERCHANNEL_QUANT = 2,
-    PERTOKEN_QUANT = 3,
-    PERGROUP_QUANT = 4,
-    PERBLOCK_QUANT = 5,
-    MX_QUANT = 6,
-};
-
-// 需要使用的常量定义
-static constexpr size_t TWO_DIMS = 2U;
-static constexpr size_t THREE_DIMS = 3U;
-
-static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
-                            const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-                            const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-                            bool permuteOutFlag, const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
-{
-    // // 检查必选入参出参为非空
-    if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
-        return false;
-    }
-    if (permuteOutFlag == (permuteOutOptional == nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Optional output flag does not match optional output ptr.");
-        return false;
-    }
-    return true;
-}
-
-// 检查必要输入是否为空/quantMode为1或6，必须非空/1或6
-static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmY,
-                         const aclTensor *gmmXScale, const aclTensor *gmmWeightScale, int64_t gmmXQuantMode,
-                         int64_t gmmWeightQuantMode)
-{
-    if (gmmX == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input gmmX should not be null.");
-        return false;
-    }
-    if (gmmWeight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input gmmWeight should not be null.");
-        return false;
-    }
-    if (gmmY == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmY should not be null.");
-        return false;
-    }
-    if (gmmXScale == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXScale should not be null.");
-        return false;
-    }
-    if (gmmWeightScale == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeightScale should not be null.");
-        return false;
-    }
-    if ((gmmXQuantMode != static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT)) &&
-        (gmmXQuantMode != static_cast<int64_t>(QuantModeType::MX_QUANT))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXQuantMode should be 1(pertensor quant) or 6(mx quant), "
-            "but actual is %ld.", gmmXQuantMode);
-        return false;
-    }
-    return true;
-}
-
-static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
-    if (gmmWeight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
-        return false;
-    }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
-    return true;
-}
-
-static bool CheckMmWeightValid(const aclTensor *mmWeightOptional) {
-    if (mmWeightOptional == nullptr) {
-        return false;
-    }
-    OP_CHECK_WRONG_DIMENSION(mmWeightOptional, TWO_DIMS, return false);
-    return true;
-}
-
-/**
- * 转置gmmWeight tensor的viewShape中间两维（H和N维度）
- * 用于处理tensor物理排布不连续问题，通过stride交换实现转置
- * @param gmmWeight 输入tensor，要求viewShape为[e, H, N, K]（4维）
- * @return 返回新创建的tensor指针，viewShape变为[e, N, H, K]
- */
-static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
-{
-    uint64_t storageShapeDimNum = gmmWeight->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
-        storageDim[i] = gmmWeight->GetStorageShape().GetDim(i);
-    }
-
-    uint64_t viewShapeDimNum = gmmWeight->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim;
-    viewDim.resize(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
-        viewDim[i] = gmmWeight->GetViewShape().GetDim(i);
-    }
-    // transpose the viewshape last two dimensions
-    viewDim[1] = gmmWeight->GetViewShape().GetDim(2);
-    viewDim[2] = gmmWeight->GetViewShape().GetDim(1);
-
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclnnStatus dtypeRet = aclGetDataType(gmmWeight, &dataType);
-    if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for gmmWeight, ret=%d", dtypeRet);
-        return nullptr;
-    }
-    auto transStride = gmmWeight->GetViewStrides();
-    std::vector<int64_t> stride(transStride.begin(), transStride.end());
-    // transpose the two dimensions
-    stride[1] = transStride[2];
-    stride[2] = transStride[1];
-
-    auto offset = gmmWeight->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_ND;
-
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, gmmWeight->GetTensor()->GetAddr());
-}
-
-/**
- * 转置gmmWeightScale tensor的viewShape中间两维（H和N维度）
- * pertensor量化场景（dimNum < 4）直接返回原tensor，无需转置
- * @param gmmWeightScale 输入tensor，MX量化时viewShape为[e, H, N, 2]
- * @return 返回tensor指针，MX量化时viewShape变为[e, N, H, 2]
- */
-static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScale)
-{
-    // pertensor量化场景：gmmWeightScale shape [1]，dimNum == 1，不需要转置处理
-    if (gmmWeightScale->GetViewShape().GetDimNum() < 4) {
-        return gmmWeightScale;
-    }
-    
-    uint64_t storageShapeDimNum = gmmWeightScale->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
-        storageDim[i] = gmmWeightScale->GetStorageShape().GetDim(i);
-    }
-
-    uint64_t viewShapeDimNum = gmmWeightScale->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim;
-    viewDim.resize(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
-        viewDim[i] = gmmWeightScale->GetViewShape().GetDim(i);
-    }
-    viewDim[1] = gmmWeightScale->GetViewShape().GetDim(2);
-    viewDim[2] = gmmWeightScale->GetViewShape().GetDim(1);
-
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclnnStatus dtypeRet = aclGetDataType(gmmWeightScale, &dataType);
-    if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for gmmWeightScale, ret=%d", dtypeRet);
-        return nullptr;
-    }
-    auto transStride = gmmWeightScale->GetViewStrides();
-    std::vector<int64_t> stride(transStride.begin(), transStride.end());
-    stride[1] = transStride[2];
-    stride[2] = transStride[1];
-
-    auto offset = gmmWeightScale->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_ND;
-
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, gmmWeightScale->GetTensor()->GetAddr());
-}
-
-/**
- * 转置mmWeightOptional tensor的viewShape两维
- * 用于处理tensor物理排布不连续问题，通过stride交换实现转置
- * @param mmWeightOptional 输入tensor，要求viewShape为[K, N]（2维）
- * @return 返回新创建的tensor指针，viewShape变为[N, K]
- */
-static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOptional)
-{
-    uint64_t storageShapeDimNum = mmWeightOptional->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
-        storageDim[i] = mmWeightOptional->GetStorageShape().GetDim(i);
-    }
-
-    uint64_t viewShapeDimNum = mmWeightOptional->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim;
-    viewDim.resize(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
-        viewDim[i] = mmWeightOptional->GetViewShape().GetDim(i);
-    }
-    // transpose the viewshape last two dimensions
-    viewDim[0] = mmWeightOptional->GetViewShape().GetDim(1);
-    viewDim[1] = mmWeightOptional->GetViewShape().GetDim(0);
-
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclnnStatus dtypeRet = aclGetDataType(mmWeightOptional, &dataType);
-    if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for mmWeightOptional, ret=%d", dtypeRet);
-        return nullptr;
-    }
-    auto transStride = mmWeightOptional->GetViewStrides();
-    std::vector<int64_t> stride(transStride.begin(), transStride.end());
-    // transpose the two dimensions
-    stride[0] = transStride[1];
-    stride[1] = transStride[0];
-
-    auto offset = mmWeightOptional->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_ND;
-
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, mmWeightOptional->GetTensor()->GetAddr());
-}
-
-/**
- * 转置mmWeightScale tensor的viewShape前两维
- * pertensor量化场景（dimNum < 3）直接返回原tensor，无需转置
- * @param mmWeightScale 输入tensor，MX量化时viewShape为[CeilDiv(H2, 64), N2, 2]
- * @return 返回tensor指针，MX量化时viewShape变为[N2, CeilDiv(H2, 64), 2]
- */
-static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
-{
-    // pertensor量化场景：mmWeightScale shape [1]，dimNum == 1，不需要转置处理
-    if (mmWeightScale->GetViewShape().GetDimNum() < 3) {
-        return mmWeightScale;
-    }
-    
-    uint64_t storageShapeDimNum = mmWeightScale->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
-        storageDim[i] = mmWeightScale->GetStorageShape().GetDim(i);
-    }
-
-    uint64_t viewShapeDimNum = mmWeightScale->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim;
-    viewDim.resize(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
-        viewDim[i] = mmWeightScale->GetViewShape().GetDim(i);
-    }
-    viewDim[0] = mmWeightScale->GetViewShape().GetDim(1);
-    viewDim[1] = mmWeightScale->GetViewShape().GetDim(0);
-
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclnnStatus dtypeRet = aclGetDataType(mmWeightScale, &dataType);
-    if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for mmWeightScale, ret=%d", dtypeRet);
-        return nullptr;
-    }
-    auto transStride = mmWeightScale->GetViewStrides();
-    std::vector<int64_t> stride(transStride.begin(), transStride.end());
-    stride[0] = transStride[1];
-    stride[1] = transStride[0];
-
-    auto offset = mmWeightScale->GetViewOffset();
-    aclFormat format = aclFormat::ACL_FORMAT_ND;
-
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, mmWeightScale->GetTensor()->GetAddr());
-}
-
-bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t secondDimIndex)
-{
-    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() < 2) {
-        return false;
-    }
-    int64_t dimNum = tensor->GetViewShape().GetDimNum();
-    int64_t dim1 = firstDimIndex < 0 ? dimNum + firstDimIndex : firstDimIndex;
-    int64_t dim2 = secondDimIndex < 0 ? dimNum + secondDimIndex : secondDimIndex;
-    if (dim1 < 0 || dim1 >= dimNum || dim2 < 0 || dim2 >= dimNum || dim1 == dim2) {
-        return false;
-    }
-    int64_t shape1 = tensor->GetViewShape().GetDim(dim1);
-    int64_t shape2 = tensor->GetViewShape().GetDim(dim2);
-    int64_t stride1 = tensor->GetViewStrides()[dim1];
-    int64_t stride2 = tensor->GetViewStrides()[dim2];
-    if (shape1 == 1 && shape2 == 1) {
-        return false;
-    }
-    if (stride1 == 1) {
-        return (stride2 != shape1);
-    }
-    if (stride2 == 1) {
-        return true;
-    }
-    return (stride2 != shape1 * stride1);
-}
-
-static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeight,
-    const aclTensor *gmmWeightScale, const aclTensor *mmWeightOptional, const aclTensor *mmWeightScaleOptional)
-{
-    // pertensor量化场景：weightScale dimNum < 4，不需要转置，跳过校验
-    if (gmmWeight != nullptr && gmmWeightScale != nullptr && gmmWeightScale->GetViewShape().GetDimNum() >= 4) {
-        bool gmmWeightNotContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
-        bool gmmWeightScaleNotContiguous = IsTransposeTwoDims(gmmWeightScale, -2, -3);
-        if (gmmWeightNotContiguous != gmmWeightScaleNotContiguous) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "gmmWeight and gmmWeightScale transpose state must be consistent. "
-                    "gmmWeight is %s, but gmmWeightScale is %s.",
-                    gmmWeightNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)",
-                    gmmWeightScaleNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
-    // pertensor量化场景：mmWeightScale dimNum < 3，不需要转置，跳过校验
-    if (mmWeightOptional != nullptr && mmWeightScaleOptional != nullptr &&
-        mmWeightScaleOptional->GetViewShape().GetDimNum() >= 3) {
-        bool mmWeightNotContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
-        bool mmWeightScaleNotContiguous = IsTransposeTwoDims(mmWeightScaleOptional, -2, -3);
-        if (mmWeightNotContiguous != mmWeightScaleNotContiguous) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "mmWeight and mmWeightScale transpose state must be consistent. "
-                    "mmWeight is %s, but mmWeightScale is %s.",
-                    mmWeightNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)",
-                    mmWeightScaleNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    return ACLNN_SUCCESS;
-}
-
-
-static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
-                               const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
-                               const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-                               const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
-                               const aclTensor *mmWeightScaleOptional, int64_t gmmXQuantMode,
-                               int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-                               const char *group, int64_t epWorldSize, bool permuteOutFlag, const aclTensor *gmmY,
-                               const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
-{
-    // 检查空状态
-    CHECK_RET(CheckNullStatus(sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-                              mmXScaleOptional, mmWeightScaleOptional, permuteOutFlag, mmYOptional, permuteOutOptional),
-              ACLNN_ERR_PARAM_INVALID);
-    // 检查参数是否为空
-    CHECK_RET(CheckNotNull(gmmX, gmmWeight, gmmY, gmmXScale, gmmWeightScale, gmmXQuantMode, gmmWeightQuantMode),
-              ACLNN_ERR_PARAM_INVALID);
-    OP_LOGD("AlltoAllvQuantGroupedMatmul checkParams success");
-    return ACLNN_SUCCESS;
-}
-
-extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
-    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
-    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-    const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
-    int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype, const char *commMode,
-    aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
-
-extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMul(void *workspace, uint64_t workspaceSize,
-                                                        aclOpExecutor *executor, aclrtStream stream);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);
-
-static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
-    // 获取卡数
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-
-    // 获取通信引擎参数
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "aicpu") == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (std::strcmp(commModeStr, "ccu") == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "default") == 0) {
-            // default：小于等于8P走CCU，否则走AICPU
-            if (rankSize <= 8) {
-                commModeEnum = Mc2Comm::COMM_MODE_CCU;
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    return ACLNN_SUCCESS;
-}
+using namespace AlltoAllvQuantGroupedMatMulUtils;
 
 extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
@@ -471,17 +54,15 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY,
     aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    // 处理非连续Tensor，目前支持转置的gmmWeight涉及该处理
-    CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);	// 先检查gmmWeight是否合法，避免非法操作
+    CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);
     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
-    auto transposeGmmWeight = gmmWeight;    // 复制一个gmmWeight
-    if (notContiguous && transGmmWeight) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
+    auto transposeGmmWeight = gmmWeight;
+    if (notContiguous && transGmmWeight) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous, and set gmmWeight transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
+    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         transGmmWeight = !transGmmWeight;
-        // 把非连续gmmWeight转成连续
         transposeGmmWeight = TransGmmWeightTensor(gmmWeight);
         CHECK_RET(transposeGmmWeight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         OP_LOGD("gmmWeight is a non-contiguous tensor. The original dim1 is %ld, and dim2 is %ld. After processing, transposeGmmWeight dim1 is %ld, and dim2 is %ld.",
@@ -494,7 +75,6 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         CHECK_RET(transposeGmmWeightScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    // 保存原始指针用于一致性校验
     const aclTensor *originalMmWeightOptional = mmWeightOptional;
     const aclTensor *originalMmWeightScaleOptional = mmWeightScaleOptional;
     if (CheckMmWeightValid(mmWeightOptional)) {
@@ -568,8 +148,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
 extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
-    
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMul(workspace, workspaceSize, executor, stream);
     return ret;
 }
-} // namespace
+}
