@@ -83,10 +83,12 @@ private:
         basicBlock_;
 
     uint64_t preOffset_ = 0;
+    uint64_t l1KDynamicConfigMThreshold_;
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_256 = 256;
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_512 = 512;
     static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128;
-    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD = 256;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 = 256;
+    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 = 240;
     static constexpr uint64_t M_L1 = 256;
     static constexpr uint64_t KB_L1_SIZE = 256;
     static constexpr uint64_t N_L1 = 256;
@@ -103,12 +105,17 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weigh
     xGm_ = reinterpret_cast<__gm__ xType *>(x);
     weightGm_ = GetTensorAddr<wType>(0, weight);
     biasGm_ = reinterpret_cast<__gm__ biasType *>(bias);
-    weightScaleGm_ = reinterpret_cast<__gm__ weightScaleType *>(weightScale);
+    weightScaleGm_ = GetTensorAddr<weightScaleType>(0, weightScale);
     xScaleGm_ = reinterpret_cast<__gm__ xScaleType *>(xScale);
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     yScaleGm_ = reinterpret_cast<__gm__ yScaleType *>(yScale);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
     basicBlock_.Init(tiling_->groupSize, yGm_, yScaleGm_);
+    if constexpr (hasBias) {
+        l1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240;
+    } else {
+        l1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+    }
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -195,7 +202,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
 
         offsetParam[ctrlParam.processId].kbL1Size =
-            (offsetParam[ctrlParam.processId].mL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD &&
+            (offsetParam[ctrlParam.processId].mL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 &&
              offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
                 MX_A8W4_L1_K_CONFIG_512 :
                 MX_A8W4_L1_K_CONFIG_256;
