@@ -23,7 +23,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "../common/gmm_finalize_routing_arch35_tool.h"
+#include "../../../../../common/op_kernel/gmm_weight_quant_arch35_tool_common.h"
 #include "gmm_fr_mx_a8w4_vf.h"
 
 using AscendC::BLOCK_CUBE;
