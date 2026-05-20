@@ -15,7 +15,7 @@
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_common_log.h"
-
+#include <cstring>
 namespace fallback
 {
 // 输入参数和属性的校验
@@ -149,7 +149,8 @@ static ge::graphStatus AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext*
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-    if (commMode == "ccu" || commMode == "aicpu" || commMode == "default") {
+    if (std::strcmp(commMode, "ccu") == 0 || std::strcmp(commMode, "aicpu") == 0 || std::strcmp(commMode, "default") == 0) {
+        OPS_LOG_D("AlltoAllvGroupedMatMulFallback", "aclnnAlltoAllvGroupedMatMulV2.");
         const auto apiRet = EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMulV2,
                                            gmmX, gmmWeight, sendCountsTensor, recvCountsTensor, mmX, mmWeight,
                                            group, commMode, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
@@ -157,6 +158,7 @@ static ge::graphStatus AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext*
         OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
                    OP_LOGE("AlltoAllvGroupedMatMulFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
     } else {
+        OPS_LOG_D("AlltoAllvGroupedMatMulFallback", "aclnnAlltoAllvGroupedMatMul.");
         const auto apiRet = EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMul,
                                            gmmX, gmmWeight, sendCountsTensor, recvCountsTensor, mmX, mmWeight,
                                            group, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
