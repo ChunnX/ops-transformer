@@ -452,27 +452,27 @@ uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
 
 ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context)
 {
+    // Call GetCommonPlatformInfo() from base class to initialize ALL platform info member variables:
+    // aicCoreNum_, aivCoreNum_, ubSize_, l1Size_, l0aSize_, l0bSize_, l0cSize_, libApiWorkSpaceSize_
+    // These are used in SetTilingParams() and must be properly initialized.
+    if (GetCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
+        OP_LOGE(A_INNER_DEBUG, "GetCommonPlatformInfo failed.");
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
+        OP_LOGE(A_INNER_DEBUG, "CheckCommonPlatformInfo failed.");
+        return ge::GRAPH_FAILED;
+    }
+
     auto platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
 
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     uint64_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    static const PlatFormMemSize PLATFORM_SIZE(ascendcPlatform);
-    libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     uint64_t numBlocks = mc2tiling::GetNumBlocks(aicNum, aivNum, A_INNER_DEBUG);
-    OP_TILING_CHECK(
-        (PLATFORM_SIZE.ubSize == 0U) || (PLATFORM_SIZE.l1Size == 0U) || (PLATFORM_SIZE.l0CSize == 0U) ||
-        (PLATFORM_SIZE.l0ASize == 0U) || (PLATFORM_SIZE.l0BSize == 0U),
-        OP_LOGE(
-            A_INNER_DEBUG,
-            "platform info is invalid, ubSize=%lu, l1Size=%lu, l0CSize=%lu, l0ASize=%lu, l0BSize=%lu",
-            PLATFORM_SIZE.ubSize, PLATFORM_SIZE.l1Size, PLATFORM_SIZE.l0CSize,
-            PLATFORM_SIZE.l0ASize, PLATFORM_SIZE.l0BSize),
-        return ge::GRAPH_FAILED);
 
-    tilingData->taskTilingInfo.ubSize = PLATFORM_SIZE.ubSize;
-    ubSize_ = PLATFORM_SIZE.ubSize;
+    tilingData->taskTilingInfo.ubSize = ubSize_;
     context->SetBlockDim(static_cast<uint32_t>(numBlocks));
 
     return ge::GRAPH_SUCCESS;
