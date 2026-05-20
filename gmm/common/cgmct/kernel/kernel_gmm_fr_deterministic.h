@@ -408,7 +408,7 @@ public:
                 int64_t y = Get<DET_IDX_C_OFFSETS>(blockOffset_);
                 int64_t groupInnerMOffset = y / n;
 
-                // AIC: MMAD
+                // AIC: MMAD + epilogue (first half of rows)
                 if ASCEND_IS_AIC {
                     if (isVecSetSyncCom_) {
                         WaitForVector();
@@ -419,6 +419,21 @@ public:
                             bGlobal_[Get<DET_IDX_B_OFFSETS>(blockOffset_)],
                             l0cOutUb_, mmSingleShape, transA, transB);
                     NotifyVector();
+                    // AIC subBlock also runs epilogue (processes rows [0, halfSingleM))
+                    AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShapeAic{
+                        Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
+                    int64_t nOffsetAic = y - groupInnerMOffset * n;
+                    int64_t logitBaseAic = Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_);
+                    uint64_t globalWriteBaseAic = static_cast<uint64_t>(
+                        logitBaseAic + groupInnerMOffset) - globalRowOffset;
+                    AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
+                        epilogueOffsetAic{nOffsetAic,
+                            Get<DET_IDX_BIAS_OFFSETS>(blockOffset_),
+                            Get<DET_IDX_X2SCALE_OFFSETS>(blockOffset_),
+                            Get<DET_IDX_X1SCALE_OFFSETS>(blockOffset_),
+                            groupInnerMOffset,
+                            static_cast<int64_t>(globalWriteBaseAic)};
+                    epilogueDequantOp_(epilogueShapeAic, epilogueOffsetAic);
                 }
                 isVecSetSyncCom_ = true;
 
@@ -428,13 +443,11 @@ public:
                 if ASCEND_IS_AIV {
                     // Global workspace addressing: each tile writes to a unique position
                     // based on its global row index, avoiding cross-core data races.
-                    uint64_t halfSingleM = static_cast<uint64_t>(
-                        CeilDiv(tileM, static_cast<int64_t>(GetTaskRation())));
                     int64_t logitBase = Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_);
                     uint64_t globalWriteBase = static_cast<uint64_t>(
                         logitBase + groupInnerMOffset) - globalRowOffset;
 
-                    if (globalWriteBase + halfSingleM > windowSizeRows) {
+                    if (globalWriteBase + tileM > windowSizeRows) {
                         uint64_t totalM = globalWriteBase;
                         uint64_t coreNum = params.cyclingParams.coreNum;
                         uint64_t aggN = static_cast<uint64_t>(n);

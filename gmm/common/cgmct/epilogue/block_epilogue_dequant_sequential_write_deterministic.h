@@ -531,15 +531,17 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
 {
     singleM_ = Get<MNK_M>(blockShape);
     singleN_ = Get<MNK_N>(blockShape);
-    // A5: L0C data is from AIC (subBlock 0), covering rows [0, halfSingleM).
-    // AIV must use mOffset=0 to match L0C data layout (not subBlockIdx * halfSingleM).
-    uint32_t halfSingleM = CeilDiv(singleM_, static_cast<uint64_t>(AscendC::GetTaskRation()));
     alignN_ = CeilDiv(singleN_, DET_SEQ_BLOCK_ELEMENTS_FP32S) * DET_SEQ_BLOCK_ELEMENTS_FP32S;
-    uint64_t singleMInVec = halfSingleM;
+    // Split rows by subBlock (same pattern as non-deterministic epilogue):
+    //   subBlock 0 (AIC): rows [0, halfSingleM)
+    //   subBlock 1 (AIV): rows [halfSingleM, singleM)
+    // Together they cover all rows.
+    uint32_t halfSingleM = CeilDiv(singleM_, static_cast<uint64_t>(AscendC::GetTaskRation()));
+    uint64_t singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
     if (singleMInVec == 0) {
         return;
     }
-    uint64_t mOffset = 0;
+    uint64_t mOffset = subBlockIdx_ * halfSingleM;
 
     // Split blockCoord semantics:
     //   elem[4] = group-inner mOffset (for logit/rowIndex/x1Scale reading)
@@ -551,10 +553,9 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
 
     // DEBUG: print key offsets
     if (subBlockIdx_ == 1) {
-        printf("[EPI] singleM=%lu halfM=%u singleMInVec=%lu mOffset=%lu logitBase=%lu wsBaseRow=%lu yOffset=%lu n_=%lu wsWriteMax=%lu\n",
-               static_cast<uint64_t>(singleM_), halfSingleM, singleMInVec, mOffset,
-               logitBase, workspaceBaseRow, yOffset, static_cast<uint64_t>(n_),
-               mOffset + singleMInVec);
+        printf("[EPI] singleM=%lu halfM=%u subIdx=%u singleMInVec=%lu mOffset=%lu logitBase=%lu wsBaseRow=%lu yOffset=%lu n_=%lu\n",
+               static_cast<uint64_t>(singleM_), halfSingleM, subBlockIdx_, singleMInVec, mOffset,
+               logitBase, workspaceBaseRow, yOffset, static_cast<uint64_t>(n_));
     }
 
     // Rebase yGlobal_ by workspaceBaseRow to keep element offsets small
