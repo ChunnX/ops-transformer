@@ -124,13 +124,6 @@ private:
     // Called at the start of FillApcChunksInRange; no-op when curBatch == cached.
     __aicore__ inline void RefreshApcState(uint32_t curBatch, uint32_t batchLen);
 
-    // ---- Helpers: dim-core 参数 ----
-    // v2.1：三级 dim 核（主核/尾核/last core）的 dim 起点、dim 长度、UB 主块 dim 大小统一封装。
-    //   调用前置条件：bsIdx_/dimIdx_ 已赋值，且三个核分类成员（isBsTailCore_/isDimTailCore_/
-    //   isLastDimCore_）已在 Init 开头计算。
-    //
-    // GetDimStart：本核在 GM 上的 dim 起点偏移（元素单位）。主核/尾核/last core 共用同一公式，
-    //   因为 last core 就是最后一个尾核，起点按尾核公式累加即可。
     __aicore__ inline uint32_t GetDimStart() const
     {
         if (dimIdx_ < dimRemainderCores_) {
@@ -180,7 +173,6 @@ private:
     uint32_t tailBlockubFactorDim_;
     uint32_t tailBlockubTailFactorDim_;
 
-    // v2.1: last dim core 参数（支持 dim % 128 != 0 场景）
     // dimRemainderElems_ == 0 时等价于普通尾核参数（向后兼容）
     uint32_t dimRemainderElems_;
     uint32_t lastCoreloopNumDim_;
@@ -205,7 +197,6 @@ private:
 
     int64_t padSlotId_;
 
-    // v2.0 flags
     bool apcEnabled_;
     uint32_t blockSize_;
     uint32_t maxNumBlocks_;
@@ -219,11 +210,6 @@ private:
     uint32_t bsIdx_;
     uint32_t dimIdx_;
 
-    // v2.1：三级 dim 核分类（在 Init 开头计算一次，全局复用）
-    //   - isDimTailCore_: 是否"尾核或 last core"（dimIdx_ >= dimRemainderCores_）
-    //   - isLastDimCore_: 是否 last core（最后一个 dim 核，承担 dim % 128 余数元素）
-    //   - isBsTailCore_:  是否 BS 尾核（bsIdx_ >= bsRemainderCores_）
-    //   注：isLastDimCore_ 蕴含 isDimTailCore_（除 dim<128 场景外）
     bool isBsTailCore_;
     bool isDimTailCore_;
     bool isLastDimCore_;
@@ -244,7 +230,6 @@ private:
     GlobalTensor<int32_t> initialStateIdxGM_;
     GlobalTensor<T> yGM_;
 
-    // ---- Queues (4 queues × double buffer = 8 slots) ----
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> cacheQueue_;
     TQue<QuePosition::VECOUT, 1> yQueue_;
@@ -290,9 +275,6 @@ private:
     uint32_t firstBatchIdx_;
 };
 
-// ============================================================================
-// ParseTiling
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausalConv1dCutBSHTilingData *tiling)
 {
@@ -314,7 +296,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
     tailBlockubFactorDim_ = tiling->tailBlockubFactorDim;
     tailBlockubTailFactorDim_ = tiling->tailBlockubTailFactorDim;
 
-    // v2.1: last dim core 参数
     dimRemainderElems_ = static_cast<uint32_t>(tiling->dimRemainderElems);
     lastCoreloopNumDim_ = static_cast<uint32_t>(tiling->lastCoreloopNumDim);
     lastCoreubFactorDim_ = static_cast<uint32_t>(tiling->lastCoreubFactorDim);
@@ -347,12 +328,9 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
     hasCacheIndices_ = (tiling->hasCacheIndices != 0);
     inplace_ = (tiling->inplace != 0);
 
-    stateLen_ = tiling->stateLen;
+    stateLen_ = tiling->stateLen; // 来自逻辑 shape dim[1]，非连续 stride 除法不可靠
 }
 
-// ============================================================================
-// Init
-// ============================================================================
 template <typename T>
 __aicore__ inline void
 FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
@@ -368,7 +346,6 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     bsIdx_ = blockIdx / dimCN;
     dimIdx_ = blockIdx - bsIdx_ * dimCN;
 
-    // v2.1：三级 dim 核分类一次性计算，供 InitQueues/Process/WriteDeferred/FillApc/CopyYToX 共用
     isBsTailCore_ = (bsIdx_ >= bsRemainderCores_);
     isDimTailCore_ = (dimIdx_ >= dimRemainderCores_);
     isLastDimCore_ = (dimIdx_ == dimCoreNum_ - 1) && (dimRemainderElems_ > 0);
@@ -382,11 +359,6 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     seqStartIndexGM_.SetGlobalBuffer((__gm__ int32_t *)queryStartLoc, batchSize_ + 1);
 
     // inplace=true: yGM_ 指向 workspace 上的 y backup 区（避免污染 xGM_）。
-    //   入口已通过 GetUserWorkspace() 转成 user 区起点，这里直接用 workspace
-    //   作为基地址（无需再加 SYS_WORKSPACE_SIZE 偏移）。
-    //   SyncAll 后 WriteDeferredCacheSimple 读 xGM_ 得到原始 x，
-    //   最后由 CopyYToX 把 y backup 搬回 xGM_ 完成 inplace 语义。
-    // inplace=false: yGM_ 指向 y 参数原地址，走旧路径。
     uint64_t yStride = inplace_ ? static_cast<uint64_t>(xStride_) : static_cast<uint64_t>(dim_);
     if (inplace_) {
         yGM_.SetGlobalBuffer((__gm__ T *)workspace, cuSeqLen * yStride);
@@ -430,9 +402,6 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     apcState_.batchIdx = 0xFFFFFFFF; // sentinel: APC state not cached
 }
 
-// ============================================================================
-// InitQueues
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::InitQueues()
 {
@@ -472,9 +441,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::InitQueues()
     }
 }
 
-// ============================================================================
-// LoadMetadata — TBuf ← GM, PipeBarrier
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::LoadMetadata()
 {
@@ -515,9 +481,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::LoadMetadata()
     PipeBarrier<PIPE_ALL>();
 }
 
-// ============================================================================
-// FindBatchIdx — binary search for batch containing globalSeqIdx
-// ============================================================================
 template <typename T>
 __aicore__ inline uint32_t FusedCausalConv1dCutBSH<T>::FindBatchIdx(uint64_t globalSeqIdx)
 {
@@ -534,9 +497,6 @@ __aicore__ inline uint32_t FusedCausalConv1dCutBSH<T>::FindBatchIdx(uint64_t glo
     return lo;
 }
 
-// ============================================================================
-// ResolveCacheIndices — APC vs 1D vs batch_idx fallback
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::ResolveCacheIndices(uint32_t batchIdx, int64_t &readCIdx,
                                                                        int64_t &writeCIdx)
@@ -555,11 +515,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ResolveCacheIndices(uint32_t 
     }
 }
 
-// ============================================================================
-// PrepareBatchMeta — single source of truth for batch metadata.
-// Replaces the duplicated useZeroCache/mtpOffset/cachedStateLen computation
-// that was spread across 4 functions.
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t batchIdx, uint32_t curSeqIdx, BatchMeta &m)
 {
@@ -574,7 +529,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t bat
     }
 
     // ---- mtpOffset ----
-    // Golden: offset = accepted-1 (MTP) or stateLen-(K-1) (no MTP)
     m.mtpOffset = 0;
     if (m.useZeroCache) {
         m.mtpOffset = 0;
@@ -588,7 +542,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t bat
     }
 
     // ---- cachedStateLen ----
-    // Golden: cached_state = conv_states[readCIdx][:offset+K-1]
     if (m.useZeroCache) {
         m.cachedStateLen = K - 1;
     } else if (hasAcceptTokenNum_) {
@@ -600,7 +553,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t bat
     }
 
     // ---- lastResetIdx (conv_mode==1) ----
-    // Golden: last_reset_idx = max(0, K-1 - num_computed_tokens[batch])
     m.lastResetIdx = 0;
     if (convMode_ == 1 && hasNumComputedTokens_) {
         int32_t nct = numComputedLocal_.GetValue(batchIdx);
@@ -615,9 +567,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t bat
     }
 }
 
-// ============================================================================
-// Process — main entry point
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 {
@@ -646,7 +595,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
     uint64_t dimStart = GetDimStart();
 
     // ---- Tail core adjustments ----
-    // 直接使用 Init 期缓存的核分类成员
     uint32_t loopBS = isBsTailCore_ ? tailBlockloopNumBS_ : loopNumBS_;
     uint32_t factBS = isBsTailCore_ ? tailBlockubFactorBS_ : ubFactorBS_;
     uint32_t tailBS = isBsTailCore_ ? tailBlockubTailFactorBS_ : ubTailFactorBS_;
@@ -669,20 +617,11 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
     // ---- BS-dim step for inner loop (K-1 overlap within a core) ----
     uint16_t step = (factBS > K - 1) ? (factBS - (K - 1)) : 1;
 
-    // ---- Cross-core: first BS core writes cache immediately; others defer first batch ----
-    // The dynamic check uses curSequenceIdx: if this core starts at position 0
-    // within the batch, it should handle the cache write.
-    // Simplified from 4 state variables to a boolean flag.
     bool isBsFirstCore = (bsIdx_ == 0);
 
     // iStart: first BS core starts from token 0; others from K-1 (overlap)
     uint32_t iStart = isBsFirstCore ? 0 : (K - 1);
 
-    // ---- Compute this core's global x-coverage end (inclusive of K-1 overlap
-    //      shared with the next BS core). If batchEnd > coreGlobalEnd, the
-    //      batch is cross-core and this core must NOT write its cache (neither
-    //      in-pipeline at isBatchEnd, nor Plan A prefix shift) — the next core
-    //      handles it via deferred write post-SyncAll.
     uint32_t dimCN = (dimCoreNum_ == 0) ? 1 : dimCoreNum_;
     uint32_t bsCoreNum = realCoreNum_ / dimCN;
 
@@ -721,17 +660,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
         uint32_t curSeqIdx = (uint32_t)(actualStart - batchStartIdx);
 
         // Dynamic check: first batch on this core may need deferred write.
-        // Arm defer only when ALL of the following hold:
-        //   (1) This is not the first BS core AND curSeqIdx > 0 (batch is
-        //       genuinely cross-core from the previous core's side).
-        //   (2) batchEnd <= coreGlobalEnd (this core actually owns the batch
-        //       end; otherwise the batch crosses further into the NEXT core,
-        //       which will arm defer itself — avoiding duplicate writes to
-        //       the same cache line from two cores).
-        // Once armed on bsLoop==0, deferred_ persists through all subsequent
-        // bsLoops so that Compute can skip the in-pipeline cache writeback
-        // even if the batch end falls in bsLoop>0. Post-SyncAll writeback is
-        // handled by WriteDeferredCacheSimple.
         if (bsLoop == 0) {
             uint64_t firstBatchEnd = (uint64_t)seqStartLocal_.GetValue(curBatchIdx + 1);
             bool endsInThisCore = (firstBatchEnd <= coreGlobalEnd);
@@ -769,32 +697,19 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
         iStart = K - 1; // subsequent BS blocks always start with K-1 overlap
     }
 
-    // Fill cache-prefix APC chunks (boundaryIdx < K-1) pre-SyncAll.
-    // x-suffix chunks (boundaryIdx >= K-1) are already filled in Compute via
-    // FillApcChunksInRange, using xLocal (UB) data — zero xGM reads.
-    FillApcCachePrefixChunks();
-
     SyncAll();
 
     WriteDeferredCacheSimple();
 
+    FillApcCachePrefixChunks();
+
     // inplace=true：把 y workspace 搬回 xGM_ 完成 inplace 语义。
-    //
-    // 额外的 SyncAll：CopyYToX 会对 xGM_ 做 MTE3 写，而 FillApcCachePrefixChunks
-    // 可能对 xGM_ 做 MTE2 读。这两条是独立流水，若只靠程序顺序发射，MTE3 写可能
-    // 抢在 MTE2 读完成之前（跨函数 WAR hazard），导致上游读到 y 值写入
-    // cacheStatesGM_（output 0 错）。SyncAll 同时排空本核所有已发射指令，
-    // 消除此 hazard。PipeBarrier<PIPE_ALL> 不保证已发射未完成指令落地，
-    // 不能替代 SyncAll。
     if (inplace_) {
         SyncAll();
         CopyYToX();
     }
 }
 
-// ============================================================================
-// CopyIn — MTE2 loads x + weight into queues
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
                                                           uint32_t dimSize)
@@ -827,9 +742,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(uint32_t curBsStart, u
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 }
 
-// ============================================================================
-// Compute — unified token processing: cache load, conv, cache write, y output
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
                                                            uint32_t dimSize, uint32_t dimBlocks, uint32_t iStart,
@@ -863,9 +775,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
     bool seenFirst = false;
     BatchMeta firstMeta;
 
-    // iStart: offset into xLocal where the first "new" token starts
-    // (K-1 overlap tokens before iStart were processed by previous core/block)
-    // yOutOff: running offset within yLocal for output accumulation
     uint32_t i = iStart;
     uint32_t yOutOff = 0;
 
@@ -1008,9 +917,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
         if (isBatchEnd) {
-            // Full cache writeback at batch boundary.
-            // Skip if batch is cross-core (next core will defer-write it) or
-            // if this core itself deferred the batch.
             bool crossCoreBE = (batchEnd > coreGlobalEnd);
             if (crossCoreBE || (deferred_.active && curBatch == deferred_.batchIdx)) {
                 // Deferred: skip in-pipeline write; handled post-SyncAll
@@ -1021,10 +927,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                                    curWriteCIdx, dimStart, dimSize, dimBlocks, cacheSkip, batchEnd);
             }
         } else if (cacheLoaded && seqInBatch == 0 && batchLen >= K) {
-            // Plan A: batch spans multiple UB blocks — write cache prefix now
-            // (cFromCache rows from cacheLocal). The cFromX suffix will be
-            // written when the batch ends in a later UB block.
-            // Matches original template's ProcessTokensNeedCache Plan A logic.
             uint32_t cFromCachePA, cFromXPA;
             if (batchLen >= stateLen_) {
                 cFromCachePA = 0;
@@ -1036,23 +938,21 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                 cFromCachePA = meta.cachedStateLen;
                 cFromXPA = batchLen;
             }
-            // Plan A must skip when the batch crosses into the next BS core:
-            // the next core defers and writes the full tail-aligned cache
-            // (via WriteDeferredCacheSimple) after SyncAll, reading from the
-            // ORIGINAL (pre-shift) cacheStates in GM. If this core wrote the
-            // shifted prefix here, it would pollute that read.
             bool crossCore = (batchEnd > coreGlobalEnd);
             bool needDeferredPA = crossCore || (deferred_.active && curBatch == deferred_.batchIdx);
             if (needDeferredPA) {
                 // Deferred: skip; handled post-SyncAll
             } else if (cFromCachePA > 0) {
-                uint32_t tailRowOffPA = stateLen_ - cFromCachePA - cFromXPA;
-                uint32_t cacheRowStartPA = meta.cachedStateLen - cFromCachePA;
-                uint64_t csPrefixOff =
-                    (uint64_t)curWriteCIdx * cacheStride0_ + (uint64_t)tailRowOffPA * cacheStride1_ + dimStart;
-                DataCopyExtParams wcpPA{static_cast<uint16_t>(cFromCachePA),
-                                        static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0, cacheSkip * ALIGN_BYTES, 0};
-                DataCopyPad(cacheStatesGM_[csPrefixOff], cacheLocal[cacheRowStartPA * dimSize], wcpPA);
+                if (seqInBatch + chunkSize >= K - 1) {
+                    uint32_t tailRowOffPA = stateLen_ - cFromCachePA - cFromXPA;
+                    uint32_t cacheRowStartPA = meta.cachedStateLen - cFromCachePA;
+                    uint64_t csPrefixOff =
+                        (uint64_t)curWriteCIdx * cacheStride0_ + (uint64_t)tailRowOffPA * cacheStride1_ + dimStart;
+                    DataCopyExtParams wcpPA{static_cast<uint16_t>(cFromCachePA),
+                                            static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0, cacheSkip * ALIGN_BYTES,
+                                            0};
+                    DataCopyPad(cacheStatesGM_[csPrefixOff], cacheLocal[cacheRowStartPA * dimSize], wcpPA);
+                }
             }
         }
 
@@ -1071,9 +971,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
         }
     }
 
-    // ---- Write y output (only the processed tokens, excluding K-1 overlap) ----
-    // inplace=true 时 yGM_ 指向 workspace 上的 y backup；inplace=false 时指向 y 原地址。
-    // 统一写 yGM_，保证 xGM_ 在主循环期间不被污染，SyncAll 后的读点安全。
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
     {
         // yGmOff: global position of the first PROCESSED token
@@ -1083,9 +980,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
         DataCopyPad(yGM_[yGmOff], yLocal, ycp);
     }
 
-    // ---- Distributed APC fill (after V, while xLocal is still valid) ----
-    // Moved here from inside the while loop to eliminate register pressure
-    // on the V pipeline during conv computation.
     if (apcEnabled_ && blockSize_ > 0) {
         for (uint32_t b = batchIdx; b <= curBatch && b < batchSize_; b++) {
             uint64_t bSt = (uint64_t)seqStartLocal_.GetValue(b);
@@ -1101,18 +995,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
     endBatchIdx = curBatch;
 }
 
-// ============================================================================
-// WriteCacheToStates — unified cache writeback.
-// Replaces WriteCacheShortBatch / WriteCacheLongBatch / WriteDeferredCacheToStates.
-//
-// Golden semantics:
-//   padded_input = [cacheLocal (cachedStateLen rows)] + [xLocal[batchStartRow:] (curBatchLen rows)]
-//   cache_len = min(stateLen_, cachedStateLen + curBatchLen)
-//   conv_states[writeCIdx][-cache_len:] = padded_input[-cache_len:]
-//
-// chunkEnd: one-past-last row index in xLocal for the current chunk (i + chunkSize).
-//           Used to locate the tail cFromX rows within xLocal.
-// ============================================================================
 template <typename T>
 __aicore__ inline void
 FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
@@ -1133,8 +1015,6 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
         cFromX = curBatchLen;
     }
 
-    // If cache not loaded in this UB block, only write x suffix.
-    // Cache prefix rows were already written in the batch-start UB block (Plan A).
     if (!hasCacheLocal) {
         cFromCache = 0;
     }
@@ -1158,9 +1038,6 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
 
     // Write x suffix (last cFromX rows of this batch)
     if (cFromX > 0) {
-        // If the batch tail fits within the current UB block's xLocal, use it.
-        // Otherwise (chunkEnd < cFromX, or cFromX crosses UB block boundary),
-        // fallback to loading from xGM_[bEnd - cFromX, bEnd).
         if (chunkEnd >= cFromX) {
             uint32_t xRowStart = chunkEnd - cFromX;
             DataCopyExtParams wcp{static_cast<uint16_t>(cFromX), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
@@ -1186,10 +1063,6 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
     }
 }
 
-// ============================================================================
-// WriteDeferredCacheSimple — post-SyncAll deferred cache write for first batch
-// on non-first BS cores. Reads from GM since UB data is gone.
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
 {
@@ -1269,21 +1142,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
     xQueue_.FreeTensor(tmpBuf);
 }
 
-// ============================================================================
-// FillApcChunksInRange — distributed APC fill for x-suffix chunks.
-//
-// Called from Compute on every chunk iteration.  For the current batch, iterates
-// over all APC chunks and writes those whose global x-offset falls within
-// [curBsStart, curBsStart+curBS).  Data is read directly from xLocal (UB),
-// eliminating redundant xGM reads.
-//
-// Cache-prefix chunks (boundaryIdx < K-1) are skipped here; they are handled
-// once per batch by FillApcCachePrefixChunks.
-// ============================================================================
-
-// ============================================================================
-// RefreshApcState — populate batchApcState cache (batch-invariant APC params)
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curBatch, uint32_t batchLen)
 {
@@ -1314,13 +1172,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curB
     apcState_.readCIdx = GetApcCacheLine(curBatch, static_cast<uint32_t>(initIdx));
 }
 
-// ============================================================================
-// FillApcChunksInRange — distributed APC fill for x-suffix chunks.
-//
-// Called from Compute on every chunk iteration.  Uses apcState_ cache to avoid
-// redundant TBuf reads and scalar math: per-batch params are computed only once
-// (on first access for a batch), subsequent iterations are cache-hit.
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt,
                                                                         uint32_t batchLen, uint32_t curBsStart,
@@ -1338,13 +1189,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
     uint32_t K = kernelWidth_;
     int32_t BSize = static_cast<int32_t>(blockSize_);
 
-    // ---- Range-bounded iteration (int32_t only) ----
-    // boundaryIdx(chunk) = lastFull - (nB-1-chunk)*B  →  monotonically increases with chunk.
-    // firstBdy = lastFull - (nB-1)*B  (chunk 0),  lastBdy = lastFull (chunk nB-1).
-    // We only need chunks where boundaryIdx ∈ [minBdy, xEnd):
-    //   minBdy = max( curBsStart - batchSt + K-1,  K-1,  1 )
-    //   xEnd   = curBsStart - batchSt + curBS + 1
-    // Compute skip = ceil((minBdy - firstBdy) / B) via int32_t ceiling formula.
     int32_t baseOff = static_cast<int32_t>(curBsStart) - static_cast<int32_t>(batchSt);
     int32_t minBdy = baseOff + static_cast<int32_t>(K - 1);
     if (minBdy < static_cast<int32_t>(K - 1))
@@ -1394,18 +1238,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
     }
 }
 
-// ============================================================================
-// FillApcCachePrefixChunks — fills APC chunks whose boundary falls inside the
-// cache-prefix region (boundaryIdx < K-1) of padded_input.
-//
-// These are rare: typically 0–1 chunks per batch (only when the very first APC
-// boundary lands before the x-data starts).  Because the cache-prefix data is
-// NOT in xLocal, this function reads from cacheStatesGM_ (readCIdx line) for
-// the cache rows and from xGM_ for any trailing x rows.
-//
-// Called pre-SyncAll in Process().  All dim-cores participate, each writing its
-// own [dimStart, dimStart+dimSize) slice of each APC cache line.
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
 {
@@ -1416,9 +1248,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
 
     uint32_t K = kernelWidth_;
 
-    // BS ownership: same as the old FillApcBlockCaches — the core whose BS range
-    // contains the batch's global start offset owns the cache-prefix fill for
-    // this batch.
     uint32_t dimCN = (dimCoreNum_ == 0) ? 1 : dimCoreNum_;
     uint32_t bsCoreNum = realCoreNum_ / dimCN;
 
@@ -1487,13 +1316,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
             lastFull -= B;
         int32_t nBlockToFill = lastBlk - firstBlk;
 
-        // ---- Early-exit: O(1) check whether this batch needs any work ----
-        // Cache-prefix: only when first boundaryIdx < K-1 (and > 0).
-        // Collision:    only when initial_state_idx falls inside [firstBlk, lastBlk)
-        //               → readCIdx == cache_indices[b][initial_state_idx] IS an
-        //               APC target, needing GM-based fill to avoid UB race.
-        // If neither: skip the O(nBlockToFill) loop entirely — saves ~1024 GM
-        // GetValue calls + scalar math per batch.
         int32_t BCP = static_cast<int32_t>(blockSize_);
         int32_t firstBdy = lastFull - (nBlockToFill - 1) * BCP;
         bool hasCachePrefix = (firstBdy > 0 && firstBdy < static_cast<int32_t>(K - 1));
@@ -1505,9 +1327,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
         if (!hasCachePrefix && !hasCollision)
             continue; // nothing to do for this batch
 
-        // ---- Targeted processing: only handle chunks that actually need work ----
-        // Cache-prefix: iterate until boundaryIdx >= K-1 (at most 1-2 chunks).
-        // Collision:    process exactly collisionChunk (1 iteration, no loop).
         if (hasCachePrefix) {
             for (int32_t chunk = 0; chunk < nBlockToFill; chunk++) {
                 int32_t boundaryIdx = lastFull - (nBlockToFill - chunk - 1) * BCP;
@@ -1614,26 +1433,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
     }
 }
 
-// ============================================================================
-// CopyYToX — inplace finalize: copy y from workspace back to xGM_
-//
-// 仅 inplace_==true 时调用，在 FillApcCachePrefixChunks 之后执行。
-//
-// 关键约束：xQueue_ 的 UB 容量按 maxUbBS × maxUbDim × sizeof(T) 初始化
-//   （见 Init 中 xBufBytes），因此搬运必须按 (BS, Dim) 二维切片，
-//   不能整行搬，否则 MTE2 写入 UB 越界触发 TRAP。
-//
-// 策略：
-//   - 每个核只搬自己 (bsIdx_, dimIdx_) 负责的 (bs, dim) 切片；
-//     同一行内不同 dim 核写 xGM_ 的区间不相交，不会冲突。
-//   - 双层循环：外层按 maxUbBS 分 BS，内层按 maxUbDim 分 Dim。
-//   - DataCopyPad srcStride = dstStride = (xStride_ - dimSize) * sizeof(T) / ALIGN_BYTES
-//     跳过同一行内其他 dim 核的数据。
-//
-// 搬运范围与 Compute 里 y 写回范围一致：
-//   首核 [bsStart, bsStart+bsBlockFactor)
-//   其他 [bsStart+(K-1), bsStart+bsBlockFactor)  跳过 overlap
-// ============================================================================
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
 {
