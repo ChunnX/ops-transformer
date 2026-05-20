@@ -91,7 +91,7 @@ private:
         if (currRankId == epRankId_) {
             currRankId = 0;
         }
-        return (GM_ADDR)urmaCommHandle_[currRankId]->localBufferAddr->bufferInfo.Addr;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->localBufferAddr->bufferInfo.rma.addr;
     }
 
     __aicore__ inline GM_ADDR GetRemoteBaseAddrByRankId(const int32_t rankId) 
@@ -100,7 +100,7 @@ private:
         if (currRankId == epRankId_) {
             currRankId = 0;
         }
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.Addr;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;
     }
 
     __aicore__ inline GM_ADDR GetWinWriteLocalAddrByRankId(const int32_t rankId) 
