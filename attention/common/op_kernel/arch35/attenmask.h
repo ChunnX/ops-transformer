@@ -65,7 +65,7 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
     if (s1Size == 0 || s2Size == 0) {
         return;
     }
-
+    
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = s1Size;
     dataCopyParams.blockLen = CeilDiv(s2Size, blockBytes);
@@ -75,20 +75,15 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
         if constexpr (isInfer == true) {
             if (constInfo.isGqa) {
                 dataCopyParams.blockCount = 1;
-                // IFA GS1合轴后, s1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
-                if (attenMaskInfo.maskBatch > 1) {
-                    for (uint32_t i = 0; i < s1Size; ++i) {
-                    // 需要用 s2BaseSize, 兼容S2方向有尾块情况
-                        DataCopy(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyParams);
-                    }
-                } else {
+                // 针对sparsemode 0 , maskbatch = 1场景，更正srcOffset
+                if ((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) && (attenMaskInfo.maskBatch == 1)) {
                     srcOffset = srcOffset % (attenMaskInfo.attenMaskS1Size * attenMaskInfo.attenMaskS2Size);
-                    for (uint32_t i = 0; i < s1Size; ++i) {
-                    // 需要用 s2BaseSize, 兼容S2方向有尾块情况
-                        DataCopy(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyParams);
-                    }
                 }
-                
+                 // IFA GS1合轴后, s1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
+                for (uint32_t i = 0; i < s1Size; ++i) {
+                // 需要用 s2BaseSize, 兼容S2方向有尾块情况
+                    DataCopy(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyParams);
+                }
                 return;
             }
         }
@@ -103,18 +98,14 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
         if constexpr (isInfer == true) {
             if (constInfo.isGqa) {
                 dataCopyExtParams.blockCount = 1;
-                // IFA GS1合轴后, 1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
-                if (attenMaskInfo.maskBatch > 1) {
-                    for (uint32_t i = 0; i < s1Size; ++i) {
-                    // 需要用 s2BaseSize, 兼容S2方向有尾块情况
-                        DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
-                    }
-                } else {
+                // 针对sparsemode 0 , maskbatch = 1场景，更正srcOffset
+                if ((attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) && (attenMaskInfo.maskBatch == 1)) {
                     srcOffset = srcOffset % (attenMaskInfo.attenMaskS1Size * attenMaskInfo.attenMaskS2Size);
-                    for (uint32_t i = 0; i < s1Size; ++i) {
-                    // 需要用 s2BaseSize, 兼容S2方向有尾块情况
-                        DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
-                    }
+                }
+                // IFA GS1合轴后, 1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
+                for (uint32_t i = 0; i < s1Size; ++i) {
+                // 需要用 s2BaseSize, 兼容S2方向有尾块情况
+                    DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
                 }
                 return;
             }
