@@ -409,7 +409,7 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/blaze
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/tensor-api
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
-                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TNSOR_API} ${OPS_UTILS_INC_KERNEL_DIR}/tensor-api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API} ${OPS_UTILS_INC_KERNEL_DIR}/tensor-api
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
