@@ -364,6 +364,13 @@ public:
             rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex*>(
                 params.cyclingParams.rowIndexAddr));
         }
+        if ASCEND_IS_AIV {
+            uint64_t dumpId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
+            if (dumpId < 2) {
+                DumpTensor(yGmAgg, 200, 8);
+                DumpTensor(rowIndexGm, 202, 8);
+            }
+        }
 
         // === Main loop: tile-level AIV-only cycling ===
         // Cycling check is inside the tile while loop, AIV-only (no SyncAll).
@@ -490,6 +497,7 @@ public:
         if ASCEND_IS_AIV {
             uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
             if (physId < 4) {
+                DumpTensor(deterBufferGm, 201, 8);
                 printf("[KER] physId=%lu totalRows=%lu globalRowOff=%lu windowSize=%lu coreNum=%u\n",
                        physId,
                        static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_)) + Get<MNK_M>(problemShape_),
@@ -513,6 +521,12 @@ public:
                 syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
                 params.cyclingParams.coreNum, params.cyclingParams.n,
                 globalRowOffset);
+        }
+        if ASCEND_IS_AIV {
+            uint64_t dumpId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
+            if (dumpId < 2) {
+                DumpTensor(yGmAgg, 203, 8);
+            }
         }
         SyncAll();
     }

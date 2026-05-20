@@ -117,6 +117,7 @@ __aicore__ inline void FRDeterministicA5(
             DataCopyPad(bindLocal, deterBufferGm[mOffset * n + nOffset], copyParams, padParams);
             queBind.EnQue(bindLocal);
             bindLocal = queBind.DeQue<DTYPE_OUT>();
+            if (physId < 2 && processedRows < 2 && nOffset == 0) { DumpTensor(bindLocal, 301, 8); }
 
             // AtomicAdd workspace -> yGm (single writer per outRow)
             SetAtomicAdd<DTYPE_OUT>();

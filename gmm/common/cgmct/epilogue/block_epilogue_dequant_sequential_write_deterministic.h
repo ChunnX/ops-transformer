@@ -164,6 +164,7 @@ private:
     uint32_t repeatTimesLine_;
     uint16_t yPingPongID_ = 0;
     uint16_t logitPingPongID_ = 0;
+    uint32_t dumpCnt_ = 0;
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
 };
 
@@ -580,7 +581,9 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     }
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
+    if (dumpCnt_ < 2) { DumpTensor(l0cOutUb_, 100, 8); DumpTensor(logitUb, 101, 8); }
     VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
+    if (dumpCnt_ < 2) { DumpTensor(l0cOutUbFloat_, 102, 8); }
     logitPingPongID_ = (logitPingPongID_ + 1) & 1;
     uint32_t loopNumY = CeilDiv(singleMInVec, DET_SEQ_MAX_OUTPUT_M_UBS);
     for (uint32_t i = 0; i < loopNumY; i++) {
@@ -592,6 +595,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
                       logitUb);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
+        if (i == 0 && dumpCnt_ < 2) { auto dO = yPingPongID_ == 0 ? outUbPing_ : outUbPong_; DumpTensor(dO, 103, 8); }
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
         // Workspace write offset (workspaceBaseRow already rebased into yGlobal_)
         uint64_t wsWriteOffset = mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
@@ -601,6 +605,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     }
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
+    dumpCnt_++;
 }
 } // namespace Block
 } // namespace Gemm
