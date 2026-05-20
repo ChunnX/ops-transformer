@@ -133,7 +133,7 @@ struct TileMmadTla {
             mmadParams.disableGemv = true;
         }
 #endif
-#if (__CCE_AICORE__ >= 220)
+#if (__CCE_AICORE__ == 220)
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
             mmadParams.kDirectionAlign = true;
         }
@@ -168,7 +168,7 @@ struct TileMmadTla {
 #if (__CCE_AICORE__ == 310)
         mmadParams.disableGemv = true;
 #endif
-#if (__CCE_AICORE__ >= 220)
+#if (__CCE_AICORE__ == 220)
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
             mmadParams.kDirectionAlign = true;
         }

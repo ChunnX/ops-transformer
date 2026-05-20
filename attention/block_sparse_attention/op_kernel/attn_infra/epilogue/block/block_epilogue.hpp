@@ -24,7 +24,7 @@ class BlockEpilogue {
 };
 
 }  // namespace NpuArch::Epilogue::Block
-#if (__CCE_AICORE__ >= 220)
+#if (__CCE_AICORE__ == 220)
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o.hpp"

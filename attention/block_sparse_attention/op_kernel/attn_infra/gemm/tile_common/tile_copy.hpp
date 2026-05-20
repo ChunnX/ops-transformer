@@ -21,7 +21,7 @@
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b_a5.hpp"
 #endif
-#if (__CCE_AICORE__ >= 220)
+#if (__CCE_AICORE__ == 220)
 #include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1_a2.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm_a2.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a2.hpp"
@@ -35,7 +35,7 @@
 
 namespace NpuArch::Gemm::Tile {
 
-#if (__CCE_AICORE__ >= 220)
+#if (__CCE_AICORE__ == 220)
 template <
     /// Tag indicating architecture
     class ArchTag,
