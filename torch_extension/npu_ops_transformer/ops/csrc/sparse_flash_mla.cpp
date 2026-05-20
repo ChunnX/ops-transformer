@@ -100,12 +100,12 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
     const c10::optional<at::Tensor> &cmp_residual_kv,
     const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length,
     const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &metadata,
-    int64_t quant_mode, int64_t tile_size, int64_t rope_head_dim,
     double softmax_scale, int64_t cmp_ratio,
     int64_t ori_mask_mode, int64_t cmp_mask_mode,
     int64_t ori_win_left, int64_t ori_win_right,
     c10::string_view layout_q, c10::string_view layout_kv,
     int64_t topk_value_mode, bool return_softmax_lse,
+    int64_t batch_invariant,
     c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
@@ -119,7 +119,7 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
  
     // construct the atten_out tensor
     std::tuple<at::Tensor, at::Tensor> sparse_flash_mla_atten_out = op_api::construct_sparse_flash_mla_atten_out_tensor(
-        q, ori_kv_val, layout_q_str, layout_kv_str, rope_head_dim, return_softmax_lse);
+        q, ori_kv_val, layout_q_str, layout_kv_str, 64, return_softmax_lse);
     at::Tensor atten_out = std::get<0>(sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(sparse_flash_mla_atten_out);
  
@@ -144,12 +144,12 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
               cmp_residual_kv,
               ori_topk_length, cmp_topk_length,
               sinks, metadata,
-              quant_mode, tile_size, rope_head_dim,
               softmax_scale, cmp_ratio,
               ori_mask_mode, cmp_mask_mode,
               ori_win_left, ori_win_right,
               layout_q_ptr, layout_kv_ptr,
               topk_value_mode, return_softmax_lse,
+              batch_invariant,
               atten_out, softmax_lse);
     printf("ACLNN_CMD end =========== \n");
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
