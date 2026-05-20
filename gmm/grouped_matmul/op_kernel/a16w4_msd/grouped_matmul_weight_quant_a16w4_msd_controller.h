@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block_config.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block.h"
-#include "a16w4_msd_tool.h"
+#include "gmm/op_kernel/common/gmm_tool_common.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 #define GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM \

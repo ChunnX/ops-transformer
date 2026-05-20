@@ -20,7 +20,7 @@
 
 
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
+using WeightQuantBatchMatmulV2::Arch35::CeilDiv;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
@@ -126,13 +126,13 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
             offsetParam.mSize <= mmTiling_->baseM || offsetParam.mSize >= mmTiling_->baseM * QUADRUPLE_BUFFER_NUM
                 ? mmTiling_->baseM
                 : (offsetParam.mSize <= DOUBLE_BUFFER_NUM * mmTiling_->baseM
-                       ? CeilDivide(offsetParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM)
-                       : CeilDivide(offsetParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
+                       ? CeilDiv(offsetParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM)
+                       : CeilDiv(offsetParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
         uint64_t baseN = offsetParam.nSize >= mmTiling_->baseN * gmmBaseTiling_->coreNum ? mmTiling_->baseN
                                                                                          : (mmTiling_->baseN >> 1);
 
-        uint32_t mBlockNum = CeilDivide(offsetParam.mSize, baseM);
-        uint32_t nBlockNum = CeilDivide(offsetParam.nSize, baseN);
+        uint32_t mBlockNum = CeilDiv(offsetParam.mSize, baseM);
+        uint32_t nBlockNum = CeilDiv(offsetParam.nSize, baseN);
 
         uint32_t curCount = count + mBlockNum * nBlockNum;
         uint32_t curBlock = cubeBlockIdx >= count ? cubeBlockIdx : cubeBlockIdx + gmmBaseTiling_->coreNum;

@@ -35,7 +35,7 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 
 // 引入公共工具函数
 using GmmOpKernelCommon::CeilAlign;
-using GmmOpKernelCommon::CeilDivide;
+using GmmOpKernelCommon::CeilDiv;
 using GmmOpKernelCommon::DataCopyPad2D;
 using GmmOpKernelCommon::GetKBUnit;
 using GmmOpKernelCommon::Min;
