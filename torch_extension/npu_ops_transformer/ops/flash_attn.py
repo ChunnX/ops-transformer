@@ -25,7 +25,6 @@ class FlashAttenOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature."""
         # TODO: 接口替换，基于新接口表格
-        print("schema entrance ========================\n")
         return "npu_flash_attn(Tensor q, Tensor k, Tensor v," \
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None," \
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None," \
@@ -48,7 +47,6 @@ class FlashAttenOpBuilder(OpBuilder):
                                 max_seqlen_q=-1, max_seqlen_kv=-1,
                                 layout_q="BSND", layout_kv="BSND", layout_out="BSND",
                                 return_softmax_lse=0):
-            print("meta entrance ========================\n")
             if layout_q == "TND":
                 tSize = q.size(0)
                 nSize = q.size(1)
