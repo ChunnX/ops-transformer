@@ -559,35 +559,35 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignByBatch(const SplitContext &spli
                 CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
                 assignContext.curS2Idx = assignContext.s1GCache.s2Start;
             }
+            return;
         }
-    } else {
-        while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
-            costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
-            assignContext.coreCache.cost + assignContext.bN2Cost)) {
-            assignContext.coreCache.cost += assignContext.bN2Cost;
-            assignContext.coreCache.block += assignContext.bN2Block;
-            assignContext.curBN2Idx++;
+    }
+    while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
+        costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
+        assignContext.coreCache.cost + assignContext.bN2Cost)) {
+        assignContext.coreCache.cost += assignContext.bN2Cost;
+        assignContext.coreCache.block += assignContext.bN2Block;
+        assignContext.curBN2Idx++;
 
-            // to the end
-            if (assignContext.curBN2Idx == batchSize_ * kvHeadNum_) {
-                assignContext.curS1GIdx = 0U;
-                assignContext.curS2Idx = 0U;
-                assignContext.isFinished = true;
-                return;
-            }
-
-            // next batch
-            if (assignContext.curBN2Idx / kvHeadNum_ != assignContext.curBIdx) {
-                assignContext.curBIdx = assignContext.curBN2Idx / kvHeadNum_;
-                CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-            }
-
-            assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-            assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
+        // to the end
+        if (assignContext.curBN2Idx == batchSize_ * kvHeadNum_) {
             assignContext.curS1GIdx = 0U;
-            CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-            assignContext.curS2Idx = assignContext.s1GCache.s2Start;
+            assignContext.curS2Idx = 0U;
+            assignContext.isFinished = true;
+            return;
         }
+
+        // next batch
+        if (assignContext.curBN2Idx / kvHeadNum_ != assignContext.curBIdx) {
+            assignContext.curBIdx = assignContext.curBN2Idx / kvHeadNum_;
+            CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
+        }
+
+        assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
+        assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
+        assignContext.curS1GIdx = 0U;
+        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
+        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
 
@@ -615,26 +615,26 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignByRow(const SplitContext &splitC
                 }while(assignContext.s1GCache.s1GBlock == 0);
                 assignContext.curS2Idx = assignContext.s1GCache.s2Start;
             }
+            return;
         }
-    } else {
-        while (IsWithinTolerance(assignContext.coreCache.costLimit,
-            assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
-            assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
-            assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
-            assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
+    }
+    while (IsWithinTolerance(assignContext.coreCache.costLimit,
+        assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
+        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
+        assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
+        assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
 
-            // 当前batch被分配一行出去，更新剩余负载
-            assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
-                                    assignContext.bN2Cost - assignContext.s1GCache.s1GCost : 0;
-            assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
-                                    assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
-            // 计算新一行的信息
-            do{
-                assignContext.curS1GIdx++;
-                CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-            }while(assignContext.s1GCache.s1GBlock == 0);
-            assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-        }
+        // 当前batch被分配一行出去，更新剩余负载
+        assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
+                                assignContext.bN2Cost - assignContext.s1GCache.s1GCost : 0;
+        assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
+                                assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
+        // 计算新一行的信息
+        do{
+            assignContext.curS1GIdx++;
+            CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
+        }while(assignContext.s1GCache.s1GBlock == 0);
+        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
 
