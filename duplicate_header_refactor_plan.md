@@ -18,14 +18,14 @@
 
 全仓共存在 **2** 个同名文件。
 
-### 3.1 文件分布
+### 2.1 文件分布
 
 | 文件 | 路径 | 行数 | 头文件保护宏 | 命名空间 |
 |------|------|------|--------------|----------|
 | A | `mc2/3rd/grouped_matmul/op_kernel/grouped_matmul_utils.h` | 370 | `MC2_GROUPED_MATMUL_UTILS_H` | `MC2_GROUPED_MATMUL` |
 | B | `gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h` | 378 | `ASCENDC_GROUPED_MATMUL_UTILS_H` | `GROUPED_MATMUL` |
 
-### 3.2 代码段差异分析
+### 2.2 代码段差异分析
 
 | 代码段 | 文件 A | 文件 B | 差异类型 | 处理结论 |
 |--------|--------|--------|----------|----------|
@@ -40,7 +40,7 @@
 | `GetSplitValueFromGroupList` | 参数类型 `MC2GMMBaseParams`，条件编译不含 `__NPU_ARCH__ == 3113` | 参数类型 `GMMBaseParams`，条件编译含 `__NPU_ARCH__ == 3113` | 逻辑不一致（类型+条件编译） | **保留差异** |
 | `NZ_CFG_MDL`、`matmulCFGUnitFlag` | 被 `#if/#else/#endif` 包裹 | 被 `#if/#else/#endif` 包裹 | 条件编译包裹 | **按原则不处理** |
 
-### 3.3 公共代码段提取方案
+### 2.3 公共代码段提取方案
 
 新建公共文件：`common/include/op_kernel/grouped_matmul_utils_common.h`
 
@@ -50,7 +50,7 @@
 
 公共文件中的 `GreatestCommonDivisor` 统一参数名为 `(T a, T b)`。其余代码统一采用规范格式（4 空格缩进、函数签名换行等）。
 
-### 3.4 文件重命名与裁剪方案
+### 2.4 文件重命名与裁剪方案
 
 | 原路径 | 新文件名 | 新头文件保护宏 | 裁剪后保留内容 |
 |--------|----------|----------------|----------------|
@@ -62,7 +62,7 @@
 
 > **设计说明：** `using namespace CommonGMMUtils;` 将公共符号全部引入 `MC2_GROUPED_MATMUL` 命名空间。引用方通过 `using namespace MC2_GROUPED_MATMUL;` 或完全限定名访问时，行为与整改前完全一致，**无需任何修改**。
 
-### 3.5 被引用位置与 #include 更新
+### 2.5 被引用位置与 #include 更新
 
 **共 20 处引用：**
 
@@ -95,14 +95,14 @@
 
 全仓共存在 **2** 个同名文件。
 
-### 4.1 文件分布
+### 3.1 文件分布
 
 | 文件 | 路径 | 行数 | 头文件保护宏 | 命名空间 | 内容 |
 |------|------|------|--------------|----------|------|
 | A | `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h` | 49 | `WEIGHT_QUANT_BATCHMATMUL_V2_STATIC_DIAG_CONSTANT_H` | `Mc2WeightQuantBatchMatmulV2` | `int8_t FIXP_EYE_DIAG[1024]` |
 | B | `gmm/grouped_matmul/op_kernel/a16w4_msd/static_diag_constant.h` | 34 | `GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H` | `GROUPED_MATMUL::A16W4Msd` | `int16_t C1C2_EYE_DIAG[256]` |
 
-### 4.2 代码段差异分析
+### 3.2 代码段差异分析
 
 | 代码段 | 文件 A | 文件 B | 差异类型 | 处理结论 |
 |--------|--------|--------|----------|----------|
@@ -113,14 +113,14 @@
 
 **关键结论：** 两个文件内容完全不同，不存在任何逻辑相同的代码段。**不抽取公共文件**。
 
-### 4.3 整改方案
+### 3.3 整改方案
 
 | 原路径 | 新文件名 | 新头文件保护宏 | 处理说明 |
 |--------|----------|----------------|----------|
 | `mc2/3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h` | `mc2_weight_quant_static_diag_constant.h` | `MC2_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H` | 保留全部内容 |
 | `gmm/grouped_matmul/op_kernel/a16w4_msd/static_diag_constant.h` | `gmm_a16w4_msd_static_diag_constant.h` | `GMM_A16W4_MSD_STATIC_DIAG_CONSTANT_H` | 保留全部内容，顺带修复末尾注释与宏名不一致的 bug |
 
-### 4.4 被引用位置与 #include 更新
+### 3.4 被引用位置与 #include 更新
 
 | 序号 | 引用方路径 | 原 #include | 新 #include |
 |------|-----------|-------------|-------------|
@@ -133,7 +133,7 @@
 
 全仓共存在 **4** 个同名文件。
 
-### 5.1 文件分布
+### 4.1 文件分布
 
 | 文件 | 路径 | 行数 | 头文件保护宏 | 命名空间 |
 |------|------|------|--------------|----------|
@@ -144,7 +144,7 @@
 
 > **隐患：** B、C、D 三个文件头文件保护宏完全相同，若在同一编译单元被同时包含，后两个文件内容会被预处理器跳过。
 
-### 5.2 整改前后结构示意图
+### 4.2 整改前后结构示意图
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#0288d1', 'lineColor': '#0288d1', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#e8f5e9'}}}%%
@@ -203,7 +203,7 @@ flowchart TB
 - **绿色公共文件**：`tool_common.h` 供跨模块使用；`gmm_weight_quant_arch35_tool_common.h` 供 gmm arch35 场景内使用。
 - **引用方零改动**：业务代码中访问的符号命名空间与整改前完全一致。
 
-### 5.3 代码段差异分析
+### 4.3 代码段差异分析
 
 #### A（mc2） vs B（gmm/arch35）
 
@@ -236,7 +236,7 @@ flowchart TB
 | `VEC_MAX_ELEM_B32` | **无** | 有 | 功能差异 | 保留在 D（通过公共文件 + 差异常量方式） |
 | 末尾换行 | 无 | 有 | 格式差异 | 公共文件补全换行 |
 
-### 5.4 公共代码段提取方案
+### 4.4 公共代码段提取方案
 
 **公共文件 1（跨模块公共代码段）：**
 - **路径：** `common/include/op_kernel/tool_common.h`
@@ -252,7 +252,7 @@ flowchart TB
 - **内容：** B、D 中逻辑相同的全部代码（约 160+ 行），去除已在公共文件 1 中的内容
 
 
-### 5.5 文件重命名与裁剪方案
+### 4.5 文件重命名与裁剪方案
 
 | 原路径 | 新文件名 | 新头文件保护宏 | 裁剪后保留内容 |
 |--------|----------|----------------|----------------|
@@ -272,7 +272,7 @@ flowchart TB
 > - 原 `gmm_arch35_weight_quant_tool.h` 和 `gmm_finalize_routing_arch35_tool.h` 因裁剪后仅剩单条 `#include`，被判定为空包装文件，直接删除。
 > - 它们的引用方改为直接 `#include gmm_weight_quant_arch35_tool_common.h`，所有符号的可见性与整改前完全一致。
 
-### 5.6 被引用位置与 #include 更新
+### 4.6 被引用位置与 #include 更新
 
 **引用文件 A（共 13 处）：**
 
@@ -329,7 +329,7 @@ flowchart TB
 
 ## 5. 测试方案
 
-### 6.1 编译测试
+### 5.1 编译测试
 
 **目标：** 验证所有文件重命名、路径修改、头文件保护宏变更后，全仓能够编译通过。
 
@@ -341,7 +341,7 @@ flowchart TB
 
 **通过标准：** 全量编译零报错、零警告（与整改前基线一致）。
 
-### 6.2 头文件残留检查
+### 5.2 头文件残留检查
 
 **目标：** 确认旧文件名在全仓源码中已无残留。
 
@@ -356,7 +356,7 @@ flowchart TB
 
 **通过标准：** 三个 `grep` 命令在源码目录中返回空结果。
 
-### 6.3 头文件保护宏唯一性检查
+### 5.3 头文件保护宏唯一性检查
 
 **目标：** 确认新增/修改的保护宏不存在全局冲突。
 
@@ -369,7 +369,7 @@ flowchart TB
 
 **通过标准：** 无重复的保护宏定义。
 
-### 6.4 功能回归测试
+### 5.4 功能回归测试
 
 **目标：** 验证整改后的代码行为与整改前完全一致。
 
