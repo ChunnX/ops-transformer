@@ -15,7 +15,7 @@
 #include "mc2_common_log.h"
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
-
+#include <cstring>
 namespace fallback
 {
 constexpr size_t INPUT_K_GMM_X = 0;
@@ -215,7 +215,8 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
     const gert::Tensor* y,
     const gert::Tensor* mmY)
 {
-    if (attrsData.commMode == "ccu" || attrsData.commMode == "aicpu" || attrsData.commMode == "default") {
+    if (std::strcmp(attrsData.commMode, "ccu") == 0 || std::strcmp(attrsData.commMode, "aicpu") == 0 || std::strcmp(attrsData.commMode, "default") == 0) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "aclnnQuantGroupedMatMulAlltoAllvV2.");
         const auto apiRet = EXEC_OPAPI_CMD(
                                           aclnnQuantGroupedMatMulAlltoAllvV2, inputs.gmmX, inputs.gmmWeight, inputs.gmmXScale, inputs.gmmWeightScale,
                                           inputs.sendCountsTensor, inputs.recvCountsTensor, inputs.mmX, inputs.mmWeight, inputs.mmXScale,
@@ -226,6 +227,7 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
         OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
                    OP_LOGE("QuantGroupedMatMulAlltoAllvarezFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
     } else {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "aclnnQuantGroupedMatMulAlltoAllv.");
         const auto apiRet = EXEC_OPAPI_CMD(
                                           aclnnQuantGroupedMatMulAlltoAllv, inputs.gmmX, inputs.gmmWeight, inputs.gmmXScale, inputs.gmmWeightScale,
                                           inputs.sendCountsTensor, inputs.recvCountsTensor, inputs.mmX, inputs.mmWeight, inputs.mmXScale,

@@ -57,7 +57,8 @@ enum GmmA2AvAttrIndex : uint32_t {
     ATTR_GROUP_SIZE_OPTIONAL_INDEX,
     ATTR_Y_DTYPE,
     ATTR_MM_Y_DTYPE,
-    ATTR_COMM_QUANT_DTYPE_INDEX
+    ATTR_COMM_QUANT_DTYPE_INDEX,
+    ATTR_COMM_MODE_INDEX
 };
 
 enum QuantizationMode {

@@ -37,7 +37,7 @@ static ge::Status ValidateAndGetRankSize(const gert::ExeResGenerationContext *co
         OPS_LOG_E(context->GetNodeName(), "epWorldSizePtr pointer is null.");
         return ge::GRAPH_FAILED;
     }
-    int64_t rankSize = *epWorldSizePtr;
+    rankSize = *epWorldSizePtr;
     return ge::GRAPH_SUCCESS;
 }
 
