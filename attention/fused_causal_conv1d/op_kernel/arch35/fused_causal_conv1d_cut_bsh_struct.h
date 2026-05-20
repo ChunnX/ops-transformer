@@ -50,10 +50,32 @@ struct FusedCausalConv1dCutBSHTilingData {
     uint64_t dim;               // 特征维度大小
     uint64_t batch;             // batch大小
     int64_t padSlotId;          // padding slot ID，用于 kernel 中跳过 padding batch
+    uint64_t stateLen;
     uint64_t xStride;           // x 的 stride（即 dim）
     uint64_t cacheStride0;       // convStates 的 stride[0]
     uint64_t cacheStride1;       // convStates 的 stride[1]
     uint64_t residualConnection;// 是否做残差连接
+
+    // ===== v2.0 新增字段 =====
+    uint64_t apcEnabled;         // APC 是否启用（0/1），等价于 cache_indices 是否为 2D
+    uint64_t blockSize;          // APC block 大小（0 表示未启用）
+    uint64_t maxNumBlocks;       // cache_indices 第二维大小（APC 模式下 > 0）
+    uint64_t convMode;           // 0=Qwen3-Next, 1=Pangu v2 输出零填充
+    uint64_t inplace;            // 是否原地更新（y 复用 x 的 GM）
+    uint64_t hasAcceptTokenNum;  // 是否提供 num_accepted_tokens（MTP）
+    uint64_t hasNumComputedTokens; // 是否提供 num_computed_tokens（cache 零初始化判断）
+    uint64_t hasCacheIndices;    // 是否提供 cache_indices（为0时用 batch_idx 作为 cache line）
+
+    // ===== v2.1 新增字段：last dim core（dim % 128 != 0 场景支持） =====
+    // 语义：放宽 dim 必须被 128 整除的约束到仅需 dim % 16 == 0。
+    //   - 当 dim % 128 == 0 时，dimRemainderElems = 0，last core 参数等同普通尾核，
+    //     kernel 行为与旧版本完全一致（向后兼容）。
+    //   - 当 dim % 128 != 0 时，由 dimIdx == dimCoreNum - 1 的核（即最后一个 dim 核）
+    //     在尾核 dim 长度基础上额外承担 dimRemainderElems 个余数元素。
+    uint64_t dimRemainderElems;       // dim % 128，最后一个 dim 核额外承担的余数元素数
+    uint64_t lastCoreloopNumDim;      // 最后一个 dim 核 Dim 方向循环次数
+    uint64_t lastCoreubFactorDim;     // 最后一个 dim 核 UB 主块 dim 大小
+    uint64_t lastCoreubTailFactorDim; // 最后一个 dim 核 UB 尾块 dim 大小
 };
 
 #endif

@@ -133,12 +133,31 @@ private:
     uint64_t tailBlockubFactorDim_ = 0;
     uint64_t tailBlockubTailFactorDim_ = 0;
 
+    // 核内切分信息 - 最后一个 dim 核 (处理 dim % 128 != 0 场景的余数元素)
+    // 当 dim % 128 == 0 时，这些字段等同普通尾核参数（兜底保证向后兼容）
+    uint64_t dimRemainderElems_ = 0;         // dim % 128
+    uint64_t lastCoreloopNumDim_ = 0;        // 最后一个 dim 核 Dim 方向循环次数
+    uint64_t lastCoreubFactorDim_ = 0;       // 最后一个 dim 核 UB 主块 dim 大小
+    uint64_t lastCoreubTailFactorDim_ = 0;   // 最后一个 dim 核 UB 尾块 dim 大小
+
     gert::Shape xShape_;
     gert::Shape weightShape_;
     gert::Shape cacheStatesShape_;
     gert::Shape seqStartIndexShape_;
     ge::DataType xType_;
     ge::DataType weightType_;
+
+    // ===== v2.0 新增：APC / conv_mode / inplace / MTP / 路由 =====
+    uint64_t apcEnabled_ = 0;          // 0/1，等价于 cache_indices 是否为 2D
+    uint64_t blockSize_ = 0;           // APC block 大小（0 表示未启用）
+    uint64_t maxNumBlocks_ = 0;        // cache_indices 第二维大小（APC 模式下 > 0）
+    uint64_t convMode_ = 0;            // 0=Qwen3-Next, 1=Pangu v2 输出零填充
+    uint64_t inplace_ = 0;             // 是否原地更新（y 复用 x 的 GM）
+    uint64_t hasAcceptTokenNum_ = 0;   // 是否提供 num_accepted_tokens（MTP）
+    uint64_t hasNumComputedTokens_ = 0; // 是否提供 num_computed_tokens
+    uint64_t hasCacheIndices_ = 0;     // 是否提供 cache_indices
+    int64_t  maxQueryLen_ = -1;        // 路由参考值
+
     FusedCausalConv1dCutBSHTilingData tilingData_;
 };
 
