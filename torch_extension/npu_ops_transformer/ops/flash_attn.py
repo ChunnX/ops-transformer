@@ -24,7 +24,6 @@ class FlashAttenOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        # TODO: 接口替换，基于新接口表格
         return "npu_flash_attn(Tensor q, Tensor k, Tensor v," \
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None," \
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None," \
@@ -39,7 +38,7 @@ class FlashAttenOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        @impl(AS_LIBRARY, self.name, "Meta") #TODO：同步接口
+        @impl(AS_LIBRARY, self.name, "Meta")
         def npu_flash_attn_meta(q, k, v, block_table=None, cu_seqlens_q=None,
                                 cu_seqlens_kv=None, seqused_q=None,
                                 seqused_kv=None, sinks=None, attn_mask=None, metadata=None,
@@ -96,7 +95,7 @@ flash_attn_op_builder = FlashAttenOpBuilder()
 op_module = flash_attn_op_builder.load()  # Compiles/loads the .so file
 
 
-@impl(AS_LIBRARY, flash_attn_op_builder.name, "PrivateUse1")# TODO 接口
+@impl(AS_LIBRARY, flash_attn_op_builder.name, "PrivateUse1")
 def npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None,
                                 cu_seqlens_kv=None, seqused_q=None,
                                 seqused_kv=None, sinks=None, attn_mask=None, metadata=None,
