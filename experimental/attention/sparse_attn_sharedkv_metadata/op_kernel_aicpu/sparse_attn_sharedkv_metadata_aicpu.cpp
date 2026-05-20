@@ -535,7 +535,7 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignByBatch(const SplitContext &spli
         if (queryHeadNum_ == 128 && cmpTopK_ == 1024) {
             while (assignContext.bN2Cost == 0 ||
                    assignContext.coreCache.costLimit - assignContext.coreCache.cost >
-                       0.8L * static_cast<long double>(assignContext.bN2Cost)) {
+                   0.8L * static_cast<long double>(assignContext.bN2Cost)) {
                 assignContext.coreCache.cost += assignContext.bN2Cost;
                 assignContext.coreCache.block += assignContext.bN2Block;
                 assignContext.curBN2Idx++;
