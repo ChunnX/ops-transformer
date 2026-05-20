@@ -658,7 +658,7 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
                 return ge::GRAPH_FAILED;);
     int64_t vHeadSize = inputValueShape_.GetDim(DIM2);
     int64_t tokensV = numHead * vHeadSize;
-    int64_t lastDimV = inputValueCacheInShape_.GetDim(DIM3);
+    int64_t lastDimV = inputValueCacheInShape_.GetDim(inputKeyCacheInShape_.GetDimNum() - DIM1);
     int64_t lastDimVSize = lastDimV * valueDtypeByteSize_;
     if (valueDtype_ == ge::DT_FLOAT4_E2M1 || valueDtype_ == ge::DT_FLOAT4_E1M2) {
         lastDimVSize /= 2;

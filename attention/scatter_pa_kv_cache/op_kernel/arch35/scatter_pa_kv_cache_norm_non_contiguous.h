@@ -43,7 +43,8 @@ private:
 
 private:
     TPipe *pipe_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> que_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> keyQue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> valueQue_;
     const ScatterPaKvCacheTilingData *tilingData_;
 
     GlobalTensor<T> keyGm_;
@@ -57,6 +58,7 @@ private:
     int64_t blockFactorOffset_ = 0;
     int64_t alignKHeadSize_ = 0;
     int64_t alignVHeadSize_ = 0;
+    int64_t maxHandleSize_{0};
 
     bool kFullyLoad_{false};
     bool vFullyLoad_{false};
@@ -85,11 +87,14 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + blockIdx_ * tilingData_->blockFactor);
     keyCacheOutGm_.SetGlobalBuffer((__gm__ T *)(key_cache_out));
 
+    maxHandleSize_ = tilingData_->ubSize / DOUBLE_BUFFER;
     if constexpr (InOutMode == DUAL_IN_OUT) {
+        maxHandleSize_ /= DUAL_IN_OUT;
         valueGm_.SetGlobalBuffer((__gm__ T *)(value));
         valueCacheOutGm_.SetGlobalBuffer((__gm__ T *)(value_cache_out));
+        pipe_->InitBuffer(valueQue_, DOUBLE_BUFFER, maxHandleSize_);
     }
-    pipe_->InitBuffer(que_, 1, tilingData_->ubSize);
+    pipe_->InitBuffer(keyQue_, DOUBLE_BUFFER, maxHandleSize_);
     maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;
 }
 
@@ -107,7 +112,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
                                                                                              int64_t headNum,
                                                                                              int64_t headSize)
 {
-    LocalTensor<T> inputKeyLocal = que_.AllocTensor<T>();
+    LocalTensor<T> inputKeyLocal = keyQue_.AllocTensor<T>();
 
     int64_t keyOffset = tokenIdx * tilingData_->keyStride0 + headIdx * tilingData_->keyStride1 + sizeOffset;
 
@@ -118,7 +123,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
     DataCopyPadExtParams<T> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<T>(0)};
     DataCopyPad(inputKeyLocal, keyGm_[keyOffset], keyParams, padParams);
 
-    que_.EnQue(inputKeyLocal);
+    keyQue_.EnQue(inputKeyLocal);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -129,7 +134,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
                                                                                               int64_t headNum,
                                                                                               int64_t headSize)
 {
-    LocalTensor<T> inputKeyLocal = que_.DeQue<T>();
+    LocalTensor<T> inputKeyLocal = keyQue_.DeQue<T>();
 
     int64_t keyCacheOffset = blockIdx * tilingData_->keyCacheStride0 +
                              blockOffset * tilingData_->keyCacheStride1 +
@@ -146,7 +151,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
 
     DataCopyPad(keyCacheOutGm_[keyCacheOffset], inputKeyLocal, outKeyCacheParams);
 
-    que_.FreeTensor(inputKeyLocal);
+    keyQue_.FreeTensor(inputKeyLocal);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -156,7 +161,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
                                                                                                int64_t headNum,
                                                                                                int64_t headSize)
 {
-    LocalTensor<T> inputValueLocal = que_.AllocTensor<T>();
+    LocalTensor<T> inputValueLocal = valueQue_.AllocTensor<T>();
 
     int64_t valueOffset = tokenIdx * tilingData_->valueStride0 + headIdx * tilingData_->valueStride1 + sizeOffset;
 
@@ -167,7 +172,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
     DataCopyPadExtParams<T> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<T>(0)};
     DataCopyPad(inputValueLocal, valueGm_[valueOffset], valueParams, padParams);
 
-    que_.EnQue(inputValueLocal);
+    valueQue_.EnQue(inputValueLocal);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -178,8 +183,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
                                                                                                 int64_t headNum,
                                                                                                 int64_t headSize)
 {
-    LocalTensor<T> inputValueLocal = que_.DeQue<T>();
-
+    LocalTensor<T> inputValueLocal = valueQue_.DeQue<T>();
     int64_t valueCacheOffset = blockIdx * tilingData_->valueCacheStride0 +
                                blockOffset * tilingData_->valueCacheStride1 +
                                headIdx * tilingData_->valueCacheStride2 + sizeOffset;
@@ -195,28 +199,29 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
 
     DataCopyPad(valueCacheOutGm_[valueCacheOffset], inputValueLocal, outValueCacheParams);
 
-    que_.FreeTensor(inputValueLocal);
+    valueQue_.FreeTensor(inputValueLocal);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::InitLoopInfo() {
-    int64_t ubHandleSize = tilingData_->ubSize / sizeof(T);
+    int64_t ubHandleSize = maxHandleSize_ / sizeof(T);
+    ubHandleSize = RoundUp(ubHandleSize) - BLOCK_SIZE;
     alignKHeadSize_ = RoundUp(tilingData_->kHeadSize);
     
     kFullyLoad_ = (alignKHeadSize_ <= ubHandleSize);
     
     if (kFullyLoad_) {
-        kHeadSizeIn_ = alignKHeadSize_;
+        kHeadSizeIn_ = tilingData_->kHeadSize;
         kHeadSizeloop_ = 1;
         kHeadSizeTail_ = 0;
-        kNumHeadIn_ = ubHandleSize / kHeadSizeIn_;
+        kNumHeadIn_ = ubHandleSize / alignKHeadSize_;
         if (kNumHeadIn_ > tilingData_->numHead) {
             kNumHeadIn_ = tilingData_->numHead;
         }
         kNumHeadLoop_ = tilingData_->numHead / kNumHeadIn_;
         kNumHeadTail_ = tilingData_->numHead - kNumHeadIn_ * kNumHeadLoop_;
     } else {
-        kHeadSizeIn_ = RoundUp(ubHandleSize);
+        kHeadSizeIn_ = ubHandleSize;
         kHeadSizeloop_ = tilingData_->kHeadSize / kHeadSizeIn_;
         kHeadSizeTail_ = tilingData_->kHeadSize - kHeadSizeIn_ * kHeadSizeloop_;
         kNumHeadIn_ = 1;
@@ -230,17 +235,17 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
         vFullyLoad_ = (alignVHeadSize_ <= ubHandleSize);
         
         if (vFullyLoad_) {
-            vHeadSizeIn_ = alignVHeadSize_;
+            vHeadSizeIn_ = tilingData_->vHeadSize;
             vHeadSizeloop_ = 1;
             vHeadSizeTail_ = 0;
-            vNumHeadIn_ = ubHandleSize / vHeadSizeIn_;
+            vNumHeadIn_ = ubHandleSize / alignVHeadSize_;
             if (vNumHeadIn_ > tilingData_->numHead) {
                 vNumHeadIn_ = tilingData_->numHead;
             }
             vNumHeadLoop_ = tilingData_->numHead / vNumHeadIn_;
             vNumHeadTail_ = tilingData_->numHead - vNumHeadIn_ * vNumHeadLoop_;
         } else {
-            vHeadSizeIn_ = RoundUp(ubHandleSize);
+            vHeadSizeIn_ = ubHandleSize;
             vHeadSizeloop_ = tilingData_->vHeadSize / vHeadSizeIn_;
             vHeadSizeTail_ = tilingData_->vHeadSize - vHeadSizeIn_ * vHeadSizeloop_;
             vNumHeadIn_ = 1;

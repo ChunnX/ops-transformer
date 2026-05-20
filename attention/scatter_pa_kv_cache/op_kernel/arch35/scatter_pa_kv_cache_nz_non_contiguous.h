@@ -45,7 +45,8 @@ private:
 
 private:
     TPipe *pipe_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> que_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> keyQue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> valueQue_;
     const ScatterPaKvCacheTilingData *tilingData_;
 
     GlobalTensor<T1> keyGm_;
@@ -60,6 +61,7 @@ private:
     int64_t lastDimV_{0};
     int64_t kHeadLastDimLoop_{0};
     int64_t vHeadLastDimLoop_{0};
+    int64_t maxHandleSize_{0};
 
     bool kFullyLoad_{false};
     bool vFullyLoad_{false};
@@ -92,20 +94,21 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping));
     keyCacheOutGm_.SetGlobalBuffer((__gm__ T1 *)(key_cache_out));
 
-    int64_t maxHandleSize = tilingData_->ubSize;
+    maxHandleSize_ = tilingData_->ubSize / DOUBLE_BUFFER;
     if constexpr (InOutMode == DUAL_IN_OUT) {
+        maxHandleSize_ /= DUAL_IN_OUT;
         valueGm_.SetGlobalBuffer((__gm__ T2 *)(value));
         valueCacheOutGm_.SetGlobalBuffer((__gm__ T2 *)(value_cache_out));
+        pipe_->InitBuffer(valueQue_, DOUBLE_BUFFER, maxHandleSize_);
     }
-
-    pipe_->InitBuffer(que_, 1, maxHandleSize);
+    pipe_->InitBuffer(keyQue_, DOUBLE_BUFFER, maxHandleSize_);
     maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode, FIVE_DIM>::InitLoopInfo()
 {
-    int64_t ubHandleSize = tilingData_->ubSize / sizeof(T1);
+    int64_t ubHandleSize = maxHandleSize_ / sizeof(T1);
     int64_t kElementsPerHead = kHeadLastDimLoop_ * lastDimK_;
     
     kFullyLoad_ = (kElementsPerHead <= ubHandleSize);
@@ -122,9 +125,6 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
         kNumHeadTail_ = tilingData_->numHead - kNumHeadIn_ * kNumHeadLoop_;
     } else {
         kLastDimIn_ = ubHandleSize / lastDimK_;
-        if (kLastDimIn_ < 1) {
-            kLastDimIn_ = 1;
-        }
         kLastDimLoop_ = kHeadLastDimLoop_ / kLastDimIn_;
         kLastDimTail_ = kHeadLastDimLoop_ - kLastDimIn_ * kLastDimLoop_;
         kNumHeadIn_ = 1;
@@ -133,7 +133,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     }
 
     if constexpr (InOutMode == DUAL_IN_OUT) {
-        int64_t ubHandleSizeV = tilingData_->ubSize / sizeof(T2);
+        int64_t ubHandleSizeV = maxHandleSize_ / sizeof(T2);
         int64_t vElementsPerHead = vHeadLastDimLoop_ * lastDimV_;
         
         vFullyLoad_ = (vElementsPerHead <= ubHandleSizeV);
@@ -150,9 +150,6 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
             vNumHeadTail_ = tilingData_->numHead - vNumHeadIn_ * vNumHeadLoop_;
         } else {
             vLastDimIn_ = ubHandleSizeV / lastDimV_;
-            if (vLastDimIn_ < 1) {
-                vLastDimIn_ = 1;
-            }
             vLastDimLoop_ = vHeadLastDimLoop_ / vLastDimIn_;
             vLastDimTail_ = vHeadLastDimLoop_ - vLastDimIn_ * vLastDimLoop_;
             vNumHeadIn_ = 1;
@@ -166,7 +163,7 @@ template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode, FIVE_DIM>::CopyInKeyNz(
     int64_t tokenIdx, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum)
 {
-    LocalTensor<T1> inputLocal = que_.AllocTensor<T1>();
+    LocalTensor<T1> inputLocal = keyQue_.AllocTensor<T1>();
 
     int64_t keyOffset = tokenIdx * tilingData_->keyStride0 +
                         headIdx * tilingData_->keyStride1 +
@@ -181,14 +178,14 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     DataCopyPadExtParams<T1> padParams = {false, 0, 0, static_cast<T1>(0)};
     DataCopyPad(inputLocal, keyGm_[keyOffset], copyParams, padParams);
 
-    que_.EnQue(inputLocal);
+    keyQue_.EnQue(inputLocal);
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode, FIVE_DIM>::CopyOutKeyNz(
     int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum)
 {
-    LocalTensor<T1> inputLocal = que_.DeQue<T1>();
+    LocalTensor<T1> inputLocal = keyQue_.DeQue<T1>();
 
     event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdV2ToS);
@@ -224,14 +221,14 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
         DataCopyPad(keyCacheOutGm_[keyCacheOffset], inputLocal[ubOffset], copyParams);
     }
 
-    que_.FreeTensor(inputLocal);
+    keyQue_.FreeTensor(inputLocal);
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode, FIVE_DIM>::CopyInValueNz(
     int64_t tokenIdx, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum)
 {
-    LocalTensor<T2> inputLocal = que_.AllocTensor<T2>();
+    LocalTensor<T2> inputLocal = valueQue_.AllocTensor<T2>();
 
     int64_t valueOffset = tokenIdx * tilingData_->valueStride0 +
                           headIdx * tilingData_->valueStride1 +
@@ -246,14 +243,14 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     DataCopyPadExtParams<T2> padParams = {false, 0, 0, static_cast<T2>(0)};
     DataCopyPad(inputLocal, valueGm_[valueOffset], copyParams, padParams);
 
-    que_.EnQue(inputLocal);
+    valueQue_.EnQue(inputLocal);
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
 __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOutMode, FIVE_DIM>::CopyOutValueNz(
     int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum)
 {
-    LocalTensor<T2> inputLocal = que_.DeQue<T2>();
+    LocalTensor<T2> inputLocal = valueQue_.DeQue<T2>();
 
     event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdV2ToS);
@@ -291,7 +288,7 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
         DataCopyPad(valueCacheOutGm_[valueCacheOffset], inputLocal[ubOffset], copyParams);
     }
 
-    que_.FreeTensor(inputLocal);
+    valueQue_.FreeTensor(inputLocal);
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode, bool FIVE_DIM>
