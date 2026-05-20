@@ -976,7 +976,7 @@ public:
                 return;
             }
             coreGS1Loops++;
-            accGS1Loops++;
+            accGS1Loops = ComputeFlatTaskIdx();
             if (taskDealMode != TASK_DEAL_MODE::SKIP) {
                 createdTaskCount = executedTaskCount;
             }
