@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 算子功能：`lightning_indexer_grad`为`lightning_indexer`的反向算子，基于正向算子的输出`sparseIndices`计算`query`、`key`、`weights`的梯度。
+- 接口功能：`lightning_indexer_grad`为`lightning_indexer`的反向算子，基于正向算子的输出`sparseIndices`计算`query`、`key`、`weights`的梯度。
 
 - 计算公式：
   LightningIndexer反向计算公式如下：
@@ -53,16 +53,16 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   const aclTensor   *weights,
   const aclTensor   *actualSeqLengthsQuery,
   const aclTensor   *actualSeqLengthsKey,
-  int64_t           headNum,  
+  int64_t            headNum,  
   char              *layout,
-  int64_t           sparseMode,
-  int64_t           preTokens,
-  int64_t           nextTokens,
-  bool              deterministic,
+  int64_t            sparseMode,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  bool               deterministic,
   const aclTensor   *dQuery,
   const aclTensor   *dKey,
   const aclTensor   *dWeights,
-  uint64_t         *workspaceSize,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
@@ -71,7 +71,7 @@ aclnnStatus aclnnLightningIndexerGrad(
   void             *workspace, 
   uint64_t          workspaceSize, 
   aclOpExecutor    *executor, 
-  aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnLightningIndexerGradGetWorkspaceSize
