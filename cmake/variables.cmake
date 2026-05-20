@@ -117,6 +117,10 @@ set(OPAPI_INCLUDE
   ${OPBASE_INC_DIRS}
   ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
   ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
+  ${ASCEND_DIR}/pkg_inc
+  ${ASCEND_DIR}/pkg_inc/base
+  ${TOP_DIR}/runtime/pkg_inc
+  ${TOP_DIR}/runtime/pkg_inc/base
   ${NPURUNTIME_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}/
