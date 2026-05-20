@@ -26,6 +26,7 @@ function(add_opapi_modules)
       PRIVATE
       -Dgoogle=ascend_private
       -DACLNN_LOG_FMT_CHECK
+      -DOP_LOG_LIBOPAPI_ONLY
     )
     target_compile_definitions(${OPHOST_NAME}_opapi_obj
       PRIVATE
@@ -36,7 +37,8 @@ function(add_opapi_modules)
       $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
       PRIVATE
       $<BUILD_INTERFACE:adump_headers>
-      $<BUILD_INTERFACE:dlog_headers>)
+      $<BUILD_INTERFACE:dlog_headers>
+      $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>)
   endif()
   if(NOT BUILD_OPEN_PROJECT)
     add_dependencies(${OPHOST_NAME}_opapi_obj opbuild_gen_inner)

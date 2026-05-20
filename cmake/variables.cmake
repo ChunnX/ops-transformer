@@ -114,6 +114,7 @@ set(OPAPI_INCLUDE
   ${PLATFORM_INC_DIRS}
   ${METADEF_INCLUDE_DIRS}
   ${NNOPBASE_INCLUDE_DIRS}
+  ${OPBASE_INC_DIRS}
   ${NPURUNTIME_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}/
@@ -154,7 +155,7 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/tmp/host-prefix/src/host-build/asl/ops/cann/ops/built-in/op_host/inner/
   )
 else()
-  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS} ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
+  list(APPEND OPAPI_INCLUDE ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
 endif()
 
 set(OP_TILING_INCLUDE

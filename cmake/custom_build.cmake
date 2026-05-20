@@ -76,6 +76,7 @@ if (BUILD_OPEN_PROJECT)
     )
     target_compile_options(cust_opapi PRIVATE
             -Werror=format
+            -DOP_LOG_LIBOPAPI_ONLY
     )
     target_compile_definitions(cust_opapi PRIVATE
             -DACLNN_LOG_FMT_CHECK
@@ -682,7 +683,8 @@ else()
     )
 endif ()
 target_sources(cust_opapi PRIVATE
-    $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>)
+    $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>)
 target_link_libraries(
     cust_opapi
     PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>

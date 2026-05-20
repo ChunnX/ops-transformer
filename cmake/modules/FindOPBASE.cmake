@@ -47,6 +47,18 @@ if(OPBASE_FOUND)
     ${OPBASE_INC_DIR}/../pkg_inc/op_common
     ${OPBASE_INC_DIR}/../pkg_inc/op_common/op_host
     ${OPBASE_INC_DIR}/op_common/atvoss
+    ${TOP_DIR}/runtime/pkg_inc
+    ${TOP_DIR}/runtime/pkg_inc/runtime
+    ${TOP_DIR}/runtime/pkg_inc/profiling
+    ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc
+    ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc/runtime
+    ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc/profiling
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc/runtime
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/pkg_inc/profiling
+    ${ASCEND_DIR}/pkg_inc
+    ${ASCEND_DIR}/pkg_inc/base
   )
 endif()
