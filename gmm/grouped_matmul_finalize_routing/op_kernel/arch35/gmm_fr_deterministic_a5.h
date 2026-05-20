@@ -52,6 +52,9 @@ struct SyncConfig {
  * Workspace rows in input-row order (mOffset), mapped to output rows via rowIndex.
  * Deterministic: each outRow owned by exactly one core (outRow % coreNumVec).
  *
+ * Per-row rebase of GlobalTensors to keep DataCopyPad element offsets small
+ * (required for large shapes where mOffset*n or outRow*n would exceed hardware limit).
+ *
  * Template: DTYPE_OUT (float), ROW_INDEX_DTYPE (int32_t or int64_t)
  */
 template <typename DTYPE_OUT, typename ROW_INDEX_DTYPE>
@@ -63,7 +66,9 @@ __aicore__ inline void FRDeterministicA5(
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1>& queBind,
     uint32_t coreNum,
     uint32_t n,
-    uint64_t globalRowOffset = 0)
+    uint64_t globalRowOffset,
+    __gm__ DTYPE_OUT* wsBaseAddr,
+    __gm__ DTYPE_OUT* yBaseAddr)
 {
     // On A5, g_coreType is unreliable. Use compile-time ASCEND_IS_AIC instead.
     // AIC subBlock must participate in SyncAll barriers to match AIV's count.
@@ -81,12 +86,20 @@ __aicore__ inline void FRDeterministicA5(
         uint64_t totalM = syncConfig.curM;
         uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
 
+        // Per-row rebase tensors to keep DataCopyPad offsets small
+        GlobalTensor<DTYPE_OUT> wsRowGm;
+        GlobalTensor<DTYPE_OUT> yRowGm;
+
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
             if (static_cast<uint64_t>(outRow % coreNum) != myVecId) {
                 continue;
             }
+
+            // Rebase to current row: element offset becomes just nOffset (< n)
+            wsRowGm.SetGlobalBuffer(wsBaseAddr + mOffset * n);
+            yRowGm.SetGlobalBuffer(yBaseAddr + static_cast<uint64_t>(outRow) * n);
 
             uint64_t curVecBaseN = syncConfig.baseN;
             for (uint64_t nOffset = 0; nOffset < n; nOffset += syncConfig.baseN) {
@@ -97,13 +110,13 @@ __aicore__ inline void FRDeterministicA5(
                 LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
                 DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
                 DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
-                DataCopyPad(bindLocal, deterBufferGm[mOffset * n + nOffset], copyParams, padParams);
+                DataCopyPad(bindLocal, wsRowGm[nOffset], copyParams, padParams);
                 queBind.EnQue(bindLocal);
                 bindLocal = queBind.DeQue<DTYPE_OUT>();
 
                 SetAtomicAdd<DTYPE_OUT>();
                 DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
-                DataCopyPad(yGm[outRow * n + nOffset], bindLocal, paramsOut);
+                DataCopyPad(yRowGm[nOffset], bindLocal, paramsOut);
                 SetAtomicNone();
 
                 queBind.FreeTensor(bindLocal);

@@ -358,9 +358,14 @@ public:
         GlobalTensor<float> deterBufferGm;
         GlobalTensor<float> yGmAgg;
         GlobalTensor<typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex> rowIndexGm;
+        // Save raw base addresses for per-row rebase (large shape DataCopyPad safety)
+        __gm__ float* wsBaseAddr = nullptr;
+        __gm__ float* yBaseAddr = nullptr;
         if ASCEND_IS_AIV {
-            deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.epilogueParams.yGMAddr));
-            yGmAgg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.cyclingParams.yGmAddr));
+            wsBaseAddr = reinterpret_cast<__gm__ float*>(params.epilogueParams.yGMAddr);
+            yBaseAddr = reinterpret_cast<__gm__ float*>(params.cyclingParams.yGmAddr);
+            deterBufferGm.SetGlobalBuffer(wsBaseAddr);
+            yGmAgg.SetGlobalBuffer(yBaseAddr);
             rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex*>(
                 params.cyclingParams.rowIndexAddr));
         }
@@ -434,12 +439,18 @@ public:
                         if (GetSubBlockIdx() == 0) {
                             uint64_t coreNum = params.cyclingParams.coreNum;
                             uint64_t aggN = static_cast<uint64_t>(n);
+                            // Per-row rebase tensors to keep DataCopyPad offsets small
+                            GlobalTensor<float> wsRowGm;
+                            GlobalTensor<float> yRowGm;
                             for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
                                 auto outRow = static_cast<uint64_t>(
                                     rowIndexGm.GetValue(globalRowOffset + mOffset));
                                 if (outRow % coreNum != static_cast<uint64_t>(GetBlockIdx() / GetTaskRation())) {
                                     continue;
                                 }
+                                // Rebase to current row: element offset becomes just nOff (< aggN)
+                                wsRowGm.SetGlobalBuffer(wsBaseAddr + mOffset * aggN);
+                                yRowGm.SetGlobalBuffer(yBaseAddr + outRow * aggN);
                                 uint64_t curBaseN = params.cyclingParams.baseN;
                                 for (uint64_t nOff = 0; nOff < aggN; nOff += curBaseN) {
                                     if (nOff + curBaseN >= aggN) {
@@ -449,12 +460,11 @@ public:
                                     DataCopyExtParams copyParams{1,
                                         static_cast<uint32_t>(curBaseN * sizeof(float)), 0, 0, 0};
                                     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-                                    DataCopyPad(bindLocal,
-                                        deterBufferGm[mOffset * aggN + nOff], copyParams, padParams);
+                                    DataCopyPad(bindLocal, wsRowGm[nOff], copyParams, padParams);
                                     aggQueBind.EnQue(bindLocal);
                                     bindLocal = aggQueBind.DeQue<float>();
                                     SetAtomicAdd<float>();
-                                    DataCopyPad(yGmAgg[outRow * aggN + nOff], bindLocal, copyParams);
+                                    DataCopyPad(yRowGm[nOff], bindLocal, copyParams);
                                     SetAtomicNone();
                                     aggQueBind.FreeTensor(bindLocal);
                                 }
@@ -505,7 +515,7 @@ public:
                 typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
                 syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
                 params.cyclingParams.coreNum, params.cyclingParams.n,
-                globalRowOffset);
+                globalRowOffset, wsBaseAddr, yBaseAddr);
         }
         SyncAll();
     }
