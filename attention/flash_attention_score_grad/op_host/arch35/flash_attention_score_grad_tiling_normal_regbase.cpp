@@ -169,7 +169,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) : 0;
-        fBaseParams.b -= fBaseParams.tailZeroCount;
     } else {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
@@ -702,6 +701,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
         return;
     }
+    // EOD场景确定性计算需要使用真实的b
+    int64_t oriBsize = fBaseParams.b;
+    fBaseParams.b -= fBaseParams.tailZeroCount;
+
     int64_t cubebaseM = fBaseParams.s1Inner * fBaseParams.s1CvRatio;
     int64_t cubebaseN = fBaseParams.s2Inner * fBaseParams.s2CvRatio;
     uint8_t deterTilingSplitMode = (cubebaseM == cubebaseN ? 0 : (cubebaseM > cubebaseN ? 2 : 1));
@@ -742,6 +745,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s2Inner = s2Inner;
         fBaseParams.deterMaxRound *= NUM_TWO;
     }
+    // 还原eod
+    fBaseParams.b = oriBsize;
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::GetIsDeterArr()
@@ -996,7 +1001,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
         fBaseParams.s1SinkOuter = fBaseParams.s1Outer * AICV_RATIO_DEFAULT;
         fBaseParams.s2SinkOuter = fBaseParams.s2Outer;
         fBaseParams.sinkSize =
-            fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+            (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2 *
+            fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
         uint64_t sinkWorkSpaceSize = (fBaseParams.sinkSize + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
         uint64_t sinkPreBlockFactor = (sinkWorkSpaceSize + maskUsedCoreNum - 1) / maskUsedCoreNum;
         uint64_t sinkPreBlockTotal = (sinkWorkSpaceSize + sinkPreBlockFactor - 1) / sinkPreBlockFactor;
@@ -1606,7 +1612,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
 {
     s1s2BNGS1S2BaseParams_->set_coreNum(fBaseParams.coreNum);
     // set tilingdata baseinfo
-    s1s2BNGS1S2BaseParams_->set_b(fBaseParams.b);
+    s1s2BNGS1S2BaseParams_->set_b(fBaseParams.b - fBaseParams.tailZeroCount);
     s1s2BNGS1S2BaseParams_->set_n2(fBaseParams.n2);
     s1s2BNGS1S2BaseParams_->set_g(fBaseParams.g);
     s1s2BNGS1S2BaseParams_->set_s1(fBaseParams.s1);
