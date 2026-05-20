@@ -75,63 +75,40 @@ __aicore__ inline void FRDeterministicA5(
 
     SyncAll();  // Ensure workspace writes complete
 
-    uint64_t totalM = syncConfig.curM;
-    // On A5, AIC is subBlock 0, AIV is subBlock 1. This function only runs on AIV.
-    // Divide by GetTaskRation() to get physical core ID for row distribution.
-    uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
+    // A5 1:2 AIC:AIV model: both AIV subBlocks share same physId.
+    // Only subBlock 0 performs aggregation to avoid double-counting AtomicAdd.
+    if (GetSubBlockIdx() == 0) {
+        uint64_t totalM = syncConfig.curM;
+        uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
 
-    // Debug: print aggregation parameters (limit to first 4 AIV cores to reduce output)
-    uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
-    if (physId < 4) {
-        printf("[AGG] physId=%lu totalM=%lu globalRowOffset=%lu coreNum=%u myVecId=%lu baseN=%lu n=%u\n",
-               physId, totalM, globalRowOffset, coreNum, myVecId,
-               static_cast<uint64_t>(syncConfig.baseN), n);
-    }
+        for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
+            auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
-    // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
-    uint64_t processedRows = 0;
-    for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-        auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
-
-        // Debug: print first 3 outRow values for first 4 cores
-        if (physId < 4 && processedRows < 3) {
-            printf("[AGG] physId=%lu m=%lu outRow=%lu wsAddr=%lu yAddr=%lu\n",
-                   physId, mOffset, outRow,
-                   mOffset * n, outRow * n);
-        }
-
-        // Row ownership: only the core matching outRow % coreNum handles this row
-        if (static_cast<uint64_t>(outRow % coreNum) != myVecId) {
-            continue;
-        }
-
-        uint64_t curVecBaseN = syncConfig.baseN;
-        for (uint64_t nOffset = 0; nOffset < n; nOffset += syncConfig.baseN) {
-            if (nOffset + syncConfig.baseN >= n) {
-                curVecBaseN = n - nOffset;
+            if (static_cast<uint64_t>(outRow % coreNum) != myVecId) {
+                continue;
             }
 
-            LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
-            DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
-            DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
-            DataCopyPad(bindLocal, deterBufferGm[mOffset * n + nOffset], copyParams, padParams);
-            queBind.EnQue(bindLocal);
-            bindLocal = queBind.DeQue<DTYPE_OUT>();
-            if (physId < 2 && processedRows < 2 && nOffset == 0) { DumpTensor(bindLocal, 301, 8); }
+            uint64_t curVecBaseN = syncConfig.baseN;
+            for (uint64_t nOffset = 0; nOffset < n; nOffset += syncConfig.baseN) {
+                if (nOffset + syncConfig.baseN >= n) {
+                    curVecBaseN = n - nOffset;
+                }
 
-            // AtomicAdd workspace -> yGm (single writer per outRow)
-            SetAtomicAdd<DTYPE_OUT>();
-            DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
-            DataCopyPad(yGm[outRow * n + nOffset], bindLocal, paramsOut);
-            SetAtomicNone();
+                LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
+                DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
+                DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
+                DataCopyPad(bindLocal, deterBufferGm[mOffset * n + nOffset], copyParams, padParams);
+                queBind.EnQue(bindLocal);
+                bindLocal = queBind.DeQue<DTYPE_OUT>();
 
-            queBind.FreeTensor(bindLocal);
+                SetAtomicAdd<DTYPE_OUT>();
+                DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
+                DataCopyPad(yGm[outRow * n + nOffset], bindLocal, paramsOut);
+                SetAtomicNone();
+
+                queBind.FreeTensor(bindLocal);
+            }
         }
-        processedRows++;
-    }
-    // Debug: print completion
-    if (physId < 4) {
-        printf("[AGG] physId=%lu DONE processedRows=%lu\n", physId, processedRows);
     }
     SyncAll();  // Ensure all writes complete
 }

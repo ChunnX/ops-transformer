@@ -364,13 +364,6 @@ public:
             rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex*>(
                 params.cyclingParams.rowIndexAddr));
         }
-        if ASCEND_IS_AIV {
-            uint64_t dumpId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
-            if (dumpId < 2) {
-                DumpTensor(yGmAgg, 200, 8);
-                DumpTensor(rowIndexGm, 202, 8);
-            }
-        }
 
         // === Main loop: tile-level AIV-only cycling ===
         // Cycling check is inside the tile while loop, AIV-only (no SyncAll).
@@ -428,37 +421,43 @@ public:
                 if ASCEND_IS_AIV {
                     // Global workspace addressing: each tile writes to a unique position
                     // based on its global row index, avoiding cross-core data races.
+                    uint64_t halfSingleM = static_cast<uint64_t>(
+                        CeilDiv(tileM, static_cast<int64_t>(GetTaskRation())));
                     int64_t logitBase = Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_);
                     uint64_t globalWriteBase = static_cast<uint64_t>(
                         logitBase + groupInnerMOffset) - globalRowOffset;
 
-                    if (globalWriteBase + tileM > windowSizeRows) {
+                    if (globalWriteBase + halfSingleM > windowSizeRows) {
                         uint64_t totalM = globalWriteBase;
-                        uint64_t coreNum = params.cyclingParams.coreNum;
-                        uint64_t aggN = static_cast<uint64_t>(n);
-                        for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-                            auto outRow = static_cast<uint64_t>(
-                                rowIndexGm.GetValue(globalRowOffset + mOffset));
-                            if (outRow % coreNum != static_cast<uint64_t>(GetBlockIdx() / GetTaskRation())) {
-                                continue;
-                            }
-                            uint64_t curBaseN = params.cyclingParams.baseN;
-                            for (uint64_t nOff = 0; nOff < aggN; nOff += curBaseN) {
-                                if (nOff + curBaseN >= aggN) {
-                                    curBaseN = aggN - nOff;
+                        // A5 1:2 AIC:AIV model: both AIV subBlocks share same physId.
+                        // Only subBlock 0 aggregates to avoid double-counting AtomicAdd.
+                        if (GetSubBlockIdx() == 0) {
+                            uint64_t coreNum = params.cyclingParams.coreNum;
+                            uint64_t aggN = static_cast<uint64_t>(n);
+                            for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
+                                auto outRow = static_cast<uint64_t>(
+                                    rowIndexGm.GetValue(globalRowOffset + mOffset));
+                                if (outRow % coreNum != static_cast<uint64_t>(GetBlockIdx() / GetTaskRation())) {
+                                    continue;
                                 }
-                                LocalTensor<float> bindLocal = aggQueBind.AllocTensor<float>();
-                                DataCopyExtParams copyParams{1,
-                                    static_cast<uint32_t>(curBaseN * sizeof(float)), 0, 0, 0};
-                                DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-                                DataCopyPad(bindLocal,
-                                    deterBufferGm[mOffset * aggN + nOff], copyParams, padParams);
-                                aggQueBind.EnQue(bindLocal);
-                                bindLocal = aggQueBind.DeQue<float>();
-                                SetAtomicAdd<float>();
-                                DataCopyPad(yGmAgg[outRow * aggN + nOff], bindLocal, copyParams);
-                                SetAtomicNone();
-                                aggQueBind.FreeTensor(bindLocal);
+                                uint64_t curBaseN = params.cyclingParams.baseN;
+                                for (uint64_t nOff = 0; nOff < aggN; nOff += curBaseN) {
+                                    if (nOff + curBaseN >= aggN) {
+                                        curBaseN = aggN - nOff;
+                                    }
+                                    LocalTensor<float> bindLocal = aggQueBind.AllocTensor<float>();
+                                    DataCopyExtParams copyParams{1,
+                                        static_cast<uint32_t>(curBaseN * sizeof(float)), 0, 0, 0};
+                                    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+                                    DataCopyPad(bindLocal,
+                                        deterBufferGm[mOffset * aggN + nOff], copyParams, padParams);
+                                    aggQueBind.EnQue(bindLocal);
+                                    bindLocal = aggQueBind.DeQue<float>();
+                                    SetAtomicAdd<float>();
+                                    DataCopyPad(yGmAgg[outRow * aggN + nOff], bindLocal, copyParams);
+                                    SetAtomicNone();
+                                    aggQueBind.FreeTensor(bindLocal);
+                                }
                             }
                         }
                         globalRowOffset += totalM;
@@ -492,18 +491,6 @@ public:
 
         // Final aggregation: all cores must participate (SyncAll is global barrier).
         SyncAll();
-        if ASCEND_IS_AIV {
-            uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
-            if (physId < 4) {
-                DumpTensor(deterBufferGm, 201, 8);
-                printf("[KER] physId=%lu totalRows=%lu globalRowOff=%lu windowSize=%lu coreNum=%u\n",
-                       physId,
-                       static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_)) + Get<MNK_M>(problemShape_),
-                       globalRowOffset,
-                       params.cyclingParams.windowSizeRows,
-                       params.cyclingParams.coreNum);
-            }
-        }
         {
             uint64_t totalRowsAll = static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_))
                                   + Get<MNK_M>(problemShape_);
@@ -519,12 +506,6 @@ public:
                 syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
                 params.cyclingParams.coreNum, params.cyclingParams.n,
                 globalRowOffset);
-        }
-        if ASCEND_IS_AIV {
-            uint64_t dumpId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
-            if (dumpId < 2) {
-                DumpTensor(yGmAgg, 203, 8);
-            }
         }
         SyncAll();
     }

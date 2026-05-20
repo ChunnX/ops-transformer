@@ -532,13 +532,14 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     singleM_ = Get<MNK_M>(blockShape);
     singleN_ = Get<MNK_N>(blockShape);
     alignN_ = CeilDiv(singleN_, DET_SEQ_BLOCK_ELEMENTS_FP32S) * DET_SEQ_BLOCK_ELEMENTS_FP32S;
-    // A5: AIV processes ALL rows (AIC cannot execute vector operations like DataCopyPad).
-    // No subBlockIdx split — AIV handles the full tile.
-    uint64_t singleMInVec = singleM_;
+    // A5 L0C partition: AIV (subBlock 1) sees rows [halfSingleM, singleM_) from its l0cOutUb_.
+    // Must use mOffset=halfSingleM so logit/scale indices match the L0C data.
+    uint32_t halfSingleM = CeilDiv(singleM_, static_cast<uint64_t>(AscendC::GetTaskRation()));
+    uint64_t singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
     if (singleMInVec == 0) {
         return;
     }
-    uint64_t mOffset = 0;
+    uint64_t mOffset = subBlockIdx_ * halfSingleM;
 
     // Split blockCoord semantics:
     //   elem[4] = group-inner mOffset (for logit/rowIndex/x1Scale reading)
@@ -547,11 +548,6 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     uint64_t workspaceBaseRow = Get<5>(blockCoord);
     uint64_t logitOffset = logitBase + mOffset;
     uint64_t yOffset = Get<DET_SEQ_Y_IDXS>(blockCoord);
-
-    // DEBUG: print key offsets
-    printf("[EPI] singleM=%lu singleMInVec=%lu mOffset=%lu logitBase=%lu wsBaseRow=%lu yOffset=%lu n_=%lu\n",
-           static_cast<uint64_t>(singleM_), singleMInVec, mOffset,
-           logitBase, workspaceBaseRow, yOffset, static_cast<uint64_t>(n_));
 
     // Rebase yGlobal_ by workspaceBaseRow to keep element offsets small
     // (A5 DataCopyPad has limited GM element offset range)
@@ -577,9 +573,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     }
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
-    if (dumpCnt_ < 2) { DumpTensor(l0cOutUb_, 100, 8); DumpTensor(logitUb, 101, 8); }
     VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
-    if (dumpCnt_ < 2) { DumpTensor(l0cOutUbFloat_, 102, 8); }
     logitPingPongID_ = (logitPingPongID_ + 1) & 1;
     uint32_t loopNumY = CeilDiv(singleMInVec, DET_SEQ_MAX_OUTPUT_M_UBS);
     for (uint32_t i = 0; i < loopNumY; i++) {
@@ -591,7 +585,6 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
                       logitUb);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
-        if (i == 0 && dumpCnt_ < 2) { auto dO = yPingPongID_ == 0 ? outUbPing_ : outUbPong_; DumpTensor(dO, 103, 8); }
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
         // Workspace write offset (workspaceBaseRow already rebased into yGlobal_)
         uint64_t wsWriteOffset = mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
