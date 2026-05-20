@@ -391,7 +391,7 @@ static bool isSupportMLA(const FaShapeInfo &shapeInfo, const aclTensor *query)
     return false;
 }
 
-static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+static aclnnStatus InputDtypeCheck(const char *opName, const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                    const aclTensor *attentionOut, const aclTensor *realShiftOptional,
                                    int64_t pseType, const aclTensor *sinkOptional)
 {
@@ -400,16 +400,13 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters {query, key, value} of operator %s have incorrect dtypes {%s, %s, %s}. Reason: The dtypes of {query, key, value} must be the same.", opName, op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
-                op::ToString(DataType(qDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters {query, key, value} of operator %s have incorrect dtypes {%s, %s, %s}. Reason: The dtype of {query, key, value} must be within the range {fp16, bf16, fp32}", opName, op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (pseType == PSE_INNER_MUL_ADD || pseType == PSE_INNER_MUL_ADD_SQRT) {
@@ -420,9 +417,7 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
         }
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != op::DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not invalid in pse type 2 or 3 mode, It must be float32",
-                    op::ToString(DataType(pseDtype)).GetString());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameter pse of operator %s has incorrect dtype %s. Reason: The dtype of pse must be fp32 when the mode of pse is 2 or 3.", opName, op::ToString(DataType(pseDtype)).GetString());
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -430,25 +425,21 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     if (realShiftOptional != nullptr) {
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != outDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not equal to the data type %s of attentionOut.",
-                    op::ToString(DataType(pseDtype)).GetString(), op::ToString(DataType(outDtype)).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters {pse, attentionOut} of operator %s have incorrect dtypes {%s, %s}. Reason: The dtypes of {pse, attentionOut} must be the same.", opName, op::ToString(DataType(pseDtype)).GetString(), op::ToString(DataType(outDtype)).GetString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (sinkOptional != nullptr) {
         auto sinkDtype = sinkOptional->GetDataType();
         if (sinkDtype != op::DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of sink is [%s], should be fp32.",
-                    op::ToString(DataType(sinkDtype)).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE(Invalid_Argument_Tensor_Dtype, "Input parameter sink of operator %s has incorrect dtype %s. The correct one should be float.",   opName, op::ToString(DataType(sinkDtype)).GetString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus InputDtypeCheckQuant(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+static aclnnStatus InputDtypeCheckQuant(const char *opName, const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                         const aclTensor *attentionOut)
 {
     auto vDtype = value->GetDataType();
@@ -456,16 +447,13 @@ static aclnnStatus InputDtypeCheckQuant(const aclTensor *query, const aclTensor 
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters {query, key, value} of operator %s have incorrect dtypes {%s, %s, %s}. Reason: The dtypes of {query, key, value} must be the same.", opName, op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
-                op::ToString(DataType(qDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters {query, key, value} of operator %s have incorrect dtypes %s. Reason: The dtype of {query, key, value} must be within the range {fp16, bf16, fp32}", opName, op::ToString(DataType(qDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -943,7 +931,7 @@ static aclnnStatus CheckFaParam(const aclTensor *query, const aclTensor *key, co
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *queryRope,
+static aclnnStatus isSupportMultiInput(const char *opName, const aclTensor *query, const aclTensor *queryRope,
                                        const aclTensor *key, const aclTensor *keyRope, const aclTensor *value, 
                                        const aclTensor *attenMaskOptional, const aclTensor *pseShiftOptional,
                                        const aclTensor *dropMaskOptional, double keepProb,
@@ -966,10 +954,7 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     }
     if (qDtype !=  ge::DataType::DT_BF16 || kDtype != ge::DataType::DT_BF16 || vDtype != ge::DataType::DT_BF16
         || qRopeDtype != ge::DataType::DT_BF16 || kRopeDtype != ge::DataType::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], queryRope[%s], key[%s], keyRope[%s], value[%s]"
-                " should be BFloat16.", op::ToString(DataType(qDtype)).GetString(),
-                op::ToString(DataType(qRopeDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(kRopeDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters {query, queryRope, key, keyRope, value} of operator %s have incorrect dtypes {%s, %s, %s, %s, %s}. Reason: The dtypes of {query, queryRope, key, keyRope, value} must be bf16", opName, op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(qRopeDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(), op::ToString(DataType(kRopeDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseMode == 6) {
@@ -1043,7 +1028,7 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, 
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionScore", query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
@@ -1154,7 +1139,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionVarLenScore", query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1252,7 +1237,7 @@ aclnnStatus aclnnFlashAttentionScoreV2GetWorkspaceSize(
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, nullptr) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionScoreV2", query, key, value, attentionOutOut, realShiftOptional, pseType, nullptr) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1350,7 +1335,7 @@ aclnnStatus aclnnFlashAttentionScoreV3GetWorkspaceSize(
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionScoreV3", query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1448,7 +1433,7 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
     }
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) ==
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionScoreV4", query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) ==
                   ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
@@ -1559,7 +1544,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
     }
-    CHECK_RET(InputDtypeCheckQuant(query, key, value, attentionOutOut) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheckQuant("aclnnQuantFlashAttentionScore", query, key, value, attentionOutOut) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS,
@@ -1663,7 +1648,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionVarLenScoreV2", query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1769,7 +1754,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionVarLenScoreV3", query, key, value, attentionOutOut, realShiftOptional, pseType, sinkOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1785,7 +1770,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
-    CHECK_RET(isSupportMultiInput(query, queryRope, key, keyRope, value, attenMaskOptional, realShiftOptional,
+    CHECK_RET(isSupportMultiInput("aclnnFlashAttentionVarLenScoreV3", query, queryRope, key, keyRope, value, attenMaskOptional, realShiftOptional,
         dropMaskOptional, keepProb, shapeInfo, sparseMode) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     auto l0FlashAttentionScoreOuts = l0op::FlashAttentionScore(
@@ -1877,7 +1862,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
             sinkOptional, softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionVarLenScoreV4", query, key, value, attentionOutOut, realShiftOptional, PSE_TYPE_V1, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     FaShapeInfo shapeInfo;
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
                             actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1977,7 +1962,7 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
     }
 
     FaShapeInfo shapeInfo;
-    CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional,
+    CHECK_RET(InputDtypeCheck("aclnnFlashAttentionVarLenScoreV5", query, key, value, attentionOutOut, realShiftOptional,
         pseType, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
         actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -1993,7 +1978,7 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
-    CHECK_RET(isSupportMultiInput(query, queryRope, key, keyRope, value, attenMaskOptional, realShiftOptional,
+    CHECK_RET(isSupportMultiInput("aclnnFlashAttentionVarLenScoreV5", query, queryRope, key, keyRope, value, attenMaskOptional, realShiftOptional,
         dropMaskOptional, keepProb, shapeInfo, sparseMode) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     // sink shape is 0
     if (sinkOptional != nullptr && sinkOptional->GetViewShape().GetDimNum() == 1 &&

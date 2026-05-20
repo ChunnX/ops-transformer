@@ -900,8 +900,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
         int64_t dimNum = shape.GetDimNum();
         auto sinkDtype = sinkInputPtr->GetDataType();
         OP_CHECK_IF(sinkDtype != ge::DT_FLOAT,
-            OP_LOGE(opName, "invalid sink dtype[%s], only support float.",
-                ge::TypeUtils::DataTypeToSerialString(sinkDtype).c_str()),
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE(Invalid_Argument_Tensor_Dtype, "Input parameter sink of operator %s has incorrect dtype %s. The correct one should be float.",   opName, ge::TypeUtils::DataTypeToSerialString(sinkDtype).c_str()),
             return false);
 
         std::string sinkShape = "";
@@ -923,7 +922,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
             return false);
 
         OP_CHECK_IF(!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16),
-            OP_LOGE(opName, "invalid input dtype, other tensor`s dtype only support float16 and bf16."),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(Invalid_Argument_Tensor_Dtype, "Parameters InputTensors of operator %s have incorrect dtypes %s. Reason: The dtypes of InputTensors must be within the range {fp16, bf16} when sink is supported.", opName),
             return false);
     }
     return true;
