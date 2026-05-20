@@ -29,7 +29,7 @@
 #define DTYPE_SCALE uint64_t
 #define DTYPE_ANTIQUANT_SCALE half
 
-#include "gmm/grouped_matmul/op_kernel/gmm_grouped_matmul_utils.h"
+#include "gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h"
 #include "gmm/grouped_matmul/op_kernel/grouped_matmul_tiling_key.h"
 
 

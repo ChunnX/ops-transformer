@@ -15,7 +15,7 @@
 #ifndef ASCENDC_GROUPED_MATMUL_ANTIQUANT_A16W8_MSD_H
 #define ASCENDC_GROUPED_MATMUL_ANTIQUANT_A16W8_MSD_H
 
-#include "gmm_grouped_matmul_utils.h"
+#include "grouped_matmul_utils.h"
 #include "grouped_matmul.h"
 #include "kernel_operator.h"
 

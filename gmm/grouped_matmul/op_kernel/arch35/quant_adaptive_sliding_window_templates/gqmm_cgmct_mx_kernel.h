@@ -21,7 +21,7 @@
 #include "cgmct/epilogue/block_epilogue_empty.h"
 #include "cgmct/kernel/kernel_qgmm_mx.h"
 #include "cgmct/policy/dispatch_policy.h"
-#include "../../gmm_grouped_matmul_utils.h"
+#include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;

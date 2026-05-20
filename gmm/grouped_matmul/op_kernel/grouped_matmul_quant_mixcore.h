@@ -15,7 +15,7 @@
 #ifndef ASCENDC_GROUPED_MATMUL_QUANT_MIXCORE_H
 #define ASCENDC_GROUPED_MATMUL_QUANT_MIXCORE_H
 
-#include "gmm_grouped_matmul_utils.h"
+#include "grouped_matmul_utils.h"
 #include "kernel_operator.h"
 #include "grouped_matmul.h"
 
