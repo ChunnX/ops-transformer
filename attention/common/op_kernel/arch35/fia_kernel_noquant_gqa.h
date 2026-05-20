@@ -457,7 +457,7 @@ public:
             // 执行任务
             shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
             if (shouldExecuteTask) {
-                // ExecuteTask(executedTaskCount, taskRunInfo);
+                ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
             }
         }
