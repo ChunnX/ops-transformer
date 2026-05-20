@@ -193,7 +193,66 @@ __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t 
 
 > **隐患：** B、C、D 三个文件头文件保护宏完全相同，若在同一编译单元被同时包含，后两个文件内容会被预处理器跳过。
 
-### 5.2 代码段差异分析
+### 5.2 整改前后结构示意图
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#0288d1', 'lineColor': '#0288d1', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#e8f5e9'}}}%%
+flowchart TB
+    subgraph BEFORE["整改前：4 个同名 tool.h"]
+        direction TB
+        A["mc2/.../tool.h<br/>566 行"]
+        B["gmm/arch35/.../tool.h<br/>177 行"]
+        C["gmm/a16w4_msd/.../tool.h<br/>103 行"]
+        D["gmm_finalize_routing/.../tool.h<br/>178 行"]
+
+        RA1["13 个引用方"]
+        RB1["9 个引用方"]
+        RC1["4 个引用方"]
+        RD1["5 个引用方"]
+
+        A --> RA1
+        B --> RB1
+        C --> RC1
+        D --> RD1
+    end
+
+    subgraph AFTER["整改后：2 个差异文件 + 2 个公共文件"]
+        direction TB
+        subgraph DIFF["差异文件（保留各自独有代码）"]
+            A2["mc2_weight_quant_tool.h"]
+            C2["gmm_a16w4_msd_tool.h"]
+        end
+
+        subgraph COMMON["公共文件"]
+            TC["common/.../tool_common.h<br/>跨模块公共代码"]
+            GC["gmm/common/.../gmm_weight_quant_arch35_tool_common.h<br/>gmm arch35 公共代码"]
+        end
+
+        RA2["13 个引用方"]
+        RC2["4 个引用方"]
+        RGB["9 个引用方<br/>(原 B 引用方)"]
+        RGD["5 个引用方<br/>(原 D 引用方)"]
+
+        A2 --> RA2
+        C2 --> RC2
+        GC --> RGB
+        GC --> RGD
+
+        TC --> A2
+        TC --> C2
+        TC --> GC
+    end
+
+    BEFORE ==>|裁剪 + 重命名 + 删除空包装| AFTER
+```
+
+**说明：**
+- **红色删除线文件**：`gmm_arch35_weight_quant_tool.h`、`gmm_finalize_routing_arch35_tool.h` 裁剪后仅剩单条 `#include`，判定为空包装文件，直接删除。
+- **蓝色差异文件**：`mc2_weight_quant_tool.h`、`gmm_a16w4_msd_tool.h` 保留各自独有函数/常量，通过 `#include` 引入公共代码。
+- **绿色公共文件**：`tool_common.h` 供跨模块使用；`gmm_weight_quant_arch35_tool_common.h` 供 gmm arch35 场景内使用。
+- **引用方零改动**：业务代码中访问的符号命名空间与整改前完全一致。
+
+### 5.3 代码段差异分析
 
 #### A（mc2） vs B（gmm/arch35）
 
@@ -226,7 +285,7 @@ __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t 
 | `VEC_MAX_ELEM_B32` | **无** | 有 | 功能差异 | 保留在 D（通过公共文件 + 差异常量方式） |
 | 末尾换行 | 无 | 有 | 格式差异 | 公共文件补全换行 |
 
-### 5.3 公共代码段提取方案
+### 5.4 公共代码段提取方案
 
 **公共文件 1（跨模块公共代码段）：**
 - **路径：** `common/include/op_kernel/tool_common.h`
@@ -422,7 +481,7 @@ struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSH
 #endif // GMM_WEIGHT_QUANT_ARCH35_TOOL_COMMON_H
 ```
 
-### 5.4 文件重命名与裁剪方案
+### 5.5 文件重命名与裁剪方案
 
 | 原路径 | 新文件名 | 新头文件保护宏 | 裁剪后保留内容 |
 |--------|----------|----------------|----------------|
@@ -480,7 +539,7 @@ using CommonTool::CeilAlign;  // 仅引入公共的 CeilAlign
 > - 原 `gmm_arch35_weight_quant_tool.h` 和 `gmm_finalize_routing_arch35_tool.h` 因裁剪后仅剩单条 `#include`，被判定为空包装文件，直接删除。
 > - 它们的引用方改为直接 `#include gmm_weight_quant_arch35_tool_common.h`，所有符号的可见性与整改前完全一致。
 
-### 5.5 被引用位置与 #include 更新
+### 5.6 被引用位置与 #include 更新
 
 **引用文件 A（共 13 处）：**
 
@@ -550,7 +609,7 @@ mkdir -p common/include/op_kernel
 mkdir -p gmm/common/op_kernel
 ```
 
-按 **3.3 节**、**5.3 节** 创建 3 个公共文件并填充内容。
+按 **3.3 节**、**5.4 节** 创建 3 个公共文件并填充内容。
 
 ### Step 3：Git 重命名并裁剪原文件
 
@@ -607,11 +666,11 @@ sed -i 's/GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H/GMM_A16W4_MSD_TOOL_H/g' \
 
 ### Step 5：裁剪原文件内容
 
-按 **3.4 节**、**5.4 节** 的示例，删除原文件中已抽取到公共文件的代码段，添加 `#include` 与 `using` 声明。
+按 **3.4 节**、**5.5 节** 的示例，删除原文件中已抽取到公共文件的代码段，添加 `#include` 与 `using` 声明。
 
 ### Step 6：批量更新所有 #include
 
-按 **3.5 节**、**4.4 节**、**5.5 节** 的更新总表，对引用方文件进行字符串替换。
+按 **3.5 节**、**4.4 节**、**5.6 节** 的更新总表，对引用方文件进行字符串替换。
 
 ### Step 7：删除空包装文件
 
