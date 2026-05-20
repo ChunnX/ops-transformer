@@ -1029,6 +1029,20 @@ posembedding:
     options:
       - rotary_position_embedding_grad
 
+  kv_rms_norm_rope_cache:
+    module: True
+    src:
+      - posembedding/kv_rms_norm_rope_cache
+    exclude:
+      - posembedding/kv_rms_norm_rope_cache/docs
+      - posembedding/kv_rms_norm_rope_cache/README.md
+    ut_cov_exclude:
+      - posembedding/kv_rms_norm_rope_cache
+    test:
+      ut: False
+    options:
+      - kv_rms_norm_rope_cache
+
   qkv_rms_norm_rope_cache:
     module: True
     src:
