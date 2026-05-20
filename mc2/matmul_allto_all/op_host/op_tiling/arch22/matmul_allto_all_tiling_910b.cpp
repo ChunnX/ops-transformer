@@ -24,6 +24,7 @@
 using namespace AscendC;
 using namespace ge;
 using namespace matmul_allto_all_910b_tiling_key;
+using namespace Ops::Base;
 
 namespace {
 const char *K_INNER_DEBUG = "MatmulAlltoAll Tiling Debug";
@@ -394,16 +395,20 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE(opName_, "The input attr group is null pointer."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(group[0] == '\0', OP_LOGE(opName_, "The input attr group is empty string."),
+    OP_TILING_CHECK(group[0] == '\0',
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "group", "empty string",
+                        "The input attr group should not be empty"),
                     return ge::GRAPH_FAILED);
     info.worldSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(SUPPORT_RANK_SIZE_910B.find(info.worldSize) == SUPPORT_RANK_SIZE_910B.end(),
-                    OP_LOGE(opName_, "World_size should be 2 or 4 or 8, but the actual value is %u.", info.worldSize),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "world_size", std::to_string(info.worldSize).c_str(),
+                        "World_size should be 2 or 4 or 8"),
                     return ge::GRAPH_FAILED);
 
     const bool *isTransX1 = attrs->GetAttrPointer<bool>(ATTR_X1_TRANSPOSE_INDEX);
     bool x1TransposeFlag = (isTransX1 != nullptr) ? *isTransX1 : false;
-    OP_TILING_CHECK(x1TransposeFlag, OP_LOGE(opName_, "X1 transpose is not supported, should be false."),
+    OP_TILING_CHECK(x1TransposeFlag,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "transpose_x1", "true", "false"),
                     return ge::GRAPH_FAILED);
 
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(ATTR_X2_TRANSPOSE_INDEX);
@@ -445,9 +450,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
         ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
         ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
         OP_TILING_CHECK((x1ScaleDtype != ge::DT_FLOAT || x2ScaleDtype != ge::DT_FLOAT),
-                        OP_LOGE(opName_,
-                                "Scale tensors Dtype should be FLOAT, but x1Scale Dtype is %s, x2Scale Dtype is %s.",
-                                Ops::Base::ToString(x1ScaleDtype).c_str(), Ops::Base::ToString(x2ScaleDtype).c_str()),
+                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1_scale and x2_scale",
+                            (ToString(x1ScaleDtype) + " and " + ToString(x2ScaleDtype)).c_str(),
+                            "Scale tensors Dtype should be FLOAT"),
                         return ge::GRAPH_FAILED);
 
         OP_TILING_CHECK(
@@ -476,9 +481,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
                 return ge::GRAPH_SUCCESS;
             }
         }
-        OP_LOGE(opName_, "MatmulAlltoAll: unSupported params data type [x1, x2, bias, y]: [%s, %s, %s, %s].",
-                Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str(),
-                Ops::Base::ToString(biasDtype).c_str(), Ops::Base::ToString(yDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, bias and y",
+                (ToString(x1Dtype) + ", " + ToString(x2Dtype) + ", " + ToString(biasDtype) + " and " + ToString(yDtype)).c_str(),
+                "MatmulAlltoAll: unsupported params data type combination");
         return ge::GRAPH_FAILED;
     } else {
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
@@ -488,9 +493,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
                 return ge::GRAPH_SUCCESS;
             }
         }
-        OP_LOGE(opName_, "MatmulAlltoAll: unSupported params data type [x1, x2, y]: [%s, %s, %s].",
-                Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str(),
-                Ops::Base::ToString(yDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2 and y",
+                (ToString(x1Dtype) + ", " + ToString(x2Dtype) + " and " + ToString(yDtype)).c_str(),
+                "MatmulAlltoAll: unsupported params data type combination");
         return ge::GRAPH_FAILED;
     }
 
@@ -517,34 +522,36 @@ static ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, 
     }
 
     if (x2TransFlag) {
+        std::string x1ShapeStr = ToString(x1Shape->GetStorageShape());
+        std::string x2ShapeStr = ToString(x2Shape->GetStorageShape());
+        std::string yShapeStr = ToString(yShape->GetStorageShape());
         OP_TILING_CHECK((x1Dim1 != x2Dim1),
-                        OP_LOGE(opName,
-                                "When x2 is transposed, the x1 second dim should be the same with the "
-                                "second dim of x2, the x1 second dim is %lu, the x2 second dim is %lu.",
-                                x1Dim1, x2Dim1),
+                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1 and x2",
+                            (x1ShapeStr + " and " + x2ShapeStr).c_str(),
+                            "When x2 is transposed, the K axis (dim 1) of x1 should match the K axis (dim 1) of x2"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             ((x1Dim0 * worldSize != yDim0) || (x2Dim0 != yDim1 * worldSize)),
-            OP_LOGE(opName,
-                    "When x2 is transposed, the x1 first dim times worldSize should be the same with the "
-                    "first dim of y, the x2 first dim should be the same with the second dim of y times worldSize. "
-                    "x1Dim0: %lu, yDim0: %lu, x2Dim0: %lu, yDim1: %lu, worldSize: %lu.",
-                    x1Dim0, yDim0, x2Dim0, yDim1, worldSize),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1, x2 and y",
+                (x1ShapeStr + ", " + x2ShapeStr + " and " + yShapeStr).c_str(),
+                std::string("When x2 is transposed, the M axis of y should be M axis of x1 multiplied by world_size, "
+                 "and the N axis of x2 should be N axis of y multiplied by world_size").c_str()),
             return ge::GRAPH_FAILED);
     } else {
+        std::string x1ShapeStr = ToString(x1Shape->GetStorageShape());
+        std::string x2ShapeStr = ToString(x2Shape->GetStorageShape());
+        std::string yShapeStr = ToString(yShape->GetStorageShape());
         OP_TILING_CHECK((x1Dim1 != x2Dim0),
-                        OP_LOGE(opName,
-                                "The x1 second dim should be the same with the "
-                                "first dim of x2, the x1 second dim is %lu, the x2 first dim is %lu.",
-                                x1Dim1, x2Dim0),
+                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1 and x2",
+                            (x1ShapeStr + " and " + x2ShapeStr).c_str(),
+                            "The K axis (dim 1) of x1 should match the K axis (dim 0) of x2"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             ((x1Dim0 * worldSize != yDim0) || (x2Dim1 != yDim1 * worldSize)),
-            OP_LOGE(opName,
-                    "The x1 first dim times worldSize should be the same with the "
-                    "first dim of y, the x2 second dim should be the same with the second dim of y times worldSize. "
-                    "x1Dim0: %lu, yDim0: %lu, x2Dim1: %lu, yDim1: %lu, worldSize: %lu.",
-                    x1Dim0, yDim0, x2Dim1, yDim1, worldSize),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "x1, x2 and y",
+                (x1ShapeStr + ", " + x2ShapeStr + " and " + yShapeStr).c_str(),
+                std::string("The M axis of y should be M axis of x1 multiplied by world_size, "
+                 "and the N axis of x2 should be N axis of y multiplied by world_size").c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -569,14 +576,18 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
     uint64_t x2DimNum = x2Shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(
         (x1DimNum != 2 || x2DimNum != 2),
-        OP_LOGE(opName_, "The input dimNum should be two, but x1DimNum is %lu, x2DimNum is %lu.", x1DimNum, x2DimNum),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "x1", (std::to_string(x1DimNum) + "D").c_str(), "2D"),
         return ge::GRAPH_FAILED);
+    if (x2DimNum != 2) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "x2", (std::to_string(x2DimNum) + "D").c_str(), "2D");
+        return ge::GRAPH_FAILED;
+    }
 
     // 校验输出
     const gert::StorageShape *yShape = context_->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yShape == nullptr), OP_LOGE(opName_, "The yShape is nullptr."), return ge::GRAPH_FAILED);
     uint64_t yDimNum = yShape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK((yDimNum != 2), OP_LOGE(opName_, "The output dimNum should be two, but yDimNum is %lu.", yDimNum),
+    OP_TILING_CHECK((yDimNum != 2), OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "y", (std::to_string(yDimNum) + "D").c_str(), "2D"),
                     return ge::GRAPH_FAILED);
 
     // 校验shape的维度矩阵是否合法
@@ -598,36 +609,56 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
         uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
         uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK((x1ScaleShapeDimNum != 1 || x2ScaleShapeDimNum != 1),
-                        OP_LOGE(opName_, "The input x1Scale and x2Scale dimNum should be 1, but get [%lu] and [%lu].",
-                                x1ScaleShapeDimNum, x2ScaleShapeDimNum),
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "x1_scale",
+                            (std::to_string(x1ScaleShapeDimNum) + "D").c_str(), "1D"),
                         return ge::GRAPH_FAILED);
+        if (x2ScaleShapeDimNum != 1) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "x2_scale",
+                (std::to_string(x2ScaleShapeDimNum) + "D").c_str(), "1D");
+            return ge::GRAPH_FAILED;
+        }
         uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
         uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(
             (x1ScaleDim0 != info.M),
-            OP_LOGE(opName_, "The x1Scale dimNum0 should be %u, but actual value is %lu.", info.M, x1ScaleDim0),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1_scale",
+                ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                "The shape of x1_scale should match the M axis of x1"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             (x2ScaleDim0 != info.N),
-            OP_LOGE(opName_, "The x2Scale dimNum0 should be %u, but actual value is %lu.", info.N, x2ScaleDim0),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2_scale",
+                ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                "The shape of x2_scale should match the N axis of x2"),
             return ge::GRAPH_FAILED);
     }
     const gert::StorageShape *biasShape = context_->GetOptionalInputShape(INPUT_BIAS_INDEX);
     if (biasShape != nullptr) {
         uint64_t biasShapeDimNum = biasShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK((biasShapeDimNum != 1), OP_LOGE(opName_, "The input bias dimNum should be one."),
+        OP_TILING_CHECK((biasShapeDimNum != 1), OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "bias",
+                        (std::to_string(biasShapeDimNum) + "D").c_str(), "1D"),
                         return ge::GRAPH_FAILED);
         uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK((biasDim0 != info.N),
-                        OP_LOGE(opName_, "The bias dimNum0 should be %u, but actual value is %lu.", info.N, biasDim0),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "bias",
+                            ToString(biasShape->GetStorageShape()).c_str(),
+                            "The shape of bias should match the N axis of x2"),
                         return ge::GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(info.M == 0, OP_LOGE(opName_, "Invalid x1 shape: dim 0(m) cannot be 0."), return ge::GRAPH_FAILED);
-    // 校验K,K的范围应该在[1, 65535]
-    OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE(opName_, "X1 dim 1(k) exceeds max value 65535, got %u.", info.K),
+    OP_TILING_CHECK(info.M == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1",
+                    ToString(x1Shape->GetStorageShape()).c_str(),
+                    "The M axis (dim 0) of x1 cannot be 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(info.N == 0, OP_LOGE(opName_, "Invalid x2 shape: N cannot be 0."), return ge::GRAPH_FAILED);
+    // 校验K,K的范围应该在[1, 65535]
+    OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1",
+                    ToString(x1Shape->GetStorageShape()).c_str(),
+                    "The K axis (dim 1) of x1 exceeds max value 65535"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2",
+                    ToString(x2Shape->GetStorageShape()).c_str(),
+                    "The N axis of x2 cannot be 0"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
