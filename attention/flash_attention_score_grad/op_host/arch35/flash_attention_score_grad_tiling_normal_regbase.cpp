@@ -1063,7 +1063,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
                                 (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
     if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
         uint64_t sinkPostBaseNum = postUbBaseSize / FP16_BYTES;
-        uint64_t sinkReduceAxis = (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+        uint64_t sinkReduceAxis = 
+            (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
         uint64_t sinkPostTailNumTmp = sinkReduceAxis % sinkPostBaseNum;
         uint64_t sinkPostTailNum =
             sinkPostTailNumTmp == static_cast<uint64_t>(0) ? sinkPostBaseNum : sinkPostTailNumTmp;
