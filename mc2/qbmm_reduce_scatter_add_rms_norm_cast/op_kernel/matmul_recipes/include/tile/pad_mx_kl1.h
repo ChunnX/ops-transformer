@@ -15,7 +15,7 @@
 #pragma once
 
 #include "kernel_utils/common_utils.h"
-#include "include/tensor_api/tensor.h"
+#include "tensor_api/include/tensor_api/tensor.h"
 using AscendC::Te::C0_SIZE;
 
 namespace Tile {

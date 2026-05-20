@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 set(OPTENSOR_TAG_ID 4d89facb5906440becf7ec3694a189725b79f90e) # 20260520
+set(OPS_TENSOR_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
 
 if(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -35,6 +36,6 @@ else()
 
   FetchContent_Populate(ops-tensor)
 
-  set(OPS_TENSOR_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
+
 
 endif()
