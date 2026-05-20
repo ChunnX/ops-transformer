@@ -285,8 +285,10 @@ bool AlltoAllvQuantGroupedMatMulTransposeFusionPass::MeetRequirements(
         return false;
     }
     ge::GNode mc2Node = mc2NodeIo.node;
+    ge::AscendString mc2NodeName;
+    mc2Node.GetName(mc2NodeName);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got MC2 node, name=%s", 
-              mc2Node.GetName().GetString());
+              mc2NodeName.GetString());
 
     // 3. 获取 TransposeD 节点 (idx=1)
     ge::fusion::NodeIo transposeNodeIo;
@@ -295,8 +297,12 @@ bool AlltoAllvQuantGroupedMatMulTransposeFusionPass::MeetRequirements(
         return false;
     }
     ge::GNode transposeNode = transposeNodeIo.node;
+    ge::AscendString transposeNodeName;
+    ge::AscendString transposeNodeType;
+    transposeNode.GetName(transposeNodeName);
+    transposeNode.GetType(transposeNodeType);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got TransposeD node, name=%s, type=%s",
-              transposeNode.GetName().GetString(), transposeNode.GetType().GetString());
+              transposeNodeName.GetString(), transposeNodeType.GetString());
 
     // 4. 检查 TransposeD 的 perm 属性
     std::vector<int64_t> permValue;
