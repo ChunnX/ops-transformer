@@ -38,7 +38,7 @@ struct WqmmConfig {
     CubeFormat weightFormat;
 };
 
-static constexpr WqmmConfig MXA8W4_NZNK = {false, true, QuantType::MX, false, QuantType::NONE, CubeFormat::NZ};
+static constexpr WqmmConfig MXA8W4_NZNK = {false, true, QuantType::MX, false, QuantType::MX, CubeFormat::NZ};
 
 struct BasicBlockControlParam {
     uint64_t processId;

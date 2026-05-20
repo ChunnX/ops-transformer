@@ -16,6 +16,7 @@
 #define GMMSQ_WEIGHT_QUANT_RESPLIT_CONTROLLER_H
 
 #include "kernel_cube_intf.h"
+#include "kernel_operator_list_tensor_intf.h"
 #include "op_kernel/math_util.h"
 #include "../common/basic_block_config.h"
 #include "../common/basic_block_vf_mx.h"
@@ -25,6 +26,7 @@
 
 using AscendC::BLOCK_CUBE;
 using AscendC::GlobalTensor;
+using AscendC::ListTensorDesc;
 using AscendC::IsSameType;
 using AscendC::SyncAll;
 using GMMSQArch35Tiling::GMMSQWeightQuantTilingData;
@@ -59,6 +61,13 @@ private:
     __aicore__ inline void UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize);
     __aicore__ inline uint64_t GetSwitchedProcessId(const BasicBlockControlParam &ctrlParam);
 
+    template <typename T>
+    __aicore__ inline __gm__ T* GetTensorAddr(uint64_t groupIdx, GM_ADDR tensorPtr)
+    {
+        ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void*>(tensorPtr));
+        return listTensorDesc.GetDataPtr<T>(groupIdx);
+    }
+
     const GMMSQWeightQuantTilingData *tiling_;
 
     __gm__ xType *xGm_;
@@ -92,7 +101,7 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weigh
     tiling_ = baseTiling;
 
     xGm_ = reinterpret_cast<__gm__ xType *>(x);
-    weightGm_ = reinterpret_cast<__gm__ wType *>(weight);
+    weightGm_ = GetTensorAddr<wType>(0, weight);
     biasGm_ = reinterpret_cast<__gm__ biasType *>(bias);
     weightScaleGm_ = reinterpret_cast<__gm__ weightScaleType *>(weightScale);
     xScaleGm_ = reinterpret_cast<__gm__ xScaleType *>(xScale);

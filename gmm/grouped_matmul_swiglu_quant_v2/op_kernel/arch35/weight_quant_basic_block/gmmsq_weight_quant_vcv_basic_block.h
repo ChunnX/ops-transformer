@@ -44,7 +44,7 @@ namespace GMMSQWeightQuant {
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 class GMMSQWeightQuantVcvBasicBlock {
 public:
-    __aicore__ inline GMMSQWeightQuantVcvBasicBlock(){};
+    __aicore__ inline GMMSQWeightQuantVcvBasicBlock() = default;
     __aicore__ inline void Init(uint64_t antiQuantGroupSize, __gm__ yType *y, __gm__ yScaleType *yScale);
     __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ wType *weight,
                                             __gm__ weightScaleType *weightScale, __gm__ biasType *bias,
