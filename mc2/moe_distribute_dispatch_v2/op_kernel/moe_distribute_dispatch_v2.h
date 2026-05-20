@@ -390,6 +390,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     if (epRankId_ < sharedExpertRankNum_) {
         isShareExpertRankFlag_ = true;
     }
+    PRINTF("1111111111111111111\n");
 
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
     sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
@@ -440,6 +441,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     dealRankPerCore_ = (recvWinBlockNum_ + aivNum_ - 1) / aivNum_;
     stateOffset_ = STATE_OFFSET;
     PipeBarrier<PIPE_ALL>();
+    PRINTF("2222222222222222222222\n");
     if (isShareExpertRankFlag_) {
         rscvStatusNum_ = epWorldSize_;
     } else {
@@ -463,6 +465,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     statusTensor_ = statusBuf_.Get<int32_t>();                    // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);   // 8 = UB_ALIGN / sizeof(int32_t)
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
+    PRINTF("333333333333333333333\n");
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
         OOMCheckAddrRange<XOutType>((__gm__ XOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempepRankId)),
@@ -484,6 +487,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
                          + tilingData->moeDistributeDispatchV2Info.a * hSizeAlignCombine;
     
     windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
+    PRINTF("444444444444444444444444\n");
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     GlobalTensor<XOutType> winDouble;
     winDouble.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
@@ -1582,10 +1586,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         PRINTF("[start] [%d} g_oomAddrArange.addr: %p, gm len: %d\n", i, g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
     }
     if ASCEND_IS_AIV { // 全aiv处理	 
-        AlltoAllDispatch();	 
-        SetStatus();	 
-        WaitDispatch();	 
-        LocalWindowCopy();	 
+        AlltoAllDispatch();
+        PRINTF("=============AlltoAllDispatch================\n");	 
+        SetStatus();
+        PRINTF("=============SetStatus================\n");	 
+        WaitDispatch();
+        PRINTF("=============WaitDispatch================\n");
+        LocalWindowCopy();
+        PRINTF("=============LocalWindowCopy================\n");
         if constexpr (!IsNeedAllgather) {	 
             SetExpertTokenNums(); 
         } else { 
