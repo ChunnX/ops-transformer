@@ -11,6 +11,7 @@
 #ifndef FUSED_INFER_ATTENTION_SCORE_PARAM_H
 #define FUSED_INFER_ATTENTION_SCORE_PARAM_H
 
+#include <memory>
 #include <sstream>
 #include "op_host_csv_case_loader.h"
 
@@ -34,8 +35,7 @@ struct FusedInferAttentionHostUtParamBase : public HostUtParamBase {
     int64_t pse_type;
     int64_t out_dtype;
 
-    FusedInferAttentionHostUtParamBase(const csv_map& csvMap):
-        HostUtParamBase(csvMap)
+    FusedInferAttentionHostUtParamBase(const csv_map &csvMap) : HostUtParamBase(csvMap)
     {
         this->num_heads = std::stoll(ReadMap(csvMap, "num_heads"));
         this->scale = std::stof(ReadMap(csvMap, "scale"));
@@ -56,7 +56,7 @@ struct FusedInferAttentionHostUtParamBase : public HostUtParamBase {
     }
 };
 
-struct FusedInferAttentionTilingUtParam: public FusedInferAttentionHostUtParamBase {
+struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamBase {
     gert::TilingContextPara::TensorDescription query = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription key = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription value = TD_DEFAULT;
@@ -92,121 +92,112 @@ struct FusedInferAttentionTilingUtParam: public FusedInferAttentionHostUtParamBa
     gert::TilingContextPara::TensorDescription attention_out = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription softmax_lse = TD_DEFAULT;
 
+    std::shared_ptr<std::vector<int64_t>> actual_seq_lengths_data;
+    std::shared_ptr<std::vector<int64_t>> actual_seq_lengths_kv_data;
+
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    FusedInferAttentionTilingUtParam(const csv_map& csvMap):
-        FusedInferAttentionHostUtParamBase(csvMap)
+    static void ApplyConstData(const csv_map &csvMap, const std::string &name,
+                               gert::TilingContextPara::TensorDescription &desc,
+                               std::shared_ptr<std::vector<int64_t>> &buf)
     {
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "query_shape", "query_dtype", "query_format",
-            this->query));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_shape", "key_dtype", "key_format",
-            this->key));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_shape", "value_dtype", "value_format",
-            this->value));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "pse_shift_shape", "pse_shift_dtype", "pse_shift_format",
-            this->pse_shift));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "atten_mask_shape", "atten_mask_dtype", "atten_mask_format",
-            this->atten_mask));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "actual_seq_lengths_shape", "actual_seq_lengths_dtype", "actual_seq_lengths_format",
-            this->actual_seq_lengths));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "actual_seq_lengths_kv_shape", "actual_seq_lengths_kv_dtype", "actual_seq_lengths_kv_format",
-            this->actual_seq_lengths_kv));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "dequant_scale1_shape", "dequant_scale1_dtype", "dequant_scale1_format",
-            this->dequant_scale1));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "quant_scale1_shape", "quant_scale1_dtype", "quant_scale1_format",
-            this->quant_scale1));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "dequant_scale2_shape", "dequant_scale2_dtype", "dequant_scale2_format",
-            this->dequant_scale2));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "quant_scale2_shape", "quant_scale2_dtype", "quant_scale2_format",
-            this->quant_scale2));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "quant_offset2_shape", "quant_offset2_dtype", "quant_offset2_format",
-            this->quant_offset2));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format",
-            this->antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format",
-            this->antiquant_offset));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "block_table_shape", "block_table_dtype", "block_table_format",
-            this->block_table));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "query_padding_size_shape", "query_padding_size_dtype", "query_padding_size_format",
-            this->query_padding_size));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "kv_padding_size_shape", "kv_padding_size_dtype", "kv_padding_size_format",
-            this->kv_padding_size));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_antiquant_scale_shape", "key_antiquant_scale_dtype", "key_antiquant_scale_format",
-            this->key_antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_antiquant_offset_shape", "key_antiquant_offset_dtype", "key_antiquant_offset_format",
-            this->key_antiquant_offset));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_antiquant_scale_shape", "value_antiquant_scale_dtype", "value_antiquant_scale_format",
-            this->value_antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_antiquant_offset_shape", "value_antiquant_offset_dtype", "value_antiquant_offset_format",
-            this->value_antiquant_offset));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_shared_prefix_shape", "key_shared_prefix_dtype", "key_shared_prefix_format",
-            this->key_shared_prefix));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_shared_prefix_shape", "value_shared_prefix_dtype", "value_shared_prefix_format",
-            this->value_shared_prefix));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "actual_shared_prefix_len_shape", "actual_shared_prefix_len_dtype", "actual_shared_prefix_len_format",
-            this->actual_shared_prefix_len));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "query_rope_shape", "query_rope_dtype", "query_rope_format",
-            this->query_rope));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_rope_shape", "key_rope_dtype", "key_rope_format",
-            this->key_rope));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_rope_antiquant_scale_shape", "key_rope_antiquant_scale_dtype", "key_rope_antiquant_scale_format",
-            this->key_rope_antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "dequant_scale_query_shape", "dequant_scale_query_dtype", "dequant_scale_query_format",
-            this->dequant_scale_query));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "learnable_sink_shape", "learnable_sink_dtype", "learnable_sink_format",
-            this->learnable_sink));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "q_start_idx_shape", "q_start_idx_dtype", "q_start_idx_format",
-            this->q_start_idx));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "kv_start_idx_shape", "kv_start_idx_dtype", "kv_start_idx_format",
-            this->kv_start_idx));
+        std::string dataStr = ReadMap(csvMap, name + "_data");
+        if (!dataStr.empty()) {
+            buf = std::make_shared<std::vector<int64_t>>();
+            std::istringstream iss(dataStr);
+            int64_t val;
+            while (iss >> val)
+                buf->push_back(val);
+            desc.isConst_ = true;
+            desc.constValue_ = buf->data();
+        }
+    }
 
-        this->outputInstance.emplace_back(GetTensorGE(csvMap,
-            "attention_out_shape", "attention_out_dtype", "attention_out_format",
-            this->attention_out));
-        this->outputInstance.emplace_back(GetTensorGE(csvMap,
-            "softmax_lse_shape", "softmax_lse_dtype", "softmax_lse_format",
-            this->softmax_lse));
+    FusedInferAttentionTilingUtParam(const csv_map &csvMap) : FusedInferAttentionHostUtParamBase(csvMap)
+    {
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "query_shape", "query_dtype", "query_format", this->query));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "value_shape", "value_dtype", "value_format", this->value));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "pse_shift_shape", "pse_shift_dtype", "pse_shift_format", this->pse_shift));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "atten_mask_shape", "atten_mask_dtype", "atten_mask_format", this->atten_mask));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "actual_seq_lengths_shape", "actual_seq_lengths_dtype",
+                                                     "actual_seq_lengths_format", this->actual_seq_lengths));
+        ApplyConstData(csvMap, "actual_seq_lengths", this->actual_seq_lengths, this->actual_seq_lengths_data);
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "actual_seq_lengths_kv_shape",
+                                                     "actual_seq_lengths_kv_dtype", "actual_seq_lengths_kv_format",
+                                                     this->actual_seq_lengths_kv));
+        ApplyConstData(csvMap, "actual_seq_lengths_kv", this->actual_seq_lengths_kv, this->actual_seq_lengths_kv_data);
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "dequant_scale1_shape", "dequant_scale1_dtype",
+                                                     "dequant_scale1_format", this->dequant_scale1));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "quant_scale1_shape", "quant_scale1_dtype", "quant_scale1_format", this->quant_scale1));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "dequant_scale2_shape", "dequant_scale2_dtype",
+                                                     "dequant_scale2_format", this->dequant_scale2));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "quant_scale2_shape", "quant_scale2_dtype", "quant_scale2_format", this->quant_scale2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "quant_offset2_shape", "quant_offset2_dtype",
+                                                     "quant_offset2_format", this->quant_offset2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "antiquant_scale_shape", "antiquant_scale_dtype",
+                                                     "antiquant_scale_format", this->antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "antiquant_offset_shape", "antiquant_offset_dtype",
+                                                     "antiquant_offset_format", this->antiquant_offset));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "block_table_shape", "block_table_dtype", "block_table_format", this->block_table));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "query_padding_size_shape", "query_padding_size_dtype",
+                                                     "query_padding_size_format", this->query_padding_size));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "kv_padding_size_shape", "kv_padding_size_dtype",
+                                                     "kv_padding_size_format", this->kv_padding_size));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_antiquant_scale_shape", "key_antiquant_scale_dtype",
+                                                     "key_antiquant_scale_format", this->key_antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_antiquant_offset_shape", "key_antiquant_offset_dtype",
+                                                     "key_antiquant_offset_format", this->key_antiquant_offset));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_antiquant_scale_shape",
+                                                     "value_antiquant_scale_dtype", "value_antiquant_scale_format",
+                                                     this->value_antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_antiquant_offset_shape",
+                                                     "value_antiquant_offset_dtype", "value_antiquant_offset_format",
+                                                     this->value_antiquant_offset));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shared_prefix_shape", "key_shared_prefix_dtype",
+                                                     "key_shared_prefix_format", this->key_shared_prefix));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_shared_prefix_shape", "value_shared_prefix_dtype",
+                                                     "value_shared_prefix_format", this->value_shared_prefix));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "actual_shared_prefix_len_shape", "actual_shared_prefix_len_dtype",
+                        "actual_shared_prefix_len_format", this->actual_shared_prefix_len));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "query_rope_shape", "query_rope_dtype", "query_rope_format", this->query_rope));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "key_rope_shape", "key_rope_dtype", "key_rope_format", this->key_rope));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "key_rope_antiquant_scale_shape", "key_rope_antiquant_scale_dtype",
+                        "key_rope_antiquant_scale_format", this->key_rope_antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "dequant_scale_query_shape", "dequant_scale_query_dtype",
+                                                     "dequant_scale_query_format", this->dequant_scale_query));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "learnable_sink_shape", "learnable_sink_dtype",
+                                                     "learnable_sink_format", this->learnable_sink));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "q_start_idx_shape", "q_start_idx_dtype", "q_start_idx_format", this->q_start_idx));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "kv_start_idx_shape", "kv_start_idx_dtype", "kv_start_idx_format", this->kv_start_idx));
 
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
+        this->outputInstance.emplace_back(GetTensorGE(csvMap, "attention_out_shape", "attention_out_dtype",
+                                                      "attention_out_format", this->attention_out));
+        this->outputInstance.emplace_back(
+            GetTensorGE(csvMap, "softmax_lse_shape", "softmax_lse_dtype", "softmax_lse_format", this->softmax_lse));
+
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
             this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
             this->expectTilingDataHash = ReadMap(csvMap, "expectTilingDataHash");
         }
     }
 };
 
-struct FusedInferAttentionInferShapeUtParam: public FusedInferAttentionHostUtParamBase {
+struct FusedInferAttentionInferShapeUtParam : public FusedInferAttentionHostUtParamBase {
     gert::InfershapeContextPara::TensorDescription query = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription key = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription value = ID_DEFAULT;
@@ -244,120 +235,88 @@ struct FusedInferAttentionInferShapeUtParam: public FusedInferAttentionHostUtPar
 
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    FusedInferAttentionInferShapeUtParam(const csv_map& csvMap):
-        FusedInferAttentionHostUtParamBase(csvMap)
+    FusedInferAttentionInferShapeUtParam(const csv_map &csvMap) : FusedInferAttentionHostUtParamBase(csvMap)
     {
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "query_shape", "query_dtype", "query_format",
-            this->query));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_shape", "key_dtype", "key_format",
-            this->key));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_shape", "value_dtype", "value_format",
-            this->value));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "pse_shift_shape", "pse_shift_dtype", "pse_shift_format",
-            this->pse_shift));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "atten_mask_shape", "atten_mask_dtype", "atten_mask_format",
-            this->atten_mask));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "actual_seq_lengths_shape", "actual_seq_lengths_dtype", "actual_seq_lengths_format",
-            this->actual_seq_lengths));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "actual_seq_lengths_kv_shape", "actual_seq_lengths_kv_dtype", "actual_seq_lengths_kv_format",
-            this->actual_seq_lengths_kv));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "dequant_scale1_shape", "dequant_scale1_dtype", "dequant_scale1_format",
-            this->dequant_scale1));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "quant_scale1_shape", "quant_scale1_dtype", "quant_scale1_format",
-            this->quant_scale1));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "dequant_scale2_shape", "dequant_scale2_dtype", "dequant_scale2_format",
-            this->dequant_scale2));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "quant_scale2_shape", "quant_scale2_dtype", "quant_scale2_format",
-            this->quant_scale2));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "quant_offset2_shape", "quant_offset2_dtype", "quant_offset2_format",
-            this->quant_offset2));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format",
-            this->antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format",
-            this->antiquant_offset));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "block_table_shape", "block_table_dtype", "block_table_format",
-            this->block_table));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "query_padding_size_shape", "query_padding_size_dtype", "query_padding_size_format",
-            this->query_padding_size));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "kv_padding_size_shape", "kv_padding_size_dtype", "kv_padding_size_format",
-            this->kv_padding_size));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_antiquant_scale_shape", "key_antiquant_scale_dtype", "key_antiquant_scale_format",
-            this->key_antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_antiquant_offset_shape", "key_antiquant_offset_dtype", "key_antiquant_offset_format",
-            this->key_antiquant_offset));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_antiquant_scale_shape", "value_antiquant_scale_dtype", "value_antiquant_scale_format",
-            this->value_antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_antiquant_offset_shape", "value_antiquant_offset_dtype", "value_antiquant_offset_format",
-            this->value_antiquant_offset));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_shared_prefix_shape", "key_shared_prefix_dtype", "key_shared_prefix_format",
-            this->key_shared_prefix));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "value_shared_prefix_shape", "value_shared_prefix_dtype", "value_shared_prefix_format",
-            this->value_shared_prefix));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "actual_shared_prefix_len_shape", "actual_shared_prefix_len_dtype", "actual_shared_prefix_len_format",
-            this->actual_shared_prefix_len));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "query_rope_shape", "query_rope_dtype", "query_rope_format",
-            this->query_rope));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_rope_shape", "key_rope_dtype", "key_rope_format",
-            this->key_rope));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "key_rope_antiquant_scale_shape", "key_rope_antiquant_scale_dtype", "key_rope_antiquant_scale_format",
-            this->key_rope_antiquant_scale));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "dequant_scale_query_shape", "dequant_scale_query_dtype", "dequant_scale_query_format",
-            this->dequant_scale_query));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "learnable_sink_shape", "learnable_sink_dtype", "learnable_sink_format",
-            this->learnable_sink));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "q_start_idx_shape", "q_start_idx_dtype", "q_start_idx_format",
-            this->q_start_idx));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap,
-            "kv_start_idx_shape", "kv_start_idx_dtype", "kv_start_idx_format",
-            this->kv_start_idx));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "query_shape", "query_dtype", "query_format", this->query));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "value_shape", "value_dtype", "value_format", this->value));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "pse_shift_shape", "pse_shift_dtype", "pse_shift_format", this->pse_shift));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "atten_mask_shape", "atten_mask_dtype", "atten_mask_format", this->atten_mask));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "actual_seq_lengths_shape", "actual_seq_lengths_dtype",
+                                                     "actual_seq_lengths_format", this->actual_seq_lengths));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "actual_seq_lengths_kv_shape",
+                                                     "actual_seq_lengths_kv_dtype", "actual_seq_lengths_kv_format",
+                                                     this->actual_seq_lengths_kv));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "dequant_scale1_shape", "dequant_scale1_dtype",
+                                                     "dequant_scale1_format", this->dequant_scale1));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "quant_scale1_shape", "quant_scale1_dtype", "quant_scale1_format", this->quant_scale1));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "dequant_scale2_shape", "dequant_scale2_dtype",
+                                                     "dequant_scale2_format", this->dequant_scale2));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "quant_scale2_shape", "quant_scale2_dtype", "quant_scale2_format", this->quant_scale2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "quant_offset2_shape", "quant_offset2_dtype",
+                                                     "quant_offset2_format", this->quant_offset2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "antiquant_scale_shape", "antiquant_scale_dtype",
+                                                     "antiquant_scale_format", this->antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "antiquant_offset_shape", "antiquant_offset_dtype",
+                                                     "antiquant_offset_format", this->antiquant_offset));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "block_table_shape", "block_table_dtype", "block_table_format", this->block_table));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "query_padding_size_shape", "query_padding_size_dtype",
+                                                     "query_padding_size_format", this->query_padding_size));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "kv_padding_size_shape", "kv_padding_size_dtype",
+                                                     "kv_padding_size_format", this->kv_padding_size));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_antiquant_scale_shape", "key_antiquant_scale_dtype",
+                                                     "key_antiquant_scale_format", this->key_antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_antiquant_offset_shape", "key_antiquant_offset_dtype",
+                                                     "key_antiquant_offset_format", this->key_antiquant_offset));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_antiquant_scale_shape",
+                                                     "value_antiquant_scale_dtype", "value_antiquant_scale_format",
+                                                     this->value_antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_antiquant_offset_shape",
+                                                     "value_antiquant_offset_dtype", "value_antiquant_offset_format",
+                                                     this->value_antiquant_offset));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shared_prefix_shape", "key_shared_prefix_dtype",
+                                                     "key_shared_prefix_format", this->key_shared_prefix));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_shared_prefix_shape", "value_shared_prefix_dtype",
+                                                     "value_shared_prefix_format", this->value_shared_prefix));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "actual_shared_prefix_len_shape", "actual_shared_prefix_len_dtype",
+                        "actual_shared_prefix_len_format", this->actual_shared_prefix_len));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "query_rope_shape", "query_rope_dtype", "query_rope_format", this->query_rope));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "key_rope_shape", "key_rope_dtype", "key_rope_format", this->key_rope));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "key_rope_antiquant_scale_shape", "key_rope_antiquant_scale_dtype",
+                        "key_rope_antiquant_scale_format", this->key_rope_antiquant_scale));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "dequant_scale_query_shape", "dequant_scale_query_dtype",
+                                                     "dequant_scale_query_format", this->dequant_scale_query));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "learnable_sink_shape", "learnable_sink_dtype",
+                                                     "learnable_sink_format", this->learnable_sink));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "q_start_idx_shape", "q_start_idx_dtype", "q_start_idx_format", this->q_start_idx));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "kv_start_idx_shape", "kv_start_idx_dtype", "kv_start_idx_format", this->kv_start_idx));
 
-        this->outputInstance.emplace_back(GetTensorGE(csvMap,
-            "attention_out_shape", "attention_out_dtype", "attention_out_format",
-            this->attention_out));
-        this->outputInstance.emplace_back(GetTensorGE(csvMap,
-            "softmax_lse_shape", "softmax_lse_dtype", "softmax_lse_format",
-            this->softmax_lse));
+        this->outputInstance.emplace_back(GetTensorGE(csvMap, "attention_out_shape", "attention_out_dtype",
+                                                      "attention_out_format", this->attention_out));
+        this->outputInstance.emplace_back(
+            GetTensorGE(csvMap, "softmax_lse_shape", "softmax_lse_dtype", "softmax_lse_format", this->softmax_lse));
 
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
-            this->expectOutputShape = {
-                GetShapeArr(ReadMap(csvMap, "attention_out_shape")),
-                GetShapeArr(ReadMap(csvMap, "softmax_lse_shape"))
-            };
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
+            this->expectOutputShape = {GetShapeArr(ReadMap(csvMap, "attention_out_shape")),
+                                       GetShapeArr(ReadMap(csvMap, "softmax_lse_shape"))};
         }
     }
 };
 
-struct FusedInferAttentionInferDTypeUtParam: public FusedInferAttentionHostUtParamBase {
+struct FusedInferAttentionInferDTypeUtParam : public FusedInferAttentionHostUtParamBase {
     ge::DataType query = ge::DT_UNDEFINED;
     ge::DataType key = ge::DT_UNDEFINED;
     ge::DataType value = ge::DT_UNDEFINED;
@@ -393,18 +352,16 @@ struct FusedInferAttentionInferDTypeUtParam: public FusedInferAttentionHostUtPar
     ge::DataType attention_out = ge::DT_UNDEFINED;
     ge::DataType softmax_lse = ge::DT_UNDEFINED;
 
-    FusedInferAttentionInferDTypeUtParam(const csv_map& csvMap):
-        FusedInferAttentionHostUtParamBase(csvMap)
+    FusedInferAttentionInferDTypeUtParam(const csv_map &csvMap) : FusedInferAttentionHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "query_dtype", this->query));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_dtype", this->key));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "value_dtype", this->value));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "pse_shift_dtype", this->pse_shift));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "atten_mask_dtype", this->atten_mask));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "actual_seq_lengths_dtype",
-            this->actual_seq_lengths));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "actual_seq_lengths_kv_dtype",
-            this->actual_seq_lengths_kv));
+        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "actual_seq_lengths_dtype", this->actual_seq_lengths));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "actual_seq_lengths_kv_dtype", this->actual_seq_lengths_kv));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "dequant_scale1_dtype", this->dequant_scale1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "quant_scale1_dtype", this->quant_scale1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "dequant_scale2_dtype", this->dequant_scale2));
@@ -416,22 +373,22 @@ struct FusedInferAttentionInferDTypeUtParam: public FusedInferAttentionHostUtPar
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "query_padding_size_dtype", this->query_padding_size));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "kv_padding_size_dtype", this->kv_padding_size));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_antiquant_scale_dtype", this->key_antiquant_scale));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_antiquant_offset_dtype",
-            this->key_antiquant_offset));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "value_antiquant_scale_dtype",
-            this->value_antiquant_scale));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "value_antiquant_offset_dtype",
-            this->value_antiquant_offset));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "value_antiquant_offset_dtype",
-            this->value_antiquant_offset));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "key_antiquant_offset_dtype", this->key_antiquant_offset));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "value_antiquant_scale_dtype", this->value_antiquant_scale));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "value_antiquant_offset_dtype", this->value_antiquant_offset));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "value_antiquant_offset_dtype", this->value_antiquant_offset));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_shared_prefix_dtype", this->key_shared_prefix));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "value_shared_prefix_dtype", this->value_shared_prefix));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "actual_shared_prefix_len_dtype",
-            this->actual_shared_prefix_len));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "actual_shared_prefix_len_dtype", this->actual_shared_prefix_len));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "query_rope_dtype", this->query_rope));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_rope_dtype", this->key_rope));
-        this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_rope_antiquant_scale_dtype",
-            this->key_rope_antiquant_scale));
+        this->inputInstance.emplace_back(
+            GetDataTypeGE(csvMap, "key_rope_antiquant_scale_dtype", this->key_rope_antiquant_scale));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "dequant_scale_query_dtype", this->dequant_scale_query));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "learnable_sink_dtype", this->learnable_sink));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "q_start_idx_dtype", this->q_start_idx));
