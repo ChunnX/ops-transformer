@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：`lightning_indexer_grad`基于一系列操作得到每一个token对应的Top-$k$个位置。
+- 算子功能：`lightning_indexer_grad`为`lightning_indexer`的反向算子，基于正向算子的输出`sparseIndices`计算`query`、`key`、`weights`的梯度。
 
 - 计算公式：
   LightningIndexer反向计算公式如下：
@@ -40,208 +40,132 @@
 
 ## 参数说明
 
-  <table style="undefined;table-layout: fixed; width: 1565px">
-  <colgroup>
-    <col style="width: 146px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
+  <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 150px">
+  <col style="width: 480px">
+  <col style="width: 150px">
+  <col style="width: 100px">
   </colgroup>
   <thead>
     <tr>
       <th>参数名</th>
-      <th>输入/输出</th>
+      <th>输入/输出/属性</th>
       <th>描述</th>
-      <th>使用说明</th>
       <th>数据类型</th>
       <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
+    </tr></thead>
   <tbody>
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>公式中的query。</td>
-      <td>shape支持[B, S1, N1, D]/[T1, N1, D]。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的输入Q，不支持空tensor和非连续。layout为BSND时，shape为(B,S1,N1,D)；layout为TND时，shape为(T1,N1,D)。</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>公式中的key。</td>
-      <td>shape支持[B, S2, N2, D]/[T2, N2, D]。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的输入K，不支持空tensor和非连续。layout为BSND时，shape为(B,S2,N2,D)；layout为TND时，shape为(T2,N2,D)。</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>dy</td>
       <td>输入</td>
-      <td>公式中的value。</td>
-      <td>shape支持[B, S1, N1, D]/[T1, N1, D]。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的输入dY，表示输出梯度，不支持空tensor和非连续。layout为BSND时，shape为(B,S1,N1,D)；layout为TND时，shape为(T1,N1,D)。</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>sparseIndices</td>
       <td>输入</td>
-      <td>公式中的sparseIndices。</td>
-      <td>shape支持[B, S1, K]/[T1, K]。</td>
+      <td>公式中的输入Indices，为LightningIndexer正向算子的sparseIndicesOut输出，不支持空tensor和非连续。layout为BSND时，shape为(B,S1,N2,K)；layout为TND时，shape为(T1,N2,K)，其中K为topK保留的block数量。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>2-3</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>weights</td>
       <td>输入</td>
-      <td>公式中的weights。</td>
-      <td>shape支持[B, S1, N1]/[T1, N1]。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的输入W，不支持空tensor和非连续。layout为BSND时，shape为(B,S1,N1)；layout为TND时，shape为(T1,N1)。</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>2-3</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>actualSeqLengthsQuery</td>
       <td>输入</td>
-      <td>表示query每个Batch S的累加和长度。</td>
-      <td>TND排布时需要输入，其余场景输入nullptr。</td>
+      <td>每个Batch中Query的有效token数，不支持空tensor和非连续。可传入None表示与query的S长度相同；支持长度为B的一维tensor，且每个Batch的有效token数不超过query中的维度S大小且不小于0。layout为TND时该入参必须传入，并以元素数量作为B值；每个元素表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>actualSeqLengthsKey</td>
       <td>输入</td>
-      <td>表示key每个Batch S的累加和长度。</td>
-      <td>TND排布时需要输入，其余场景输入nullptr。</td>
+      <td>每个Batch中Key的有效token数，不支持空tensor和非连续。可传入None表示与key的S长度相同；支持长度为B的一维tensor，且每个Batch的有效token数不超过key中的维度S大小且不小于0。layout为TND时该入参必须传入，每个元素表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
-      <td>√</td>
+    </tr>
+    <tr>
+      <td>layout</td>
+      <td>输入</td>
+      <td>用于标识输入Query/Key的数据排布格式，默认值为"BSND"，当前支持BSND、TND。</td>
+      <td>STRING</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>headNum</td>
       <td>输入</td>
       <td>代表head个数。</td>
-      <td>-</td>
       <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>layout</td>
-      <td>输入</td>
-      <td>代表query/key的数据排布格式。</td>
-      <td>当前支持TND/BSND。</td>
-      <td>String</td>
-      <td>-</td>
-      <td>-</td>
       <td>-</td>
     </tr>
     <tr>
       <td>sparseMode</td>
       <td>输入</td>
-      <td>表示sparse模式。</td>
-      <td>支持取值0/3。</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
+      <td>表示sparse的模式。sparse_mode为0时代表defaultMask模式；sparse_mode为3时代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</td>
+      <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>preTokens</td>
       <td>输入</td>
-      <td>用于稀疏计算 ，表示slides window的左边界。</td>
-      <td>-</td>
+      <td>用于稀疏计算，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1。</td>
       <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
       <td>-</td>
     </tr>
     <tr>
       <td>nextTokens</td>
       <td>输入</td>
-      <td>用于稀疏计算 ，表示slides window的右边界。</td>
-      <td>-</td>
+      <td>用于稀疏计算，表示attention需要和后几个Token计算关联，仅支持默认值2^63-1。</td>
       <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>deterministic</td>
-      <td>输入</td>
-      <td>表示当前是否支持确定性计算。</td>
-      <td>-</td>
-      <td>BOOL</td>
-      <td>-</td>
-      <td>-</td>
       <td>-</td>
     </tr>
     <tr>
       <td>dQuery</td>
       <td>输出</td>
-      <td>dQuery梯度。</td>
-      <td>数据类型与query一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的dQ输出，表示query的梯度，不支持空tensor和非连续。数据类型与query一致，shape与query一致。</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>dKey</td>
       <td>输出</td>
-      <td>dKey梯度。</td>
-      <td>数据类型与key一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的dK输出，表示key的梯度，不支持空tensor和非连续。数据类型与key一致，shape与key一致。</td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>3-4</td>
-      <td>√</td>
     </tr>
     <tr>
       <td>dWeights</td>
       <td>输出</td>
-      <td>dWeights梯度。</td>
-      <td>数据类型与weights一致。</td>
-      <td>BFLOAT16、FLOAT16</td>
+      <td>公式中的dW输出，表示weights的梯度，不支持空tensor和非连续。数据类型与weights一致，shape与weights一致。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT</td>
       <td>ND</td>
-      <td>2-3</td>
-      <td>√</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
+      <td>deterministic</td>
+      <td>输入</td>
+      <td>表示当前是否支持确定性计算，默认值为False。</td>
+      <td>BOOL</td>
       <td>-</td>
     </tr>
   </tbody>
@@ -249,19 +173,16 @@
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnLightningIndexerGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
-- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - inputLayout支持TND/BSND。
 - 关于数据shape的约束，以Layout的BSND举例。其中：
   
   - B（Batchsize）：取值范围为1\~1024。
-  - N（Head-Num）：取值为64。
-  - G（Group）：取值为64。
+  - N（Head-Num）：取值为1\~64。
+  - G（Group）：取值为N。
   - S1（Seq-LengthQ）：取值范围为1\~128K。
   - S2（Seq-LengthK）：取值范围为topK\~128K。
   - D（Head-Dim）：取值为128。
-  - TopK：取值为2048
+  - TopK：取值为2048。
 
 ## 调用示例
 

@@ -369,12 +369,12 @@ aclnnStatus aclnnLightningIndexerGrad(
 - 关于数据shape的约束，以Layout的BSND举例。其中：
   
   - B（Batchsize）：取值范围为1\~1024。
-  - N（Head-Num）：取值为64。
-  - G（Group）：取值为64。
+  - N（Head-Num）：取值为1\~64。
+  - G（Group）：取值为N。
   - S1（Seq-LengthQ）：取值范围为1\~128K。
   - S2（Seq-LengthK）：取值范围为topK\~128K。
   - D（Head-Dim）：取值为128。
-  - TopK：取值为2048
+  - TopK：取值为2048。
 
 ## 调用示例
 
