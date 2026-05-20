@@ -1,0 +1,96 @@
+/**
+ * Copyright (c) 2025 Tianjin University, Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * the BSD 3-Clause License (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+/*!
+ * \file causal_conv1d_util.h
+ */
+
+#ifndef CAUSAL_CONV1D_COMMON_H
+#define CAUSAL_CONV1D_COMMON_H
+
+#include "kernel_operator.h"
+
+namespace NsCausalConv1dUtil {
+
+constexpr int32_t MAX_WIDTH = 4;
+
+__aicore__ inline int32_t SlotCurr(int32_t t, int32_t width)
+{
+    return (t + width - 1) % (width + 1);
+}
+
+__aicore__ inline int32_t SlotHist(int32_t t, int32_t i, int32_t width)
+{
+    return (t + width - 1 - i) % (width + 1);
+}
+
+__aicore__ inline int32_t SlotPrefetch(int32_t t, int32_t width)
+{
+    return (t + width) % (width + 1);
+}
+
+__aicore__ inline constexpr bool IsFnInputModeKey(uint32_t inputModeKey)
+{
+    return (inputModeKey == CAUSAL_CONV1D_TPL_INPUT_MODE_FN_VARLEN) ||
+           (inputModeKey == CAUSAL_CONV1D_TPL_INPUT_MODE_FN_BATCH);
+}
+
+__aicore__ inline constexpr bool IsUpdateInputModeKey(uint32_t inputModeKey)
+{
+    return (inputModeKey == CAUSAL_CONV1D_TPL_INPUT_MODE_UPDATE_VARLEN) ||
+           (inputModeKey == CAUSAL_CONV1D_TPL_INPUT_MODE_UPDATE_BATCH);
+}
+
+__aicore__ inline constexpr bool IsVarlenInputModeKey(uint32_t inputModeKey)
+{
+    return (inputModeKey == CAUSAL_CONV1D_TPL_INPUT_MODE_FN_VARLEN) ||
+           (inputModeKey == CAUSAL_CONV1D_TPL_INPUT_MODE_UPDATE_VARLEN);
+}
+
+struct CalcBufPool {
+    AscendC::LocalTensor<float> weight;
+    AscendC::LocalTensor<float> bias;
+    AscendC::LocalTensor<float> acc;
+    AscendC::LocalTensor<float> tmp;
+    AscendC::LocalTensor<float> curr;
+
+    __aicore__ inline CalcBufPool() = default;
+
+    __aicore__ static inline CalcBufPool Init(AscendC::TBuf<AscendC::QuePosition::VECCALC> &calcBuf,
+                                                int32_t width, int32_t baseDim, bool hasBias)
+    {
+        CalcBufPool pool;
+        AscendC::LocalTensor<float> calc = calcBuf.template Get<float>();
+        pool.weight = calc;
+        pool.bias = calc[width * baseDim];
+        if (hasBias) {
+            pool.acc = pool.bias[baseDim];
+        } else {
+            pool.acc = pool.bias;
+        }
+        pool.tmp = pool.acc[baseDim];
+        pool.curr = pool.tmp[baseDim];
+        return pool;
+    }
+};
+
+using AscendC::SetFlag;
+using AscendC::WaitFlag;
+
+template <AscendC::HardEvent EVENT>
+__aicore__ inline void SetEvent(AscendC::HardEvent evt)
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
+    SetFlag<EVENT>(eventId);
+    WaitFlag<EVENT>(eventId);
+}
+
+} // namespace NsCausalConv1dUtil
+
+#endif // CAUSAL_CONV1D_COMMON_H
