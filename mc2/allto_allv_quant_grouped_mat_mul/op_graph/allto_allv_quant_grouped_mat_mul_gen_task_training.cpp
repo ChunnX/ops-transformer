@@ -32,7 +32,12 @@ ge::Status AlltoAllvQuantGroupedMatMulCalcParamFunc(gert::ExeResGenerationContex
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
         return ge::GRAPH_FAILED;
     }
-    int64_t rankSize = *(attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX));
+    auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    if (worldSizePtr == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "worldSizePtr pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    int64_t rankSize = *worldSizePtr;
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     const std::string commMode = Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_COMM_MODE_INDEX);
     const char* serverType = nullptr;
