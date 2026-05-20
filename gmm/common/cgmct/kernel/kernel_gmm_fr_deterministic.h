@@ -28,12 +28,13 @@
  *   to yGmAgg. No cross-core sync needed within the tile loop.
  *   Final aggregation after the group loop uses SyncAll (safe: all cores reach it).
  *
- * Address model (v4 -- tile-level AIV-only cycling):
+ * Address model (v5 -- global row addressing):
  *   - LOGIT_OFFSETS: cumulative global offset for logit/rowIndex reads (never reset)
- *   - workspaceBaseRow: workspace window write offset (reset to 0 after each aggregation)
+ *   - globalRowOffset: total rows already aggregated (increases after cycling)
+ *   - globalWriteBase: per-tile workspace write position = (logitBase + groupInnerMOffset) - globalRowOffset
  *   - Epilogue elem[4]: group-inner mOffset (for logit/x1Scale reads)
- *   - Epilogue elem[5]: workspaceBaseRow (for workspace write addressing)
- *   - Inside-tile check: workspaceBaseRow + tileM > windowSizeRows
+ *   - Epilogue elem[5]: globalWriteBase (global workspace row for this tile)
+ *   - Inside-tile check: globalWriteBase + halfSingleM > windowSizeRows
  *   - Prerequisite: single tile M <= windowSizeRows
  */
 
@@ -351,7 +352,6 @@ public:
 
         // === Cycling state ===
         uint64_t windowSizeRows = params.cyclingParams.windowSizeRows;
-        uint64_t workspaceBaseRow = 0;   // workspace window rows used (reset after aggregation)
         uint64_t globalRowOffset = 0;    // global rows already aggregated (for rowIndex lookup)
 
         // Prepare aggregation tensors (AIV side)
@@ -385,7 +385,7 @@ public:
             TupleShape resProblemShape{groupM, n, k, 0};
             bs.UpdateNextProblem(resProblemShape);
             epilogueDequantOp_.UpdateNextProblem(resProblemShape);
-            UpdateGlobalBuffer(params, workspaceBaseRow);
+            UpdateGlobalBuffer(params, 0);  // cyclingBase unused by UpdateGlobalAddr
             CoordClass coord(groupM, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
 
             BlockCoord tileIdx;
@@ -419,8 +419,16 @@ public:
                 // No SyncAll: AIV-only, per-core partitioning (outRow % coreNum) + AtomicAdd.
                 // Each core independently reads its workspace rows and AtomicAdds to yGmAgg.
                 if ASCEND_IS_AIV {
-                    if (workspaceBaseRow + static_cast<uint64_t>(tileM) > windowSizeRows) {
-                        uint64_t totalM = workspaceBaseRow;
+                    // Global workspace addressing: each tile writes to a unique position
+                    // based on its global row index, avoiding cross-core data races.
+                    uint64_t halfSingleM = static_cast<uint64_t>(
+                        CeilDiv(tileM, static_cast<int64_t>(GetTaskRation())));
+                    int64_t logitBase = Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_);
+                    uint64_t globalWriteBase = static_cast<uint64_t>(
+                        logitBase + groupInnerMOffset) - globalRowOffset;
+
+                    if (globalWriteBase + halfSingleM > windowSizeRows) {
+                        uint64_t totalM = globalWriteBase;
                         uint64_t coreNum = params.cyclingParams.coreNum;
                         uint64_t aggN = static_cast<uint64_t>(n);
                         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
@@ -448,11 +456,12 @@ public:
                                 aggQueBind.FreeTensor(bindLocal);
                             }
                         }
-                        globalRowOffset += workspaceBaseRow;
-                        workspaceBaseRow = 0;
+                        globalRowOffset += totalM;
+                        globalWriteBase = static_cast<uint64_t>(
+                            logitBase + groupInnerMOffset) - globalRowOffset;
                     }
 
-                    // Epilogue for current tile -> workspace
+                    // Epilogue for current tile -> workspace (global addressing)
                     AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
                         Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
                     int64_t nOffset = y - groupInnerMOffset * n;
@@ -462,15 +471,10 @@ public:
                             Get<DET_IDX_X2SCALE_OFFSETS>(blockOffset_),
                             Get<DET_IDX_X1SCALE_OFFSETS>(blockOffset_),
                             groupInnerMOffset,
-                            static_cast<int64_t>(workspaceBaseRow)};
+                            static_cast<int64_t>(globalWriteBase)};
                     WaitForCube();
                     epilogueDequantOp_(epilogueShape, epilogueOffset);
                     NotifyCube();
-                    // On A5, AIV subBlock only processes halfSingleM rows (L0C split).
-                    // Advance workspaceBaseRow by the actual rows written, not full tileM.
-                    uint64_t halfSingleM = static_cast<uint64_t>(
-                        CeilDiv(tileM, static_cast<int64_t>(GetTaskRation())));
-                    workspaceBaseRow += halfSingleM;
                 }
             }
             // --- tile loop end ---
@@ -486,17 +490,22 @@ public:
         if ASCEND_IS_AIV {
             uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
             if (physId < 4) {
-                printf("[KER] physId=%lu wsBaseRow=%lu globalRowOff=%lu windowSize=%lu coreNum=%u\n",
-                       physId, workspaceBaseRow, globalRowOffset,
+                printf("[KER] physId=%lu totalRows=%lu globalRowOff=%lu windowSize=%lu coreNum=%u\n",
+                       physId,
+                       static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_)) + Get<MNK_M>(problemShape_),
+                       globalRowOffset,
                        params.cyclingParams.windowSizeRows,
                        params.cyclingParams.coreNum);
             }
         }
         {
+            uint64_t totalRowsAll = static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_))
+                                  + Get<MNK_M>(problemShape_);
+            uint64_t remainingM = totalRowsAll - globalRowOffset;
             GMMFRDeterministic::SyncConfig syncConfig{};
-            syncConfig.curM = workspaceBaseRow;
-            syncConfig.lowBoundM = workspaceBaseRow;
-            syncConfig.windowSize = workspaceBaseRow;
+            syncConfig.curM = remainingM;
+            syncConfig.lowBoundM = remainingM;
+            syncConfig.windowSize = remainingM;
             syncConfig.baseN = params.cyclingParams.baseN;
 
             GMMFRDeterministic::FRDeterministicA5<float,
