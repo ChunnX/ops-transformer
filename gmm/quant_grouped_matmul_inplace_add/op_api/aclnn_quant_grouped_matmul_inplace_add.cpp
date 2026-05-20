@@ -11,6 +11,7 @@
 
 #include <dlfcn.h>
 #include <new>
+#include <string>
 
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/contiguous.h"
@@ -27,6 +28,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "op_common/log/log.h"
 
 #include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_950_checker.h"
@@ -144,8 +146,10 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
                    "With FLOAT8_E4M3FN/FLOAT8_E5M2 inputs, scale1 dtype should be FLOAT8_E8M0, actual dtype is %s.",
                    op::ToString(params.scale1Optional->GetDataType()).GetString());
     } else if (!(x1Dtype == DataType::DT_HIFLOAT8 && x2Dtype == DataType::DT_HIFLOAT8)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x1 dtype %s and x2 dtype %s is not supported.",
-                op::ToString(x1Dtype).GetString(), op::ToString(x2Dtype).GetString());
+        const std::string actualDtypes =
+            std::string(op::ToString(x1Dtype).GetString()) + "/" + op::ToString(x2Dtype).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnQuantGroupedMatmulInplaceAdd", "x1/x2", actualDtypes.c_str(),
+                                               "Quant case only supports FLOAT8_E4M3FN/FLOAT8_E5M2 pair or HIFLOAT8 pair.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
