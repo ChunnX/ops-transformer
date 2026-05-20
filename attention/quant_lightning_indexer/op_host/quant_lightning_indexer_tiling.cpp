@@ -533,8 +533,6 @@ ge::graphStatus QLIInfoParser::GetS1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
-    } else {
-        s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -649,6 +647,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                              qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                              opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                    return ge::GRAPH_FAILED);
+        tSize_ = qTsize;
     } else {
         // -----------------------check BatchSize-------------------
         // bSize_ 来源于query
@@ -694,6 +693,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
             return ge::GRAPH_FAILED);
         queryWeightsN1Dim = DIM_IDX_TWO;
         outN2Dim = DIM_IDX_TWO;
+        tSize_ = bSize_ * s1Size_;
     }
     // -----------------------check N1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
@@ -761,6 +761,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.npuArch = npuArch_;
 
     QLIInfo.bSize = bSize_;
+    QLIInfo.tSize = tSize_;
     QLIInfo.n1Size = n1Size_;
     QLIInfo.n2Size = n2Size_;
     QLIInfo.s1Size = s1Size_;
@@ -877,6 +878,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
 
     // -------------set tilingdata-----------------
     tilingData_.set_bSize(tilingInfo->bSize);
+    tilingData_.set_tSize(tilingInfo->tSize);
     tilingData_.set_s2Size(tilingInfo->s2Size);
     tilingData_.set_s1Size(tilingInfo->s1Size);
     tilingData_.set_sparseCount(tilingInfo->sparseCount);
