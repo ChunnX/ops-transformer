@@ -397,7 +397,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Pr
     if (dstRankId != epRankId_) {
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         GM_ADDR dstRankGM = GetWinWriteRemoteAddrByRankId(currRankId);
-        auto handle = hcomm_.WriteNbi(urmaCommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
+        auto handle = hcomm_.WriteNbi(context->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
         hcomm_.Wait(handle);
     }
 }
@@ -460,7 +460,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Se
             
             // 计算目标窗口地址: 包括本地窗口和远程窗口
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-            GM_ADDR baseAddr = rankId == epRankId_ ? : GetWinReadLocalAddrByRankId(dstRankId):GetWinWriteLocalAddrByRankId(dstRankId);
+            GM_ADDR baseAddr = rankId == epRankId_ ? GetWinReadLocalAddrByRankId(dstRankId) : GetWinWriteLocalAddrByRankId(dstRankId);
             
             GM_ADDR rankGM = (GM_ADDR)(baseAddr  + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_);
             ProcessToken(rankGM, tokenIndex, dstRankId);
@@ -513,7 +513,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Se
         if (dstRankId != epRankId_) {
             uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
             GM_ADDR dstRankGM = GetWinWriteRemoteStatusByRankId(currRankId);
-            auto handle = hcomm_.WriteNbi(urmaCommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
+            auto handle = hcomm_.WriteNbi(context->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
             hcomm_.Wait(handle);
         }
     }
