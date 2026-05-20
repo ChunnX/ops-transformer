@@ -231,7 +231,7 @@ BlockCost<int64_t> QuantLightningIndexerMetadataCpuKernel::CalcCostTable(uint32_
     return typeCost;
 }
 
-Range<int64_t> QuantLightningIndexerMetadataCpuKernel::CalcS2TokenRange( uint32_t s1GIdx, const BatchCache &batchCache)
+Range<int64_t> QuantLightningIndexerMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache)
 {
     // no mask
     if (!attentionMode_) { //attentionMaskFlag ?
@@ -495,10 +495,10 @@ void QuantLightningIndexerMetadataCpuKernel::AssignByRow(const SplitContext &spl
         assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
                                  assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
         // 计算新一行的信息
-        do{
+        do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        }while(assignContext.s1GCache.s1GBlock == 0);
+        } while(assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -605,7 +605,7 @@ void QuantLightningIndexerMetadataCpuKernel::AssignBlockToCore(uint32_t coreNum,
     assignContext.coreCache = {};
     assignContext.coreCache.costLimit = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
     if (!supportFd_){
-        assignContext.coreCache.costLimit = costInfo.maxS1GCost > assignContext.coreCache.costLimit ? 
+        assignContext.coreCache.costLimit = costInfo.maxS1GCost > assignContext.coreCache.costLimit ?
             costInfo.maxS1GCost :assignContext.coreCache.costLimit;
     }      
     // 1、按整batch分配
@@ -677,7 +677,7 @@ void QuantLightningIndexerMetadataCpuKernel::SplitFD(SplitResult &splitRes)
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
     // 计算每个核处理的load
-    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; //向上取整，避免核负载为0
+    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
@@ -741,7 +741,7 @@ bool QuantLightningIndexerMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
         metadataPtr->LIMetadata[i][LI_BN2_END_INDEX] = splitRes.bN2End[i];
         metadataPtr->LIMetadata[i][LI_M_END_INDEX] = splitRes.gS1End[i];
         metadataPtr->LIMetadata[i][LI_S2_END_INDEX] = splitRes.s2End[i];
-        //
+        // firstFdData
         metadataPtr->LIMetadata[i][LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
     }
 

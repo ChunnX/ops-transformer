@@ -69,7 +69,7 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t n
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_kv 校验
-    if ((strcmp(layoutKvOptional, "PA_ND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) && 
+    if ((strcmp(layoutKvOptional, "PA_ND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) &&
         (strcmp(layoutKvOptional, "BSND") != 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_ND!");
         return ACLNN_ERR_PARAM_INVALID;
@@ -289,8 +289,8 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
     if (CheckSingleParamSas(batchSize, maxSeqlenQ, numHeadsQ, numHeadsKv, cmpTopK, cmpRatio, oriMaskMode, oriWinLeft,
                             layoutQOptional, layoutKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
         CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, cuSeqLensOriKvOptional,
-                          cuSeqLensCmpKvOptional, sequsedKvOptional, hasCmpKv) == ACLNN_SUCCESS && 
-        CheckConsistencySas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
+                          cuSeqLensCmpKvOptional, sequsedKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
+        CheckConsistencySas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
                             sequsedKvOptional, layoutQOptional, layoutKvOptional, batchSize) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {

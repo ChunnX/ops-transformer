@@ -74,7 +74,7 @@ aclnnStatus CheckSingleParamQsas(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_kv 校验
-    if ((strcmp(layoutKvOptional, "PA_ND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) && 
+    if ((strcmp(layoutKvOptional, "PA_ND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) &&
         (strcmp(layoutKvOptional, "BSND") != 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_ND!");
         return ACLNN_ERR_PARAM_INVALID;
@@ -119,7 +119,7 @@ aclnnStatus CheckExistenceQsas(char* layoutQOptional, char* layoutKvOptional, co
 }
 
 int64_t GetQueryBatchSizeQsas(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional,
-                             char* layoutQOptional, int64_t batchSize)
+                              char* layoutQOptional, int64_t batchSize)
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
     int64_t *viewDims = nullptr;
@@ -146,7 +146,7 @@ int64_t GetQueryBatchSizeQsas(const aclTensor* sequsedQOptional, const aclTensor
 }
 
 int64_t GetKvBatchSizeQsas(const aclTensor* sequsedKvOptional, const aclTensor* cuSeqLensOriKvOptional,
-                          char* layoutKvOptional, int64_t batchSize)
+                           char* layoutKvOptional, int64_t batchSize)
 {
     // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
     int64_t *viewDims = nullptr;
@@ -262,9 +262,9 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
     }
     // 校验 q/kv 维度
     int64_t queryBatchSize = GetQueryBatchSizeQsas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional,
-                                                  batchSize);
+                                                   batchSize);
     int64_t kvBatchSize = GetKvBatchSizeQsas(sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional,
-                                            batchSize);
+                                             batchSize);
     if (queryBatchSize != kvBatchSize) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
                 "that obtained from kv tensor, but got %ld and %ld", queryBatchSize, kvBatchSize);
@@ -285,8 +285,8 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
 {
     if (CheckSingleParamQsas(batchSize, maxSeqlenQ, numHeadsQ, numHeadsKv, cmpTopK, cmpRatio, oriMaskMode, oriWinLeft,
                              layoutQOptional, layoutKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
-        CheckExistenceQsas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS && 
-        CheckConsistencyQsas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
+        CheckExistenceQsas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional) == ACLNN_SUCCESS &&
+        CheckConsistencyQsas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
                              sequsedKvOptional, layoutQOptional, layoutKvOptional, batchSize) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {

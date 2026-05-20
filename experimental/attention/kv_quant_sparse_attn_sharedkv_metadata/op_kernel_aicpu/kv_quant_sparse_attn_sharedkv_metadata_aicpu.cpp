@@ -641,10 +641,10 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::AssignByRow(const SplitContext 
         assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
                                  assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
         // 计算新一行的信息
-        do{
+        do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        }while(assignContext.s1GCache.s1GBlock == 0);
+        } while(assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -691,7 +691,8 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::AssignByBlock(const SplitContex
 }
 
 void KvQuantSparseAttnSharedkvMetadataCpuKernel::ForceAssign(const SplitContext &splitContext,
-                                                             AssignContext &assignContext) {
+                                                             AssignContext &assignContext)
+{
     if (assignContext.isFinished) {
         return;
     }
@@ -837,7 +838,7 @@ void KvQuantSparseAttnSharedkvMetadataCpuKernel::SplitFD(SplitResult &splitRes)
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
     // 计算每个核处理的load
-    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; //向上取整，避免核负载为0
+    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
@@ -920,7 +921,8 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::GenMetadata(SplitResult &splitR
             metadataPtr->faMetadata[2 * i + 1][FA_S2_END_INDEX] = splitRes.s2End[i];
             //
             metadataPtr->faMetadata[2 * i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
-            metadataPtr->faMetadata[2 * i + 1][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
+            metadataPtr->faMetadata[2 * i + 1][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] =
+                splitRes.firstFdDataWorkspaceIdx[i];
             // 单核s2基本块最大数量
             metadataPtr->faMetadata[2 * i][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
             metadataPtr->faMetadata[2 * i + 1][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
@@ -940,7 +942,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::GenMetadata(SplitResult &splitR
             metadataPtr->faMetadata[i][FA_BN2_END_INDEX] = splitRes.bN2End[i];
             metadataPtr->faMetadata[i][FA_M_END_INDEX] = splitRes.gS1End[i];
             metadataPtr->faMetadata[i][FA_S2_END_INDEX] = splitRes.s2End[i];
-            // 
+            // firstFdData
             metadataPtr->faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
         }
     }

@@ -50,7 +50,7 @@ const aclTensor* KvQuantSparseAttnSharedkvMetadata(
                     "cmp_mask_mode", "ori_win_left", "ori_win_right", "layout_q", "layout_kv", "has_ori_kv",
                     "has_cmp_kv", "soc_version", "aic_core_num", "aiv_core_num"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
-                 sequsedKvOptional), 
+                 sequsedKvOptional),
         OP_OUTPUT(metadata),
         OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, kvQuantMode,
                 tileSize, ropeHeadDim, cmpRatio, oriMaskMode,  cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional,

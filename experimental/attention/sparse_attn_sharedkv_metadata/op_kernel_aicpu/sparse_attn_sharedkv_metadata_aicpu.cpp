@@ -455,7 +455,8 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const Sp
     if (isHighPorfScfa_) {
         if (queryHeadNum_ == 128 && cmpTopK_ == 1024) {
             int64_t oriS2LastToken = oriS2TokenRange.second;
-            oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
+            oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0),
+                static_cast<int64_t>(batchCache.s2Size - 1U));
             oriS2LastToken = std::min(static_cast<int64_t>(cmpTopK_) * cmpRatio_ - 1U, oriS2LastToken);
             uint32_t winAlignCoefM = 16U;
             uint32_t winAlignCoefS2 = 64U;
@@ -532,9 +533,9 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignByBatch(const SplitContext &spli
     const CostInfo &costInfo = splitContext.costInfo;
     if (isHighPorfScfa_) {
         if (queryHeadNum_ == 128 && cmpTopK_ == 1024) {
-            while (assignContext.bN2Cost == 0 || 
+            while (assignContext.bN2Cost == 0 ||
                    assignContext.coreCache.costLimit - assignContext.coreCache.cost >
-                    0.8L * static_cast<long double>(assignContext.bN2Cost)) {
+                       0.8L * static_cast<long double>(assignContext.bN2Cost)) {
                 assignContext.coreCache.cost += assignContext.bN2Cost;
                 assignContext.coreCache.block += assignContext.bN2Block;
                 assignContext.curBN2Idx++;
@@ -609,10 +610,11 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignByRow(const SplitContext &splitC
                 assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
                                         assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
                 // 计算新一行的信息
-                do{
+                do {
                     assignContext.curS1GIdx++;
-                    CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-                }while(assignContext.s1GCache.s1GBlock == 0);
+                    CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache,
+                                 assignContext.s1GCache);
+                } while(assignContext.s1GCache.s1GBlock == 0);
                 assignContext.curS2Idx = assignContext.s1GCache.s2Start;
             }
             return;
@@ -873,7 +875,7 @@ void SparseAttnSharedkvMetadataCpuKernel::SplitFD(SplitResult &splitRes)
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
     // 计算每个核处理的load
-    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; //向上取整，避免核负载为0
+    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
@@ -938,7 +940,7 @@ bool SparseAttnSharedkvMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
         metadataPtr->faMetadata[i][FA_BN2_END_INDEX] = splitRes.bN2End[i];
         metadataPtr->faMetadata[i][FA_M_END_INDEX] = splitRes.gS1End[i];
         metadataPtr->faMetadata[i][FA_S2_END_INDEX] = splitRes.s2End[i];
-        //
+        // firstFdData
         metadataPtr->faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
     }
 

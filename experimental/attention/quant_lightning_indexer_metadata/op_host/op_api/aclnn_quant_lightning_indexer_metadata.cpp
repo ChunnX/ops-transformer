@@ -62,7 +62,8 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
                            metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto actualSeqLengthsQueryOptionalContiguous = l0op::Contiguous(actualSeqLengthsQueryOptional, uniqueExecutor.get());
+    auto actualSeqLengthsQueryOptionalContiguous =
+        l0op::Contiguous(actualSeqLengthsQueryOptional, uniqueExecutor.get());
     if (actualSeqLengthsQueryOptionalContiguous == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "actual_seq_lengths_query contiguous is none");
         return ACLNN_ERR_INNER_NULLPTR;
