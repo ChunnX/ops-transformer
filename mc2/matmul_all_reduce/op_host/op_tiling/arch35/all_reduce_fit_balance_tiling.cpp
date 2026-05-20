@@ -64,6 +64,8 @@ void MMAllReduceFitBalanceTiling::SetCommBoundTile()
     tilingM_.cutRes.numShortTile = 1U;
     tilingM_.cutRes.numLongTile = 1U;
     tilingM_.cutRes.longTileLen = mmInfo_.mValue - alignedTileLen;
+    OP_LOGD("MMAllReduceFitBalanceTiling", "SetCommBoundTile: initial longTileLen %lu, shortTileLen %lu",
+            tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen);
 }
 
 void MMAllReduceFitBalanceTiling::SetShortTileLen()
@@ -104,14 +106,60 @@ void MMAllReduceFitBalanceTiling::SetLongTileLen()
 
 void MMAllReduceFitBalanceTiling::AdjustLongShortTileLen()
 {
-    // Adjusting the tiling based on constraints such as the size of the first and last blocks and the number of rounds.
     bool goodLinearityShape = (mmInfo_.kValue * mmInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
     tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
     SetCommBoundTile();
-    // When the long and short tiles are equal, the long and short pieces become one.
+    AlignLongTileLen();
+    // When the long and short tiles are equal, merge them
     if (tilingM_.cutRes.shortTileLen == tilingM_.cutRes.longTileLen) {
         tilingM_.cutRes.shortTileLen = 0U;
         tilingM_.cutRes.numShortTile = 0U;
         tilingM_.cutRes.numLongTile++;
     }
+}
+
+void MMAllReduceFitBalanceTiling::AlignLongTileLen()
+{
+    if (!isAlign_) {
+        return;
+    }
+    uint64_t baseM = matmulPerf_.GetBaseM();
+    if (baseM == 0) {
+        OP_LOGE("MMAllReduceFitBalanceTiling", "baseM is zero, skip alignment");
+        return;
+    }
+    if (tilingM_.cutRes.longTileLen % baseM == 0) {
+        return;
+    }
+    uint64_t totalLen = mmInfo_.mValue;
+    // Floor-align longTileLen to baseM
+    uint64_t alignedLongLen = (tilingM_.cutRes.longTileLen / baseM) * baseM;
+    if (alignedLongLen == 0) {
+        alignedLongLen = baseM;
+    }
+    
+    // Redistribute tiles accounting for numLongTile
+    tilingM_.cutRes.numLongTile = totalLen / alignedLongLen;
+    uint64_t remainLen = totalLen % alignedLongLen;
+    if (remainLen > 0) {
+        tilingM_.cutRes.shortTileLen = remainLen;
+        tilingM_.cutRes.numShortTile = 1U;
+    } else {
+        tilingM_.cutRes.shortTileLen = 0U;
+        tilingM_.cutRes.numShortTile = 0U;
+    }
+    tilingM_.cutRes.longTileLen = alignedLongLen;
+    tilingM_.cutRes.totalTileCnt = tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile;
+    
+    // When numLongTile == 1 and shortTileLen >= longTileLen, swap them
+    if (tilingM_.cutRes.numLongTile == 1U &&
+        tilingM_.cutRes.numShortTile == 1U &&
+        tilingM_.cutRes.shortTileLen >= tilingM_.cutRes.longTileLen) {
+        std::swap(tilingM_.cutRes.shortTileLen, tilingM_.cutRes.longTileLen);
+    }
+    
+    OP_LOGD("MMAllReduceFitBalanceTiling",
+            "Final: longTileLen %lu, numLongTile %lu, shortTileLen %lu, numShortTile %lu, baseM %lu",
+            tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
+            tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile, baseM);
 }
