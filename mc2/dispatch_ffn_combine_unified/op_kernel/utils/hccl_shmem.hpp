@@ -108,7 +108,6 @@ public:
     #ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
         std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
                             __gm__ HcclOpResParamCustom *> WinContext_{nullptr};
-        Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
         AscendC::LocalTensor<int32_t> ub;
         FORCE_INLINE_AICORE
         HcclShmem(){
