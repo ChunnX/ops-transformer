@@ -24,7 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common/tool.h"
+#include "gmm/common/arch35_weight_quant_common.h"
 
 using AscendC::Dn2NzParams;
 using AscendC::GetBlockIdx;
