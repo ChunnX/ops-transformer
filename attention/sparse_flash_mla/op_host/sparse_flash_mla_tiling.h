@@ -58,9 +58,7 @@ enum class SMLAAxis : uint32_t {
 enum class SMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2,
-    ORI_SCFA_TEMPLATE_MODE = 3,
-    ORI_CMP_SCFA_TEMPLATE_MODE = 4
+    SCFA_TEMPLATE_MODE = 2
 };
 
 enum class KvStorageMode : uint32_t {
@@ -82,11 +80,14 @@ constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
 constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
 constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
-constexpr uint32_t SEQUSED_KV_INDEX = 11;
-constexpr uint32_t ORI_TOPK_LENGTH = 12;
-constexpr uint32_t CMP_TOPK_LENGTH = 13;
-constexpr uint32_t SINKS_INDEX = 14;
-constexpr uint32_t METADATA_INDEX = 15;
+//constexpr uint32_t SEQUSED_KV_INDEX = 11;
+constexpr uint32_t SEQUSED_ORI_KV_INDEX = 11;
+constexpr uint32_t SEQUSED_CMP_KV_INDEX = 12;
+constexpr uint32_t CMP_RESIDUAL_KV_INDEX = 13;
+constexpr uint32_t ORI_TOPK_LENGTH = 14;
+constexpr uint32_t CMP_TOPK_LENGTH = 15;
+constexpr uint32_t SINKS_INDEX = 16;
+constexpr uint32_t METADATA_INDEX = 17;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
 
@@ -99,7 +100,8 @@ constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 4;
 constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_TOPK_VALUE_MODE = 8;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
@@ -189,7 +191,10 @@ struct SMLAParaInfo {
     SMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
     SMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
-    SMLATilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    //SMLATilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
     SMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
     SMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
     SMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
@@ -204,6 +209,7 @@ struct SMLAParaInfo {
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const char *topkValueMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
 };
 
