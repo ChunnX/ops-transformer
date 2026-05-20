@@ -397,7 +397,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Pr
     if (dstRankId != epRankId_) {
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         GM_ADDR dstRankGM = GetWinWriteRemoteAddrByRankId(currRankId);
-        auto handle = hcomm_.WriteNbi(context->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
         hcomm_.Wait(handle);
     }
 }
@@ -513,7 +513,7 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Se
         if (dstRankId != epRankId_) {
             uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
             GM_ADDR dstRankGM = GetWinWriteRemoteStatusByRankId(currRankId);
-            auto handle = hcomm_.WriteNbi(context->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
+            auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
             hcomm_.Wait(handle);
         }
     }
