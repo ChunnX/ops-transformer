@@ -107,7 +107,7 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/quant_lightning_indexer/
                 - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/
             opensource_style: null 
-            kernel_style: null  
+            kernel_style: null 
         unrelease:
             test_code:
                 - ops/ops-transformer/attention/lightning_indexer/tests/
@@ -155,7 +155,7 @@ transformer-pfa_unevolved@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
                 - ops/ops-transformer/attention/prompt_flash_attention/CMakeLists.txt
             opensource_style: null 
-            kernel_style: null  
+            kernel_style: null 
         unrelease:
             test_code:
                 - ops/ops-transformer/attention/prompt_flash_attention/tests/
@@ -170,7 +170,7 @@ transformer-vf@ops-transformer:
             huawei_style:  
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
             opensource_style: null 
-            kernel_style: null  
+            kernel_style: null 
         unrelease:
             test_code: null 
             non_delivery: null 
