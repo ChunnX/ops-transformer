@@ -25,23 +25,37 @@
 namespace ops {
 static const size_t ATTR_COMM_MODE_INDEX = 15;
 static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
-{
+static ge::Status ValidateAndGetRankSize(const gert::ExeResGenerationContext *context, int64_t &rankSize) {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
         return ge::GRAPH_FAILED;
     }
-    int64_t rankSize = *(attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX));
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    if (epWorldSizePtr == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "epWorldSizePtr pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    rankSize = *epWorldSizePtr;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
+{
+    int64_t rankSize = 0;
+    ge::Status status = ValidateAndGetRankSize(context, rankSize);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
  	const std::string commMode = Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_COMM_MODE_INDEX);
     const char* serverType = nullptr;
     const char* streamType = nullptr;
-    if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8)) {
+    if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "default")) {
         serverType = "ccu server";
         streamType = "ccu_stream";
         OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
-    } else if ((isArch35 &&  commMode == "aicpu") || (!isArch35) || (isArch35 && rankSize > 8)) {
+    } else if ((isArch35 &&  commMode == "aicpu") || (!isArch35) || (isArch35 && rankSize > 8 && commMode == "default")) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
         OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
@@ -53,12 +67,11 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
 ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    if (attrs == nullptr) {
-        OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
-        return ge::GRAPH_FAILED;
+    int64_t rankSize = 0;
+    ge::Status status = ValidateAndGetRankSize(context, rankSize);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
     }
-    int64_t rankSize = *(attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX));
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     const std::string commMode = Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_COMM_MODE_INDEX);
     if ((!isArch35) || (isArch35 && commMode == "aicpu") || (isArch35 && rankSize > 8)) {
