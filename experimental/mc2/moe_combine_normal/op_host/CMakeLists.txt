@@ -11,7 +11,6 @@
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         moe_combine_normal_def.cpp
-        op_tiling/moe_combine_normal_tiling.cpp
     )
     add_modules_sources(
         OP_API_INDEPENDENT ON

@@ -13,41 +13,44 @@
  * \brief ACLNN API for moe_combine_normal operator
  */
 
-#include "common/inc/op_mc2.h"
-#include "common/inc/op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
 
-using namespace Ops::Transformer;
 using namespace op;
+
+// HCCL server type definition
+enum NnopbaseHcclServerType {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 extern aclnnStatus aclnnInnerMoeCombineNormalGetWorkspaceSize(
-    const aclTensor* recvX, const aclTensor* tokenSrcInfo, const aclTensor* epRecvCount,
-    const aclTensor* topkWeights, const aclTensor* tpRecvCountOptional,
-    const char* epGroupName, int64_t epWorldSize, int64_t epRankId,
-    const char* tpGroupNameOptional, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t moeExpertNum, int64_t globalBs,
-    aclTensor* xOut, aclTensor* sendCostStatsOutOptional,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
+    const aclTensor *recvX, const aclTensor *tokenSrcInfo, const aclTensor *epRecvCount, const aclTensor *topkWeights,
+    const aclTensor *tpRecvCountOptional, const char *epGroupName, int64_t epWorldSize, int64_t epRankId,
+    const char *tpGroupNameOptional, int64_t tpWorldSize, int64_t tpRankId, int64_t moeExpertNum, int64_t globalBs,
+    aclTensor *xOut, aclTensor *sendCostStatsOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerMoeCombineNormal(void* workspace, uint64_t workspaceSize,
-    aclOpExecutor* executor, aclrtStream stream);
+extern aclnnStatus aclnnInnerMoeCombineNormal(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                              aclrtStream stream);
 
 aclnnStatus aclnnMoeCombineNormalGetWorkspaceSize(
-    const aclTensor* recvX, const aclTensor* tokenSrcInfo, const aclTensor* epRecvCount,
-    const aclTensor* topkWeights, const aclTensor* tpRecvCountOptional,
-    const char* epGroupName, int64_t epWorldSize, int64_t epRankId,
-    const char* tpGroupNameOptional, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t moeExpertNum, int64_t globalBs,
-    aclTensor* xOut, aclTensor* sendCostStatsOutOptional,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *recvX, const aclTensor *tokenSrcInfo, const aclTensor *epRecvCount, const aclTensor *topkWeights,
+    const aclTensor *tpRecvCountOptional, const char *epGroupName, int64_t epWorldSize, int64_t epRankId,
+    const char *tpGroupNameOptional, int64_t tpWorldSize, int64_t tpRankId, int64_t moeExpertNum, int64_t globalBs,
+    aclTensor *xOut, aclTensor *sendCostStatsOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_moe_combine_normal WorkspaceSize start");
 
@@ -58,16 +61,19 @@ aclnnStatus aclnnMoeCombineNormalGetWorkspaceSize(
     OP_CHECK_NULL(xOut, return ACLNN_ERR_PARAM_NULLPTR);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeCombineNormalGetWorkspaceSize(
-        recvX, tokenSrcInfo, epRecvCount, topkWeights, tpRecvCountOptional,
-        epGroupName, epWorldSize, epRankId, tpGroupNameOptional, tpWorldSize, tpRankId,
-        moeExpertNum, globalBs, xOut, sendCostStatsOutOptional, workspaceSize, executor);
+        recvX, tokenSrcInfo, epRecvCount, topkWeights, tpRecvCountOptional, epGroupName, epWorldSize, epRankId,
+        tpGroupNameOptional, tpWorldSize, tpRankId, moeExpertNum, globalBs, xOut, sendCostStatsOutOptional,
+        workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
 
-aclnnStatus aclnnMoeCombineNormal(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnMoeCombineNormal(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_moe_combine_normal start");
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnInnerMoeCombineNormal(workspace, workspaceSize, executor, stream);
 }
 

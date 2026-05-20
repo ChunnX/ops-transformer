@@ -20,15 +20,15 @@
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
+#include "mc2_log.h"
 
 #include "../../op_kernel/moe_combine_normal_tiling.h"
 
 using namespace ge;
-using namespace ops::experimental::moe;
 
 namespace optiling {
 
-constexpr const char *OPS_UTILS_LOG_SUB_MOD_NAME = "MOE_COMBINE_NORMAL";
+// constexpr const char *OPS_UTILS_LOG_SUB_MOD_NAME = "MOE_COMBINE_NORMAL";
 constexpr uint32_t RECV_X_INDEX = 0;
 constexpr uint32_t TOKEN_SRC_INFO_INDEX = 1;
 constexpr uint32_t EP_RECV_COUNTS_INDEX = 2;
@@ -90,7 +90,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeCombineNormalTili
 }
 
 static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext &context,
-    MoeCombineNormalTilingData &tilingData, const char *nodeName, std::string &groupEp, std::string &groupTp)
+                                               MoeCombineNormalTilingData &tilingData, const char *nodeName,
+                                               std::string &groupEp, std::string &groupTp)
 {
     auto attrs = context.GetAttrs();
     OPS_ERR_IF(attrs == nullptr, OPS_LOG_E(nodeName, "attrs is null."), return ge::GRAPH_FAILED);
@@ -104,7 +105,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext &contex
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
 
     OPS_ERR_IF((groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-               (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+                   (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
                OPS_LOG_E(nodeName, "groupEp is invalid."), return ge::GRAPH_FAILED);
     OPS_ERR_IF(epWorldSizePtr == nullptr, OPS_LOG_E(nodeName, "epWorldSize is null."), return ge::GRAPH_FAILED);
     OPS_ERR_IF(tpWorldSizePtr == nullptr, OPS_LOG_E(nodeName, "tpWorldSize is null."), return ge::GRAPH_FAILED);
@@ -123,8 +124,8 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext &contex
                          MAX_TP_WORLD_SIZE, *tpWorldSizePtr),
                return ge::GRAPH_FAILED);
     OPS_ERR_IF((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
-               OPS_LOG_E(nodeName, "epRankId is invalid, only support [0, %ld), but got epRankId=%ld.",
-                         epWorldSize, *epRankIdPtr),
+               OPS_LOG_E(nodeName, "epRankId is invalid, only support [0, %ld), but got epRankId=%ld.", epWorldSize,
+                         *epRankIdPtr),
                return ge::GRAPH_FAILED);
 
     if (*tpWorldSizePtr > 1) {
@@ -133,14 +134,14 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext &contex
                              *tpWorldSizePtr, *tpRankIdPtr),
                    return ge::GRAPH_FAILED);
         OPS_ERR_IF((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-                   (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+                       (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
                    OPS_LOG_E(nodeName, "groupTpPtr is null."), return ge::GRAPH_FAILED);
         groupTp = std::string(groupTpPtr);
     } else {
-        OPS_ERR_IF(*tpRankIdPtr != 0,
-                   OPS_LOG_E(nodeName, "tpRankId is invalid, NoTp mode only support 0, but got tpRankId=%ld.",
-                             *tpRankIdPtr),
-                   return ge::GRAPH_FAILED);
+        OPS_ERR_IF(
+            *tpRankIdPtr != 0,
+            OPS_LOG_E(nodeName, "tpRankId is invalid, NoTp mode only support 0, but got tpRankId=%ld.", *tpRankIdPtr),
+            return ge::GRAPH_FAILED);
     }
 
     OPS_ERR_IF((moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
@@ -175,7 +176,7 @@ static bool CheckTensorShape(const gert::TilingContext &context, MoeCombineNorma
     int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
     int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
     int64_t moeExpertNum = static_cast<int64_t>(tilingData.moeCombineNormalInfo.moeExpertNum);
-    
+
     OPS_ERR_IF((topkWeightsDim1 <= 0) || (topkWeightsDim1 > K_MAX) || (topkWeightsDim1 > moeExpertNum),
                OPS_LOG_E(nodeName,
                          "topkWeights's dim1(K) should be in (0, min(%ld, moeExpertNum %ld)], "
@@ -188,10 +189,9 @@ static bool CheckTensorShape(const gert::TilingContext &context, MoeCombineNorma
     OPS_ERR_IF(recvXStorageShape == nullptr, OPS_LOG_E(nodeName, "recvX is null."), return false);
     int64_t recvXDim0 = recvXStorageShape->GetStorageShape().GetDim(0);
     int64_t recvXDim1 = recvXStorageShape->GetStorageShape().GetDim(1);
-    
+
     OPS_ERR_IF((recvXDim1 < H_MIN) || (recvXDim1 > H_MAX),
-               OPS_LOG_E(nodeName, "recvX's dim1(H) should be in [%ld, %ld], but got %ld.",
-                         H_MIN, H_MAX, recvXDim1),
+               OPS_LOG_E(nodeName, "recvX's dim1(H) should be in [%ld, %ld], but got %ld.", H_MIN, H_MAX, recvXDim1),
                return false);
     tilingData.moeCombineNormalInfo.h = static_cast<uint32_t>(recvXDim1);
 
@@ -199,19 +199,18 @@ static bool CheckTensorShape(const gert::TilingContext &context, MoeCombineNorma
     OPS_ERR_IF(xStorageShape == nullptr, OPS_LOG_E(nodeName, "xStorageShape is null."), return false);
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    
+
     OPS_ERR_IF(xDim0 != topkWeightsDim0,
                OPS_LOG_E(nodeName, "x's dim0 not equal to bs, bs = %ld, x's dim0 = %ld", topkWeightsDim0, xDim0),
                return false);
     OPS_ERR_IF(xDim1 != recvXDim1,
-               OPS_LOG_E(nodeName, "x's dim1 not equal to h, x's dim1 = %ld, h = %ld", xDim1, recvXDim1),
-               return false);
+               OPS_LOG_E(nodeName, "x's dim1 not equal to h, x's dim1 = %ld, h = %ld", xDim1, recvXDim1), return false);
 
     return true;
 }
 
-static bool CheckAttrs(const gert::TilingContext &context, MoeCombineNormalTilingData &tilingData,
-                       const char *nodeName, uint32_t &localMoeExpertNum)
+static bool CheckAttrs(const gert::TilingContext &context, MoeCombineNormalTilingData &tilingData, const char *nodeName,
+                       uint32_t &localMoeExpertNum)
 {
     uint32_t epWorldSize = tilingData.moeCombineNormalInfo.epWorldSize;
     uint32_t tpWorldSize = tilingData.moeCombineNormalInfo.tpWorldSize;
@@ -237,10 +236,10 @@ static bool CheckAttrs(const gert::TilingContext &context, MoeCombineNormalTilin
     const gert::StorageShape *topkWeightsStorageShape = context.GetInputShape(TOPK_WEIGHTS_INDEX);
     OPS_ERR_IF(topkWeightsStorageShape == nullptr, OPS_LOG_E(nodeName, "topkWeights is null."), return false);
     int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
-    
+
     OPS_ERR_IF((topkWeightsDim0 <= 0) || (topkWeightsDim0 > BS_UPPER_BOUND),
-               OPS_LOG_E(nodeName, "Invalid topkWeights dims0(BS) %ld. Should be between [1, %ld].",
-                         topkWeightsDim0, BS_UPPER_BOUND),
+               OPS_LOG_E(nodeName, "Invalid topkWeights dims0(BS) %ld. Should be between [1, %ld].", topkWeightsDim0,
+                         BS_UPPER_BOUND),
                return false);
     tilingData.moeCombineNormalInfo.bs = static_cast<uint32_t>(topkWeightsDim0);
 
@@ -250,7 +249,7 @@ static bool CheckAttrs(const gert::TilingContext &context, MoeCombineNormalTilin
     OPS_ERR_IF(globalBsPtr == nullptr, OPS_LOG_E(nodeName, "globalBs is null."), return false);
 
     OPS_ERR_IF((*globalBsPtr != 0) && ((*globalBsPtr < static_cast<int64_t>(epWorldSize) * topkWeightsDim0) ||
-               ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
+                                       ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
                OPS_LOG_E(nodeName,
                          "globalBS is invalid, only support 0 or maxBs(maxBs is the largest bs on all ranks) * "
                          "epWorldSize, but got globalBS=%ld, bs=%ld, epWorldSize=%u.",
@@ -268,8 +267,7 @@ static bool CheckAttrs(const gert::TilingContext &context, MoeCombineNormalTilin
 static ge::graphStatus SetWorkspace(gert::TilingContext &context, const char *nodeName)
 {
     size_t *workspace = context.GetWorkspaceSizes(1);
-    OPS_ERR_IF(workspace == nullptr,
-               VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
+    OPS_ERR_IF(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
                return ge::GRAPH_FAILED);
     workspace[0] = SYSTEM_NEED_WORKSPACE;
     OPS_LOG_D(nodeName, "workspace[0] size is %ld", workspace[0]);
@@ -299,13 +297,11 @@ static void SetHCommCfg(const gert::TilingContext &context, MoeCombineNormalTili
 static ge::graphStatus MoeCombineNormalTilingFuncImpl(gert::TilingContext &context)
 {
     const char *nodeName = context.GetNodeName();
-    OPS_ERR_IF(nodeName == nullptr, OPS_LOG_E("unKnownNodeName", "nodeName is nullptr."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(nodeName == nullptr, OPS_LOG_E("unKnownNodeName", "nodeName is nullptr."), return ge::GRAPH_FAILED);
     OPS_LOG_D(nodeName, "Enter MoeCombineNormal Tiling func");
 
     MoeCombineNormalTilingData *tilingData = context.GetTilingData<MoeCombineNormalTilingData>();
-    OPS_ERR_IF(tilingData == nullptr, OPS_LOG_E(nodeName, "tilingData is nullptr."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(tilingData == nullptr, OPS_LOG_E(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
 
     std::string groupEp = "";
     std::string groupTp = "";
@@ -321,10 +317,10 @@ static ge::graphStatus MoeCombineNormalTilingFuncImpl(gert::TilingContext &conte
     OPS_ERR_IF(!CheckAttrs(context, *tilingData, nodeName, localMoeExpertNum),
                OPS_LOG_E(nodeName, "attr check failed."), return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(!CheckTensorShape(context, *tilingData, nodeName),
-               OPS_LOG_E(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(!CheckTensorShape(context, *tilingData, nodeName), OPS_LOG_E(nodeName, "param dim check failed."),
+               return ge::GRAPH_FAILED);
 
-    uint64_t maxWindowSize = 200UL * MB_SIZE;  // 默认200MB
+    uint64_t maxWindowSize = 200UL * MB_SIZE; // 默认200MB
     uint64_t h = static_cast<uint64_t>(tilingData->moeCombineNormalInfo.h);
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeCombineNormalInfo.epWorldSize);
     uint64_t k = static_cast<uint64_t>(tilingData->moeCombineNormalInfo.k);
@@ -340,8 +336,8 @@ static ge::graphStatus MoeCombineNormalTilingFuncImpl(gert::TilingContext &conte
                          "localMoeExpertNum = %u, tokenNeedSizeCombine = %lu, k = %lu, "
                          "NEEDED_HCCL_BUFFSIZE(((maxBs * k * tokenNeedSizeCombine)) + 3MB + 204MB) * 2) = %luMB, "
                          "HCCL_BUFFSIZE=%luMB.",
-                         maxBs, h, epWorldSize, localMoeExpertNum, tokenNeedSizeCombine, k,
-                         actualSize / MB_SIZE + 1UL, maxWindowSize / MB_SIZE),
+                         maxBs, h, epWorldSize, localMoeExpertNum, tokenNeedSizeCombine, k, actualSize / MB_SIZE + 1UL,
+                         maxWindowSize / MB_SIZE),
                return ge::GRAPH_FAILED);
     tilingData->moeCombineNormalInfo.totalWinSize = maxWindowSize;
 
@@ -356,12 +352,12 @@ static ge::graphStatus MoeCombineNormalTilingFuncImpl(gert::TilingContext &conte
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    
+
     context.SetBlockDim(blockDim);
     tilingData->moeCombineNormalInfo.aivNum = static_cast<uint32_t>(aivNum);
     tilingData->moeCombineNormalInfo.totalUbSize = ubSize;
     context.SetScheduleMode(1);
-    
+
     OPS_LOG_D(nodeName, "blockdim = %u, aivNum = %lu, ubsize = %lu", blockDim, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);
 
@@ -372,9 +368,8 @@ static ge::graphStatus MoeCombineNormalTilingFunc(gert::TilingContext *context)
 {
     auto recvXDesc = context->GetInputDesc(RECV_X_INDEX);
     const char *nodeName = context->GetNodeName();
-    
-    OPS_ERR_IF(recvXDesc == nullptr, OPS_LOG_E(nodeName, "recvXDesc is null."),
-               return ge::GRAPH_FAILED);
+
+    OPS_ERR_IF(recvXDesc == nullptr, OPS_LOG_E(nodeName, "recvXDesc is null."), return ge::GRAPH_FAILED);
     OPS_ERR_IF(recvXDesc->GetDataType() == ge::DT_INT32,
                OPS_LOG_E(nodeName, "recvX dataType is invalid, dataType should be bf16 or float16, but is int32."),
                return ge::GRAPH_FAILED);
