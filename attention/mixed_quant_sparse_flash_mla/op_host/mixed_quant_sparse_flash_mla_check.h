@@ -111,10 +111,11 @@ constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
 constexpr uint32_t SEQUSED_ORI_KV_INDEX = 11;
 constexpr uint32_t SEQUSED_CMP_KV_INDEX = 12;
-constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 13;
-constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 14;
-constexpr uint32_t SINKS_INDEX = 15;
-constexpr uint32_t METADATA_INDEX = 16;
+constexpr uint32_t CMP_RESIDUAL_KV_INDEX = 13;
+constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 14;
+constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 15;
+constexpr uint32_t SINKS_INDEX = 16;
+constexpr uint32_t METADATA_INDEX = 17;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
 constexpr uint32_t SOFTMAX_LSE_INDEX = 1;

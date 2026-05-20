@@ -85,6 +85,11 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("cmp_residual_kv")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("ori_topk_length")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})

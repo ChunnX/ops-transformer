@@ -32,8 +32,8 @@ using namespace AscendC;
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                             \
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable,           \
             cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,    \
-            seqUsedCmpKV, oriTopkLength, cmpTopkLength, sinks, metadata, attentionOut,            \
-            user, tilingData, &tPipe);                                                            \
+            seqUsedCmpKV, cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata,           \
+            attentionOut, user, tilingData, &tPipe);                                              \
         op.Process();                                                                             \
     } while (0)
 
@@ -42,9 +42,10 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
     __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedQ,
-    __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *oriTopkLength,
-    __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *softmax_lse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t cmpResidualKv,
+    __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
+    __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmax_lse,
+    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 

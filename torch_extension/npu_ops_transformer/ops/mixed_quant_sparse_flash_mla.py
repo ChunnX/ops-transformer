@@ -27,6 +27,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, "        \
                                 "Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, "           \
                                 "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, "         \
+                                "Tensor? cmp_residual_kv=None, "                                      \
                                 "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "       \
                                 "Tensor? sinks=None, Tensor? metadata=None, "                        \
                                 "int quant_mode = 1, int rope_head_dim=64, "                         \
@@ -49,7 +50,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 ori_block_table=None, cmp_block_table=None,
                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
                                 quant_mode = 1, rope_head_dim=64,
@@ -89,7 +90,7 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_block_table=None, cmp_block_table=None,
                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
                                 quant_mode = 1, rope_head_dim=64,
@@ -109,7 +110,7 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_block_table, cmp_block_table,
                                 cu_seqlens_q, cu_seqlens_ori_kv,
                                 cu_seqlens_cmp_kv, seqused_q,
-                                seqused_ori_kv, seqused_cmp_kv,
+                                seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
                                 ori_topk_length, cmp_topk_length,
                                 sinks, metadata,
                                 quant_mode, rope_head_dim,
