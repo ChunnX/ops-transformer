@@ -859,7 +859,7 @@ public:
         // 这个batch剩余的N2足够 gS1Skip
         if (gS1Skip < gS1RemainCurBatch) {
             bN2Cur += gS1Skip / gS1LoopTimes;
-            gS1Cur = gS1Skip % gS1LoopTimes;
+            gS1Cur = (gS1Skip - 1) % gS1LoopTimes;
             return;
         }
         // 先跳过当前Batch剩余的N2，再跳batch
@@ -884,7 +884,7 @@ public:
                 continue;
             }
 
-            gS1Cur = gS1Skip % gS1LoopTimes;
+            gS1Cur = (gS1Skip - 1) % gS1LoopTimes;
             n2Idx = (gS1Skip / gS1LoopTimes) % n2Size;
             bN2Cur = bIdx * n2Size + n2Idx;
             return;
