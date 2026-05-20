@@ -187,10 +187,6 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
 {
     LocalTensor<T1> inputLocal = keyQue_.DeQue<T1>();
 
-    event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdV2ToS);
-    WaitFlag<HardEvent::V_S>(eventIdV2ToS);
-
     int64_t dstStride = 0;
     if constexpr (FIVE_DIM)  {
         dstStride = tilingData_->keyCacheStride2 * sizeof(T1) - BLOCK_SIZE;

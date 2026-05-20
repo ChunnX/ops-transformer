@@ -145,10 +145,6 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
         static_cast<uint32_t>((tilingData_->keyCacheStride2 - headSize) * sizeof(T)),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
-    event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdV2ToS);
-    WaitFlag<HardEvent::V_S>(eventIdV2ToS);
-
     DataCopyPad(keyCacheOutGm_[keyCacheOffset], inputKeyLocal, outKeyCacheParams);
 
     keyQue_.FreeTensor(inputKeyLocal);
@@ -192,10 +188,6 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
         static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
         static_cast<uint32_t>((tilingData_->valueCacheStride2 - headSize) * sizeof(T)),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-
-    event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdV2ToS);
-    WaitFlag<HardEvent::V_S>(eventIdV2ToS);
 
     DataCopyPad(valueCacheOutGm_[valueCacheOffset], inputValueLocal, outValueCacheParams);
 
