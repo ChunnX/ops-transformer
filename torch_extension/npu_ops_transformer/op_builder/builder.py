@@ -72,6 +72,9 @@ class OpBuilder(ABC):
             os.path.join(self._cann_path, 'include'),
             os.path.join(self._package_path, 'common/inc')
         ]
+        arch_include = os.path.join(self._cann_path, 'aarch64-linux', 'include')
+        if os.path.isdir(arch_include):
+            paths.append(arch_include)
         return paths
 
     def cxx_args(self):

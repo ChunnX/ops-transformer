@@ -7,6 +7,28 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+
+# --- EP normal MoE pipeline (dispatch_layout -> notify+dispatch -> combine) ---
+# Category 1: layout only (no communication domain)
+from .dispatch_layout import npu_dispatch_layout
+from .graph_convert.graph_convert_dispatch_layout import convert_npu_dispatch_layout
+
+# Category 2: dispatch (notify_dispatch + dispatch_normal; fused entry for Buffer)
+from .notify_dispatch import npu_notify_dispatch
+from .dispatch_normal import npu_dispatch_normal
+from .moe_dispatch_prefill import npu_moe_dispatch_prefill
+from .graph_convert.graph_convert_notify_dispatch import convert_npu_notify_dispatch
+from .graph_convert.graph_convert_dispatch_normal import convert_npu_dispatch_normal
+
+# Category 3: combine
+from .combine_normal import npu_combine_normal
+from .moe_combine_prefill import npu_moe_combine_prefill
+from .graph_convert.graph_convert_combine_normal import convert_npu_combine_normal
+
+# High-level Buffer API (layout + fused dispatch/combine)
+from .buffer import Buffer
+
+# --- Other MoE / attention ops ---
 from .sparse_flash_mla import npu_sparse_flash_mla
 from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
 from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
@@ -15,7 +37,7 @@ from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
-    npu_get_mega_moe_ccl_buffer_size
+    npu_get_mega_moe_ccl_buffer_size,
 )
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
@@ -29,5 +51,5 @@ from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_
 from .mixed_quant_sparse_flash_mla import npu_mixed_quant_sparse_flash_mla
 from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_npu_lightning_indexer_v2_metadata
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
-    convert_npu_quant_lightning_indexer_v2_metadata
+    convert_npu_quant_lightning_indexer_v2_metadata,
 )
