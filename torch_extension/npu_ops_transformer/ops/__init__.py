@@ -31,6 +31,8 @@ from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
 )
 from .dispatch_layout import dispatch_layout
+from .moe_dispatch_normal import moe_dispatch_normal
+from .notify_dispatch import notify_dispatch
 from .moe_combine_normal import (
     moe_combine_normal,
     get_moe_combine_buffer,
