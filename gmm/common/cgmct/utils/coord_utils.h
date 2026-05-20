@@ -208,10 +208,28 @@ public:
         }
     }
 
-    template <GroupedMatmul::QuantMode aQuantMode, bool enableLoadBalance = false>
+    template <int64_t C0Size>
+    __aicore__ inline void CalBOffset4LowerBits(int64_t nOffset, int64_t &offsetB)
+    {
+        if constexpr (layoutB == CubeFormat::NZ) {
+            if constexpr (isTransB) {
+                offsetB = nOffset * C0Size;
+            } else {
+                constexpr int64_t mask = AscendC::BLOCK_CUBE - 1;
+                offsetB = nOffset * ((k + mask) & ~mask);
+            }
+        } else {
+            if constexpr (isTransB) {
+                offsetB = nOffset * k;
+            } else {
+                offsetB = nOffset;
+            }
+        }
+    }
+
+    template <GroupedMatmul::QuantMode aQuantMode, int64_t bC0Align = MATMUL_MNK_ALIGN_INT8>
     __aicore__ inline AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
-    GetQuantOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0,
-                   int64_t bC0Align = MATMUL_MNK_ALIGN_INT8)
+    GetQuantOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0)
     {
         int64_t mOffset = mTileIdx * l1M + mSplitOffset;
         int64_t nOffset = nTileIdx * l1N + nSplitOffset;
@@ -221,8 +239,8 @@ public:
         } else {
             Get<0>(offset) = mOffset * k;
         }
-        
-        Get<1>(offset) = GetBOffset(nTileIdx, 0, 0, bC0Align, nSplitOffset);
+
+        CalBOffset4LowerBits<bC0Align>(nOffset, Get<1>(offset));
         Get<5>(offset) = mOffset * n + nOffset; // 5: idx of y
         if constexpr (aQuantMode == GroupedMatmul::QuantMode::PERGROUP_MODE ||
                       aQuantMode == GroupedMatmul::QuantMode::PERBLOCK_MODE) {
