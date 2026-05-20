@@ -505,7 +505,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
     mmQcQrParam_.m = baseParams_->stepBatchSize; // 32
-    if constexpr (MLAPT:MLAPT::isSplitKn) {
+    if constexpr (MLAPT::isSplitKn) {
         if (baseParams_->numHeadSize % GetBlockNum() == 0 || blockIdx_ < baseParams_->numHeadSize % GetBlockNum()) {
             mmQcQrParam_.n = baseParams_->mm3SingleCoreN;
         } else {

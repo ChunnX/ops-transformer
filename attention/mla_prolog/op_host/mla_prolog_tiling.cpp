@@ -486,7 +486,7 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
         singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     }
     if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
-        mm3BlockNum_ = min(baseShapeInfo_.nSize, aicNum_);
+        mm3BlockNum_ = std::min(baseShapeInfo_.nSize, aicNum_);
     } else if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_M)) {
         mm3BlockNum_ = aicNum_;
     } else {

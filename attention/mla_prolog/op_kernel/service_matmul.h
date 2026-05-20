@@ -587,20 +587,21 @@ __aicore__ inline void LoadL1ABAndScale(const GlobalTensor<T> &tensorAGm, const 
         MMBufParams &bufParam)
 {
 #if __CCE_AICORE__ == 310
-    uint64_t offsetL1A = L1_A_SIZE / 2 / sizeof(T); // scale起始地址: L1A上ping的1/2处
-    uint64_t scaleHalfSize;
+    uint64_t scaleAL1Offset; = L1_A_SIZE / 2 / sizeof(T); // scale起始地址: L1A上ping的1/2处
+    uint64_t scaleABL1Offset;
     if constexpr (IsSplitKn) {
-        offsetL1A = L1_A_SIZE / 4 / sizeof(T);       // KN: weight数据量减半, scale前移
-        scaleHalfSize = L1_A_SIZE * 3 / 8 / sizeof(T); // KN: scale A/B各占3/8
+        scaleAL1Offset = L1_A_SIZE / 2 / sizeof(T);
+        scaleABL1Offset = L1_A_SIZE / 4 / sizeof(T); // KN: scale A/B各占3/8
     } else {
-        scaleHalfSize = L1_A_SIZE / 4 / sizeof(T);
+        scaleAL1Offset = L1_A_SIZE / 4 / sizeof(T);
+        scaleABL1Offset = L1_A_SIZE / 4 / sizeof(T);
     }
     if (kL1 == 0) {
         if constexpr (!hasL1ALoaded) {
             LoadL1AAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorAScaleGm, para.m, para.kL1StepSize,
-                para.orgKa, para.kScale, para.orgKa / 32, offsetL1A, bufParam);
+                para.orgKa, para.kScale, para.orgKa / 32, scaleAL1Offset, bufParam);
         }
-        uint64_t scaleOffsetL1A = offsetL1A + scaleHalfSize;
+        uint64_t scaleBL1Offset = scaleAL1Offset + scaleABL1Offset;
         LoadL1BAndScale(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], tensorBScaleGm[nL1Offset * para.orgKb / 32], nL1Size,
             para.kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1A, bufParam);
     }
@@ -676,8 +677,8 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
     uint64_t weightSizeL1A;
     uint64_t scaleASize;
     if constexpr (IsSplitKn) {
-        weightSizeL1A = L1_A_SIZE / 4 / sizeof(T);       // KN: weight占1/4，scale A/B各占3/8
-        scaleASize = L1_A_SIZE * 3 / 8 / sizeof(T);
+        weightSizeL1A = L1_A_SIZE / 2 / sizeof(T);       // KN: weight占1/4，scale A/B各占3/8
+        scaleASize = L1_A_SIZE / 4 / sizeof(T);
     } else {
         weightSizeL1A = L1_A_SIZE / 2 / sizeof(T);
         scaleASize = L1_A_SIZE / 4 / sizeof(T);
