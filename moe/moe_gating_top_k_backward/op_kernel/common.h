@@ -20,17 +20,13 @@
 namespace MoeGatingTopKBackward {
 using namespace AscendC;
 
-// constexpr int64_t MERGE_LIST_IDX_TWO = 2;
-// constexpr int64_t MERGE_LIST_IDX_THREE = 3;
-
-// constexpr int64_t NORM_TYPE_SOFTMAX = 0;
-// constexpr int64_t NORM_TYPE_SIGMOID = 1;
 constexpr int64_t NUM_ONE = 1;
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t NUM_FOUR = 4;
 constexpr int64_t SIZE_OF_FLOAT32 = 4;
 constexpr int64_t SIZE_OF_INT32 = 4;
 constexpr int64_t BLOCK_BYTES_MINUS_ONE = 31;
+
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
     if (b == 0) {
