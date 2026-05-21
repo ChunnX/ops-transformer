@@ -228,12 +228,6 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
             return ACLNN_ERR_PARAM_INVALID;
         }
-    } else {
-        // 910B和910_93只支持default
-        if (std::strcmp(commModeStr, "default") != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default'.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
     }
 
     return ACLNN_SUCCESS;
