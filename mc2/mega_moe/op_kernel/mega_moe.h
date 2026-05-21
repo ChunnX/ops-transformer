@@ -24,6 +24,7 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
+#include "mega_moe_combine_send.h"
 
 
 using namespace AscendC;
@@ -137,6 +138,8 @@ private:
     TBuf<> ResetTokenBuf_;
     TBuf<> topKWeightsBuf_;
     TBuf<> tempBuf_;
+    TBuf<> bf16ScaleBuf_;
+    TBuf<> fp32ScaleBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -154,6 +157,8 @@ private:
     GlobalTensor<int32_t> groupList_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
+    LocalTensor<float> fp32ScaleTensor_;
+    LocalTensor<bfloat16_t> bf16ScaleTensor_;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -254,6 +259,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *tPipe)
 {
+    uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
     tPipe->InitBuffer(DataResBuf_, dataResBufAlign);
@@ -263,6 +269,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
     tPipe->InitBuffer(DataResFp32Buf_, dataResBufAlign * 2);
     tPipe->InitBuffer(topKWeightsBuf_, Ops::Base::CeilAlign(
         static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32)));
+    tPipe->InitBuffer(bf16ScaleBuf_, Ops::Base::CeilAlign(
+        static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * 4), static_cast<uint32_t>(ALIGN_32)));
+    tPipe->InitBuffer(fp32ScaleBuf_, Ops::Base::CeilAlign(
+        static_cast<uint32_t>(scaleNum * sizeof(float) * 4), static_cast<uint32_t>(ALIGN_32)));
     topKWeightsTensor_ = topKWeightsBuf_.Get<float>();
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
@@ -658,6 +668,8 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
 {
     int32_t coreLen, coreOffset;
+    int32_t scaleNum = (k_ + 31) >> 5;
+    int32_t quantedTokenLen = (k_ + scaleNum) / 2;
     TilingByCore(m_, coreLen, coreOffset, 1);
     GlobalTensor<int32_t> expandedRowIdx;
     expandedRowIdx.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdxGather);
@@ -667,6 +679,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+    bf16ScaleTensor_ = bf16ScaleBuf_.Get<bfloat16_t>();
+    fp32ScaleTensor_ = fp32ScaleBuf_.Get<float>();
     for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         LocalTensor<bfloat16_t> dataResBf16 = DataResBuf_.Get<bfloat16_t>();
@@ -682,13 +696,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
             auto dataInBf16 = (expId % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % 2 == 0) ? dataIn0Fp32 : dataIn1Fp32;
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(dataInBf16, expandedX[rowIdx * k_], k_);
+            DataCopy(dataInBf16, expandedX[rowIdx * quantedTokenLen], quantedTokenLen);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
             SetFlag<AscendC::HardEvent::S_V>(event);
             WaitFlag<AscendC::HardEvent::S_V>(event);
-            // bf16 -> fp32
-            Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+            MegaMoeCombineImpl::DeQuantMxFp8<fp8_e5m2_t, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_, 
+                fp32ScaleTensor_, scaleNum, k_);
             PipeBarrier<PIPE_V>();
             if (expId == 0) {
                 Muls(dataResFp32, dataInFp32, expScale, k_);

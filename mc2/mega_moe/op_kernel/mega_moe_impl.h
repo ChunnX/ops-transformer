@@ -280,6 +280,7 @@ __aicore__ inline void GroupMatmul2(
     ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
     LocalTensor<ElementC> l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -356,8 +357,9 @@ __aicore__ inline void GroupMatmul2(
             WaitForCube(pingpongIdx);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+            AscendC::SetCtrlSpr<60, 60>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+                mLoc, nLoc, n, groupIdx, rankId, ubOffset, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);
