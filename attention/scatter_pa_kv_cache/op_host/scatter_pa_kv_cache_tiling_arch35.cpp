@@ -372,6 +372,9 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
     }
     numBlocks_ = inputKeyCacheInShape_.GetDim(DIM0);
     blockSize_ = inputKeyCacheInShape_.GetDim(DIM2);
+    if (inputKeyCacheInShape_.GetDimNum() != DIM4) {
+        blockSize_ = inputKeyCacheInShape_.GetDim(DIM3);
+    }
     numTokens_ = inputKeyShape_.GetDim(DIM0);
     kHeadSize_ = inputKeyShape_.GetDim(DIM2);
     numHead_ = inputKeyShape_.GetDim(DIM1);
