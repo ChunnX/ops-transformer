@@ -14,7 +14,7 @@
  */
 #include "op_host/tiling_util.h"
 #include "moe_finalize_routing_v2_tiling.h"
-#include "moe_finalize_routing_v2_tiling_arch35.h"
+#include "../op_kernel/arch35/moe_finalize_routing_v2_tiling_struct.h"
 
 namespace optiling {
 static constexpr int64_t TWO = 2;
@@ -94,8 +94,10 @@ protected:
     ge::graphStatus GetK(const gert::StorageShape* scalesShape);
     int64_t RowsHSize(int64_t rowFactor, bool scalesInUb);
     int64_t RowsHSizeForKHFullLoad(int64_t rowFactor, bool scalesInUb);
+    int64_t RowsHSizeForKHFullLoadBatch(int64_t rowFactor, bool scalesInUb);
     int64_t CalcRowFactor(int64_t ubSizeRemained, bool scalesInUb);
     int64_t CalcRowFactorForKHFullLoad(int64_t ubSizeRemained, bool scalesInUb);
+    int64_t CalcRowFactorForKHFullLoadBatch(int64_t ubSizeRemained, bool scalesInUb);
     void SetFullLoadTilingData(int64_t rowOfFormerBlock, int64_t rowOfTailBlock, int64_t rowFactor);
     ge::graphStatus DoOpTilingRowKHFullLoad(int64_t rowOfFormerBlock, int64_t rowOfTailBlock);
     ge::graphStatus DoOpTilingKHFullLoad(int64_t rowOfFormerBlock, int64_t rowOfTailBlock);
@@ -620,6 +622,20 @@ int64_t MoeFinalizeRoutingV2Regbase::RowsHSizeForKHFullLoad(int64_t rowFactor, b
                Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * h * sizeof(float)), blockSize_) * blockSize_;
 }
 
+int64_t MoeFinalizeRoutingV2Regbase::RowsHSizeForKHFullLoadBatch(int64_t rowFactor, bool scalesInUb)
+{
+    return (static_cast<int64_t>(hasX1_) + static_cast<int64_t>(hasX2_) + static_cast<int64_t>(hasX_)) *
+               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * h * dtypeSize), blockSize_) * blockSize_ +
+           (scalesInUb && hasScales_ ? 1 : 0) *
+               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * scaleDtypeSize), blockSize_) * blockSize_ +
+           (hasBias_ ? 1 : 0) * rowFactor * k * hAligned * dtypeSize + 
+           (hasConstantExpert_ ? 1 : 0) * constExpertRangeNum * hAligned * dtypeSize * CONST_EXPERT_BUFFER_NUM +
+               rowFactor * k * hAligned * dtypeSize +
+               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * sizeof(int32_t)), blockSize_) * blockSize_ +
+               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * k * sizeof(int32_t)), blockSize_) * blockSize_ +
+               Ops::Base::CeilDiv(static_cast<uint64_t>(rowFactor * h * sizeof(float)), blockSize_) * blockSize_;
+}
+
 int64_t MoeFinalizeRoutingV2Regbase::CalcRowFactorForKHFullLoad(int64_t ubSizeRemained, bool scalesInUb)
 {
     int64_t rowFactor = 1;
@@ -633,6 +649,29 @@ int64_t MoeFinalizeRoutingV2Regbase::CalcRowFactorForKHFullLoad(int64_t ubSizeRe
     while (upper - lower > 1) {
         int64_t mid = (lower + upper) / TWO;
         int64_t size = RowsHSizeForKHFullLoad(mid, scalesInUb);
+        if (size <= ubSizeRemained) {
+            lower = mid;
+        } else {
+            upper = mid;
+        }
+    }
+    rowFactor = lower;
+    return rowFactor;
+}
+
+int64_t MoeFinalizeRoutingV2Regbase::CalcRowFactorForKHFullLoadBatch(int64_t ubSizeRemained, bool scalesInUb)
+{
+    int64_t rowFactor = 1;
+    int64_t factor = 1;
+    while (RowsHSizeForKHFullLoadBatch(rowFactor, scalesInUb) <= ubSizeRemained) {
+        factor *= TWO;
+        rowFactor *= factor;
+    }
+    int64_t upper = rowFactor;
+    int64_t lower = rowFactor / factor;
+    while (upper - lower > 1) {
+        int64_t mid = (lower + upper) / TWO;
+        int64_t size = RowsHSizeForKHFullLoadBatch(mid, scalesInUb);
         if (size <= ubSizeRemained) {
             lower = mid;
         } else {
@@ -719,6 +758,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoOpTilingKHFullLoad(int64_t rowOfF
     if (k == 1) {
         int64_t ubSizeRemained = ubSize_ / DOUBLE_BUFFER;
         rowFactor = CalcRowFactorForKHFullLoad(ubSizeRemained, true);
+    } else if (k <= 4) {
+        int64_t kHAlignedByte = k * hAligned * dtypeSize;
+        int64_t hasBiasvalue = hasBias_ ? kHAlignedByte : 0;
+        int64_t ubSizeRemained = ubSize_ / DOUBLE_BUFFER - kHAlignedByte - hasBiasvalue;
+        rowFactor = CalcRowFactorForKHFullLoadBatch(ubSizeRemained, true);
     } else {
         int64_t kHAlignedByte = k * hAligned * dtypeSize;	
         int64_t hasBiasvalue = hasBias_ ? kHAlignedByte : 0;
