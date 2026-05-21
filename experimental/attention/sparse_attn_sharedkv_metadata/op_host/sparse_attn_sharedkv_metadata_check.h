@@ -17,6 +17,7 @@
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
+#include "../../sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_metadata.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,7 +80,7 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t n
 
 aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional,
                               const aclTensor* cuSeqLensOriKvOptional, const aclTensor* cuSeqLensCmpKvOptional,
-                              const aclTensor* sequsedKvOptional, bool hasCmpKv)
+                              const aclTensor* sequsedKvOptional, bool hasCmpKv, const aclTensor* metadata)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -117,6 +118,13 @@ aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, con
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
+    }
+    // metadata 存在性校验
+    auto ret = aclGetViewShape(metadata, &viewDims, &viewDimsNum);
+    if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output metadata is nullptr");
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
     }
     delete[] viewDims;
     return ACLNN_SUCCESS;
@@ -179,7 +187,7 @@ int64_t GetKvBatchSizeSas(const aclTensor* sequsedKvOptional, const aclTensor* c
 aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
                                 const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional,
                                 const aclTensor* sequsedKvOptional, char* layoutQOptional, char* layoutKvOptional,
-                                int64_t batchSize)
+                                int64_t batchSize, const aclTensor* metadata)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -264,6 +272,29 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
+    // 校验 metadata
+    ret = aclGetViewShape(metadata, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        // 校验 metadata 维度
+        if (viewDimsNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %ld", viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 metadata 元素数
+        if (viewDims[0] != optiling::SAS_META_SIZE) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
+                optiling::SAS_META_SIZE, viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 metadata 数据类型
+        ret = aclGetDataType(sequsedKvOptional, &dataType);
+        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of metadata must be int32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
     // 校验 q/kv 维度
     int64_t queryBatchSize = GetQueryBatchSizeSas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional,
                                                   batchSize);
@@ -284,14 +315,15 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
                                int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode,
                                int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char* layoutQOptional,
-                               char* layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor*metadata)
+                               char* layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor* metadata)
 {
     if (CheckSingleParamSas(batchSize, maxSeqlenQ, numHeadsQ, numHeadsKv, cmpTopK, cmpRatio, oriMaskMode, oriWinLeft,
                             layoutQOptional, layoutKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
         CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, cuSeqLensOriKvOptional,
-                          cuSeqLensCmpKvOptional, sequsedKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
+                          cuSeqLensCmpKvOptional, sequsedKvOptional, hasCmpKv, metadata) == ACLNN_SUCCESS &&
         CheckConsistencySas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
-                            sequsedKvOptional, layoutQOptional, layoutKvOptional, batchSize) == ACLNN_SUCCESS) {
+                            sequsedKvOptional, layoutQOptional, layoutKvOptional, batchSize,
+                            metadata) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
