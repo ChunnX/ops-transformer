@@ -14,7 +14,6 @@
  */
 #include "grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/non_quant/grouped_matmul_tiling_key.h"
-#include "log/log.h"
 #include "gmm/common/op_host/op_tiling/format_string_util.h"
 
 enum class GmmTrans {
