@@ -770,24 +770,20 @@ void MoeInitRoutingV2TilingBase::CalculateGatherOutBufferParams(int64_t ubRowsVa
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
     int64_t outputBufferSizePerBuffer =
         (ubRowsVal * cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    int64_t totalOutputBufferSize = outputBufferSizePerBuffer * NUM_TWO;
 
-    int64_t remainingUbSize = ubSize - totalOutputBufferSize;
-    int64_t indicesBufferSizePerBuffer = remainingUbSize > 0 ? remainingUbSize / NUM_TWO : 0;
+    int64_t remainingUbSize = ubSize - outputBufferSizePerBuffer;
+    int64_t indicesBufferSizePerBuffer = remainingUbSize > 0 ? remainingUbSize : 0;
     int64_t maxRowsPerLoop = indicesBufferSizePerBuffer / sizeof(int32_t);
 
-    if (maxRowsPerLoop <= 0 || totalOutputBufferSize > ubSize) {
+    if (maxRowsPerLoop <= 0 || outputBufferSizePerBuffer > ubSize) {
         maxRowsPerLoop = ubRowsVal;
     }
 
     int64_t actualPerCorePerLoopRows = std::min(perCoreRows, maxRowsPerLoop);
-    int64_t actualLastCorePerLoopRows = std::min(lastCoreRows, maxRowsPerLoop);
+
     constexpr int64_t MIN_ALIGN_ROWS = ONE_BLOCK_BYTE / sizeof(int32_t);
     if (actualPerCorePerLoopRows > 0 && actualPerCorePerLoopRows < MIN_ALIGN_ROWS) {
         actualPerCorePerLoopRows = MIN_ALIGN_ROWS;
-    }
-    if (actualLastCorePerLoopRows > 0 && actualLastCorePerLoopRows < MIN_ALIGN_ROWS) {
-        actualLastCorePerLoopRows = MIN_ALIGN_ROWS;
     }
 
     tilingData->set_perCorePerLoopRows(actualPerCorePerLoopRows);
@@ -797,7 +793,7 @@ void MoeInitRoutingV2TilingBase::CalculateGatherOutBufferParams(int64_t ubRowsVa
     }
     tilingData->set_perCoreLastLoopRows(perCoreLastLoopRows == 0 ? maxRowsPerLoop : perCoreLastLoopRows);
 
-    tilingData->set_lastCorePerLoopRows(actualLastCorePerLoopRows);
+    tilingData->set_lastCorePerLoopRows(actualPerCorePerLoopRows);
     int64_t lastCoreLastLoopRows = GetPerOrLastValue(lastCoreRows, maxRowsPerLoop);
     if (lastCoreLastLoopRows > 0 && lastCoreLastLoopRows < MIN_ALIGN_ROWS) {
         lastCoreLastLoopRows = MIN_ALIGN_ROWS;
@@ -805,7 +801,7 @@ void MoeInitRoutingV2TilingBase::CalculateGatherOutBufferParams(int64_t ubRowsVa
     tilingData->set_lastCoreLastLoopRows(lastCoreLastLoopRows == 0 ? maxRowsPerLoop : lastCoreLastLoopRows);
 
     tilingData->set_perCoreLoops(CeilDiv(perCoreRows, actualPerCorePerLoopRows));
-    tilingData->set_lastCoreLoops(CeilDiv(lastCoreRows, actualLastCorePerLoopRows));
+    tilingData->set_lastCoreLoops(CeilDiv(lastCoreRows, actualPerCorePerLoopRows));
     tilingData->set_perLoopCols(ubRowsVal);
     tilingData->set_lastLoopCols(ubRowsVal);
     tilingData->set_colLoops(1);
@@ -875,12 +871,11 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
 
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
 
-    int64_t ubRowsThresholdVal = ubSize / NUM_FOUR;
-    int64_t ubRowsVal = ubSize / ((cols * inuptXDtypeSize_ + sizeof(int32_t)) * NUM_TWO);
+    int64_t ubRowsVal = ubSize / ((cols * inuptXDtypeSize_ + sizeof(int32_t)));
     ubRowsVal = ubRowsVal / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
 
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
-    bool useGatherMode = colsAligned && (cols * inuptXDtypeSize_ < ubRowsThresholdVal) && (ubRowsVal >= NUM_TWO) &&
+    bool useGatherMode = colsAligned && (ubRowsVal >= NUM_TWO) &&
                          (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
