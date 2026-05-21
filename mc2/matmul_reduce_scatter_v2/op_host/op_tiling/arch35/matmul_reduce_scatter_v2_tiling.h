@@ -37,6 +37,7 @@ public:
 
 protected:
     bool IsCapable() override; // done
+    ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus CheckInput() override;
