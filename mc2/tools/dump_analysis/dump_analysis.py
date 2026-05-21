@@ -588,7 +588,7 @@ start_idx = 0
 dis_com_version = 'None'
 dis_com = 'None'
 
-if (soc_version == SOC_VERSION_950) or (soc_version == A2.SOC_VERSION_910B):
+if (soc_version == SOC_VERSION_950) or (soc_version == SOC_VERSION_910B):
     perfix = "mc2_"
     endfix = ""
 elif (soc_version == SOC_VERSION_910_93):
