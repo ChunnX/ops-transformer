@@ -1032,7 +1032,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
     LocalTensor<OUTPUT_T> attenOut;
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (!IsSameType<Q_T, VEC2_RES_T>::value) {
-        attenOut.SetAddr(vec2ResUb.address_);
+        attenOut = vec2ResUb.template ReinterpretCast<OUTPUT_T>();
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<Q_T, float>::value) {
             if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
@@ -1049,11 +1049,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
             RowInvalid(vec2ResUb, vec2S1Idx, runInfo, dSizeAligned64, constInfo);
         }
         stage2OutQue[0].EnQue(attenOut);
-        stage2OutQue[0].DeQue<OUTPUT_T>();
+        attenOut = stage2OutQue[0].template DeQue<OUTPUT_T>();
     } else {
         stage2OutQue[runInfo.taskIdMod2].EnQue(vec2ResUb);
-        stage2OutQue[runInfo.taskIdMod2].template DeQue<OUTPUT_T>();
-        attenOut = vec2ResUb;
+        attenOut = stage2OutQue[runInfo.taskIdMod2].template DeQue<OUTPUT_T>();
     }
 
     DataCopyExtParams dataCopyParams;
