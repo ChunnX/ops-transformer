@@ -23,7 +23,6 @@ enum class GmmTrans {
     BTrans = 2,
     ABTrans = 3
 };
-
 namespace optiling {
 bool GroupedNoQuantMatmulTiling::SetTiling(gert::TilingContext *context)
 {
