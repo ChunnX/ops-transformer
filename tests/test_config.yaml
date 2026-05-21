@@ -652,7 +652,9 @@ moe:
       - moe/moe_gating_top_k_backward/docs
       - moe/moe_gating_top_k_backward/README.md
     ut_cov_exclude:
-      - moe/moe_gating_top_k_backward
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/examples
+      - moe/moe_gating_top_k_backward/tests
     test:
       examples: True
       ut: True
