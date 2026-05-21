@@ -447,68 +447,37 @@ public:
                             // Per-row rebase tensors to keep DataCopyPad offsets small
                             GlobalTensor<float> wsRowGm;
                             GlobalTensor<float> yRowGm;
-                            uint64_t procRows = 0;
+                            // Flatten N-dim into single loop with step = min(baseN, GM2UB max)
+                            // to avoid nested VLOOPs exceeding hardware limit (max 4).
+                            uint64_t safeStep = static_cast<uint64_t>(params.cyclingParams.baseN);
+                            if (safeStep > DET_GM2UB_MAX_FLOATS) {
+                                safeStep = DET_GM2UB_MAX_FLOATS;
+                            }
                             for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
                                 auto outRow = static_cast<uint64_t>(
                                     rowIndexGm.GetValue(globalRowOffset + mOffset));
                                 if (outRow % coreNum != static_cast<uint64_t>(GetBlockIdx() / GetTaskRation())) {
                                     continue;
                                 }
-                                // Rebase to current row: element offset becomes just nOff (< aggN)
                                 wsRowGm.SetGlobalBuffer(wsBaseAddr + mOffset * aggN);
                                 yRowGm.SetGlobalBuffer(yBaseAddr + outRow * aggN);
-                                if (procRows < 2) {
-                                    printf("[CYC] m=%lu outRow=%lu aggN=%lu totalM=%lu\n",
-                                           mOffset, outRow, aggN, totalM);
-                                }
-                                // Split N-dim into GM→UB safe chunks (≤ 4096 bytes each)
-                                uint64_t curBaseN = params.cyclingParams.baseN;
-                                for (uint64_t nOff = 0; nOff < aggN; nOff += curBaseN) {
-                                    if (nOff + curBaseN >= aggN) {
-                                        curBaseN = aggN - nOff;
+                                for (uint64_t nOff = 0; nOff < aggN; nOff += safeStep) {
+                                    uint64_t chunkN = aggN - nOff;
+                                    if (chunkN > safeStep) {
+                                        chunkN = safeStep;
                                     }
-                                    // GM→UB: split into chunks ≤ DET_GM2UB_MAX_FLOATS elements
-                                    uint64_t remainN = curBaseN;
-                                    uint64_t subOff = 0;
-                                    while (remainN > 0) {
-                                        uint64_t chunkN = (remainN > DET_GM2UB_MAX_FLOATS)
-                                            ? DET_GM2UB_MAX_FLOATS : remainN;
-                                        if (procRows < 2) {
-                                            printf("[CYC]   nOff=%lu subOff=%lu chunkN=%lu blockLen=%u BEFORE AllocTensor\n",
-                                                   nOff, subOff, chunkN, static_cast<uint32_t>(chunkN * sizeof(float)));
-                                        }
-                                        LocalTensor<float> bindLocal = aggQueBind.AllocTensor<float>();
-                                        if (procRows < 2) {
-                                            printf("[CYC]   nOff=%lu subOff=%lu AFTER AllocTensor BEFORE DataCopyPad read\n",
-                                                   nOff, subOff);
-                                        }
-                                        DataCopyExtParams readParams{1,
-                                            static_cast<uint32_t>(chunkN * sizeof(float)), 0, 0, 0};
-                                        DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-                                        DataCopyPad(bindLocal, wsRowGm[nOff + subOff], readParams, padParams);
-                                        if (procRows < 2) {
-                                            printf("[CYC]   nOff=%lu subOff=%lu AFTER DataCopyPad read BEFORE EnQue\n",
-                                                   nOff, subOff);
-                                        }
-                                        aggQueBind.EnQue(bindLocal);
-                                        bindLocal = aggQueBind.DeQue<float>();
-                                        if (procRows < 2) {
-                                            printf("[CYC]   nOff=%lu subOff=%lu BEFORE AtomicAdd write\n",
-                                                   nOff, subOff);
-                                        }
-                                        SetAtomicAdd<float>();
-                                        DataCopyPad(yRowGm[nOff + subOff], bindLocal, readParams);
-                                        SetAtomicNone();
-                                        if (procRows < 2) {
-                                            printf("[CYC]   nOff=%lu subOff=%lu AFTER AtomicAdd write\n",
-                                                   nOff, subOff);
-                                        }
-                                        aggQueBind.FreeTensor(bindLocal);
-                                        subOff += chunkN;
-                                        remainN -= chunkN;
-                                    }
+                                    LocalTensor<float> bindLocal = aggQueBind.AllocTensor<float>();
+                                    DataCopyExtParams readParams{1,
+                                        static_cast<uint32_t>(chunkN * sizeof(float)), 0, 0, 0};
+                                    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+                                    DataCopyPad(bindLocal, wsRowGm[nOff], readParams, padParams);
+                                    aggQueBind.EnQue(bindLocal);
+                                    bindLocal = aggQueBind.DeQue<float>();
+                                    SetAtomicAdd<float>();
+                                    DataCopyPad(yRowGm[nOff], bindLocal, readParams);
+                                    SetAtomicNone();
+                                    aggQueBind.FreeTensor(bindLocal);
                                 }
-                                procRows++;
                             }
                         }
                         globalRowOffset += totalM;

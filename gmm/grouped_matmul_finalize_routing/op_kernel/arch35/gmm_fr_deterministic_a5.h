@@ -122,33 +122,27 @@ __aicore__ inline void FRDeterministicA5(
             wsRowGm.SetGlobalBuffer(wsBaseAddr + mOffset * n);
             yRowGm.SetGlobalBuffer(yBaseAddr + static_cast<uint64_t>(outRow) * n);
 
-            uint64_t curVecBaseN = syncConfig.baseN;
-            for (uint64_t nOffset = 0; nOffset < n; nOffset += syncConfig.baseN) {
-                if (nOffset + syncConfig.baseN >= n) {
-                    curVecBaseN = n - nOffset;
-                }
+            // Single N-dim loop with safeStep = min(baseN, GM2UB_MAX_FLOATS)
+            // Avoids 3-level nesting (row -> N-base -> chunk) that exceeds A5 VLOOP limit (4)
+            uint64_t safeStep = syncConfig.baseN;
+            if (safeStep > GM2UB_MAX_FLOATS) {
+                safeStep = GM2UB_MAX_FLOATS;
+            }
+            for (uint64_t nOff = 0; nOff < n; nOff += safeStep) {
+                uint64_t chunkN = n - nOff;
+                if (chunkN > safeStep) { chunkN = safeStep; }
+                LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
+                DataCopyExtParams readParams{1, static_cast<uint32_t>(chunkN * sizeof(DTYPE_OUT)), 0, 0, 0};
+                DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
+                DataCopyPad(bindLocal, wsRowGm[nOff], readParams, padParams);
+                queBind.EnQue(bindLocal);
+                bindLocal = queBind.DeQue<DTYPE_OUT>();
 
-                // GM→UB: split into chunks ≤ GM2UB_MAX_FLOATS elements (4096 bytes)
-                uint64_t remainN = curVecBaseN;
-                uint64_t subOff = 0;
-                while (remainN > 0) {
-                    uint64_t chunkN = (remainN > GM2UB_MAX_FLOATS)
-                        ? GM2UB_MAX_FLOATS : remainN;
-                    LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
-                    DataCopyExtParams readParams{1, static_cast<uint32_t>(chunkN * sizeof(DTYPE_OUT)), 0, 0, 0};
-                    DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
-                    DataCopyPad(bindLocal, wsRowGm[nOffset + subOff], readParams, padParams);
-                    queBind.EnQue(bindLocal);
-                    bindLocal = queBind.DeQue<DTYPE_OUT>();
+                SetAtomicAdd<DTYPE_OUT>();
+                DataCopyPad(yRowGm[nOff], bindLocal, readParams);
+                SetAtomicNone();
 
-                    SetAtomicAdd<DTYPE_OUT>();
-                    DataCopyPad(yRowGm[nOffset + subOff], bindLocal, readParams);
-                    SetAtomicNone();
-
-                    queBind.FreeTensor(bindLocal);
-                    subOff += chunkN;
-                    remainN -= chunkN;
-                }
+                queBind.FreeTensor(bindLocal);
             }
             procRows++;
         }
