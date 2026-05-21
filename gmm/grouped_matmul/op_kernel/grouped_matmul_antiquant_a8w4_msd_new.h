@@ -240,7 +240,7 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::Process()
 
         uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
         uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
-        printf("[Dbg] MSD_VECTOR_DEQUANT (NEW)\n");
+        // printf("[Dbg] MSD_VECTOR_DEQUANT (NEW)\n");
 
         while (curBlock < curCount) {
             mnConfig.mIdx = (curBlock - preCount) / mnConfig.blockDimN;
@@ -264,7 +264,6 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD_NEW> weightSlice;
     GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD_NEW> xSlice;
     int loopK = 0;
-    printf("[Dbg] MSD_VECTOR_DEQUANT (NEW)\n");
     tailN = mnConfig.nIdx * mnConfig.singleN;
     curSingleN = mnConfig.singleN;
     if (unlikely(mnConfig.nIdx == mnConfig.blockDimN - 1)) {
@@ -282,7 +281,7 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
  	    } else {
  	        xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
  	        }
-        printf(:"xOffset:%llu\n",xOffset);
+
  	    uint64_t weightOffset = 0;
         if constexpr (mmType::BT::format == CubeFormat::NZ) {
             weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k;
