@@ -578,7 +578,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     }
     curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
     token_buffer = (GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE; // 本端新增的数据区域，用于本卡数据拷贝，占用空间大小是hExpandXAlign32Size_
-    flag_gm = reinterpret_cast<__gm__ uint32_t *>((GM_ADDR)(curRankShmemAddr + DATA_FLAG_SIZE + hExpandXAlign32Size_)); // 本端的新增flag区域
+    flag_gm = reinterpret_cast<__gm__ uint32_t *>((GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE + hExpandXAlign32Size_); // 本端的新增flag区域
 }
 
 template <CombineMC2TypeClass>
