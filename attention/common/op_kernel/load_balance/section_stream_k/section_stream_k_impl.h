@@ -281,9 +281,10 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         }
     }
 
-    // 计算所有head的最大数据量，用于判断是否需要开启section切分
-    uint32_t maxHeadTokenCost = 0U;
     uint32_t headDim = baseInfo.GetHeadDim();
+
+    // 计算单个head的最大数据量，用于判断是否需要开启section切分
+    uint32_t maxHeadTokenCost = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
         uint32_t tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;  // 2: K和V两份数据
@@ -303,7 +304,6 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     uint32_t tokenSize = 0U;
     uint32_t bn2Idx = 0U;
     uint32_t tokenCost;
-    uint32_t headDim = baseInfo.GetHeadDim();
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
