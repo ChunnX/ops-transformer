@@ -982,7 +982,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS;
         printf("TEMPLATE_NZ is contiguous :%d\n ", IsNonContiguous());
         if (inputKeyCacheInShape_.GetDimNum() != DIM4) {
-            templateType_ == TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM;
+            templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM;
         }
     }
     OP_CHECK_IF(
