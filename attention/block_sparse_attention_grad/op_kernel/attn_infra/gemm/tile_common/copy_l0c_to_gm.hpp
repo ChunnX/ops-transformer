@@ -11,9 +11,9 @@
 #ifndef GEMM_TILE_COPY_L0C_TO_GM_HPP
 #define GEMM_TILE_COPY_L0C_TO_GM_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
-#include "../../../attn_infra/gemm/gemm_type.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/arch/bsag_arch.hpp"
+#include "../../../attn_infra/gemm/bsag_gemm_type.hpp"
 namespace NpuArch::Gemm::Tile {
 
 enum class ScaleGranularity {

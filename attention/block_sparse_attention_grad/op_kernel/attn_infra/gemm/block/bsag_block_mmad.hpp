@@ -11,9 +11,9 @@
 #ifndef GEMM_BLOCK_BLOCK_MMAD_HPP
 #define GEMM_BLOCK_BLOCK_MMAD_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {
 

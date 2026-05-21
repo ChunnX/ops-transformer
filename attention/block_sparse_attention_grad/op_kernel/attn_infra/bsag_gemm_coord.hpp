@@ -16,7 +16,7 @@
 #ifndef GEMM_COORD_HPP
 #define GEMM_COORD_HPP
 
-#include "../attn_infra/coord.hpp"
+#include "../attn_infra/bsag_coord.hpp"
 
 namespace NpuArch {
 

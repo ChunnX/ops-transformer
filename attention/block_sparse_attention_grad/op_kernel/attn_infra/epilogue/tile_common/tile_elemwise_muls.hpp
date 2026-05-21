@@ -11,7 +11,7 @@
  #ifndef EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
  #define EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
 
- #include "../../../attn_infra/gemm/helper.hpp"
+ #include "../../../attn_infra/gemm/bsag_helper.hpp"
 
  namespace NpuArch::Epilogue::Tile
  {
