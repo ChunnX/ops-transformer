@@ -28,7 +28,6 @@
 #include "../memory_copy.h"
 #include "../post_quant.h"
 #include "../const_def.h"
-#include "attenmask.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -621,7 +620,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                 }
             }
             if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
-                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, true>(
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
@@ -631,7 +630,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
             if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
                 LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
                 LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
@@ -640,7 +639,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
             if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
                 LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
                 LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
                 inputQue2.FreeTensor(maskUb);

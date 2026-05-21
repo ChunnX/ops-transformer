@@ -29,7 +29,6 @@
 #include "../vector_common.h"
 #include "../memory_copy.h"
 #include "../const_def.h"
-#include "attenmask.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -485,10 +484,10 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
             if (maskInfo.sparseMode == fa_base_vector::TREE) {
-                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, true>(
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             } else {
-                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, false>(
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, false>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             }
             AscendC::PipeBarrier<PIPE_V>();
@@ -500,7 +499,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
             attenMaskTmpUb = attenMaskTmpBuff.Get<bool>(); // 后续改成attenMaskTmpBuff，加上pingpong
             maskUb = inputBuff2.Get<bool>();
             maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-            AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+            fa_base_vector::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q>(
                 maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
