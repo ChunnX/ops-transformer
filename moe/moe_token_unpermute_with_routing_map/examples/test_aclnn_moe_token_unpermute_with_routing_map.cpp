@@ -69,6 +69,66 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 
+template <typename T>
+int CopyDeviceToHost(void* deviceAddr, std::vector<T>& hostData, const char* name) {
+    auto size = hostData.size() * sizeof(T);
+    if (size == 0) {
+        return ACL_SUCCESS;
+    }
+    auto ret = aclrtMemcpy(hostData.data(), size, deviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy %s from device to host failed. ERROR: %d\n", name, ret); return ret);
+    return ACL_SUCCESS;
+}
+
+int RunMoeTokenUnpermute(aclTensor* permutedTokens, aclTensor* sortedIndices, aclTensor* routingMapOptional,
+                         aclTensor* probs, bool padMode, aclIntArray* restoreShapeOptional,
+                         aclTensor* unpermutedTokens, aclTensor* outIndex, aclTensor* permuteTokenId,
+                         aclTensor* permuteProbs, aclrtStream stream) {
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
+        permutedTokens, sortedIndices, routingMapOptional, probs, padMode, restoreShapeOptional,
+        unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
+
+    void* workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+
+    ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
+    if (ret != ACL_SUCCESS) {
+        if (workspaceAddr != nullptr) {
+            aclrtFree(workspaceAddr);
+        }
+        LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret);
+        return ret;
+    }
+
+    ret = aclrtSynchronizeStream(stream);
+    if (workspaceAddr != nullptr) {
+        aclrtFree(workspaceAddr);
+    }
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    return ACL_SUCCESS;
+}
+
+bool CheckFloatResult(const char* name, const std::vector<float>& actual, const std::vector<float>& expected) {
+    bool pass = actual.size() == expected.size();
+    constexpr float tolerance = 1e-3f;
+    for (size_t i = 0; i < actual.size() && i < expected.size(); ++i) {
+        float diff = std::fabs(actual[i] - expected[i]);
+        LOG_PRINT("%s[%zu] is: %f, expected: %f\n", name, i, actual[i], expected[i]);
+        if (diff > tolerance) {
+            pass = false;
+        }
+    }
+    return pass;
+}
+
 int RunOriginalPadModeExample(int32_t deviceId) {
     LOG_PRINT("Run original paddedMode=true example.\n");
 
@@ -133,31 +193,15 @@ int RunOriginalPadModeExample(int32_t deviceId) {
     ret = CreateAclTensor(permuteProbsHostData, permuteProbsShape, &permuteProbsDeviceAddr, aclDataType::ACL_FLOAT, &permuteProbs);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(permutedTokens, sortedIndices, routingMapOptional, probs,
-                                                               padMode, restoreShapeOptional, unpermutedTokens,
-                                                               outIndex, permuteTokenId, permuteProbs,
-                                                               &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-
-    void* workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-    ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret); return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    ret = RunMoeTokenUnpermute(permutedTokens, sortedIndices, routingMapOptional, probs, padMode,
+                               restoreShapeOptional, unpermutedTokens, outIndex, permuteTokenId,
+                               permuteProbs, stream);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     auto unpermutedTokensSize = GetShapeSize(unpermutedTokensShape);
     std::vector<float> unpermutedTokensData(unpermutedTokensSize, 0);
-    ret = aclrtMemcpy(unpermutedTokensData.data(), unpermutedTokensData.size() * sizeof(unpermutedTokensData[0]),
-                      unpermutedTokensDeviceAddr, unpermutedTokensSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+    ret = CopyDeviceToHost(unpermutedTokensDeviceAddr, unpermutedTokensData, "unpermutedTokens");
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     for (int64_t i = 0; i < unpermutedTokensSize; i++) {
         LOG_PRINT("original unpermutedTokensData[%ld] is: %f\n", i, unpermutedTokensData[i]);
     }
@@ -180,150 +224,10 @@ int RunOriginalPadModeExample(int32_t deviceId) {
     aclrtFree(outIndexDeviceAddr);
     aclrtFree(permuteTokenIdDeviceAddr);
     aclrtFree(permuteProbsDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
     return 0;
-}
-
-int RunMinusOneNotPadExample(int32_t deviceId) {
-    LOG_PRINT("Run paddedMode=false minus-one example.\n");
-
-    aclrtStream stream;
-    auto ret = Init(deviceId, &stream);
-    CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-
-    std::vector<int64_t> permutedTokensShape = {6, 4};
-    std::vector<int64_t> sortedIndicesShape = {6};
-    std::vector<int64_t> unpermutedTokensShape = {3, 4};
-    std::vector<int64_t> outIndexShape = {6};
-    std::vector<int64_t> permuteTokenIdShape = {6};
-    std::vector<int64_t> permuteProbsShape = {0};
-
-    void* permutedTokensDeviceAddr = nullptr;
-    void* sortedIndicesDeviceAddr = nullptr;
-    void* unpermutedTokensDeviceAddr = nullptr;
-    void* outIndexDeviceAddr = nullptr;
-    void* permuteTokenIdDeviceAddr = nullptr;
-    void* permuteProbsDeviceAddr = nullptr;
-
-    aclTensor* permutedTokens = nullptr;
-    aclTensor* sortedIndices = nullptr;
-    aclTensor* routingMapOptional = nullptr;
-    aclTensor* probs = nullptr;
-    aclTensor* unpermutedTokens = nullptr;
-    aclTensor* outIndex = nullptr;
-    aclTensor* permuteTokenId = nullptr;
-    aclTensor* permuteProbs = nullptr;
-
-    bool padMode = false;
-    std::vector<int64_t> restoreShapeOptionalData = {3, 4};
-    aclIntArray* restoreShapeOptional = aclCreateIntArray(restoreShapeOptionalData.data(), restoreShapeOptionalData.size());
-
-    std::vector<float> permutedTokensHostData = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        10.0f, 20.0f, 30.0f, 40.0f,
-        100.0f, 200.0f, 300.0f, 400.0f,
-        1000.0f, 2000.0f, 3000.0f, 4000.0f,
-        10000.0f, 20000.0f, 30000.0f, 40000.0f,
-        100000.0f, 200000.0f, 300000.0f, 400000.0f,
-    };
-    std::vector<int> sortedIndicesHostData = {0, -1, 1, 2, -1, -1};
-    std::vector<float> unpermutedTokensHostData(GetShapeSize(unpermutedTokensShape), 0.0f);
-    std::vector<int> outIndexHostData(GetShapeSize(outIndexShape), 0);
-    std::vector<int> permuteTokenIdHostData(GetShapeSize(permuteTokenIdShape), 0);
-    std::vector<float> permuteProbsHostData(GetShapeSize(permuteProbsShape), 0.0f);
-
-    ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape, &permutedTokensDeviceAddr,
-                          aclDataType::ACL_FLOAT, &permutedTokens);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(sortedIndicesHostData, sortedIndicesShape, &sortedIndicesDeviceAddr,
-                          aclDataType::ACL_INT32, &sortedIndices);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(unpermutedTokensHostData, unpermutedTokensShape, &unpermutedTokensDeviceAddr,
-                          aclDataType::ACL_FLOAT, &unpermutedTokens);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(outIndexHostData, outIndexShape, &outIndexDeviceAddr,
-                          aclDataType::ACL_INT32, &outIndex);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(permuteTokenIdHostData, permuteTokenIdShape, &permuteTokenIdDeviceAddr,
-                          aclDataType::ACL_INT32, &permuteTokenId);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(permuteProbsHostData, permuteProbsShape, &permuteProbsDeviceAddr,
-                          aclDataType::ACL_FLOAT, &permuteProbs);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
-        permutedTokens, sortedIndices, routingMapOptional, probs, padMode, restoreShapeOptional,
-        unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-
-    void* workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-    ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret);
-              return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-    auto unpermutedTokensSize = GetShapeSize(unpermutedTokensShape);
-    std::vector<float> unpermutedTokensData(unpermutedTokensSize, 0.0f);
-    ret = aclrtMemcpy(unpermutedTokensData.data(), unpermutedTokensData.size() * sizeof(float),
-                      unpermutedTokensDeviceAddr, unpermutedTokensSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-
-    std::vector<float> expected = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        110.0f, 220.0f, 330.0f, 440.0f,
-        0.0f, 0.0f, 0.0f, 0.0f,
-    };
-
-    bool pass = true;
-    constexpr float tolerance = 1e-3f;
-    for (int64_t i = 0; i < unpermutedTokensSize; ++i) {
-        float diff = std::fabs(unpermutedTokensData[i] - expected[i]);
-        LOG_PRINT("minus-one unpermutedTokensData[%ld] is: %f, expected: %f\n",
-                  i, unpermutedTokensData[i], expected[i]);
-        if (diff > tolerance) {
-            pass = false;
-        }
-    }
-    LOG_PRINT("minus one not-pad test %s\n", pass ? "PASSED" : "FAILED");
-
-    aclDestroyTensor(permutedTokens);
-    aclDestroyTensor(sortedIndices);
-    aclDestroyTensor(unpermutedTokens);
-    aclDestroyTensor(outIndex);
-    aclDestroyTensor(permuteTokenId);
-    aclDestroyTensor(permuteProbs);
-    aclDestroyIntArray(restoreShapeOptional);
-
-    aclrtFree(permutedTokensDeviceAddr);
-    aclrtFree(sortedIndicesDeviceAddr);
-    aclrtFree(unpermutedTokensDeviceAddr);
-    aclrtFree(outIndexDeviceAddr);
-    aclrtFree(permuteTokenIdDeviceAddr);
-    aclrtFree(permuteProbsDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    aclrtDestroyStream(stream);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-    return pass ? 0 : 1;
 }
 
 int RunNotPadNoMinusOneRegressionExample(int32_t deviceId) {
@@ -391,50 +295,22 @@ int RunNotPadNoMinusOneRegressionExample(int32_t deviceId) {
                           aclDataType::ACL_FLOAT, &permuteProbs);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
-        permutedTokens, sortedIndices, routingMapOptional, probs, padMode, restoreShapeOptional,
-        unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-
-    void* workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-    ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret);
-              return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    ret = RunMoeTokenUnpermute(permutedTokens, sortedIndices, routingMapOptional, probs, padMode,
+                               restoreShapeOptional, unpermutedTokens, outIndex, permuteTokenId,
+                               permuteProbs, stream);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     auto unpermutedTokensSize = GetShapeSize(unpermutedTokensShape);
     std::vector<float> unpermutedTokensData(unpermutedTokensSize, 0.0f);
-    ret = aclrtMemcpy(unpermutedTokensData.data(), unpermutedTokensData.size() * sizeof(float),
-                      unpermutedTokensDeviceAddr, unpermutedTokensSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+    ret = CopyDeviceToHost(unpermutedTokensDeviceAddr, unpermutedTokensData, "unpermutedTokens");
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     std::vector<float> expected = {
         11.0f, 22.0f, 33.0f, 44.0f,
         1100.0f, 2200.0f, 3300.0f, 4400.0f,
     };
 
-    bool pass = true;
-    constexpr float tolerance = 1e-3f;
-    for (int64_t i = 0; i < unpermutedTokensSize; ++i) {
-        float diff = std::fabs(unpermutedTokensData[i] - expected[i]);
-        LOG_PRINT("no-minus-one unpermutedTokensData[%ld] is: %f, expected: %f\n",
-                  i, unpermutedTokensData[i], expected[i]);
-        if (diff > tolerance) {
-            pass = false;
-        }
-    }
+    bool pass = CheckFloatResult("no-minus-one unpermutedTokensData", unpermutedTokensData, expected);
     LOG_PRINT("not-pad no-minus-one regression test %s\n", pass ? "PASSED" : "FAILED");
 
     aclDestroyTensor(permutedTokens);
@@ -451,143 +327,6 @@ int RunNotPadNoMinusOneRegressionExample(int32_t deviceId) {
     aclrtFree(outIndexDeviceAddr);
     aclrtFree(permuteTokenIdDeviceAddr);
     aclrtFree(permuteProbsDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    aclrtDestroyStream(stream);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-    return pass ? 0 : 1;
-}
-
-int RunMinusOneFirstSlotExample(int32_t deviceId) {
-    LOG_PRINT("Run paddedMode=false first-slot-minus-one example.\n");
-
-    aclrtStream stream;
-    auto ret = Init(deviceId, &stream);
-    CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-
-    std::vector<int64_t> permutedTokensShape = {4, 4};
-    std::vector<int64_t> sortedIndicesShape = {4};
-    std::vector<int64_t> unpermutedTokensShape = {2, 4};
-    std::vector<int64_t> outIndexShape = {4};
-    std::vector<int64_t> permuteTokenIdShape = {4};
-    std::vector<int64_t> permuteProbsShape = {0};
-
-    void* permutedTokensDeviceAddr = nullptr;
-    void* sortedIndicesDeviceAddr = nullptr;
-    void* unpermutedTokensDeviceAddr = nullptr;
-    void* outIndexDeviceAddr = nullptr;
-    void* permuteTokenIdDeviceAddr = nullptr;
-    void* permuteProbsDeviceAddr = nullptr;
-
-    aclTensor* permutedTokens = nullptr;
-    aclTensor* sortedIndices = nullptr;
-    aclTensor* routingMapOptional = nullptr;
-    aclTensor* probs = nullptr;
-    aclTensor* unpermutedTokens = nullptr;
-    aclTensor* outIndex = nullptr;
-    aclTensor* permuteTokenId = nullptr;
-    aclTensor* permuteProbs = nullptr;
-
-    bool padMode = false;
-    std::vector<int64_t> restoreShapeOptionalData = {2, 4};
-    aclIntArray* restoreShapeOptional = aclCreateIntArray(restoreShapeOptionalData.data(), restoreShapeOptionalData.size());
-
-    std::vector<float> permutedTokensHostData = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        10.0f, 20.0f, 30.0f, 40.0f,
-        100.0f, 200.0f, 300.0f, 400.0f,
-        1000.0f, 2000.0f, 3000.0f, 4000.0f,
-    };
-    std::vector<int> sortedIndicesHostData = {-1, 0, 1, -1};
-    std::vector<float> unpermutedTokensHostData(GetShapeSize(unpermutedTokensShape), 0.0f);
-    std::vector<int> outIndexHostData(GetShapeSize(outIndexShape), 0);
-    std::vector<int> permuteTokenIdHostData(GetShapeSize(permuteTokenIdShape), 0);
-    std::vector<float> permuteProbsHostData(GetShapeSize(permuteProbsShape), 0.0f);
-
-    ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape, &permutedTokensDeviceAddr,
-                          aclDataType::ACL_FLOAT, &permutedTokens);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(sortedIndicesHostData, sortedIndicesShape, &sortedIndicesDeviceAddr,
-                          aclDataType::ACL_INT32, &sortedIndices);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(unpermutedTokensHostData, unpermutedTokensShape, &unpermutedTokensDeviceAddr,
-                          aclDataType::ACL_FLOAT, &unpermutedTokens);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(outIndexHostData, outIndexShape, &outIndexDeviceAddr,
-                          aclDataType::ACL_INT32, &outIndex);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(permuteTokenIdHostData, permuteTokenIdShape, &permuteTokenIdDeviceAddr,
-                          aclDataType::ACL_INT32, &permuteTokenId);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(permuteProbsHostData, permuteProbsShape, &permuteProbsDeviceAddr,
-                          aclDataType::ACL_FLOAT, &permuteProbs);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
-        permutedTokens, sortedIndices, routingMapOptional, probs, padMode, restoreShapeOptional,
-        unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-
-    void* workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-    ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret);
-              return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-    auto unpermutedTokensSize = GetShapeSize(unpermutedTokensShape);
-    std::vector<float> unpermutedTokensData(unpermutedTokensSize, 0.0f);
-    ret = aclrtMemcpy(unpermutedTokensData.data(), unpermutedTokensData.size() * sizeof(float),
-                      unpermutedTokensDeviceAddr, unpermutedTokensSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-
-    std::vector<float> expected = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        10.0f, 20.0f, 30.0f, 40.0f,
-    };
-
-    bool pass = true;
-    constexpr float tolerance = 1e-3f;
-    for (int64_t i = 0; i < unpermutedTokensSize; ++i) {
-        float diff = std::fabs(unpermutedTokensData[i] - expected[i]);
-        LOG_PRINT("first-slot-minus-one unpermutedTokensData[%ld] is: %f, expected: %f\n",
-                  i, unpermutedTokensData[i], expected[i]);
-        if (diff > tolerance) {
-            pass = false;
-        }
-    }
-    LOG_PRINT("first-slot-minus-one test %s\n", pass ? "PASSED" : "FAILED");
-
-    aclDestroyTensor(permutedTokens);
-    aclDestroyTensor(sortedIndices);
-    aclDestroyTensor(unpermutedTokens);
-    aclDestroyTensor(outIndex);
-    aclDestroyTensor(permuteTokenId);
-    aclDestroyTensor(permuteProbs);
-    aclDestroyIntArray(restoreShapeOptional);
-
-    aclrtFree(permutedTokensDeviceAddr);
-    aclrtFree(sortedIndicesDeviceAddr);
-    aclrtFree(unpermutedTokensDeviceAddr);
-    aclrtFree(outIndexDeviceAddr);
-    aclrtFree(permuteTokenIdDeviceAddr);
-    aclrtFree(permuteProbsDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
@@ -675,41 +414,20 @@ int RunMinusOneWithAlignedProbsExample(int32_t deviceId) {
                           aclDataType::ACL_FLOAT, &permuteProbs);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
-        permutedTokens, sortedIndices, routingMapOptional, probs, padMode, restoreShapeOptional,
-        unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-
-    void* workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-    ret = aclnnMoeTokenUnpermuteWithRoutingMap(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMap failed. ERROR: %d\n", ret);
-              return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    ret = RunMoeTokenUnpermute(permutedTokens, sortedIndices, routingMapOptional, probs, padMode,
+                               restoreShapeOptional, unpermutedTokens, outIndex, permuteTokenId,
+                               permuteProbs, stream);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     auto unpermutedTokensSize = GetShapeSize(unpermutedTokensShape);
     std::vector<float> unpermutedTokensData(unpermutedTokensSize, 0.0f);
-    ret = aclrtMemcpy(unpermutedTokensData.data(), unpermutedTokensData.size() * sizeof(float),
-                      unpermutedTokensDeviceAddr, unpermutedTokensSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy unpermutedTokens from device to host failed. ERROR: %d\n", ret); return ret);
+    ret = CopyDeviceToHost(unpermutedTokensDeviceAddr, unpermutedTokensData, "unpermutedTokens");
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     auto permuteProbsSize = GetShapeSize(permuteProbsShape);
     std::vector<float> permuteProbsData(permuteProbsSize, 0.0f);
-    ret = aclrtMemcpy(permuteProbsData.data(), permuteProbsData.size() * sizeof(float),
-                      permuteProbsDeviceAddr, permuteProbsSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy permuteProbs from device to host failed. ERROR: %d\n", ret); return ret);
+    ret = CopyDeviceToHost(permuteProbsDeviceAddr, permuteProbsData, "permuteProbs");
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     std::vector<float> expectedTokens = {
         1.0f, 2.0f, 3.0f, 4.0f,
@@ -717,24 +435,8 @@ int RunMinusOneWithAlignedProbsExample(int32_t deviceId) {
     };
     std::vector<float> expectedPermuteProbs = {0.5f, 0.0f, 0.25f, 0.75f};
 
-    bool pass = true;
-    constexpr float tolerance = 1e-3f;
-    for (int64_t i = 0; i < unpermutedTokensSize; ++i) {
-        float diff = std::fabs(unpermutedTokensData[i] - expectedTokens[i]);
-        LOG_PRINT("minus-one-probs unpermutedTokensData[%ld] is: %f, expected: %f\n",
-                  i, unpermutedTokensData[i], expectedTokens[i]);
-        if (diff > tolerance) {
-            pass = false;
-        }
-    }
-    for (int64_t i = 0; i < permuteProbsSize; ++i) {
-        float diff = std::fabs(permuteProbsData[i] - expectedPermuteProbs[i]);
-        LOG_PRINT("minus-one-probs permuteProbsData[%ld] is: %f, expected: %f\n",
-                  i, permuteProbsData[i], expectedPermuteProbs[i]);
-        if (diff > tolerance) {
-            pass = false;
-        }
-    }
+    bool pass = CheckFloatResult("minus-one-probs unpermutedTokensData", unpermutedTokensData, expectedTokens);
+    pass = CheckFloatResult("minus-one-probs permuteProbsData", permuteProbsData, expectedPermuteProbs) && pass;
     LOG_PRINT("minus-one aligned-probs test %s\n", pass ? "PASSED" : "FAILED");
 
     aclDestroyTensor(permutedTokens);
@@ -755,9 +457,6 @@ int RunMinusOneWithAlignedProbsExample(int32_t deviceId) {
     aclrtFree(outIndexDeviceAddr);
     aclrtFree(permuteTokenIdDeviceAddr);
     aclrtFree(permuteProbsDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
@@ -770,13 +469,7 @@ int main() {
     auto ret = RunOriginalPadModeExample(deviceId);
     CHECK_RET(ret == 0, return ret);
 
-    ret = RunMinusOneNotPadExample(deviceId);
-    CHECK_RET(ret == 0, return ret);
-
     ret = RunNotPadNoMinusOneRegressionExample(deviceId);
-    CHECK_RET(ret == 0, return ret);
-
-    ret = RunMinusOneFirstSlotExample(deviceId);
     CHECK_RET(ret == 0, return ret);
 
     ret = RunMinusOneWithAlignedProbsExample(deviceId);
