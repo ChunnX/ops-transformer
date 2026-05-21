@@ -5,10 +5,10 @@ common/3rd 目录检测模块
 可作为独立脚本运行，用于检测 common/3rd 目录下的变更文件。
 
 使用方法：
-    修改脚本顶部的 INPUT_FILE、MC2_DIR、DEPENDENCY_JSON、OUTPUT_FILE、LOG_FILE 变量
-    然后直接运行: python op_filters/op_common_3rd_step4.py
+    python op_filters/op_step4_common_3rd.py [--input INPUT] [--mc2 MC2_DIR] [--dependency-json JSON] [--output OUTPUT] [--special-3rd-ops FILE] [--special-common-ops FILE] [--log LOG]
 """
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -18,13 +18,13 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
-INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-MC2_DIR = str(PROJECT_DIR / "mc2")
-DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
-OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-SPECIAL_3RD_OPS_FILE = str(WORK_DIR / "special_3rd_ops.txt")
-SPECIAL_COMMON_OPS_FILE = str(WORK_DIR / "special_common_ops.txt")
-LOG_FILE = str(WORK_DIR / "step4.log")
+DEFAULT_INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_MC2_DIR = str(PROJECT_DIR / "mc2")
+DEFAULT_DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
+DEFAULT_OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_SPECIAL_3RD_OPS_FILE = str(WORK_DIR / "special_3rd_ops.txt")
+DEFAULT_SPECIAL_COMMON_OPS_FILE = str(WORK_DIR / "special_common_ops.txt")
+DEFAULT_LOG_FILE = str(WORK_DIR / "step4.log")
 
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -430,8 +430,70 @@ def main() -> int:
     """
     common/3rd 目录检测独立执行入口。
     """
-    if LOG_FILE:
-        logger = setup_logging(LOG_FILE)
+    parser = argparse.ArgumentParser(
+        description="common/3rd 目录检测模块 - 检测 common/3rd 目录下的变更文件",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+默认参数值:
+  --input               {DEFAULT_INPUT_FILE}
+  --mc2                 {DEFAULT_MC2_DIR}
+  --dependency-json     {DEFAULT_DEPENDENCY_JSON}
+  --output              {DEFAULT_OUTPUT_FILE}
+  --special-3rd-ops     {DEFAULT_SPECIAL_3RD_OPS_FILE}
+  --special-common-ops  {DEFAULT_SPECIAL_COMMON_OPS_FILE}
+  --log                 {DEFAULT_LOG_FILE}
+
+示例:
+  # 使用默认参数
+  python op_filters/op_step4_common_3rd.py
+  
+  # 自定义输入文件
+  python op_filters/op_step4_common_3rd.py --input my_files.txt
+  
+  # 自定义所有参数
+  python op_filters/op_step4_common_3rd.py --input input.txt --mc2 /path/to/mc2 --dependency-json deps.json --output output.txt --log step4.log
+        """
+    )
+    parser.add_argument(
+        "--input",
+        default=DEFAULT_INPUT_FILE,
+        help=f"输入文件路径 (默认: {DEFAULT_INPUT_FILE})"
+    )
+    parser.add_argument(
+        "--mc2",
+        default=DEFAULT_MC2_DIR,
+        help=f"mc2 目录路径 (默认: {DEFAULT_MC2_DIR})"
+    )
+    parser.add_argument(
+        "--dependency-json",
+        default=DEFAULT_DEPENDENCY_JSON,
+        help=f"依赖关系 JSON 文件路径 (默认: {DEFAULT_DEPENDENCY_JSON})"
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_FILE,
+        help=f"输出文件路径 (默认: {DEFAULT_OUTPUT_FILE})"
+    )
+    parser.add_argument(
+        "--special-3rd-ops",
+        default=DEFAULT_SPECIAL_3RD_OPS_FILE,
+        help=f"特殊 3rd 算子输出文件路径 (默认: {DEFAULT_SPECIAL_3RD_OPS_FILE})"
+    )
+    parser.add_argument(
+        "--special-common-ops",
+        default=DEFAULT_SPECIAL_COMMON_OPS_FILE,
+        help=f"特殊 common 算子输出文件路径 (默认: {DEFAULT_SPECIAL_COMMON_OPS_FILE})"
+    )
+    parser.add_argument(
+        "--log",
+        default=DEFAULT_LOG_FILE,
+        help=f"日志文件路径 (默认: {DEFAULT_LOG_FILE})"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.log:
+        logger = setup_logging(args.log)
     else:
         logger = logging.getLogger("common_3rd_filter")
         logger.setLevel(logging.INFO)
@@ -440,51 +502,51 @@ def main() -> int:
         logger.addHandler(handler)
     
     try:
-        logger.info(f"输入文件: {INPUT_FILE}")
-        logger.info(f"mc2 目录: {MC2_DIR}")
-        logger.info(f"依赖关系文件: {DEPENDENCY_JSON}")
-        logger.info(f"输出文件: {OUTPUT_FILE}")
-        logger.info(f"特殊 3rd 算子输出文件: {SPECIAL_3RD_OPS_FILE}")
-        logger.info(f"特殊 common 算子输出文件: {SPECIAL_COMMON_OPS_FILE}")
+        logger.info(f"输入文件: {args.input}")
+        logger.info(f"mc2 目录: {args.mc2}")
+        logger.info(f"依赖关系文件: {args.dependency_json}")
+        logger.info(f"输出文件: {args.output}")
+        logger.info(f"特殊 3rd 算子输出文件: {args.special_3rd_ops}")
+        logger.info(f"特殊 common 算子输出文件: {args.special_common_ops}")
         
-        input_files = read_file_lines(INPUT_FILE, logger)
-        dependency_data = load_dependency_json(DEPENDENCY_JSON, logger)
+        input_files = read_file_lines(args.input, logger)
+        dependency_data = load_dependency_json(args.dependency_json, logger)
         
         logger.info(f"读取到 {len(input_files)} 个输入文件")
         
-        result = filter_common_3rd(input_files, MC2_DIR, dependency_data, logger)
+        result = filter_common_3rd(input_files, args.mc2, dependency_data, logger)
         
         output_files = result["other_files"]
-        if OUTPUT_FILE:
-            output_dir = Path(OUTPUT_FILE).parent
+        if args.output:
+            output_dir = Path(args.output).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 for file_path in output_files:
                     f.write(file_path + "\n")
-            logger.info(f"结果已写入: {OUTPUT_FILE}")
+            logger.info(f"结果已写入: {args.output}")
         else:
             print("非 common/3rd 目录下的文件列表:")
             for file_path in output_files:
                 print(file_path)
         
-        if SPECIAL_3RD_OPS_FILE and result["special_3rd_ops"]:
-            output_dir = Path(SPECIAL_3RD_OPS_FILE).parent
+        if args.special_3rd_ops and result["special_3rd_ops"]:
+            output_dir = Path(args.special_3rd_ops).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(SPECIAL_3RD_OPS_FILE, "w", encoding="utf-8") as f:
+            with open(args.special_3rd_ops, "w", encoding="utf-8") as f:
                 for op_name in sorted(result["special_3rd_ops"]):
                     f.write(op_name + "\n")
-            logger.info(f"特殊 3rd 算子已写入: {SPECIAL_3RD_OPS_FILE}")
+            logger.info(f"特殊 3rd 算子已写入: {args.special_3rd_ops}")
         
-        if SPECIAL_COMMON_OPS_FILE and result["special_common_ops"]:
-            output_dir = Path(SPECIAL_COMMON_OPS_FILE).parent
+        if args.special_common_ops and result["special_common_ops"]:
+            output_dir = Path(args.special_common_ops).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(SPECIAL_COMMON_OPS_FILE, "w", encoding="utf-8") as f:
+            with open(args.special_common_ops, "w", encoding="utf-8") as f:
                 for op_name in sorted(result["special_common_ops"]):
                     f.write(op_name + "\n")
-            logger.info(f"特殊 common 算子已写入: {SPECIAL_COMMON_OPS_FILE}")
+            logger.info(f"特殊 common 算子已写入: {args.special_common_ops}")
         
         print(f"\n其他 common 文件: {len(result['other_common_files'])} 个")
         print(f"特殊 common 文件: {len(result['special_common_files'])} 个")

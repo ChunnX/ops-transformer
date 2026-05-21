@@ -46,24 +46,24 @@ WORK_DIR = Path.cwd()
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from op_filters.utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
-    from op_filters.op_whitelist_step1 import filter_whitelist
-    from op_filters.op_ignored_step2 import filter_ignored
-    from op_filters.op_non_mc2_step3 import filter_non_mc2
-    from op_filters.op_common_3rd_step4 import filter_common_3rd
-    from op_filters.op_extractor_step5 import extract_operators, filter_ops_by_soc
-    from op_filters.op_dependency_step6 import build_reverse_dependency_graph, find_dependent_ops
-    from op_filters.op_output_step7 import write_output_json, get_all_ops_with_products, get_ops_info_by_names
-    from op_filters.mc2_analyzer import analyze_mc2_and_generate_json
+    from op_filters.op_step1_whitelist import filter_whitelist
+    from op_filters.op_step2_ignored import filter_ignored
+    from op_filters.op_step3_non_mc2 import filter_non_mc2
+    from op_filters.op_step4_common_3rd import filter_common_3rd
+    from op_filters.op_step5_extractor import extract_operators, filter_ops_by_soc
+    from op_filters.op_step6_dependency import build_reverse_dependency_graph, find_dependent_ops
+    from op_filters.op_step7_output import write_output_json, get_all_ops_with_products, get_ops_info_by_names, adjust_supported_products_by_arch, write_soc_json
+    from op_filters.op_step0_mc2_analyzer import analyze_mc2_and_generate_json
 else:
     from .utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
-    from .op_whitelist_step1 import filter_whitelist
-    from .op_ignored_step2 import filter_ignored
-    from .op_non_mc2_step3 import filter_non_mc2
-    from .op_common_3rd_step4 import filter_common_3rd
-    from .op_extractor_step5 import extract_operators, filter_ops_by_soc
-    from .op_dependency_step6 import build_reverse_dependency_graph, find_dependent_ops
-    from .op_output_step7 import write_output_json, get_all_ops_with_products, get_ops_info_by_names
-    from .mc2_analyzer import analyze_mc2_and_generate_json
+    from .op_step1_whitelist import filter_whitelist
+    from .op_step2_ignored import filter_ignored
+    from .op_step3_non_mc2 import filter_non_mc2
+    from .op_step4_common_3rd import filter_common_3rd
+    from .op_step5_extractor import extract_operators, filter_ops_by_soc
+    from .op_step6_dependency import build_reverse_dependency_graph, find_dependent_ops
+    from .op_step7_output import write_output_json, get_all_ops_with_products, get_ops_info_by_names, adjust_supported_products_by_arch, write_soc_json
+    from .op_step0_mc2_analyzer import analyze_mc2_and_generate_json
 
 
 DEFAULT_WHITELIST = str(SCRIPT_DIR / "whitelist.txt")
@@ -204,10 +204,12 @@ def main() -> int:
         non_mc2_result = filter_non_mc2(remaining_files, mc2_path, dependency_data, logger)
         if non_mc2_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
-            if soc_types:
-                all_ops = [op for op in all_ops if set(op.get("supported_products", [])) & soc_types]
-                logger.info(f"全量测试根据 SOC 类型过滤后: {len(all_ops)} 个算子")
+            all_ops = adjust_supported_products_by_arch(all_ops, {}, soc_types, logger)
             write_output_json(all_ops, args.output_json, logger)
+            if soc_types:
+                soc_name = sorted(soc_types)[0]
+                output_dir = str(Path(args.output_json).parent)
+                write_soc_json(all_ops, soc_name, output_dir, logger)
             logger.info("=" * 60)
             logger.info("处理完成（全量测试模式）")
             logger.info("=" * 60)
@@ -216,10 +218,12 @@ def main() -> int:
         common_3rd_result = filter_common_3rd(remaining_files, mc2_path, dependency_data, logger)
         if common_3rd_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
-            if soc_types:
-                all_ops = [op for op in all_ops if set(op.get("supported_products", [])) & soc_types]
-                logger.info(f"全量测试根据 SOC 类型过滤后: {len(all_ops)} 个算子")
+            all_ops = adjust_supported_products_by_arch(all_ops, {}, soc_types, logger)
             write_output_json(all_ops, args.output_json, logger)
+            if soc_types:
+                soc_name = sorted(soc_types)[0]
+                output_dir = str(Path(args.output_json).parent)
+                write_soc_json(all_ops, soc_name, output_dir, logger)
             logger.info("=" * 60)
             logger.info("处理完成（全量测试模式）")
             logger.info("=" * 60)
@@ -270,22 +274,7 @@ def main() -> int:
         logger.info("生成最终算子列表")
         final_ops = get_ops_info_by_names(ops_to_run, dependency_data, logger)
         
-        if soc_types:
-            logger.info("=" * 60)
-            logger.info(f"根据 SOC 类型 {sorted(soc_types)} 过滤最终算子列表")
-            filtered_final_ops = []
-            for op_info in final_ops:
-                supported_products = set(op_info.get("supported_products", []))
-                if supported_products & soc_types:
-                    op_info_copy = {
-                        "op_name": op_info["op_name"],
-                        "supported_products": sorted([p for p in op_info.get("supported_products", []) if p in soc_types])
-                    }
-                    filtered_final_ops.append(op_info_copy)
-                else:
-                    logger.info(f"  算子 {op_info['op_name']} 支持的产品 {supported_products} 不包含 {soc_types}，已过滤")
-            final_ops = filtered_final_ops
-            logger.info(f"SOC 类型过滤后剩余 {len(final_ops)} 个算子")
+        final_ops = adjust_supported_products_by_arch(final_ops, op_arch_restrictions, soc_types, logger)
         
         logger.info(f"最终需要测试的算子数量: {len(final_ops)}")
         for op_info in final_ops:
@@ -295,6 +284,10 @@ def main() -> int:
             )
         
         write_output_json(final_ops, args.output_json, logger)
+        if soc_types:
+            soc_name = sorted(soc_types)[0]
+            output_dir = str(Path(args.output_json).parent)
+            write_soc_json(final_ops, soc_name, output_dir, logger)
         
         logger.info("=" * 60)
         logger.info("处理完成")

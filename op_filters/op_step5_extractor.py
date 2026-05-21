@@ -5,11 +5,15 @@
 可作为独立脚本运行，用于从文件路径中提取算子名称。
 
 使用方法：
-    修改脚本顶部的 INPUT_FILE、OUTPUT_FILE、LOG_FILE、SOC_TYPES 变量
-    然后直接运行: python op_filters/operator_extractor.py
+    python op_filters/op_step5_extractor.py [--input INPUT] [--output OUTPUT] [--arch-restrictions ARCH_JSON] [--log LOG] [--soc SOC_TYPES]
+    
+    输出:
+      --output: 算子名称列表文件
+      --arch-restrictions: arch 限制信息 JSON 文件 (供 step7 使用)
 """
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -20,7 +24,8 @@ PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCR
 WORK_DIR = Path.cwd()
 
 INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-OUTPUT_FILE = str(WORK_DIR / "operators.txt")
+OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+ARCH_RESTRICTIONS_FILE = str(WORK_DIR / "arch_restrictions.json")
 LOG_FILE = str(WORK_DIR / "step5.log")
 
 ARCH22_SUPPORTED_PRODUCTS = {"ascend910b", "ascend910_93"}
@@ -231,16 +236,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="从变更文件列表中提取算子名称",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
+默认参数值:
+  --input            {INPUT_FILE}
+  --output           {OUTPUT_FILE}
+  --arch-restrictions {ARCH_RESTRICTIONS_FILE}
+  --log              {LOG_FILE}
+
 示例:
   # 使用默认参数
-  python op_extractor_step5.py
+  python op_filters/op_step5_extractor.py
 
   # 指定 SOC 类型过滤
-  python op_extractor_step5.py --soc ascend910b ascend910_93
+  python op_filters/op_step5_extractor.py --soc ascend910b ascend910_93
 
   # 自定义输入输出文件
-  python op_extractor_step5.py --input custom_input.txt --output custom_output.txt
+  python op_filters/op_step5_extractor.py --input custom_input.txt --output custom_output.txt
         """
     )
     parser.add_argument(
@@ -252,6 +263,11 @@ def main() -> int:
         "--output",
         default=OUTPUT_FILE,
         help=f"输出文件路径 (默认: {OUTPUT_FILE})"
+    )
+    parser.add_argument(
+        "--arch-restrictions",
+        default=ARCH_RESTRICTIONS_FILE,
+        help=f"arch 限制信息输出文件路径 (默认: {ARCH_RESTRICTIONS_FILE})"
     )
     parser.add_argument(
         "--log",
@@ -310,6 +326,14 @@ def main() -> int:
                 for op_name in sorted(filtered_ops):
                     f.write(op_name + "\n")
             logger.info(f"结果已写入: {args.output}")
+        
+        if args.arch_restrictions and result["op_arch_restrictions"]:
+            arch_output_dir = Path(args.arch_restrictions).parent
+            if arch_output_dir and not arch_output_dir.exists():
+                arch_output_dir.mkdir(parents=True, exist_ok=True)
+            with open(args.arch_restrictions, "w", encoding="utf-8") as f:
+                json.dump(result["op_arch_restrictions"], f, ensure_ascii=False, indent=2)
+            logger.info(f"arch 限制信息已写入: {args.arch_restrictions}")
         else:
             print("提取到的算子名称:")
             for op_name in sorted(filtered_ops):

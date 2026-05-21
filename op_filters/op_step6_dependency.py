@@ -5,10 +5,10 @@
 可作为独立脚本运行，用于根据变更的算子查找所有依赖它的算子。
 
 使用方法：
-    修改脚本顶部的 INPUT_FILE、DEPENDENCY_JSON、OUTPUT_FILE、LOG_FILE 变量
-    然后直接运行: python op_filters/dependency_search.py
+    python op_filters/op_step6_dependency.py [--input INPUT] [--dependency-json JSON] [--output OUTPUT] [--log LOG]
 """
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -18,10 +18,10 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
-INPUT_FILE = str(WORK_DIR / "operators.txt")
-DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
-OUTPUT_FILE = str(WORK_DIR / "operators.txt")
-LOG_FILE = str(WORK_DIR / "step6.log")
+DEFAULT_INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
+DEFAULT_OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_LOG_FILE = str(WORK_DIR / "step6.log")
 
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -115,8 +115,52 @@ def main() -> int:
     """
     反向依赖搜索独立执行入口。
     """
-    if LOG_FILE:
-        logger = setup_logging(LOG_FILE)
+    parser = argparse.ArgumentParser(
+        description="反向依赖搜索模块 - 根据变更的算子查找所有依赖它的算子",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+默认参数值:
+  --input           {DEFAULT_INPUT_FILE}
+  --dependency-json {DEFAULT_DEPENDENCY_JSON}
+  --output          {DEFAULT_OUTPUT_FILE}
+  --log             {DEFAULT_LOG_FILE}
+
+示例:
+  # 使用默认参数
+  python op_filters/op_step6_dependency.py
+  
+  # 自定义输入文件
+  python op_filters/op_step6_dependency.py --input my_operators.txt
+  
+  # 自定义所有参数
+  python op_filters/op_step6_dependency.py --input input.txt --dependency-json deps.json --output output.txt --log step6.log
+        """
+    )
+    parser.add_argument(
+        "--input",
+        default=DEFAULT_INPUT_FILE,
+        help=f"输入文件路径 (默认: {DEFAULT_INPUT_FILE})"
+    )
+    parser.add_argument(
+        "--dependency-json",
+        default=DEFAULT_DEPENDENCY_JSON,
+        help=f"依赖关系 JSON 文件路径 (默认: {DEFAULT_DEPENDENCY_JSON})"
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_FILE,
+        help=f"输出文件路径 (默认: {DEFAULT_OUTPUT_FILE})"
+    )
+    parser.add_argument(
+        "--log",
+        default=DEFAULT_LOG_FILE,
+        help=f"日志文件路径 (默认: {DEFAULT_LOG_FILE})"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.log:
+        logger = setup_logging(args.log)
     else:
         logger = logging.getLogger("dependency_search")
         logger.setLevel(logging.INFO)
@@ -125,12 +169,12 @@ def main() -> int:
         logger.addHandler(handler)
     
     try:
-        logger.info(f"输入文件: {INPUT_FILE}")
-        logger.info(f"依赖关系文件: {DEPENDENCY_JSON}")
-        logger.info(f"输出文件: {OUTPUT_FILE}")
+        logger.info(f"输入文件: {args.input}")
+        logger.info(f"依赖关系文件: {args.dependency_json}")
+        logger.info(f"输出文件: {args.output}")
         
-        input_ops = read_file_lines(INPUT_FILE, logger)
-        dependency_data = load_dependency_json(DEPENDENCY_JSON, logger)
+        input_ops = read_file_lines(args.input, logger)
+        dependency_data = load_dependency_json(args.dependency_json, logger)
         
         logger.info(f"读取到 {len(input_ops)} 个变更算子")
         
@@ -140,14 +184,14 @@ def main() -> int:
         
         ops_to_run = find_dependent_ops(changed_ops, reverse_graph, logger)
         
-        if OUTPUT_FILE:
-            output_dir = Path(OUTPUT_FILE).parent
+        if args.output:
+            output_dir = Path(args.output).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 for op_name in sorted(ops_to_run):
                     f.write(op_name + "\n")
-            logger.info(f"结果已写入: {OUTPUT_FILE}")
+            logger.info(f"结果已写入: {args.output}")
         else:
             print("需要测试的算子列表:")
             for op_name in sorted(ops_to_run):

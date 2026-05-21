@@ -300,3 +300,78 @@ def analyze_mc2_and_generate_json(mc2_path: str, output_json: str, logger: loggi
     save_dependency_json(results, output_json, logger)
     
     return results
+
+
+def main() -> int:
+    """
+    独立执行入口，生成依赖关系 JSON 文件。
+    """
+    import argparse
+    
+    SCRIPT_DIR = Path(__file__).parent.resolve()
+    PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
+    
+    DEFAULT_MC2 = str(PROJECT_DIR / "mc2")
+    DEFAULT_OUTPUT = str(SCRIPT_DIR / "result.json")
+    
+    parser = argparse.ArgumentParser(
+        description="MC2 算子依赖关系分析工具 - 生成 result.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+默认参数值:
+  --mc2    {DEFAULT_MC2}
+  --output {DEFAULT_OUTPUT}
+
+示例:
+  # 使用默认参数
+  python op_filters/op_step0_mc2_analyzer.py
+  
+  # 自定义 mc2 目录
+  python op_filters/op_step0_mc2_analyzer.py --mc2 /path/to/mc2
+  
+  # 自定义输出路径
+  python op_filters/op_step0_mc2_analyzer.py --output custom_result.json
+        """
+    )
+    parser.add_argument(
+        "--mc2",
+        default=DEFAULT_MC2,
+        help=f"mc2 目录路径 (默认: {DEFAULT_MC2})"
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT,
+        help=f"输出 JSON 文件路径 (默认: {DEFAULT_OUTPUT})"
+    )
+    
+    args = parser.parse_args()
+    
+    logger = logging.getLogger("mc2_analyzer")
+    logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    logger.addHandler(handler)
+    
+    try:
+        logger.info("=" * 60)
+        logger.info("MC2 算子依赖关系分析")
+        logger.info("=" * 60)
+        logger.info(f"mc2 目录: {args.mc2}")
+        logger.info(f"输出文件: {args.output}")
+        
+        results = analyze_mc2_and_generate_json(args.mc2, args.output, logger)
+        
+        logger.info("=" * 60)
+        logger.info(f"生成完成，共 {len(results)} 个算子")
+        logger.info("=" * 60)
+        
+        return 0
+        
+    except Exception as e:
+        logger.error(f"执行失败: {e}", exc_info=True)
+        return 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

@@ -5,10 +5,10 @@
 可作为独立脚本运行，用于忽略 .md 文件和 tests 目录中的文件。
 
 使用方法：
-    修改脚本顶部的 INPUT_FILE、MC2_DIR、OUTPUT_FILE、LOG_FILE 变量
-    然后直接运行: python op_filters/ignored_filter.py
+    python op_filters/op_step2_ignored.py [--input INPUT] [--mc2 MC2_DIR] [--output OUTPUT] [--log LOG]
 """
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -18,10 +18,10 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
-INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-MC2_DIR = str(PROJECT_DIR / "mc2")
-OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-LOG_FILE = str(WORK_DIR / "step2.log")
+DEFAULT_INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_MC2_DIR = str(PROJECT_DIR / "mc2")
+DEFAULT_OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_LOG_FILE = str(WORK_DIR / "step2.log")
 
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -125,8 +125,52 @@ def main() -> int:
     """
     忽略文件过滤独立执行入口。
     """
-    if LOG_FILE:
-        logger = setup_logging(LOG_FILE)
+    parser = argparse.ArgumentParser(
+        description="忽略文件过滤模块 - 过滤 .md 文件和 tests 目录",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+默认参数值:
+  --input   {DEFAULT_INPUT_FILE}
+  --mc2     {DEFAULT_MC2_DIR}
+  --output  {DEFAULT_OUTPUT_FILE}
+  --log     {DEFAULT_LOG_FILE}
+
+示例:
+  # 使用默认参数
+  python op_filters/op_step2_ignored.py
+  
+  # 自定义输入文件
+  python op_filters/op_step2_ignored.py --input my_files.txt
+  
+  # 自定义所有参数
+  python op_filters/op_step2_ignored.py --input input.txt --mc2 /path/to/mc2 --output output.txt --log step2.log
+        """
+    )
+    parser.add_argument(
+        "--input",
+        default=DEFAULT_INPUT_FILE,
+        help=f"输入文件路径 (默认: {DEFAULT_INPUT_FILE})"
+    )
+    parser.add_argument(
+        "--mc2",
+        default=DEFAULT_MC2_DIR,
+        help=f"mc2 目录路径 (默认: {DEFAULT_MC2_DIR})"
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_FILE,
+        help=f"输出文件路径 (默认: {DEFAULT_OUTPUT_FILE})"
+    )
+    parser.add_argument(
+        "--log",
+        default=DEFAULT_LOG_FILE,
+        help=f"日志文件路径 (默认: {DEFAULT_LOG_FILE})"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.log:
+        logger = setup_logging(args.log)
     else:
         logger = logging.getLogger("ignored_filter")
         logger.setLevel(logging.INFO)
@@ -135,24 +179,24 @@ def main() -> int:
         logger.addHandler(handler)
     
     try:
-        logger.info(f"输入文件: {INPUT_FILE}")
-        logger.info(f"mc2 目录: {MC2_DIR}")
-        logger.info(f"输出文件: {OUTPUT_FILE}")
+        logger.info(f"输入文件: {args.input}")
+        logger.info(f"mc2 目录: {args.mc2}")
+        logger.info(f"输出文件: {args.output}")
         
-        input_files = read_file_lines(INPUT_FILE, logger)
+        input_files = read_file_lines(args.input, logger)
         
         logger.info(f"读取到 {len(input_files)} 个输入文件")
         
-        result = filter_ignored(input_files, MC2_DIR, logger)
+        result = filter_ignored(input_files, args.mc2, logger)
         
-        if OUTPUT_FILE:
-            output_dir = Path(OUTPUT_FILE).parent
+        if args.output:
+            output_dir = Path(args.output).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 for file_path in result["remaining_files"]:
                     f.write(file_path + "\n")
-            logger.info(f"结果已写入: {OUTPUT_FILE}")
+            logger.info(f"结果已写入: {args.output}")
         else:
             print("过滤后的文件列表:")
             for file_path in result["remaining_files"]:

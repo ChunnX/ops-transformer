@@ -1,0 +1,14 @@
+2026-05-21 15:03:10 - INFO - 输入文件: filtered_files.txt
+2026-05-21 15:03:10 - INFO - mc2 目录: M:\Users\ywx944900\fork-transformer\ops-transformer\mc2
+2026-05-21 15:03:10 - INFO - 依赖关系文件: M:\Users\ywx944900\fork-transformer\ops-transformer\op_filters\result.json
+2026-05-21 15:03:10 - INFO - 输出文件: M:\Users\ywx944900\fork-transformer\ops-transformer\filtered_files.txt
+2026-05-21 15:03:10 - ERROR - 读取文件失败: filtered_files.txt, 错误: [Errno 2] No such file or directory: 'filtered_files.txt'
+2026-05-21 15:03:10 - ERROR - 执行失败: [Errno 2] No such file or directory: 'filtered_files.txt'
+Traceback (most recent call last):
+  File "M:\Users\ywx944900\fork-transformer\ops-transformer\op_filters\op_non_mc2_step3.py", line 166, in main
+    input_files = read_file_lines(args.input, logger)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "M:\Users\ywx944900\fork-transformer\ops-transformer\op_filters\utils.py", line 63, in read_file_lines
+    with open(file_path, "r", encoding=encoding) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'filtered_files.txt'

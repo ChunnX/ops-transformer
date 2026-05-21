@@ -6,9 +6,10 @@
 
 使用方法：
     修改脚本顶部的 INPUT_FILE、WHITELIST_FILE、OUTPUT_FILE、LOG_FILE 变量
-    然后直接运行: python op_filters/whitelist_filter.py
+    然后直接运行: python op_filters/op_step1_whitelist.py
 """
 
+import argparse
 import logging
 import re
 import sys
@@ -19,10 +20,10 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "mc2").exists() else SCRIPT_DIR.parent / "ops-transformer"
 WORK_DIR = Path.cwd()
 
-INPUT_FILE = str(SCRIPT_DIR / "changed_files.txt")
-WHITELIST_FILE = str(SCRIPT_DIR / "whitelist.txt")
-OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
-LOG_FILE = str(WORK_DIR / "step1.log")
+DEFAULT_INPUT_FILE = str(SCRIPT_DIR / "changed_files.txt")
+DEFAULT_WHITELIST_FILE = str(SCRIPT_DIR / "whitelist.txt")
+DEFAULT_OUTPUT_FILE = str(WORK_DIR / "filtered_files.txt")
+DEFAULT_LOG_FILE = str(WORK_DIR / "step1.log")
 
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -170,8 +171,52 @@ def main() -> int:
     """
     白名单过滤独立执行入口。
     """
-    if LOG_FILE:
-        logger = setup_logging(LOG_FILE)
+    parser = argparse.ArgumentParser(
+        description="白名单过滤模块 - 过滤白名单中的文件路径",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+默认参数值:
+  --input      {DEFAULT_INPUT_FILE}
+  --whitelist  {DEFAULT_WHITELIST_FILE}
+  --output     {DEFAULT_OUTPUT_FILE}
+  --log        {DEFAULT_LOG_FILE}
+
+示例:
+  # 使用默认参数
+  python op_filters/op_step1_whitelist.py
+  
+  # 自定义输入文件
+  python op_filters/op_step1_whitelist.py --input my_changed_files.txt
+  
+  # 自定义所有参数
+  python op_filters/op_step1_whitelist.py --input input.txt --whitelist whitelist.txt --output output.txt --log step1.log
+        """
+    )
+    parser.add_argument(
+        "--input",
+        default=DEFAULT_INPUT_FILE,
+        help=f"输入文件路径 (默认: {DEFAULT_INPUT_FILE})"
+    )
+    parser.add_argument(
+        "--whitelist",
+        default=DEFAULT_WHITELIST_FILE,
+        help=f"白名单文件路径 (默认: {DEFAULT_WHITELIST_FILE})"
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_FILE,
+        help=f"输出文件路径 (默认: {DEFAULT_OUTPUT_FILE})"
+    )
+    parser.add_argument(
+        "--log",
+        default=DEFAULT_LOG_FILE,
+        help=f"日志文件路径 (默认: {DEFAULT_LOG_FILE})"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.log:
+        logger = setup_logging(args.log)
     else:
         logger = logging.getLogger("whitelist_filter")
         logger.setLevel(logging.INFO)
@@ -180,26 +225,26 @@ def main() -> int:
         logger.addHandler(handler)
     
     try:
-        logger.info(f"输入文件: {INPUT_FILE}")
-        logger.info(f"白名单文件: {WHITELIST_FILE}")
-        logger.info(f"输出文件: {OUTPUT_FILE}")
+        logger.info(f"输入文件: {args.input}")
+        logger.info(f"白名单文件: {args.whitelist}")
+        logger.info(f"输出文件: {args.output}")
         
-        input_files = read_file_lines(INPUT_FILE, logger)
-        whitelist_paths = read_file_lines(WHITELIST_FILE, logger)
+        input_files = read_file_lines(args.input, logger)
+        whitelist_paths = read_file_lines(args.whitelist, logger)
         
         logger.info(f"读取到 {len(input_files)} 个输入文件")
         logger.info(f"读取到 {len(whitelist_paths)} 个白名单路径")
         
         result = filter_whitelist(input_files, whitelist_paths, logger)
         
-        if OUTPUT_FILE:
-            output_dir = Path(OUTPUT_FILE).parent
+        if args.output:
+            output_dir = Path(args.output).parent
             if output_dir and not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
-            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 for file_path in result["filtered_files"]:
                     f.write(file_path + "\n")
-            logger.info(f"结果已写入: {OUTPUT_FILE}")
+            logger.info(f"结果已写入: {args.output}")
         else:
             print("过滤后的文件列表:")
             for file_path in result["filtered_files"]:

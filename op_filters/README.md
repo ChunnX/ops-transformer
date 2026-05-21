@@ -26,9 +26,32 @@
 
 | 文件 | 路径 | 说明 |
 |---|---|---|
-| 依赖关系 JSON | `op_filters/result.json` | **动态生成**，每次运行覆盖 |
+| 依赖关系 JSON | `op_filters/result.json` | 算子依赖关系，可通过 `mc2_analyzer.py` 或 `select_op_tests_main.py` 生成 |
 | 测试算子 JSON | `op_tests.json` 或命令行指定 | 最终需要测试的算子列表 |
 | 日志文件 | `output.log` 或命令行指定 | 处理过程日志 |
+
+## 依赖关系生成
+
+`result.json` 包含：
+- 算子名称
+- dependencies（已屏蔽 common/3rd/tools）
+- supported_products（支持的产品类型）
+
+### 方式一：单独生成（调试用）
+
+```bash
+# 使用默认参数，生成到 op_filters/result.json
+python op_filters/mc2_analyzer.py
+
+# 自定义参数
+python op_filters/mc2_analyzer.py --mc2 /path/to/mc2 --output custom_result.json
+```
+
+### 方式二：自动生成（一键执行，推荐）
+
+`select_op_tests_main.py` 每次执行都会自动调用 `mc2_analyzer.py` 生成 `result.json` 并覆盖已有文件。
+
+**注意：** 逐步执行脚本（step1-7）不自动生成 result.json，需要预先通过上述方式生成。
 
 ## 使用方法
 
@@ -53,15 +76,96 @@ python op_filters/select_op_tests_main.py \
 
 ### 逐步执行（调试用）
 
+每个步骤脚本都支持命令行参数：
+
 ```bash
-python op_filters/op_whitelist_step1.py
-python op_filters/op_ignored_step2.py
-python op_filters/op_non_mc2_step3.py
-python op_filters/op_common_3rd_step4.py
-python op_filters/op_extractor_step5.py
-python op_filters/op_dependency_step6.py
-python op_filters/op_output_step7.py
+# Step 1: 白名单过滤
+python op_filters/op_whitelist_step1.py \
+    --input changed_files.txt \
+    --whitelist op_filters/whitelist.txt \
+    --output filtered_files.txt \
+    --log step1.log
+
+# Step 2: 忽略规则过滤
+python op_filters/op_ignored_step2.py \
+    --input filtered_files.txt \
+    --mc2 mc2 \
+    --output remaining_files.txt \
+    --log step2.log
+
+# Step 3: 非 mc2 目录检测
+python op_filters/op_non_mc2_step3.py \
+    --input remaining_files.txt \
+    --mc2 mc2 \
+    --dependency-json op_filters/result.json \
+    --output non_mc2_filtered.txt \
+    --log step3.log
+
+# Step 4: common/3rd 目录检测
+python op_filters/op_common_3rd_step4.py \
+    --input non_mc2_filtered.txt \
+    --mc2 mc2 \
+    --dependency-json op_filters/result.json \
+    --output common_3rd_filtered.txt \
+    --log step4.log
+
+# Step 5: 算子提取
+python op_filters/op_extractor_step5.py \
+    --input common_3rd_filtered.txt \
+    --output extracted_ops.txt \
+    --soc ascend910b ascend910_93 \
+    --log step5.log
+
+# Step 6: 反向依赖搜索
+python op_filters/op_dependency_step6.py \
+    --input extracted_ops.txt \
+    --dependency-json op_filters/result.json \
+    --output dependent_ops.txt \
+    --log step6.log
+
+# Step 7: 输出 JSON
+python op_filters/op_output_step7.py \
+    --input dependent_ops.txt \
+    --dependency-json op_filters/result.json \
+    --output-json op_tests.json \
+    --log step7.log
 ```
+
+### 各脚本参数说明
+
+| 脚本 | 参数 | 默认值 | 说明 |
+|---|---|---|---|
+| **op_whitelist_step1.py** | `--input` | `op_filters/changed_files.txt` | 输入文件 |
+| | `--whitelist` | `op_filters/whitelist.txt` | 白名单文件 |
+| | `--output` | `filtered_files.txt` | 输出文件 |
+| | `--log` | `step1.log` | 日志文件 |
+| **op_ignored_step2.py** | `--input` | `filtered_files.txt` | 输入文件 |
+| | `--mc2` | `mc2` | mc2 目录路径 |
+| | `--output` | `remaining_files.txt` | 输出文件 |
+| | `--log` | `step2.log` | 日志文件 |
+| **op_non_mc2_step3.py** | `--input` | `remaining_files.txt` | 输入文件 |
+| | `--mc2` | `mc2` | mc2 目录路径 |
+| | `--dependency-json` | `op_filters/result.json` | 依赖关系 JSON |
+| | `--output` | `non_mc2_filtered.txt` | 输出文件 |
+| | `--log` | `step3.log` | 日志文件 |
+| **op_common_3rd_step4.py** | `--input` | `non_mc2_filtered.txt` | 输入文件 |
+| | `--mc2` | `mc2` | mc2 目录路径 |
+| | `--dependency-json` | `op_filters/result.json` | 依赖关系 JSON |
+| | `--output` | `common_3rd_filtered.txt` | 输出文件 |
+| | `--log` | `step4.log` | 日志文件 |
+| **op_extractor_step5.py** | `--input` | `common_3rd_filtered.txt` | 输入文件 |
+| | `--output` | `extracted_ops.txt` | 输出文件 |
+| | `--soc` | 无 | SOC 类型列表 |
+| | `--log` | `step5.log` | 日志文件 |
+| **op_dependency_step6.py** | `--input` | `extracted_ops.txt` | 输入文件 |
+| | `--dependency-json` | `op_filters/result.json` | 依赖关系 JSON |
+| | `--output` | `dependent_ops.txt` | 输出文件 |
+| | `--log` | `step6.log` | 日志文件 |
+| **op_output_step7.py** | `--input` | `dependent_ops.txt` | 输入文件 |
+| | `--dependency-json` | `op_filters/result.json` | 依赖关系 JSON |
+| | `--output-json` | `op_tests.json` | 输出 JSON |
+| | `--full-test` | False | 全量测试模式 |
+| | `--log` | `step7.log` | 日志文件 |
 
 ## 命令行参数
 
@@ -104,15 +208,6 @@ python op_filters/op_output_step7.py
 - `batch_mat_mul_v3` → allto_all_all_gather_batch_mat_mul, batch_mat_mul_reduce_scatter_allto_all
 - `rms_norm` → matmul_all_reduce_add_rms_norm, moe_distribute_combine_add_rms_norm
 - 更多配置见代码...
-
-## 依赖关系生成
-
-`result.json` 每次运行时动态生成，包含：
-- 算子名称
-- dependencies（已屏蔽 common/3rd/tools）
-- supported_products（支持的产品类型）
-
-依赖分析基于 `mc2_analyzer.py`，解析各算子目录下的 `op_host/CMakeLists.txt` 和 `_def.cpp` 文件。
 
 ## 输出格式
 
