@@ -11,7 +11,7 @@
 #ifndef TLA_NUMERIC_MATH_HPP
 #define TLA_NUMERIC_MATH_HPP
 
-#include "../../attn_infra/detail/macros.hpp"
+#include "../../attn_infra/detail/bsa_macros.hpp"
 #include "../../tla/type_traits.hpp"
 
 namespace tla {

@@ -11,8 +11,8 @@
 #ifndef INCLUDE_ARCH_MEMORY_H
 #define INCLUDE_ARCH_MEMORY_H
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/arch/arch.hpp"
+#include "../../attn_infra/bsa_base_defs.hpp"
+#include "../../attn_infra/arch/bsa_arch.hpp"
 
 namespace NpuArch::Arch 
 {

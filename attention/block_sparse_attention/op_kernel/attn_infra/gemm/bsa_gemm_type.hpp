@@ -11,7 +11,7 @@
 #ifndef GEMM_GEMM_TYPE_HPP
 #define GEMM_GEMM_TYPE_HPP
 
-#include "../../attn_infra/base_defs.hpp"
+#include "../../attn_infra/bsa_base_defs.hpp"
 
 namespace NpuArch::Gemm 
 {

@@ -13,7 +13,7 @@
 
 #include <limits>
 
-#include "../../attn_infra/detail/macros.hpp"
+#include "../../attn_infra/detail/bsa_macros.hpp"
 #include "../../tla/numeric/integral_constant.hpp"
 
 template <uint32_t ALIGN, typename T>
