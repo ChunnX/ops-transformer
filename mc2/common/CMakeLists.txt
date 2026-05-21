@@ -66,6 +66,8 @@ if(BUILD_OPEN_PROJECT)
     if(NOT ENABLE_TEST)
         set(OPPROTO_SRCS
             op_host/mc2_common_infershape.cpp
+            utils/mc2_hcom_topo_info.cpp
+            utils/mc2_log.cpp
         )
         if(OPPROTO_SRCS)
             add_infer_modules()
