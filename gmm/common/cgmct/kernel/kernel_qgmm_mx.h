@@ -173,7 +173,6 @@ private:
     int8_t groupType_;
     uint8_t groupListType_;
     bool isBias_{false};
-    bool initSingleGroup_{false};
 };
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
@@ -213,7 +212,6 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
             SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(curBaseM_),
                                       static_cast<int64_t>(params.gmmParams.baseN));
         }
-        initSingleGroup_ = false;
         ProcessSingleGroup(params, bs, groupIdx);
     }
 }
@@ -362,18 +360,15 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::ProcessSingl
     if (!bs.GetTileIdx(tileIdx)) {
         return;
     }
+    UpdateOffset(groupIdx);
+    if ASCEND_IS_AIC {
+        mmadOp_.UpdateParamsForNextProblem(problemShape_);
+    }
+    UpdateMMGlobalAddr();
     do {
         BlockShape singleShape = bs.GetBlockShape(tileIdx);
         if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
             return;
-        }
-        if (!initSingleGroup_) {
-            UpdateOffset(groupIdx);
-            if ASCEND_IS_AIC {
-                mmadOp_.UpdateParamsForNextProblem(problemShape_);
-            }
-            UpdateMMGlobalAddr();
-            initSingleGroup_ = true;
         }
         blockOffset_ = coord.template GetQuantOffset<QuantMode::MX_PERGROUP_MODE>(
             Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
