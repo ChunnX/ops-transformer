@@ -26,6 +26,15 @@
 #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
 #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
 
+#include "mpi.h"
+
+#include "acl/acl.h"
+#include "shmem.h"
+#include <iterator>
+
+int g_npus  = 8;
+const char*ipport;
+
 #define CHECK_RET(cond, return_expr) \
     do {                             \
         if (!(cond)) {               \
@@ -109,8 +118,8 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
 
     char hcomEpName[128] = {0};
-    ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
+    // ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
+    // CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
     char hcomTpName[128] = {0};
     LOG_PRINT(
         "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
@@ -213,6 +222,28 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<int32_t> epRecvCountsHostData(epRecvCountsShapeSize, 0);
     std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
+    // 新增
+    int pe_id = aclshmem_my_pe();
+    int n_pes = aclshmem_n_pes();
+
+    // DEBUG: n_pes * trans_size * sizeof(int32_t)
+    uint32_t trans_size = 16;
+    uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t)));
+    uint64_t custom_ptr_addr = (uint64_t)custom_ptr;
+    std::cout << "[HOST custom_ptr_addr] " << custom_ptr_addr << std::endl;
+
+    const int num10 = 10;
+    std::vector<int32_t> input(trans_size, 0);
+    for (int i = 0; i < trans_size; i++) {
+        input[i] = num10 + pe_id * 100;
+    }
+    aclrtMemcpy(
+        custom_ptr + aclshmem_my_pe() * trans_size * sizeof(int32_t), trans_size * sizeof(int32_t), input.data(),
+        trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
+    if (xHostData.size() >= 4) {
+        std::memcpy(xHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
+    }
 
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
@@ -283,33 +314,52 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     );
 
+    std::vector<int64_t> time_vec(4, 0);
+ 	ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
+ 	printf("[HOST TIME] pe=%d, total wqe: %lld, total wqe+pollcq: %lld, \n", pe_id, time_vec[0], time_vec[1]);
+    // shmem validate result
+        int32_t* y_host;
+        size_t input_size = n_pes * trans_size * sizeof(int32_t);
+        aclrtMallocHost(reinterpret_cast<void**>(&y_host), input_size);
+        aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
+    
+        std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
+        std::cout << "[Output] pe=" << pe_id << ": "
+                                    << y_host[trans_size * 0] << " "
+                                    << y_host[trans_size * 1] << " "
+                                    << y_host[trans_size * 2] << " "
+                                    << y_host[trans_size * 3] << " "
+                                    << y_host[trans_size * 4] << " "
+                                    << y_host[trans_size * 5] << " "
+                                    << y_host[trans_size * 6] << " "
+                                    << y_host[trans_size * 7] << " " << std::endl;
     // 调用combineV2算子第一阶段接口
-    ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
-        expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
-        commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
-    CHECK_RET(
-        ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
-    );
-    // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
-    if (combineV2WorkspaceSize > 0) {
-        ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
-    }
-    // 调用combineV2算子第二阶段接口
-    ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
-    // （固定写法）同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
-    CHECK_RET(
-        ret == ACL_SUCCESS, 
-        LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
-    );
+    // ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
+    //     expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
+    //     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    //     hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
+    //     expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
+    //     commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
+    // CHECK_RET(
+    //     ret == ACL_SUCCESS,
+    //     LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+    // );
+    // // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
+    // if (combineV2WorkspaceSize > 0) {
+    //     ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
+    // }
+    // // 调用combineV2算子第二阶段接口
+    // ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
+    // CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
+    // // （固定写法）同步等待任务执行结束
+    // ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
+    // CHECK_RET(
+    //     ret == ACL_SUCCESS, 
+    //     LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
+    // );
 
-    LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
+    // LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
 
     // 释放device资源
     if (dispatchV2WorkspaceSize > 0) {
@@ -674,103 +724,201 @@ int run_example_on_A2()
     return 0;
 }
 
+// int run_example_on_A3A5()
+// {
+//     int ret = aclInit(nullptr);
+//     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
+
+//     aclrtStream dispatchV2Stream[DEV_NUM];
+//     aclrtStream combineV2Stream[DEV_NUM];
+//     aclrtContext context[DEV_NUM];
+//     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+//         ret = aclrtSetDevice(rankId);
+//         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
+//         ret = aclrtCreateContext(&context[rankId], rankId);
+//         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
+//         ret = aclrtCreateStream(&dispatchV2Stream[rankId]);
+//         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
+//         ret = aclrtCreateStream(&combineV2Stream[rankId]);
+//         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
+//     }
+
+//     int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
+//     for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
+//         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
+//             devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
+//         }
+//     }
+//     // 初始化ep通信域，ep = 8 {0,2,4,6,8,10,12,14} {1,3,5,7,9,11,13,15}.
+//     HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
+//     for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
+//         ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
+//         CHECK_RET(
+//             ret == ACL_SUCCESS,
+//             LOG_PRINT("[ERROR] HcclCommInitAll ep world %d failed. ret = %d\n", tpId, ret); return ret
+//         );
+//     }
+
+//     int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
+//     for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
+//         for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
+//             devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
+//         }
+//     }
+//     // 初始化tp通信域，tp = 2 {0,1} {2,3} {4,5} {6,7} {8,9} {10,11} {12,13} {14,15}.
+//     HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
+//     for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
+//         ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
+//         CHECK_RET(
+//             ret == ACL_SUCCESS,
+//             LOG_PRINT("[ERROR] HcclCommInitAll tp world %d failed. ret = %d\n", epId, ret); return ret
+//         );
+//     }
+
+//     Args args[DEV_NUM];
+//     // 各线程调用各卡执行算子
+//     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
+//     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+//         uint32_t epRankId = rankId / TP_WORLD_SIZE;
+//         uint32_t tpRankId = rankId % TP_WORLD_SIZE;
+
+//         args[rankId].rankId = rankId;
+//         args[rankId].epRankId = epRankId;
+//         args[rankId].tpRankId = tpRankId;
+//         args[rankId].hcclEpComm = commsEp[tpRankId][epRankId];
+//         args[rankId].hcclTpComm = commsTp[epRankId][tpRankId];
+//         args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
+//         args[rankId].combineV2Stream = combineV2Stream[rankId];
+//         args[rankId].context = context[rankId];
+//         threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadDispatchV2AndCombineV2_A3A5, std::ref(args[rankId])));
+//     }
+//     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+//         threads[rankId]->join();
+//     }
+//     aclFinalize();
+//     LOG_PRINT("[INFO] aclFinalize success\n");
+//     return 0;
+// }
+
 int run_example_on_A3A5()
 {
+    MPI_Init(nullptr, nullptr);
+
+    int pe_id;
+    int pe_size;
+
+    MPI_Request request;
+    MPI_Status status;
+    MPI_Comm_rank(MPI_COMM_WORLD, &pe_id);
+    MPI_Comm_size(MPI_COMM_WORLD, &pe_size);
+
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
 
-    aclrtStream dispatchV2Stream[DEV_NUM];
-    aclrtStream combineV2Stream[DEV_NUM];
-    aclrtContext context[DEV_NUM];
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        ret = aclrtSetDevice(rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
-        ret = aclrtCreateContext(&context[rankId], rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
-        ret = aclrtCreateStream(&dispatchV2Stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
-        ret = aclrtCreateStream(&combineV2Stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
-    }
+    int device_id = pe_id;
+    ret = aclrtSetDevice(device_id);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
 
-    int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-            devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
+    HcclRootInfo rootInfo;
+    int root_rank = 0;
+    if (pe_id == 0) {
+        HcclResult result = HcclGetRootInfo(&rootInfo);
+        if (result == HCCL_SUCCESS) {
+            MPI_Ibcast(&rootInfo, HCCL_ROOT_INFO_BYTES, MPI_CHAR, root_rank, MPI_COMM_WORLD, &request);
+        } else {
+            char send_str[] = "invalid";
+            MPI_Ibcast(send_str, HCCL_ROOT_INFO_BYTES, MPI_CHAR, root_rank, MPI_COMM_WORLD, &request);
         }
-    }
-    // 初始化ep通信域，ep = 8 {0,2,4,6,8,10,12,14} {1,3,5,7,9,11,13,15}.
-    HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll ep world %d failed. ret = %d\n", tpId, ret); return ret
-        );
-    }
-
-    int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-            devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
+        MPI_Wait(&request, &status);
+        if (result != HCCL_SUCCESS) {
+            printf("Process %d Failed ! \n", root_rank);
+            return result;
         }
-    }
-    // 初始化tp通信域，tp = 2 {0,1} {2,3} {4,5} {6,7} {8,9} {10,11} {12,13} {14,15}.
-    HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll tp world %d failed. ret = %d\n", epId, ret); return ret
-        );
+    } else {
+        MPI_Ibcast(&rootInfo, HCCL_ROOT_INFO_BYTES, MPI_CHAR, root_rank, MPI_COMM_WORLD, &request);
+        MPI_Wait(&request, &status);
     }
 
-    Args args[DEV_NUM];
-    // 各线程调用各卡执行算子
-    std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        uint32_t epRankId = rankId / TP_WORLD_SIZE;
-        uint32_t tpRankId = rankId % TP_WORLD_SIZE;
+    HcclComm hcclEpComm = nullptr;
+    HcclCommInitRootInfo(pe_size, &rootInfo, pe_id, &hcclEpComm);
 
-        args[rankId].rankId = rankId;
-        args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
-        args[rankId].hcclEpComm = commsEp[tpRankId][epRankId];
-        args[rankId].hcclTpComm = commsTp[epRankId][tpRankId];
-        args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
-        args[rankId].combineV2Stream = combineV2Stream[rankId];
-        args[rankId].context = context[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadDispatchV2AndCombineV2_A3A5, std::ref(args[rankId])));
-    }
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        threads[rankId]->join();
-    }
+    aclrtStream dispatchV2Stream;
+    aclrtStream combineV2Stream;
+    aclrtContext context;
+
+    ret = aclrtCreateContext(&context, device_id);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
+    ret = aclrtCreateStream(&dispatchV2Stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
+    ret = aclrtCreateStream(&combineV2Stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
+    aclshmemx_uniqueid_t default_flag_uid;
+    aclshmemx_init_attr_t attributes;
+    attributes.my_pe = pe_id;
+    attributes.n_pes = pe_size;
+    snprintf(attributes.ip_port, ACLSHMEM_MAX_IP_PORT_LEN, "%s", "tcp://127.0.0.1:18899");
+    attributes.local_mem_size = 1024UL * 1024UL * 1024;
+    attributes.option_attr = {
+        (1 << 16) + sizeof(aclshmemx_init_attr_t),
+        ACLSHMEM_DATA_OP_MTE,
+        DEFAULT_TIMEOUT, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT};
+    attributes.comm_args = reinterpret_cast<void *>(&default_flag_uid);
+
+    int shmem_status = 0;
+    attributes.option_attr.data_op_engine_type = ACLSHMEM_DATA_OP_UDMA;
+    shmem_status = aclshmemx_init_attr(ACLSHMEMX_INIT_WITH_DEFAULT, &attributes);
+    printf("aclshmemx_init_attr success \n");
+
+    Args arg;
+    std::cout << "We in rank: " << pe_id << std::endl;
+    arg.rankId = pe_id;
+    arg.epRankId = pe_id;
+    arg.tpRankId = 0;
+    arg.hcclEpComm = hcclEpComm;
+    arg.hcclTpComm = nullptr;
+    arg.dispatchV2Stream = dispatchV2Stream;
+    arg.combineV2Stream = combineV2Stream;
+    arg.context = context;
+    launchOneThreadDispatchV2AndCombineV2(arg);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    shmem_status = aclshmem_finalize();
+    printf("aclshmem_finalize success \n");
+    HcclCommDestroy(hcclEpComm);
+    HcclCommDestroy(nullptr);
+    aclrtDestroyStream(dispatchV2Stream);
+    aclrtDestroyStream(combineV2Stream);
+    aclrtDestroyContext(context);
+    aclrtResetDevice(pe_id);
     aclFinalize();
     LOG_PRINT("[INFO] aclFinalize success\n");
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Finalize();
     return 0;
 }
-
+ 	 
 
 int main(int argc, char *argv[])
 {
-    if (!env_dev_num) {
-        LOG_PRINT("[ERROR] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
-        LOG_PRINT("[WARNING] For details related to ENV_DEV_NUM, see aclnnMoeDistributeCombineV2.md.\n");
-        return 0;
-    }
-    int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-    if (actual_env_dev_num < DEV_NUM) {
-        LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
-        return 0;
-    }
-    if (IS_TEST_A2) {
-        LOG_PRINT("Example on <Atlas A2> will be executed!\n");
-        int ret = run_example_on_A2();
-    }
-    else if (IS_TEST_A3A5) {
-        LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
-        int ret = run_example_on_A3A5();
-    }
+    // if (!env_dev_num) {
+    //     LOG_PRINT("[ERROR] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
+    //     LOG_PRINT("[WARNING] For details related to ENV_DEV_NUM, see aclnnMoeDistributeCombineV2.md.\n");
+    //     return 0;
+    // }
+    // int actual_env_dev_num = std::stoi(std::string(env_dev_num));
+    // if (actual_env_dev_num < DEV_NUM) {
+    //     LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
+    //     return 0;
+    // }
+    // if (IS_TEST_A2) {
+    //     LOG_PRINT("Example on <Atlas A2> will be executed!\n");
+    //     int ret = run_example_on_A2();
+    // }
+    // else if (IS_TEST_A3A5) {
+    //     LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
+    //     int ret = run_example_on_A3A5();
+    // }
+    run_example_on_A3A5()
 
     return 0;
 }

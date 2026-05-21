@@ -32,6 +32,9 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MoeDistributeCombineV2
             OPTIONS --cce-auto-sync=off
+            OPTIONS 
+ 	            -I/home/c00851087/shmem/include
+ 	            -I/home/c00851087/shmem/src/device/
         )
     endif()
 else() # 回黄host

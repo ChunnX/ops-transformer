@@ -18,8 +18,12 @@
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
 
+#include "shmem.h"
+
 using namespace Ops::Transformer;
 using namespace op;
+
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,6 +57,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(void *workspace, uint64_t workspaceSize,
                                                   aclrtStream stream)
 {
     OP_LOGD("aclnn_combine v2 start");
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnMoeDistributeCombineBase(workspace, workspaceSize, executor, stream);
 }
 

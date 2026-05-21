@@ -39,6 +39,12 @@
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_elastic.h"
 #endif
 
+#include "shmem.h"
+
+#include "mpi.h"
+#include "acl/acl.h"
+#include <iterator>
+
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeCombineV2Impl {
 using namespace MoeDistributeV2Base;
