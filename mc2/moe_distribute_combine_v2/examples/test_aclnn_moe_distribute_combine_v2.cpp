@@ -879,7 +879,7 @@ int run_example_on_A3A5()
     arg.dispatchV2Stream = dispatchV2Stream;
     arg.combineV2Stream = combineV2Stream;
     arg.context = context;
-    launchOneThreadDispatchV2AndCombineV2(arg);
+    launchOneThreadDispatchV2AndCombineV2_A3A5(arg);
 
     MPI_Barrier(MPI_COMM_WORLD);
     shmem_status = aclshmem_finalize();
