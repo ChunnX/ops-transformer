@@ -124,6 +124,11 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     OP_TILING_CHECK(transGmmWeightPtr == nullptr,
         OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr is null."), return ge::GRAPH_FAILED);
     transGmmWeight_ = *transGmmWeightPtr;
+
+    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
+    OP_TILING_CHECK(transMmWeightPtr == nullptr,
+        OP_LOGE(A_INNER_DEBUG, "transMmWeightPtr is null."), return ge::GRAPH_FAILED);
+    transMmWeight_ = *transMmWeightPtr;
     
     OP_LOGI(A_INNER_DEBUG, "AGENT epGroup is %s, epWorldSize is %lu.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
@@ -313,8 +318,10 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         uint64_t BS = mmXShape.GetDim(0);
         uint64_t H = mmXShape.GetDim(1);
-        uint64_t H2MM = mmWeightShape.GetDim(0);
-        uint64_t N2 = mmWeightShape.GetDim(1);
+        uint64_t h2DimIndex = transMmWeight_ ? DIM_ONE : DIM_ZERO;
+        uint64_t n2DimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
+        uint64_t H2MM = mmWeightShape.GetDim(h2DimIndex);
+        uint64_t N2 = mmWeightShape.GetDim(n2DimIndex);
 
         if (H != H2MM) {
             OP_LOGE(A_INNER_DEBUG, "MmX H[%lu] is not equal to MmWeight H2[%lu].", H, H2MM);
@@ -356,8 +363,10 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmWeightShape.GetDimNum() != DIM_TWO,
             OP_LOGE(A_INNER_DEBUG, "MmWeight shape dim num[%lu] should be 2.", mmWeightShape.GetDimNum()), return ge::GRAPH_FAILED);
-        maxKForMM_ = mmWeightShape.GetDim(0);
-        maxNForMM_ = mmWeightShape.GetDim(1);
+        uint64_t kDimIndex = transMmWeight_ ? DIM_ONE : DIM_ZERO;
+        uint64_t nDimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
+        maxKForMM_ = mmWeightShape.GetDim(kDimIndex);
+        maxNForMM_ = mmWeightShape.GetDim(nDimIndex);
     }
 
     return ge::GRAPH_SUCCESS;
