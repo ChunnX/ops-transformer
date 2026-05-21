@@ -241,46 +241,14 @@ private:
         return gmTemp;
     }
 
-    // __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
-    // {
-    //     uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-    //     uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX) ? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-    //    // return GetBaseWindAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + winDataSizeOffset;
-    //     return gmTemp + 1UL * 1024 * 1024 *1024 + rankId * 4UL * 1024 * 1024;
-    // }
-
-    // __aicore__ inline GM_ADDR GetWindStateAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
-    // {
-    //     uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-    //     //return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
-    //     return gmTemp + 1UL * 1024 * 1024 *1024 + 512UL * 1024 * 1024 + rankId * 1024;
-    // }
-
-    __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX)? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-        return GetBaseWindAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + winDataSizeOffset;
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffsetEp_;
     }
 
-    __aicore__ inline GM_ADDR GetWindStateAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
+    __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
-    }
-
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
-
-    __aicore__ inline int32_t ReduceSumWorkNeedSize(int32_t calCnt)
-    {
-        int typeSize = static_cast<int>(sizeof(int32_t));
-        int32_t elementsPerBlock = 32 / typeSize;
-        int32_t iter1OutputCount = calCnt;
-        int32_t iter1AlignEnd = ((iter1OutputCount + elementsPerBlock - 1) / elementsPerBlock) * elementsPerBlock;
-        return iter1AlignEnd;
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
     }
 
     TPipe *tpipe_{nullptr};
@@ -369,9 +337,6 @@ private:
     TQue<QuePosition::VECIN, 1> xInQueue_;     // 量化使用，量化前的输入
     TQue<QuePosition::VECOUT, 1> xOutQueue_;   // 量化使用，量化后的输出
     TQue<QuePosition::VECOUT, 1> xTempQueue_;   // 用于填充flag
-
-    
-    
 
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
@@ -496,8 +461,7 @@ private:
     uint32_t copyInAxisH_{0};
     uint32_t copyOutAxisH_{0};
 
-    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-    __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
@@ -768,18 +732,21 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommInfo()
 {
+    mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
+    uint32_t epRankIdHccl = mc2Context_->epRankId;
+
     winContext_[COMM_EP_IDX] = reinterpret_cast<__gm__ HcclOpParam*>(AscendC::GetHcclContext<HCCL_GROUP_ID_0>());
     bufferChosenGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(bufferChoseAddr_));
     bufferId_ = bufferChosenGlobal_(0);
     //CheckWindowSize(totalWinSizeEp_, GetWinSize(winContext_[COMM_EP_IDX]), tpipe_, expandXOut);
     
-    statusDataSpaceGm_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
+    statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
     selfRankWinInGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(statusDataSpaceGm_));
     selfDataStatusGMTensor_.SetGlobalBuffer(
         reinterpret_cast<__gm__ uint32_t *>(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    dataState_ = InitWinState(selfDataStatusGMTensor_, winContext_[COMM_EP_IDX], epRankIdOriginal_, moeExpertNum_,
+    dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epRankIdOriginal_, epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
 }
