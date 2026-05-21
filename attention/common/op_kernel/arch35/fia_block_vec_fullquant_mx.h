@@ -779,17 +779,23 @@ public:
             blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
 
             if (blockNeedRowInvalid) {
+                uint32_t min = 0xFF7FFFFF; // min value of float
+                if constexpr (USE_DN) {
+                    float minValue = *((float*)&min);
+                    minValue *= constInfo.scaleValue;
+                    min = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&minValue));
+                }
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
                 if constexpr (!POST_QUANT) {
                     RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
-                                              static_cast<uint32_t>(dSizeAligned64));
+                                              static_cast<uint32_t>(dSizeAligned64), min);
                 } else {
                     uint32_t dStride =
                         CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
                     uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
                     RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, mDealSize, dSize,
-                                              dStride);
+                                              dStride, min);
                 }
             }
         }

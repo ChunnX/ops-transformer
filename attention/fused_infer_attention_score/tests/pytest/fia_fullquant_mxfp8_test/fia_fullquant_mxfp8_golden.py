@@ -49,6 +49,7 @@ QUANT_GROUP_SIZE = 32
 INPUT_LAYOUT = "TND"  # 支持: BNSD, BSND, TND
 Q_SCALE_LAYOUT = "AUTO"  # 支持: AUTO, TND, N2TGD (GQA 专用)
 Q_SCALE_AUTO_GS1_THRESHOLD = 80
+P_SCALE = 1.0
 
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
@@ -452,9 +453,11 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
     if is_scale:
         if is_vscale:
             tensor_processed = convert_v_scale_to_pa(tensor_bnsd, seq_lens, group_size)
-            pack_seq_lens = [math.ceil(act_s / 64) for act_s in seq_lens]
-            pack_block_size = math.ceil(block_size / 64)
-            out_shape = (sum(math.ceil(act_s / 64) for act_s in seq_lens), N, pack_block_size, D, 2)
+            v_scale_pack_ratio = group_size * 2
+            pack_seq_lens = [math.ceil(act_s / v_scale_pack_ratio) for act_s in seq_lens]
+            pack_block_size = math.ceil(block_size / v_scale_pack_ratio)
+            total_block_num = sum(math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens)
+            out_shape = (total_block_num, N, pack_block_size, D, 2)
         else:
             if D % 2 != 0:
                 raise ValueError("K scale D must be even for packing")
@@ -633,8 +636,10 @@ def generate_data():
                 block_table_torch[b, j] = block_idx_list[idx]
                 idx += 1
 
+    p_scale = torch.tensor([P_SCALE], dtype=torch.float32)
+
     return (q_fp8, k_fp8, v_fp8,
-            dequant_scale_q, dequant_scale_k, dequant_scale_v,
+            dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
             qr_bf16, kr_bf16, block_table_torch)
 
 
@@ -643,7 +648,7 @@ def generate_data():
 # ==============================================================================
 
 def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
-                     dequant_scale_q, dequant_scale_k, dequant_scale_v,
+                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                      actual_seq_q, actual_seq_kv,
                      qr_bf16=None, kr_bf16=None):
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
@@ -670,7 +675,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     dv = v_tensor.shape[-1]
     Sq, Skv = q_tensor.shape[2], k_tensor.shape[2]
 
-    out = torch.zeros([b, n, Sq, dv], dtype=torch.float32)
+    out = torch.zeros([b, n, Sq, dv], dtype=torch.float32)  # numerator buffer; normalize once at the end
     o_sum = torch.zeros(q_tensor.shape[:-1])[..., None]
     o_max = torch.ones(q_tensor.shape[:-1])[..., None] * torch.finfo(torch.float).min
 
@@ -705,7 +710,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
         Qr_BLOCKS = list(torch.split(qr_bf16, Q_BLOCK_SIZE, dim=2))
         Kr_BLOCKS = list(torch.split(kr_bf16, K_BLOCK_SIZE, dim=2))
 
-    ln_p_scale = torch.tensor(0.0, dtype=torch.float32)
+    ln_p_scale = torch.tensor([math.log(p_scale)], dtype=torch.float32)
 
     print(f"[CPU Golden] TILES_Q={TILES_Q}, TILES_KV={TILES_KV}, Sq={Sq}, Skv={Skv}")
 
@@ -785,7 +790,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 P_ij_Vj = torch.matmul(P_ij_drop, V_part1) + torch.matmul(P_ij1_drop, V_part2)
 
                 si_new = update_mul_si * si + s_block_j * update_mul_j + s_block_j1
-                o_BLOCKS[i] = (update_mul_si * oi * si + P_ij_Vj) / (si_new + EPSILON)
+                o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
                 s_BLOCKS[i] = si_new
                 m_BLOCKS[i] = m_block_j1
             else:
@@ -804,11 +809,13 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 P_ij_Vj = torch.matmul(P_ij_drop, Vj_dequant)
                 update_mul_si = torch.exp(mi - m_block_j)
                 si_new = update_mul_si * si + s_block_j
-                o_BLOCKS[i] = (update_mul_si * oi * si + P_ij_Vj) / (si_new + EPSILON)
+                o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
                 s_BLOCKS[i] = si_new
                 m_BLOCKS[i] = m_block_j
 
     out = torch.cat(o_BLOCKS, dim=2)
+    out_sum = torch.cat(s_BLOCKS, dim=2)
+    out = out / (out_sum + EPSILON)
     print(f"[CPU Golden] output={out.shape}")
     return out
 
@@ -818,7 +825,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 # ==============================================================================
 
 def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
-                 dequant_scale_q, dequant_scale_k, dequant_scale_v,
+                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                  actual_seq_q, actual_seq_kv,
                  block_table_torch=None,
                  qr_bf16=None, kr_bf16=None):
@@ -835,6 +842,8 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(convert_q_scale_bnsd_to_layout(dequant_scale_q, actual_seq_q, q_runtime_layout), "Q scale")
     deq_q_npu = q_scale_e8m0.npu()
     print(f"[NPU] Q scale layout={q_runtime_layout}, shape={q_scale_e8m0.shape}")
+
+    p_scale_npu = p_scale.npu()
 
     if ENABLE_PA:
         k_pa = mxfp8_pa_preprocessing(k_fp8, actual_seq_kv, BLOCK_SIZE, block_table_torch,
@@ -913,6 +922,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             dequant_scale_query_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
+            quant_scale_p=p_scale_npu,
         )
     else:
         k_npu = convert_kv_bnsd_to_layout(k_fp8, actual_seq_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
@@ -968,6 +978,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             dequant_scale_query_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
+            quant_scale_p=p_scale_npu,
         )
 
     npu_output = npu_out[0]
@@ -994,18 +1005,18 @@ if __name__ == '__main__':
 
     print("\n[Step 1] 数据生成")
     (q_fp8, k_fp8, v_fp8,
-     dequant_scale_q, dequant_scale_k, dequant_scale_v,
+     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
      qr_bf16, kr_bf16, block_table_torch) = generate_data()
 
     print("\n[Step 2] CPU Golden")
     cpu_out = cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
-                               dequant_scale_q, dequant_scale_k, dequant_scale_v,
+                               dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
                                qr_bf16, kr_bf16)
 
     print("\n[Step 3] NPU 调用")
     npu_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
-                           dequant_scale_q, dequant_scale_k, dequant_scale_v,
+                           dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                            ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
                            block_table_torch, qr_bf16, kr_bf16)
 

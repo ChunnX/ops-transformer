@@ -228,11 +228,11 @@ __aicore__ inline void CompressorKernel<COMP>::SplitK()
 
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
     if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum) {
-        uint32_t kAlignSize = 0;
         constInfo.kBaseNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
-        kAlignSize = CeilDivT(Align(constInfo.hSize, static_cast<uint32_t>(32 / sizeof(X_T))), constInfo.kBaseNum);
-        constInfo.kBaseSize = kAlignSize / static_cast<uint32_t>(32 / sizeof(X_T)) *
-                            static_cast<uint32_t>(32 / sizeof(X_T));
+        uint32_t kAlignSize =
+                    CeilDivT(Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))),
+                        constInfo.kBaseNum);
+        constInfo.kBaseSize = Trunc(kAlignSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T)));
         // 当切m轴无法满足开满核时，不切m轴(切m处理有点复杂)
         constInfo.mGroupNum = 1;        // 在m轴处理上所有核当一个组
         constInfo.mCurGroupIdx = 0;     // 只有一个组
