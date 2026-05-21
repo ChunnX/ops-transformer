@@ -606,7 +606,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
-
+    <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+        T1支持大于等于actualSeqLengthsQuery的累加和，T1支持大于等于actualSeqLengthsKey的累加和。
     <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128，N1额外支持48，Nidx1额外支持24。
 
 ## 调用示例
