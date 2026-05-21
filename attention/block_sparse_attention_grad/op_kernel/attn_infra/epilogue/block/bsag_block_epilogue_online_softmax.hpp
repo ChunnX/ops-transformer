@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
+#ifndef BSAG_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
+#define BSAG_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
 
 #include "../../../attn_infra/bsag_base_defs.hpp"
 #include "../../../attn_infra/arch/bsag_cross_core_sync.hpp"

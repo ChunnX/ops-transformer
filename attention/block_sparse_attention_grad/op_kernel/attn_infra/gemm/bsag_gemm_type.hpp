@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_GEMM_TYPE_HPP
-#define GEMM_GEMM_TYPE_HPP
+#ifndef BSAG_GEMM_TYPE_HPP
+#define BSAG_GEMM_TYPE_HPP
 
 #include "../../attn_infra/bsag_base_defs.hpp"
 

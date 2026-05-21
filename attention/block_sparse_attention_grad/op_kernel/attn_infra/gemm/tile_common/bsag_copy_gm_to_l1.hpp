@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_TILE_COPY_GM_TO_L1_HPP
-#define GEMM_TILE_COPY_GM_TO_L1_HPP
+#ifndef BSAG_COPY_GM_TO_L1_HPP
+#define BSAG_COPY_GM_TO_L1_HPP
 
 #include "../../../attn_infra/bsag_base_defs.hpp"
 #include "../../../attn_infra/arch/bsag_arch.hpp"

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef HPP_HPP
-#define HPP_HPP
+#ifndef BSAG_BASE_DEFS_HPP
+#define BSAG_BASE_DEFS_HPP
 
 #include <cstdint>
 
