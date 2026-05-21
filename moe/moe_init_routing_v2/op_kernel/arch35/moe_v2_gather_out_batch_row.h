@@ -175,7 +175,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
 
     if (this->blockIdx == this->gatherOutTilingData->needCoreNum - 1) {
         this->coreRows = this->gatherOutTilingData->lastCoreRows;
-        this->perLoopRows = this->gatherOutTilingData->lastCorePerLoopRows;
+        this->perLoopRows = this->gatherOutTilingData->perCorePerLoopRows;
         this->lastLoopRows = this->gatherOutTilingData->lastCoreLastLoopRows;
         this->rowLoops = this->gatherOutTilingData->lastCoreLoops;
     } else {
@@ -187,11 +187,6 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
 
     this->ubRowsPerLoop = this->gatherOutTilingData->perLoopCols;
 
-    int64_t maxPerLoopRows =
-        this->gatherOutTilingData->perCorePerLoopRows > this->gatherOutTilingData->lastCorePerLoopRows ?
-            this->gatherOutTilingData->perCorePerLoopRows :
-            this->gatherOutTilingData->lastCorePerLoopRows;
-
     inputXGm.SetGlobalBuffer((__gm__ T *)inputX, this->n * this->cols);
     expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->activateRows * this->cols);
 
@@ -200,7 +195,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
                                     Align(this->coreRows, sizeof(int32_t)));
 
     pipe->InitBuffer(outputRowsQueue, BUFFER_NUM_BATCH, AlignBytes(this->ubRowsPerLoop * this->cols, sizeof(T)));
-    pipe->InitBuffer(dstToSrcIndexQueue, BUFFER_NUM_BATCH, AlignBytes(maxPerLoopRows, sizeof(int32_t)));
+    pipe->InitBuffer(dstToSrcIndexQueue, BUFFER_NUM_BATCH, AlignBytes(this->gatherOutTilingData->perCorePerLoopRows, sizeof(int32_t)));
 }
 
 template <typename T>

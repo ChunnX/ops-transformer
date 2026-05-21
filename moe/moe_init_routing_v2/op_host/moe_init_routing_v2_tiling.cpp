@@ -875,12 +875,11 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
 
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
 
-    int64_t ubRowsThresholdVal = ubSize / NUM_FOUR;
-    int64_t ubRowsVal = ubSize / ((cols * inuptXDtypeSize_ + sizeof(int32_t)) * NUM_TWO);
+    int64_t ubRowsVal = ubSize / ((cols * inuptXDtypeSize_ + sizeof(int32_t)));
     ubRowsVal = ubRowsVal / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
 
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
-    bool useGatherMode = colsAligned && (cols * inuptXDtypeSize_ < ubRowsThresholdVal) && (ubRowsVal >= NUM_TWO) &&
+    bool useGatherMode = colsAligned && (ubRowsVal >= NUM_TWO) &&
                          (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
