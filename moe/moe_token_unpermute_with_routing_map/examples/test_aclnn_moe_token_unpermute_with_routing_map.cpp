@@ -63,7 +63,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-
+    // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
     return 0;
@@ -134,8 +134,9 @@ int RunOriginalPadModeExample(int32_t deviceId) {
 
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
+    // check根据自己的需要处理
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-
+    // 构造输入与输出，需要根据API的接口定义构造
     std::vector<int64_t> permutedTokensShape = {2, 2};
     std::vector<int64_t> sortedIndicesShape = {2};
     std::vector<int64_t> routingMapOptionalShape = {2, 2};
@@ -153,7 +154,7 @@ int RunOriginalPadModeExample(int32_t deviceId) {
     void* outIndexDeviceAddr = nullptr;
     void* permuteTokenIdDeviceAddr = nullptr;
     void* permuteProbsDeviceAddr = nullptr;
-
+    //in
     aclTensor* permutedTokens = nullptr;
     aclTensor* sortedIndices = nullptr;
     aclTensor* routingMapOptional = nullptr;
@@ -164,8 +165,9 @@ int RunOriginalPadModeExample(int32_t deviceId) {
     aclTensor* permuteProbs = nullptr;
     bool padMode = true;
     std::vector<int64_t> restoreShapeOptionalData = {2, 2};
-    aclIntArray* restoreShapeOptional = aclCreateIntArray(restoreShapeOptionalData.data(), restoreShapeOptionalData.size());
+    aclIntArray *restoreShapeOptional = aclCreateIntArray(restoreShapeOptionalData.data(), restoreShapeOptionalData.size());
 
+    //构造数据
     std::vector<float> permutedTokensHostData = {1.0, 1.0, 1.0, 1.0};
     std::vector<int> sortedIndicesHostData = {1, 1};
     std::vector<char> routingMapOptionalHostData = {1, 1, 1, 1};
@@ -175,7 +177,7 @@ int RunOriginalPadModeExample(int32_t deviceId) {
     std::vector<int> outIndexHostData = {0, 0};
     std::vector<int> permuteTokenIdHostData = {0, 0};
     std::vector<float> permuteProbsHostData = {0, 0};
-
+    // 创建self aclTensor
     ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape, &permutedTokensDeviceAddr, aclDataType::ACL_FLOAT, &permutedTokens);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(sortedIndicesHostData, sortedIndicesShape, &sortedIndicesDeviceAddr, aclDataType::ACL_INT32, &sortedIndices);
