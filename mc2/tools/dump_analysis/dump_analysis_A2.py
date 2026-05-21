@@ -127,7 +127,6 @@ def get_send_and_recv_info(arr: np.ndarray, core_num: int,
                            ep_worldsize: int) -> FullSendRecvResult:
     raw_send_or_recv, fullmesh_num_tokens = _get_raw_send_or_recv(
         arr, core_num, islayer, ep_worldsize)
-    print(fullmesh_num_tokens)
     if islayer == 0:
         return _get_fullmesh_info(
             raw_send_or_recv, core_num, ep_rankid, d_c, ep_worldsize, fullmesh_num_tokens)
@@ -156,13 +155,10 @@ def _get_fullmesh_info(raw_send_or_recv: list, core_num: int, ep_rankid: int,
                        fullmesh_num_tokens: list) -> FullSendRecvResult:
     has_send_ep = [0] * ep_worldsize
     has_recv_ep = [0] * ep_worldsize
-    print(ep_rankid)
     for i in range(core_num):
         rec = raw_send_or_recv[i]
         send_start, send_rank_num = int(rec[0]), int(rec[1])
         recv_start, recv_rank_num = int(rec[2]), int(rec[3])
-        if send_rank_num > 0 or recv_rank_num > 0:
-            print(i, rec[:10])
         send_uint32_num = (send_rank_num - 1) // UINT32_BITS + 1
         send_flag = rec[4: 4 + send_uint32_num]
         recv_flag = rec[4 + send_uint32_num:]
@@ -814,7 +810,6 @@ def analysis_all_cards(parent_path=PARENT_PATH):
 
     if d_c is not None and islayer == 0:
         if d_c == "dispatch":
-            print(unfinish_ep_func)
             error_rankid_info = check_dis(dis_win_state_func, expertids_func, xactivemask_func,
                       unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k)
         else:
