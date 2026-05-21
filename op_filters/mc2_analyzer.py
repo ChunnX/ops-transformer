@@ -99,7 +99,12 @@ def extract_dependencies_from_cmake(cmake_file: Path) -> Tuple[List[str], List[s
             for dep in deps:
                 dep = dep.strip()
                 if dep and not dep.startswith('#'):
-                    if dep in EXCLUDED_DIRS or any(dep.startswith(f"{excluded}/") or dep.startswith(f"{excluded}_") for excluded in EXCLUDED_DIRS):
+                    normalized_dep = dep.lower()
+                    if dep.startswith("mc2/"):
+                        normalized_dep = dep[4:].lower()
+                    if normalized_dep in EXCLUDED_DIRS:
+                        continue
+                    if any(normalized_dep.startswith(f"{excluded}/") or normalized_dep.startswith(f"{excluded}_") for excluded in EXCLUDED_DIRS):
                         continue
                     if dep.startswith("mc2/"):
                         dep = dep[4:]

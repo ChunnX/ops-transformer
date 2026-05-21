@@ -47,7 +47,7 @@ THIRD_PARTY_OP_MAPPING: Dict[str, List[str]] = {
         "matmul_allto_all",
         "matmul_reduce_scatter_v2"
     ],
-    "mat_mul_v3": [
+    "batch_mat_mul_v3": [
         "allto_all_all_gather_batch_mat_mul",
         "batch_mat_mul_reduce_scatter_allto_all"
     ],
@@ -103,7 +103,7 @@ COMMON_FILE_OP_MAPPING: Dict[str, List[str]] = {
     "op_host/op_tiling/mc2_tiling_common_var.h": [
         "allto_all_all_gather_batch_mat_mul",
         "batch_mat_mul_reduce_scatter_allto_all",
-        "grouped_mat_mul_all_reduce"
+        "grouped_mat_mul_allto_allv"
     ],
     "op_host/op_tiling/mc2_calc_num_blocks.h": [
         "allto_allv_grouped_mat_mul",
@@ -172,6 +172,38 @@ COMMON_FILE_OP_MAPPING: Dict[str, List[str]] = {
     ],
     "op_kernel/mc2_templates/communication/comm_stage.h": [
         "allto_all_matmul"
+    ],
+    "utils/context_util.h": [
+        "all_gather_matmul",
+        "allto_allv_grouped_mat_mul",
+        "allto_allv_quant_grouped_mat_mul",
+        "matmul_reduce_scatter",
+        "quant_grouped_mat_mul_allto_allv"
+    ],
+    "utils/mc2_moe_utils.h": [
+        "allto_all_all_gather_batch_mat_mul",
+        "batch_mat_mul_reduce_scatter_allto_all",
+        "grouped_mat_mul_allto_allv",
+        "quant_grouped_mat_mul_allto_allv"
+    ],
+    "utils/context_transfer.h": [
+        "inplace_matmul_all_reduce_add_rms_norm",
+        "matmul_all_reduce",
+        "matmul_all_reduce_add_rms_norm"
+    ],
+    "utils/mc2_exception_dump.h": [
+        "moe_distribute_combine_v2",
+        "moe_distribute_combine_v3",
+        "moe_distribute_dispatch_v2",
+        "moe_distribute_dispatch_v3"
+    ],
+    "utils/ops_utils.h": [
+        "all_gather_matmul",
+        "matmul_reduce_scatter",
+        "matmul_reduce_scatter_v2"
+    ],
+    "utils/matmul_util.h": [
+        "moe_distribute_combine_teardown"
     ]
 }
 
@@ -327,7 +359,7 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
             if common_rel_path in COMMON_FILE_OP_MAPPING:
                 special_common_files.append(file_path)
                 special_common_ops.update(COMMON_FILE_OP_MAPPING[common_rel_path])
-                logger.info(f"特殊 common 文件: {file_path}，关联算子: {COMMON_FILE_OP_MAPPING[common_rel_path]}")
+                logger.debug(f"[common 特殊处理] 文件: {file_path}, 映射: {common_rel_path}")
             else:
                 other_common_files.append(file_path)
         elif is_in_3rd(file_path, mc2_path):
@@ -335,7 +367,7 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
             if subdir in THIRD_PARTY_OP_MAPPING:
                 special_3rd_files.append(file_path)
                 special_3rd_ops.update(THIRD_PARTY_OP_MAPPING[subdir])
-                logger.info(f"特殊 3rd 子目录 {subdir} 文件: {file_path}，关联算子: {THIRD_PARTY_OP_MAPPING[subdir]}")
+                logger.debug(f"[3rd 特殊处理] 文件: {file_path}, 子目录: 3rd/{subdir}")
             else:
                 other_3rd_files.append(file_path)
         else:
@@ -345,31 +377,38 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
     
     if other_common_files:
         logger.info("=" * 60)
-        logger.info("检测到其他 common 目录下的变更文件，触发全量测试")
-        logger.info(f"其他 common 文件数量: {len(other_common_files)}")
+        logger.info("[触发全量测试] 原因: common 目录下的非特殊处理文件变更")
+        logger.info(f"触发路径 (共 {len(other_common_files)} 个):")
         for f in other_common_files:
-            logger.info(f"  other common 文件: {f}")
+            logger.info(f"  -> {f}")
         should_full_test = True
     
     if other_3rd_files:
         logger.info("=" * 60)
-        logger.info("检测到其他 3rd 子目录下的变更文件，触发全量测试")
-        logger.info(f"其他 3rd 文件数量: {len(other_3rd_files)}")
+        logger.info("[触发全量测试] 原因: 3rd 目录下的非特殊处理子目录变更")
+        logger.info(f"触发路径 (共 {len(other_3rd_files)} 个):")
         for f in other_3rd_files:
             subdir = get_3rd_subdir(f, mc2_path)
-            logger.info(f"  3rd/{subdir} 文件: {f}")
+            logger.info(f"  -> {f} (子目录: 3rd/{subdir})")
         should_full_test = True
     
     if special_common_files:
         logger.info("=" * 60)
-        logger.info(f"检测到特殊 common 文件变更，添加特定算子（不做反向依赖推导）")
-        logger.info(f"特殊 common 文件数量: {len(special_common_files)}")
+        logger.info("[common 特殊处理机制] 添加特定关联算子（不做反向依赖推导）")
+        logger.info(f"触发路径 (共 {len(special_common_files)} 个):")
+        for f in special_common_files:
+            common_rel_path = get_common_relative_path(f, mc2_path)
+            logger.info(f"  -> {f}")
+            logger.info(f"     映射配置: {common_rel_path}")
         logger.info(f"关联算子: {sorted(special_common_ops)}")
     
     if special_3rd_files:
         logger.info("=" * 60)
-        logger.info(f"检测到特殊 3rd 子目录下的变更文件，添加特定算子")
-        logger.info(f"特殊 3rd 文件数量: {len(special_3rd_files)}")
+        logger.info("[3rd 特殊处理机制] 添加特定关联算子（不做反向依赖推导）")
+        logger.info(f"触发路径 (共 {len(special_3rd_files)} 个):")
+        for f in special_3rd_files:
+            subdir = get_3rd_subdir(f, mc2_path)
+            logger.info(f"  -> {f} (子目录: 3rd/{subdir})")
         logger.info(f"关联算子: {sorted(special_3rd_ops)}")
     
     if not other_common_files and not other_3rd_files and not special_common_files and not special_3rd_files:

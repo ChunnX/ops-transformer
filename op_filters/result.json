@@ -1,8 +1,6 @@
 {
   "all_gather_matmul": {
     "dependencies": [
-      "common",
-      "3rd",
       "all_gather_matmul_v2"
     ],
     "supported_products": [
@@ -13,10 +11,7 @@
     "warnings": []
   },
   "all_gather_matmul_v2": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950",
       "ascend910b",
@@ -25,10 +20,7 @@
     "warnings": []
   },
   "allto_all_all_gather_batch_mat_mul": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910_93"
     ],
@@ -36,8 +28,6 @@
   },
   "allto_all_matmul": {
     "dependencies": [
-      "common",
-      "3rd",
       "matmul_allto_all"
     ],
     "supported_products": [
@@ -48,10 +38,7 @@
     "warnings": []
   },
   "allto_allv_grouped_mat_mul": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910_93",
       "ascend950"
@@ -59,40 +46,28 @@
     "warnings": []
   },
   "allto_allv_quant_grouped_mat_mul": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950"
     ],
     "warnings": []
   },
   "attention_to_ffn": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910_93"
     ],
     "warnings": []
   },
   "batch_mat_mul_reduce_scatter_allto_all": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910_93"
     ],
     "warnings": []
   },
   "distribute_barrier": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950",
       "ascend910_93"
@@ -101,8 +76,6 @@
   },
   "distribute_barrier_extend": {
     "dependencies": [
-      "common",
-      "3rd",
       "distribute_barrier"
     ],
     "supported_products": [
@@ -111,20 +84,14 @@
     "warnings": []
   },
   "ffn_to_attention": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910_93"
     ],
     "warnings": []
   },
   "grouped_mat_mul_all_reduce": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910b",
       "ascend910_93"
@@ -133,8 +100,6 @@
   },
   "grouped_mat_mul_allto_allv": {
     "dependencies": [
-      "common",
-      "3rd",
       "allto_allv_grouped_mat_mul"
     ],
     "supported_products": [
@@ -145,8 +110,6 @@
   },
   "inplace_matmul_all_reduce_add_rms_norm": {
     "dependencies": [
-      "3rd",
-      "common",
       "matmul_all_reduce_add_rms_norm",
       "matmul_all_reduce"
     ],
@@ -156,10 +119,7 @@
     "warnings": []
   },
   "matmul_all_reduce": {
-    "dependencies": [
-      "3rd",
-      "common"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950",
       "ascend910b"
@@ -168,8 +128,6 @@
   },
   "matmul_all_reduce_add_rms_norm": {
     "dependencies": [
-      "3rd",
-      "common",
       "matmul_all_reduce"
     ],
     "supported_products": [
@@ -178,10 +136,7 @@
     "warnings": []
   },
   "matmul_allto_all": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950",
       "ascend910_93",
@@ -191,8 +146,6 @@
   },
   "matmul_reduce_scatter": {
     "dependencies": [
-      "common",
-      "3rd",
       "matmul_reduce_scatter_v2"
     ],
     "supported_products": [
@@ -203,10 +156,7 @@
     "warnings": []
   },
   "matmul_reduce_scatter_v2": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950",
       "ascend910b",
@@ -215,10 +165,7 @@
     "warnings": []
   },
   "mega_moe": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950"
     ],
@@ -226,8 +173,6 @@
   },
   "moe_distribute_combine": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2",
       "moe_distribute_combine_v2",
       "moe_distribute_dispatch_v3",
@@ -242,8 +187,6 @@
   },
   "moe_distribute_combine_add_rms_norm": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2",
       "moe_distribute_combine_v2",
       "moe_distribute_dispatch_v3",
@@ -256,10 +199,7 @@
     "warnings": []
   },
   "moe_distribute_combine_setup": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950"
     ],
@@ -267,8 +207,6 @@
   },
   "moe_distribute_combine_teardown": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_combine_setup"
     ],
     "supported_products": [
@@ -278,8 +216,6 @@
   },
   "moe_distribute_combine_v2": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2",
       "moe_distribute_dispatch_v3"
     ],
@@ -292,8 +228,6 @@
   },
   "moe_distribute_combine_v3": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2",
       "moe_distribute_dispatch_v3",
       "moe_distribute_combine_v2"
@@ -306,8 +240,6 @@
   },
   "moe_distribute_dispatch": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2",
       "moe_distribute_dispatch_v3"
     ],
@@ -320,8 +252,6 @@
   },
   "moe_distribute_dispatch_setup": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2",
       "moe_distribute_dispatch_v3"
     ],
@@ -332,8 +262,6 @@
   },
   "moe_distribute_dispatch_teardown": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_setup"
     ],
     "supported_products": [
@@ -342,10 +270,7 @@
     "warnings": []
   },
   "moe_distribute_dispatch_v2": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950",
       "ascend910_93",
@@ -355,8 +280,6 @@
   },
   "moe_distribute_dispatch_v3": {
     "dependencies": [
-      "common",
-      "3rd",
       "moe_distribute_dispatch_v2"
     ],
     "supported_products": [
@@ -366,10 +289,7 @@
     "warnings": []
   },
   "moe_update_expert": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend910_93",
       "ascend950"
@@ -378,8 +298,6 @@
   },
   "quant_all_reduce": {
     "dependencies": [
-      "common",
-      "3rd",
       "quant_reduce_scatter"
     ],
     "supported_products": [
@@ -389,8 +307,6 @@
   },
   "quant_grouped_mat_mul_allto_allv": {
     "dependencies": [
-      "common",
-      "3rd",
       "allto_allv_quant_grouped_mat_mul"
     ],
     "supported_products": [
@@ -399,10 +315,7 @@
     "warnings": []
   },
   "quant_reduce_scatter": {
-    "dependencies": [
-      "common",
-      "3rd"
-    ],
+    "dependencies": [],
     "supported_products": [
       "ascend950"
     ],

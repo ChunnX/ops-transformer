@@ -154,7 +154,6 @@ def main() -> int:
         
         logger.info(f"PR: {args.pr}")
         logger.info(f"白名单文件: {args.whitelist}")
-        logger.info(f"依赖关系文件: {args.dependency_json}")
         logger.info(f"mc2 目录: {args.mc2}")
         logger.info(f"输出 JSON: {args.output_json}")
         logger.info(f"输出日志: {args.output_log}")
@@ -171,7 +170,10 @@ def main() -> int:
         for i, p in enumerate(whitelist_paths, 1):
             logger.debug(f"  白名单 {i}: {p}")
         
-        dependency_data = load_dependency_json(args.dependency_json, logger)
+        logger.info("=" * 60)
+        logger.info(f"动态生成依赖关系文件: {args.dependency_json}")
+        dependency_data = analyze_mc2_and_generate_json(args.mc2, args.dependency_json, logger)
+        logger.info(f"依赖关系生成完成，共 {len(dependency_data)} 个算子")
         
         mc2_path = normalize_path(args.mc2)
         

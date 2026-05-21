@@ -31,7 +31,8 @@ def setup_logging(log_file_path: str) -> logging.Logger:
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
-    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    log_encoding = "utf-8" if os.name != "nt" else "gbk"
+    file_handler = logging.FileHandler(log_file_path, encoding=log_encoding)
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
