@@ -70,6 +70,7 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
@@ -625,11 +626,11 @@ public:
             uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
             LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
             mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
-            uint64_t copyBlockCount = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / 32 / blockBytes;
-            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * s2BaseSizeCur / 32;
-            uint64_t subLoopOffset = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / 32 * 2;
+            uint64_t copyBlockCount = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE / blockBytes;
+            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
+            uint64_t subLoopOffset = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / blockBytes * 2;
             uint16_t copyCount = runInfo.actVecMSizeAlign16 / 16;
-            uint16_t dstStride = s2BaseSizeCur / 32 / 2;
+            uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
                     {copyCount, 1, 0, dstStride}); // todo pscale打印看搬运偏移

@@ -713,7 +713,7 @@ public:
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSizeAlign16 = (info.actMSize + 15) >> 4 << 4;
+            info.actVecMSizeAlign16 = info.actMSizeAlign32 >> 1;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
