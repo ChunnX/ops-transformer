@@ -118,6 +118,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     tilingData->isPermuteOut = (mmXStorageShape != nullptr);
     
     groupPtr_ = groupEpPtr;
+    group_ = groupEpPtr;  // Must also set group_ for use in SetHcclTiling
     epWorldSizePtr_ = epWorldSizePtr;
     
     auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
