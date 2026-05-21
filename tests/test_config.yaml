@@ -103,6 +103,20 @@ attention:
       - attention/flash_attention_score_grad
     options:
       - flash_attention_score_grad
+    
+  fused_causal_conv1d:
+    module: True
+    src:
+      - attention/fused_causal_conv1d
+    exclude:
+      - attention/fused_causal_conv1d/docs
+      - attention/fused_causal_conv1d/README.md
+    test:
+      ut: True
+    ut_cov_exclude:
+      - attention/fused_causal_conv1d
+    options:
+      - fused_causal_conv1d
 
   fused_infer_attention_score:
     module: True
