@@ -848,11 +848,18 @@ public:
         // 先跳过当前BN2剩余的S1G，再跳N2
         gS1Skip = gS1Skip - gS1RemainCurBN2;
         gS1Cur = 0;
+        uint32_t bIdxOld = bN2Cur / constInfo.n2Size;
         bN2Cur++;
 
         uint32_t n2Size = constInfo.n2Size;
         uint32_t bIdx = bN2Cur / n2Size;
         uint32_t n2Idx = bN2Cur % n2Size;
+        // 若跨到新batch, 更新actSeqLensQ和gS1LoopTimes
+        if (bIdx != bIdxOld) {
+            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            gS1Size = actSeqLensQ * constInfo.gSize;
+            gS1LoopTimes = actSeqLensQ == 0 ? gS1Size : (gS1Size + mBaseSize - 1) / mBaseSize;
+        }
         // 跳N2
         uint64_t gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
         PRINTF("update n2Idx:%d, n2Size:%d, gS1RemainCurBatch:%d, gS1Skip:%d, bIdx:%d \n", n2Idx, n2Size, gS1RemainCurBatch, gS1Skip, bIdx);
