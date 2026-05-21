@@ -80,7 +80,6 @@ private:
     static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 512;
     static constexpr uint64_t L0C_BUF_SIZE = 256 * 256;
 
-    static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
     static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
 
     int8_t aL1DbNum_;
