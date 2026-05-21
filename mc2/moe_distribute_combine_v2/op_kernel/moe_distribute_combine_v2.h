@@ -186,12 +186,12 @@ private:
     LocalTensor<bool> maskGenerateTensor_;
     LocalTensor<uint32_t> dataStateLocalTensor_;
     LocalTensor<float> stateResetTensor_;
-    __gm__ uint32_t *flag_gm;
-    __gm__ void *token_buffer;
-    __gm__ void *base_addr[256];
-    int urma_core_num = 4;
-    int start_tk_id[64] = {0};
-    int send_cnt_num[64] = {0};
+    // __gm__ uint32_t *flag_gm;
+    // __gm__ void *token_buffer;
+    // __gm__ void *base_addr[256];
+    // int urma_core_num = 4;
+    // int start_tk_id[64] = {0};
+    // int send_cnt_num[64] = {0};
 
     // tiling侧已确保数据上限， 相乘不会越界，因此统一采用uin32_t进行处理
     uint32_t axisBS_{0};
