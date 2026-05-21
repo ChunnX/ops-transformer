@@ -58,6 +58,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    AscendC::printf("[LBH] allto_allv_grouped_mat_mul\n");
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     TPipe pipe;

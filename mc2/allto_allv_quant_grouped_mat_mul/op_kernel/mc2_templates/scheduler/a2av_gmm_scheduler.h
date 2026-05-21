@@ -92,18 +92,19 @@ public:
 
     __aicore__ inline void Process()
     {
+        AscendC::printf("[LBH] tilingData_->isNeedMM = %d\n", tilingData_->isNeedMM);
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
-        if constexpr (MX_QUANT_MODE) {
-            if (isScaleBatchMode_) {
-                ProcessScaleCommBatchMode();
-            } else {
-                ProcessCommRoundMode();
-            }
-        } else {
-            ProcessCommRoundMode();
-        }
+        // if constexpr (MX_QUANT_MODE) {
+        //     if (isScaleBatchMode_) {
+        //         ProcessScaleCommBatchMode();
+        //     } else {
+        //         ProcessCommRoundMode();
+        //     }
+        // } else {
+        //     ProcessCommRoundMode();
+        // }
         this->End();
     }
 
