@@ -18,45 +18,45 @@
 - 接口功能：完成MoE（Mixture of Experts）门控Top-K选择的反向梯度计算。该算子是aclnnMoeGatingTopK的反向算子，根据前向算子输出的归一化得分（xNorm）、上游梯度（gradY）和专家索引（expertIdx），计算输入得分矩阵的梯度（gradX）。支持sigmoid模式（normType=1）。
 - 计算公式（sigmoid模式，normType=1）：
   
-  步骤1：缩放梯度
+  1. 缩放梯度
   
-  $$
-  gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
-  $$
+    $$
+    gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
+    $$
   
-  步骤2：正向renorm的反向传播
+  2. 正向renorm的反向传播
   
-  $$
-  wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
-  $$
+    $$
+    wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
+    $$
   
-  $$
-  D_i = \sum_{p} wPrime_{ip} + eps
-  $$
+    $$
+    D_i = \sum_{p} wPrime_{ip} + eps
+    $$
+    
+    $$
+    w_{ip} = \frac{wPrime_{ip}}{D_i}
+    $$
+    
+    $$
+    beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
+    $$
+    
+    $$
+    gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
+    $$
   
-  $$
-  w_{ip} = \frac{wPrime_{ip}}{D_i}
-  $$
+  3. 散射到完整维度
   
-  $$
-  beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
-  $$
+    $$
+    gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
+    $$
   
-  $$
-  gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
-  $$
+  4. Sigmoid反向传播
   
-  步骤3：散射到完整维度
-  
-  $$
-  gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
-  $$
-  
-  步骤4：Sigmoid反向传播
-  
-  $$
-  gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
-  $$
+    $$
+    gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
+    $$
 
 ## 函数原型
 
@@ -144,7 +144,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>renorm（int64_t）</td>
       <td>输入</td>
       <td>表示前向算子在softmax模式下renorm标记。</td>
-      <td>0：不做renorm；1：需要做renorm；预留参数，当前仅支持sigmoid模式，不管renorm为0还是1，正向都需要renorm。</td>
+      <td>0：不做renorm；1：需要做renorm；预留参数，当前仅支持sigmoid模式。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
     <tr>
       <td>routedScalingFactor（double）</td>
       <td>输入</td>
-      <td>表示计算yOut使用的routed_scaling_factor系数，对应公式中的routedScalingFactor。</td>
+      <td>表示前向算子使用的routed_scaling_factor系数，对应公式中的routedScalingFactor。</td>
       <td></td>
       <td>-</td>
       <td>-</td>
@@ -211,7 +211,9 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>-</td>
     </tr>
   </tbody></table>
+
 - **返回值**
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
   
   第一段接口完成入参校验，出现以下场景时报错：
@@ -263,16 +265,37 @@ aclnnStatus aclnnMoeGatingTopKBackward(
    <col style="width: 770px">
   </colgroup>
   <thead>
-            <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
-        </thead>
-        <tbody>
-            <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-            <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKBackwardGetWorkspaceSize获取。</td></tr>
-            <tr><td>executor</td><td>输入</td><td>op执行器，包含了算子计算流程。</td></tr>
-            <tr><td>stream</td><td>输入</td><td>指定执行任务的Stream。</td></tr>
-        </tbody>
-    </table>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeGatingTopKBackwardGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody></table>
+
 - **返回值**
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
@@ -284,8 +307,6 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-  
 ```Cpp
 #include <iostream>
 #include <vector>
