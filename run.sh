@@ -32,7 +32,7 @@ trap '' SIGTSTP  # 屏蔽Ctrl+Z，避免卡死
 
 # ===================== 执行编译逻辑 =====================
 echo "[$(date)] 开始执行编译流程（按Ctrl+C可强制终止并清理）..."
-source /home/ascend/set_env.sh
+source /home/dpu_ascend/set_env.sh
 git pull
 
 # 后台执行编译，捕获子进程PID
