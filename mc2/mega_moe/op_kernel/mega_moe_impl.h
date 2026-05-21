@@ -29,6 +29,7 @@
 #include "blaze/block/block_scheduler_swizzle.h"
 
 #include "mega_moe_combine_send.h"
+#include <cstdint>
 
 using namespace AscendC;
 
@@ -46,10 +47,10 @@ constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
-template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, typename ParamsType>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const ParamsType& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
@@ -226,12 +227,12 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
-// GroupMatmul2 - GMM2矩阵乘法 + Combine
-template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
-__aicore__ inline void GroupMatmul2(
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+// GroupMatmul2Impl - GMM2矩阵乘法 + Combine (合并Normal和Wave模式)
+template <typename ParamsType, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmul2Impl(
+    const ParamsType& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    uint32_t groupCnt, uint32_t expertIdx, uint16_t& pingpongIdx, int32_t rankId)
 {
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
 
@@ -392,10 +393,24 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIV) {
             WaitForCube(pingpongIdx);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+            if constexpr (std::is_same_v<ParamsType, ParamsWave>) {
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+                AscendC::GlobalTensor<int32_t> tripleGm;
+                int32_t lenTile = Get<M_VALUE>(actualShape);
+                LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, lenTile * 8);
+                tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr + (groupCnt + mLoc) * 32));
+                AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
+                // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+                // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
+                MegaMoeCombineImpl::CombineTokensWave<ElementC, decltype(actualShape)>(
+                    mLoc, nLoc, n, expertIdx, rankId, tripleTensor, l0cOutUbGMM2, actualShape, params);
+            } else {
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+                MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                    mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+            }
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);
@@ -403,6 +418,28 @@ __aicore__ inline void GroupMatmul2(
         pingpongIdx = 1 - pingpongIdx;
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+}
+
+// GroupMatmul2 - GMM2矩阵乘法 + Combine (Normal模式)
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmul2(
+    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
+    uint16_t& pingpongIdx, int32_t rankId)
+{
+    GroupMatmul2Impl<Params, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom2, groupIdx, 0, 0, pingpongIdx, rankId);
+}
+
+// GroupMatmul2Wave - GMM2矩阵乘法 + Combine (Wave模式)
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmul2Wave(
+    const ParamsWave& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupCnt,
+    uint32_t expertIdx, uint16_t& pingpongIdx, int32_t rankId)
+{
+    GroupMatmul2Impl<ParamsWave, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>(
+        params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom2, 0, groupCnt, expertIdx, pingpongIdx, rankId);
 }
 
 } // namespace MegaMoeImpl
