@@ -52,12 +52,16 @@ except ImportError:
     GPU_AVAILABLE = False
 
 try:
-    from npu_impl import flash_attn_npu, flash_attn_metadata_only, flash_attn_npu_graph
+    from npu_impl import (flash_attn_npu, flash_attn_metadata_only, flash_attn_npu_graph,
+                           flash_attn_npu_sim, save_metadata_bin, load_metadata_bin)
     NPU_AVAILABLE = True
 except ImportError:
     flash_attn_npu = None
     flash_attn_metadata_only = None
     flash_attn_npu_graph = None
+    flash_attn_npu_sim = None
+    save_metadata_bin = None
+    load_metadata_bin = None
     NPU_AVAILABLE = False
 
 # ------------------ 辅助函数 ------------------
@@ -520,7 +524,13 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             print(f"[{test_name}] 警告: NPU 不可用，尝试从 dump 加载。")
         if NPU_AVAILABLE and (n1 >= n2 and n1 % n2 == 0):
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
-            if graph_mode:
+            _sim_mode = kwargs.pop("_sim_mode", False)
+            _metadata_bin_path = kwargs.pop("_metadata_bin_path", None)
+            if _sim_mode and _metadata_bin_path:
+                print(f"[{test_name}] NPU 仿真模式 (从 .bin 加载 metadata)...")
+                npu_out, lse_npu = flash_attn_npu_sim(q, k, v, q_rope, k_rope, atten_mask, pse_npu,
+                                                      metadata_bin_path=_metadata_bin_path, **kwargs)
+            elif graph_mode:
                 print(f"[{test_name}] NPU 图模式计算...")
                 npu_out, lse_npu = flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
             else:
@@ -712,6 +722,14 @@ if __name__ == "__main__":
     parser.add_argument("--viz_dir",      type=str,            default="./viz_output")
     parser.add_argument("--meta_only",    action="store_true",
                         help="只调用 npu_flash_attn_metadata (NPU环境)")
+    parser.add_argument("--dump_metadata", action="store_true",
+                        help="预生成模式: 正常运行并将 metadata 保存为 .bin 文件 (需要 NPU)")
+    parser.add_argument("--sim_mode",     action="store_true",
+                        help="仿真模式: 从 .bin 文件加载 metadata，跳过 AICPU 算子，只跑 flash_attn")
+    parser.add_argument("--metadata_dir", type=str, default="./metadata_bin",
+                        help="metadata .bin 文件目录 (dump_metadata 存入 / sim_mode 读取)")
+    parser.add_argument("--cpu_sim_metadata", action="store_true",
+                        help="使用纯 CPU 模拟器生成 metadata .bin（无需 NPU，配合 --dump_metadata）")
     parser.add_argument("--load_gpu_dump", type=str, default=None,
                         help="指定 GPU dump 文件路径（用于离线对比）")
     parser.add_argument("--load_npu_dump", type=str, default=None,
@@ -723,6 +741,75 @@ if __name__ == "__main__":
     parser.add_argument("--fail_analysis", action="store_true",
                         help="分析失败元素在各 batch/head 的分布情况，配合 --dump_tensors 使用")
     args = parser.parse_args()
+
+    # ---- Phase 1: 预生成 metadata .bin (--dump_metadata 或 --cpu_sim_metadata) ----
+    if args.dump_metadata and args.cpu_sim_metadata:
+        # 纯 CPU 模拟器生成 metadata，无需 NPU 设备
+        from flash_attn_metadata_sim import generate_metadata_cpu
+        module_names = [x.strip() for x in args.case_files.split(",")]
+        all_cases = load_case_modules(module_names)
+        run_cases = resolve_case_ids(args.case_id, all_cases)
+        if not run_cases:
+            print("[ERROR] 没有可运行的 case")
+            sys.exit(1)
+        os.makedirs(args.metadata_dir, exist_ok=True)
+        print(f"[DUMP] CPU 模拟器预生成 metadata: {len(run_cases)} cases → {os.path.abspath(args.metadata_dir)}")
+        fail_cnt = 0
+        for name in run_cases:
+            config = all_cases[name]
+            try:
+                kw = normalize_case(config)
+                # 提取参数
+                layout_q = kw.get("layout_q", kw.get("input_layout", "BNSD"))
+                layout_kv = kw.get("layout_kv", layout_q)
+                layout_out = kw.get("layout_out", layout_q)
+                sparse_mode = kw.get("sparse_mode", 0)
+                pre_tokens = kw.get("pre_tokens", 2147483647)
+                next_tokens = kw.get("next_tokens", 2147483647)
+                if sparse_mode in (0, 3):
+                    pre_tokens = -1
+                    next_tokens = -1
+                cu_q = kw.get("cu_seqlens_q")
+                cu_kv = kw.get("cu_seqlens_kv")
+                seqused_q = kw.get("seqused_q")
+                seqused_kv = kw.get("seqused_kv")
+                n1 = kw.get("N1", 1)
+                n2 = kw.get("N2", n1)
+                d = kw.get("D", 128)
+                sq = kw.get("S1", 1)
+                skv = kw.get("S2", sq)
+                if isinstance(cu_q, list):
+                    batch_size = len(cu_q) - 1
+                elif isinstance(seqused_q, list):
+                    batch_size = len(seqused_q)
+                else:
+                    batch_size = kw.get("B", 1)
+
+                meta_np = generate_metadata_cpu(
+                    cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
+                    seqused_q=seqused_q, seqused_kv=seqused_kv,
+                    num_heads_q=n1, num_heads_kv=n2, head_dim=d,
+                    batch_size=batch_size, max_seqlen_q=sq, max_seqlen_kv=skv,
+                    mask_mode=sparse_mode, win_left=pre_tokens, win_right=next_tokens,
+                    layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+                )
+                safe_name = name.replace("/", "_").replace("\\", "_")
+                bin_path = os.path.join(args.metadata_dir, f"{safe_name}_metadata.bin")
+                meta_np.tofile(bin_path)
+                print(f"  [OK] {name} → {bin_path} ({meta_np.nbytes} bytes)")
+            except Exception as e:
+                import traceback
+                print(f"  [FAIL] {name}: {e}")
+                traceback.print_exc()
+                fail_cnt += 1
+        print(f"\n[DUMP] 完成: {len(run_cases) - fail_cnt} 成功, {fail_cnt} 失败")
+        sys.exit(0 if fail_cnt == 0 else 1)
+
+    # ---- Phase 2: 仿真模式 (--sim_mode) ----
+    if args.sim_mode:
+        # 仿真模式：从 .bin 加载 metadata，跳过 AICPU，只跑 flash_attn
+        print(f"[SIM] 仿真模式: 将从 {os.path.abspath(args.metadata_dir)} 加载 metadata .bin")
+        print(f"[SIM] 跳过 npu_flash_attn_metadata (AICPU)，只运行 npu_flash_attn (AICore)")
 
     # 设备初始化
     if args.use_gpu:
@@ -797,6 +884,26 @@ if __name__ == "__main__":
         else:
             kwargs["_use_gpu"] = False
             auto_load_gpu = args.load_gpu_dump or (args.dump_tensors and not GPU_AVAILABLE)
+
+        # 仿真模式: 注入 metadata .bin 路径
+        if args.sim_mode:
+            safe_name = name.replace("/", "_").replace("\\", "_")
+            bin_path = os.path.join(args.metadata_dir, f"{safe_name}_metadata.bin")
+            if not os.path.exists(bin_path):
+                print(f"[ERROR] {name}: metadata .bin 不存在: {bin_path}")
+                print(f"        请先运行 --dump_metadata 或 --dump_metadata --cpu_sim_metadata 生成")
+                results[name] = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                           "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
+                                  "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                           "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+                continue
+            kwargs["_sim_mode"] = True
+            kwargs["_metadata_bin_path"] = bin_path
+        elif args.dump_metadata:
+            safe_name = name.replace("/", "_").replace("\\", "_")
+            bin_path = os.path.join(args.metadata_dir, f"{safe_name}_metadata.bin")
+            os.makedirs(args.metadata_dir, exist_ok=True)
+            kwargs["metadata_dump_path"] = bin_path
 
         print(f"\n{'='*66}")
         print(f"  Case: {name}  "

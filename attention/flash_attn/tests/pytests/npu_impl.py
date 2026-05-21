@@ -367,6 +367,11 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     )
     print_metadata(metadata)
 
+    # 如果指定了 metadata_dump_path，保存 metadata 到 .bin 供仿真使用
+    metadata_dump_path = kwargs.get("metadata_dump_path", None)
+    if metadata_dump_path:
+        save_metadata_bin(metadata, metadata_dump_path)
+
     max_seqlen_q  = -1
     max_seqlen_kv = -1
     atten_mask1 = atten_mask1 if sparse_mode != 0 else None
@@ -654,5 +659,168 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         0,
     )
 
+    torch.npu.synchronize()
+    return out.cpu(), lse_out.cpu()
+
+
+# ======================== 仿真模式 (Simulation Mode) ========================
+# 由于 flash_attn_metadata 是 AICPU 算子，仿真中无法运行。
+# 方案：先在真机上生成 metadata 并存为 .bin 文件，
+#       仿真时直接读取 .bin，跳过 AICPU 算子，只跑 flash_attn 算子。
+
+def save_metadata_bin(metadata, filepath):
+    """将 metadata tensor 保存为二进制文件 (.bin)。
+
+    Args:
+        metadata: torch.Tensor (int32), flash_attn_metadata 算子的输出
+        filepath: 保存路径，如 './sim_data/case_name/metadata.bin'
+    """
+    import os
+    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+    arr = metadata.cpu().contiguous().to(torch.int32).numpy()
+    arr.tofile(filepath)
+    print(f"[SIM] Metadata saved: {filepath} ({arr.nbytes} bytes, {arr.size} uint32)")
+
+
+def load_metadata_bin(filepath, target_device=None):
+    """从二进制文件加载 metadata tensor。
+
+    Args:
+        filepath: .bin 文件路径
+        target_device: 目标设备，默认使用全局 device
+    Returns:
+        torch.Tensor (int32) on target device
+    """
+    arr = np.fromfile(filepath, dtype=np.int32)
+    tensor = torch.from_numpy(arr).contiguous()
+    dev = target_device if target_device is not None else device
+    tensor = tensor.to(device=dev)
+    print(f"[SIM] Metadata loaded: {filepath} ({arr.nbytes} bytes, {arr.size} int32)")
+    return tensor
+
+
+def flash_attn_npu_sim(q, k, v, q_rope, k_rope, atten_mask, pse,
+                       metadata_bin_path, **kwargs):
+    """仿真模式：从 .bin 文件加载 metadata，跳过 AICPU 算子，只运行 flash_attn。
+
+    Args:
+        q, k, v, q_rope, k_rope, atten_mask, pse: 输入张量（同 flash_attn_npu）
+        metadata_bin_path: 预生成的 metadata .bin 文件路径
+        **kwargs: 其他参数（同 flash_attn_npu）
+    Returns:
+        (out, lse_out): 与 flash_attn_npu 相同的返回值
+    """
+    input_layout = kwargs.get("input_layout", "BNSD")
+    layout_q     = kwargs.get("layout_q", input_layout)
+    layout_kv    = kwargs.get("layout_kv", input_layout)
+    layout_out   = kwargs.get("layout_out", input_layout)
+    n1           = kwargs.get("N1")
+    n2           = kwargs.get("N2", n1)
+    d            = kwargs.get("D")
+    sq           = kwargs.get("S1", None)
+    skv          = kwargs.get("S2", sq)
+    d_rope       = kwargs.get("DRope", 0)
+    sparse_mode  = kwargs.get("sparse_mode", 0)
+    pre_tokens   = kwargs.get("pre_tokens", 2147483647)
+    next_tokens  = kwargs.get("next_tokens", 2147483647)
+    if sparse_mode in (0, 3):
+        pre_tokens = -1
+        next_tokens = -1
+    cu_q       = kwargs.get("cu_seqlens_q", None)
+    cu_kv      = kwargs.get("cu_seqlens_kv", None)
+    seqused_q  = kwargs.get("seqused_q", None)
+    seqused_kv = kwargs.get("seqused_kv", None)
+    scale      = kwargs.get("scale", 1 / (d ** 0.5))
+    keep_prob  = kwargs.get("keep_prob", 1)
+    seed       = kwargs.get("seed", 0)
+    lse_flag   = kwargs.get("return_softmax_lse", 0)
+    block_table = kwargs.get("block_table")
+
+    # 准备输入张量
+    q1 = trans_bnsd_to_layout(q, layout_q, **kwargs).contiguous().to(device)
+    k1 = trans_bnsd_to_layout(k, layout_kv, **kwargs).contiguous().to(device)
+    v1 = trans_bnsd_to_layout(v, layout_kv, **kwargs).contiguous().to(device)
+
+    if d_rope != 0:
+        query_rope = trans_bnsd_to_layout(q_rope, layout_q, **kwargs).contiguous().to(device)
+        key_rope   = trans_bnsd_to_layout(k_rope, layout_kv, **kwargs).contiguous().to(device)
+    else:
+        query_rope = None
+        key_rope   = None
+    pse1        = pse.to(device) if pse is not None else None
+    atten_mask1 = atten_mask.to(device) if atten_mask is not None else None
+
+    torch.npu.manual_seed(seed)
+
+    def _to_u32_tensor(v):
+        if v is None:
+            return None
+        if torch.is_tensor(v):
+            return v.to(dtype=torch.int32, device=device).contiguous()
+        return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
+
+    cu_q_meta       = _to_u32_tensor(cu_q)
+    cu_kv_meta      = _to_u32_tensor(cu_kv)
+    seqused_q_meta  = _to_u32_tensor(seqused_q)
+    seqused_kv_meta = _to_u32_tensor(seqused_kv)
+
+    block_table_ = None
+    if layout_kv in ["PA_BBND", "PA_BNBD", "PA_NZ"]:
+        block_table_ = block_table.to(device)
+
+    # ====== 核心区别：从 .bin 加载 metadata，不调用 AICPU 算子 ======
+    print(f"[SIM] 仿真模式: 跳过 npu_flash_attn_metadata，从文件加载 metadata")
+    metadata = load_metadata_bin(metadata_bin_path, target_device=device)
+    print_metadata(metadata)
+
+    # 调用 flash_attn 算子
+    max_seqlen_q  = -1
+    max_seqlen_kv = -1
+    atten_mask1 = atten_mask1 if sparse_mode != 0 else None
+    if atten_mask1 is not None and sparse_mode in (3, 4):
+        atten_mask1 = atten_mask1.to(dtype=torch.int8)
+
+    _print_args("Call npu_flash_attn (sim mode)", {
+        "q": q1, "k": k1, "v": v1,
+        "block_table": block_table_,
+        "attn_mask": atten_mask1,
+        "metadata": metadata,
+        "cu_seqlens_q": cu_q_meta,
+        "cu_seqlens_kv": cu_kv_meta,
+        "seqused_q": seqused_q_meta,
+        "seqused_kv": seqused_kv_meta,
+        "softmax_scale": scale,
+        "mask_mode": sparse_mode,
+        "win_left": pre_tokens,
+        "win_right": next_tokens,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+    })
+
+    out, lse_out = npu_flash_attn(
+        q1, k1, v1,
+        block_table   = block_table_,
+        sinks         = None,
+        attn_mask     = atten_mask1,
+        metadata      = metadata,
+        cu_seqlens_q  = cu_q_meta,
+        cu_seqlens_kv = cu_kv_meta,
+        seqused_q     = seqused_q_meta,
+        seqused_kv    = seqused_kv_meta,
+        softmax_scale = scale,
+        mask_mode     = sparse_mode,
+        win_left      = pre_tokens,
+        win_right     = next_tokens,
+        max_seqlen_q  = max_seqlen_q,
+        max_seqlen_kv = max_seqlen_kv,
+        layout_q      = layout_q,
+        layout_kv     = layout_kv,
+        layout_out    = layout_out,
+        return_softmax_lse = lse_flag,
+        deterministic = 0,
+    )
     torch.npu.synchronize()
     return out.cpu(), lse_out.cpu()
