@@ -11,12 +11,12 @@
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/rain_base_defs.hpp"
+#include "../../../attn_infra/arch/rain_resource.hpp"
+#include "../../../attn_infra/epilogue/rain_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/rain_tile_copy.hpp"
+#include "../../../attn_infra/rain_gemm_coord.hpp"
+#include "../../../attn_infra/rain_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
