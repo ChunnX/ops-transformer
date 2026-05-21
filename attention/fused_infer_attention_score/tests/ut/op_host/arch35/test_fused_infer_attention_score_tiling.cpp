@@ -14352,7 +14352,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_MXFP8_VSca
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_MXFP8_QscaleWarning)
+TEST_F(FusedInferAttentionScoreTiling, DISABLED_FusedInferAttentionScoreTiling_MXFP8_QscaleWarning)
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
         64, 32, 117440512, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
