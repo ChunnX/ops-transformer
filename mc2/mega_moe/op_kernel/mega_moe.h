@@ -442,9 +442,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
     if (aivCoreIdx_ == 0) {
         GetCumsumForMMAIV();
     }
-    if (blockIdx_ < worldSize_ * dispatchBlockNumPerEP_) {
-        prevSum_ = preSumBeforeRankWorkSpace_(blockIdx_ / dispatchBlockNumPerEP_ * expertPerRank_);
-    }
 }
 
 template <TemplateMegaMoeTypeClass>
