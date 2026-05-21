@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef COORD_HPP
-#define COORD_HPP
+#ifndef BSAG_COORD_HPP
+#define BSAG_COORD_HPP
 
 #include "../attn_infra/bsag_base_defs.hpp"
 

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef LAYOUT_LAYOUT_HPP
-#define LAYOUT_LAYOUT_HPP
+#ifndef BSAG_LAYOUT_HPP
+#define BSAG_LAYOUT_HPP
 
 #include "../../attn_infra/bsag_base_defs.hpp"
 #include "../../attn_infra/layout/bsag_matrix.hpp"
