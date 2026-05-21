@@ -24,7 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common/tool.h"
+#include "gmm/op_kernel/common/arch35_weight_quant_common.h"
 
 using AscendC::Dn2NzParams;
 using AscendC::GetBlockIdx;
@@ -380,11 +380,11 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzP
     dn2NzParams.dnNum = 1;
     dn2NzParams.dValue = rowNum; // 矩阵的行数，即待搬运的mxScaleA的m或mxScaleB的n
     dn2NzParams.nValue =
-        CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE); // 矩阵的列数，使用B16搬B8需要除以2向上取整
+        CeilDiv(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE); // 矩阵的列数，使用B16搬B8需要除以2向上取整
     dn2NzParams.srcDnMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
-    dn2NzParams.srcDValue = CeilDivide(scaleKGmSize, SCALE_COPY_GROUP_SIZE); // 源矩阵一行所含B16元素个数
+    dn2NzParams.srcDValue = CeilDiv(scaleKGmSize, SCALE_COPY_GROUP_SIZE); // 源矩阵一行所含B16元素个数
     // 目标矩阵行方向两个相邻分形起始地址之间的间隔，单位32B
-    dn2NzParams.dstNzC0Stride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUPSIZE * SCALE_COPY_GROUP_SIZE);
+    dn2NzParams.dstNzC0Stride = CeilDiv(MX_SCALE_K_L1_SIZE, MX_GROUPSIZE * SCALE_COPY_GROUP_SIZE);
     // 目标矩阵列方向两个相邻分形起始地址之间的间隔，单位32B
     dn2NzParams.dstNzNStride = SCALE_COPY_DEFAULT_N_STRIDE;
     dn2NzParams.dstNzMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
