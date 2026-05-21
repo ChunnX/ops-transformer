@@ -21,7 +21,7 @@
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_combine_add_rms_norm_v2.h"
 #include "moe_distribute_combine_add_rms_norm_base.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_moe_distribute_combine_add_rms_norm.h"
 
 using namespace Ops::Transformer;

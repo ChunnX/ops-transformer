@@ -144,7 +144,7 @@ def npu_get_mega_moe_ccl_buffer_size(
     dispatch_token_per_expert = ep_world_size * \
         inline_align(ep_world_size * local_moe_expert_num, 128) * 4
     quant_token_scales = inline_align(num_max_tokens_per_rank * num_topk * (hidden + hidden // 32), 512)
-    combine_out = inline_align(num_max_tokens_per_rank * num_topk * y_out_dtype_size, 512)
+    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, 512)
     ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
     return ccl_buffer_size
@@ -194,7 +194,7 @@ def mega_moe(
     weight2_type: int = 28
 ):
 
-    return _npu_mega_moe(
+    return torch.ops.npu_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
         topk_ids,
@@ -204,18 +204,18 @@ def mega_moe(
         sym_buffer.num_experts,
         sym_buffer.ep_world_size.value,
         sym_buffer.ccl_buffer_size.value,
-        l1_weights_sf,
-        l2_weights_sf,
-        x_active_mask,
-        scales,
-        sym_buffer.max_recv_token_num,
-        sym_buffer.dispatch_quant_mode,
-        sym_buffer.combine_quant_mode,
-        sym_buffer.comm_alg,
-        sym_buffer.num_max_tokens_per_rank,
-        sym_buffer.dispatch_quant_out_type,
-        weight1_type,
-        weight2_type
+        weight_scales1=l1_weights_sf,
+        weight_scales2=l2_weights_sf,
+        x_active_mask=x_active_mask,
+        scales=scales,
+        max_recv_token_num=sym_buffer.max_recv_token_num,
+        dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
+        combine_quant_mode=sym_buffer.combine_quant_mode,
+        comm_alg=sym_buffer.comm_alg,
+        global_bs=sym_buffer.num_max_tokens_per_rank,
+        dispatch_quant_out_type=sym_buffer.dispatch_quant_out_type,
+        weight1_type=weight1_type,
+        weight2_type=weight2_type
     )
 
 

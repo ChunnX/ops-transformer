@@ -14,7 +14,7 @@
  */
 #include "matmul_allto_all_tiling_base.h"
 #include "mc2_log.h"
-#include "common/allto_all_tiling_factory.h"
+
 
 using namespace AscendC;
 using namespace ge;
@@ -83,8 +83,9 @@ CutResult MatmulAllToAllTilingBase::GetTilingResult()
     if (socVersionStr == "Ascend910_93") {
         nowSocVersion = SocVersion::SOC910_93;
     }
-    return AlltoAllTilingFactory::CreateTiling(contextInfo.args_, KernelType::ALL_TO_ALL, nowSocVersion, npuArch_,
-                                               contextInfo.quantMode);
+    AlltoAllMM formulaicTiling(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion);
+    formulaicTiling.GetTiling();
+    return formulaicTiling.tilingM_.cutRes;
 }
 
 /**

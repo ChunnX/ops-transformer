@@ -47,10 +47,9 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     int64_t pseType = *fiaInfo.opParamInfo.pseType;
-    // pseType支持范围为0,2,3
-    OP_CHECK_IF((pseType != PSE_OUTER_MUL_ADD_TYPE) && (pseType != PSE_INNER_MUL_ADD_TYPE) &&
-                    (pseType != PSE_INNER_MUL_ADD_SQRT_TYPE),
-                OP_LOGE(fiaInfo.opName, "pseType(%ld) is not supported. pseType must be 0, 2, or 3.", pseType),
+    // pseType支持范围为0
+    OP_CHECK_IF((pseType != PSE_OUTER_MUL_ADD_TYPE),
+                OP_LOGE(fiaInfo.opName, "pseType(%ld) is not supported. pseType must be 0.", pseType),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

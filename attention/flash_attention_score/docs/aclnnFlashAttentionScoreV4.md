@@ -570,6 +570,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - inputLayout必须一致。
 - 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同
 - 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同
+- MLA concat场景：仅支持dSize=128，dSizeRope=64
 - 关于数据shape的约束，以inputLayout的TND、BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
     - T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
@@ -588,6 +589,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     | 3           | 算子自动生成pse 先mul再add再sqrt         | - |
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
+- sinkOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型。
 - sparseMode约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
@@ -622,6 +624,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_flash_attention_score.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -753,9 +756,9 @@ int main() {
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
  
-  std::vector<float> qHostData(q_size, 1.0);
-  std::vector<float> kHostData(kv_size, 1.0);
-  std::vector<float> vHostData(kv_size, 1.0);
+  std::vector<op::fp16_t> qHostData(q_size, 1.0);
+  std::vector<op::fp16_t> kHostData(kv_size, 1.0);
+  std::vector<op::fp16_t> vHostData(kv_size, 1.0);
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
   std::vector<float> sinkHostData(sink_size, 3.0);
   std::vector<float> attentionOutHostData(q_size, 255);

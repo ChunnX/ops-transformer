@@ -404,18 +404,10 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
     bool lastBN, int64_t nextGs1Idx)
 {
-    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                                  IsSameType<INPUT_T, hifloat8_t>::value;
-    static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
     constexpr int32_t s1BaseSize = static_cast<int32_t>(s1TemplateType);
     int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
-        if constexpr (!isFp8 && !isInt8) {
-            runParam.s1LoopTimes = s1LoopTimes;
-            return;
-        }
     } else {
         if (constInfo.isGqa) {
             s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
@@ -571,6 +563,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
             }
         } else {
             if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
+                runParam.sOuterOffset += (runParam.nextTokensPerBatch < 0) ? runParam.nextTokensPerBatch : 0;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
                         runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
@@ -614,7 +607,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     runParam.sOuterOffset;
             }
         } else {
-            if (constInfo.isGqa) {
+            if (constInfo.isGqa && constInfo.s1Size > 1) {
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
+                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
+                } else {
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset +
+                        runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
+                }
+            } else if (constInfo.isGqa) {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
                     runParam.sOuterOffset;
             } else {

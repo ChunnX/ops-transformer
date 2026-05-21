@@ -66,17 +66,19 @@ public:
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
-    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
-    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
+
     static constexpr bool USE_DN = useDn;
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
@@ -146,21 +148,21 @@ public:
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
     TQue<QuePosition::VECOUT, 1> FDResOutputQue;
     TQue<QuePosition::VECIN, 1> accumOutInputQue;
-    TQue<QuePosition::VECIN, 1> postQuantScaleQue; // postQuant
+    TQue<QuePosition::VECIN, 1> postQuantScaleQue;  // postQuant
     TQue<QuePosition::VECIN, 1> postQuantOffsetQue; // postQuant
 
     const ConstInfoX &constInfo;
     T negativeFloatScalar;
     float pScaleValue { 1.0f };
+    bool isSkipMask { false };
 
     // ==================== Functions ======================
-    __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo) : constInfo(constInfo) {};
+    __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
 
-    __aicore__ inline void InitVecBlock(TPipe *pipe,
-                                        __gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                        __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask,
-                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                        __gm__ uint8_t *workspace)
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
+                                        __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
@@ -170,9 +172,8 @@ public:
     }
 
     __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                        __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask,
-                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                        __gm__ uint8_t *workspace)
+                                        __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         if (constInfo.isSoftmaxLseEnable) {
@@ -208,17 +209,23 @@ public:
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
-            outputBuf.SetCrossCore();
+            if (((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) || (runInfo.actSingleLoopS2Size <= 256)) {
+                outputBuf.SetCrossCore();
+            }
             return;
         }
 
-        ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, subLoop);
+        if constexpr (USE_DN) {
+            ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, subLoop);
+        } else {
+            ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, subLoop);
+        }
     }
 
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore();
             if (constInfo.isSoftmaxLseEnable) {
                 InitLseOutputSingleCore();
@@ -254,7 +261,7 @@ public:
                       layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
             tSize = qActSeqLensParser.GetTSize();
         }
-        int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV;
+        int64_t totalOutputSize = tSize * constInfo.realN2Size * constInfo.realGSize * constInfo.dSizeV;
         if constexpr (POST_QUANT) {
             totalOutputSize /= 2;
         }
@@ -283,7 +290,7 @@ public:
                       layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
             tSize = qActSeqLensParser.GetTSize();
         }
-        int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize;
+        int64_t totalOutputSize = tSize * constInfo.realN2Size * constInfo.realGSize;
         int64_t singleCoreSize =
             (totalOutputSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
         int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
@@ -301,57 +308,92 @@ public:
 
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+                                         RunInfoX runInfo, uint32_t subLoop)
     {
         LocalTensor<uint8_t> attenMaskUb;
+        if constexpr (HAS_MASK) {
+            attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
+            AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop); // 全量拷贝
+        }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
+        LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf.template Get<float>()[0];
+        LocalTensor<float> preLoopSumUb = this->preLoopSumBuf.template Get<float>()[0];
+        LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf.template Get<float>()[0];
 
         auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[0];
         int64_t stage1Offset = runInfo.loop % DB;
 
         float descaleQK = 1.0;
+        constexpr int32_t mxfp8s2BaseSize = s2BaseSize / 2;
+        uint32_t mxfp8s2RealSize = runInfo.actSingleLoopS2Size;
+        if (runInfo.actSingleLoopS2Size > 256) {
+            mxfp8s2RealSize = subLoop == 0 ? mxfp8s2BaseSize : runInfo.actSingleLoopS2Size - mxfp8s2BaseSize;
+        }
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
+            if (!isSkipMask) {
+                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, mxfp8s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    mxfp8s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+            } else {
+                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, mxfp8s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    mxfp8s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+            }
         } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
+            if (!isSkipMask) {
+                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, mxfp8s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    mxfp8s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+            } else {
+                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, mxfp8s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    mxfp8s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+            }
         }
         bmm1ResBuf.SetCrossCore();
+        if constexpr (HAS_MASK) {
+            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
+        }
 
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         //-------------------------Data copy to l1-------------------------
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
-        if (runInfo.actSingleLoopS2Size > vec1S2CopyLenDn) {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
-                     stage1CastTensor,
-                     {vec1S2CopyCountDn, vec1S2CopyLenDn, 1,
-                      static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign - vec1S2CopyLenDn)});
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign +
-                                  vec1S2strideDn],
-                     stage1CastTensor[vec1ResOffsetDn],
-                     {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign - vec1S2CopyLenDn),
-                      static_cast<uint16_t>(s2BaseSize - runInfo.actSingleLoopS2SizeAlign + 1), vec1S2CopyLenDn});
-        } else {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
-                     stage1CastTensor,
-                     {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
-                      static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
+        int64_t subLoopOffset = mxfp8s2BaseSize * mBaseSize * subLoop;
+        constexpr uint16_t elementSize = 32;
+        uint32_t singleProcessSOuterSize = mBaseSize >> 1;
+        uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
+        uint32_t actVec0Align32 = mBaseSize >> 1;
+        uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
+        for (uint32_t i = 0; i < actCopyCount; i++) {
+            uint32_t dstOffset = 32 * mxfp8s2BaseSize * i + subLoopOffset;
+            if (constInfo.subBlockIdx == 1) {
+                dstOffset += mxfp8s2BaseSize * actVec0Align32;
+            }
+            uint32_t srcOffset = i * (65 << 5);
+            DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
+                     {4, mxfp8s2BaseSize / 4, mxfp8s2BaseSize / 4 + 2, 0});
         }
-        outputBuf.SetCrossCore();
         //-----------------------------------------------------------------
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+
+        if (((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) || (runInfo.actSingleLoopS2Size <= 256)) {
+            outputBuf.SetCrossCore();
+        }
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
         }
@@ -375,7 +417,6 @@ public:
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
         }
-
     }
 
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
@@ -394,26 +435,28 @@ public:
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo);
+            DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                       constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo, s1Size);
+            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                       constInfo, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo,
-                                   s1LeftPaddingSize);
+            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                        constInfo, s1LeftPaddingSize);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo, qActSeqLens,
-                                   s1LeftPaddingSize);
+            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                        constInfo, qActSeqLens, s1LeftPaddingSize);
         }
 
         softmaxLseQueue.FreeTensor(lseUb);
@@ -458,145 +501,6 @@ public:
     //     }
     // }
 
-    __aicore__ inline void ProcessVec1NdBAK(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
-    {
-        LocalTensor<pseShiftType> pseUb;
-        LocalTensor<uint8_t> dropMaskUb;
-        float slopes = 0.0f;
-        float posShift = 0.0f;
-        uint32_t pseStride = 0;
-
-        LocalTensor<uint8_t> attenMaskUb;
-        if constexpr (HAS_MASK) {
-            attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttenMaskCopyIn(attenMaskUb, attenMaskUb, 0, runInfo.actVecMSize, runInfo, 0); // 全量拷贝
-        }
-
-        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-        LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
-        LocalTensor<T> pScaleUb;
-        LocalTensor<T> queryScaleUb;
-        LocalTensor<uint8_t> apiTmpBuffer;
-
-        apiTmpBuffer = this->commonTBuf.template Get<uint8_t>();
-
-        int64_t stage1Offset = 0;
-        stage1Offset = runInfo.loop % DB;
-
-        float descaleQK = 1.0;
-        float deSCaleKValue = 1.0;
-
-        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-        auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
-        if (runInfo.isFirstS2Loop) {
-            if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, EQ_128, hasAtten, pseMode,
-                              hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size <= 64) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
-                              pseMode, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size < 128) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten,
-                              pseMode, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size < 256) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                              pseMode, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size == 512) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_256_AND_LTE_512, hasAtten,
-                                pseMode, hasDrop>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            }
-        } else {
-            if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, EQ_128, hasAtten, pseMode,
-                              hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size <= 64) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
-                              pseMode, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size < 128) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten,
-                              pseMode, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size < 256) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                              pseMode, hasDrop, false, false>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size == 512) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_256_AND_LTE_512, hasAtten,
-                                pseMode, hasDrop>(
-                    stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            }
-        }
-        bmm1ResBuf.SetCrossCore();
-        if constexpr (HAS_MASK) {
-            this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
-        }
-
-        // ===================DataCopy to L1 ====================
-        this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-        this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
-        LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-
-        if (likely(runInfo.actVecMSize != 0)) {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
-                                  (runInfo.actMSize - runInfo.actVecMSize)],
-                     stage1CastTensor,
-                     {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
-                      (uint16_t)(mBaseSize - runInfo.actVecMSize)});
-        }
-        this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-
-        outputBuf.SetCrossCore();
-        // ======================================================
-        if (!runInfo.isFirstS2Loop) {
-            UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.actVecMSize);
-        }
-
-        if (unlikely(runInfo.isLastS2Loop)) {
-            SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
-        }
-    }
-
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
@@ -610,15 +514,18 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_MASK) {
             attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttenMaskCopyIn(attenMaskUb, attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop); // 全量拷贝
+            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop); // 全量拷贝
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
         LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
-        LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf.template Get<float>();; // Loop 0拷贝一次全局, Loop 1用来计算update_mul
-        LocalTensor<float> preLoopSumUb = this->preLoopSumBuf.template Get<float>();; // 两轮循环前的sum值
-        LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf.template Get<float>(); // Loop 0的sum值传给loop 1用来计算更新的sum值
+        // Loop 0拷贝一次全局, Loop 1用来计算update_mul
+        LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf.template Get<float>();
+        // 两轮循环前的sum值
+        LocalTensor<float> preLoopSumUb = this->preLoopSumBuf.template Get<float>();
+        // Loop 0的sum值传给loop 1用来计算更新的sum值
+        LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf.template Get<float>();
         LocalTensor<T> pScaleUb;
         LocalTensor<T> queryScaleUb;
         LocalTensor<uint8_t> apiTmpBuffer;
@@ -642,68 +549,67 @@ public:
         if (runInfo.isFirstS2Loop) {
             if (likely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK, pseMode,
-                              hasDrop, false, false, false, false>(
+                                   hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, runInfo.actVecMSize, s2CalcSize,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
+                    runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else if (s2CalcSize <= 64) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
-                              pseMode, hasDrop, false, false, false, false>(
+                                   pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, runInfo.actVecMSize, s2CalcSize,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
+                    runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else if (s2CalcSize < 128) {
-                ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128, HAS_MASK,
-                              pseMode, hasDrop, false, false, false, false>(
+                ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128,
+                                   HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, runInfo.actVecMSize, s2CalcSize,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
+                    runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else {
-                if constexpr (s2BaseSizeCur  == 256) {
-                    ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_128_AND_LTE_256, HAS_MASK,
-                                  pseMode, hasDrop, false, false, false, false>(
+                if constexpr (s2BaseSizeCur == 256) {
+                    ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_128_AND_LTE_256,
+                                       HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                         stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                         pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
-                        runInfo.actVecMSize, s2CalcSize,
-                        pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                        negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                        runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift,
+                        static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
+                        deSCaleKValue, pScaleValue);
                 }
             }
         } else {
             if (likely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK, pseMode,
-                              hasDrop, false, false, false, false>(
+                                   hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,runInfo.actVecMSize,
-                    s2CalcSize,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
+                    runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else if (s2CalcSize <= 64) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
-                              pseMode, hasDrop, false, false, false, false>(
+                                   pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,runInfo.actVecMSize, s2CalcSize,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
+                    runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else if (s2CalcSize < 128) {
-                ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128, HAS_MASK,
-                              pseMode, hasDrop, false, false, false, false>(
+                ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128,
+                                   HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,runInfo.actVecMSize, s2CalcSize,
-                    pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
+                    runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else {
                 if constexpr (s2BaseSizeCur == 256) {
-                    ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_128_AND_LTE_256, HAS_MASK,
-                                  pseMode, hasDrop, false, false, false, false>(
+                    ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_128_AND_LTE_256,
+                                       HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                         stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                         pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
-                        runInfo.actVecMSize, s2CalcSize,
-                        pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue), descaleQK,
-                        negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                        runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift,
+                        static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
+                        deSCaleKValue, pScaleValue);
                 }
             }
         }
@@ -719,16 +625,16 @@ public:
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
         if (likely(runInfo.actVecMSize != 0)) {
-            int64_t dstOffset = constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * (runInfo.actMSize - runInfo.actVecMSize) + s2BaseSizeCur * mBaseSize * subLoop;
-            DataCopy(mm2AL1Tensor[dstOffset],
-                     stage1CastTensor,
+            int64_t dstOffset =
+                constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * (runInfo.actMSize - runInfo.actVecMSize) +
+                s2BaseSizeCur * mBaseSize * subLoop;
+            DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor,
                      {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSize,
-                      (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
-                      (uint16_t)(mBaseSize - runInfo.actVecMSize)});
+                      (uint16_t)(vec1Srcstride - runInfo.actVecMSize), (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
-        if (((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1) )|| (runInfo.actSingleLoopS2Size <= 256)) {
+        if (((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) || (runInfo.actSingleLoopS2Size <= 256)) {
             outputBuf.SetCrossCore();
         }
 
@@ -834,8 +740,8 @@ public:
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_SBH ||
                       layout == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
-            s1StartTdx = vecMStartIdx / constInfo.gSize;
-            s1EndTdx = vecMEndIdx / constInfo.gSize;
+            s1StartTdx = vecMStartIdx / constInfo.realGSize;
+            s1EndTdx = vecMEndIdx / constInfo.realGSize;
             ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
         } else {
             // GS1 layout
@@ -875,17 +781,23 @@ public:
             blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
 
             if (blockNeedRowInvalid) {
+                uint32_t min = 0xFF7FFFFF; // min value of float
+                if constexpr (USE_DN) {
+                    float minValue = *((float*)&min);
+                    minValue *= constInfo.scaleValue;
+                    min = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&minValue));
+                }
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
                 if constexpr (!POST_QUANT) {
                     RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
-                                              static_cast<uint32_t>(dSizeAligned64));
+                                              static_cast<uint32_t>(dSizeAligned64), min);
                 } else {
                     uint32_t dStride =
                         CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
                     uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
                     RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, mDealSize, dSize,
-                                              dStride);
+                                              dStride, min);
                 }
             }
         }
@@ -898,7 +810,7 @@ public:
                                       .rowCount = dealRowCount,
                                       .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
         GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
+                        .n2Idx = info.realN2Idx,
                         .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
                         .dIdx = 0,
                         .gS1DealSize = dealRowCount,
@@ -912,34 +824,34 @@ public:
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                                              false, 0);
+            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
+                                              constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
+                                              constInfo.actualSeqLenSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                                              false, 0);
+            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
+                                              constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
+                                              constInfo.actualSeqLenSize, false, 0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+            outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
+                                              actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+            outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
+                                              actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -1019,13 +931,13 @@ public:
         tPipe->InitBuffer(softmaxExpBuf[1], 256); // [64, 1]
         tPipe->InitBuffer(softmaxExpBuf[2], 256); // [64, 1]
 
-        tPipe->InitBuffer(preLoopMaxBuf, 256); // [64, 1]
-        tPipe->InitBuffer(preLoopSumBuf, 256); // [64, 1]
+        tPipe->InitBuffer(preLoopMaxBuf, 256);   // [64, 1]
+        tPipe->InitBuffer(preLoopSumBuf, 256);   // [64, 1]
         tPipe->InitBuffer(firstLoopSumBuf, 256); // [64, 1]
 
         if constexpr (FLASH_DECODE) {
-            tPipe->InitBuffer(maxBrdcst, 1, 2048);    // [64, 8]
-            tPipe->InitBuffer(sumBrdcst, 1, 2048);    // [64, 8]
+            tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
+            tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
         }
     }
 
@@ -1038,7 +950,7 @@ public:
         }
         SoftmaxInitBuffer();
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-        tPipe->InitBuffer(stage1OutQue[0], 1, 16640);  // (32 + 1) * (256 / 32) * 64
+        tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK) {
@@ -1061,8 +973,10 @@ public:
                     }
                 }
             } else {
-                tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)], 128); // s2realsize (64, 128]
-                tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)], 64);  // s2realsize (0, 64]
+                tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
+                                  128); // s2realsize (64, 128]
+                tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)],
+                                  64); // s2realsize (0, 64]
 
                 LocalTensor<uint8_t> vselrIndexesTensor =
                     vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
@@ -1077,7 +991,6 @@ public:
                 }
             }
         }
-
     }
 
     __aicore__ inline void AllocEventID()
@@ -1100,11 +1013,11 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
-    __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, LocalTensor<uint8_t> attenMaskUbPre,
+    __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb,
                                            uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
-        uint32_t s2BaseSizeCur = s2BaseSize >> 1;
+        constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
         if (runInfo.actSingleLoopS2Size > 256) {
             s2RealSize = subLoop == 0 ? 256 : runInfo.actSingleLoopS2Size - 256;
         }
@@ -1113,10 +1026,11 @@ public:
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         maskInfo.gs1dealNum = mDealSize;
         maskInfo.s1Size = runInfo.actS1Size;
-        maskInfo.gSize = constInfo.gSize;
+        maskInfo.gSize = constInfo.realGSize;
         maskInfo.s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
         maskInfo.s2dealNum = s2RealSize;
         maskInfo.s2Size = runInfo.actS2Size;
+        maskInfo.nBaseSize = s2BaseSizeCur;
         maskInfo.preToken = constInfo.preTokens;
         maskInfo.nextToken = constInfo.nextTokens;
         maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
@@ -1127,71 +1041,127 @@ public:
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        if (constInfo.s1Size == 1) {
-            maskInfo.layout = S1_EQUAL1;
-        } else if (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
-                   layout == LayOutTypeEnum::LAYOUT_SBH) {
-            maskInfo.layout = SG;
-        } else {
-            maskInfo.layout = GS;
-        }
-
+        maskInfo.layout = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
+        if (IsSkipMask && IsSkipMaskForPre) {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
+            return;
+        }
+
         if (!IsSkipMask) {
-            AttentionmaskCopyIn(attenMaskUb, attenMaskGmInt, maskInfo);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
         }
 
         if (!IsSkipMaskForPre) {
-            AttentionmaskCopyIn(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
+                maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSizeCur);
+            this->attenMaskInQue[0].template FreeTensor(attenMaskUbPre);
+        }
+    }
+
+    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb,
+                                           uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
+    {
+        uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
+        constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
+        if (runInfo.actSingleLoopS2Size > 256) {
+            s2RealSize = subLoop == 0 ? 256 : runInfo.actSingleLoopS2Size - 256;
         }
 
-        if (IsSkipMask && IsSkipMaskForPre) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
+        MaskInfo maskInfo;
+        maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
+        maskInfo.gs1dealNum = mBaseSize;
+        maskInfo.s1Size = runInfo.actS1Size;
+        maskInfo.gSize = constInfo.realGSize;
+        maskInfo.s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
+        maskInfo.s2dealNum = s2RealSize;
+        maskInfo.s2Size = runInfo.actS2Size;
+        maskInfo.nBaseSize = s2BaseSizeCur;
+        maskInfo.preToken = constInfo.preTokens;
+        maskInfo.nextToken = constInfo.nextTokens;
+        maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
+        maskInfo.batchIdx = (constInfo.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
+        maskInfo.attenMaskBatchStride = constInfo.attenMaskS1Size * constInfo.attenMaskS2Size;
+        maskInfo.attenMaskS1Stride = constInfo.attenMaskS2Size;
+        maskInfo.attenMaskDstStride = 0U;
+        maskInfo.maskValue = negativeIntScalar;
+        maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
+        maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
+        maskInfo.layout = MASK_LAYOUT;
+        maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
+
+        isSkipMask = IsSkipAttentionmask(maskInfo);
+        if (isSkipMask) {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
+            return;
+        }
+
+        if (!isSkipMask) {
+            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
+        } else {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
         }
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
     {
-        uint32_t n2Idx = bN2Cur % constInfo.n2Size;
-        uint32_t bIdx = bN2Cur / constInfo.n2Size;
+        uint32_t n2Idx = (bN2Cur / (constInfo.realN2Size / constInfo.n2Size)) % constInfo.n2Size;
+        uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         // 对整个batch的结果置0
         if constexpr (POST_QUANT) { // out int8
-                // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
+                                    // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
         } else {
             if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
                                       constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
                 OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
                                       constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
                 OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
                                       constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
                 OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+                offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
                 OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-                offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+                offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             }
         }
     }
+};
+
+template <
+    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
+    DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
+    bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+    bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FAFullQuantMxBlockVecDummy {
+public:
+    static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool FLASH_DECODE = isFd;
+    using OUT_T = OUTPUT_T;
+    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    __aicore__ inline FAFullQuantMxBlockVecDummy(ConstInfoX &constInfo) {};
 };
 } // namespace BaseApi
 #endif // FIA_BLOCK_VEC_FULLQUANT_MX_H_

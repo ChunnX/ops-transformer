@@ -257,7 +257,7 @@ void FiaTilingFullQuantMxArch35::AdjustSinnerAndSouter()
 }
 
 void FiaTilingFullQuantMxArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV,
-                                                     int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
+                                                        int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     if (fiaInfo_->sparseMode == SPARSE_MODE_RIGHT_DOWN) {
         preTokensLeftUp = SPARSE_MODE_INT_MAX;
@@ -281,7 +281,7 @@ void FiaTilingFullQuantMxArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength,
 }
 
 void FiaTilingFullQuantMxArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV,
-                                                     int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
+                                                        int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
     int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
@@ -320,7 +320,7 @@ bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
     }
 
     if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
-       (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
+        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
         return false;
     }
 
@@ -329,7 +329,8 @@ bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
     int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
 
     // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=  platformInfo_.l2Size;
+    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
+           platformInfo_.l2Size;
 }
 
 void FiaTilingFullQuantMxArch35::SplitOutSeq()
@@ -338,20 +339,23 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
     uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
     int64_t totalSize = 0;
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
-        int64_t actualSeqLengthsTmp = actualSeqLengthsQ_[bIdx];  // 用于存放减去行无效后，真实的actseqlen
+        int64_t actualSeqLengthsTmp = actualSeqLengthsQ_[bIdx]; // 用于存放减去行无效后，真实的actseqlen
         int64_t preTokensLeftUp = 0;
         int64_t nextTokensLeftUp = 0;
         GetPreNextTokensLeftUp(actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
                                preTokensLeftUp, nextTokensLeftUp);
         FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
                                preTokensLeftUp, nextTokensLeftUp);
- 
-        int64_t outerBlockNums = (actualSeqLengthsTmp * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) / static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
+
+        int64_t outerBlockNums = (actualSeqLengthsTmp * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
+                                 static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
         if (actualSeqLengthsTmp == 0 || actualSeqLengthsKV_[bIdx] == 0) {
             outerBlockNums = fiaInfo_->n2Size;
         }
-        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
-            bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp, outerBlockNums);
+        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
+               "actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
+               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp,
+               outerBlockNums);
         totalSize += outerBlockNums;
     }
 
@@ -385,11 +389,12 @@ bool FiaTilingFullQuantMxArch35::CheckQKVActualSeqLengthsRight()
     return true;
 }
 
-void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo, split_core_v2::SplitParam &splitParam)
+void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo,
+                                                  split_core_v2::SplitParam &splitParam)
 {
     baseInfo.bSize = fiaInfo_->bSize;
-    baseInfo.n2Size = fiaInfo_->n2Size;
-    baseInfo.gSize = fiaInfo_->gSize;
+    baseInfo.n2Size = decodeS1GMerge_ ? fiaInfo_->n2Size : fiaInfo_->n1Size;
+    baseInfo.gSize = decodeS1GMerge_ ? fiaInfo_->gSize : 1;
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
@@ -478,11 +483,13 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
     AdjustSinnerAndSouter(); // 确定tiling切块
 
     dnFlag_ = CheckEnableDN();
-
     if (dnFlag_ && CheckQKVActualSeqLengthsRight() && fiaInfo_->qkHeadDim == fiaInfo_->vHeadDim &&
         fiaInfo_->qkHeadDim == DSIZE_64) {
         sInnerFactor_ = SINNER_256;
     }
+
+    // decode场景qscale shape为[N2, T, G, D//64, 2]；prefill qscale shape为[T, N, D//64, 2]
+    decodeS1GMerge_ = (fiaInfo_->opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() == 5);
 
     split_core_v2::BaseInfo baseInfo{};
     split_core_v2::SplitParam splitParam{};
@@ -549,8 +556,8 @@ bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo
     return false;
 }
 
-void FiaTilingFullQuantMxArch35::GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
-                                                 int64_t &safePreToken, int64_t &safeNextToken)
+void FiaTilingFullQuantMxArch35::GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ,
+                                                 int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken)
 {
     if (mode == split_core_v2::SparseMode::DEFAULT_MASK) {
         safePreToken = std::max(-actSeqLensKv, safePreToken);
@@ -668,7 +675,11 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyPseMode()
 
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8;
+    if (decodeS1GMerge_) {
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_DECODE;
+    } else {
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_PREFILL;
+    }
 }
 
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyHasRope()
@@ -722,7 +733,8 @@ void FiaTilingFullQuantMxArch35::GenTilingKey()
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
                                     tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+                                    tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
@@ -731,7 +743,8 @@ void FiaTilingFullQuantMxArch35::GenTilingKey()
             "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+            tilingKeyInfo_.isReconstructTemp);
 }
 
 void FiaTilingFullQuantMxArch35::CalcNumBlocks(uint32_t aicNum)
@@ -847,8 +860,6 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
-    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsNull = !actualSeqLenQFlag_;
-    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsKVNull = !actualSeqLenKVFlag_;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
 
@@ -879,7 +890,8 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
 
 ge::graphStatus FiaTilingFullQuantMxArch35::SetTilingData(FusedInferAttentionScoreFullQuantTilingData &tilingData)
 {
-    FusedInferAttentionScoreFullQuantTilingData *tiling = context_->GetTilingData<FusedInferAttentionScoreFullQuantTilingData>();
+    FusedInferAttentionScoreFullQuantTilingData *tiling =
+        context_->GetTilingData<FusedInferAttentionScoreFullQuantTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
@@ -909,8 +921,6 @@ void FiaTilingFullQuantMxArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsQSize:%d", fiaBaseParams.actualSeqLengthsQSize);
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsKVSize:%d", fiaBaseParams.actualSeqLengthsKVSize);
     OP_LOGD(fiaInfo_->opName, "scaleValue:%f", fiaBaseParams.scaleValue);
-    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsNull:%d", fiaBaseParams.isActualSeqLengthsNull);
-    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsKVNull:%d", fiaBaseParams.isActualSeqLengthsKVNull);
     OP_LOGD(fiaInfo_->opName, "isKvContinuous:%d", fiaBaseParams.isKvContinuous);
     OP_LOGD(fiaInfo_->opName, "isSoftMaxLseEnable:%d", fiaBaseParams.isSoftMaxLseEnable);
     OP_LOGD(fiaInfo_->opName, "coreNum:%d", fiaBaseParams.coreNum);
@@ -962,6 +972,8 @@ void FiaTilingFullQuantMxArch35::PrintAllTilingData()
 // 1. 百位代表非量化、伪量化、全量化等场景, 即: 0xx-非量化，1xx-伪量化, 2xx-全量化
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
-REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingFullQuantMxArch35,
-    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 210);       // TODO，29改28，注册时未区分npu arch，会存在多重定义，是否要修改fia_tiling_templates_registry.h？
+REGISTER_TILING_TEMPLATE_FIA(
+    FusedInferAttentionScore, FiaTilingFullQuantMxArch35,
+    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
+    210); // TODO，29改28，注册时未区分npu arch，会存在多重定义，是否要修改fia_tiling_templates_registry.h？
 } // namespace optiling

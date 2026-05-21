@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -29,7 +29,7 @@
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/shape_utils.h"
-#include "common/op_api_def.h"
+#include "op_api/op_api_def.h"
 #include "common/op_host/op_api/cube_util.h"
 #include "common/op_host/math_util.h"
 

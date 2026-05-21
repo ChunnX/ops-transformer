@@ -13,6 +13,7 @@
  * \brief
  */
 #include "common/utils/op_mc2.h"
+#include "common/utils/mc2_comm_utils.h"
 #include "mc2_log.h"
 #include "allto_all_kc_quant_matmul_tiling_base.h"
 
@@ -157,6 +158,22 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::InitTilingContextParameters()
     return ge::GRAPH_SUCCESS;
 }
 
+CutResult AllToAllKcQuantMatmulTilingBase::GetCutResOfCommAndCompute()
+{
+    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
+    constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
+    if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
+        TopoType topoType =
+            contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
+        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
+        return tiling.GetTiling();
+    } else {
+        // 调用父类的通用实现
+        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+    }
+}
+
 /**
  * @brief 主要处理逻辑，设置hccl参数；进行通算切分, 获取mm tiling等
  *
@@ -169,7 +186,6 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::DoOpTiling()
     // 参数校验通过后赋值给全局上下文变量
     GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
     // 进行通算切分
-    matmulQuantType_ = QuantType::KC_QUANT;
     GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
     // 调用量化Matmul的tiling方法进行切分
     GE_ASSERT_GRAPH_SUCCESS(DoKcQuantMMTiling());
@@ -213,12 +229,16 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
+
+    // 根据环境变量判断使用的通信引擎的类型
+    uint8_t hcclServerEngine =
+        Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_CCU ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllBuilder
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo_.hcclGeType,
                             contextInfo_.hcclGeType)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(hcclServerEngine)
             .build();
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
@@ -515,7 +535,7 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
-    uint32_t biasDType = DTYPE_BIAS_FP32;
+    uint8_t biasDType = DTYPE_BIAS_FP32;
     uint32_t x1QuantDtype = static_cast<uint32_t>(contextInfo_.args_.geAType);
     // 根据占用的UB空间判断使用的动态量化模板
     const uint32_t doubleBuffNum = 2;
@@ -533,9 +553,10 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     bool isSmallK = sizeOfSmallKUsed < sizeOfUB ? true : false;
     // 35代表float8_e5m2,36代表float8e4m3
     uint32_t quantMode = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK: [%d,%d,%d,%d], TilingKey is [%lu].", quantMode,
-            x2TransposeFlag, biasDType, isSmallK, tilingKey);
+    uint8_t hcclServerType = Mc2Comm::GetCommModeFromEnv();
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, hcclServerType);
+    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE: [%d,%d,%d,%d,%d], TilingKey is [%lu].",
+            quantMode, x2TransposeFlag, biasDType, isSmallK, hcclServerType, tilingKey);
     return tilingKey;
 }
 

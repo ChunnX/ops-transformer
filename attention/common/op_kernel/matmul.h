@@ -24,8 +24,8 @@ constexpr uint32_t UNITFLAG_ENABLE = 2;
 constexpr uint32_t UNITFLAG_EN_OUTER_LAST = 3;
 static constexpr uint32_t FP16_ONE_FRACTAL_ELEMENT = 16; // 一个分形512B,16*16个fp16
 static constexpr uint32_t INT4_ONE_FRACTAL_ELEMENT = 64; // 一个分形512B,16*64个fp16
-static constexpr uint32_t ONE_FRACTAL_H_ELEMENT = 16; //  一个分形512B,height方向为16个element
-static constexpr uint32_t ONE_FRACTAL_W_BYTE = 32; //  一个分形512B,weight方向为32B
+static constexpr uint32_t ONE_FRACTAL_H_ELEMENT = 16; // 一个分形512B,height方向为16个element
+static constexpr uint32_t ONE_FRACTAL_W_BYTE = 32; // 一个分形512B,weight方向为32B
 static constexpr uint32_t LOAD3D_L1W_SIZE = 16;
 static constexpr uint32_t MMAD_MN_SIZE_10 = 10;
 static constexpr uint8_t LOAD3D_STRIDE_W = 1;
@@ -182,7 +182,7 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U>& aL0Tensor, const LocalTen
     loadData2DMxParamsA.xStartPosition = 0;
     loadData2DMxParamsA.yStartPosition = 0;
     loadData2DMxParamsA.xStep = ((mSplitSize + 15) >> 4 << 4) >> 4;
-    loadData2DMxParamsA.yStep = (kSplitSize + 63) / 32 / 2;
+    loadData2DMxParamsA.yStep = (kSplitSize + 63) >> 5 >> 1;
     loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
     loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
     if (mmParam.realM != 0) {
@@ -202,11 +202,13 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U>& aL0Tensor, const LocalTen
             for (uint32_t idx = 0; idx < l0bLoop; ++idx) {
                 loadData2DParamsA.mStartPosition = oriMStep + M_STEP_ALIGN_BASE * idx;
                 loadData2DMxParamsA.xStartPosition = oriMScaleStep + M_STEP_ALIGN_BASE * idx;
-                LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset / 32 ], loadData2DParamsA, loadData2DMxParamsA);
+                LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
+                         loadData2DMxParamsA);
                 dstOffset += dstAddrStride;
             }
         } else {
-            LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset / 32 ], loadData2DParamsA, loadData2DMxParamsA);
+            LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
+                     loadData2DMxParamsA);
         }
     } else {
         LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
@@ -306,7 +308,7 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
         loadData2DMxParamsB.xStartPosition = 0;
         loadData2DMxParamsB.yStartPosition = 0;
         loadData2DMxParamsB.xStep = ((nSplitSize + 15) >> 4 << 4) >> 4;
-        loadData2DMxParamsB.yStep = (kSplitSize + 63) / 32 / 2;
+        loadData2DMxParamsB.yStep = (kSplitSize + 63)  >> 5 >> 1;
         loadData2DMxParamsB.srcStride = loadData2DMxParamsB.yStep;
         loadData2DMxParamsB.dstStride = loadData2DMxParamsB.yStep;
         if (loadData2DParamsB.ifTranspose && (loadData2DParamsB.dstStride & 1)) {
@@ -320,17 +322,19 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
             for (uint32_t idx = 0; idx < l0bLoop; ++idx) {
                 loadData2DParamsB.mStartPosition = oriMStep + M_STEP_ALIGN_BASE * idx;
                 loadData2DMxParamsB.xStartPosition = oriMScaleStep + M_STEP_ALIGN_BASE * idx;
-                LoadData(bL0Tensor[dstOffset], bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset / 32 ], loadData2DParamsB, loadData2DMxParamsB);
+                LoadData(bL0Tensor[dstOffset], bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset >> 5], loadData2DParamsB,
+                         loadData2DMxParamsB);
                 dstOffset += dstAddrStride;
             }
         } else {
-            LoadData(bL0Tensor, bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset / 32 ], loadData2DParamsB, loadData2DMxParamsB);
+            LoadData(bL0Tensor, bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset >> 5], loadData2DParamsB,
+                     loadData2DMxParamsB);
         }
     } else if constexpr (IsSameType<T, fp4x2_e2m1_t>::value) {
         if (loadData2DParamsB.ifTranspose) {
             loadData2DMxParamsB.xStartPosition= 0; // 矩阵X轴方向的起始位置，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。
             loadData2DMxParamsB.yStartPosition = mmParam.singleN / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵Y轴方向的起始位置，即K维度方向，单位为32B。
-            loadData2DMxParamsB.xStep = (kSplitSize + 15) / 16; //源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
+            loadData2DMxParamsB.xStep = (kSplitSize + 15) / 16; // 源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
             loadData2DMxParamsB.yStep = (mmParam.singleK + 63) / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵Y轴方向搬运长度，即K维度方向，单位为32B。取值范围：yStep∈[0, 255]。
             // TODO: mmParam.singleM is ???
             loadData2DMxParamsB.srcStride = mmParam.singleM / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
@@ -339,8 +343,8 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
         } else {
             loadData2DMxParamsB.xStartPosition = mmParam.singleK / 16; // 矩阵X轴方向的起始位置，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。
             loadData2DMxParamsB.yStartPosition = 0;
-            loadData2DMxParamsB.xStep = (mmParam.singleN + 15) / 16; //源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
-            loadData2DMxParamsB.yStep = (kSplitSize + 63) / MX_FP4_PTG_PCG_SCALE_PARAM / 2; //源矩阵Y轴方向搬运长度，即K维度方向，单位为32B。取值范围：yStep∈[0, 255]。
+            loadData2DMxParamsB.xStep = (mmParam.singleN + 15) / 16; // 源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
+            loadData2DMxParamsB.yStep = (kSplitSize + 63) / MX_FP4_PTG_PCG_SCALE_PARAM / 2; // 源矩阵Y轴方向搬运长度，即K维度方向，单位为32B。取值范围：yStep∈[0, 255]。
             loadData2DMxParamsB.srcStride = loadData2DMxParamsB.yStep;
             loadData2DMxParamsB.dstStride = loadData2DMxParamsB.yStep; // 目标矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
             LoadData(bL0Tensor, bL1Tensor,bScaleL1Tensor, loadData2DParamsB,loadData2DMxParamsB);
@@ -357,8 +361,8 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
             LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB,loadData2DMxParamsB);
         } else {
             loadData2DMxParamsB.xStartPosition= mmParam.singleK / 16; // 矩阵X轴方向的起始位置，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。
-            loadData2DMxParamsB.yStartPosition = 0; //源矩阵Y轴方向的起始位置，即K维度方向，单位为32B。
-            loadData2DMxParamsB.xStep = (mmParam.singleN + 15) / 16; //源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
+            loadData2DMxParamsB.yStartPosition = 0; // 源矩阵Y轴方向的起始位置，即K维度方向，单位为32B。
+            loadData2DMxParamsB.xStep = (mmParam.singleN + 15) / 16; // 源矩阵X轴方向搬运长度，即M维度方向，单位为1个分形（1个单位代表一个32B的分形）。取值范围：xStep∈[0, 255]。
             loadData2DMxParamsB.yStep = (kSplitSize + 31) * 2 / HI_FP4_PTG_PCG_SCALE_PARAM; // 1个fp32伪装为2个bf16，故最小分型数量翻倍。源矩阵Y轴方向搬运长度，即K维度方向，单位为32B。取值范围：yStep∈[0, 255]。
             loadData2DMxParamsB.srcStride = loadData2DMxParamsB.yStep; // 源矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
             loadData2DMxParamsB.dstStride = loadData2DMxParamsB.yStep; // 目标矩阵X方向前一个分形起始地址与后一个分形起始地址的间隔，单位为32B。
@@ -650,8 +654,9 @@ __aicore__ inline void LoadDataToL0B(LocalTensor<T>& bL0Tensor, const LocalTenso
 #endif
 // 全载
 // 外部L1切入K时，需要传入cmatrixInitVal的标记
-template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType,
-          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A, typename L0BDType = B>
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
+          typename L0ADType = A, typename L0BDType = B>
 __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
                                   const LocalTensor<B> &bL1Tensor,
                                   L0AType &aL0BuffsDb,
@@ -677,7 +682,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
     l0bBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
     } else
@@ -711,8 +716,9 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
 }
 
 // 切K
-template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType,
-          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A, typename L0BDType = B>
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
+          typename L0ADType = A, typename L0BDType = B>
 __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
                               const LocalTensor<B> &bL1Tensor,
                               L0AType &aL0BuffsDb,
@@ -744,7 +750,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
         } else
@@ -757,7 +763,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum); // tileK.D
         } else
@@ -865,8 +871,9 @@ __aicore__ inline void MatmulKbias(const LocalTensor<A> &aL1Tensor,
 }
 
 // 切N
-template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType,
-          typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A, typename L0BDType = B>
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
+          typename L0ADType = A, typename L0BDType = B>
 __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
                               const LocalTensor<B> &bL1Tensor,
                               L0AType &aL0BuffsDb,
@@ -894,7 +901,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
     } else
@@ -909,7 +916,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum); // tileK.D
         } else

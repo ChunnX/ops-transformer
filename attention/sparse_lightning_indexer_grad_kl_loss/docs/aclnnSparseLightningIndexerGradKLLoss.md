@@ -386,6 +386,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：
+  - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 - **返回值：**
 
@@ -557,7 +559,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~128K</td>
+            <td>S1支持1~8K，S2支持1~512K</td>
             <td>S1、S2支持不等长</td>
         </tr>
         <tr>
@@ -570,7 +572,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>Nidx1</td>
             <td>
-            16、32、64
+            8、16、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -606,10 +608,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
-    <ul>
-        <li>Ascend 950PR、Ascend 950DT处理器：B仅支持1~128，N1额外支持48，Nidx1额外支持24。</li>
-        <li>Atlas A2 训练系列产品、Atlas A2 推理系列产品、Atlas A3 训练系列产品、Atlas A3 推理系列产品：Nidx1额外支持8。</li>
-    </ul>
+
+    <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128，N1额外支持48，Nidx1额外支持24。
 
 ## 调用示例
 
