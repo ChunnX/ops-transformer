@@ -12,6 +12,8 @@
  * \file moe_init_routing_quant_v2.cpp
  * \brief
  */
+#ifndef MOE_INIT_ROUTING_QUANT_V2_HPP
+#define MOE_INIT_ROUTING_QUANT_V2_HPP
 #include "moe_v2_sort_one_core.h"
 #include "moe_v2_sort_multi_core.h"
 #include "moe_v2_mrgsort_out.h"
@@ -66,14 +68,14 @@ __aicore__ inline  void moe_init_routing_quant_v2(
   // sort
   if (tilingKey == 10000 || tilingKey == 10100 || tilingKey == 11000 || tilingKey == 11100) {
     TPipe sortPipe;
-    MoeV2SortOneCore op;
+    MoeInitRoutingQuantV2::MoeV2SortOneCore op;
     op.Init<MoeInitRoutingQuantV2TilingData>(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, workspace,
                                              tilingData, &sortPipe);
     op.Process();
     sortPipe.Destroy();
   } else if (tilingKey == 10010 || tilingKey == 10110 || tilingKey == 11010  || tilingKey== 11110) {
     TPipe sortPipe;
-    MoeV2SortMultiCore op;
+    MoeInitRoutingQuantV2::MoeV2SortMultiCore op;
     op.Init<MoeInitRoutingQuantV2TilingData>(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, workspace,
                                              tilingData, &sortPipe);
     op.Process();
@@ -81,22 +83,22 @@ __aicore__ inline  void moe_init_routing_quant_v2(
   }
 
   if (tilingKey == 10000 || tilingKey == 10010 || tilingKey ==11000 || tilingKey ==11010) { // No drop scenario
-    if (tilingData->expertTokensCountOrCumsumFlag != EXERPT_TOKENS_NONE) {
+    if (tilingData->expertTokensCountOrCumsumFlag != MoeInitRoutingQuantV2::EXERPT_TOKENS_NONE) {
       TPipe expertTokenOutPipe;
-      MoeV2ExpertTokenOut expertTokenOutOp;
+      MoeInitRoutingQuantV2::MoeV2ExpertTokenOut expertTokenOutOp;
       expertTokenOutOp.Init<MoeInitRoutingQuantV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
                                                              expandedRowIdx, workspace, tilingData, &expertTokenOutPipe);
       expertTokenOutOp.Process();
       expertTokenOutPipe.Destroy();
     }
     TPipe srcToDstPipe;
-    MoeV2SrcToDstOp srcToDstOp;
+    MoeInitRoutingQuantV2::MoeV2SrcToDstOp srcToDstOp;
     srcToDstOp.Init<MoeInitRoutingQuantV2TilingData>(expandedRowIdx, workspace, tilingData, &srcToDstPipe);
     srcToDstOp.Process();
     srcToDstPipe.Destroy();
   } else if (tilingKey ==10100 || tilingKey ==10110 || tilingKey ==11100 || tilingKey ==11110) { // Drop scenario
     TPipe expertTokenOutPipe;
-    MoeV2ExpertTokenOut expertTokenOutOp;
+    MoeInitRoutingQuantV2::MoeV2ExpertTokenOut expertTokenOutOp;
     expertTokenOutOp.Init<MoeInitRoutingQuantV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
                                                            expandedRowIdx, workspace, tilingData, &expertTokenOutPipe);
     expertTokenOutOp.Process();
@@ -104,7 +106,7 @@ __aicore__ inline  void moe_init_routing_quant_v2(
 
     if (tilingKey == 10100 || tilingKey == 10110) {
       TPipe srcToDstPipe;
-      MoeV2SrcToDstWithCapacity<int8_t, MoeInitRoutingQuantV2TilingData> srcToDstWithCapacityOp;
+      MoeInitRoutingQuantV2::MoeV2SrcToDstWithCapacity<int8_t, MoeInitRoutingQuantV2TilingData> srcToDstWithCapacityOp;
       srcToDstWithCapacityOp.Init(expandedRowIdx, expandedX, workspace, tilingData, &srcToDstPipe);
       srcToDstWithCapacityOp.Process();
       srcToDstPipe.Destroy();
@@ -131,3 +133,5 @@ __aicore__ inline  void moe_init_routing_quant_v2(
     gatherPipe.Destroy();
   }
 }
+
+#endif // MOE_INIT_ROUTING_QUANT_V2_HPP

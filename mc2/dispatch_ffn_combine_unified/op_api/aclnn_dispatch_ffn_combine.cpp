@@ -32,7 +32,7 @@ extern "C" {
 //     NNOPBASE_HCCL_SERVER_TYPE_END
 // };
 
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+// extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern aclnnStatus aclnnInnerDispatchFFNCombineGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,

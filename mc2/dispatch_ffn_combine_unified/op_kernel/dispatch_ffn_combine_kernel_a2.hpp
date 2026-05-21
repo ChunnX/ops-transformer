@@ -13,6 +13,8 @@
 
 #include "kernel_operator.h"
 
+#include "utils/copy_l0c_to_gm_custom.hpp"
+
 #include "catlass/catlass.hpp"
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
@@ -25,7 +27,6 @@
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
-#include "utils/copy_l0c_to_gm_custom.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
@@ -41,7 +42,7 @@
 // Non-quant routing dispatcher (used by the BF16/FP16 weight path).
 // Lives alongside the quant dispatcher in the same `moe_init_routing_quant_v2`
 // directory so it can share all sort/expert-token/srcToDst helpers.
-#include "moe_init_routing_quant_v2/moe_init_routing_v2.cpp"
+#include "moe_init_routing_v2/moe_init_routing_v2.cpp"
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
@@ -52,9 +53,8 @@ using namespace AscendC;
 
 namespace Catlass::Gemm::Kernel {
 
-constexpr uint16_t SYNCFLAGC2V = 9;
-constexpr uint16_t SYNCFLAGV2C = 10;
-constexpr int32_t UB_MOVE_NUM = 16 * 1024;
+// SYNCFLAGC2V, SYNCFLAGV2C are defined in utils/const_args.hpp
+// UB_MOVE_NUM is defined in dispatch_ffn_combine_kernel.hpp
 
 // Atlas A2 (910B) kernel.
 //
@@ -1376,8 +1376,8 @@ private:
         int32_t base = totalElements / coreNum;
         int32_t rem = totalElements % coreNum;
 
-        int32_t startIdx = coreIdx * base + min(coreIdx, rem);
-        int32_t endIdx = (coreIdx + 1) * base + min(coreIdx + 1, rem);
+        int32_t startIdx = coreIdx * base + (coreIdx < rem ? coreIdx : rem);
+        int32_t endIdx = (coreIdx + 1) * base + (coreIdx + 1 < rem ? coreIdx + 1 : rem);
 
         AscendC::LocalTensor<int32_t> tmpExpertIdx = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         int32_t copySize = endIdx - startIdx;

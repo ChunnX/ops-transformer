@@ -74,14 +74,14 @@ __aicore__ inline  void moe_init_routing_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADD
 
     if (tilingKey == 10001 || tilingKey == 10011) {
         TPipe sortPipe;
-        MoeV2SortOneCore op;
+        MoeInitRoutingV2::MoeV2SortOneCore op;
         op.Init<MoeInitRoutingV2TilingData>(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, userWS, tilingData,
                                             &sortPipe);
         op.Process();
         sortPipe.Destroy();
     } else if (tilingKey == 10002 || tilingKey == 10012) {
         TPipe sortPipe;
-        MoeV2SortMultiCore op;
+        MoeInitRoutingV2::MoeV2SortMultiCore op;
         op.Init<MoeInitRoutingV2TilingData>(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, userWS, tilingData,
                                             &sortPipe);
         op.Process();
@@ -89,36 +89,36 @@ __aicore__ inline  void moe_init_routing_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADD
     }
 
     if (tilingKey == 10001 || tilingKey == 10002) {
-        if (tilingData->expertTokensCountOrCumsumFlag != EXERPT_TOKENS_NONE) {
+        if (tilingData->expertTokensCountOrCumsumFlag != MoeInitRoutingV2::EXERPT_TOKENS_NONE) {
             TPipe expertTokenOutPipe;
-            MoeV2ExpertTokenOut expertTokenOutOp;
+            MoeInitRoutingV2::MoeV2ExpertTokenOut expertTokenOutOp;
             expertTokenOutOp.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
                                                               expandedRowIdx, userWS, tilingData, &expertTokenOutPipe);
             expertTokenOutOp.Process();
             expertTokenOutPipe.Destroy();
         }
         TPipe srcToDstPipe;
-        MoeV2SrcToDstOp srcToDstOp;
+        MoeInitRoutingV2::MoeV2SrcToDstOp srcToDstOp;
         srcToDstOp.Init<MoeInitRoutingV2TilingData>(expandedRowIdx, userWS, tilingData, &srcToDstPipe);
         srcToDstOp.Process();
         srcToDstPipe.Destroy();
     } else if (tilingKey == 10011 || tilingKey == 10012) {
         TPipe expertTokenOutPipe;
-        MoeV2ExpertTokenOut expertTokenOutOp;
+        MoeInitRoutingV2::MoeV2ExpertTokenOut expertTokenOutOp;
         expertTokenOutOp.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
                                                           expandedRowIdx, userWS, tilingData, &expertTokenOutPipe);
         expertTokenOutOp.Process();
         expertTokenOutPipe.Destroy();
 
         TPipe srcToDstPipe;
-        MoeV2SrcToDstWithCapacity<DTYPE_X, MoeInitRoutingV2TilingData> srcToDstWithCapacityOp;
+        MoeInitRoutingV2::MoeV2SrcToDstWithCapacity<DTYPE_X, MoeInitRoutingV2TilingData> srcToDstWithCapacityOp;
         srcToDstWithCapacityOp.Init(expandedRowIdx, expandedX, userWS, tilingData, &srcToDstPipe);
         srcToDstWithCapacityOp.Process();
         srcToDstPipe.Destroy();
     }
 
     TPipe gatherPipe;
-    MoeV2GatherOut<DTYPE_X> gatherOp;
+    MoeInitRoutingV2::MoeV2GatherOut<DTYPE_X> gatherOp;
     gatherOp.Init(x, expandedRowIdx, expandedX, userWS, tilingData, &gatherPipe);
     gatherOp.Process();
     gatherPipe.Destroy();

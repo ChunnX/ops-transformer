@@ -38,10 +38,12 @@ __global__ __aicore__ void dispatch_ffn_combine(
     constexpr bool isNz = (FORMAT_WEIGHT1 == FORMAT_FRACTAL_NZ);
     constexpr bool isA2 = (TPL_ARCH == SOC_ASCEND910B);
 
+    REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
+    REGISTER_TILING_FOR_TILINGKEY("(QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8) || (QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8)", DispatchFFNCombineTilingDataQuant);
+
     if constexpr (isA2) {
         if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
                       TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
-            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataQuant);
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
@@ -52,7 +54,6 @@ __global__ __aicore__ void dispatch_ffn_combine(
                     yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         } else {
-            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
@@ -66,7 +67,6 @@ __global__ __aicore__ void dispatch_ffn_combine(
     } else {
         if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
                       TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
-            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataQuant);
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
@@ -77,7 +77,6 @@ __global__ __aicore__ void dispatch_ffn_combine(
                     yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         } else {
-            REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,

@@ -311,9 +311,9 @@ public:
 
             // swiglu limit clamp
             if (swigluLimit > 0.0f) {
-                AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
+                AscendC::ClampMax(ubCFp32, ubCFp32, sharedUbTmpBuffer, swigluLimit, blockN);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit, ChunkTileLen);
+                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedUbTmpBuffer, -1.0f * swigluLimit, ChunkTileLen);
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
