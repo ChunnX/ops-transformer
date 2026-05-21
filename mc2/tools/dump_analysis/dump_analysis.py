@@ -807,9 +807,9 @@ for filename in os.listdir(os.path.join(floder_path)):
                 buffer_id = com_0_1
             A2.analyze_single_card(
                 arr_func_dis=int32_dis_win_data, arr_func_com=int32_com_win_data,
-                core_num_func=max(dis_core_num, com_core_num),
+                core_num=max(dis_core_num, com_core_num),
                 ep_rankid=A2_ep_rankid, d_c=dis_com, ep_worldsize=A2_ep_worldsize, runpos=A2_run_num_list,
-                moe_expert_num=A2_moe_expert_num, bs=bs, k=k, buffer_id=buffer_id,
+                moe_expert_num=A2_moe_expert_num, k=k, buffer_id=buffer_id,
                 target_path=floder_path, expertids=expertids,
                 dis_status=dis_0_status, com_status=com_0_status,
                 dis_run_cnts=max_dis_run_num, com_run_cnts=max_com_run_num
