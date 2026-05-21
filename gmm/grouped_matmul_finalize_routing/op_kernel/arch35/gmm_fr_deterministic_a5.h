@@ -90,11 +90,20 @@ __aicore__ inline void FRDeterministicA5(
         GlobalTensor<DTYPE_OUT> wsRowGm;
         GlobalTensor<DTYPE_OUT> yRowGm;
 
+        uint64_t procRows = 0;
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
             if (static_cast<uint64_t>(outRow % coreNum) != myVecId) {
                 continue;
+            }
+
+            uint64_t wsElemOff = mOffset * n;
+            uint64_t yElemOff = static_cast<uint64_t>(outRow) * n;
+            if (procRows < 3) {
+                printf("[FIN-AGG] physId=%lu m=%lu outRow=%lu wsElemOff=%lu yElemOff=%lu n=%u baseN=%lu\n",
+                       myVecId, mOffset, outRow, wsElemOff, yElemOff, n,
+                       static_cast<uint64_t>(syncConfig.baseN));
             }
 
             // Rebase to current row: element offset becomes just nOffset (< n)
@@ -105,6 +114,11 @@ __aicore__ inline void FRDeterministicA5(
             for (uint64_t nOffset = 0; nOffset < n; nOffset += syncConfig.baseN) {
                 if (nOffset + syncConfig.baseN >= n) {
                     curVecBaseN = n - nOffset;
+                }
+
+                if (procRows < 2 && nOffset == 0) {
+                    printf("[FIN-AGG]   nOffset=%lu curBaseN=%lu blockLen=%u\n",
+                           nOffset, curVecBaseN, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)));
                 }
 
                 LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
@@ -121,7 +135,10 @@ __aicore__ inline void FRDeterministicA5(
 
                 queBind.FreeTensor(bindLocal);
             }
+            procRows++;
         }
+        printf("[FIN-AGG] physId=%lu DONE totalM=%lu procRows=%lu globalRowOff=%lu\n",
+               myVecId, totalM, procRows, globalRowOffset);
     }
     SyncAll();  // Ensure all writes complete
 }

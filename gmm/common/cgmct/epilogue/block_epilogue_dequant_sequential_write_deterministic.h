@@ -290,6 +290,12 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     // yGlobal_ is rebased by workspaceBaseRow, so offsetM is relative to workspaceBaseRow.
     uint64_t absRowBase = offsetM;
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
+    if (dumpCnt_ < 3) {
+        printf("[EPI-WS] subIdx=%u absRowBase=%lu curVecBaseM=%u n_=%lu yOffset=%lu maxOff=%lu blockLen=%u\n",
+               subBlockIdx_, absRowBase, curVecBaseM, static_cast<uint64_t>(n_), yOffset,
+               (absRowBase + curVecBaseM) * static_cast<uint64_t>(n_) + yOffset,
+               static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)));
+    }
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         DataCopyPad(yGlobal_[(absRowBase + i) * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }

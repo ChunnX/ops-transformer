@@ -442,11 +442,20 @@ public:
                             // Per-row rebase tensors to keep DataCopyPad offsets small
                             GlobalTensor<float> wsRowGm;
                             GlobalTensor<float> yRowGm;
+                            uint64_t procRows = 0;
                             for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
                                 auto outRow = static_cast<uint64_t>(
                                     rowIndexGm.GetValue(globalRowOffset + mOffset));
                                 if (outRow % coreNum != static_cast<uint64_t>(GetBlockIdx() / GetTaskRation())) {
                                     continue;
+                                }
+                                uint64_t wsElemOff = mOffset * aggN;
+                                uint64_t yElemOff = outRow * aggN;
+                                if (procRows < 3) {
+                                    uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
+                                    printf("[CYC-AGG] physId=%lu m=%lu outRow=%lu wsElemOff=%lu yElemOff=%lu aggN=%lu baseN=%lu\n",
+                                           physId, mOffset, outRow, wsElemOff, yElemOff, aggN,
+                                           static_cast<uint64_t>(params.cyclingParams.baseN));
                                 }
                                 // Rebase to current row: element offset becomes just nOff (< aggN)
                                 wsRowGm.SetGlobalBuffer(wsBaseAddr + mOffset * aggN);
@@ -455,6 +464,10 @@ public:
                                 for (uint64_t nOff = 0; nOff < aggN; nOff += curBaseN) {
                                     if (nOff + curBaseN >= aggN) {
                                         curBaseN = aggN - nOff;
+                                    }
+                                    if (procRows < 2 && nOff == 0) {
+                                        printf("[CYC-AGG]   nOff=%lu curBaseN=%lu blockLen=%u\n",
+                                               nOff, curBaseN, static_cast<uint32_t>(curBaseN * sizeof(float)));
                                     }
                                     LocalTensor<float> bindLocal = aggQueBind.AllocTensor<float>();
                                     DataCopyExtParams copyParams{1,
@@ -468,6 +481,7 @@ public:
                                     SetAtomicNone();
                                     aggQueBind.FreeTensor(bindLocal);
                                 }
+                                procRows++;
                             }
                         }
                         globalRowOffset += totalM;
