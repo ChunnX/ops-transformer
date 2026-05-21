@@ -240,11 +240,6 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     seed = kwargs.get("seed", 0)
     lse_flag = kwargs.get("return_softmax_lse", 0)
 
-    # q1 = trans_bnsd_to_layout(q, layout_q).contiguous().to(device)
-    # k1 = trans_bnsd_to_layout(k, layout_kv).contiguous().to(device)
-    # v1 = trans_bnsd_to_layout(v, layout_kv).contiguous().to(device)
-
-
     # actual_seq_qlen     = kwargs.get("actual_seq_qlen",  None)
     # actual_seq_kvlen    = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     # # New 4-param style: normalize_case sets _npu_cu_q/kv (full B+1 list) and _npu_seqused_q/kv (B individual).
