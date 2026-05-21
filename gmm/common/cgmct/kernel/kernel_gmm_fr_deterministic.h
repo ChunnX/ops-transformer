@@ -540,6 +540,17 @@ public:
 
         // Final aggregation: all cores must participate (SyncAll is global barrier).
         SyncAll();
+        if ASCEND_IS_AIV {
+            uint64_t physId = static_cast<uint64_t>(GetBlockIdx()) / GetTaskRation();
+            if (physId < 2) {
+                uint64_t totalRowsAll = static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_))
+                                      + Get<MNK_M>(problemShape_);
+                printf("[FIN] physId=%lu totalRowsAll=%lu globalRowOff=%lu remainingM=%lu n=%u windowRows=%lu coreNum=%u baseN=%lu\n",
+                       physId, totalRowsAll, globalRowOffset, totalRowsAll - globalRowOffset,
+                       params.cyclingParams.n, params.cyclingParams.windowSizeRows,
+                       params.cyclingParams.coreNum, static_cast<uint64_t>(params.cyclingParams.baseN));
+            }
+        }
         {
             uint64_t totalRowsAll = static_cast<uint64_t>(Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_))
                                   + Get<MNK_M>(problemShape_);

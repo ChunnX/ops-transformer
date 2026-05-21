@@ -73,6 +73,15 @@ __aicore__ inline void FRDeterministicA5(
     __gm__ DTYPE_OUT* wsBaseAddr,
     __gm__ DTYPE_OUT* yBaseAddr)
 {
+    // Entry log (before any SyncAll, to confirm function is reached)
+    if ASCEND_IS_AIV {
+        uint64_t dbgId = static_cast<uint64_t>(GetBlockIdx()) / AscendC::GetTaskRation();
+        if (dbgId < 2) {
+            printf("[FIN-A5-ENTRY] physId=%lu totalM=%lu n=%u coreNum=%u globalRowOff=%lu\n",
+                   dbgId, static_cast<uint64_t>(syncConfig.curM), n, coreNum, globalRowOffset);
+        }
+    }
+
     // On A5, g_coreType is unreliable. Use compile-time ASCEND_IS_AIC instead.
     // AIC subBlock must participate in SyncAll barriers to match AIV's count.
     if ASCEND_IS_AIC {
