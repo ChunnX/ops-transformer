@@ -131,7 +131,8 @@ SPARSE_FRAMES_BY_BLOCK_SHAPE = {
 # BSA runs once on all heads; LSE is compared against a CPU float32 reference
 # that computes log-sum-exp directly over the sabi-selected KV blocks.
 # S <= 1024 keeps Python reference loops fast (< 1 s per test).
-# B 1 only (B>1 not working). 4 shapes × 4 sparsities = 16 tests, bfloat16 only.
+# Batch size is restricted to 1, since larger batch sizes are not yet supported.
+# Combining 4 shapes with 4 sparsities yields 16 tests in total, all in bfloat16.
 SPARSE_LSE_MULTIHEAD_SHAPES = [
     (1, 2, 512, 128), (1, 4, 512, 128),
     (1, 2, 1024, 128), (1, 4, 1024, 128),
@@ -245,6 +246,7 @@ def _filter_feasible(shapes, sparsities, block_shapes, frame_resolver):
             params.append((shape, sparsity, block_shape))
     return params
 
+
 # Dense-LSE parameter list: cross product of (shape, dtype, block_shape), but
 # excludes fp16 at any coarse-tile shape — see comment on the corresponding
 # fixture in `test_bsa_lse_vs_fias`. Filtering at collection time keeps the run
@@ -314,16 +316,14 @@ def _lse_reference_sparse(q, k, scale, sabi_cpu, block_shape):
     kf = k.cpu().float()
     lse = torch.full((b_dim, n_heads, s), float("-inf"))
 
-    for b in range(b_dim):
-        for h in range(n_heads):
-            for qb in range(n_q_blocks):
-                q_s = qb * bs_q
-                q_e = min(q_s + bs_q, s)
-                kv_rows = _gather_kv_rows(sabi_cpu[b, h, qb], bs_kv, s)
-                if not kv_rows:
-                    continue
-                scores = (qf[b, h, q_s:q_e] @ kf[b, h, kv_rows].t()) * scale
-                lse[b, h, q_s:q_e] = torch.logsumexp(scores, dim=-1)
+    for b, h, qb in itertools.product(range(b_dim), range(n_heads), range(n_q_blocks)):
+        q_s = qb * bs_q
+        q_e = min(q_s + bs_q, s)
+        kv_rows = _gather_kv_rows(sabi_cpu[b, h, qb], bs_kv, s)
+        if not kv_rows:
+            continue
+        scores = (qf[b, h, q_s:q_e] @ kf[b, h, kv_rows].t()) * scale
+        lse[b, h, q_s:q_e] = torch.logsumexp(scores, dim=-1)
 
     return lse
 

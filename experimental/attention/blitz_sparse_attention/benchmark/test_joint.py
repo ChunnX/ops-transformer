@@ -113,22 +113,24 @@ DENSE_SHAPES = [
 ]
 DENSE_DTYPES = [torch.bfloat16, torch.float16]
 
-# Sparse: H=1 only, bfloat16 only.
-# Cases are explicit (shape, sparsity) pairs rather than a cross-product, so that
-# kept_kv_blocks = S/128 * (1-sparsity) >= 15 in every case.  With fewer than ~15
-# kept KV blocks the softmax denominator becomes tiny and BSA vs PFA precision
-# differences exceed SPARSE_OUT_ATOL — not a bug in either kernel, just a regime
-# test_attn.py sidesteps by only testing S >= 24000.
+# Sparse cases are restricted to a single head and bfloat16.
+# Cases are explicit shape-and-sparsity pairs rather than a cross-product, so that
+# the number of kept KV blocks (sequence length S over 128 multiplied by one minus
+# sparsity) stays at or above 15 in every case.  With fewer than about 15 kept KV
+# blocks the softmax denominator becomes tiny and BSA vs PFA precision differences
+# exceed SPARSE_OUT_ATOL — not a bug in either kernel, just a regime that
+# test_attn.py sidesteps by only testing S of 24000 or above.
 #
-#   shape               sparsity   KV blocks   kept (floor)
-#   (1,1, 4096,128)       0.3        32          22  ✓
-#   (1,1, 4096,128)       0.5        32          16  ✓
-#   (1,1, 4096,128)       0.7        32          10  ✗  excluded
-#   (1,1, 8192,128)       0.3        64          45  ✓
-#   (1,1, 8192,128)       0.5        64          32  ✓
-#   (1,1, 8192,128)       0.7        64          19  ✓
-#   (1,1,16384,128)       0.7       128          38  ✓
-#   (1,1,16384,128)       0.9       128          13  ✗  excluded
+# The cases below list batch, head, sequence-length, head-dim, the requested
+# sparsity, total KV blocks, and floor of kept KV blocks:
+#   1,  1,  4096, 128, sparsity 0.3, 32 blocks, 22 kept — included
+#   1,  1,  4096, 128, sparsity 0.5, 32 blocks, 16 kept — included
+#   1,  1,  4096, 128, sparsity 0.7, 32 blocks, 10 kept — excluded
+#   1,  1,  8192, 128, sparsity 0.3, 64 blocks, 45 kept — included
+#   1,  1,  8192, 128, sparsity 0.5, 64 blocks, 32 kept — included
+#   1,  1,  8192, 128, sparsity 0.7, 64 blocks, 19 kept — included
+#   1,  1, 16384, 128, sparsity 0.7, 128 blocks, 38 kept — included
+#   1,  1, 16384, 128, sparsity 0.9, 128 blocks, 13 kept — excluded
 SPARSE_CASES = [
     ((1, 1, 4096, 128), 0.3),
     ((1, 1, 4096, 128), 0.5),
@@ -272,7 +274,7 @@ def test_joint_sparse(shape, sparsity, block_shape):
     _, fias_lse = _run_fias_sparse(inp, pfa_atten_mask)
 
     assert bsa_lse.shape == torch.Size([b, h, s]), f"lse shape wrong: {bsa_lse.shape}"
-    assert bsa_lse.dtype == torch.float32,  f"lse dtype wrong: {bsa_lse.dtype}"
+    assert bsa_lse.dtype == torch.float32, f"lse dtype wrong: {bsa_lse.dtype}"
 
     a, b = bsa_out.cpu(), pfa_out.cpu()
     max_diff_out = _log_diff(

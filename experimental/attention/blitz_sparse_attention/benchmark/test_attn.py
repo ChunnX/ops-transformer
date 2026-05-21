@@ -50,7 +50,7 @@ torch.npu.set_device(DEVICE)
 TORCH_REF_VALS = ["npu_fusion_attention"]
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
-S_VALS = [24_000, 36000]   # s_q = s_kv (B=1 only; B>1 currently produces wrong outputs)
+S_VALS = [24_000, 36000]   # query and key sequence lengths are kept equal; batch size is restricted to 1 because larger batch sizes currently produce wrong outputs
 D_VALS = [128]   # head dimension
 # `frame_kind` is a label; the actual FrameWidths is resolved per block_shape
 # in the test body. `left_cols` is in <block_size_kv>-token units and `top_rows`
@@ -84,6 +84,7 @@ def _attn_param_id(p):
             f"-{frame_kind}-sparsity{sparsity:.2f}"
             f"-bs{block_shape[0]}x{block_shape[1]}"
             f"-{torch_ref}")
+
 
 def _build_attn_params():
     params = []
@@ -161,9 +162,10 @@ def test_blitz_sparse_attention_correctness(shape, frame_kind, sparsity, block_s
     a, b_ref = out_our.cpu(), out_ref.cpu()
     diff = (a - b_ref).abs()
     max_diff = diff.max().item()
-    # Opt-in diff logging: BSA_LOG_DIFFS=1 logs "DIFF" lines for every
-    # comparison site (useful when calibrating atol). Kept opt-in because the
-    # extra CPU-side logging can perturb cube scheduling and expose intermittent
+    # Opt-in diff logging. Setting the BSA_LOG_DIFFS environment variable to a
+    # truthy value emits a DIFF line for every comparison site, which is useful
+    # when calibrating atol. The logging is kept opt-in because the extra
+    # CPU-side logging can perturb cube scheduling and expose intermittent
     # bf16 allocator-slack noise.
     import os as _os
     if _os.environ.get("BSA_LOG_DIFFS"):

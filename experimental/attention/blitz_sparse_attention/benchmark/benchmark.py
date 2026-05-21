@@ -86,7 +86,7 @@ SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # informational defaults; the real driver of the sabi-stride choice is the
 # per-pair value passed to torch_bsa.blitz_sparse_attention via block_shape.
 BLOCK_SHAPES = [(bsq, bskv)
-                for bsq  in (128, 256, 512, 1024)
+                for bsq in (128, 256, 512, 1024)
                 for bskv in (128, 256, 512, 1024)]
 
 # When True, each sabi row is generated with kept block indices sorted ascending
@@ -108,11 +108,11 @@ SABI_SORTED = True
 # rows and last 6 columns (the most-recent / streaming-tail tokens). 6 tokens
 # < 1 block in every direction, so right_cols / bottom_rows round up to 1.
 #
-# Per-pair entry math:
-#   top_rows    is ceil( 3600 / BLOCK_SIZE_Q  )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
-#   left_cols   is ceil( 3600 / BLOCK_SIZE_KV )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
-#   right_cols  is ceil(    6 / BLOCK_SIZE_KV )  = 1
-#   bottom_rows is ceil(    6 / BLOCK_SIZE_Q  )  = 1
+# Per-pair entry math, where each value is rounded up to whole blocks:
+#   top_rows    covers 3600 query tokens, giving 29, 15, 8, 4 blocks for BLOCK_SIZE_Q  of 128, 256, 512, 1024
+#   left_cols   covers 3600 key   tokens, giving 29, 15, 8, 4 blocks for BLOCK_SIZE_KV of 128, 256, 512, 1024
+#   right_cols  covers    6 key   tokens, which always rounds up to 1 block
+#   bottom_rows covers    6 query tokens, which always rounds up to 1 block
 #
 # So the same conceptual "first 3600 + last 6 tokens" frame produces a forced-
 # token footprint of ≈ 3600–4096 tokens per side at every block_shape pair,
@@ -124,10 +124,10 @@ _LEFT_COLS_BY_KV = {128: 29, 256: 15, 512: 8, 1024: 4}
 _TOP_ROWS_BY_Q = {128: 29, 256: 15, 512: 8, 1024: 4}
 FRAMES_BY_BLOCK_SHAPE = {
     (bsq, bskv): FrameWidths(
-        left_cols = _LEFT_COLS_BY_KV[bskv],
-        right_cols = 1,
-        top_rows = _TOP_ROWS_BY_Q[bsq],
-        bottom_rows = 1,
+        left_cols=_LEFT_COLS_BY_KV[bskv],
+        right_cols=1,
+        top_rows=_TOP_ROWS_BY_Q[bsq],
+        bottom_rows=1,
     )
     for bsq in _TOP_ROWS_BY_Q
     for bskv in _LEFT_COLS_BY_KV

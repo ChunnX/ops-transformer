@@ -27,9 +27,13 @@ sparsity of the matching (seq_len, block_shape) line.
 """
 
 import argparse
+import logging
 import re
 import sys
 from collections import defaultdict, namedtuple
+
+logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+logger = logging.getLogger(__name__)
 
 # Composite sort key produced by `_sort_key` — wraps the six lexicographic
 # fields in a single named value (G.FNM.05). Inherits tuple comparison, so
@@ -165,11 +169,16 @@ def _parse_args():
 
 
 def _load_groups():
-    """Read benchmark rows from stdin and group by (B,H,S,D,block_shape)."""
+    """Read benchmark rows from stdin and group by (B,H,S,D,block_shape).
+
+    Returns (rows, groups) on success, or (None, None) when stdin held no
+    parsable rows. The caller — main, the script's entry point — is
+    responsible for terminating in that case; per G.ERR.11 we keep
+    sys.exit() out of this helper.
+    """
     rows = list(parse_rows(sys.stdin))
     if not rows:
-        sys.exit("plot.py: no benchmark rows parsed from stdin "
-                 "(pipe `benchmark.py` stdout into this script).")
+        return None, None
     groups = defaultdict(list)
     for r in rows:
         groups[(r["b"], r["h"], r["s_q"], r["d"], r["block_shape"])].append(r)
@@ -223,15 +232,20 @@ def _finalize_figure(fig, ax, title):
 
 
 def _report(output_path, lines_drawn, rows_total, skipped):
-    print(f"plot.py: wrote {output_path}  ({lines_drawn} lines, {rows_total} rows parsed)",
-          file=sys.stderr)
+    logger.info(
+        "plot.py: wrote %s  (%d lines, %d rows parsed)",
+        output_path, lines_drawn, rows_total,
+    )
     for s_q, bs, why in skipped:
-        print(f"plot.py: skipped S={s_q} {bs[0]}x{bs[1]}  ({why})", file=sys.stderr)
+        logger.info("plot.py: skipped S=%s %dx%d  (%s)", s_q, bs[0], bs[1], why)
 
 
 def main():
     args = _parse_args()
     rows, groups = _load_groups()
+    if rows is None:
+        sys.exit("plot.py: no benchmark rows parsed from stdin "
+                 "(pipe `benchmark.py` stdout into this script).")
     common = _compute_common_bnsd(groups)
 
     # matplotlib is imported lazily so `--help` works on hosts without it.

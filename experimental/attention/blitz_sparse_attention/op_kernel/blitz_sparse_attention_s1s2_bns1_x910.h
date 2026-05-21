@@ -705,8 +705,7 @@ protected:
     // Pre-mask the cube-OOB cols [bmm2K, mm1N) to -10000 before softmax, on the
     // global last batch only. Kept out-of-line and `noinline` so the inlined
     // caller (Res1VecCompute) preserves its instruction layout for the hot
-    // path that doesn't need this scrub.
-    // Two stages:
+    // path that doesn't need this scrub. This is executed in Two stages:
     //   Stage 1 — partial leading BLOCK at floor(bmm2K/8)*8, bitmask form:
     //     mask[0] = bits [laneOffset, 8) set, where laneOffset = bmm2K % 8.
     //     Skipped when bmm2K is already 8-aligned (laneOffset == 0).
@@ -805,8 +804,12 @@ protected:
             }
 
             // T2.A: attentionMaskType ∈ {0, 1} only — band ElewiseCompute removed.
-            this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
-                                         params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
+            this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], 
+                                             souterSize, 
+                                             params->singleProcessSInnerSizeNow,
+                                             params->maskCopyInCol, 
+                                             params->useMask, 
+                                             this->bmm1ResCopyInEvent[ubPingpong], 0);
 
             // With true sub-tile gather, every score-buffer column is a kept K
             // position by construction. The post-matmul Adds(-10000) sub-block
@@ -1028,7 +1031,8 @@ protected:
                     uint64_t gmSize = this->tilingData->promptAttentionSingleCoreParams.singleProcessSOuterSize *
                                       this->tilingData->promptAttentionSingleCoreParams.singleProcessSInnerSize;
                     GlobalTensor<T> tmpBmm1ResGmDb;
-                    tmpBmm1ResGmDb.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(this->bmm1ResGmDb[params->gmPingpong].address_), gmSize);
+                    tmpBmm1ResGmDb.SetGlobalBuffer(
+                        reinterpret_cast<__gm__ T*>(this->bmm1ResGmDb[params->gmPingpong].address_), gmSize);
                     this->bmm2.SetTensorA(tmpBmm1ResGmDb);
                 } else if constexpr (PFAT::msdMode == MsdMode::MSD_ON) {
                     this->bmm2.SetTensorA(this->bmm1ExpandGm[params->gmPingpong]);
