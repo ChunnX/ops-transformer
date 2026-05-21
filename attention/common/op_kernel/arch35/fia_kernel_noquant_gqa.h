@@ -794,7 +794,7 @@ public:
         int64_t gS1Skip = curTaskIdx - preTaskIdx;
         accGS1Loops += gS1Skip;
         preTaskIdx = curTaskIdx;
-        if(gS1Skip == 0) {
+        if (gS1Skip == 0) {
             return;
         }
 
