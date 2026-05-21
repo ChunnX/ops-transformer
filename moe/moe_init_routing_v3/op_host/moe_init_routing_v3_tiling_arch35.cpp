@@ -1581,20 +1581,20 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
         remainUb -= (quantSpace + scaleOutSpace);
     } else if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
         int64_t mxQuantBlockNum = Ops::Base::CeilDiv(cols_, MX_QUANT_BLOCK_SIZE);
-        // scaleCols需要对齐到偶数，与kernel侧scaleCols_计算方式一致，避免UB溢出
         int64_t scaleCols = Ops::Base::CeilAlign(mxQuantBlockNum, NUM_TWO);
-        // xInputSpace/maxExpSpace/invScaleSpace使用inputXDtypeSize_，与kernel侧sizeof(T)一致
-        int64_t xInputSpace = AlignBytes(cols_, inputXDtypeSize_) * perCoreTokens;
+        // MXFP8全载逐行处理，xInputQueue_与gatherSpace对应同一缓冲区，不重复计算
         int64_t maxExpSpace = AlignBytes(scaleCols, inputXDtypeSize_);
         int64_t invScaleSpace = AlignBytes(scaleCols, inputXDtypeSize_) * NUM_THREE;
-        int64_t xQuantSpace = AlignBytes(cols_, sizeof(int8_t)) * perCoreTokens;
+        int64_t xQuantSpace = AlignBytes(cols_, sizeof(int8_t));
         int64_t scaleOutSpace = AlignBytes(scaleCols, sizeof(int8_t)) * NUM_TWO;
-        int64_t quantSpace = xInputSpace + maxExpSpace + invScaleSpace + xQuantSpace + scaleOutSpace;
-        remainUb -= (gatherSpace + quantSpace);
+        int64_t quantSpace = maxExpSpace + invScaleSpace + xQuantSpace + scaleOutSpace;
+        // gatherSpace已包含xInputQueue_空间（1行），此处不再重复减去
+        int64_t mxFp8GatherSpace = Ops::Base::CeilDiv(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE) * UB_BLOCK_SIZE;
+        remainUb -= (mxFp8GatherSpace + quantSpace);
         OP_LOGD(context_,
                 "MXFP8 FullLoad UB check: sortSpace=%ld, rowIdxSpace=%ld, expertSpace=%ld, "
-                "gatherSpace=%ld, quantSpace=%ld, remainUb=%ld",
-                sortSpace, rowIdxSpace, expertSpace, gatherSpace, quantSpace, remainUb);
+                "mxFp8GatherSpace=%ld, quantSpace=%ld, remainUb=%ld",
+                sortSpace, rowIdxSpace, expertSpace, mxFp8GatherSpace, quantSpace, remainUb);
     }
 
     return remainUb > 0;

@@ -23,6 +23,8 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 constexpr int64_t FULLLOAD_MXFP8_QUANT_BUFFER_NUM = 1;
+constexpr int64_t INVSCALE_BROADCAST_FACTOR = 3;
+constexpr int64_t MXSCALE_DTYPE_SIZE_FACTOR = 2;
 
 template <typename T, typename U>
 class MoeV3FullLoadMxfp8Quant : public MoeV3FullLoadBase<T> {
@@ -85,9 +87,12 @@ MoeV3FullLoadMxfp8Quant<T, U>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expand
 
     this->pipe_->InitBuffer(xInputQueue_, FULLLOAD_MXFP8_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(T)));
     this->pipe_->InitBuffer(xQuantOutQueue_, FULLLOAD_MXFP8_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(int8_t)));
-    this->pipe_->InitBuffer(mxScaleOutQueue_, FULLLOAD_MXFP8_QUANT_BUFFER_NUM, AlignBytes(scaleCols_, sizeof(int8_t)));
+    // P1-002 FIX: mxScaleOutQueue_存储uint16_t类型，需要scaleCols * sizeof(uint16_t)=scaleCols * sizeof(int8_t)*NUM_TWO
+    this->pipe_->InitBuffer(mxScaleOutQueue_, FULLLOAD_MXFP8_QUANT_BUFFER_NUM,
+                            AlignBytes(scaleCols_, sizeof(int8_t)) * MXSCALE_DTYPE_SIZE_FACTOR);
     this->pipe_->InitBuffer(maxExpBuf_, AlignBytes(scaleCols_, sizeof(T)));
-    this->pipe_->InitBuffer(invScaleBuf_, AlignBytes(scaleCols_, sizeof(T)));
+    // P1-001 FIX: invScale需要广播到32B，需要scaleCols * NUM_THREE空间，避免UB溢出
+    this->pipe_->InitBuffer(invScaleBuf_, AlignBytes(scaleCols_, sizeof(T)) * INVSCALE_BROADCAST_FACTOR);
 }
 
 template <typename T, typename U>
@@ -188,7 +193,7 @@ __aicore__ inline void MoeV3FullLoadMxfp8Quant<T, U>::GatherMxQuantProcess()
 
         for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
             int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-            if (outIndex < this->activeNum_) {
+            if (outIndex >= 0 && outIndex < this->activeNum_) {
                 DataCopyPad(expandedXGm_[outIndex * this->cols_], outLocal, copyOutParams);
                 DataCopyPad(expandedScaleGm_[outIndex * scaleCols_], scaleLocal, copyScaleParams);
             }
@@ -196,7 +201,6 @@ __aicore__ inline void MoeV3FullLoadMxfp8Quant<T, U>::GatherMxQuantProcess()
 
         xQuantOutQueue_.FreeTensor(outLocal);
         mxScaleOutQueue_.FreeTensor(scaleLocal);
-        xInputQueue_.FreeTensor(inLocal);
     }
 
     this->expandedRowIdxQueue_.template EnQue<int32_t>(expandedRowIdx);
