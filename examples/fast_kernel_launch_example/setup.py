@@ -18,7 +18,7 @@ from setuptools import setup, find_packages, Distribution, Command
 from wheel.bdist_wheel import bdist_wheel
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-PACKAGE_NAME = "ascend_ops"
+PACKAGE_NAME = "fast_kernel_launch"
 VERSION = "1.0.0"
 DESCRIPTION = "Example of PyTorch C++ and Ascend extensions"
 
