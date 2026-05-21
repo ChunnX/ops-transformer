@@ -63,7 +63,6 @@ COLUMN_MAP = {
     'block_table_shape':   '_block_table_shape_',
     'block_table_dtype':   None,
     'return_softmax_lse':  'return_softmax_lse',
-    'deterministic':       'deterministic',
     'attn_out_shape':      None,
     'attn_out_dtype':      None,
     'softmax_lse':         None,
@@ -122,7 +121,7 @@ KEY_ORDER = [
     'cu_seqlens_q', 'cu_seqlens_kv',
     'block_table', 'block_size',
     'atten_mask_dtype', 'atten_mask_layout',
-    'return_softmax_lse', 'deterministic',
+    'return_softmax_lse',
 ]
 
 
@@ -303,7 +302,7 @@ def convert_row(headers, row_values):
             case_dict[key] = [parse_int_list(val_str)]
 
         # ---- 布尔 ----
-        elif key in ('return_softmax_lse', 'deterministic'):
+        elif key in ('return_softmax_lse',):
             if val_str.lower() in ('true', '1', 'yes'):
                 case_dict[key] = [True]
             elif val_str.lower() in ('false', '0', 'no'):
