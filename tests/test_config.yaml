@@ -76,6 +76,20 @@ examples:
           - all_gather_add
 
 attention:
+  attention_update:
+    module: True
+    src:
+      - attention/attention_update
+    exclude:
+      - attention/attention_update/docs
+      - attention/attention_update/README.md
+    ut_cov_exclude:
+      - attention/attention_update
+    test:
+      ut: False
+    options:
+      - attention_update
+
   flash_attention_score:
     module: True
     src:
@@ -1014,6 +1028,34 @@ posembedding:
       - posembedding/rotary_position_embedding_grad
     options:
       - rotary_position_embedding_grad
+
+  kv_rms_norm_rope_cache:
+    module: True
+    src:
+      - posembedding/kv_rms_norm_rope_cache
+    exclude:
+      - posembedding/kv_rms_norm_rope_cache/docs
+      - posembedding/kv_rms_norm_rope_cache/README.md
+    ut_cov_exclude:
+      - posembedding/kv_rms_norm_rope_cache
+    test:
+      ut: False
+    options:
+      - kv_rms_norm_rope_cache
+
+  qkv_rms_norm_rope_cache:
+    module: True
+    src:
+      - posembedding/qkv_rms_norm_rope_cache
+    exclude:
+      - posembedding/qkv_rms_norm_rope_cache/docs
+      - posembedding/qkv_rms_norm_rope_cache/README.md
+    ut_cov_exclude:
+      - posembedding/qkv_rms_norm_rope_cache
+    test:
+      ut: False
+    options:
+      - qkv_rms_norm_rope_cache
 
 mc2:
   matrix:
