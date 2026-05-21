@@ -19,7 +19,10 @@
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h"
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/epilogue/block_epilogue_dequant_sequential_write_deterministic.h"
+#include "gmm_fr_deterministic_a5.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
+#include "cgmct/kernel/kernel_gmm_fr_deterministic.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
@@ -44,11 +47,11 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = layout::RowMajorAlign;
-    // 2 represents bf16 dtype
+    // scaleType==2 means bf16
     using weightscaleType = std::conditional_t<scaleType == 2, bfloat16_t, float>;
     using BiasType = bfloat16_t;
     using LayoutBias = layout::RowMajor;
-    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>; // matmul output dtype
+    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>;
     using xscaleType = float;
     using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
     using ProblemShape = Cgmct::Gemm::MatmulShape;
@@ -67,8 +70,21 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using GmmKernel =
         Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequant<ProblemShape, BlockMmadBuilder, BlockPrologue,
                                                                      BlockEpilogueDequant, BlockScheduler>;
+
+    // Deterministic cycling epilogue
+    using BlockEpilogueDequantSeqDeterministic =
+        Cgmct::Gemm::Block::BlockEpilogueDequantSequentialWriteDeterministic<CType, C1Type, weightscaleType, xscaleType, BiasType,
+                                                                              rowIndexType>;
+
+    // Deterministic cycling kernel: workspace flow control at tile granularity
+    using CyclingKernel =
+        Cgmct::Gemm::Kernel::KernelGmmFRDeterministic<ProblemShape, BlockMmadBuilder, BlockPrologue,
+                                                        BlockEpilogueDequantSeqDeterministic, BlockScheduler>;
+
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
+    using CyclingGMMTiling = typename CyclingKernel::GMMTiling;
+    using CyclingParams = typename CyclingKernel::Params;
 
     GMMTiling gmmParams{gmmFinalizeRoutingQuantParams_.groupNum,
                         gmmFinalizeRoutingQuantParams_.groupListType,
@@ -78,15 +94,67 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
                         gmmFinalizeRoutingQuantParams_.hasBias};
 
     gmmParams.matmulTiling = &matmulTiling_;
-    Params params = {
-        {1, 1, 1, 1},                // problem shape
-        {x, w, y, bias, group_list}, // BlockMmadParams
-        {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
-         gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-         gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
-        gmmParams};
-    GmmKernel gmm;
-    gmm(params);
+
+    // Deterministic constants (consistent with A3)
+    constexpr uint32_t DETER_UB_SIZE = 12 * 1024;
+    constexpr uint32_t BUFFER_NUM = 2;
+
+    if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
+        // Deterministic mode with workspace cycling (W8A8 INT8 only):
+        //   CyclingKernel handles prologue, matmul+epilogue (SequentialWrite -> workspace),
+        //   and workspace aggregation (FRDeterministicA5) internally with tile-level flow control.
+
+        constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024 * 1024;
+        GM_ADDR deterBuffer = workspaceGM + SYS_WORKSPACE_SIZE;
+
+        CyclingGMMTiling cyclingGmmParams{gmmFinalizeRoutingQuantParams_.groupNum,
+                                          gmmFinalizeRoutingQuantParams_.groupListType,
+                                          matmulTiling_.baseM,
+                                          matmulTiling_.baseN,
+                                          matmulTiling_.baseK,
+                                          gmmFinalizeRoutingQuantParams_.hasBias};
+        cyclingGmmParams.matmulTiling = &matmulTiling_;
+
+        // Compute cycling parameters
+        uint64_t windowSizeRows = gmmFinalizeRoutingQuantParams_.deterWorkspaceSize
+                                / (matmulTiling_.N * sizeof(float));
+        uint64_t nTimes = Ceil(matmulTiling_.N, DETER_UB_SIZE / sizeof(float));
+        uint64_t baseN = Ceil(Ceil(matmulTiling_.N, nTimes), 128) * 128;
+
+        typename CyclingKernel::CyclingParams cyclingParams{
+            y, row_index,
+            static_cast<uint32_t>(matmulTiling_.usedCoreNum),
+            static_cast<uint32_t>(matmulTiling_.N),
+            baseN, windowSizeRows};
+
+        CyclingParams params = {
+            {1, 1, 1, 1},
+            {x, w, deterBuffer, bias, group_list},
+            {share_input, y,
+             gmmFinalizeRoutingQuantParams_.sharedInputOffset,
+             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
+             gmmFinalizeRoutingQuantParams_.batch,
+             gmmFinalizeRoutingQuantParams_.residualScale},
+            {deterBuffer, w_scale, x_scale, bias, logit, row_index,
+             matmulTiling_.baseM, matmulTiling_.baseN},
+            cyclingGmmParams,
+            cyclingParams};
+
+        CyclingKernel gmm;
+        gmm(params);
+
+    } else {
+        // Non-deterministic mode
+        Params params = {
+            {1, 1, 1, 1},
+            {x, w, y, bias, group_list},
+            {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
+             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
+             gmmFinalizeRoutingQuantParams_.residualScale},
+            {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN},
+            gmmParams};
+        GmmKernel gmm;
+        gmm(params);
+    }
 }
 #endif
