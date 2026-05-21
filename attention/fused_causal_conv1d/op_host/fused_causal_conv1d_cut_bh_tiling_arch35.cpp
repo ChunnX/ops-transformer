@@ -58,26 +58,22 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("FusedCausalConv1dCutBH", "context is null"), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetShapeInfo() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "GetShapeInfo FAILED"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetShapeInfo() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "GetShapeInfo FAILED"),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetTypeInfo() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "GetTypeInfo FAILED"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetTypeInfo() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "GetTypeInfo FAILED"),
+                return ge::GRAPH_FAILED);
 
     // 形状和类型读取完成后才能做合法性校验
     OP_CHECK_IF(CheckInputParams() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "FusedCausalConv1dCutBH CheckInputParams FAILED."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "FusedCausalConv1dCutBH CheckInputParams FAILED."),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetAttrInfo() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "GetAttrInfo FAILED"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetAttrInfo() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "GetAttrInfo FAILED"),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetStrideInfo() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "GetStrideInfo FAILED"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetStrideInfo() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "GetStrideInfo FAILED"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -107,7 +103,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
         OP_CHECK_NULL_WITH_CONTEXT(context_, queryStartLocShape);
         auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
         batchSize_ = queryStartLocOriginShape.GetDim(DIM_0) - 1;
-        seqLen_ = 0;  // 2D 模式下 seqLen_ 在 UB 计算时由 maxQueryLen_ 替代
+        seqLen_ = 0; // 2D 模式下 seqLen_ 在 UB 计算时由 maxQueryLen_ 替代
     } else {
         OP_LOGE(context_->GetNodeName(), "X dimension number must be 2 or 3, but got %lu", xOriginShape.GetDimNum());
         return ge::GRAPH_FAILED;
@@ -118,8 +114,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightShape);
     auto weightOriginShape = weightShape->GetOriginShape();
     if (weightOriginShape.GetDimNum() != DIM_2) {
-        OP_LOGE(
-            context_->GetNodeName(), "Weight dimension number must be 2, but got %lu", weightOriginShape.GetDimNum());
+        OP_LOGE(context_->GetNodeName(), "Weight dimension number must be 2, but got %lu",
+                weightOriginShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
     kernelSize_ = weightOriginShape.GetDim(DIM_0);
@@ -146,14 +142,14 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     if (apcEnable_) {
         auto cacheIndicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
         OP_CHECK_IF(cacheIndicesShape == nullptr,
-            OP_LOGE(context_->GetNodeName(), "cacheIndices must be provided when APC is enabled"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "cacheIndices must be provided when APC is enabled"),
+                    return ge::GRAPH_FAILED);
         auto cacheIndicesOriginShape = cacheIndicesShape->GetOriginShape();
         OP_CHECK_IF(cacheIndicesOriginShape.GetDimNum() != DIM_2,
-            OP_LOGE(context_->GetNodeName(),
-                "cacheIndices must be 2D [batch, maxNumBlocks] when APC is enabled, but got %lu dims",
-                cacheIndicesOriginShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "cacheIndices must be 2D [batch, maxNumBlocks] when APC is enabled, but got %lu dims",
+                            cacheIndicesOriginShape.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         maxNumBlocks_ = cacheIndicesOriginShape.GetDim(DIM_1);
     }
 
@@ -190,10 +186,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
     // 计算 x 数据类型的字节大小（用于后续内存计算）
     xDtypeSize_ = GetSizeByDataType(xDtype_);
     OP_CHECK_IF(xDtypeSize_ == 0,
-        OP_LOGE(context_->GetNodeName(),
-            "FusedCausalConv1dCutBH get x dtype[%s] size is 0.",
-            Ops::Base::ToString(xDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "FusedCausalConv1dCutBH get x dtype[%s] size is 0.",
+                        Ops::Base::ToString(xDtype_).c_str()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -260,11 +255,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     // convMode!=0 或 apcEnabled 时，必须提供 num_computed_tokens
     if (convMode_ != 0 || apcEnable_) {
         OP_CHECK_IF(hasNumComputedTokens_ == 0,
-            OP_LOGE(context_->GetNodeName(),
-                "FusedCausalConv1dCutBH conv_mode=%lu apcEnable_=%lu requires num_computed_tokens",
-                convMode_,
-                apcEnable_),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "FusedCausalConv1dCutBH conv_mode=%lu apcEnable_=%lu requires num_computed_tokens",
+                            convMode_, apcEnable_),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -276,19 +270,19 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
     bool xIsView = context_->InputIsView(X_INDEX);
     if (xIsView) {
         auto *xStride = context_->GetInputStride(X_INDEX);
-        OP_CHECK_IF(
-            xStride == nullptr, OP_LOGE(context_->GetNodeName(), "x stride is invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(xStride == nullptr, OP_LOGE(context_->GetNodeName(), "x stride is invalid."),
+                    return ge::GRAPH_FAILED);
 
         if (xInputMode_ == X_INPUT_3D) {
             OP_CHECK_IF(xStride->GetDimNum() != DIM_3,
-                OP_LOGE(context_->GetNodeName(), "The number of dimensions in x stride must be 3."),
-                return ge::GRAPH_FAILED);
-            xStride_ = xStride->GetStride(DIM_1);  // [batch, seq_len, dim] 中 seq_len 维的 stride
+                        OP_LOGE(context_->GetNodeName(), "The number of dimensions in x stride must be 3."),
+                        return ge::GRAPH_FAILED);
+            xStride_ = xStride->GetStride(DIM_1); // [batch, seq_len, dim] 中 seq_len 维的 stride
         } else {
             OP_CHECK_IF(xStride->GetDimNum() != DIM_2,
-                OP_LOGE(context_->GetNodeName(), "The number of dimensions in x stride must be 2."),
-                return ge::GRAPH_FAILED);
-            xStride_ = xStride->GetStride(DIM_0);  // [cu_seq_len, dim] 中 cu_seq_len 维的 stride
+                        OP_LOGE(context_->GetNodeName(), "The number of dimensions in x stride must be 2."),
+                        return ge::GRAPH_FAILED);
+            xStride_ = xStride->GetStride(DIM_0); // [cu_seq_len, dim] 中 cu_seq_len 维的 stride
         }
     } else {
         // 连续张量：stride = dim_（每行 dim_ 个元素）
@@ -299,18 +293,17 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
     bool cacheIsView = context_->InputIsView(CONV_STATES_INDEX);
     if (cacheIsView) {
         auto *cacheStride = context_->GetInputStride(CONV_STATES_INDEX);
-        OP_CHECK_IF(cacheStride == nullptr,
-            OP_LOGE(context_->GetNodeName(), "conv_states stride is invalid."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(cacheStride == nullptr, OP_LOGE(context_->GetNodeName(), "conv_states stride is invalid."),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(cacheStride->GetDimNum() != DIM_3,
-            OP_LOGE(context_->GetNodeName(), "The number of dimensions in conv_states stride must be 3."),
-            return ge::GRAPH_FAILED);
-        cacheStride0_ = cacheStride->GetStride(DIM_0);  // batch 维 stride
-        cacheStride1_ = cacheStride->GetStride(DIM_1);  // state_len 维 stride
+                    OP_LOGE(context_->GetNodeName(), "The number of dimensions in conv_states stride must be 3."),
+                    return ge::GRAPH_FAILED);
+        cacheStride0_ = cacheStride->GetStride(DIM_0); // batch 维 stride
+        cacheStride1_ = cacheStride->GetStride(DIM_1); // state_len 维 stride
     } else {
         // 连续张量默认 stride
-        cacheStride0_ = dim_ * stateLen_;  // batch 步长
-        cacheStride1_ = dim_;              // state_len 步长
+        cacheStride0_ = dim_ * stateLen_; // batch 步长
+        cacheStride1_ = dim_;             // state_len 步长
     }
 
     return ge::GRAPH_SUCCESS;
@@ -319,40 +312,36 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
 {
     OP_CHECK_IF(batchSize_ < MIN_BATCH || batchSize_ > MAX_BATCH,
-        OP_LOGE(context_->GetNodeName(),
-            "X batch size must be in [%ld, %ld], but got %ld",
-            MIN_BATCH,
-            MAX_BATCH,
-            batchSize_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "X batch size must be in [%ld, %ld], but got %ld", MIN_BATCH,
+                        MAX_BATCH, batchSize_),
+                return ge::GRAPH_FAILED);
 
     if (xInputMode_ == X_INPUT_3D) {
         // seqLen = m+1，m 表示当前 decode 步数（BH 模板只支持短序列）
         int64_t m = seqLen_ - 1;
         OP_CHECK_IF(m < MIN_M || m > MAX_M,
-            OP_LOGE(context_->GetNodeName(),
-                "X sequence length must be m+1 where m in [%ld, %ld], but got seqLen=%ld (m=%ld)",
-                MIN_M,
-                MAX_M,
-                seqLen_,
-                m),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "X sequence length must be m+1 where m in [%ld, %ld], but got seqLen=%ld (m=%ld)", MIN_M,
+                            MAX_M, seqLen_, m),
+                    return ge::GRAPH_FAILED);
     }
     if (xInputMode_ == X_INPUT_2D) {
         // 2D 模式下通过属性传入最大序列长度
-        OP_CHECK_IF(maxQueryLen_ < 1 || maxQueryLen_ > MAX_M + 1,
+        OP_CHECK_IF(
+            maxQueryLen_ < 1 || maxQueryLen_ > MAX_M + 1,
             OP_LOGE(context_->GetNodeName(), "max_query_len must be in [1, %ld], but got %ld", MAX_M + 1, maxQueryLen_),
             return ge::GRAPH_FAILED);
     }
 
     // dim 必须在合法范围内，且为 16 的整数倍（不足 128 的余数元素由 dim 尾核承担）
-    OP_CHECK_IF(dim_ < MIN_DIM || dim_ > MAX_DIM,
+    OP_CHECK_IF(
+        dim_ < MIN_DIM || dim_ > MAX_DIM,
         OP_LOGE(context_->GetNodeName(), "X dimension must be in [%ld, %ld], but got %ld", MIN_DIM, MAX_DIM, dim_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dim_ % 16 != 0,
-        OP_LOGE(context_->GetNodeName(), "The dimension of x must be a multiple of 16, but got %ld", dim_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "The dimension of x must be a multiple of 16, but got %ld", dim_),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -364,7 +353,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightShape()
     auto weightOriginShape = weightShape->GetOriginShape();
 
     int64_t weightDim = weightOriginShape.GetDim(1);
-    OP_CHECK_IF(weightDim != dim_,
+    OP_CHECK_IF(
+        weightDim != dim_,
         OP_LOGE(context_->GetNodeName(), "Weight dimension must match X dimension %ld, but got %ld", dim_, weightDim),
         return ge::GRAPH_FAILED);
 
@@ -378,31 +368,27 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
 
     OP_CHECK_IF(convStatesOriginShape.GetDimNum() != DIM_3,
-        OP_LOGE(context_->GetNodeName(),
-            "ConvStates dimension number must be 3, but got %lu",
-            convStatesOriginShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "ConvStates dimension number must be 3, but got %lu",
+                        convStatesOriginShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
 
     // conv_states shape: [-1, K-1+m, dim]，state_len 需能容纳所有历史状态
     if (xInputMode_ == X_INPUT_3D) {
-        int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2;  // = (K-1) + (seqLen-1)
+        int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2; // = (K-1) + (seqLen-1)
         int64_t state_len = convStatesOriginShape.GetDim(DIM_1);
         OP_CHECK_IF(state_len < expectedCacheLen,
-            OP_LOGE(context_->GetNodeName(),
-                "state_len must be greater than width-1+seq_len-1 = %ld, but got %ld",
-                expectedCacheLen,
-                state_len),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "state_len must be greater than width-1+seq_len-1 = %ld, but got %ld", expectedCacheLen,
+                            state_len),
+                    return ge::GRAPH_FAILED);
     }
 
     // dim 维度必须与 x 一致
     int64_t convStatesDim = convStatesOriginShape.GetDim(DIM_2);
     OP_CHECK_IF(convStatesDim != dim_,
-        OP_LOGE(context_->GetNodeName(),
-            "ConvStates dimension must match X dimension %ld, but got %ld",
-            dim_,
-            convStatesDim),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "ConvStates dimension must match X dimension %ld, but got %ld", dim_,
+                        convStatesDim),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -411,38 +397,34 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
 {
     auto indicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
     if (indicesShape == nullptr) {
-        return ge::GRAPH_SUCCESS;  // 可选输入，不存在时跳过
+        return ge::GRAPH_SUCCESS; // 可选输入，不存在时跳过
     }
     auto indicesOriginShape = indicesShape->GetOriginShape();
 
     if (apcEnable_) {
         // APC 模式：2D [batch, maxNumBlocks]
         OP_CHECK_IF(indicesOriginShape.GetDimNum() != DIM_2,
-            OP_LOGE(context_->GetNodeName(),
-                "CacheIndices must be 2D [batch, maxNumBlocks] when APC is enabled, but got %lu dims",
-                indicesOriginShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "CacheIndices must be 2D [batch, maxNumBlocks] when APC is enabled, but got %lu dims",
+                            indicesOriginShape.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         int64_t indicesBatch = indicesOriginShape.GetDim(DIM_0);
         OP_CHECK_IF(indicesBatch != batchSize_,
-            OP_LOGE(context_->GetNodeName(),
-                "CacheIndices batch size must match X batch size %ld, but got %ld",
-                batchSize_,
-                indicesBatch),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "CacheIndices batch size must match X batch size %ld, but got %ld",
+                            batchSize_, indicesBatch),
+                    return ge::GRAPH_FAILED);
     } else {
         // 非 APC 模式：1D [batch]
         OP_CHECK_IF(indicesOriginShape.GetDimNum() != DIM_1,
-            OP_LOGE(context_->GetNodeName(),
-                "CacheIndices dimension number must be 1 (non-APC mode), but got %lu",
-                indicesOriginShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "CacheIndices dimension number must be 1 (non-APC mode), but got %lu",
+                            indicesOriginShape.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         int64_t indicesLen = indicesOriginShape.GetDim(DIM_0);
         OP_CHECK_IF(indicesLen != batchSize_,
-            OP_LOGE(context_->GetNodeName(),
-                "CacheIndices length must match batch size %ld, but got %ld",
-                batchSize_,
-                indicesLen),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "CacheIndices length must match batch size %ld, but got %ld",
+                            batchSize_, indicesLen),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -451,7 +433,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
 {
     if (context_->GetOptionalInputTensor(NUM_ACCEPTED_TOKEN_INDEX) == nullptr) {
-        return ge::GRAPH_SUCCESS;  // 可选输入，不存在时跳过
+        return ge::GRAPH_SUCCESS; // 可选输入，不存在时跳过
     }
 
     auto acceptShape = context_->GetOptionalInputShape(NUM_ACCEPTED_TOKEN_INDEX);
@@ -459,18 +441,15 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
     auto acceptOriginShape = acceptShape->GetOriginShape();
 
     OP_CHECK_IF(acceptOriginShape.GetDimNum() != DIM_1,
-        OP_LOGE(context_->GetNodeName(),
-            "NumAcceptedToken dimension number must be 1, but got %lu",
-            acceptOriginShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "NumAcceptedToken dimension number must be 1, but got %lu",
+                        acceptOriginShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
 
     int64_t acceptLen = acceptOriginShape.GetDim(DIM_0);
     OP_CHECK_IF(acceptLen != batchSize_,
-        OP_LOGE(context_->GetNodeName(),
-            "NumAcceptedToken length must match batch size %ld, but got %ld",
-            batchSize_,
-            acceptLen),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "NumAcceptedToken length must match batch size %ld, but got %ld",
+                        batchSize_, acceptLen),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -478,29 +457,26 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
 {
     if (xInputMode_ == X_INPUT_3D) {
-        return ge::GRAPH_SUCCESS;  // 3D 输入不需要 query_start_loc
+        return ge::GRAPH_SUCCESS; // 3D 输入不需要 query_start_loc
     }
     auto queryStartLocShape = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
     OP_CHECK_IF(queryStartLocShape == nullptr,
-        OP_LOGE(context_->GetNodeName(), "queryStartLoc must be provided when input X is 2D"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "queryStartLoc must be provided when input X is 2D"),
+                return ge::GRAPH_FAILED);
 
     auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
 
     OP_CHECK_IF(queryStartLocOriginShape.GetDimNum() != DIM_1,
-        OP_LOGE(context_->GetNodeName(),
-            "QueryStartLoc dimension number must be 1, but got %lu",
-            queryStartLocOriginShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "QueryStartLoc dimension number must be 1, but got %lu",
+                        queryStartLocOriginShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
 
     // 形状应为 (batch + 1,)，多出的 1 用于表示结束偏移
     int64_t queryStartLocLen = queryStartLocOriginShape.GetDim(DIM_0);
     OP_CHECK_IF(queryStartLocLen != batchSize_ + 1,
-        OP_LOGE(context_->GetNodeName(),
-            "QueryStartLoc length must be batch_size + 1 = %ld, but got %ld",
-            batchSize_ + 1,
-            queryStartLocLen),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "QueryStartLoc length must be batch_size + 1 = %ld, but got %ld",
+                        batchSize_ + 1, queryStartLocLen),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -508,32 +484,27 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXType()
 {
     OP_CHECK_IF(xDtype_ != ge::DataType::DT_FLOAT16 && xDtype_ != ge::DataType::DT_BF16,
-        OP_LOGE(context_->GetNodeName(),
-            "X data type must be FLOAT16 or BFLOAT16, but got %s",
-            Ops::Base::ToString(xDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "X data type must be FLOAT16 or BFLOAT16, but got %s",
+                        Ops::Base::ToString(xDtype_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightType()
 {
     OP_CHECK_IF(weightDtype_ != xDtype_,
-        OP_LOGE(context_->GetNodeName(),
-            "Weight data type must match X data type %s, but got %s",
-            Ops::Base::ToString(xDtype_).c_str(),
-            Ops::Base::ToString(weightDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Weight data type must match X data type %s, but got %s",
+                        Ops::Base::ToString(xDtype_).c_str(), Ops::Base::ToString(weightDtype_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesType()
 {
     OP_CHECK_IF(convStatesDtype_ != xDtype_,
-        OP_LOGE(context_->GetNodeName(),
-            "ConvStates data type must match X data type %s, but got %s",
-            Ops::Base::ToString(xDtype_).c_str(),
-            Ops::Base::ToString(convStatesDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "ConvStates data type must match X data type %s, but got %s",
+                        Ops::Base::ToString(xDtype_).c_str(), Ops::Base::ToString(convStatesDtype_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -544,10 +515,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesType()
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(cacheIndicesDtype_ != ge::DataType::DT_INT32,
-        OP_LOGE(context_->GetNodeName(),
-            "CacheIndices data type must be INT32, but got %s",
-            Ops::Base::ToString(cacheIndicesDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "CacheIndices data type must be INT32, but got %s",
+                        Ops::Base::ToString(cacheIndicesDtype_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -558,13 +528,12 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocType()
     }
     auto queryStartLocDesc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
     OP_CHECK_IF(queryStartLocDesc == nullptr,
-        OP_LOGE(context_->GetNodeName(), "queryStartLoc must be provided when input X is 2D"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "queryStartLoc must be provided when input X is 2D"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(queryStartLocDtype_ != ge::DataType::DT_INT32,
-        OP_LOGE(context_->GetNodeName(),
-            "QueryStartLoc data type must be INT32, but got %s",
-            Ops::Base::ToString(queryStartLocDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "QueryStartLoc data type must be INT32, but got %s",
+                        Ops::Base::ToString(queryStartLocDtype_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -575,54 +544,41 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenType()
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(numAcceptedTokenDtype_ != ge::DataType::DT_INT32,
-        OP_LOGE(context_->GetNodeName(),
-            "NumAcceptedToken data type must be INT32, but got %s",
-            Ops::Base::ToString(numAcceptedTokenDtype_).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "NumAcceptedToken data type must be INT32, but got %s",
+                        Ops::Base::ToString(numAcceptedTokenDtype_).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
 {
     // 形状校验
-    OP_CHECK_IF(ValidateXShape() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "X shape validation failed"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateXShape() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "X shape validation failed"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateWeightShape() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "Weight shape validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Weight shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateConvStatesShape() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "ConvStates shape validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "ConvStates shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateQueryStartLocShape() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "QueryStartLoc shape validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "QueryStartLoc shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateCacheIndicesShape() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "CacheIndices shape validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "CacheIndices shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateNumAcceptedTokenShape() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "NumAcceptedToken shape validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "NumAcceptedToken shape validation failed"), return ge::GRAPH_FAILED);
 
     // 类型校验
-    OP_CHECK_IF(ValidateXType() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "X type validation failed"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateXType() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "X type validation failed"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateWeightType() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "Weight type validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Weight type validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateConvStatesType() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "ConvStates type validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "ConvStates type validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateQueryStartLocType() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "QueryStartLoc type validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "QueryStartLoc type validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateCacheIndicesType() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "CacheIndices type validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "CacheIndices type validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateNumAcceptedTokenType() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "NumAcceptedToken type validation failed"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "NumAcceptedToken type validation failed"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -636,19 +592,15 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
     if (dim_ >= COARSE_GRAIN_THRESHOLD) {
         // 粗粒度模式（dim >= 1024）：更大的切块粒度
         OP_CHECK_IF(ComputeInterCoreSplitCoarse() != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplitCoarse failed"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplitCoarse failed"), return ge::GRAPH_FAILED);
         OP_CHECK_IF(ComputeIntraCoreUbTilingCoarse() != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTilingCoarse failed"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTilingCoarse failed"), return ge::GRAPH_FAILED);
     } else {
         // 细粒度模式（dim < 1024）：128 元素为切块单元，适合小 dim 场景充分利用所有核
         OP_CHECK_IF(ComputeInterCoreSplit() != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"), return ge::GRAPH_FAILED);
         OP_CHECK_IF(ComputeIntraCoreUbTiling() != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTiling failed"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTiling failed"), return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -682,7 +634,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
         int64_t maxAllowedBSByCore = maxCoresAvailable / dc;
         if (maxAllowedBSByCore == 0)
             continue;
-        int64_t actualBS = std::min<int64_t>(batchSize_, maxAllowedBSByCore);  // 确保每个bs核上有1哥bacth
+        int64_t actualBS = std::min<int64_t>(batchSize_, maxAllowedBSByCore); // 确保每个bs核上有1哥bacth
         if (actualBS <= 0)
             continue;
         int64_t usedCores = dc * actualBS;
@@ -692,7 +644,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
             bestUsed = usedCores;
         }
         if (bestUsed == maxCoresAvailable) {
-            break;  // 已满核，提前退出
+            break; // 已满核，提前退出
         }
     }
 
@@ -744,8 +696,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
 //   x 部分（包含 x_in 和 y_out 双 buffer）：BUFFER_NUM * coreBS * seqLen * DTYPE_SIZE * 2
 // 优先保持 batch 完整（outUbBS = coreBS），若 UB 不足则逐步减小 batch
 void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
-    int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim, int64_t &outLoopBS, int64_t &outUbTailDim,
-    int64_t &outUbTailBS)
+                                                int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim,
+                                                int64_t &outLoopBS, int64_t &outUbTailDim, int64_t &outUbTailBS)
 {
     // 2D 输入模式：seqLen 不固定，用属性中的最大值保守估算 UB 需求
     if (xInputMode_ == X_INPUT_2D) {
@@ -836,30 +788,17 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     // dim < 128 时 mainCoredimLen_=0，唯一的核就是 last core，但 batch 方向仍需区分主核/尾核
     if (mainCoredimLen_ == 0) {
         // 1) batch 大核（main batch core）
-        ComputeUbFor(lastCoreDimLen,
-            mainCoreBatchNum_,
-            availableUbSize,
-            lastCoreubMainFactorDim_,
-            ubMainFactorBS_,
-            lastCoreloopNumDim_,
-            loopNumBS_,
-            lastCoreubTailFactorDim_,
-            ubTailFactorBS_);
+        ComputeUbFor(lastCoreDimLen, mainCoreBatchNum_, availableUbSize, lastCoreubMainFactorDim_, ubMainFactorBS_,
+                     lastCoreloopNumDim_, loopNumBS_, lastCoreubTailFactorDim_, ubTailFactorBS_);
         ubMainFactorDim_ = lastCoreubMainFactorDim_;
         ubTailFactorDim_ = lastCoreubTailFactorDim_;
         loopNumDim_ = lastCoreloopNumDim_;
 
         // 2) batch 小核（tail batch core）—— 如果有的话，单独计算
         if (batchTailCoreCnt_ > 0) {
-            ComputeUbFor(lastCoreDimLen,
-                tailCoreBatchNum_,
-                availableUbSize,
-                tailBlockubFactorDim_,
-                tailBlockubFactorBS_,
-                tailBlockloopNumDim_,
-                tailBlockloopNumBS_,
-                tailBlockubTailFactorDim_,
-                tailBlockubTailFactorBS_);
+            ComputeUbFor(lastCoreDimLen, tailCoreBatchNum_, availableUbSize, tailBlockubFactorDim_,
+                         tailBlockubFactorBS_, tailBlockloopNumDim_, tailBlockloopNumBS_, tailBlockubTailFactorDim_,
+                         tailBlockubTailFactorBS_);
         } else {
             // 无 batch 尾核，复制主核参数
             tailBlockubFactorDim_ = ubMainFactorDim_;
@@ -873,15 +812,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     }
 
     // 主核 UB 参数
-    ComputeUbFor(mainCoredimLen_,
-        mainCoreBatchNum_,
-        availableUbSize,
-        ubMainFactorDim_,
-        ubMainFactorBS_,
-        loopNumDim_,
-        loopNumBS_,
-        ubTailFactorDim_,
-        ubTailFactorBS_);
+    ComputeUbFor(mainCoredimLen_, mainCoreBatchNum_, availableUbSize, ubMainFactorDim_, ubMainFactorBS_, loopNumDim_,
+                 loopNumBS_, ubTailFactorDim_, ubTailFactorBS_);
 
     // 尾核 UB 参数（存在尾核时才单独计算；否则复制主核参数保持一致）
     if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
@@ -890,15 +822,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
         //   batch 尾核的 batch 数取 tailCoreBatchNum_（若无 batch 尾核则与主核相同）
         int64_t tailCoreDim = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
         int64_t tailCoreBS = (batchTailCoreCnt_ > 0) ? tailCoreBatchNum_ : mainCoreBatchNum_;
-        ComputeUbFor(tailCoreDim,
-            tailCoreBS,
-            availableUbSize,
-            tailBlockubFactorDim_,
-            tailBlockubFactorBS_,
-            tailBlockloopNumDim_,
-            tailBlockloopNumBS_,
-            tailBlockubTailFactorDim_,
-            tailBlockubTailFactorBS_);
+        ComputeUbFor(tailCoreDim, tailCoreBS, availableUbSize, tailBlockubFactorDim_, tailBlockubFactorBS_,
+                     tailBlockloopNumDim_, tailBlockloopNumBS_, tailBlockubTailFactorDim_, tailBlockubTailFactorBS_);
     } else {
         // 无尾核：直接复制主核参数，确保 kernel 逻辑无需区分主/尾核分支
         tailBlockubFactorDim_ = ubMainFactorDim_;
@@ -915,15 +840,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     if (dimRemainderElems_ > 0) {
         // 用临时变量接收 batch 输出，避免覆盖 tailBlock* 参数
         int64_t tmpUbBS = 0, tmpLoopBS = 0, tmpUbTailBS = 0;
-        ComputeUbFor(lastCoreDimLen,
-            mainCoreBatchNum_,
-            availableUbSize,
-            lastCoreubMainFactorDim_,
-            tmpUbBS,
-            lastCoreloopNumDim_,
-            tmpLoopBS,
-            lastCoreubTailFactorDim_,
-            tmpUbTailBS);
+        ComputeUbFor(lastCoreDimLen, mainCoreBatchNum_, availableUbSize, lastCoreubMainFactorDim_, tmpUbBS,
+                     lastCoreloopNumDim_, tmpLoopBS, lastCoreubTailFactorDim_, tmpUbTailBS);
     } else {
         lastCoreloopNumDim_ = tailBlockloopNumDim_;
         lastCoreubMainFactorDim_ = tailBlockubFactorDim_;
@@ -1047,10 +965,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
 
     // 将 tilingData_ 序列化到 RawTilingData（供 kernel 侧反序列化）
     auto tilingDataSize = sizeof(FusedCausalConv1dCutBHTilingData);
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
-        context_->GetRawTilingData()->GetCapacity(),
-        reinterpret_cast<void *>(&tilingData_),
-        tilingDataSize);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+                           reinterpret_cast<void *>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -1147,10 +1063,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
 {
     // 计算粗粒度块数和余数细块数
-    int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT;  // 1024 元素块数
-    int64_t remainder = dim_ % COARSE_GRAIN_ELEMENT;     // 不足 1024 的余数元素
-    int64_t fineBlocks = remainder / DIM_ALIGN_ELEMENT;  // 将余数划分为 128 元素细块
-    dimRemainderElems_ = remainder % DIM_ALIGN_ELEMENT;  // 不足 128 的余数元素
+    int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT; // 1024 元素块数
+    int64_t remainder = dim_ % COARSE_GRAIN_ELEMENT;    // 不足 1024 的余数元素
+    int64_t fineBlocks = remainder / DIM_ALIGN_ELEMENT; // 将余数划分为 128 元素细块
+    dimRemainderElems_ = remainder % DIM_ALIGN_ELEMENT; // 不足 128 的余数元素
 
     limitedCoreNum_ = CalculateLimitedCoreNumCoarse();
     int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
@@ -1158,8 +1074,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
     // dim 方向：最多使用 coarseBlocks 个核（一核一粗块），不超过可用核上限
     dimCoreCnt_ = std::min(coarseBlocks, maxCoresAvailable);
     if (dimCoreCnt_ <= 0) {
-        OP_LOGE(
-            context_->GetNodeName(), "dim %ld is smaller than COARSE_GRAIN_ELEMENT %ld", dim_, COARSE_GRAIN_ELEMENT);
+        OP_LOGE(context_->GetNodeName(), "dim %ld is smaller than COARSE_GRAIN_ELEMENT %ld", dim_,
+                COARSE_GRAIN_ELEMENT);
         return ge::GRAPH_FAILED;
     }
 
@@ -1208,8 +1124,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
 
 // ComputeUbForCoarse（粗粒度 UB 切分核心计算）
 void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
-    int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim, int64_t &outLoopBS, int64_t &outUbTailDim,
-    int64_t &outUbTailBS)
+                                                      int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim,
+                                                      int64_t &outLoopBS, int64_t &outUbTailDim, int64_t &outUbTailBS)
 {
     // 2D 输入模式：用最大序列长度估算 UB
     if (xInputMode_ == X_INPUT_2D) {
@@ -1283,15 +1199,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
     int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;
 
     // 大核 UB 参数（粗粒度版本）
-    ComputeUbForCoarse(mainCoredimLen_,
-        mainCoreBatchNum_,
-        availableUbSize,
-        ubMainFactorDim_,
-        ubMainFactorBS_,
-        loopNumDim_,
-        loopNumBS_,
-        ubTailFactorDim_,
-        ubTailFactorBS_);
+    ComputeUbForCoarse(mainCoredimLen_, mainCoreBatchNum_, availableUbSize, ubMainFactorDim_, ubMainFactorBS_,
+                       loopNumDim_, loopNumBS_, ubTailFactorDim_, ubTailFactorBS_);
 
     // 尾核 UB 参数（粗粒度版本）
     if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
@@ -1300,15 +1209,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
         //   batch 尾核的 batch 数取 tailCoreBatchNum_（若无 batch 尾核则与主核相同）
         int64_t tailCoreDim = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
         int64_t tailCoreBS = (batchTailCoreCnt_ > 0) ? tailCoreBatchNum_ : mainCoreBatchNum_;
-        ComputeUbForCoarse(tailCoreDim,
-            tailCoreBS,
-            availableUbSize,
-            tailBlockubFactorDim_,
-            tailBlockubFactorBS_,
-            tailBlockloopNumDim_,
-            tailBlockloopNumBS_,
-            tailBlockubTailFactorDim_,
-            tailBlockubTailFactorBS_);
+        ComputeUbForCoarse(tailCoreDim, tailCoreBS, availableUbSize, tailBlockubFactorDim_, tailBlockubFactorBS_,
+                           tailBlockloopNumDim_, tailBlockloopNumBS_, tailBlockubTailFactorDim_,
+                           tailBlockubTailFactorBS_);
     } else {
         // 无尾核：复制主核参数
         tailBlockubFactorDim_ = ubMainFactorDim_;
@@ -1325,15 +1228,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
         int64_t lastCoreDimLen = lastBaseDimLen + dimRemainderElems_;
         // 用临时变量接收 batch 输出，避免覆盖 tailBlock* 参数
         int64_t tmpUbBS = 0, tmpLoopBS = 0, tmpUbTailBS = 0;
-        ComputeUbForCoarse(lastCoreDimLen,
-            mainCoreBatchNum_,
-            availableUbSize,
-            lastCoreubMainFactorDim_,
-            tmpUbBS,
-            lastCoreloopNumDim_,
-            tmpLoopBS,
-            lastCoreubTailFactorDim_,
-            tmpUbTailBS);
+        ComputeUbForCoarse(lastCoreDimLen, mainCoreBatchNum_, availableUbSize, lastCoreubMainFactorDim_, tmpUbBS,
+                           lastCoreloopNumDim_, tmpLoopBS, lastCoreubTailFactorDim_, tmpUbTailBS);
     } else {
         lastCoreloopNumDim_ = tailBlockloopNumDim_;
         lastCoreubMainFactorDim_ = tailBlockubFactorDim_;
@@ -1346,4 +1242,4 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
 // 向框架注册 BH 模板，优先级为 1
 REGISTER_OPS_TILING_TEMPLATE(FusedCausalConv1dCutBH, FusedCausalConv1dCutBHTiling, 1);
 
-}  // namespace optiling
+} // namespace optiling

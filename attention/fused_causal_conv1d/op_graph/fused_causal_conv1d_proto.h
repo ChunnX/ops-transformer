@@ -21,36 +21,40 @@
 namespace ge {
 
 /**
-* @brief Function FusedCausalConv1d.
-*
-* @par Inputs:
-* @li x: Input sequence tensor. shape [cu_seq_len, dim] or [batch, seqlen, dim]. Supports float16, bfloat16.
-* @li weight: Convolution kernel of shape [K, dim], K fixed to 3. Same type as x.
-* @li conv_states: Cache state tensor storing historical tokens per sequence, updated in-place. Same type as x.
-* @li query_start_loc: Optional. Start offset of each sequence in x. shape [batch+1]. int32.
-* @li cache_indices: Optional. Index mapping each sequence to its cache slot. 1D [batch] or 2D [batch, max_num_blocks]. int32.
-* @li initial_state_mode: Optional. Flag indicating whether each sequence uses cached data. shape [batch]. int32.
-* @li bias: Optional. Convolution bias of shape [dim]. Same type as x.
-* @li num_accepted_tokens: Optional. Number of accepted tokens per sequence in speculative decoding. shape [batch]. int32.
-* @li num_computed_tokens: Optional. Total computed tokens per batch for initial state detection. shape [batch]. int32.
-* @li block_idx_first_scheduled_token: Optional. Block index of first scheduled token per batch (APC). shape [batch]. int32.
-* @li block_idx_last_scheduled_token: Optional. Block index of last scheduled token per batch (APC). shape [batch]. int32.
-* @li initial_state_idx: Optional. Initial state block index per batch (APC). shape [batch]. int32.
-*
-* @par Attributes:
-* @li activation_mode: A required int. Activation function type: 0 (None), 1 (silu), 2 (swish).
-* @li pad_slot_id: A required int. Slot ID used to skip padding batches.
-* @li run_mode: A required int. Execution mode (legacy, not supported).
-* @li max_query_len: A required int. Max sequence length across all batches.
-* @li residual_connection: A required int. Whether to use residual connection: 0 (no), 1 (yes).
-* @li block_size: A required int. APC block size, supports 128/256.
-* @li conv_mode: A required int. Convolution mode: 0 (Qwen3-Next), 1 (Pangu v2).
-* @li inplace: A required bool. false: non-inplace (output y), true: inplace (write back to x).
-*
-* @par Outputs:
-* @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.
-* @li y: Output sequence tensor. Same shape and type as x.
-*/
+ * @brief Function FusedCausalConv1d.
+ *
+ * @par Inputs:
+ * @li x: Input sequence tensor. shape [cu_seq_len, dim] or [batch, seqlen, dim]. Supports float16, bfloat16.
+ * @li weight: Convolution kernel of shape [K, dim], K fixed to 3. Same type as x.
+ * @li conv_states: Cache state tensor storing historical tokens per sequence, updated in-place. Same type as x.
+ * @li query_start_loc: Optional. Start offset of each sequence in x. shape [batch+1]. int32.
+ * @li cache_indices: Optional. Index mapping each sequence to its cache slot. 1D [batch] or 2D [batch, max_num_blocks].
+ * int32.
+ * @li initial_state_mode: Optional. Flag indicating whether each sequence uses cached data. shape [batch]. int32.
+ * @li bias: Optional. Convolution bias of shape [dim]. Same type as x.
+ * @li num_accepted_tokens: Optional. Number of accepted tokens per sequence in speculative decoding. shape [batch].
+ * int32.
+ * @li num_computed_tokens: Optional. Total computed tokens per batch for initial state detection. shape [batch]. int32.
+ * @li block_idx_first_scheduled_token: Optional. Block index of first scheduled token per batch (APC). shape [batch].
+ * int32.
+ * @li block_idx_last_scheduled_token: Optional. Block index of last scheduled token per batch (APC). shape [batch].
+ * int32.
+ * @li initial_state_idx: Optional. Initial state block index per batch (APC). shape [batch]. int32.
+ *
+ * @par Attributes:
+ * @li activation_mode: A required int. Activation function type: 0 (None), 1 (silu), 2 (swish).
+ * @li pad_slot_id: A required int. Slot ID used to skip padding batches.
+ * @li run_mode: A required int. Execution mode (legacy, not supported).
+ * @li max_query_len: A required int. Max sequence length across all batches.
+ * @li residual_connection: A required int. Whether to use residual connection: 0 (no), 1 (yes).
+ * @li block_size: A required int. APC block size, supports 128/256.
+ * @li conv_mode: A required int. Convolution mode: 0 (Qwen3-Next), 1 (Pangu v2).
+ * @li inplace: A required bool. false: non-inplace (output y), true: inplace (write back to x).
+ *
+ * @par Outputs:
+ * @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.
+ * @li y: Output sequence tensor. Same shape and type as x.
+ */
 REG_OP(FusedCausalConv1d)
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(weight, TensorType({DT_BF16, DT_FLOAT16}))

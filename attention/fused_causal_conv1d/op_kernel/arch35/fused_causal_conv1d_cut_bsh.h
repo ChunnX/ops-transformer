@@ -35,12 +35,13 @@ template <typename T>
 class FusedCausalConv1dCutBSH {
 public:
     __aicore__ inline FusedCausalConv1dCutBSH()
-    {}
+    {
+    }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
-        GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens, GM_ADDR blockIdxFirst,
-        GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y, GM_ADDR workspace,
-        const FusedCausalConv1dCutBSHTilingData *tiling);
+                                GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
+                                GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
+                                GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling);
     __aicore__ inline void Process();
 
 private:
@@ -54,16 +55,17 @@ private:
     __aicore__ inline void CopyIn(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart, uint32_t dimSize);
     // Compute: DeQue, load cache per-batch, conv all tokens, write cache, output y
     __aicore__ inline void Compute(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart, uint32_t dimSize,
-        uint32_t dimBlocks, uint32_t iStart, uint32_t batchIdx, uint32_t curSeqIdx, uint64_t coreGlobalEnd,
-        uint32_t &endBatchIdx);
+                                   uint32_t dimBlocks, uint32_t iStart, uint32_t batchIdx, uint32_t curSeqIdx,
+                                   uint64_t coreGlobalEnd, uint32_t &endBatchIdx);
 
     // ---- Single unified cache writeback (replaces WriteCacheShort/Long/Deferred) ----
     // Writes the tail-aligned running cache for a batch that has reached its end.
     // Source: cacheLocal (old cache prefix, if loaded) + xLocal (current x suffix), both in UB.
     // chunkEnd: one-past-last row index in xLocal for the current chunk (i + chunkSize).
     __aicore__ inline void WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
-        uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal, int64_t writeCIdx, uint32_t dimStart,
-        uint32_t dimSize, uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd);
+                                              uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
+                                              int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
+                                              uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd);
 
     // Deferred write (post-SyncAll) for first batch on non-first BS cores.
     // Reads cache prefix from GM and x suffix from GM.
@@ -73,8 +75,9 @@ private:
     // x-suffix chunks (boundaryIdx >= K-1): written from xLocal (UB) every chunk iteration.
     // Only fills chunks whose boundary x-offset lies within [curBsStart, curBsStart+curBS).
     __aicore__ inline void FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt, uint32_t batchLen,
-        uint32_t curBsStart, uint32_t curBS, LocalTensor<T> &xLocal, uint32_t dimStart, uint32_t dimSize,
-        uint32_t dimBlocks, uint32_t cacheSkip);
+                                                uint32_t curBsStart, uint32_t curBS, LocalTensor<T> &xLocal,
+                                                uint32_t dimStart, uint32_t dimSize, uint32_t dimBlocks,
+                                                uint32_t cacheSkip);
     // cache-prefix + collision-deferred chunks: handled once pre-SyncAll.
     // O(1) early-exit when neither cache-prefix nor collision exists.
     __aicore__ inline void FillApcCachePrefixChunks();
@@ -91,7 +94,7 @@ private:
         uint32_t mtpOffset;
         uint32_t cachedStateLen;
         bool useZeroCache;
-        uint32_t lastResetIdx;  // conv_mode==1: number of leading tokens to zero out
+        uint32_t lastResetIdx; // conv_mode==1: number of leading tokens to zero out
     };
     __aicore__ inline void PrepareBatchMeta(uint32_t batchIdx, uint32_t curSeqIdx, BatchMeta &m);
 
@@ -325,16 +328,17 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
     hasCacheIndices_ = (tiling->hasCacheIndices != 0);
     inplace_ = (tiling->inplace != 0);
 
-    stateLen_ = tiling->stateLen;  // 来自逻辑 shape dim[1]，非连续 stride 除法不可靠
+    stateLen_ = tiling->stateLen; // 来自逻辑 shape dim[1]，非连续 stride 除法不可靠
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates,
-    GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
-    GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y, GM_ADDR workspace,
-    const FusedCausalConv1dCutBSHTilingData *tiling)
+__aicore__ inline void
+FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
+                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
+                                 GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
+                                 GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling)
 {
-    (void)y;  // y may be unused when inplace_==true; suppress warning
+    (void)y; // y may be unused when inplace_==true; suppress warning
     ParseTiling(tiling);
 
     uint32_t blockIdx = GetBlockIdx();
@@ -363,8 +367,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weigh
     }
 
     if (apcEnabled_) {
-        cacheIndices2DGM_.SetGlobalBuffer(
-            (__gm__ int32_t *)cacheIndices, static_cast<uint64_t>(batchSize_) * maxNumBlocks_);
+        cacheIndices2DGM_.SetGlobalBuffer((__gm__ int32_t *)cacheIndices,
+                                          static_cast<uint64_t>(batchSize_) * maxNumBlocks_);
         if (initialStateIdx != nullptr) {
             initialStateIdxGM_.SetGlobalBuffer((__gm__ int32_t *)initialStateIdx, batchSize_);
         }
@@ -395,7 +399,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weigh
     deferred_.writeCIdx = 0;
     lastBatchIdx_ = 0;
     firstBatchIdx_ = 0;
-    apcState_.batchIdx = 0xFFFFFFFF;  // sentinel: APC state not cached
+    apcState_.batchIdx = 0xFFFFFFFF; // sentinel: APC state not cached
 }
 
 template <typename T>
@@ -492,8 +496,8 @@ __aicore__ inline uint32_t FusedCausalConv1dCutBSH<T>::FindBatchIdx(uint64_t glo
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::ResolveCacheIndices(
-    uint32_t batchIdx, int64_t &readCIdx, int64_t &writeCIdx)
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::ResolveCacheIndices(uint32_t batchIdx, int64_t &readCIdx,
+                                                                       int64_t &writeCIdx)
 {
     if (apcEnabled_) {
         int32_t initIdx = initialStateIdxLocal_.GetValue(batchIdx);
@@ -635,7 +639,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
         }
         coreGlobalEnd = nextBsStart + (K - 1);
     } else {
-        coreGlobalEnd = (uint64_t)-1;  // last BS core has no successor
+        coreGlobalEnd = (uint64_t)-1; // last BS core has no successor
     }
 
     uint64_t curBsOff = 0;
@@ -681,16 +685,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
             uint32_t dimBlocks = curDim * sizeof(T) / ALIGN_BYTES;
             batchIdxForDim = curBatchIdx;
             seqIdxForDim = curSeqIdx;
-            Compute((uint32_t)curBsStart,
-                curBS,
-                dimOff,
-                curDim,
-                dimBlocks,
-                iStart,
-                batchIdxForDim,
-                seqIdxForDim,
-                coreGlobalEnd,
-                batchIdxForDim);
+            Compute((uint32_t)curBsStart, curBS, dimOff, curDim, dimBlocks, iStart, batchIdxForDim, seqIdxForDim,
+                    coreGlobalEnd, batchIdxForDim);
 
             dimOff += curDim;
         }
@@ -698,7 +694,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
         lastBatchIdx_ = curBatchIdx;
 
         curBsOff += step;
-        iStart = K - 1;  // subsequent BS blocks always start with K-1 overlap
+        iStart = K - 1; // subsequent BS blocks always start with K-1 overlap
     }
 
     SyncAll();
@@ -715,8 +711,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(
-    uint32_t curBsStart, uint32_t curBS, uint32_t dimStart, uint32_t dimSize)
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
+                                                          uint32_t dimSize)
 {
     uint32_t K = kernelWidth_;
     uint32_t dimBlocks = dimSize * sizeof(T) / ALIGN_BYTES;
@@ -726,8 +722,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(
     // ---- Load weight [K, dimSize] ----
     LocalTensor<T> weightLocal = weightQueue_.AllocTensor<T>();
     {
-        DataCopyExtParams wcp{
-            static_cast<uint16_t>(K), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), weightSkip * ALIGN_BYTES, 0, 0};
+        DataCopyExtParams wcp{static_cast<uint16_t>(K), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
+                              weightSkip * ALIGN_BYTES, 0, 0};
         DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
         DataCopyPad(weightLocal, weightGM_[dimStart], wcp, padParams);
     }
@@ -736,8 +732,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(
     // ---- Load x [curBS, dimSize] ----
     LocalTensor<T> xLocal = xQueue_.AllocTensor<T>();
     {
-        DataCopyExtParams xcp{
-            static_cast<uint16_t>(curBS), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), xSkip * ALIGN_BYTES, 0, 0};
+        DataCopyExtParams xcp{static_cast<uint16_t>(curBS), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
+                              xSkip * ALIGN_BYTES, 0, 0};
         DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
         DataCopyPad(xLocal, xGM_[(uint64_t)curBsStart * xStride_ + dimStart], xcp, padParams);
     }
@@ -748,8 +744,9 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(
 
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
-    uint32_t dimSize, uint32_t dimBlocks, uint32_t iStart, uint32_t batchIdx, uint32_t curSeqIdx,
-    uint64_t coreGlobalEnd, uint32_t &endBatchIdx)
+                                                           uint32_t dimSize, uint32_t dimBlocks, uint32_t iStart,
+                                                           uint32_t batchIdx, uint32_t curSeqIdx,
+                                                           uint64_t coreGlobalEnd, uint32_t &endBatchIdx)
 {
     uint32_t K = kernelWidth_;
     uint32_t N = curBS;
@@ -771,7 +768,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
     uint32_t curBatch = batchIdx;
-    uint32_t seqInBatch = curSeqIdx;  // batch position of token at xLocal[iStart]
+    uint32_t seqInBatch = curSeqIdx; // batch position of token at xLocal[iStart]
     int64_t curWriteCIdx = 0;
 
     // Track first batch for deferred write
@@ -804,7 +801,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             uint32_t skip = (N - i < remain) ? (N - i) : remain;
             i += skip;
             seqInBatch += skip;
-            yOutOff += skip;  // advance y output position (yLocal already zero-initialized)
+            yOutOff += skip; // advance y output position (yLocal already zero-initialized)
             if (skip == remain && curBatch + 1 < batchSize_) {
                 curBatch++;
                 seqInBatch = 0;
@@ -836,10 +833,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             if (!meta.useZeroCache && meta.cachedStateLen > 0) {
                 uint64_t cacheGmOff = (uint64_t)meta.readCIdx * cacheStride0_ + dimStart;
                 DataCopyExtParams ccp{static_cast<uint16_t>(meta.cachedStateLen),
-                    static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-                    cacheSkip * ALIGN_BYTES,
-                    0,
-                    0};
+                                      static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), cacheSkip * ALIGN_BYTES, 0, 0};
                 DataCopyPad(cacheLocal, cacheStatesGM_[cacheGmOff], ccp, padParams);
             } else {
                 Duplicate(cacheLocal, (T)0, meta.cachedStateLen * dimSize);
@@ -882,14 +876,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                     LocalTensor<T> xSlice = xLocal[(i - seqInBatch + xOff) * dimSize];
                     LocalTensor<T> sSlice = cacheLocal[((sLen > 0) ? (meta.mtpOffset + seqPos) : 0) * dimSize];
                     LocalTensor<T> ySlice = yLocal[(yOutOff + j) * dimSize];
-                    Conv1dNeedStateSingleTail(xSlice,
-                        weightLocal,
-                        sSlice,
-                        ySlice,
-                        static_cast<uint8_t>(sLen),
-                        xLen,
-                        dimSize,
-                        residualConnection_);
+                    Conv1dNeedStateSingleTail(xSlice, weightLocal, sSlice, ySlice, static_cast<uint8_t>(sLen), xLen,
+                                              dimSize, residualConnection_);
                 }
             }
         }
@@ -935,18 +923,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             } else {
                 // chunkEnd: one-past-last row of current chunk in xLocal
                 uint32_t chunkEnd = i + chunkSize;
-                WriteCacheToStates(cacheLocal,
-                    xLocal,
-                    chunkEnd,
-                    batchLen,
-                    meta.cachedStateLen,
-                    cacheLoaded,
-                    curWriteCIdx,
-                    dimStart,
-                    dimSize,
-                    dimBlocks,
-                    cacheSkip,
-                    batchEnd);
+                WriteCacheToStates(cacheLocal, xLocal, chunkEnd, batchLen, meta.cachedStateLen, cacheLoaded,
+                                   curWriteCIdx, dimStart, dimSize, dimBlocks, cacheSkip, batchEnd);
             }
         } else if (cacheLoaded && seqInBatch == 0 && batchLen >= K) {
             uint32_t cFromCachePA, cFromXPA;
@@ -971,10 +949,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                     uint64_t csPrefixOff =
                         (uint64_t)curWriteCIdx * cacheStride0_ + (uint64_t)tailRowOffPA * cacheStride1_ + dimStart;
                     DataCopyExtParams wcpPA{static_cast<uint16_t>(cFromCachePA),
-                        static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-                        0,
-                        cacheSkip * ALIGN_BYTES,
-                        0};
+                                            static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0, cacheSkip * ALIGN_BYTES,
+                                            0};
                     DataCopyPad(cacheStatesGM_[csPrefixOff], cacheLocal[cacheRowStartPA * dimSize], wcpPA);
                 }
             }
@@ -999,8 +975,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
     {
         // yGmOff: global position of the first PROCESSED token
         uint64_t yGmOff = (uint64_t)(curBsStart + iStart) * yRowStride + dimStart;
-        DataCopyExtParams ycp{
-            static_cast<uint16_t>(yOutOff), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0, ySkip * ALIGN_BYTES, 0};
+        DataCopyExtParams ycp{static_cast<uint16_t>(yOutOff), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
+                              ySkip * ALIGN_BYTES, 0};
         DataCopyPad(yGM_[yGmOff], yLocal, ycp);
     }
 
@@ -1020,10 +996,11 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal,
-    LocalTensor<T> &xLocal, uint32_t chunkEnd, uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
-    int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize, uint32_t dimBlocks, uint32_t cacheSkipBlocks,
-    uint64_t batchGmEnd)
+__aicore__ inline void
+FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
+                                               uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
+                                               int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
+                                               uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd)
 {
     // ---- Decompose: how many rows from cache vs from x ----
     uint32_t cFromCache, cFromX;
@@ -1054,11 +1031,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTenso
     // Write cache prefix (last cFromCache rows of cacheLocal)
     if (cFromCache > 0) {
         uint32_t cacheRowStart = cachedStateLen - cFromCache;
-        DataCopyExtParams wcp{static_cast<uint16_t>(cFromCache),
-            static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-            0,
-            cacheSkipBlocks * ALIGN_BYTES,
-            0};
+        DataCopyExtParams wcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
+                              cacheSkipBlocks * ALIGN_BYTES, 0};
         DataCopyPad(cacheStatesGM_[csBase], cacheLocal[cacheRowStart * dimSize], wcp);
     }
 
@@ -1066,32 +1040,23 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTenso
     if (cFromX > 0) {
         if (chunkEnd >= cFromX) {
             uint32_t xRowStart = chunkEnd - cFromX;
-            DataCopyExtParams wcp{static_cast<uint16_t>(cFromX),
-                static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-                0,
-                cacheSkipBlocks * ALIGN_BYTES,
-                0};
-            DataCopyPad(
-                cacheStatesGM_[csBase + (uint64_t)cFromCache * cacheStride1_], xLocal[xRowStart * dimSize], wcp);
+            DataCopyExtParams wcp{static_cast<uint16_t>(cFromX), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
+                                  cacheSkipBlocks * ALIGN_BYTES, 0};
+            DataCopyPad(cacheStatesGM_[csBase + (uint64_t)cFromCache * cacheStride1_], xLocal[xRowStart * dimSize],
+                        wcp);
         } else {
             // Fallback: re-read batch tail from GM via xQueue_ as temp buffer.
             uint32_t xSkip = (xStride_ - dimSize) * sizeof(T) / ALIGN_BYTES;
             LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
             uint64_t xSrcOff = (batchGmEnd - cFromX) * xStride_ + dimStart;
-            DataCopyExtParams rcp{static_cast<uint16_t>(cFromX),
-                static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-                xSkip * ALIGN_BYTES,
-                0,
-                0};
+            DataCopyExtParams rcp{static_cast<uint16_t>(cFromX), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
+                                  xSkip * ALIGN_BYTES, 0, 0};
             DataCopyPad(tmpBuf, xGM_[xSrcOff], rcp, padParams);
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-            DataCopyExtParams wcp{static_cast<uint16_t>(cFromX),
-                static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-                0,
-                cacheSkipBlocks * ALIGN_BYTES,
-                0};
+            DataCopyExtParams wcp{static_cast<uint16_t>(cFromX), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
+                                  cacheSkipBlocks * ALIGN_BYTES, 0};
             DataCopyPad(cacheStatesGM_[csBase + (uint64_t)cFromCache * cacheStride1_], tmpBuf, wcp);
             xQueue_.FreeTensor(tmpBuf);
         }
@@ -1149,11 +1114,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
             int64_t readCIdx = m.readCIdx;
             uint32_t srcRowOff = m.cachedStateLen - cFromCache;
             uint64_t cacheSrcOff = (uint64_t)readCIdx * cacheStride0_ + (uint64_t)srcRowOff * cacheStride1_ + dimStart;
-            DataCopyExtParams rcp{static_cast<uint16_t>(cFromCache),
-                static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                cacheSkip * ALIGN_BYTES,
-                0,
-                0};
+            DataCopyExtParams rcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                  cacheSkip * ALIGN_BYTES, 0, 0};
             DataCopyPad(tmpBuf, cacheStatesGM_[cacheSrcOff], rcp, padParams);
         } else {
             Duplicate(tmpBuf, (T)0, cFromCache * dimSize);
@@ -1163,8 +1125,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
     // Load x suffix from GM
     if (cFromX > 0) {
         uint64_t xSrcOff = (bEnd - cFromX) * xStride_ + dimStart;
-        DataCopyExtParams rcp{
-            static_cast<uint16_t>(cFromX), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), xSkip * ALIGN_BYTES, 0, 0};
+        DataCopyExtParams rcp{static_cast<uint16_t>(cFromX), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                              xSkip * ALIGN_BYTES, 0, 0};
         DataCopyPad(tmpBuf[cFromCache * dimSize], xGM_[xSrcOff], rcp, padParams);
     }
 
@@ -1173,11 +1135,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
 
     uint32_t tailRowOff = stateLen_ - totalRows;
     uint64_t csDstOff = (uint64_t)writeCIdx * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
-    DataCopyExtParams wcp{static_cast<uint16_t>(totalRows),
-        static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-        0,
-        cacheSkip * ALIGN_BYTES,
-        0};
+    DataCopyExtParams wcp{static_cast<uint16_t>(totalRows), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+                          cacheSkip * ALIGN_BYTES, 0};
     DataCopyPad(cacheStatesGM_[csDstOff], tmpBuf, wcp);
 
     xQueue_.FreeTensor(tmpBuf);
@@ -1215,8 +1174,10 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curB
 
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt,
-    uint32_t batchLen, uint32_t curBsStart, uint32_t curBS, LocalTensor<T> &xLocal, uint32_t dimStart, uint32_t dimSize,
-    uint32_t dimBlocks, uint32_t cacheSkip)
+                                                                        uint32_t batchLen, uint32_t curBsStart,
+                                                                        uint32_t curBS, LocalTensor<T> &xLocal,
+                                                                        uint32_t dimStart, uint32_t dimSize,
+                                                                        uint32_t dimBlocks, uint32_t cacheSkip)
 {
     if (!apcEnabled_ || blockSize_ == 0)
         return;
@@ -1239,8 +1200,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
     int32_t firstBdy = apcState_.lastFull - (apcState_.nBlockToFill - 1) * BSize;
     int32_t chunkSkip = 0;
     if (firstBdy < minBdy) {
-        int32_t gap = minBdy - firstBdy;        // gap > 0 guaranteed here
-        chunkSkip = (gap + BSize - 1) / BSize;  // ceiling(gap / B)
+        int32_t gap = minBdy - firstBdy;       // gap > 0 guaranteed here
+        chunkSkip = (gap + BSize - 1) / BSize; // ceiling(gap / B)
         if (chunkSkip >= apcState_.nBlockToFill)
             return;
     }
@@ -1249,7 +1210,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
     for (int32_t chunk = chunkSkip; chunk < apcState_.nBlockToFill; chunk++) {
         int32_t boundaryIdx = apcState_.lastFull - (apcState_.nBlockToFill - chunk - 1) * BSize;
         if (boundaryIdx >= xEnd)
-            break;  // past range
+            break; // past range
         if (boundaryIdx <= 0)
             continue;
 
@@ -1271,11 +1232,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
         uint32_t localPos = globalPos - curBsStart;
         uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
         uint64_t csDst = (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
-        DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen),
-            static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-            0,
-            cacheSkip * ALIGN_BYTES,
-            0};
+        DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+                              cacheSkip * ALIGN_BYTES, 0};
         DataCopyPad(cacheStatesGM_[csDst], xLocal[localPos * dimSize], wcp);
     }
 }
@@ -1367,13 +1325,13 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
         int32_t collisionChunk = hasCollision ? (initIdx - firstBlk) : -1;
 
         if (!hasCachePrefix && !hasCollision)
-            continue;  // nothing to do for this batch
+            continue; // nothing to do for this batch
 
         if (hasCachePrefix) {
             for (int32_t chunk = 0; chunk < nBlockToFill; chunk++) {
                 int32_t boundaryIdx = lastFull - (nBlockToFill - chunk - 1) * BCP;
                 if (boundaryIdx >= static_cast<int32_t>(K - 1))
-                    break;  // past cache-prefix
+                    break; // past cache-prefix
                 if (boundaryIdx <= 0)
                     continue;
 
@@ -1403,10 +1361,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
                         SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
                         uint64_t xSrcOff = batchSt * xStride_ + dimStart;
                         DataCopyExtParams xrcp{static_cast<uint16_t>(xRows),
-                            static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                            xSkip * ALIGN_BYTES,
-                            0,
-                            0};
+                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), xSkip * ALIGN_BYTES, 0,
+                                               0};
                         DataCopyPad(tmpBuf[cacheRows * dimSize], xGM_[xSrcOff], xrcp, padParams);
                     }
                 } else {
@@ -1415,19 +1371,15 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
                         uint64_t srcOff = m.mtpOffset + static_cast<uint32_t>(boundaryIdx);
                         uint64_t cacheSrcOff = (uint64_t)readCIdx * cacheStride0_ + srcOff * cacheStride1_ + dimStart;
                         DataCopyExtParams crcp{static_cast<uint16_t>(cacheRows),
-                            static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                            cacheSkip * ALIGN_BYTES,
-                            0,
-                            0};
+                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), cacheSkip * ALIGN_BYTES,
+                                               0, 0};
                         DataCopyPad(tmpBuf, cacheStatesGM_[cacheSrcOff], crcp, padParams);
                     }
                     if (xRows > 0) {
                         uint64_t xSrcOff = batchSt * xStride_ + dimStart;
                         DataCopyExtParams xrcp{static_cast<uint16_t>(xRows),
-                            static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                            xSkip * ALIGN_BYTES,
-                            0,
-                            0};
+                                               static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), xSkip * ALIGN_BYTES, 0,
+                                               0};
                         DataCopyPad(tmpBuf[cacheRows * dimSize], xGM_[xSrcOff], xrcp, padParams);
                     }
                 }
@@ -1436,11 +1388,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
                 tmpBuf = xQueue_.DeQue<T>();
                 uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
                 uint64_t csDst = (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
-                DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen),
-                    static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                    0,
-                    cacheSkip * ALIGN_BYTES,
-                    0};
+                DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                      0, cacheSkip * ALIGN_BYTES, 0};
                 DataCopyPad(cacheStatesGM_[csDst], tmpBuf, wcp);
                 xQueue_.FreeTensor(tmpBuf);
             }
@@ -1468,22 +1417,16 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
             LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
             uint32_t srcOffset = static_cast<uint32_t>(boundaryIdx) - (K - 1);
             uint64_t xSrcOff = (batchSt + srcOffset) * xStride_ + dimStart;
-            DataCopyExtParams rcp{static_cast<uint16_t>(chunkLen),
-                static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                xSkip * ALIGN_BYTES,
-                0,
-                0};
+            DataCopyExtParams rcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                                  xSkip * ALIGN_BYTES, 0, 0};
             DataCopyPad(tmpBuf, xGM_[xSrcOff], rcp, padParams);
 
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
             uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
             uint64_t csDst = (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
-            DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen),
-                static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
-                0,
-                cacheSkip * ALIGN_BYTES,
-                0};
+            DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+                                  cacheSkip * ALIGN_BYTES, 0};
             DataCopyPad(cacheStatesGM_[csDst], tmpBuf, wcp);
             xQueue_.FreeTensor(tmpBuf);
         }
@@ -1540,14 +1483,14 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
             uint64_t gmOff = rowBase * (uint64_t)xStride_ + dimStart + dimDone;
 
             LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
-            DataCopyExtParams rcp{
-                static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes), skipBlocks * ALIGN_BYTES, 0, 0};
+            DataCopyExtParams rcp{static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes),
+                                  skipBlocks * ALIGN_BYTES, 0, 0};
             DataCopyPad(tmpBuf, yGM_[gmOff], rcp, padParams);
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
 
-            DataCopyExtParams wcp{
-                static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes), 0, skipBlocks * ALIGN_BYTES, 0};
+            DataCopyExtParams wcp{static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes), 0,
+                                  skipBlocks * ALIGN_BYTES, 0};
             DataCopyPad(xGM_[gmOff], tmpBuf, wcp);
             xQueue_.FreeTensor(tmpBuf);
 
@@ -1557,6 +1500,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
     }
 }
 
-}  // namespace FusedCausalConv1dCutBSHNs
+} // namespace FusedCausalConv1dCutBSHNs
 
-#endif  // FUSED_CAUSAL_CONV1D_CUT_BSH_H
+#endif // FUSED_CAUSAL_CONV1D_CUT_BSH_H

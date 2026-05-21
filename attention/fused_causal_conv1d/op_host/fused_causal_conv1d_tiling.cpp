@@ -30,15 +30,13 @@ struct FusedCausalConv1dCompileInfo {
 };
 
 // Main tiling function that dispatches based on x shape and max_query_len
-static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext* context)
+static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "FusedCausalConv1dTiling tiling start");
 
     // Determine dispatch: BH if x is 3D, or x is 2D with max_query_len <= MAX_BH_SEQ_LEN; else BSH
     auto xShape = context->GetInputShape(0);
-    OP_CHECK_IF(xShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "x shape is null"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(xShape == nullptr, OP_LOGE(context->GetNodeName(), "x shape is null"), return ge::GRAPH_FAILED);
     int64_t xDimNum = static_cast<int64_t>(xShape->GetOriginShape().GetDimNum());
 
     int64_t maxQueryLen = 0;
@@ -48,9 +46,8 @@ static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext* context)
 
     bool useBH = (xDimNum == 3) || (xDimNum == 2 && maxQueryLen <= MAX_BH_SEQ_LEN);
 
-    OP_LOGD(context->GetNodeName(),
-            "FusedCausalConv1d xDimNum=%ld maxQueryLen=%ld useBH=%d",
-            xDimNum, maxQueryLen, static_cast<int>(useBH));
+    OP_LOGD(context->GetNodeName(), "FusedCausalConv1d xDimNum=%ld maxQueryLen=%ld useBH=%d", xDimNum, maxQueryLen,
+            static_cast<int>(useBH));
 
     ge::graphStatus status = ge::GRAPH_FAILED;
     if (useBH) {
@@ -65,15 +62,12 @@ static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext* context)
     return status;
 }
 
-static ge::graphStatus TilingPrepareFusedCausalConv1d(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepareFusedCausalConv1d(gert::TilingParseContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-                OP_LOGE("FusedCausalConv1d", "context is null"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("FusedCausalConv1d", "context is null"), return ge::GRAPH_FAILED);
 
     auto platformInfo = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr,
-                OP_LOGE(context->GetNodeName(), "platformInfo is null"),
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platformInfo is null"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
