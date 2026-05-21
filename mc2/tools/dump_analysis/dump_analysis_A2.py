@@ -339,6 +339,7 @@ def _save_csv(filename, row_data, index=None, columns=None):
     else:
         pd.DataFrame(row_data, columns=columns).to_csv(
             filename, mode='w', header=True, encoding="gbk")
+    logging.info("[A2] Save %s done.", filename)
 
 
 def save_dump_data(
@@ -542,23 +543,17 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
                   min_run_coreid, run_info)
 
 
+# 暂不支持xactivemask
 def isinvalid_token(pos, xactivemask, k, expid, moe_expert_num):
     if expid >= moe_expert_num or expid < 0:
         return True
     return False
-    """ 目前xactivemask若不传入，会得到很多脏值。
-        tokenid = pos // k
-        if xactivemask is not None and xactivemask.size > 0:
-            if xactivemask.ndim == 1:
-                return xactivemask[pos // k] == 0
-            return xactivemask[pos] == 0
-        return False
-    """
+
 
 def check_single_card_expandidx(expandidx_input, expertids, xactivemask,
-                                moe_expert_num, bs, k):
+                                moe_expert_num, bsk):
     expertids_flatten = np.array(expertids, dtype=np.int32).reshape(-1)
-    bsk = min(bs * k, expertids_flatten.size)
+    bsk = min(bsk, expertids_flatten.size)
     expandidx_input = np.array(expandidx_input, dtype=np.int32).reshape(-1)[:bsk]
     expandidx_golden = np.zeros(bsk, dtype=np.int32)
     if xactivemask is not None:
@@ -574,13 +569,13 @@ def check_single_card_expandidx(expandidx_input, expertids, xactivemask,
 
 
 def check_expandidx(expandidx_input_func, expertids_func, xactivemask_func,
-                    bs, k, moe_expert_num):
+                    bsk, moe_expert_num):
     error_rankid_info = []
     error_rankid = []
     for ep_rankid in sorted(expandidx_input_func.keys(), key=lambda x: int(x)):
         ok = check_single_card_expandidx(
             expandidx_input_func[ep_rankid], expertids_func[ep_rankid],
-            xactivemask_func[ep_rankid], moe_expert_num, bs, k)
+            xactivemask_func[ep_rankid], moe_expert_num, bsk)
         if not ok:
             error_rankid.append(ep_rankid)
     if error_rankid:
@@ -636,6 +631,7 @@ def check_epsendcnt(epsendcnt_input_func, expertids_func, xactivemask_func,
         error_rankid_info.append(print_log)
     return error_rankid_info
 
+
 def check_fullmesh_com_win(com_win_state_func):
     error_rankid_info = []
     for ep_rankid in sorted(com_win_state_func.keys(), key=lambda x: int(x)):
@@ -669,7 +665,7 @@ def check_com(expandidx_input_func, epsendcnt_input_func, expertids_func, xactiv
     error_rankid_info.extend(rt_info)
     if not islayer:
         rt_info = check_expandidx(expandidx_input_func, expertids_func, xactivemask_func,
-                        bs, k, moe_expert_num)
+                        bs * k, moe_expert_num)
         error_rankid_info.extend(rt_info)
         rt_info = check_fullmesh_com_win(com_win_state_func)
         error_rankid_info.extend(rt_info)
@@ -677,14 +673,13 @@ def check_com(expandidx_input_func, epsendcnt_input_func, expertids_func, xactiv
 
 
 def cal_dis_win_status_golden(expertids_func, xactivemask_func,
-                              ep_worldsize, moe_expert_num, bs, k):
+                              ep_worldsize, moe_expert_num, bsk):
     dis_win_status_golden = [None] * ep_worldsize
     local_moe_expert_num = moe_expert_num // ep_worldsize
     for ep_rankid in sorted(expertids_func.keys(), key=lambda x: int(x)):
         status_golden = np.zeros((ep_worldsize, local_moe_expert_num), dtype=np.int32)
         expertids_flatten = np.array(expertids_func[ep_rankid], dtype=np.int32).reshape(-1)
-        bsk = min(bs * k, expertids_flatten.size)
-        expertids_flatten = expertids_flatten[:bsk]
+        expertids_flatten = expertids_flatten[:min(bsk, expertids_flatten.size)]
         xactivemask = xactivemask_func[ep_rankid]
         if xactivemask is not None:
             xactivemask = np.array(xactivemask, dtype=np.uint8)
@@ -751,9 +746,9 @@ def check_single_card_dis_win(dis_win_state, dis_win_status_golden,
 
 
 def check_fullmesh_dis_win(dis_win_state_func, expertids_func, xactivemask_func,
-                           unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k):
+                           unfinish_ep_func, ep_worldsize, moe_expert_num, bsk):
     dis_win_status_golden = cal_dis_win_status_golden(
-        expertids_func, xactivemask_func, ep_worldsize, moe_expert_num, bs, k)
+        expertids_func, xactivemask_func, ep_worldsize, moe_expert_num, bsk)
     error_rankid_infos = []
     for ep_rankid in sorted(dis_win_state_func.keys(), key=lambda x: int(x)):
         error_info = check_single_card_dis_win(
@@ -764,10 +759,10 @@ def check_fullmesh_dis_win(dis_win_state_func, expertids_func, xactivemask_func,
 
 
 def check_dis(dis_win_state_func, expertids_func, xactivemask_func,
-              unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k):
+              unfinish_ep_func, ep_worldsize, moe_expert_num, bsk):
     error_rankid_infos = check_fullmesh_dis_win(
         dis_win_state_func, expertids_func, xactivemask_func,
-        unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k)
+        unfinish_ep_func, ep_worldsize, moe_expert_num, bsk)
     if error_rankid_infos:
         logging.error("[A2][Fullmesh] Dispatch Win State status mismatch")
     return error_rankid_infos
@@ -779,8 +774,7 @@ def analysis_all_cards(parent_path=PARENT_PATH):
     unfinish_ep_func = {}
     expandidx_input_func, epsendcnt_input_func = {}, {}
     ep_worldsize, moe_expert_num = None, None
-    bs, k, islayer = None, None, None
-    d_c = None
+    bs, k, islayer, d_c = None, None, None, None
     filename = None
 
     for filename in os.listdir(parent_path):
@@ -815,13 +809,12 @@ def analysis_all_cards(parent_path=PARENT_PATH):
     if d_c is not None and islayer == 0:
         if d_c == "dispatch":
             error_rankid_info = check_dis(dis_win_state_func, expertids_func, xactivemask_func,
-                      unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k)
+                      unfinish_ep_func, ep_worldsize, moe_expert_num, bs * k)
         else:
             error_rankid_info = check_com(expandidx_input_func, epsendcnt_input_func, expertids_func,
                       xactivemask_func, com_win_state_func, ep_worldsize, bs, k, moe_expert_num, islayer)
         file_name = os.path.join(PARENT_PATH, CLUSTOR_ERROR_FILE_NAME)
         _save_csv(file_name, error_rankid_info, columns=['error_info'])
-        logging.info("[A2] Save %s done.", file_name)
     logging.info("[A2] Analysis %s done.", filename)
 
 if __name__ == "__main__":
