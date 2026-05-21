@@ -71,7 +71,7 @@ aclnnStatus aclnnMoeGatingTopKBackwardGetWorkspaceSize(
   int64_t           normType,
   double            routedScalingFactor,
   double            eps,
-  const aclTensor  *gradX,
+  const aclTensor  *out,
   uint64_t         *workspaceSize,
   aclOpExecutor   **executor)
 ```
@@ -114,7 +114,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>xNorm（aclTensor*）</td>
       <td>输入</td>
       <td>计算的输入，对应公式中的xNorm。</td>
-      <td><ul><li>不支持空Tensor。</li><li>要求是一个2D的Tensor，维度为[M,N]。</li><li>最后一维（专家数N）要求不大于2048。</li></ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>要求是一个2D的Tensor，维度为[M,N]。</li><li>最后一维（专家数N）要求大于等于2，并小于等于2048。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>2</td>
@@ -124,7 +124,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>gradY（aclTensor*）</td>
       <td>输入</td>
       <td>表示前向算子输出yOut的上游梯度，对应公式中的gradY。</td>
-      <td><ul><li>不支持空Tensor。</li><li>要求是一个2D的Tensor，维度为[M,K]。</li></ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>要求是一个2D的Tensor，维度为[M,K]，K的范围要求大于等于1，并小于等于N。</li></ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>2</td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>renorm（int64_t）</td>
       <td>输入</td>
       <td>表示前向算子在softmax模式下renorm标记。</td>
-      <td>0：需要做renorm；1：不做renorm；预留参数，当前仅支持sigmoid模式，不管renorm为0还是1，正向都需要renorm。</td>
+      <td>0：不做renorm；1：需要做renorm；预留参数，当前仅支持sigmoid模式，不管renorm为0还是1，正向都需要renorm。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -181,7 +181,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>-</td>
     </tr>
     <tr>
-      <td>gradX（aclTensor*）</td>
+      <td>out（aclTensor*）</td>
       <td>输出</td>
       <td>表示前向算子输入参数x的梯度，对应公式中的gradX。</td>
       <td><ul><li>不支持空Tensor。</li><li>数据类型与gradY需要保持一致。</li><li>shape与xNorm需要一致，维度为[M,N]。</li></ul></td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
     <tr>
       <td> ACLNN_ERR_PARAM_NULLPTR </td>
       <td> 161001 </td>
-      <td>xNorm、gradY、expertIdx、gradX存在空指针。</td>
+      <td>xNorm、gradY、expertIdx、out存在空指针。</td>
     </tr>
     <tr>
       <td rowspan="5"> ACLNN_ERR_PARAM_INVALID </td>
@@ -240,7 +240,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>xNorm、gradY或expertIdx的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
-      <td>gradX的数据类型与xNorm不一致。</td>
+      <td>out的数据类型与xNorm不一致。</td>
     </tr>
     <tr>
       <td>xNorm、gradY或expertIdx的shape维度不在支持的范围之内。</td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
       <td>gradY与expertIdx的shape不一致。</td>
     </tr>
     <tr>
-      <td>gradX与xNorm的shape不一致。</td>
+      <td>out与xNorm的shape不一致。</td>
     </tr>
   </tbody></table>
 
@@ -279,8 +279,6 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 
 - 确定性计算：
   - aclnnMoeGatingTopKBackward默认确定性实现。
-- xNorm和gradX的shape为[M,N]，N的取值范围为[2,2048]
-- gradY和expertIdx的shape为[M,K]，K的取值范围为[1,N]
 
 ## 调用示例
 

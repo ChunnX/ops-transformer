@@ -1,4 +1,4 @@
-# aclnnMoeGatingTopKBackward
+# MoeGatingTopKBackward
 
 ## 产品支持情况
 
@@ -73,21 +73,21 @@
   </tr></thead>
 <tbody>
   <tr>
-    <td>xNorm</td>
+    <td>x_norm</td>
     <td>输入</td>
     <td>计算的输入，对应公式中的xNorm。</td>
     <td>FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
-    <td>gradY</td>
+    <td>grad_y</td>
     <td>输入</td>
     <td>表示前向算子输出yOut的上游梯度，对应公式中的gradY。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
-    <td>expertIdx</td>
+    <td>expert_idx</td>
     <td>输入</td>
     <td>表示前向算子输出的top-k专家索引，对应公式中的expertIdx。</td>
     <td>INT32</td>
@@ -101,14 +101,14 @@
     <td>-</td>
   </tr>
   <tr>
-    <td>normType</td>
+    <td>norm_type</td>
     <td>输入</td>
     <td>表示norm函数类型。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
   <tr>
-    <td>routedScalingFactor</td>
+    <td>routed_scaling_factor</td>
     <td>输入</td>
     <td>表示计算yOut使用的routed_scaling_factor系数，对应公式中的routedScalingFactor。</td>
     <td>FLOAT32</td>
@@ -122,7 +122,7 @@
     <td>-</td>
   </tr>
   <tr>
-    <td>gradX</td>
+    <td>grad_x</td>
     <td>输出</td>
     <td>表示前向算子输入参数x的梯度，对应公式中的gradX。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
