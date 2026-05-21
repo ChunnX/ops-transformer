@@ -24,6 +24,8 @@ import dump_analysis_A2 as A2
 
 SOC_VERSION_950 = "950"
 SOC_VERSION_910_93 = "910_93"
+SOC_VERSION_910B = "910B"
+
 csv.field_size_limit(sys.maxsize)
 
 logging.basicConfig(
@@ -668,7 +670,7 @@ for filename in os.listdir(os.path.join(floder_path)):
                                 com_epworldsize, com_hccl_epworldsize)
         else:
             logging.info("1.1 未调用到combine算子不进行combine的rankid,moe专家输入分析")
-        if A2.is_A2(soc_version):
+        if soc_version == SOC_VERSION_910B:
             if dis_core_num != 0:
                 all_card_num = dis_epworldsize
             elif com_core_num != 0:
@@ -792,7 +794,7 @@ for filename in os.listdir(os.path.join(floder_path)):
                 logging.error("4. combine 0/1标识位 should be 0/1 but got %d\n", com_0_1)
         else:
             logging.info("4. 未调用com,不进行com状态区分析\n")
-        if A2.is_A2(soc_version):
+        if soc_version == SOC_VERSION_910B:
             if dis_com == 'dispatch':
                 A2_ep_rankid = dis_rankid
                 A2_ep_worldsize = dis_epworldsize

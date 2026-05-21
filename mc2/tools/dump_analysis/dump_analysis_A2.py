@@ -22,7 +22,6 @@ from collections import Counter
 import pandas as pd
 import numpy as np
 
-SOC_VERSION_910B = "910B"
 
 logging.basicConfig(
     level=logging.NOTSET,
@@ -67,8 +66,10 @@ class FullSendRecvResult:
     unfinish_inner: UnfinishInfo = field(default_factory=UnfinishInfo)
 
 
-def _check_unfinish(flags: list, cur_server_id: int, tag: str,
-                    d_c: str, ep_rankid: int, inner: bool = False):
+def _check_unfinish(flags: list, tag: str, d_c: str,
+                    ep_rankid: int, inner: bool = False):
+    cur_server_id = ep_rankid // SERVER_RANK_NUM
+
     unfinish = UnfinishInfo()
     inner_tag = "inner " if inner else ""
     for i, flag in enumerate(flags):
@@ -205,8 +206,8 @@ def _get_hierarchy_info(raw_send_or_recv: list, ep_rankid: int,
             has_recv_ep[int(rec[2]) - 1] = 1
         recv_num_tokens[i] = int(rec[3])
 
-    unfinish_send = _check_unfinish(has_send_ep, cur_server_id, "send", d_c, ep_rankid)
-    unfinish_recv = _check_unfinish(has_recv_ep, cur_server_id, "recv", d_c, ep_rankid)
+    unfinish_send = _check_unfinish(has_send_ep, "send", d_c, ep_rankid)
+    unfinish_recv = _check_unfinish(has_recv_ep, "recv", d_c, ep_rankid)
 
     logging.info("[A2] 1.1 %s EP%d has send rank:%s\n", d_c, ep_rankid, has_send_ep)
     logging.info("[A2] 1.1 %s EP%d has recv rank:%s\n", d_c, ep_rankid, has_recv_ep)
@@ -240,8 +241,8 @@ def _get_hierarchy_dis_inner_info(raw_send_or_recv: list, server_num: int,
         if rec[5] > 0:
             has_recv_ep[int(rec[5]) - 1] = 1
 
-    unfinish_send = _check_unfinish(has_send_ep, cur_server_id, "send", d_c, ep_rankid, inner=True)
-    unfinish_recv = _check_unfinish(has_recv_ep, cur_server_id, "recv", d_c, ep_rankid, inner=True)
+    unfinish_send = _check_unfinish(has_send_ep, "send", d_c, ep_rankid, inner=True)
+    unfinish_recv = _check_unfinish(has_recv_ep, "recv", d_c, ep_rankid, inner=True)
 
     logging.info("[A2] 1.1 %s EP%d inner has_send_ep:%s\n", d_c, ep_rankid, has_send_ep)
     logging.info("[A2] 1.1 %s EP%d inner has_recv_ep:%s\n", d_c, ep_rankid, has_recv_ep)
@@ -320,7 +321,7 @@ def get_device_count():
         import torch
         return torch.npu.device_count()
     except Exception:
-        pass
+        logging.info("[A2] No torch, thus try to get device count by another way.")
     arch = os.uname().machine
     if arch == 'aarch64':
         return 8
@@ -329,7 +330,8 @@ def get_device_count():
     logging.error("[A2] 未知架构:%s，默认返回8个设备", arch)
     return 8
 
-def _save_csv(filename: str, row_data: list, index = None, columns: list = ['error_info']):
+
+def _save_csv(filename, row_data, index=None, columns=None):
     if index is not None:
         file_exists = os.path.exists(filename)
         pd.DataFrame(row_data, columns=columns, index=[index]).to_csv(
@@ -337,6 +339,7 @@ def _save_csv(filename: str, row_data: list, index = None, columns: list = ['err
     else:
         pd.DataFrame(row_data, columns=columns).to_csv(
             filename, mode='w', header=True, encoding="gbk")
+
 
 def save_dump_data(
     ep_rankid: int, ep_worldsize: int, moe_expert_num: int, k: int,
@@ -384,6 +387,7 @@ def save_dump_data(
     _save_csv(file_name, row_data, local_rank_id, columns)
     logging.info("[A2] EP%d dump info data save to %s", ep_rankid, file_name)
 
+
 def save_win_data(unfinish_info, unfinish_info_inner, islayer: int,
                   ep_rankid: int, ep_worldsize: int, d_c: str,
                   min_run_coreid, run_info):
@@ -410,9 +414,9 @@ def save_win_data(unfinish_info, unfinish_info_inner, islayer: int,
         unfinish_send_ep, unfinish_recv_ep,
         unfinish_send_ep_inner, unfinish_recv_ep_inner,
     ]
-    for coreid in range(len(run_info)):
+    for coreid, core_run_info in enumerate(run_info):
         columns.append(f"核{coreid}执行位置")
-        save_datas.append(run_info[coreid])
+        save_datas.append(core_run_info)
     _save_csv(file_name, [save_datas], local_rank_id, columns)
     logging.info("[A2] EP%d win info data save to %s", ep_rankid, file_name)
 
@@ -463,7 +467,7 @@ def analyze_runpos(runpos: List[int], islayer: int, d_c: str, servernum: int):
         cur = runpos[core_id]
         cur_info = pos_mapping[cur]
         next_info = pos_mapping[next_pos[cur]] if next_pos[cur] < len(pos_mapping) else ""
-        if islayer == 1 and d_c == "dispatch" and core_id > servernum and cur == 3:
+        if islayer == 1 and cur_info == "REORDERTOKEN" and core_id >= servernum:
             next_info = 'INTER_FINISH'
         run_info[core_id] = f"{cur_info} -> {next_info}"
 
@@ -538,21 +542,18 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
                   min_run_coreid, run_info)
 
 
-def is_A2(soc_version):
-    return soc_version == SOC_VERSION_910B
-
-
 def isinvalid_token(pos, xactivemask, k, expid, moe_expert_num):
     if expid >= moe_expert_num or expid < 0:
         return True
-    return False # xactivemask暂时存在问题
-    tokenid = pos // k
-    if xactivemask is not None and xactivemask.size > 0:
-        if xactivemask.ndim == 1:
-            return xactivemask[tokenid] == 0
-        return xactivemask[pos] == 0
     return False
-
+    """ 目前xactivemask若不传入，会得到很多脏值。
+        tokenid = pos // k
+        if xactivemask is not None and xactivemask.size > 0:
+            if xactivemask.ndim == 1:
+                return xactivemask[pos // k] == 0
+            return xactivemask[pos] == 0
+        return False
+    """
 
 def check_single_card_expandidx(expandidx_input, expertids, xactivemask,
                                 moe_expert_num, bs, k):
@@ -610,7 +611,7 @@ def check_epsendcnt(epsendcnt_input_func, expertids_func, xactivemask_func,
                 xactivemask = np.broadcast_to(xactivemask[:bs, None], (bs, k)).flatten()
             else:
                 xactivemask = xactivemask.flatten()[:bsk]
-            mask = (xactivemask == 1) & (expert_ids < moe_expert_num) & (expert_ids >= 0)
+            mask = (expert_ids < moe_expert_num) & (expert_ids >= 0)
             active_indices = np.where(mask)[0]
             expert_ids = expert_ids[active_indices]
         epsendcnt_golden[int(ep_rankid)] = np.bincount(expert_ids, minlength=moe_expert_num)
@@ -743,7 +744,8 @@ def check_single_card_dis_win(dis_win_state, dis_win_status_golden,
             if target_rankid in unfinish_recv_ep:
                 logging.error("[A2] According to Dump, EP%s has't recv token from EP %s.",
                              ep_rankid, target_rankid)
-                error_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Dispatch According to Dump: unfinish recv token"
+                error_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] " \
+                             "Dispatch According to Dump: unfinish recv token"
                 error_rankid_info.append(error_log)
     return error_rankid_info
 
@@ -818,7 +820,7 @@ def analysis_all_cards(parent_path=PARENT_PATH):
             error_rankid_info = check_com(expandidx_input_func, epsendcnt_input_func, expertids_func,
                       xactivemask_func, com_win_state_func, ep_worldsize, bs, k, moe_expert_num, islayer)
         file_name = os.path.join(PARENT_PATH, CLUSTOR_ERROR_FILE_NAME)
-        _save_csv(file_name, error_rankid_info)
+        _save_csv(file_name, error_rankid_info, columns=['error_info'])
         logging.info("[A2] Save %s done.", file_name)
     logging.info("[A2] Analysis %s done.", filename)
 
