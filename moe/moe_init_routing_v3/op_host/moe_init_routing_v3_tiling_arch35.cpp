@@ -910,9 +910,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     tilingDataPtr_->k = k_;
     tilingDataPtr_->cols = cols_;
 
-    // INT4 dynamic quantization requires n and cols to be even (2 INT4 values per byte)
-    if (IsInt4DynamicQuantCase() && (n_ % 2 != 0 || cols_ % 2 != 0)) {
-        OP_LOGE(context_, "For INT4 dynamic quantization, n (%ld) and cols (%ld) must be even.", n_, cols_);
+    // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
+    if (IsInt4DynamicQuantCase() && (cols_ % 2 != 0)) {
+        OP_LOGE(context_, "For INT4 dynamic quantization, cols (%ld) must be even.", cols_);
         return ge::GRAPH_FAILED;
     }
 
