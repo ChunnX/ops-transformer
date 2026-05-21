@@ -85,6 +85,7 @@ private:
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
+
     __aicore__ inline GM_ADDR GetLocalBaseAddrByRankId(const int32_t rankId) 
     {
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
@@ -226,19 +227,20 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
         urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]); // todo:需要确认
         PRINTF("i is %u, local addr is %u, remote addr is %u\n", i, urmaCommHandle_[i]->localBufferAddr->bufferInfo.rma.addr, urmaCommHandle_[i]->remoteBufferAddr->bufferInfo.rma.addr);
     }
+    statusSpaceGm_ = GetLocalBaseAddrByRankId(epRankId_);
+    GlobalTensor<uint32_t> selfDataStatusGMTensor;
 
-    // statusSpaceGm_ = GetLocalBaseAddrByRankId(epRankId_);
-    // GlobalTensor<uint32_t> selfDataStatusGMTensor;
-    // selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + aivId_ * WIN_ADDR_ALIGN)); //1M STATE_SIZE
+    //selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + aivId_ * WIN_ADDR_ALIGN)); //1M STATE_SIZE
     // dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankId_, epWorldSize_,
     //                                                 epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
     // winDataSizeOffset_ = dataState_ * ((totalWinSizeEp_ - 2 * STATE_SIZE) / 2); // 0 1 分区
     // winReadorWriteOffset_  = winDataSizeOffset_ / 2; // 读写偏移
+    winWriteOffset_ = ((totalWinSizeEp_ - STATE_SIZE) / 2);
+    statusSpaceGm_ = GetLocalBaseAddrByRankId(epRankId_);
+    windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_ + STATE_SIZE)); //todo:
 
-
-    // // statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
     // windowGM_ = GetWinReadLocalAddrByRankId(epRankId_);
-    // windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_ + STATE_SIZE));
+    
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -259,12 +261,17 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
     aivNum_ = tilingData->aiv_num;
     mode_ = tilingData->mode;
 
+    PRINTF("+============================start===========================\n");
+    context_ = (__gm__ Mc2MoeContext *)context;
+    PRINTF("context addr is %u\n", context_->hcommHandle_[0]);
+    PRINTF("+============================end===========================\n");
+
 
     // ============ 初始化窗口状态 ============
     // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
-    InitCommStatus(context);
+    // InitCommStatus(context);
 
-    // // ============ 设置全局张量 ============
+    // // // ============ 设置全局张量 ============
     // xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     // expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
     // yGMTensor_.SetGlobalBuffer((__gm__ YType*)y);
