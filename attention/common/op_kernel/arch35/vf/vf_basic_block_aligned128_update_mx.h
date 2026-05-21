@@ -354,7 +354,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb2);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)preLoopSumUb, vreg_in_exp_sum,
                                                       preg_all);
-    Mul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all); 
+    Mul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all);
     Add(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc,
         preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_max, preg_all);
