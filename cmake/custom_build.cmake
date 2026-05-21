@@ -1065,6 +1065,7 @@ if (ALL_COMMON_SRC_DIRS)
 
     set(_COMMON_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
     set(_COMMON_OUT_SRC_DIR ${ASCEND_BINARY_OUT_DIR}/${_COMMON_COMPUTE_UNIT}/src/common)
+    set(_COMMON_OUT_ASCENDC_DIR ${ASCEND_BINARY_OUT_DIR}/${_COMMON_COMPUTE_UNIT}/src/ascendc/common)
 
     set(ALL_COMMON_FILES "")
     set(COMMON_COPY_COMMANDS "")
@@ -1073,10 +1074,12 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND ALL_COMMON_FILES ${DIR_FILES})
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_ASCENDC_DIR}
         )
         if (SRC_DIR MATCHES "mc2/common$")
             list(APPEND COMMON_COPY_COMMANDS
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_ASCENDC_DIR}
             )
         endif()
     endforeach()
@@ -1085,6 +1088,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND ALL_COMMON_FILES ${BLAZE_FILES})
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${_COMMON_OUT_SRC_DIR}/blaze
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${_COMMON_OUT_ASCENDC_DIR}/blaze
         )
     endif()
     if(EXISTS "${TENSOR_API}")
@@ -1092,6 +1096,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND ALL_COMMON_FILES ${TENSOR_API_FILES})
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API} ${_COMMON_OUT_SRC_DIR}/tensor_api
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API} ${_COMMON_OUT_ASCENDC_DIR}/tensor_api
         )
     endif()
 
@@ -1099,6 +1104,7 @@ if (ALL_COMMON_SRC_DIRS)
         set(ALL_COMMON_COPY_STAMP "${_COMMON_OUT_SRC_DIR}/.all_common_copy.stamp")
         add_custom_command(OUTPUT ${ALL_COMMON_COPY_STAMP}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${_COMMON_OUT_SRC_DIR}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_COMMON_OUT_ASCENDC_DIR}
             ${COMMON_COPY_COMMANDS}
             COMMAND ${CMAKE_COMMAND} -E touch ${ALL_COMMON_COPY_STAMP}
             DEPENDS ${ALL_COMMON_FILES}
