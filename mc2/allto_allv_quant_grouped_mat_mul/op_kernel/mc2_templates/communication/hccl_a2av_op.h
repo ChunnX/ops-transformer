@@ -273,6 +273,7 @@ public:
 
     __aicore__ inline void End()
     {
+        SyncAll<false>();
         if ASCEND_IS_AIC {
             return;
         }
