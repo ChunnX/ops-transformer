@@ -212,6 +212,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     for (uint32_t i = 0; i < epWorldSize_ -1; i++) {
         urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]);
     }
+
+    PRINTF("InitCommStatus epRankId_ is %d\n", epRankId_);
+    for (uint32_t i = 0; i < epWorldSize_ - 1; i++) {
+        PRINTF("i is %u, local addr is %u, remote addr is %u\n", i, urmaCommHandle_[i]->localBufferAddr->bufferInfo.rma.addr, urmaCommHandle_[i]->remoteBufferAddr->bufferInfo.rma.addr);
+    }
+
     // ============ 初始化窗口状态 ============
     // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
     TBuf<> dataStateBuf;
