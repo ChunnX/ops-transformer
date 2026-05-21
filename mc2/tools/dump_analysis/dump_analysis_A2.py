@@ -103,11 +103,16 @@ def get_islayer_ep(arr: np.ndarray, core_num: int, d_c: str):
 def get_bs_ep(arr: np.ndarray, core_num: int, d_c: str):
     bs = _extract_field(arr, core_num, 10)
     logging.info("[A2] 1.1 %s各核bs:%s\n", d_c, bs)
-    return bs
+    max_bs = max(Counter(bs), key=Counter(bs).get)
+    diff_bs = [i for i, v in enumerate(bs) if v != max_bs]
+    if diff_bs:
+        logging.error("[A2] 1.1 %s有如下下标的核的bs与其他核不相等%s,共%d个核\n",
+                      d_c, diff_bs, len(diff_bs))
+    return bs, max_bs
 
 
 def get_h_ep(arr: np.ndarray, core_num: int, d_c: str):
-    h = _extract_field(arr, core_num, 10)
+    h = _extract_field(arr, core_num, 13)
     logging.info("[A2] 1.1 %s各核h:%s\n", d_c, h)
     max_h = max(Counter(h), key=Counter(h).get)
     diff_h = [i for i, v in enumerate(h) if v != max_h]
@@ -122,7 +127,7 @@ def get_send_and_recv_info(arr: np.ndarray, core_num: int,
                            ep_worldsize: int) -> FullSendRecvResult:
     raw_send_or_recv, fullmesh_num_tokens = _get_raw_send_or_recv(
         arr, core_num, islayer, ep_worldsize)
-
+    print(fullmesh_num_tokens)
     if islayer == 0:
         return _get_fullmesh_info(
             raw_send_or_recv, core_num, ep_rankid, d_c, ep_worldsize, fullmesh_num_tokens)
@@ -151,13 +156,13 @@ def _get_fullmesh_info(raw_send_or_recv: list, core_num: int, ep_rankid: int,
                        fullmesh_num_tokens: list) -> FullSendRecvResult:
     has_send_ep = [0] * ep_worldsize
     has_recv_ep = [0] * ep_worldsize
-
+    print(ep_rankid)
     for i in range(core_num):
         rec = raw_send_or_recv[i]
-        send_start, send_end = int(rec[0]), int(rec[1])
-        recv_start, recv_end = int(rec[2]), int(rec[3])
-        send_rank_num = send_end - send_start
-        recv_rank_num = recv_end - recv_start
+        send_start, send_rank_num = int(rec[0]), int(rec[1])
+        recv_start, recv_rank_num = int(rec[2]), int(rec[3])
+        if send_rank_num > 0 or recv_rank_num > 0:
+            print(i, rec[:10])
         send_uint32_num = (send_rank_num - 1) // UINT32_BITS + 1
         send_flag = rec[4: 4 + send_uint32_num]
         recv_flag = rec[4 + send_uint32_num:]
@@ -338,9 +343,9 @@ def _save_csv(filename: str, row_data: list, index = None, columns: list = ['err
             filename, mode='w', header=True, encoding="gbk")
 
 def save_dump_data(
-    ep_rankid: int, ep_worldsize: int, moe_expert_num: int, bs: int, k: int,
+    ep_rankid: int, ep_worldsize: int, moe_expert_num: int, k: int,
     islayer: int, d_c: str, buffer_id: int,
-    bs_list: list, h: int,
+    bs: int, h: int,
     *,
     dis_run_cnts=0, com_run_cnts=0,
     dis_send_info=None, dis_recv_info=None,
@@ -362,7 +367,7 @@ def save_dump_data(
 
     row_data = [[
         ep_rankid, ep_worldsize, moe_expert_num, bs, k, islayer, d_c, buffer_id,
-        bs_list, h, dis_run_cnts, com_run_cnts,
+        h, dis_run_cnts, com_run_cnts,
         dis_send_info, dis_recv_info, dis_inner_info, dis_unfinish_info,
         com_send_info, com_recv_info, com_unfinish_info,
         dis_win_state, com_win_state,
@@ -371,7 +376,7 @@ def save_dump_data(
     columns = [
         'ep_rankid', 'ep_worldsize', 'moe_expert_num', 'bs', 'k',
         '是否分层', '当前报错算子', '当前buffer_id',
-        'batchsize', 'h',
+        'h',
         'dispatch执行次数', 'combine执行次数',
         'dispatch是否发送及token数', 'dispatch是否接收及token数',
         'dispatchInner表发送接收情况', 'dispatch未完成行为',
@@ -383,7 +388,7 @@ def save_dump_data(
     _save_csv(file_name, row_data, local_rank_id, columns)
     logging.info("[A2] EP%d dump info data save to %s", ep_rankid, file_name)
 
-def save_win_data(all_unfinish_info, islayer: int,
+def save_win_data(unfinish_info, unfinish_info_inner, islayer: int,
                   ep_rankid: int, ep_worldsize: int, d_c: str,
                   min_run_coreid, run_info):
     device_count = get_device_count()
@@ -392,8 +397,6 @@ def save_win_data(all_unfinish_info, islayer: int,
 
     os.makedirs(PARENT_PATH, exist_ok=True)
     file_name = os.path.join(PARENT_PATH, ERROR_INFO_FILE_NAME.format(server_id))
-
-    unfinish_info, unfinish_info_inner = all_unfinish_info
     unfinish_send_ep, unfinish_recv_ep = unfinish_info
     unfinish_send_ep_inner, unfinish_recv_ep_inner = unfinish_info_inner
 
@@ -422,12 +425,12 @@ def _get_runpos_sort(next_pos):
     n = len(next_pos)
     pos_sort = [0] * n
     cnt = 0
-    cur = 0
-    while next_pos[cur] < n:
-        pos_sort[cur] = cnt
+    cur_pos = 0
+    while next_pos[cur_pos] < n:
+        pos_sort[cur_pos] = cnt
         cnt += 1
-        cur = next_pos[cur]
-    pos_sort[cur] = cnt
+        cur_pos = next_pos[cur_pos]
+    pos_sort[cur_pos] = cnt
     return pos_sort
 
 
@@ -448,7 +451,7 @@ def _get_runpos_mapping(islayer: int, d_c: str):
         )
 
     pos_mapping = pos_common + pos_diff
-    next_pos = [1, 3] + list(range(4, len(pos_mapping))) + [2]
+    next_pos = [1, 3, len(pos_mapping)] + list(range(4, len(pos_mapping) - 1)) + [2]
     pos_position = _get_runpos_sort(next_pos)
     return pos_mapping, next_pos, pos_position
 
@@ -483,7 +486,7 @@ def analyze_runpos(runpos: List[int], islayer: int, d_c: str, servernum: int):
 def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
                         core_num: int, ep_rankid: int, d_c: str,
                         ep_worldsize: int, runpos: List[int],
-                        moe_expert_num: int, bs: int, k: int, buffer_id: int,
+                        moe_expert_num: int, k: int, buffer_id: int,
                         target_path: str, expertids: np.ndarray,
                         dis_status: np.ndarray, com_status: np.ndarray,
                         *,
@@ -491,7 +494,7 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
     arr_func = arr_func_dis if d_c == "dispatch" else arr_func_com
     _, islayer = get_islayer_ep(arr_func, core_num, d_c)
     _, max_h = get_h_ep(arr_func, core_num, d_c)
-    bs_list = get_bs_ep(arr_func, core_num, d_c)
+    _, max_bs = get_bs_ep(arr_func, core_num, d_c)
 
     result = get_send_and_recv_info(
         arr_func_dis, core_num, islayer, ep_rankid, "dispatch", ep_worldsize)
@@ -514,12 +517,12 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
         com_window_status = None
 
     expandidx_input, xactivemask_input, epsendcnt_input = get_dumpinfo(
-        target_path, bs * k, moe_expert_num, islayer, d_c)
+        target_path, max_bs * k, moe_expert_num, islayer, d_c)
 
-    min_run_coreid, run_info = analyze_runpos(runpos, islayer, d_c)
+    min_run_coreid, run_info = analyze_runpos(runpos, islayer, d_c, ep_worldsize // SERVER_RANK_NUM)
     save_dump_data(
-        ep_rankid, ep_worldsize, moe_expert_num, bs, k, islayer, d_c, buffer_id,
-        bs_list=bs_list, h=max_h,
+        ep_rankid, ep_worldsize, moe_expert_num, k, islayer, d_c, buffer_id,
+        bs=max_bs, h=max_h,
         dis_run_cnts=dis_run_cnts, com_run_cnts=com_run_cnts,
         dis_send_info=dis_send_info, dis_recv_info=dis_recv_info,
         dis_inner_info=dis_inner_info, dis_unfinish_info=dis_unfinish_info,
@@ -530,8 +533,12 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
         xactivemask_input=xactivemask_input, epsendcnt_input=epsendcnt_input,
     )
 
-    all_unfinish_info = dis_unfinish_info if d_c == "dispatch" else com_unfinish_info
-    save_win_data(all_unfinish_info, islayer, ep_rankid, ep_worldsize, d_c,
+    unfinish_info = dis_unfinish_info if d_c == "dispatch" else com_unfinish_info
+    if d_c == "dispatch" and islayer == 1:
+        unfinish_info_inner = [result.unfinish_inner.send_eps, result.unfinish_inner.recv_eps]
+    else:
+        unfinish_info_inner = [[], []]
+    save_win_data(unfinish_info, unfinish_info_inner, islayer, ep_rankid, ep_worldsize, d_c,
                   min_run_coreid, run_info)
 
 
@@ -542,6 +549,7 @@ def is_A2(soc_version):
 def isinvalid_token(pos, xactivemask, k, expid, moe_expert_num):
     if expid >= moe_expert_num or expid < 0:
         return True
+    return False # xactivemask暂时存在问题
     tokenid = pos // k
     if xactivemask is not None and xactivemask.size > 0:
         if xactivemask.ndim == 1:
@@ -682,7 +690,7 @@ def cal_dis_win_status_golden(expertids_func, xactivemask_func,
         expertids_flatten = expertids_flatten[:bsk]
         xactivemask = xactivemask_func[ep_rankid]
         if xactivemask is not None:
-            xactivemask = np.array(xactivemask, dtype=np.int32)
+            xactivemask = np.array(xactivemask, dtype=np.uint8)
         for expidx, expid in enumerate(expertids_flatten):
             if not isinvalid_token(expidx, xactivemask, k, expid, moe_expert_num):
                 status_golden[expid // local_moe_expert_num, expid % local_moe_expert_num] += 1
@@ -691,10 +699,9 @@ def cal_dis_win_status_golden(expertids_func, xactivemask_func,
 
 
 def check_single_card_dis_win(dis_win_state, dis_win_status_golden,
-                              dis_unfinish_info, ep_rankid):
+                              unfinish_recv_ep, ep_rankid):
 
     error_rankid_info = []
-    unfinish_recv_ep = dis_unfinish_info[1]
     if unfinish_recv_ep:
         logging.info("[A2][Fullmesh] Dispatch has't recv token from EP %s, according to ADump.",
                      unfinish_recv_ep)
@@ -746,23 +753,23 @@ def check_single_card_dis_win(dis_win_state, dis_win_status_golden,
 
 
 def check_fullmesh_dis_win(dis_win_state_func, expertids_func, xactivemask_func,
-                           unfinish_recv_ep_func, ep_worldsize, moe_expert_num, bs, k):
+                           unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k):
     dis_win_status_golden = cal_dis_win_status_golden(
         expertids_func, xactivemask_func, ep_worldsize, moe_expert_num, bs, k)
     error_rankid_infos = []
     for ep_rankid in sorted(dis_win_state_func.keys(), key=lambda x: int(x)):
         error_info = check_single_card_dis_win(
             dis_win_state_func[ep_rankid], dis_win_status_golden,
-            unfinish_recv_ep_func[ep_rankid][0], ep_rankid)
+            unfinish_ep_func[ep_rankid][1], ep_rankid)
         error_rankid_infos.extend(error_info)
     return error_rankid_infos
 
 
 def check_dis(dis_win_state_func, expertids_func, xactivemask_func,
-              unfinish_recv_ep_func, ep_worldsize, moe_expert_num, bs, k):
+              unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k):
     error_rankid_infos = check_fullmesh_dis_win(
         dis_win_state_func, expertids_func, xactivemask_func,
-        unfinish_recv_ep_func, ep_worldsize, moe_expert_num, bs, k)
+        unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k)
     if error_rankid_infos:
         logging.error("[A2][Fullmesh] Dispatch Win State status mismatch")
     return error_rankid_infos
@@ -807,6 +814,7 @@ def analysis_all_cards(parent_path=PARENT_PATH):
 
     if d_c is not None and islayer == 0:
         if d_c == "dispatch":
+            print(unfinish_ep_func)
             error_rankid_info = check_dis(dis_win_state_func, expertids_func, xactivemask_func,
                       unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k)
         else:
