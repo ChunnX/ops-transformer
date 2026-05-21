@@ -219,7 +219,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
     epRankIdHccl =  context_->epRankId;
-    statusSpaceGm_ = urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;
+    statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
     epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     epRankId_ = epRankIdHccl;
