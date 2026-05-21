@@ -217,9 +217,8 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
-            uint32_t kAlignSize = 0;
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
-            kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
+            uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
             baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
         }
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
