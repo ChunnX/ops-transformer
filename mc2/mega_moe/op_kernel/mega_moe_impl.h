@@ -58,7 +58,7 @@ constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 // 用 `grep "bk=5"` 可单独看某个核的时间线。
 // 注意 PRINTF 是同步的, 开启会让 kernel 慢几个数量级 —— 仅用于 debug。
 // ============================================================================
-#define MEGA_MOE_DYN_DEBUG 1
+#define MEGA_MOE_DYN_DEBUG 0
 // 只看两组 (AIC + AIV0 + AIV1) 的 PRINTF, 32 核全打日志噪音太大且会爆缓冲。
 // 调试别的核改这两个即可。
 constexpr int32_t DBG_BK_A = 0;
@@ -417,7 +417,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 // ★ epi 末尾的 AtomicAdd(groupFlagListGm, 1) 在 scalar 流水, NotifyCube 在 PIPE_V。
                 //   PIPE_V drain 不包含 scalar pipe → 不加 barrier 时 NotifyCube 可能在 atomic-add
                 //   commit 到 HBM 之前触发, 跨核读 flag 看不到更新, 动态调度下其它核会卡在 spin。
-                PipeBarrier<PIPE_ALL>();
+                // PipeBarrier<PIPE_ALL>();
                 NotifyCube(pingpongIdx);
             } else {
                 // 单 UB（交织+L1_TILE_M=256 或 非交织）：单通道 cube↔vec sync
@@ -435,7 +435,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                     epilogueOp(epilogueShape, epilogueOffset);
                 }
                 // 同上, atomic_add scalar pipe 必须 drain 后才发 cube-vec flag
-                PipeBarrier<PIPE_ALL>();
+                // PipeBarrier<PIPE_ALL>();
                 NotifyCube();
             }
 
@@ -626,7 +626,7 @@ __aicore__ inline void GroupMatmul2(
             WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
             // ★ atomic_add scalar pipe drain, 否则 AIV1 spin rowReadyFlags 读不到
-            PipeBarrier<PIPE_ALL>();
+            // PipeBarrier<PIPE_ALL>();
 
             // [TRACE] sp8 / sp9: AIC GMM2 first / last tile 完成（mmad+atomic_add 后）
             if (isFirstTile) {
@@ -873,7 +873,7 @@ __aicore__ inline void SchedulerLoop(
                 AscendC::WriteGmByPassDCache(tsPtr, newSeq);
                 my_seq[idx] = newSeq;
             }
-            PipeBarrier<PIPE_ALL>();  // 跨核可见性: worker spin 在等 taskSeq, 必须 drain 到 HBM
+            // PipeBarrier<PIPE_ALL>();  // 跨核可见性: worker spin 在等 taskSeq, 必须 drain 到 HBM
         }
 
         // 超时诊断
@@ -963,7 +963,70 @@ __aicore__ inline void DynamicAicLoop(
 
     int64_t loopStart = AscendC::GetSystemCycle();
     while (!g1End || !g2End) {
-        // -- G1 channel --
+        // -- G2 channel(优先): AIV1 combine 是瓶颈,要让它尽早开始 + 持续有活。
+        //    顺便: G1 mmad 之间的 WaitForVector(0) 间隙正好用 G2 mmad 填满。
+        if (!g2End) {
+            int32_t cur = AscendC::ReadGmByPassDCache(seqG2);
+            if (cur > last_seen[1]) {
+                int32_t packed = AscendC::ReadGmByPassDCache(dataG2);
+                DynamicTask task;
+                UnpackDynamicTask(packed, task);
+
+                if (task.opType == DYN_OP_END) {
+                    AscendC::WriteGmByPassDCache(ackG2, cur);
+                    // PipeBarrier<PIPE_ALL>();  // 跨核可见性
+                    last_seen[1] = cur;
+                    g2End = true;
+                    continue;
+                }
+
+                g2Seq++;
+                #if MEGA_MOE_DYN_DEBUG
+                if (g2Seq <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
+                    int32_t dbgW = task.waveIdx;
+                    int32_t dbgN = task.nTileIdx;
+                    int32_t dbgM = task.waveM;
+                    int dbgSeq = g2Seq;
+                    AscendC::PRINTF("[rank=%d AIC bk=%d] G2#%d w=%d nT=%d waveM=%d\n",
+                                    rankId, blockIdx, dbgSeq, dbgW, dbgN, dbgM);
+                }
+                #endif
+
+                auto taskProblemShape = problemShape;
+                Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
+                int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+
+                GMMAddrInfo gmmAddrInfo;
+                gmmAddrInfo.aGlobal = params.workspaceInfo.ptrA2 +
+                    (Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN)) *
+                    sizeof(ElementA);
+                gmmAddrInfo.aScaleGlobal = params.workspaceInfo.ptrA2Scale +
+                    (Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN)) *
+                    sizeof(ElementMxScaleA);
+                gmmAddrInfo.bGlobal = params.b2GmAddr +
+                    Get<IDX_B2_OFFSET>(baseOffset) * sizeof(ElementB);
+                gmmAddrInfo.bScaleGlobal = params.b2ScaleGmAddr +
+                    Get<IDX_B2_SCALE_OFFSET>(baseOffset) * sizeof(ElementMxScaleB);
+                gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
+                    flagOffsetForExpert + static_cast<int64_t>(task.waveIdx);
+                gmmAddrInfo.groupFlagList2 = nullptr;
+                gmmAddrInfo.gmm2OutGlobal = params.workspaceInfo.ptrGmmOut +
+                    (Get<IDX_Y2_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) *
+                    sizeof(bfloat16_t);
+
+                GroupMatmul2<ElementA, ElementB, bfloat16_t, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
+                    params, taskProblemShape, gmmAddrInfo,
+                    static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
+                    expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
+
+                AscendC::WriteGmByPassDCache(ackG2, cur);
+                // PipeBarrier<PIPE_ALL>();  // 跨核可见性
+                last_seen[1] = cur;
+                continue;
+            }
+        }
+
+        // -- G1 channel(G2 没活时才做): 推进 wave G1 mmad → epi → swiglu 解锁 → 后续 G2 派下来
         if (!g1End) {
             int32_t cur = AscendC::ReadGmByPassDCache(seqG1);
             if (cur > last_seen[0]) {
@@ -973,13 +1036,14 @@ __aicore__ inline void DynamicAicLoop(
 
                 if (task.opType == DYN_OP_END) {
                     AscendC::WriteGmByPassDCache(ackG1, cur);
-                    PipeBarrier<PIPE_ALL>();  // 跨核可见性: scheduler DCP 读 ack 依赖 HBM commit
+                    // PipeBarrier<PIPE_ALL>();  // 跨核可见性: scheduler DCP 读 ack 依赖 HBM commit
                     last_seen[0] = cur;
                     g1End = true;
                     continue;
                 }
 
-                // UB 屏障: 下一 G1 mmad 前等上次 AIV0 NotifyCube
+                // UB 屏障: 下一 G1 mmad 前等上次 AIV0 NotifyCube。如果中间做了 G2 mmad,
+                // AIV0 多半已经 epi 完发了 NotifyCube,WaitForVector 立刻返回,等的时间近似 0。
                 if (g1Pending) {
                     WaitForVector(0);
                     g1Pending = false;
@@ -1032,70 +1096,8 @@ __aicore__ inline void DynamicAicLoop(
                 g1Pending = true;
 
                 AscendC::WriteGmByPassDCache(ackG1, cur);
-                PipeBarrier<PIPE_ALL>();  // 跨核可见性
+                // PipeBarrier<PIPE_ALL>();  // 跨核可见性
                 last_seen[0] = cur;
-                continue;
-            }
-        }
-
-        // -- G2 channel --
-        if (!g2End) {
-            int32_t cur = AscendC::ReadGmByPassDCache(seqG2);
-            if (cur > last_seen[1]) {
-                int32_t packed = AscendC::ReadGmByPassDCache(dataG2);
-                DynamicTask task;
-                UnpackDynamicTask(packed, task);
-
-                if (task.opType == DYN_OP_END) {
-                    AscendC::WriteGmByPassDCache(ackG2, cur);
-                    PipeBarrier<PIPE_ALL>();  // 跨核可见性
-                    last_seen[1] = cur;
-                    g2End = true;
-                    continue;
-                }
-
-                g2Seq++;
-                #if MEGA_MOE_DYN_DEBUG
-                if (g2Seq <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
-                    int32_t dbgW = task.waveIdx;
-                    int32_t dbgN = task.nTileIdx;
-                    int32_t dbgM = task.waveM;
-                    int dbgSeq = g2Seq;
-                    AscendC::PRINTF("[rank=%d AIC bk=%d] G2#%d w=%d nT=%d waveM=%d\n",
-                                    rankId, blockIdx, dbgSeq, dbgW, dbgN, dbgM);
-                }
-                #endif
-
-                auto taskProblemShape = problemShape;
-                Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
-                int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
-
-                GMMAddrInfo gmmAddrInfo;
-                gmmAddrInfo.aGlobal = params.workspaceInfo.ptrA2 +
-                    (Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN)) *
-                    sizeof(ElementA);
-                gmmAddrInfo.aScaleGlobal = params.workspaceInfo.ptrA2Scale +
-                    (Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN)) *
-                    sizeof(ElementMxScaleA);
-                gmmAddrInfo.bGlobal = params.b2GmAddr +
-                    Get<IDX_B2_OFFSET>(baseOffset) * sizeof(ElementB);
-                gmmAddrInfo.bScaleGlobal = params.b2ScaleGmAddr +
-                    Get<IDX_B2_SCALE_OFFSET>(baseOffset) * sizeof(ElementMxScaleB);
-                gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
-                    flagOffsetForExpert + static_cast<int64_t>(task.waveIdx);
-                gmmAddrInfo.groupFlagList2 = nullptr;
-                gmmAddrInfo.gmm2OutGlobal = params.workspaceInfo.ptrGmmOut +
-                    (Get<IDX_Y2_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) *
-                    sizeof(bfloat16_t);
-
-                GroupMatmul2<ElementA, ElementB, bfloat16_t, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
-                    params, taskProblemShape, gmmAddrInfo,
-                    static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
-                    expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
-
-                AscendC::WriteGmByPassDCache(ackG2, cur);
-                PipeBarrier<PIPE_ALL>();  // 跨核可见性
-                last_seen[1] = cur;
                 continue;
             }
         }
@@ -1176,7 +1178,7 @@ __aicore__ inline void DynamicAiv0Loop(
 
             if (task.opType == DYN_OP_END) {
                 AscendC::WriteGmByPassDCache(ackPtr, cur);
-                PipeBarrier<PIPE_ALL>();  // 跨核可见性
+                // PipeBarrier<PIPE_ALL>();  // 跨核可见性
                 last_seen[0] = cur;
                 break;
             }
@@ -1225,7 +1227,7 @@ __aicore__ inline void DynamicAiv0Loop(
                 funcSync, 0);
 
             AscendC::WriteGmByPassDCache(ackPtr, cur);
-            PipeBarrier<PIPE_ALL>();  // 跨核可见性
+            // PipeBarrier<PIPE_ALL>();  // 跨核可见性
             last_seen[0] = cur;
             loopStart = AscendC::GetSystemCycle();  // reset timeout
             continue;
@@ -1291,7 +1293,7 @@ __aicore__ inline void DynamicAiv1Loop(
 
             if (task.opType == DYN_OP_END) {
                 AscendC::WriteGmByPassDCache(ackPtr, cur);
-                PipeBarrier<PIPE_ALL>();  // 跨核可见性
+                // PipeBarrier<PIPE_ALL>();  // 跨核可见性
                 last_seen[0] = cur;
                 break;
             }
@@ -1334,7 +1336,7 @@ __aicore__ inline void DynamicAiv1Loop(
                 expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
 
             AscendC::WriteGmByPassDCache(ackPtr, cur);
-            PipeBarrier<PIPE_ALL>();  // 跨核可见性
+            // PipeBarrier<PIPE_ALL>();  // 跨核可见性
             last_seen[0] = cur;
             loopStart = AscendC::GetSystemCycle();
             continue;
