@@ -38,6 +38,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "bandwidth_test_tiling.h"
 #include "adv_api/hccl/hccl.h"
+#include "adv_api/hcomm/hcomm.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../common/op_kernel/mc2_moe_context.h"
