@@ -58,11 +58,11 @@
 
 ## 参数说明
   
-<table style="undefined;table-layout: fixed; width: 1010px"><colgroup>
+<table style="undefined;table-layout: fixed; width: 1110px"><colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
   <col style="width: 300px">
-  <col style="width: 200px">
+  <col style="width: 300px">
   <col style="width: 170px">
   </colgroup>
   <thead>
