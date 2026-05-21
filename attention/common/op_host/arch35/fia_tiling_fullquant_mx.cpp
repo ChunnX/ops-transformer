@@ -51,10 +51,6 @@ bool FiaTilingFullQuantMxArch35::IsCapable()
         return false;
     }
 
-    if (fiaInfo_->gSize * fiaInfo_->s1Size > 80) { // G*S1<=80 ->decode
-        return false;
-    }
-
     return true;
 }
 
