@@ -207,8 +207,7 @@ private:
         if constexpr (colRange == ColRangeEnum::SMALLER_THAN_8 || renorm == 1) {
             AscendCUtils::SetMaskCount<float>();
             SetVectorMask<float, MaskMode::COUNTER>(0, curRowsNum * BLOCK_B32_SIZE);
-            BlockReduceMaxIntrinsicsImpl(
-                (__ubuf__ float*)dst.GetPhyAddr(), (__ubuf__ float*)src.GetPhyAddr(), 1, 1, 1, CONSTANT_EIGHT);
+            BlockReduceMax<float, false>(dst, src, 1, AscendC::MASK_PLACEHOLDER, 1, 1, CONSTANT_EIGHT);
             AscendCUtils::SetMaskNorm<float>();
         } else if constexpr (colRange == ColRangeEnum::FROM_8_TO_64) {
             WholeReduceMax(
@@ -240,12 +239,10 @@ private:
             PipeBarrier<PIPE_V>();
             AscendCUtils::SetMaskCount<float>();
             SetVectorMask<float, MaskMode::COUNTER>(0, curRowsNum * REPEAT_B32_SIZE);
-            BlockReduceMaxIntrinsicsImpl(
-                (__ubuf__ float*)tmpBuffer.GetPhyAddr(), (__ubuf__ float*)dst.GetPhyAddr(), 1, 1, 1, CONSTANT_EIGHT);
+            BlockReduceMax<float, false>(tmpBuffer, dst, 1, AscendC::MASK_PLACEHOLDER, 1, 1, CONSTANT_EIGHT);
             PipeBarrier<PIPE_V>();
             SetVectorMask<float, MaskMode::COUNTER>(0, curRowsNum * BLOCK_B32_SIZE);
-            BlockReduceMaxIntrinsicsImpl(
-                (__ubuf__ float*)dst.GetPhyAddr(), (__ubuf__ float*)tmpBuffer.GetPhyAddr(), 1, 1, 1, CONSTANT_EIGHT);
+            BlockReduceMax<float, false>(dst, tmpBuffer, 1, AscendC::MASK_PLACEHOLDER, 1, 1, CONSTANT_EIGHT);
             AscendCUtils::SetMaskNorm<float>();
         }
         PipeBarrier<PIPE_V>();
@@ -259,8 +256,7 @@ private:
         if constexpr (colRange == ColRangeEnum::SMALLER_THAN_8 || renorm == 1) {
             AscendCUtils::SetMaskCount<float>();
             SetVectorMask<float, MaskMode::COUNTER>(0, curRowsNum * BLOCK_B32_SIZE);
-            BlockReduceSumIntrinsicsImpl(
-                (__ubuf__ float*)dst.GetPhyAddr(), (__ubuf__ float*)src.GetPhyAddr(), 1, 1, 1, CONSTANT_EIGHT);
+            BlockReduceSum<float, false>(dst, src, 1, AscendC::MASK_PLACEHOLDER, 1, 1, CONSTANT_EIGHT);
             AscendCUtils::SetMaskNorm<float>();
         } else if constexpr (colRange == ColRangeEnum::FROM_8_TO_64) {
             WholeReduceSum(dst, src, colBytesAlign, curRowsNum, 1, 1, colBytesAlign / CONSTANT_EIGHT);
@@ -290,12 +286,10 @@ private:
             PipeBarrier<PIPE_V>();
             AscendCUtils::SetMaskCount<float>();
             SetVectorMask<float, MaskMode::COUNTER>(0, curRowsNum * REPEAT_B32_SIZE);
-            BlockReduceSumIntrinsicsImpl(
-                (__ubuf__ float*)tmpBuffer.GetPhyAddr(), (__ubuf__ float*)dst.GetPhyAddr(), 1, 1, 1, CONSTANT_EIGHT);
+            BlockReduceSum<float, false>(tmpBuffer, dst, 1, AscendC::MASK_PLACEHOLDER, 1, 1, CONSTANT_EIGHT);
             PipeBarrier<PIPE_V>();
             SetVectorMask<float, MaskMode::COUNTER>(0, curRowsNum * BLOCK_B32_SIZE);
-            BlockReduceSumIntrinsicsImpl(
-                (__ubuf__ float*)dst.GetPhyAddr(), (__ubuf__ float*)tmpBuffer.GetPhyAddr(), 1, 1, 1, CONSTANT_EIGHT);
+            BlockReduceSum<float, false>(dst, tmpBuffer, 1, AscendC::MASK_PLACEHOLDER, 1, 1, CONSTANT_EIGHT);
             AscendCUtils::SetMaskNorm<float>();
         }
         PipeBarrier<PIPE_V>();

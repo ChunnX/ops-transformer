@@ -29,7 +29,7 @@ namespace platform {
 
 __aicore__ inline constexpr bool IsDataCopyPadSupport()
 {
-#if __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if (__CCE_AICORE__ == 220 || __CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
     return true;
 #else
     return false;
@@ -50,6 +50,7 @@ __aicore__ inline constexpr uint32_t GetUbBlockSize()
 __aicore__ inline constexpr uint32_t GetVRegSize()
 {
 #if __CCE_AICORE__ == 310
+    return 256U;
     return AscendC::VECTOR_REG_WIDTH;
 #else
     return 256U;
@@ -63,6 +64,7 @@ template<typename T>
 __aicore__ inline constexpr bool IsSupportAtomicAddTypeSIMD()
 {
 #if __CCE_AICORE__ == 310
+    return false;
     return AscendC::IsSameType<T, float>::value || AscendC::IsSameType<T, half>::value || AscendC::IsSameType<T, int16_t>::value ||
         AscendC::IsSameType<T, int32_t>::value || AscendC::IsSameType<T, int8_t>::value || AscendC::IsSameType<T, bfloat16_t>::value;
 #else
