@@ -249,6 +249,7 @@ private:
     uint32_t tokenNumPerCoreAlign_{0};
     float armAvgFactor_{0.0};
     float epsilon_{0.0};
+    uint64_t curRankShmemAddr{0};
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
@@ -307,6 +308,8 @@ private:
     LocalTensor<float> rowTmpFloatLocal_;
     LocalTensor<float> mulBufLocal_;
     LocalTensor<float> sumFloatBufLocal_;
+
+    LocalTensor<ExpandIdxType> expandIdxLocal;
 
     static constexpr uint32_t DATA_FLAG_SIZE = 1 * 1024 * 1024 * 1024 - 1 * 1024 * 1024; // 1G TODO 这里存疑 已有的数据和flag区域占用空间
     __gm__ uint32_t *flag_gm;
@@ -978,8 +981,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     if (sendCntNum_ == 0U) { // 空闲核，直接返回
         return;
     }
+    expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     uint32_t flag = 0;
-    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
                                       0U, 0U};
     const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
@@ -1025,7 +1028,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         return;
     }
 
-    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+    // LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+    expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
                                       0U, 0U};
     const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
@@ -1707,6 +1711,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
 template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
 {
+    return ;
     if ASCEND_IS_AIV { // 全aiv处理
         if constexpr (IsNeedReduceScatter) {
             ReduceScatterTrans();
