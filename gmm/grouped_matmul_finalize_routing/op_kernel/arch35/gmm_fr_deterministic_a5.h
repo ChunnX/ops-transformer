@@ -34,6 +34,9 @@ using namespace AscendC;
 // Constants consistent with A3
 constexpr uint32_t DETER_UB_SIZE = 12 * 1024;
 constexpr uint32_t BUFFER_NUM = 2;
+// A5 DAV3510 DataCopyPad GM→UB blockLen limit: 4096 bytes
+constexpr uint32_t GM2UB_MAX_BYTES = 4096;
+constexpr uint32_t GM2UB_MAX_FLOATS = GM2UB_MAX_BYTES / sizeof(float);
 
 // Sync config (matches A3 SyncConfig layout)
 struct SyncConfig {
@@ -116,24 +119,27 @@ __aicore__ inline void FRDeterministicA5(
                     curVecBaseN = n - nOffset;
                 }
 
-                if (procRows < 2 && nOffset == 0) {
-                    printf("[FIN-AGG]   nOffset=%lu curBaseN=%lu blockLen=%u\n",
-                           nOffset, curVecBaseN, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)));
+                // GM→UB: split into chunks ≤ GM2UB_MAX_FLOATS elements (4096 bytes)
+                uint64_t remainN = curVecBaseN;
+                uint64_t subOff = 0;
+                while (remainN > 0) {
+                    uint64_t chunkN = (remainN > GM2UB_MAX_FLOATS)
+                        ? GM2UB_MAX_FLOATS : remainN;
+                    LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
+                    DataCopyExtParams readParams{1, static_cast<uint32_t>(chunkN * sizeof(DTYPE_OUT)), 0, 0, 0};
+                    DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
+                    DataCopyPad(bindLocal, wsRowGm[nOffset + subOff], readParams, padParams);
+                    queBind.EnQue(bindLocal);
+                    bindLocal = queBind.DeQue<DTYPE_OUT>();
+
+                    SetAtomicAdd<DTYPE_OUT>();
+                    DataCopyPad(yRowGm[nOffset + subOff], bindLocal, readParams);
+                    SetAtomicNone();
+
+                    queBind.FreeTensor(bindLocal);
+                    subOff += chunkN;
+                    remainN -= chunkN;
                 }
-
-                LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
-                DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
-                DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
-                DataCopyPad(bindLocal, wsRowGm[nOffset], copyParams, padParams);
-                queBind.EnQue(bindLocal);
-                bindLocal = queBind.DeQue<DTYPE_OUT>();
-
-                SetAtomicAdd<DTYPE_OUT>();
-                DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
-                DataCopyPad(yRowGm[nOffset], bindLocal, paramsOut);
-                SetAtomicNone();
-
-                queBind.FreeTensor(bindLocal);
             }
             procRows++;
         }
