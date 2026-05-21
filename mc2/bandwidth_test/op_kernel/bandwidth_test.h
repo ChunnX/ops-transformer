@@ -172,6 +172,11 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     context_ = (__gm__ Mc2MoeContext *)context;
+
+    PRINTF("context addr 0 is %u\n", context_->epHcclBuffer_[0]);
+    PRINTF("context addr 1 is %u\n", context_->epHcclBuffer_[1]);
+    PRINTF("+============================end===========================\n");
+    
     // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 

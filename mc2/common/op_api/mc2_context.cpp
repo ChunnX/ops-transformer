@@ -300,6 +300,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
                 return ACLNN_ERR_INNER;
             }
             mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
+            OP_LOGI("epHcclBuffer_[%u] = %u", i, mc2ContextStruct->epHcclBuffer_[i]);
         }
     }
     if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
