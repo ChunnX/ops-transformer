@@ -58,17 +58,17 @@
 
 ## 参数说明
   
-<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+<table style="undefined;table-layout: fixed; width: 1010px"><colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
-  <col style="width: 200px">
+  <col style="width: 300px">
   <col style="width: 200px">
   <col style="width: 170px">
   </colgroup>
   <thead>
   <tr>
     <th>参数名</th>
-    <th>输入/输出</th>
+    <th>输入/输出/属性</th>
     <th>描述</th>
     <th>数据类型</th>
     <th>数据格式</th>
@@ -91,34 +91,34 @@
   <tr>
     <td>expert_idx</td>
     <td>输入</td>
-    <td>表示前向算子输出的top-k专家索引，对应公式中的expert_idx。shape要求与grad_y一致，维度为[M,K]。</td>
+    <td>表示前向算子输出的top-k专家索引，对应公式中的expertIdx。shape要求与grad_y一致，维度为[M,K]。</td>
     <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>renorm</td>
-    <td>输入</td>
+    <td>可选属性</td>
     <td>表示前向算子在softmax模式下renorm标记。0：不做renorm；1：需要做renorm；预留参数，当前仅支持sigmoid模式。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
   <tr>
     <td>norm_type</td>
-    <td>输入</td>
+    <td>可选属性</td>
     <td>表示norm函数类型。1表示使用Sigmoid函数，0表示Softmax函数。当前仅支持1。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
   <tr>
     <td>routed_scaling_factor</td>
-    <td>输入</td>
+    <td>可选属性</td>
     <td>表示前向计算中使用的routed_scaling_factor系数，对应公式中的routedScalingFactor。默认值为1.0。</td>
     <td>FLOAT32</td>
     <td>-</td>
   </tr>
   <tr>
     <td>eps</td>
-    <td>输入</td>
+    <td>可选属性</td>
     <td>表示前向计算使用的防除零常数，对应公式中的eps。默认值为1e-20。</td>
     <td>FLOAT32</td>
     <td>-</td>
