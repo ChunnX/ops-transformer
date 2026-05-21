@@ -323,7 +323,7 @@ public:
     uint64_t maskTailCoreLastLoopNum;
     uint32_t dropoutIsDivisibleBy8;
     bool sValueZeroUnderTND;
-    uint8_t reserved1; // tilingData需要8字节对齐
+    bool hasInvalidCol;
     uint8_t reserved2; // tilingData需要8字节对齐
     uint8_t reserved3; // tilingData需要8字节对齐
 
@@ -366,6 +366,7 @@ public:
     uint64_t get_maskTailCoreLastLoopNum() const { return maskTailCoreLastLoopNum; }
     uint32_t get_dropoutIsDivisibleBy8() const { return dropoutIsDivisibleBy8; }
     bool get_sValueZeroUnderTND() const { return sValueZeroUnderTND; }
+    bool get_hasInvalidCol() const { return hasInvalidCol; }
     uint32_t get_sfmgUsedCoreNum() const {return sfmgUsedCoreNum;}
     uint32_t get_sfmgDyBufferLen() const {return sfmgDyBufferLen;}
     uint32_t get_sfmgYBufferLen() const {return sfmgYBufferLen;}
@@ -404,6 +405,7 @@ public:
     void set_maskTailCoreLastLoopNum(uint64_t val) { maskTailCoreLastLoopNum = val; }
     void set_dropoutIsDivisibleBy8(uint32_t val) { dropoutIsDivisibleBy8 = val; }
     void set_sValueZeroUnderTND(bool val) { sValueZeroUnderTND = val; }
+    void set_hasInvalidCol(bool val) { hasInvalidCol = val; }
     void set_sfmgUsedCoreNum(uint32_t val) { sfmgUsedCoreNum = val; }
     void set_sfmgDyBufferLen(uint32_t val) { sfmgDyBufferLen = val; }
     void set_sfmgYBufferLen(uint32_t val) { sfmgYBufferLen = val; }
