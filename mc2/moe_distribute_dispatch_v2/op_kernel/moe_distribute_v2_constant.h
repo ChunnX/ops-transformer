@@ -93,6 +93,7 @@ constexpr uint32_t DIM_NUM = 2;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 10UL * 1024UL;
 constexpr uint32_t BLOCK_NUM = ALIGNED_LEN / UB_ALIGN;  // blockReduceMax中，最多支持连续256字节数据参与计算
 constexpr uint32_t INT8_DIVIVE = 2;
+constexpr static uint32_t DISPATCH_BUFFER_NUM = 4;
 
 // combineARN额外所需常量段
 constexpr uint64_t COMBINE_ARN_STATE_SIZE = 1024UL * 1024UL; // 1M
