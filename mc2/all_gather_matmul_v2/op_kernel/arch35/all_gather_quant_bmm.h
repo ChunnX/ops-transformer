@@ -159,6 +159,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
     uint32_t tailM = tilingData_->quantBmmv3TailTiling.matmulTiling.M / (cfg.rankDim - 1);   // 尾块M轴大小
 
+    // 当N=0时，使用完整的rankK作为通信数据量
+    if (cfg.rankN == 0) {
+        tilingKa = cfg.rankK;
+    }
 
     uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(tilingKa);    // 整块总共搬运数据个数
     uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(tilingKa);      // 尾块总共搬运数据个数
@@ -206,6 +210,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
                                          X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulLocalCompute()
 {
     auto &&cfg = tilingData_->param;
+    // 当N=0时，跳过本地计算
+    if (cfg.rankN == 0) {
+        return;
+    }
     auto &&qBMMLocalTiling = tilingData_->quantBmmv3LocalTiling;     // QuantBatchMatmulV3TilingData 本地核切分tiling参数
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
 
@@ -242,7 +250,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 {
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
-    if (GetBlockIdx() >= qMmv3Tiling.matmulTiling.usedCoreNum) {
+    if ((GetBlockIdx() >= qMmv3Tiling.matmulTiling.usedCoreNum) || (cfg.rankN == 0)) {
         uint32_t shift = isTail ? cfg.tileCnt : 0;
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
             for (uint32_t i = 0; i < count; i++) {
@@ -300,7 +308,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
     auto &&cfg = tilingData_->param;
     // 计算本片的块
     // 未用到的AIC核不需要参与计算
-    if (GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) {
+    if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
         QuantMatmulLocalCompute();
     }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
