@@ -12,7 +12,7 @@
 
 import torch
 import torch_npu
-import ascend_ops
+import fast_kernel_launch
 import pytest
 
 def test_grouped_matmul_interface_exist():
