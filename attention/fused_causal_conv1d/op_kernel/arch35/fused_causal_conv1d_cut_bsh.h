@@ -30,6 +30,7 @@ using namespace AscendC;
 
 constexpr int32_t BUFFER_NUM = 2;
 constexpr uint32_t ALIGN_BYTES = 32;
+constexpr uint32_t DIM_ALIGN = 64;
 
 template <typename T>
 class FusedCausalConv1dCutBSH {
@@ -891,7 +892,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             LocalTensor<T> xSlice = xLocal[xStartIdx * dimSize];
             LocalTensor<T> ySlice = yLocal[(yOutOff + needCacheTokens) * dimSize];
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-            if (dimSize % 128 == 0 || dimSize % 128 > 64) {
+            if (dimSize - (dimSize / (DIM_ALIGN * 2)) * (DIM_ALIGN * 2) == 0 ||
+                dimSize - (dimSize / (DIM_ALIGN * 2)) * (DIM_ALIGN * 2) > DIM_ALIGN) {
                 Conv1dNoStateDoubleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
             } else {
                 Conv1dNoStateSingleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
@@ -1158,11 +1160,12 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curB
         numComputed = numComputedLocal_.GetValue(curBatch);
 
     int32_t B = static_cast<int32_t>(blockSize_);
-    uint32_t seqCompletedOffsetToken = (numComputed >= 0) ? static_cast<uint32_t>(numComputed % B) : 0;
+    uint32_t seqCompletedOffsetToken =
+        (numComputed >= 0) ? static_cast<uint32_t>(numComputed - (numComputed / B) * B) : 0;
     uint32_t seqCompletedOffset = static_cast<uint32_t>(B) - seqCompletedOffsetToken;
 
     int32_t seqEndOffsetRaw = static_cast<int32_t>(batchLen) - static_cast<int32_t>(seqCompletedOffset);
-    uint32_t seqEndOffset = static_cast<uint32_t>((seqEndOffsetRaw % B + B) % B);
+    uint32_t seqEndOffset = static_cast<uint32_t>(seqEndOffsetRaw - (seqEndOffsetRaw / B) * B);
 
     apcState_.lastFull = static_cast<int32_t>(batchLen) - static_cast<int32_t>(seqEndOffset);
     if (seqEndOffset == 0 && batchLen >= seqCompletedOffset)
@@ -1307,10 +1310,11 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
         }
 
         int32_t B = static_cast<int32_t>(blockSize_);
-        uint32_t seqCompletedOffsetToken = (numComputed >= 0) ? static_cast<uint32_t>(numComputed % B) : 0;
+        uint32_t seqCompletedOffsetToken =
+            (numComputed >= 0) ? static_cast<uint32_t>(numComputed - (numComputed / B) * B) : 0;
         uint32_t seqCompletedOffset = static_cast<uint32_t>(B) - seqCompletedOffsetToken;
         int32_t seqEndOffsetRaw = static_cast<int32_t>(seqLen) - static_cast<int32_t>(seqCompletedOffset);
-        uint32_t seqEndOffset = static_cast<uint32_t>((seqEndOffsetRaw % B + B) % B);
+        uint32_t seqEndOffset = static_cast<uint32_t>(seqEndOffsetRaw - (seqEndOffsetRaw / B) * B);
         int32_t lastFull = static_cast<int32_t>(seqLen) - static_cast<int32_t>(seqEndOffset);
         if (seqEndOffset == 0 && seqLen >= seqCompletedOffset)
             lastFull -= B;
