@@ -177,8 +177,14 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
-        NnopbaseSetUserHandle(executor, args);
+        NnopbaseSetUserHandle(*executor, args);
     }
+    return ret;
+}
+
+aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                        aclrtStream stream)
+{
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
@@ -193,12 +199,6 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
             }
         }
     }
-    return ret;
-}
-
-aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                        aclrtStream stream)
-{
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllv ret %d.", ret);
     return ret;
