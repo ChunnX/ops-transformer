@@ -32,10 +32,15 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MoeDistributeCombineV2
             OPTIONS --cce-auto-sync=off
-            OPTIONS 
- 	            -I/home/c00851087/shmem/include
- 	            -I/home/c00851087/shmem/src/device/
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend950")  # 适配多版本兼容dump功能
+        add_definitions(-DMC2_EXCEPTION_HANDLER)
+        add_ops_compile_options(
+            OP_NAME MoeDistributeCombineV2
+            OPTIONS 
+                -I/home/c00851087/shmem/include
+                -I/home/c00851087/shmem/src/device/
+        )    
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_combine_v2 ACLNNTYPE aclnn_inner)
