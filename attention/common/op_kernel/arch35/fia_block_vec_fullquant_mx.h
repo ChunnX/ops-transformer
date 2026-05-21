@@ -209,7 +209,9 @@ public:
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
-            outputBuf.SetCrossCore();
+            if (((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) || (runInfo.actSingleLoopS2Size <= 256)) {
+                outputBuf.SetCrossCore();
+            }
             return;
         }
 
