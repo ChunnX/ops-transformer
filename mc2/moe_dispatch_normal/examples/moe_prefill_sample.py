@@ -235,8 +235,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-processes",
         type=int,
-        default=16,
-        help="Number of processes to spawn (default: 16)",
+        default=2,
+        help="Number of processes to spawn (default: 2)",
     )
     parser.add_argument(
         "--num-tokens", type=int, default=1024, help="Number of tokens (default: 1024)"
@@ -248,7 +248,7 @@ if __name__ == "__main__":
         "--num-topk", type=int, default=8, help="Number of top-k experts (default: 8)"
     )
     parser.add_argument(
-        "--num-experts", type=int, default=16, help="Number of experts (default: 16)"
+        "--num-experts", type=int, default=8, help="Number of experts (default: 8)"
     )
     parser.add_argument(
         "--active-ranks",

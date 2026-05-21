@@ -136,10 +136,10 @@ def test_loop(local_rank: int, num_local_ranks: int, args: argparse.Namespace):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test dispatch_layout operator")
-    parser.add_argument("--num-processes", type=int, default=16)
+    parser.add_argument("--num-processes", type=int, default=2)
     parser.add_argument("--num-tokens", type=int, default=1024)
     parser.add_argument("--num-topk", type=int, default=8)
-    parser.add_argument("--num-experts", type=int, default=16)
+    parser.add_argument("--num-experts", type=int, default=8)
     parser.add_argument("--test-type", type=str, default="both", 
                         choices=["dispatch_layout", "get_dispatch_layout", "both"],
                         help="Which test to run")
