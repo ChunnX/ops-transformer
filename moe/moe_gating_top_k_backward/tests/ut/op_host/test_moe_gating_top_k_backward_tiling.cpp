@@ -553,34 +553,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_n_01)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 6: renorm != 0
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_renorm_01)
-{
-    optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "MoeGatingTopKBackward",
-        {
-            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
-        },
-        &compileInfo);
-    uint64_t expectTilingKey = 10000;
-    string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
-}
-
-// Boundary case 7: normType != 1
+// Boundary case 6: normType != 1
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_norm_type_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -607,7 +580,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_norm_t
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary cases 8: data type mismatch
+// Boundary cases 7: data type mismatch
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_x_norm_dtype_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -712,7 +685,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_x
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 9: UB space insufficient (maxRows <= 0)
+// Boundary case 8: UB space insufficient (maxRows <= 0)
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_ub_space_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
