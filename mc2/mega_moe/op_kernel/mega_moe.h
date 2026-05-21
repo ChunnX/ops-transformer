@@ -80,29 +80,10 @@ private:
     __aicore__ inline void ArgSortExpandedRowIdx();
     __aicore__ inline void ResetTokenPerExpert();
     __aicore__ inline void Unpermute();
-    __aicore__ inline void EndSync();
-    __aicore__ inline void EndGMM2Sync();
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void CopyGMToGMPerToken(GlobalTensor<ActivationType> dst,
                 GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<ActivationType> src,
                 int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
-
-    __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen,
-        int32_t& coreOffset, int32_t align = ALIGN_32)
-    {
-        int32_t coreIdx = GetBlockIdx();
-        int32_t coreNum = GetBlockNum() * 2; // 取到vec核总数
-        int32_t lenPerCore = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
-        int32_t lenPerCoreAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerCore), static_cast<uint32_t>(align));
-        coreLen = lenPerCoreAlign;
-        coreOffset = coreIdx * lenPerCoreAlign;
-        if (coreOffset + coreLen >= totalLen) {
-            coreLen = totalLen - coreOffset;
-        }
-        if (coreOffset >= totalLen) {
-            coreLen = 0;
-        }
-    }
 
     __aicore__ inline int64_t TokenPerExpertLayout(int64_t dim0, int64_t dim1, int64_t dim2)
     {
@@ -113,15 +94,6 @@ private:
     {
         do {
             if (ReadGmByPassDCache(sig_addr) != cmp_val) {
-                return;
-            }
-        } while (true);
-    }
-
-    __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
-    {
-        do {
-            if (ReadGmByPassDCache(sig_addr) == cmp_val) {
                 return;
             }
         } while (true);
@@ -347,33 +319,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
     DataCopy(tmpCopyBuffer, groupList_, copyNum);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopy(expertTokenNumsOut_, tmpCopyBuffer, copyNum);
-}
-
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndSync()
-{
-    if (vecSetSyncCom_ == 0) {
-        return;
-    }
-    if constexpr(g_coreType == AIC) {
-        WaitForVector();
-    }
-}
-
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndGMM2Sync()
-{
-    if constexpr(g_coreType == AIV) {
-        return;
-    }
-    if (vecSetSyncCom_ <= 0) {
-        return;
-    } else if (vecSetSyncCom_ == 1) {
-        WaitForVector();
-    } else {
-        WaitForVector(gmm2PingPongIdx_);
-        WaitForVector(1 - gmm2PingPongIdx_);
-    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -770,7 +715,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
-    EndSync();
+    EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -796,7 +741,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 rankId_);
         }
     }
-    EndGMM2Sync();
+    EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
     SyncAll<true>();
 
     // 6. unpermute & 清理win区上放置token的位置
