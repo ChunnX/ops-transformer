@@ -32,7 +32,8 @@ namespace BsaKernelArch35 {
 
 enum class Format {
     TND = 0,
-    BNSD = 1
+    BNSD = 1,
+    BSND = 2
 };
 
 struct BsaKernelParamsArch35 {
