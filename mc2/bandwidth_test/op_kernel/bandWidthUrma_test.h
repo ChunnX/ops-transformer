@@ -150,7 +150,7 @@ private:
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
     __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
-    AscendC::Hcomm<CommEngine::AIV, CommProtocol::URMA> hcomm_; // todo: 通信上下文
+    AscendC::Hcomm<CommProtocol::URMA, CommEngine::AIV> hcomm_; // todo: 通信上下文
 
     uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
