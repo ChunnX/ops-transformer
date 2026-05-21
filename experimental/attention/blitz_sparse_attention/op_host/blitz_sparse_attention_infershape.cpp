@@ -49,11 +49,13 @@ namespace ops {
 // Infers the softmax_lse output shape as {B, N, q_len} for BNSD/BSND/BSH layouts.
 // TND is not supported; returns empty {0} for unsupported layouts.
 static ge::graphStatus InferBsaLseShape(const char *layoutPtr,
-                                         gert::Shape *lseShape,
-                                         const gert::Shape *queryShape,
-                                         const int64_t *numHeadsPtr)
+                                        gert::Shape *lseShape,
+                                        const gert::Shape *queryShape,
+                                        const int64_t *numHeadsPtr)
 {
-    int64_t b = 0, n = 0, s = 0;
+    int64_t b = 0;
+    int64_t n = 0;
+    int64_t s = 0;
     if (strcmp(layoutPtr, "BNSD") == 0 || strcmp(layoutPtr, "BNSD_BSND") == 0) {
         b = (*queryShape)[PFA_LAYOUT_DIM0];
         n = (*queryShape)[PFA_LAYOUT_DIM1];

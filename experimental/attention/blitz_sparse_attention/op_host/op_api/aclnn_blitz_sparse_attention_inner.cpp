@@ -752,11 +752,11 @@ aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(InnerBlitzSparseAttention,
-                DFX_IN(query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKv,
-                        deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
-                        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
-                        sparseMode, innerPrecise),
-                DFX_OUT(attentionOut, softmaxLse));
+                   DFX_IN(query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKv,
+                          deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
+                          numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
+                          sparseMode, innerPrecise),
+                   DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);

@@ -2160,11 +2160,11 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910Base<PFAT>::GetSingleCore
     this->tailParams->preTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.preTokens;
     this->tailParams->nextTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.nextTokens;
     if (isKvContinuous == 1) {
-        actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
-                                (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen +
-                                (int64_t)tilingData->promptAttentionBaseParams.preTokens) ?
-                                (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen + (int64_t)tilingData->promptAttentionBaseParams.preTokens :
-                                actualSeqLengthPerBatch;
+        int64_t kvBudget = (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen +
+                           (int64_t)tilingData->promptAttentionBaseParams.preTokens;
+        actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch > kvBudget)
+                                      ? kvBudget
+                                      : actualSeqLengthPerBatch;
     } else {
         actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
                                 (int64_t)s2InCurrentBatch + (int64_t)tilingData->promptAttentionBaseParams.preTokens) ?

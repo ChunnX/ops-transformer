@@ -59,9 +59,9 @@ aclTensor* create_acl_tensor(const at::Tensor& tensor) {
  * @param [in] key Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] value Tensor of shape [B, N, T, D] (fp16/bf16)
  * @param [in] atten_mask Tensor of shape [B, N, S, T] (bool, optional)
- * @param [in] sabi Tensor of shape [B, N, ceil(S / BLOCK_SIZE_Q), kept_kv_tiles] (uint16, padded with 65535, 
+ * @param [in] sabi Tensor of shape [B, N, ceil(S / BLOCK_SIZE_Q), kept_kv_tiles] (uint16, padded with 65535,
                     optional). Each entry indexes a BLOCK_SIZE_KV-wide KV chunk.
- * @param [in] block_shape pair [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Each value is one of {128, 256, 512, 1024}; 
+ * @param [in] block_shape pair [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Each value is one of {128, 256, 512, 1024}
                     all 16 combinations supported. Default: [128, 128].
  * @param [in] actual_seq_lengths vector of actual sequence lengths
  * @param [in] actual_seq_lengths_kv vector of actual sequence lengths for key/value
@@ -175,13 +175,21 @@ std::tuple<at::Tensor, at::Tensor> blitz_sparse_attention(
     if (softmax_lse_flag) {
         TORCH_CHECK(input_layout == "BNSD" || input_layout == "BSH" || input_layout == "BSND",
                     "softmax_lse_flag=True only supported for BNSD/BSH/BSND layouts");
-        int64_t B, N, S;
+        int64_t B = 0;
+        int64_t N = 0;
+        int64_t S = 0;
         if (input_layout == "BNSD") {
-            B = query.size(0); N = num_heads; S = query.size(2);
+            B = query.size(0);
+            N = num_heads;
+            S = query.size(2);
         } else if (input_layout == "BSND") {
-            B = query.size(0); N = num_heads; S = query.size(1);
+            B = query.size(0);
+            N = num_heads;
+            S = query.size(1);
         } else {  // BSH
-            B = query.size(0); N = num_heads; S = query.size(1);
+            B = query.size(0);
+            N = num_heads;
+            S = query.size(1);
         }
         lse_out = torch::empty({B, N, S},
                                torch::dtype(torch::kFloat32).device(query.device()));
@@ -289,7 +297,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             num_key_value_heads (int, optional): Number of key/value heads. Default: 0
             sparse_mode (int, optional): sparse mode = 0,1,2,...7 choice. Default: 0
             softmax_lse_flag (bool, optional): If True, compute softmax LSE output. Default: False
-            block_shape (list[int], optional): [BLOCK_SIZE_Q, BLOCK_SIZE_KV] sabi-index granularity. 
+            block_shape (list[int], optional): [BLOCK_SIZE_Q, BLOCK_SIZE_KV] sabi-index granularity.
                         Each value is one of {128, 256, 512, 1024}; all 16 combinations supported. Default: [128, 128].
 
         Returns:

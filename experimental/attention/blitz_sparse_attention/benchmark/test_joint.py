@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-# BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 """
 test_joint.py – verifies attention_out and softmax_lse from the *same* BSA call.
 
@@ -26,12 +25,25 @@ Run with:
     pytest benchmark/test_joint.py -v
 """
 
+import logging
+import os
 import math
+import sys
+from collections import namedtuple
 import pytest
 import torch
 import torch_npu
 import torch_bsa
-from benchmark import create_attention_mask, FrameWidths
+from benchmark import create_attention_mask, FrameWidths, MaskSpec
+
+# Bundle of QKV tensors plus the kernel-config scalars (num_heads, scale,
+# seq_len) shared by every `_run_*` helper. Passing this single object keeps
+# helpers under the 5-argument limit (G.FNM.03) and lets fields keep
+# snake_case names (G.NAM.01) without exposing dim-letter args like `H` / `S`.
+AttnInputs = namedtuple("AttnInputs", ["q", "k", "v", "num_heads", "scale", "seq_len"])
+
+logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
+logger = logging.getLogger(__name__)
 
 SEED = 42
 DEVICE = "npu:0"
@@ -39,7 +51,7 @@ INPUT_LAYOUT = "BNSD"
 # block_shape pairs exercised by the suite. All 16 combinations of
 # {128, 256, 512, 1024} × {128, 256, 512, 1024} share the same kernel binary.
 BLOCK_SHAPES = [(bsq, bskv)
-                for bsq  in (128, 256, 512, 1024)
+                for bsq in (128, 256, 512, 1024)
                 for bskv in (128, 256, 512, 1024)]
 torch.npu.set_device(DEVICE)
 
@@ -57,7 +69,7 @@ def block_shape(request):
 # the same fp16-noise pattern.
 OUT_ATOL = {
     torch.bfloat16: 1e-3,
-    torch.float16:  1e-2,
+    torch.float16: 1e-2,
 }
 SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA: slight headroom over 0.01
                          # for block-boundary rounding (BSA skips blocks; PFA masks with -inf).
@@ -68,25 +80,22 @@ SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA: slight headroom over 0.0
 # across the sweep is ≈ 0.005.
 LSE_ATOL = {
     torch.bfloat16: 1e-5,
-    torch.float16:  5e-3,
+    torch.float16: 5e-3,
 }
-
-
-import os as _os
 
 
 def _log_diff(label: str, a, b) -> float:
     """Compute max |a - b| for every comparison site. When env var
-    BSA_LOG_DIFFS=1 is set, also print a `[DIFF]` line so the suite doubles as
+    BSA_LOG_DIFFS=1 is set, also log a `[DIFF]` line so the suite doubles as
     a diff-distribution probe (pipe to `grep [DIFF]` to harvest the empirical
     noise floor at every site). The logging is opt-in because the extra
-    CPU-side print can perturb cube/vector scheduling enough to expose
+    CPU-side logging can perturb cube/vector scheduling enough to expose
     intermittent bf16 allocator-slack noise. Returns the max_diff scalar so
     the caller can reuse it in `pytest.fail` messages."""
     diff = (a - b).abs()
     max_diff = diff.max().item()
-    if _os.environ.get("BSA_LOG_DIFFS"):
-        print(f"[DIFF] {label}: max_diff={max_diff:.6g}", flush=True)
+    if os.environ.get("BSA_LOG_DIFFS"):
+        logger.info(f"[DIFF] {label}: max_diff={max_diff:.6g}")
     return max_diff
 
 
@@ -94,11 +103,11 @@ NO_FRAME = FrameWidths(0, 0, 0, 0)
 
 # Dense: varied H (1,2,4,8) and S (1024–16384); both dtypes → 14 tests
 DENSE_SHAPES = [
-    (1, 1,  1024, 128),
-    (1, 2,  2048, 128),
-    (1, 4,  4096, 128),
-    (1, 8,  4096, 128),   # high head count
-    (1, 4,  8192, 128),   # longer sequence, moderate H
+    (1, 1, 1024, 128),
+    (1, 2, 2048, 128),
+    (1, 4, 4096, 128),
+    (1, 8, 4096, 128),   # high head count
+    (1, 4, 8192, 128),   # longer sequence, moderate H
     (1, 2, 12288, 128),   # matches test_lse.py shapes
     (1, 8, 16384, 128),   # high H + long sequence
 ]
@@ -121,62 +130,62 @@ DENSE_DTYPES = [torch.bfloat16, torch.float16]
 #   (1,1,16384,128)       0.7       128          38  ✓
 #   (1,1,16384,128)       0.9       128          13  ✗  excluded
 SPARSE_CASES = [
-    ((1, 1,  4096, 128), 0.3),
-    ((1, 1,  4096, 128), 0.5),
-    ((1, 1,  8192, 128), 0.3),
-    ((1, 1,  8192, 128), 0.5),
-    ((1, 1,  8192, 128), 0.7),
+    ((1, 1, 4096, 128), 0.3),
+    ((1, 1, 4096, 128), 0.5),
+    ((1, 1, 8192, 128), 0.3),
+    ((1, 1, 8192, 128), 0.5),
+    ((1, 1, 8192, 128), 0.7),
     ((1, 1, 16384, 128), 0.7),
 ]
 
 
 # ── Kernel helpers ────────────────────────────────────────────────────────────
 
-def _run_bsa(q, k, v, H, scale, S, block_shape, sabi=None):
-    B = q.shape[0]
-    actual_seq = [S] * B
+def _run_bsa(inp: AttnInputs, block_shape, sabi=None):
+    batch = inp.q.shape[0]
+    actual_seq = [inp.seq_len] * batch
     return torch_bsa.blitz_sparse_attention(
-        q, k, v,
+        inp.q, inp.k, inp.v,
         sabi=sabi,
         actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
-        num_heads=H, num_key_value_heads=H,
-        input_layout=INPUT_LAYOUT, scale_value=scale,
+        num_heads=inp.num_heads, num_key_value_heads=inp.num_heads,
+        input_layout=INPUT_LAYOUT, scale_value=inp.scale,
         sparse_mode=0, softmax_lse_flag=True,
         block_shape=list(block_shape),
     )
 
 
-def _run_fias_dense(q, k, v, H, scale, S):
-    B = q.shape[0]
-    actual_seq = [S] * B
+def _run_fias_dense(inp: AttnInputs):
+    batch = inp.q.shape[0]
+    actual_seq = [inp.seq_len] * batch
     out, lse = torch_npu.npu_fused_infer_attention_score(
-        q, k, v,
-        num_heads=H, scale=scale,
-        input_layout=INPUT_LAYOUT, num_key_value_heads=H,
+        inp.q, inp.k, inp.v,
+        num_heads=inp.num_heads, scale=inp.scale,
+        input_layout=INPUT_LAYOUT, num_key_value_heads=inp.num_heads,
         actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
         softmax_lse_flag=True,
     )
     return out, lse.squeeze(-1)   # [B,H,S,1] → [B,H,S]
 
 
-def _run_pfa_sparse(q, k, v, H, scale, pfa_atten_mask):
+def _run_pfa_sparse(inp: AttnInputs, pfa_atten_mask):
     """npu_fusion_attention (PFA) with sparse_mode=1 — same reference as test_attn.py."""
     return torch_npu.npu_fusion_attention(
-        q, k, v,
-        head_num=H, input_layout=INPUT_LAYOUT, scale=scale,
+        inp.q, inp.k, inp.v,
+        head_num=inp.num_heads, input_layout=INPUT_LAYOUT, scale=inp.scale,
         pre_tockens=0, next_tockens=0,
         atten_mask=pfa_atten_mask, sparse_mode=1,
     )[0]
 
 
-def _run_fias_sparse(q, k, v, H, scale, S, pfa_atten_mask):
+def _run_fias_sparse(inp: AttnInputs, pfa_atten_mask):
     """FIAS sparse_mode=1 — only used for the LSE reference."""
-    B = q.shape[0]
-    actual_seq = [S] * B
+    batch = inp.q.shape[0]
+    actual_seq = [inp.seq_len] * batch
     out, lse = torch_npu.npu_fused_infer_attention_score(
-        q, k, v,
-        num_heads=H, scale=scale,
-        input_layout=INPUT_LAYOUT, num_key_value_heads=H,
+        inp.q, inp.k, inp.v,
+        num_heads=inp.num_heads, scale=inp.scale,
+        input_layout=INPUT_LAYOUT, num_key_value_heads=inp.num_heads,
         actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
         atten_mask=pfa_atten_mask, sparse_mode=1,
         softmax_lse_flag=True,
@@ -192,17 +201,18 @@ def _run_fias_sparse(q, k, v, H, scale, S, pfa_atten_mask):
 def test_joint_dense(shape, dtype, block_shape):
     """Dense BSA: attention_out and softmax_lse both match FIAS in one call."""
     torch.manual_seed(SEED)
-    B, H, S, D = shape
-    scale = 1.0 / math.sqrt(D)
-    q = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
-    k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
-    v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
+    b, h, s, d = shape
+    scale = 1.0 / math.sqrt(d)
+    q = torch.randn(b, h, s, d, dtype=dtype, device=DEVICE)
+    k = torch.randn(b, h, s, d, dtype=dtype, device=DEVICE)
+    v = torch.randn(b, h, s, d, dtype=dtype, device=DEVICE)
 
-    bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S, block_shape)
-    ref_out, ref_lse = _run_fias_dense(q, k, v, H, scale, S)
+    inp = AttnInputs(q=q, k=k, v=v, num_heads=h, scale=scale, seq_len=s)
+    bsa_out, bsa_lse = _run_bsa(inp, block_shape)
+    ref_out, ref_lse = _run_fias_dense(inp)
 
-    assert bsa_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {bsa_lse.shape}"
-    assert bsa_lse.dtype == torch.float32,         f"lse dtype wrong: {bsa_lse.dtype}"
+    assert bsa_lse.shape == torch.Size([b, h, s]), f"lse shape wrong: {bsa_lse.shape}"
+    assert bsa_lse.dtype == torch.float32, f"lse dtype wrong: {bsa_lse.dtype}"
 
     atol = OUT_ATOL[dtype]
     a, b = bsa_out.cpu(), ref_out.cpu()
@@ -229,38 +239,40 @@ def test_joint_dense(shape, dtype, block_shape):
 def test_joint_sparse(shape, sparsity, block_shape):
     """Sparse BSA (H=1, bf16): attention_out and softmax_lse both match FIAS sparse_mode=1."""
     torch.manual_seed(SEED)
-    B, H, S, D = shape
-    assert H == 1
+    b, h, s, d = shape
+    assert h == 1
     dtype = torch.bfloat16
-    scale = 1.0 / math.sqrt(D)
+    scale = 1.0 / math.sqrt(d)
     bs_q, bs_kv = block_shape
 
     try:
-        pfa_atten_mask, _, sabi, *_ = create_attention_mask(
-            B, H, S, S, D, sparsity,
-            block_size_q=bs_q, block_size_kv=bs_kv,
-            frame=NO_FRAME, device="cpu", emit_atten_mask=True,
+        mask = create_attention_mask(
+            MaskSpec(b=b, h=h, s_q=s, s_kv=s, d=d,
+                     block_size_q=bs_q, block_size_kv=bs_kv,
+                     sparsity=sparsity, frame=NO_FRAME),
+            device="cpu", emit_atten_mask=True,
         )
     except ValueError as e:
         pytest.skip(f"sparsity {sparsity} unsatisfiable for {block_shape}: {e}")
-    sabi            = sabi.to(DEVICE)
-    pfa_atten_mask  = pfa_atten_mask.to(DEVICE)
+    sabi = mask.sabi.to(DEVICE)
+    pfa_atten_mask = mask.pfa_atten_mask.to(DEVICE)
 
-    q = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
-    k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
-    v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
+    q = torch.randn(b, h, s, d, dtype=dtype, device=DEVICE)
+    k = torch.randn(b, h, s, d, dtype=dtype, device=DEVICE)
+    v = torch.randn(b, h, s, d, dtype=dtype, device=DEVICE)
 
-    bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S, block_shape, sabi=sabi)
+    inp = AttnInputs(q=q, k=k, v=v, num_heads=h, scale=scale, seq_len=s)
+    bsa_out, bsa_lse = _run_bsa(inp, block_shape, sabi=sabi)
     # attention_out: compare against npu_fusion_attention (PFA) — same reference
     # as test_attn.py; PFA and BSA share implementation lineage so their outputs
     # FIAS uses a different tiling
     # and diverges from BSA when the softmax denominator is small.
-    pfa_out           = _run_pfa_sparse(q, k, v, H, scale, pfa_atten_mask)
+    pfa_out = _run_pfa_sparse(inp, pfa_atten_mask)
     # softmax_lse: compare against FIAS — same reference as test_lse.py.
-    _, fias_lse       = _run_fias_sparse(q, k, v, H, scale, S, pfa_atten_mask)
+    _, fias_lse = _run_fias_sparse(inp, pfa_atten_mask)
 
-    assert bsa_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {bsa_lse.shape}"
-    assert bsa_lse.dtype == torch.float32,         f"lse dtype wrong: {bsa_lse.dtype}"
+    assert bsa_lse.shape == torch.Size([b, h, s]), f"lse shape wrong: {bsa_lse.shape}"
+    assert bsa_lse.dtype == torch.float32,  f"lse dtype wrong: {bsa_lse.dtype}"
 
     a, b = bsa_out.cpu(), pfa_out.cpu()
     max_diff_out = _log_diff(
@@ -286,17 +298,13 @@ def test_joint_sparse(shape, sparsity, block_shape):
 # ── __main__ smoke tests ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import logging
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    log = logging.getLogger(__name__)
-
     SMOKE_BS = (128, 128)
 
     test_joint_dense((1, 2, 2048, 128), torch.bfloat16, SMOKE_BS)
-    log.info("dense joint bf16 passed")
+    logger.info("dense joint bf16 passed")
 
     test_joint_dense((1, 2, 2048, 128), torch.float16, SMOKE_BS)
-    log.info("dense joint fp16 passed")
+    logger.info("dense joint fp16 passed")
 
     test_joint_sparse((1, 1, 4096, 128), 0.5, SMOKE_BS)
-    log.info("sparse joint H=1 bf16 sp=50% passed")
+    logger.info("sparse joint H=1 bf16 sp=50% passed")

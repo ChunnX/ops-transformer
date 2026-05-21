@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-# BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 """
 Benchmark driver for torch_bsa.blitz_sparse_attention.
 
@@ -33,6 +32,22 @@ import torch_npu
 import torch_bsa
 
 FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
+
+# Bundle of inputs for `create_attention_mask` — keeps the helper under the
+# 5-arg cap (G.FNM.03). Combines the shape dims, block-tile sizes, target
+# sparsity, and frame border into one named value.
+MaskSpec = namedtuple(
+    "MaskSpec",
+    ["b", "h", "s_q", "s_kv", "d", "block_size_q", "block_size_kv", "sparsity", "frame"],
+)
+
+# Bundle of outputs from `create_attention_mask`. `bsa_atten_mask` is always
+# None for the block-sparse pattern (per-tile masking comes from sabi); the
+# field is kept for symmetry with the launcher signature.
+AttentionMask = namedtuple(
+    "AttentionMask",
+    ["pfa_atten_mask", "bsa_atten_mask", "sabi", "sparse_mode", "scale", "pre_tokens", "next_tokens"],
+)
 
 # Configure logging — write to stdout (not the default stderr) so the result
 # table can be piped into `plot.py`:
@@ -94,10 +109,10 @@ SABI_SORTED = True
 # < 1 block in every direction, so right_cols / bottom_rows round up to 1.
 #
 # Per-pair entry math:
-#   top_rows    = ceil( 3600 / BLOCK_SIZE_Q  )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
-#   left_cols   = ceil( 3600 / BLOCK_SIZE_KV )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
-#   right_cols  = ceil(    6 / BLOCK_SIZE_KV )  = 1
-#   bottom_rows = ceil(    6 / BLOCK_SIZE_Q  )  = 1
+#   top_rows    is ceil( 3600 / BLOCK_SIZE_Q  )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
+#   left_cols   is ceil( 3600 / BLOCK_SIZE_KV )  = 29 / 15 / 8 / 4  for 128 / 256 / 512 / 1024
+#   right_cols  is ceil(    6 / BLOCK_SIZE_KV )  = 1
+#   bottom_rows is ceil(    6 / BLOCK_SIZE_Q  )  = 1
 #
 # So the same conceptual "first 3600 + last 6 tokens" frame produces a forced-
 # token footprint of ≈ 3600–4096 tokens per side at every block_shape pair,
@@ -106,15 +121,15 @@ SABI_SORTED = True
 # budget can be very tight and the host-side feasibility check may reject the
 # configuration; `generate_sparse_blocks_by_row` raises ValueError in that case.
 _LEFT_COLS_BY_KV = {128: 29, 256: 15, 512: 8, 1024: 4}
-_TOP_ROWS_BY_Q   = {128: 29, 256: 15, 512: 8, 1024: 4}
+_TOP_ROWS_BY_Q = {128: 29, 256: 15, 512: 8, 1024: 4}
 FRAMES_BY_BLOCK_SHAPE = {
     (bsq, bskv): FrameWidths(
-        left_cols   = _LEFT_COLS_BY_KV[bskv],
-        right_cols  = 1,
-        top_rows    = _TOP_ROWS_BY_Q[bsq],
+        left_cols = _LEFT_COLS_BY_KV[bskv],
+        right_cols = 1,
+        top_rows = _TOP_ROWS_BY_Q[bsq],
         bottom_rows = 1,
     )
-    for bsq  in _TOP_ROWS_BY_Q
+    for bsq in _TOP_ROWS_BY_Q
     for bskv in _LEFT_COLS_BY_KV
 }
 
@@ -131,9 +146,9 @@ PRINT_WIDTH = 8
 RUN_REFERENCE = False  
 
 # Which reference kernel to compare/benchmark against. One of:
-#   "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
-#   "npu_fusion_attention"            - torch_npu.npu_fusion_attention (PFA)
-#   "npu_fused_infer_attention_score" - torch_npu.npu_fused_infer_attention_score (FIAS)
+#  "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
+#  "npu_fusion_attention"            - torch_npu's npu_fusion_attention (PFA)
+#  "npu_fused_infer_attention_score" - torch_npu's npu_fused_infer_attention_score (FIAS)
 TORCH_REFERENCE = "npu_fusion_attention"
 
 # ===== End of Parameter Sweep Definitions =====
@@ -200,13 +215,13 @@ def ref_blitz_sparse_attention_launcher(
             )
         # FIAS expects per-batch actual sequence lengths; derive them from q/k shape according to input_layout.
         if input_layout == "BNSD":
-            B, S_q, S_kv = q.shape[0], q.shape[2], k.shape[2]
+            batch, s_q, s_kv = q.shape[0], q.shape[2], k.shape[2]
         elif input_layout in ("BSND", "BSH"):
-            B, S_q, S_kv = q.shape[0], q.shape[1], k.shape[1]
+            batch, s_q, s_kv = q.shape[0], q.shape[1], k.shape[1]
         else:
             raise ValueError(f"Unsupported input_layout for FIAS reference: {input_layout!r}")
-        actual_seq_q = [S_q] * B
-        actual_seq_kv = [S_kv] * B
+        actual_seq_q = [s_q] * batch
+        actual_seq_kv = [s_kv] * batch
         out, lse = torch_npu.npu_fused_infer_attention_score(
             q, k, v,
             num_heads=head_num, scale=scale,
@@ -224,6 +239,58 @@ def ref_blitz_sparse_attention_launcher(
     )
 
 
+def _frame_exceeds_dims(frame, n_block_rows, n_block_cols):
+    """True if any frame side is wider/taller than the available block grid."""
+    cols_overflow = max(frame.left_cols, frame.right_cols) > n_block_cols
+    rows_overflow = max(frame.top_rows, frame.bottom_rows) > n_block_rows
+    return cols_overflow or rows_overflow
+
+
+def _compute_frame_sets(frame, n_block_rows, n_block_cols):
+    """Return (sparse_forced_col_ids, sparse_candidate_col_ids, dense_row_ids).
+
+    `frame=None` means no border — all rows are sparse and all cols are
+    candidates with nothing forced. Otherwise the left/right cols are forced
+    in every sparse row, and the top/bottom rows are forced fully dense.
+    """
+    if frame is None:
+        return set(), list(range(n_block_cols)), set()
+    if _frame_exceeds_dims(frame, n_block_rows, n_block_cols):
+        raise ValueError(
+            f"Frame configuration exceeds block dimensions: "
+            f"{frame=}, {n_block_rows=}, {n_block_cols=}"
+        )
+    # Forced column indices by the frame (left and right borders) for EVERY sparse row:
+    sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
+    sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
+    sparse_forced_col_ids = sparse_forced_left | sparse_forced_right
+    sparse_candidate_col_ids = sorted(set(range(n_block_cols)) - sparse_forced_col_ids)
+    # Row indices forced fully dense by the frame (top and bottom borders):
+    dense_top = set(range(min(frame.top_rows, n_block_rows)))
+    dense_bottom = set(range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows))
+    dense_row_ids = dense_top | dense_bottom
+    return sparse_forced_col_ids, sparse_candidate_col_ids, dense_row_ids
+
+
+def _build_sparse_row(rng, frame_sets, n_kept_per_row, n_block_cols, pad_value):
+    """Pick the cols for a single sparse row: forced frame cols + `n_kept_per_row`
+    random candidates, sorted, then padded out to width n_block_cols."""
+    forced, candidates, _ = frame_sets
+    if n_kept_per_row <= 0:
+        cols = sorted(forced)
+    else:
+        sparse_selected = rng.sample(candidates, n_kept_per_row)
+        cols = sorted(list(forced) + sparse_selected)
+    return cols + [pad_value] * (n_block_cols - len(cols))
+
+
+def _shuffle_row(rng, cols, pad_value):
+    """Shuffle non-pad entries in-place (for sort_within_row=False)."""
+    kept = [c for c in cols if c != pad_value]
+    rng.shuffle(kept)
+    return kept + [pad_value] * (len(cols) - len(kept))
+
+
 def generate_sparse_blocks_by_row(
     s_q: int,
     s_kv: int,
@@ -236,10 +303,10 @@ def generate_sparse_blocks_by_row(
     sort_within_row: bool = True,
 ) -> list[list[int]]:
     """
-    Builds the sabi blocks (sparse blocks selection) of a single head, with a "frame" of 
-    always-included blocks and the rest of the blocks randomly selected to meet the target 
-    sparsity 
-    
+    Builds the sabi blocks (sparse blocks selection) of a single head, with a "frame" of
+    always-included blocks and the rest of the blocks randomly selected to meet the target
+    sparsity
+
     Note: blocks from the frame + sparsely selected blocks are both taken into account when computing the sparsity.
 
     Output:
@@ -256,28 +323,8 @@ def generate_sparse_blocks_by_row(
     if n_block_rows == 0 or n_block_cols == 0:
         raise ValueError(f"Invalid block configuration: {s_q=}, {s_kv=}, {block_size_q=}, {block_size_kv=}")
 
-    if frame is not None:
-        if (frame.left_cols > n_block_cols or frame.right_cols > n_block_cols or
-            frame.top_rows > n_block_rows or frame.bottom_rows > n_block_rows):
-            raise ValueError(
-                f"Frame configuration exceeds block dimensions: "
-                f"{frame=}, {n_block_rows=}, {n_block_cols=}"
-            )
-
-        # Forced column indices by the frame (left and right borders) for EVERY sparse row:
-        sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
-        sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
-        sparse_forced_col_ids = sparse_forced_left | sparse_forced_right
-        sparse_candidate_col_ids = sorted(set(range(n_block_cols)) - sparse_forced_col_ids)
-
-        # Rows indices which are forced to be dense by the frame (top and bottom borders):
-        dense_top = set(range(min(frame.top_rows, n_block_rows)))
-        dense_bottom = set(range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows))
-        dense_row_ids = dense_top | dense_bottom
-    else:
-        sparse_forced_col_ids = set()
-        sparse_candidate_col_ids = list(range(n_block_cols))
-        dense_row_ids = set()
+    frame_sets = _compute_frame_sets(frame, n_block_rows, n_block_cols)
+    sparse_forced_col_ids, _, dense_row_ids = frame_sets
 
     n_dense_rows = len(dense_row_ids)
     n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
@@ -291,44 +338,39 @@ def generate_sparse_blocks_by_row(
             f"frame. Consider adjusting frame sizes or target sparsity."
         )
 
-    # Make sure that allocating `n_kept_row_blocks` in every sparsable row (inside the borders of
-    # the frame) will not violate the required sparsity.
     n_max_kept_blocks = int(math.floor(n_total_blocks * (1.0 - sparsity)))
     n_max_kept_blocks_excluding_frame = n_max_kept_blocks - n_frame_forced_blocks
     n_kept_row_blocks_per_row = (
         math.ceil(n_max_kept_blocks_excluding_frame / n_sparse_rows) if n_sparse_rows > 0 else 0
     )
-    
-    # Construct the "sabi" blocks of the current head by choosing the sparse blocks randomly
-    rows: list[list[int]] = []
+
     rng = random.Random(seed)
+    rows: list[list[int]] = []
     for r in range(n_block_rows):
         if r in dense_row_ids:
             cols = list(range(n_block_cols))
         else:
-            if n_kept_row_blocks_per_row <= 0:
-                cols = sorted(sparse_forced_col_ids)
-            else:
-                sparse_selected_col_ids = rng.sample(sparse_candidate_col_ids, n_kept_row_blocks_per_row)
-                cols = sorted(list(sparse_forced_col_ids) + sparse_selected_col_ids)
-            cols = cols + [pad_value] * (n_block_cols - len(cols))
+            cols = _build_sparse_row(rng, frame_sets, n_kept_row_blocks_per_row, n_block_cols, pad_value)
         if not sort_within_row:
-            kept = [c for c in cols if c != pad_value]
-            rng.shuffle(kept)
-            cols = kept + [pad_value] * (len(cols) - len(kept))
+            cols = _shuffle_row(rng, cols, pad_value)
         rows.append(cols)
 
     return rows
 
 
+BlockGrid = namedtuple("BlockGrid", ["s_q", "s_kv", "block_size_q", "block_size_kv"])
+
+
 def is_block_sparse_pattern_feasible(
-    s_q: int, s_kv: int, block_size_q: int, block_size_kv: int,
-    frame, sparsity: float,
+    grid: BlockGrid, frame, sparsity: float,
     *, require_nonempty_per_row: bool = True,
 ) -> bool:
-    """Return True iff `generate_sparse_blocks_by_row` will (a) not raise
+    """Return True iff `generate_sparse_blocks_by_row` is satisfiable for the given grid.
+
+    `grid` bundles (s_q, s_kv, block_size_q, block_size_kv); see `BlockGrid`.
+    The check returns True iff `generate_sparse_blocks_by_row` will (a) not raise
     ValueError and (b) produce a sabi where every Q-row gets at least one kept
-    block (when `require_nonempty_per_row`).  Pure arithmetic — no tensor
+    block (when `require_nonempty_per_row`). Pure arithmetic — no tensor
     allocation — so it is safe to call from pytest parametrize lists at module
     import time.
 
@@ -342,10 +384,11 @@ def is_block_sparse_pattern_feasible(
           n_max_kept - n_forced  >=  1   when  n_sparse_rows > 0
 
     Set `require_nonempty_per_row=False` if you intentionally want to test the
-    "row fully masked" path (and accept BSA returning its sentinel)."""
+    "row fully masked" path (and accept BSA returning its sentinel).
+    """
     sparsity = max(0.0, min(1.0, float(sparsity)))
-    n_block_rows = math.ceil(s_q / block_size_q)
-    n_block_cols = math.ceil(s_kv / block_size_kv)
+    n_block_rows = math.ceil(grid.s_q / grid.block_size_q)
+    n_block_cols = math.ceil(grid.s_kv / grid.block_size_kv)
     if n_block_rows == 0 or n_block_cols == 0:
         return False
     n_total = n_block_rows * n_block_cols
@@ -357,13 +400,12 @@ def is_block_sparse_pattern_feasible(
     else:
         # Frame configuration must fit inside the block grid (mirrors the
         # explicit check in generate_sparse_blocks_by_row).
-        if (frame.left_cols > n_block_cols or frame.right_cols > n_block_cols or
-            frame.top_rows > n_block_rows or frame.bottom_rows > n_block_rows):
+        if _frame_exceeds_dims(frame, n_block_rows, n_block_cols):
             return False
-        sparse_forced_left  = set(range(min(frame.left_cols, n_block_cols)))
+        sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
         sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
         n_forced_cols = len(sparse_forced_left | sparse_forced_right)
-        dense_top    = set(range(min(frame.top_rows, n_block_rows)))
+        dense_top = set(range(min(frame.top_rows, n_block_rows)))
         dense_bottom = set(range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows))
         n_dense_rows = len(dense_top | dense_bottom)
         n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
@@ -597,39 +639,42 @@ def gen_pfa_inputs(
     return q, k, v, actseqlen, actseqlenkv
 
 
-def create_attention_mask(b, h, s_q, s_kv, d, sparsity,
-                          block_size_q: int, block_size_kv: int, frame: FrameWidths,
-                          device: str, emit_atten_mask: bool = True):
+def create_attention_mask(spec: MaskSpec, device: str, emit_atten_mask: bool = True) -> AttentionMask:
     """
     Build the block-sparse `sabi` tensor (and the matching token-level
     `pfa_atten_mask` if `emit_atten_mask`) for the batched block-sparse pattern
-    that BSA expects.  Each batch entry gets an independent random sabi seeded
-    by `BLOCK_MASK_SEED + bidx`; `frame` forces a fixed sink/streaming border on
-    top of the sparsity budget.
-
-    Returns: (pfa_atten_mask, bsa_atten_mask, sabi, sparse_mode, scale,
-              pre_tokens, next_tokens). `bsa_atten_mask` is always None for
-    the block-sparse pattern (BSA's per-tile masking comes from the sabi).
+    that BSA expects. Each batch entry gets an independent random sabi seeded
+    by `BLOCK_MASK_SEED + bidx`; `spec.frame` forces a fixed sink/streaming
+    border on top of the sparsity budget.
     """
-    scale = 1.0 / math.sqrt(float(d))
+    scale = 1.0 / math.sqrt(float(spec.d))
     pre_tok, post_tok = 2147483647, 0
     bsa_atten_mask = None
     sm = 0
 
     per_batch_head_block_indices = [
-        generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, sparsity, h,
-                                               frame, BLOCK_MASK_SEED + bidx,
-                                               sort_within_row=SABI_SORTED)
-        for bidx in range(b)
+        generate_sparse_blocks_by_row_per_head(
+            spec.s_q, spec.s_kv, spec.block_size_q, spec.block_size_kv,
+            spec.sparsity, spec.h, spec.frame, BLOCK_MASK_SEED + bidx,
+            sort_within_row=SABI_SORTED,
+        )
+        for bidx in range(spec.b)
     ]
     sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
     pfa_atten_mask = None
-    if emit_atten_mask and sparsity > 0:
-        pfa_atten_mask = torch.cat([make_block_mask_per_head(
-                                 s_q, s_kv, block_size_q, block_size_kv, bi, device=device
-                                 ) for bi in per_batch_head_block_indices], dim=0)
+    if emit_atten_mask and spec.sparsity > 0:
+        pfa_atten_mask = torch.cat([
+            make_block_mask_per_head(
+                spec.s_q, spec.s_kv, spec.block_size_q, spec.block_size_kv,
+                bi, device=device,
+            )
+            for bi in per_batch_head_block_indices
+        ], dim=0)
 
-    return pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok
+    return AttentionMask(
+        pfa_atten_mask=pfa_atten_mask, bsa_atten_mask=bsa_atten_mask, sabi=sabi,
+        sparse_mode=sm, scale=scale, pre_tokens=pre_tok, next_tokens=post_tok,
+    )
 
 
 def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int, n_repeat: int):
@@ -680,18 +725,16 @@ def _fmt_or_na(value, width, spec=".2f"):
     return f"{value:{width}{spec}}"
 
 
-def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params, block_shape):
-    sm, pre_tok, post_tok = sparsity_params
-
+def _make_our_fn(mask: AttentionMask, h, block_shape):
     def fn(q, k, v, seq, seqkv):
         # Returns (attention_out, softmax_lse); benchmark only needs attention_out
         out, _ = torch_bsa.blitz_sparse_attention(
             q, k, v,
-            sabi=sabi, actual_seq_lengths=seq,
+            sabi=mask.sabi, actual_seq_lengths=seq,
             actual_seq_lengths_kv=seqkv, num_heads=h, num_key_value_heads=h,
-            input_layout=INPUT_LAYOUT, scale_value=scale,
-            atten_mask=atten_mask, sparse_mode=sm,
-            pre_tokens=pre_tok, next_tokens=post_tok,
+            input_layout=INPUT_LAYOUT, scale_value=mask.scale,
+            atten_mask=mask.bsa_atten_mask, sparse_mode=mask.sparse_mode,
+            pre_tokens=mask.pre_tokens, next_tokens=mask.next_tokens,
             softmax_lse_flag=False, # False = don't comppute the 2nd LSE output
             block_shape=list(block_shape),
         )
@@ -709,18 +752,65 @@ def _make_ref_fn(h, scale, atten_mask, run_ref_sparsity_0):
     return fn
 
 
-def benchmark_blitz_sparse_attention():
-    run_our = True          # blitz_sparse_attention
-    run_ref = RUN_REFERENCE # PyTorch reference
-    n_warmup = N_WARMUP
-    n_repeat = N_REPEATS
+_BenchCell = namedtuple(
+    "_BenchCell",
+    ["bs_label", "block_shape", "frame_for_shape", "b", "h", "s_q", "s_kv", "d", "sparsity"],
+)
+_BenchCfg = namedtuple("_BenchCfg", ["run_our", "run_ref", "n_warmup", "n_repeat"])
 
-    if not run_our and not run_ref:
+
+def _format_frame_str(frame, sparsity):
+    """Compact "(L,R,T,B)" or "-" when frame is unset or sparsity is dense."""
+    if frame is None or sparsity == 0:
+        return "-"
+    return (f"({frame.left_cols},{frame.right_cols},"
+            f"{frame.top_rows},{frame.bottom_rows})")
+
+
+def _run_one_benchmark_cell(cell: _BenchCell, cfg: _BenchCfg):
+    """Build the mask, time our/ref kernels, and emit one results row."""
+    mask = create_attention_mask(
+        MaskSpec(b=cell.b, h=cell.h, s_q=cell.s_q, s_kv=cell.s_kv, d=cell.d,
+                 block_size_q=cell.block_shape[0], block_size_kv=cell.block_shape[1],
+                 sparsity=cell.sparsity, frame=cell.frame_for_shape),
+        device=DEVICE, emit_atten_mask=cfg.run_ref,
+    )
+    if PRINT_MASK and mask.pfa_atten_mask is not None:
+        logger.info(mask.pfa_atten_mask.int())
+        logger.info(mask.pfa_atten_mask.shape)
+
+    # At sparsity 0 always run the reference as a dense sanity check.
+    run_ref_sparsity_0 = cell.sparsity == 0
+    our_fn = _make_our_fn(mask, cell.h, cell.block_shape)
+    ref_fn = _make_ref_fn(cell.h, mask.scale, mask.pfa_atten_mask, run_ref_sparsity_0)
+
+    are_equal_ref = "N/A"
+    if cfg.run_our and cfg.run_ref or run_ref_sparsity_0:
+        are_equal_ref = _check_correctness(
+            our_fn, ref_fn, cell.b, cell.h, cell.s_q, cell.s_kv, cell.d, device=DEVICE,
+        )
+
+    inputs = [gen_pfa_inputs(cell.b, cell.h, cell.s_q, cell.s_kv, cell.d, device=DEVICE, dtype=DTYPE)
+              for _ in range(cfg.n_warmup + cfg.n_repeat)]
+    our_duration = _run_timed(our_fn, inputs, cfg.n_warmup, cfg.n_repeat) if cfg.run_our else None
+    ref_duration = (_run_timed(ref_fn, inputs, cfg.n_warmup, cfg.n_repeat)
+                    if cfg.run_ref or run_ref_sparsity_0 else None)
+
+    frame_str = _format_frame_str(cell.frame_for_shape, cell.sparsity)
+    logger.info(
+        f"{cell.bs_label:>13} {cell.h:>3} {cell.b:>3} {cell.s_q:>6} {cell.s_kv:>6} {cell.d:>4} "
+        f"{frame_str:>15} {cell.sparsity:>9.2f} "
+        f"{are_equal_ref:>15} {_fmt_or_na(ref_duration, 18)} {_fmt_or_na(our_duration, 18)}"
+    )
+
+
+def benchmark_blitz_sparse_attention():
+    cfg = _BenchCfg(run_our=True, run_ref=RUN_REFERENCE,
+                    n_warmup=N_WARMUP, n_repeat=N_REPEATS)
+    if not cfg.run_our and not cfg.run_ref:
         logger.info("Nothing to run, must set run_our=True or run_ref=True")
         return
 
-    # Print table header
-    framed_shapes = sorted(s for s, f in FRAMES_BY_BLOCK_SHAPE.items() if f is not None)
     logger.info("=" * 120)
     logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {SABI_SORTED=}  {TORCH_REFERENCE=}")
     logger.info("=" * 120)
@@ -733,59 +823,15 @@ def benchmark_blitz_sparse_attention():
 
     for block_shape in BLOCK_SHAPES:
         bs_q, bs_kv = block_shape
-        bs_label = f"{bs_q}x{bs_kv}"
         # Scale the frame per (BLOCK_SIZE_Q, BLOCK_SIZE_KV) so the forced-token
         # footprint stays comparable across block shapes.
         frame_for_shape = FRAMES_BY_BLOCK_SHAPE.get(block_shape, None)
         for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
-            s_q = s_kv
-
-            # Build attention mask and related parameters for this configuration
-            pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-                b, h, s_q, s_kv, d, sparsity, frame=frame_for_shape,
-                block_size_q=bs_q, block_size_kv=bs_kv,
-                device=DEVICE, emit_atten_mask=run_ref)
-
-            if PRINT_MASK and pfa_atten_mask is not None:
-                logger.info(pfa_atten_mask.int())
-                logger.info(pfa_atten_mask.shape)
-
-            # When sparsity=0, always run reference as a dense baseline for sanity check
-            run_ref_sparsity_0 = sparsity == 0
-
-            our_fn = _make_our_fn(sabi, h, scale, bsa_atten_mask, (sm, pre_tok, post_tok), block_shape)
-            ref_fn = _make_ref_fn(h, scale, pfa_atten_mask, run_ref_sparsity_0)
-
-            # Correctness: compare our output vs reference on shared inputs
-            are_equal_ref = "N/A"
-            if run_our and run_ref or run_ref_sparsity_0:
-                are_equal_ref = _check_correctness(our_fn, ref_fn, b, h, s_q, s_kv, d, device=DEVICE)
-
-            # Timing: generate fresh input sets for each implementation
-            inputs = [gen_pfa_inputs(b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE)
-                      for _ in range(n_warmup + n_repeat)]
-
-            our_duration = None
-            if run_our:
-                our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
-
-            ref_duration = None
-            if run_ref or run_ref_sparsity_0:
-                ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
-
-            # Frame as a compact 4-tuple (left, right, top, bottom). "-" when the
-            # frame is unset for this block_shape OR when sparsity == 0 (dense ⇒
-            # every block is kept, so the frame has no effect on the actual sabi).
-            if frame_for_shape is None or sparsity == 0:
-                frame_str = "-"
-            else:
-                frame_str = (f"({frame_for_shape.left_cols},{frame_for_shape.right_cols},"
-                             f"{frame_for_shape.top_rows},{frame_for_shape.bottom_rows})")
-            # Print one results row
-            logger.info(
-                f"{bs_label:>13} {h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} "
-                f"{frame_str:>15} {sparsity:>9.2f} "
-                f"{are_equal_ref:>15} {_fmt_or_na(ref_duration, 18)} {_fmt_or_na(our_duration, 18)}"
+            _run_one_benchmark_cell(
+                _BenchCell(bs_label=f"{bs_q}x{bs_kv}", block_shape=block_shape,
+                           frame_for_shape=frame_for_shape,
+                           b=b, h=h, s_q=s_kv, s_kv=s_kv, d=d, sparsity=sparsity),
+                cfg,
             )
 
     logger.info("=" * 120)

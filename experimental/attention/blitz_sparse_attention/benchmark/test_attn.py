@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-# BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 """
 Test suite. Has two modes:
 1. Full-blown pytesting:
@@ -17,13 +16,18 @@ python test_attn.py
 """
 
 import itertools
+import logging
+import sys
 import pytest
 import torch
 import torch_npu
 import torch_bsa
-from benchmark import gen_pfa_inputs, create_attention_mask, FrameWidths  # data gen
+from benchmark import gen_pfa_inputs, create_attention_mask, FrameWidths, MaskSpec  # data gen
 from benchmark import ref_blitz_sparse_attention_launcher  # baseline kernel
-from benchmark import is_block_sparse_pattern_feasible
+from benchmark import is_block_sparse_pattern_feasible, BlockGrid
+
+logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
+logger = logging.getLogger(__name__)
 
 # Global test configurations
 SEED = 42
@@ -34,27 +38,27 @@ INPUT_LAYOUT = 'BNSD'
 # {128, 256, 512, 1024} × {128, 256, 512, 1024} at runtime via the `block_shape`
 # op-attr; all 16 combinations share the same kernel binary.
 BLOCK_SHAPES = [(bsq, bskv)
-                for bsq  in (128, 256, 512, 1024)
+                for bsq in (128, 256, 512, 1024)
                 for bskv in (128, 256, 512, 1024)]
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
-# Reference kernel under test. One of:
-#   "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
-#   "npu_fusion_attention"            - torch_npu.npu_fusion_attention (PFA)
-#   "npu_fused_infer_attention_score" - torch_npu.npu_fused_infer_attention_score (FIAS)
+# Which reference kernel to compare/benchmark against. One of:
+#   "custom"                          - our pythonic ref_attention_fp32
+#   "npu_fusion_attention"            - torch_npu's npu_fusion_attention (PFA)
+#   "npu_fused_infer_attention_score" - torch_npu's npu_fused_infer_attention_score (FIAS)
 TORCH_REF_VALS = ["npu_fusion_attention"]
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
 S_VALS = [24_000, 36000]   # s_q = s_kv (B=1 only; B>1 currently produces wrong outputs)
 D_VALS = [128]   # head dimension
 # `frame_kind` is a label; the actual FrameWidths is resolved per block_shape
-# in the test body. `left_cols` is in BLOCK_SIZE_KV-token units and `top_rows`
-# is in BLOCK_SIZE_Q-token units, so we scale both by 128 / size (rounded up,
+# in the test body. `left_cols` is in <block_size_kv>-token units and `top_rows`
+# is in <block_size_q> token units, so we scale both by 128 / size (rounded up,
 # min 1) to keep the forced-token footprint comparable across granularities.
 FRAME_KINDS = ["no_frame", "small_frame"]
 _SMALL_FRAME_LEFT_BY_KV = {128: 2, 256: 1, 512: 1, 1024: 1}
-_SMALL_FRAME_TOP_BY_Q   = {128: 3, 256: 2, 512: 1, 1024: 1}
+_SMALL_FRAME_TOP_BY_Q = {128: 3, 256: 2, 512: 1, 1024: 1}
 FRAMES_BY_KIND_BLOCK_SHAPE = {}
 for _bsq in (128, 256, 512, 1024):
     for _bskv in (128, 256, 512, 1024):
@@ -68,6 +72,7 @@ for _bsq in (128, 256, 512, 1024):
 SPARSITY_VALS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 SHAPES = list(itertools.product(B_VALS, H_VALS, S_VALS, D_VALS))
 
+
 # Pre-filter the (shape, frame_kind, sparsity, block_shape, torch_ref) cross
 # product so that infeasible cells are NEVER collected by pytest — no skip
 # noise in the run log and no risk of leaking BSA's empty-Q-row LSE sentinel
@@ -80,20 +85,23 @@ def _attn_param_id(p):
             f"-bs{block_shape[0]}x{block_shape[1]}"
             f"-{torch_ref}")
 
-ATTN_PARAMS = [
-    (shape, frame_kind, sparsity, block_shape, torch_ref)
-    for shape in SHAPES
-    for frame_kind in FRAME_KINDS
-    for sparsity in SPARSITY_VALS
-    for block_shape in BLOCK_SHAPES
-    for torch_ref in TORCH_REF_VALS
-    if is_block_sparse_pattern_feasible(
-        s_q=shape[2], s_kv=shape[2],
-        block_size_q=block_shape[0], block_size_kv=block_shape[1],
-        frame=FRAMES_BY_KIND_BLOCK_SHAPE[(frame_kind, block_shape)],
-        sparsity=sparsity,
-    )
-]
+def _build_attn_params():
+    params = []
+    for shape, frame_kind, sparsity, block_shape, torch_ref in itertools.product(
+        SHAPES, FRAME_KINDS, SPARSITY_VALS, BLOCK_SHAPES, TORCH_REF_VALS
+    ):
+        grid = BlockGrid(s_q=shape[2], s_kv=shape[2],
+                         block_size_q=block_shape[0], block_size_kv=block_shape[1])
+        feasible = is_block_sparse_pattern_feasible(
+            grid,
+            FRAMES_BY_KIND_BLOCK_SHAPE[(frame_kind, block_shape)],
+            sparsity,
+        )
+        if feasible:
+            params.append((shape, frame_kind, sparsity, block_shape, torch_ref))
+    return params
+
+ATTN_PARAMS = _build_attn_params()
 ATTN_PARAM_IDS = [_attn_param_id(p) for p in ATTN_PARAMS]
 
 
@@ -109,17 +117,25 @@ def test_blitz_sparse_attention_correctness(shape, frame_kind, sparsity, block_s
     # Unpack input shapes
     b, h, s_kv, d = shape
     s_q = s_kv
-    BLOCK_SIZE_Q, BLOCK_SIZE_KV = block_shape
+    block_size_q, block_size_kv = block_shape
     # Resolve the per-shape frame so the token-footprint stays comparable
-    # across block_shape values (left_cols is in BLOCK_SIZE_KV-token units,
-    # top_rows is in BLOCK_SIZE_Q-token units).
+    # across block_shape values (left_cols is in block_size_kv-token units,
+    # top_rows is in block_size_q-token units).
     frame = FRAMES_BY_KIND_BLOCK_SHAPE[(frame_kind, block_shape)]
 
-    pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, frame=frame,
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
+    mask = create_attention_mask(
+        MaskSpec(b=b, h=h, s_q=s_q, s_kv=s_kv, d=d,
+                 block_size_q=block_size_q, block_size_kv=block_size_kv,
+                 sparsity=sparsity, frame=frame),
         device=DEVICE, emit_atten_mask=True,
     )
+    pfa_atten_mask = mask.pfa_atten_mask
+    bsa_atten_mask = mask.bsa_atten_mask
+    sabi = mask.sabi
+    sm = mask.sparse_mode
+    scale = mask.scale
+    pre_tok = mask.pre_tokens
+    post_tok = mask.next_tokens
 
     # Generate input tensors
     q, k, v, actseqlen, actseqlenkv = gen_pfa_inputs(
@@ -145,16 +161,15 @@ def test_blitz_sparse_attention_correctness(shape, frame_kind, sparsity, block_s
     a, b_ref = out_our.cpu(), out_ref.cpu()
     diff = (a - b_ref).abs()
     max_diff = diff.max().item()
-    # Opt-in diff logging: BSA_LOG_DIFFS=1 prints `[DIFF]` lines for every
+    # Opt-in diff logging: BSA_LOG_DIFFS=1 logs "DIFF" lines for every
     # comparison site (useful when calibrating atol). Kept opt-in because the
-    # extra CPU-side print can perturb cube scheduling and expose intermittent
+    # extra CPU-side logging can perturb cube scheduling and expose intermittent
     # bf16 allocator-slack noise.
     import os as _os
     if _os.environ.get("BSA_LOG_DIFFS"):
-        print(
+        logger.info(
             f"[DIFF] attn_vs_pfa {DTYPE} b={b} h={h} s={s_q} d={d} sp={sparsity} "
-            f"bs={block_shape} frame={frame_kind}: max_diff={max_diff:.6g}",
-            flush=True,
+            f"bs={block_shape} frame={frame_kind}: max_diff={max_diff:.6g}"
         )
     if not torch.allclose(a, b_ref, rtol=0.01, atol=0.001):
         pytest.fail(
@@ -164,12 +179,9 @@ def test_blitz_sparse_attention_correctness(shape, frame_kind, sparsity, block_s
 
 
 if __name__ == "__main__":
-    import sys
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
     test_blitz_sparse_attention_correctness(torch_ref="npu_fusion_attention",
                                             shape=(1, 3, 10_000, 128),
                                             frame_kind="small_frame",
                                             sparsity=0.5,
                                             block_shape=(128, 128))
-    logging.getLogger(__name__).info("Smoke test passed.")
+    logger.info("Smoke test passed.")

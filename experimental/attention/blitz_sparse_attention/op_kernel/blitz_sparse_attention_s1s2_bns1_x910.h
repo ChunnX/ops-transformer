@@ -706,18 +706,17 @@ protected:
     // global last batch only. Kept out-of-line and `noinline` so the inlined
     // caller (Res1VecCompute) preserves its instruction layout for the hot
     // path that doesn't need this scrub.
-    //
     // Two stages:
     //   Stage 1 — partial leading BLOCK at floor(bmm2K/8)*8, bitmask form:
     //     mask[0] = bits [laneOffset, 8) set, where laneOffset = bmm2K % 8.
     //     Skipped when bmm2K is already 8-aligned (laneOffset == 0).
     //   Stage 2 — full aligned BLOCKs from ceil(bmm2K/8)*8 to mm1N, count form
     //     (writes the FIRST `count` lanes of each repeat).
-    //
     // After the masked write the vector mask register is restored to "all
     // lanes on" so subsequent softmax / Muls / Add ops see a normal mask state.
     __aicore__ __attribute__((noinline)) void ApplyTailKOOBPreMask(
-        int32_t ubPingpong, uint32_t bmm2K, uint32_t mm1N, uint32_t souterSize) {
+        int32_t ubPingpong, uint32_t bmm2K, uint32_t mm1N, uint32_t souterSize)
+    {
         const uint32_t partialStart = bmm2K & ~uint32_t(7);
         const uint32_t laneOffset   = bmm2K - partialStart;
         const uint32_t alignedStart = partialStart + ((laneOffset > 0u) ? 8u : 0u);
@@ -1044,7 +1043,8 @@ protected:
                 } else {
                     this->bmm2.SetTensorB(this->valueGm[valOffset]);
                 }
-                this->bmm2.template IterateAll<false>(this->bmm2ResGmDb[params->gmPingpong], 0, false, true, params->fakeMsg);
+                this->bmm2.template IterateAll<false>(
+                    this->bmm2ResGmDb[params->gmPingpong], 0, false, true, params->fakeMsg);
                 return;
             }
             for (int i = 0; i < (int)params->packedCount; ++i) {
@@ -1064,7 +1064,9 @@ protected:
                     uint64_t gmSize = this->tilingData->promptAttentionSingleCoreParams.singleProcessSOuterSize *
                                       this->tilingData->promptAttentionSingleCoreParams.singleProcessSInnerSize;
                     GlobalTensor<T> tmpBmm1ResGmDb;
-                    tmpBmm1ResGmDb.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(this->bmm1ResGmDb[params->gmPingpong].address_), gmSize);
+                    tmpBmm1ResGmDb.SetGlobalBuffer(
+                        reinterpret_cast<__gm__ T*>(this->bmm1ResGmDb[params->gmPingpong].address_),
+                        gmSize);
                     this->bmm2.SetTensorA(tmpBmm1ResGmDb[(int64_t)i * kvBlockSize]);
                 } else if constexpr (PFAT::msdMode == MsdMode::MSD_ON) {
                     this->bmm2.SetTensorA(this->bmm1ExpandGm[params->gmPingpong][(int64_t)i * kvBlockSize]);
@@ -1081,10 +1083,13 @@ protected:
                 }
                 bool isLast = (i == (int)params->packedCount - 1);
                 uint8_t enAtomic = (i == 0) ? 0 : 1;
+                auto &bmm2Buf = this->bmm2ResGmDb[params->gmPingpong];
                 if (!isLast) {
-                    this->bmm2.template IterateAll<true>(this->bmm2ResGmDb[params->gmPingpong], enAtomic, false, false, params->fakeMsg);
+                    this->bmm2.template IterateAll<true>(
+                        bmm2Buf, enAtomic, false, false, params->fakeMsg);
                 } else {
-                    this->bmm2.template IterateAll<false>(this->bmm2ResGmDb[params->gmPingpong], enAtomic, false, true, params->fakeMsg);
+                    this->bmm2.template IterateAll<false>(
+                        bmm2Buf, enAtomic, false, true, params->fakeMsg);
                 }
             }
             return;
@@ -1405,11 +1410,14 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::Bmm1VecInputCopyI
 }
 
 template<typename PFAT>
-__aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SparseBandElewiseCompute(int32_t ubPingpong, uint32_t souterSize, int64_t attenMaskOffsetPre) {
+__aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SparseBandElewiseCompute(
+    int32_t ubPingpong, uint32_t souterSize, int64_t attenMaskOffsetPre)
+{
     PFAComputeParam *params = this->headParams;
     if (params->sparseBandSelect0) {    // Select 0 part
-        this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
-                                        params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
+        this->template ElewiseCompute<U>(
+            this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
+            params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
     }
     if (params->sparseBandSelect1) {    // Select 1 part
         uint32_t padSize = params->padSize;
@@ -1420,8 +1428,9 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SparseBandElewise
             params->singleProcessSInnerBmmTail, padSize, true, souterSize);
 
         PipeBarrier<PIPE_V>();
-        this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
-                                        params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 1);
+        this->template ElewiseCompute<U>(
+            this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
+            params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 1);
     }
 }
 

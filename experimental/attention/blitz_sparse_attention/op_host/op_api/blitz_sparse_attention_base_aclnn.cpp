@@ -49,7 +49,8 @@ const aclTensor *BlitzSparseAttention(
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
     aclOpExecutor *executor,
-    const aclTensor **softmaxLseOutRet) {
+    const aclTensor **softmaxLseOutRet)
+{
     L0_DFX(BlitzSparseAttention, query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKv,
            deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
            numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
