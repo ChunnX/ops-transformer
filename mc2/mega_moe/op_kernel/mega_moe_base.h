@@ -59,6 +59,30 @@ struct PeermemInfo {
     }
 };
 
+struct PeermemInfoOptimize {
+    GM_ADDR rankSyncInWorldPtr;
+    GM_ADDR topKInfoInWorldSizePtr;
+    GM_ADDR quantTokenScalePtr;      // initrouting结果，包括data+scale
+    GM_ADDR combineSendPtr;
+    __aicore__ inline PeermemInfoOptimize() = default;
+    __aicore__ inline PeermemInfoOptimize(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    {
+        rankSyncInWorldPtr = base;
+        int64_t offset = PEERMEM_DATA_OFFSET;
+        topKInfoInWorldSizePtr = base + offset;
+        offset += tilingData->epWorldSize * 
+            Ops::Base::CeilAlign((int64_t)(tilingData->bs * tilingData->topK * sizeof(int32_t)), (int64_t)ALIGN_512);
+ 
+        quantTokenScalePtr = base + offset;
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+        uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        combineSendPtr = base + offset;
+    }
+};
+
 struct Params {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
@@ -71,6 +95,21 @@ struct Params {
     GM_ADDR expertTokenNumsOutGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
+    MegaMoeTilingData *tilingData;
+};
+
+struct ParamsOptimize {
+    GM_ADDR aGmAddr;
+    GM_ADDR expertIdxGmAddr;
+    GM_ADDR bGmAddr;
+    GM_ADDR bScaleGmAddr;
+    GM_ADDR b2GmAddr;
+    GM_ADDR b2ScaleGmAddr;
+    GM_ADDR probsGmAddr;
+    GM_ADDR y2GmAddr;
+    GM_ADDR expertTokenNumsOutGmAddr;
+    WorkspaceInfoOptimize workspaceInfo;
+    PeermemInfoOptimize peermemInfo;
     MegaMoeTilingData *tilingData;
 };
 
