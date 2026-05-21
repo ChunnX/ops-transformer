@@ -9,7 +9,7 @@
 #include "block/block_scheduler_policy.h"
 #include "lib/matmul_intf.h"
 #include "qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
-#include "tensor.h"
+#include "include/tensor_api/tensor.h"
 #include "kernel_operator.h"
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
