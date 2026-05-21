@@ -197,7 +197,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 cu_seqlens_q 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -213,7 +213,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 cu_seqlens_ori_kv 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -229,7 +229,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 cu_seqlens_cmp_kv 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_cmp_kv must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_cmp_kv must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -245,7 +245,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 seqused_q 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -261,7 +261,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 seqused_kv 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_kv must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_kv must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -277,21 +277,22 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 metadata 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
         if (viewDims[0] != optiling::SAS_META_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::SAS_META_SIZE, viewDimsNum);
+                optiling::SAS_META_SIZE, viewDims[0]);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 数据类型
-        ret = aclGetDataType(sequsedKvOptional, &dataType);
+        ret = aclGetDataType(metadata, &dataType);
         if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of metadata must be int32");
+            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

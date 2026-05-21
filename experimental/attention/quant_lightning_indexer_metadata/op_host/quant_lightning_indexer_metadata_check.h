@@ -192,7 +192,7 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 actual_seq_lengths_query 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_query must be 1, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_query must be 1, but got %lu",
                 viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
@@ -209,7 +209,7 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 actual_seq_lengths_key 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_key must be 1, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_key must be 1, but got %lu",
                 viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
@@ -226,21 +226,22 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 metadata 维度
         if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %ld", viewDimsNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lu", viewDimsNum);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
-        if (viewDims[0] != optiling::SAS_META_SIZE) {
+        if (viewDims[0] != optiling::QLI_META_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::SAS_META_SIZE, viewDimsNum);
+                optiling::QLI_META_SIZE, viewDims[0]);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 数据类型
-        ret = aclGetDataType(sequsedKvOptional, &dataType);
+        ret = aclGetDataType(metadata, &dataType);
         if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of metadata must be int32");
+            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
