@@ -15,7 +15,7 @@ from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from .update_context import update_context
+from .comm_context import CommContextManager
 
 
 class _MegaMoeOpBuilder(OpBuilder):
@@ -75,11 +75,6 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
         dispatch_quant_out_type, weight1_type, weight2_type)
 
 
-class IntWrapper:
-    def __init__(self, value=0):
-        self.value = value
-
-
 class SymmBuffer:
     def __init__(
         self,
@@ -93,18 +88,19 @@ class SymmBuffer:
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_type: int = 28,
         combine_quant_mode: int = 0,
-        comm_alg: str = ""
+        comm_alg: str = "",
     ):
-        # Metadata
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
-        self.ccl_buffer_size = IntWrapper()
         self.ep_world_size = torch.distributed.get_world_size(group)
-        context_struct_size = (3 + 1024)
-        context_tensor_size = ((context_struct_size * 8) + 3) // 4
-        self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
-        update_context(self.group_name, self.ep_world_size, self.ccl_buffer_size, self.context)
+        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend={
+            "Ascend910B": "kfc",
+            "Ascend910_93": "kfc",
+            "Ascend950": "channel"
+        })
+        self.context = self._ctx_manager.create_context()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.num_experts = num_experts
         self.max_recv_token_num = max_recv_token_num
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -161,7 +157,8 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_type: int = 28,
     combine_quant_mode: int = 0,
-    comm_alg: str = ""
+    comm_alg: str = "",
+    backend="kfc"
 ) -> SymmBuffer:
 
     return SymmBuffer(
@@ -175,7 +172,8 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_mode,
         dispatch_quant_out_type,
         combine_quant_mode,
-        comm_alg
+        comm_alg,
+        backend
     )
 
 
@@ -203,7 +201,7 @@ def mega_moe(
         l2_weights,
         sym_buffer.num_experts,
         sym_buffer.ep_world_size,
-        sym_buffer.ccl_buffer_size.value,
+        sym_buffer.ccl_buffer_size,
         weight_scales1=l1_weights_sf,
         weight_scales2=l2_weights_sf,
         x_active_mask=x_active_mask,
