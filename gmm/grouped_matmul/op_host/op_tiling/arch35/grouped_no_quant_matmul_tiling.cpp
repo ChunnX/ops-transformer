@@ -242,9 +242,9 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         }
         return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupType_",
-            FormatString("%d", groupType_).c_str(),
-            FormatString("The value of %s cannot be %s", "groupType_, isSingleWeight_, isSingleX_, isSingleY_ combination", "this combination").c_str());
+    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
+            FormatString("%d, %s, %s, %s", groupType_, isSingleWeight_ ? "TRUE" : "FALSE", isSingleX_ ? "TRUE" : "FALSE", isSingleY_ ? "TRUE" : "FALSE").c_str(),
+            FormatString("The value of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY", "this combination").c_str());
     return false;
 }
 
@@ -262,7 +262,7 @@ bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *c
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "weight",
                         FormatString("[%zu, %zu]", kValue, nValue).c_str(),
                         FormatString("when the format of %s is %s, %s of %s must be exactly divisible by %s",
-                            "weight", "FRACTAL_NZ", "n-axis and k-axis", "weight", "32B (numInOneBlk)").c_str()),
+                            "weight", "FRACTAL_NZ", "n-axis and k-axis", "weight", "32B").c_str()),
                     return false);
     }
     return true;
@@ -307,7 +307,7 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupListType",
                     FormatString("%u", groupListType_).c_str(),
-                    FormatString("The value of %s cannot be %s", "groupListType", "SPARSE_M (value 2) in no-quant case").c_str()),
+                    FormatString("In %s case, the value of %s cannot be %s", "no-quant", "groupListType", "SPARSE_M").c_str()),
                 return false);
     return true;
 }
@@ -318,7 +318,7 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
     if (groupNum_ < 1U || groupNum_ > MAX_TENSOR) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "groupList",
             FormatString("%u", groupNum_).c_str(),
-            FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList (groupNum)", 1, 1024).c_str());
+            FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList", 1, 1024).c_str());
         return false;
     }
     OP_CHECK_IF(kZero, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x",
@@ -434,8 +434,8 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
     }
     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
             FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
-            FormatString("The value of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY combination",
-                "this combination under SPLIT_M scene").c_str());
+            FormatString("Under %s scene, the value of %s cannot be %s", "SPLIT_M", "group_type, isSingleWeight, isSingleX, isSingleY",
+                "this combination").c_str());
     return false;
 }
 
@@ -453,8 +453,8 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     }
 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
             FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
-            FormatString("The value of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY combination",
-                "this combination under SPLIT_K scene").c_str());
+            FormatString("Under %s scene, the value of %s cannot be %s", "SPLIT_K", "group_type, isSingleWeight, isSingleX, isSingleY",
+                "this combination").c_str());
     return false;
 }
 

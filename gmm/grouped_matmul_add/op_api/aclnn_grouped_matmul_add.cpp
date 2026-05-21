@@ -121,7 +121,7 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
         if (!(groupNum == groupNumY)) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("grouped_matmul_add", "groupList, y",
                 FormatString("%ld, %ld", groupNum, groupNumY).c_str(),
-                FormatString("when %s is %s, %s of %s must be the same", "group_type", "2", "Shape[0]", "groupListTensor and yTensor").c_str());
+                FormatString("when %s is %s, %s of %s must be the same", "group_type", "2", "Shape[0]", "groupList, y").c_str());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

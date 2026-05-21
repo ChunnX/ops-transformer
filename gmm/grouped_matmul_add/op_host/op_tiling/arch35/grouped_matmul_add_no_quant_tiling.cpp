@@ -72,7 +72,7 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     if (groupType_ != SPLIT_K) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "group_type",
             FormatString("%d", groupType_).c_str(),
-            FormatString("The value of %s must be %s", "group_type", "2 (SPLIT_K)").c_str());
+            FormatString("The value of %s must be %s", "group_type", "2").c_str());
         return false;
     }
 }
@@ -212,7 +212,7 @@ bool GroupedMatmulAddNoQuantTiling::CalMatMulTiling(const gert::TilingContext *c
     OP_CHECK_IF(groupNum_ < 1U || groupNum_ > MAX_TENSOR,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "groupList",
                     FormatString("%u", groupNum_).c_str(),
-                    FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList (groupNum)", 1, 1024).c_str()),
+                    FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList", 1, 1024).c_str()),
                 return false);
     uint32_t remainCoreNum = std::max(1U, compileInfoPtr->aicNum / groupNum_);
     FormulateBasicBlock(compileInfoPtr, remainCoreNum);
