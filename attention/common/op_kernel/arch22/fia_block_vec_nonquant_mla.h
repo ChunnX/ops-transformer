@@ -29,6 +29,7 @@
 #include "../vector_common.h"
 #include "../memory_copy.h"
 #include "../const_def.h"
+#include "attenmask.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -51,6 +52,9 @@ public:
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
 
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
+    static constexpr fa_base_vector::LAYOUT_Q MASK_LAYOUT_Q =
+        (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH)
+        ? fa_base_vector::SG : fa_base_vector::GS;
     using UPDATE_T = T;
     using TMP_T = T;
     using COMPUTE_T = T;
@@ -481,9 +485,11 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
             if (maskInfo.sparseMode == fa_base_vector::TREE) {
-                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, true>(
+                    maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             } else {
-                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, false>(
+                    maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             }
             AscendC::PipeBarrier<PIPE_V>();
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
@@ -494,7 +500,8 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
             attenMaskTmpUb = attenMaskTmpBuff.Get<bool>(); // 后续改成attenMaskTmpBuff，加上pingpong
             maskUb = inputBuff2.Get<bool>();
             maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+            fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+                maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
         }

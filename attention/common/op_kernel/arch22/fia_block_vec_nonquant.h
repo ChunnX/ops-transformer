@@ -28,6 +28,7 @@
 #include "../memory_copy.h"
 #include "../post_quant.h"
 #include "../const_def.h"
+#include "attenmask.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -49,6 +50,9 @@ public:
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
+    static constexpr fa_base_vector::LAYOUT_Q MASK_LAYOUT_Q =
+        (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH)
+        ? fa_base_vector::SG : fa_base_vector::GS;
 
     using UPDATE_T = T;
     using TMP_T = T;
@@ -617,7 +621,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                 }
             }
             if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
-                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, true>(
+                    maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
             }
@@ -626,7 +631,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
             if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
                 LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
                 LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+                    maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
                 inputQue2.FreeTensor(maskUb);
@@ -634,7 +640,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
             if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
                 LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
                 LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+                    maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
                 inputQue2.FreeTensor(maskUb);
             }
