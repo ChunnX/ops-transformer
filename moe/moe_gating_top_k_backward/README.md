@@ -75,35 +75,35 @@
   <tr>
     <td>x_norm</td>
     <td>输入</td>
-    <td>计算的输入，对应公式中的xNorm。</td>
+    <td>计算的输入，对应公式中的xNorm。要求是一个2D的Tensor，维度为[M,N]。最后一维（专家数N）要求大于等于2，并小于等于2048。</td>
     <td>FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>grad_y</td>
     <td>输入</td>
-    <td>表示前向算子输出yOut的上游梯度，对应公式中的gradY。</td>
+    <td>表示前向算子输出yOut的上游梯度，对应公式中的gradY。要求是一个2D的Tensor，维度为[M,K]，K的范围要求大于等于1，并小于等于N。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>expert_idx</td>
     <td>输入</td>
-    <td>表示前向算子输出的top-k专家索引，对应公式中的expertIdx。</td>
+    <td>表示前向算子输出的top-k专家索引，对应公式中的expertIdx。shape要求与gradY一致，维度为[M,K]。</td>
     <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>renorm</td>
     <td>输入</td>
-    <td>表示前向算子在softmax模式下renorm标记。</td>
+    <td>表示前向算子在softmax模式下renorm标记。0：不做renorm；1：需要做renorm；预留参数，当前仅支持sigmoid模式，不管renorm为0还是1，正向都需要renorm。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
   <tr>
     <td>norm_type</td>
     <td>输入</td>
-    <td>表示norm函数类型。</td>
+    <td>表示norm函数类型。1表示使用Sigmoid函数，0表示Softmax函数。当前仅支持1。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
@@ -124,7 +124,7 @@
   <tr>
     <td>grad_x</td>
     <td>输出</td>
-    <td>表示前向算子输入参数x的梯度，对应公式中的gradX。</td>
+    <td>表示前向算子输入参数x的梯度，对应公式中的gradX。数据类型与gradY需要保持一致。shape与xNorm需要一致，维度为[M,N]。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -133,13 +133,10 @@
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnMoeGatingTopKBackward默认确定性实现。
-- xNorm和gradX的shape为[M,N]，N的取值范围为[2,2048]
-- gradY和expertIdx的shape为[M,K]，K的取值范围为[1,N]
+无
 
 ## 调用说明
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_aclnn_moe_gating_top_k_backward](examples/test_aclnn_moe_gating_top_k_backward.cpp) | 通过[aclnnMoeGatingTopKBackward](docs/aclnnMoeGatingTopKBackward.md)接口方式调用MoeGatingTopKBackward算子。 |
+| aclnn API  | [test_aclnn_moe_gating_top_k_backward](examples/test_aclnn_moe_gating_top_k_backward.cpp) | 通过[aclnnMoeGatingTopKBackward](docs/aclnnMoeGatingTopKBackward.md)接口方式调用MoeGatingTopKBackward算子。 |
