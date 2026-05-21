@@ -25,12 +25,12 @@ using namespace op;
 extern "C" {
 #endif
 
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
+// enum class NnopbaseHcclServerType : uint32_t {
+//     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+//     NNOPBASE_HCCL_SERVER_TYPE_MTE,
+//     NNOPBASE_HCCL_SERVER_TYPE_CCU,
+//     NNOPBASE_HCCL_SERVER_TYPE_END
+// };
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -93,9 +93,9 @@ aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
 aclnnStatus aclnnDispatchFFNCombine(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_dispatch_ffn_combine start");
-    if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
+    // if (NnopbaseSetHcclServerType) {
+    //     NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    // }
     return aclnnInnerDispatchFFNCombine(workspace, workspaceSize, executor, stream);
 }
 
