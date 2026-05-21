@@ -59,6 +59,30 @@ struct PeermemInfo {
     }
 };
 
+struct PeermemInfoWave {
+    GM_ADDR rankSyncInWorldPtr;
+    GM_ADDR topKInfoInWorldSizePtr;
+    GM_ADDR quantTokenScalePtr;      // initrouting结果，包括data+scale
+    GM_ADDR combineSendPtr;
+    __aicore__ inline PeermemInfoWave() = default;
+    __aicore__ inline PeermemInfoWave(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    {
+        rankSyncInWorldPtr = base;
+        int64_t offset = PEERMEM_DATA_OFFSET;
+        topKInfoInWorldSizePtr = base + offset;
+        offset += tilingData->epWorldSize * 
+            Ops::Base::CeilAlign((int64_t)(tilingData->bs * tilingData->topK * sizeof(int32_t)), (int64_t)ALIGN_512);
+ 
+        quantTokenScalePtr = base + offset;
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+        uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        combineSendPtr = base + offset;
+    }
+};
+
 struct Params {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
@@ -71,6 +95,21 @@ struct Params {
     GM_ADDR expertTokenNumsOutGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
+    MegaMoeTilingData *tilingData;
+};
+
+struct ParamsWave {
+    GM_ADDR aGmAddr;
+    GM_ADDR expertIdxGmAddr;
+    GM_ADDR bGmAddr;
+    GM_ADDR bScaleGmAddr;
+    GM_ADDR b2GmAddr;
+    GM_ADDR b2ScaleGmAddr;
+    GM_ADDR probsGmAddr;
+    GM_ADDR y2GmAddr;
+    GM_ADDR expertTokenNumsOutGmAddr;
+    WorkspaceInfoWave workspaceInfo;
+    PeermemInfoWave peermemInfo;
     MegaMoeTilingData *tilingData;
 };
 
@@ -92,6 +131,57 @@ __aicore__ inline void NotifyVector(uint16_t value = 0)
 __aicore__ inline void WaitForCube(uint16_t value = 0)
 {
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+}
+
+__aicore__ inline void EndSync(int32_t& vecSetSyncCom)
+{
+    if (vecSetSyncCom == 0) {
+        return;
+    }
+    if constexpr(g_coreType == AIC) {
+        WaitForVector();
+    }
+}
+
+__aicore__ inline void EndGMM2Sync(int32_t& vecSetSyncCom, uint16_t gmm2PingPongIdx)
+{
+    if constexpr(g_coreType == AIV) {
+        return;
+    }
+    if (vecSetSyncCom <= 0) {
+        return;
+    } else if (vecSetSyncCom == 1) {
+        WaitForVector();
+    } else {
+        WaitForVector(gmm2PingPongIdx);
+        WaitForVector(1 - gmm2PingPongIdx);
+    }
+}
+
+__aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen,
+    int32_t& coreOffset, int32_t align = ALIGN_32)
+{
+    int32_t coreIdx = GetBlockIdx();
+    int32_t coreNum = GetBlockNum() * 2; // 取到vec核总数
+    int32_t lenPerCore = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
+    int32_t lenPerCoreAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerCore), static_cast<uint32_t>(align));
+    coreLen = lenPerCoreAlign;
+    coreOffset = coreIdx * lenPerCoreAlign;
+    if (coreOffset + coreLen >= totalLen) {
+        coreLen = totalLen - coreOffset;
+    }
+    if (coreOffset >= totalLen) {
+        coreLen = 0;
+    }
+}
+
+__aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
+{
+    do {
+        if (ReadGmByPassDCache(sig_addr) == cmp_val) {
+            return;
+        }
+    } while (true);
 }
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
@@ -132,5 +222,13 @@ inline void ArgsortSimt(int64_t elements, int64_t indexBase, __gm__ int32_t *sor
         expandedRowIdxGmAddr[outIndices] = indexBase + index;
     }
 }
- 
+
+template<AscendC::HardEvent event, int32_t eventId>
+__aicore__ inline void SyncFuncStatic()
+{
+    static_assert(eventId >= 0 && eventId <= 5, "SyncFuncStatic eventId must be [0, 5]!");
+    AscendC::SetFlag<event>(static_cast<event_t>(eventId));
+    AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
+}
+
 #endif
