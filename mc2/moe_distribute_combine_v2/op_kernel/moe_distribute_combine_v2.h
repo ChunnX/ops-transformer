@@ -552,7 +552,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     // 当前win区划分为前后两半区，连续两次dispatch，切换半区
     winDataSizeOffsetEp_ = static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSizeEp / 2UL);
     winStatusOffset_ = COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET; // 前面的预留给dispatch使用
-    epWindowGM_ = GetWinAddrByRankId(epRankIdOriginal_, EP_DOMAIN);
+    // epWindowGM_ = GetWinAddrByRankId(epRankIdOriginal_, EP_DOMAIN);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
         OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempepRankId, EP_DOMAIN)), totalWinSizeEp_);
@@ -577,8 +577,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
         base_addr[rankId] = (GM_ADDR)(aclshmem_ptr((GM_ADDR)(curRankShmemAddr), rankId));
     }
     curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
+    epWindowGM_ = (GM_ADDR)curRankShmemAddr + A5_MTE_STATE_WIN_SIZE;
     token_buffer = (GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE; // 本端新增的数据区域，用于本卡数据拷贝，占用空间大小是hExpandXAlign32Size_
-    flag_gm = reinterpret_cast<__gm__ uint32_t *>((GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE + hExpandXAlign32Size_); // 本端的新增flag区域
+    flag_gm = reinterpret_cast<__gm__ uint32_t *>((GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE + selfSendCnt_ * hExpandXAlign32Size_); // 本端的新增flag区域
 }
 
 template <CombineMC2TypeClass>
@@ -958,7 +959,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Pro
                     if(toRankId < start_rank_id || toRankId >= end_rank_id) continue;
                     __gm__ uint8_t *send_buff_ptr = ((__gm__ uint8_t *)token_buffer + tkIndex*tokenScaleCnt_ * sizeof(ExpandXType));
                     uint32_t epOffset = tokenId * (axisK_ + sharedExpertNum_) + topkId;
-                    __gm__ uint8_t *rmt_buff_addr = base_addr[toRankId] + static_cast<uint64_t>(epOffset) * hAlignWinSize_;
+                    __gm__ uint8_t *rmt_buff_addr = base_addr[toRankId] + A5_MTE_STATE_WIN_SIZE + static_cast<uint64_t>(epOffset) * hAlignWinSize_;
                     __gm__ uint8_t *rmt_sig_addr = base_addr[toRankId] + static_cast<uint64_t>(tokenId) * flagRcvCount_ * stateOffset_ + static_cast<uint64_t>(topkId) * stateOffset_;
                     aclshmemx_udma_put_signal_nbi(
                     rmt_buff_addr, send_buff_ptr, tokenScaleCnt_*sizeof(ExpandXType), rmt_sig_addr, (uint64_t)(*((uint32_t *)(&sig))),
@@ -1244,7 +1245,8 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::WaitDispatch(
     float minTarget = target - (float)0.5;
     float maxTarget = target + (float)0.5;
     // 计算地址偏移
-    GM_ADDR stateGM = GetWinStateAddrByRankId(epRankIdOriginal_, EP_DOMAIN) + tokenIndex * flagRcvCount_ * stateOffset_;
+    // GM_ADDR stateGM = GetWinStateAddrByRankId(epRankIdOriginal_, EP_DOMAIN) + tokenIndex * flagRcvCount_ * stateOffset_;
+    GM_ADDR stateGM = (GM_ADDR)curRankShmemAddr + tokenIndex * flagRcvCount_ * stateOffset_;
     GlobalTensor<float> stateGMTensor;
     stateGMTensor.SetGlobalBuffer((__gm__ float*)stateGM);
     float localState = 0;
