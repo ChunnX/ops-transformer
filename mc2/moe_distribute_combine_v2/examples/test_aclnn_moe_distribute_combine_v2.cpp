@@ -280,39 +280,39 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     /* 依次执行dispatchV2及combineV2算子 */
     // 调用dispatchV2算子第一阶段接口
-    ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
-        x, expertIds, 
-        (quantMode > 0 ? scales : nullptr), nullptr, 
-        expertScales, 
-        hcomEpName, EP_WORLD_SIZE, args.epRankId,
-        moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-        args.tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBS,
-        expertTokenNumsType, commAlg.c_str(),
-        expandX, dynamicScales,
-        expandIdx, expertTokenNums,
-        epRecvCounts, tpRecvCounts,
-        expandScales, &dispatchV2WorkspaceSize,
-        &dispatchV2Executor
-    );
-    CHECK_RET(
-        ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
-    );
+    // ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
+    //     x, expertIds, 
+    //     (quantMode > 0 ? scales : nullptr), nullptr, 
+    //     expertScales, 
+    //     hcomEpName, EP_WORLD_SIZE, args.epRankId,
+    //     moeExpertNum, hcomTpName, TP_WORLD_SIZE,
+    //     args.tpRankId, expertShardType, sharedExpertNum,
+    //     sharedExpertRankNum, quantMode, globalBS,
+    //     expertTokenNumsType, commAlg.c_str(),
+    //     expandX, dynamicScales,
+    //     expandIdx, expertTokenNums,
+    //     epRecvCounts, tpRecvCounts,
+    //     expandScales, &dispatchV2WorkspaceSize,
+    //     &dispatchV2Executor
+    // );
+    // CHECK_RET(
+    //     ret == ACL_SUCCESS,
+    //     LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+    // );
     // 根据dispatchV2算子第一阶段接口计算出的workspaceSize申请device内存
-    if (dispatchV2WorkspaceSize > 0) {
-        ret = aclrtMalloc(&dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
-    }
-    // 调用dispatchV2算子第二阶段接口
-    ret = aclnnMoeDistributeDispatchV2(dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, dispatchV2Executor, args.dispatchV2Stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2 failed. ret = %d\n", ret); return ret);
-    // （固定写法）同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.dispatchV2Stream, 10000);
-    CHECK_RET(
-        ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
-    );
+    // if (dispatchV2WorkspaceSize > 0) {
+    //     ret = aclrtMalloc(&dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
+    // }
+    // // 调用dispatchV2算子第二阶段接口
+    // ret = aclnnMoeDistributeDispatchV2(dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, dispatchV2Executor, args.dispatchV2Stream);
+    // CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2 failed. ret = %d\n", ret); return ret);
+    // // （固定写法）同步等待任务执行结束
+    // ret = aclrtSynchronizeStreamWithTimeout(args.dispatchV2Stream, 10000);
+    // CHECK_RET(
+    //     ret == ACL_SUCCESS,
+    //     LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
+    // );
 
     std::vector<int64_t> time_vec(4, 0);
  	ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
