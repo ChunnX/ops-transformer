@@ -338,7 +338,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // 处理单个token：
     // 1. 从输入GM读取token数据到UB
     // 2. 将token数据写入目标rank的窗口
-    GlobalTensor<XType>& outTokenGT;
+    GlobalTensor<XType> outTokenGT;
     outTokenGT.SetGlobalBuffer((__gm__ XType*)urmaLocaLAddr);
     if (dstRankId == epRankId_) {
         outTokenGT.SetGlobalBuffer((__gm__ XType*)remoteAddr); // 目标rank是epRankId，直接写入remoteAddr
