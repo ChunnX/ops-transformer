@@ -22,7 +22,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "tool.h"
+#include "gmm_fr_weight_quant_arch35_tool.h"
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 
