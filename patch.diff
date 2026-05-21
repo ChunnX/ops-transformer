@@ -1,0 +1,169 @@
+diff --git a/mc2/mega_moe/op_kernel/mega_moe_optimize.h b/mc2/mega_moe/op_kernel/mega_moe_optimize.h 
+index ea2a1d43..f3d6c190 100644 
+--- a/mc2/mega_moe/op_kernel/mega_moe_optimize.h 
++++ b/mc2/mega_moe/op_kernel/mega_moe_optimize.h 
+@@ -575,35 +575,115 @@  __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
+     PipeBarrier<PIPE_ALL>(); 
+-    for (uint32_t idx = blockIdx_; idx < worldSize_ * blockNumPerRank_; idx += blockNum_) {
+-        uint32_t dstRankIdx = idx / blockNumPerRank_; 
+-        uint64_t sendToCurExpTokenCnt = 0; 
+-        GatherMask(validTopkIndexTensor_, topkIndexTensor_,
+-            gatherMaskInt32Tensor_[dstRankIdx * (maskAlignSize_ / sizeof(uint32_t))],
+-            true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
+-        uint32_t aivIdxInGroup = idx % blockNumPerRank_; 
+-        uint32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
+-            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
+-        if (rowStartIdxInDst < maxOutputSize_) { 
+-            int32_t rowsCopyCnt = sendToCurExpTokenCnt; 
+-            if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) { 
+-                rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst; 
+-            } 
+-            int32_t rowsNumInCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(blockNumPerRank_)); 
+-            int32_t rowSrcIdxInCore = aivIdxInGroup * rowsNumInCore; 
+-            int32_t rowDstOffsetInCore = rowStartIdxInDst + rowSrcIdxInCore; 
+-            if (rowDstOffsetInCore + rowsNumInCore > rowStartIdxInDst + rowsCopyCnt) { 
+-                rowsNumInCore = rowStartIdxInDst + rowsCopyCnt - rowDstOffsetInCore; 
+-            } 
+-            if (rowsNumInCore > 0) { 
+-                uint32_t tripleTensorAddr = ubBufferUsedAddr_; 
+-                uint32_t tripleTensorSize = rowsNumInCore * ALIGN_32; 
+-                tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
+-                    tripleTensorSize / sizeof(int32_t));
+-                SyncFunc<AscendC::HardEvent::V_S>(); 
+-                CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore, pingpongId); 
+-            } 
+-        } 
+-        SyncFunc<AscendC::HardEvent::MTE3_S>(); 
+-        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1)); 
+-    } 
++
++    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : 
++        cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1); 
++    int32_t totalTokensInExpert = static_cast<int32_t>(Get<M_VALUE>(problemShape_)); 
++    if (priorExpertCumsum >= static_cast<int32_t>(maxOutputSize_)) { 
++        totalTokensInExpert = 0; 
++    } else if (priorExpertCumsum + totalTokensInExpert > static_cast<int32_t>(maxOutputSize_)) { 
++        totalTokensInExpert = static_cast<int32_t>(maxOutputSize_) - priorExpertCumsum; 
++    } 
++
++    int32_t totalCores = static_cast<int32_t>(blockNum_); 
++    int32_t coreIdx = static_cast<int32_t>(blockIdx_); 
++    int32_t tokensThisCore = (totalTokensInExpert > coreIdx) ? 
++        ((totalTokensInExpert - 1 - coreIdx) / totalCores + 1) : 0; 
++
++    if (tokensThisCore > 0) { 
++        // 二分查找：在当前专家内，找到首个token (expert内全局idx = coreIdx) 所在的卡号 
++        int32_t firstGlobalIdxInExpert = coreIdx; 
++        int32_t lo = 0; 
++        int32_t hi = static_cast<int32_t>(worldSize_) - 1; 
++        int32_t startRank = hi; 
++        while (lo <= hi) { 
++            int32_t mid = (lo + hi) >> 1; 
++            int32_t cumsumAtMid = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + mid) - priorExpertCumsum; 
++            if (cumsumAtMid > firstGlobalIdxInExpert) { 
++                startRank = mid; 
++                hi = mid - 1; 
++            } else { 
++                lo = mid + 1; 
++            } 
++        } 
++
++        uint32_t tripleTensorAddr = ubBufferUsedAddr_; 
++        uint32_t tripleTensorSize = tokensThisCore * ALIGN_32; 
++        tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr, 
++            tripleTensorSize / sizeof(int32_t)); 
++
++        SyncFunc<AscendC::HardEvent::V_S>(); 
++
++        constexpr int32_t BufferNum = 2; 
++        int64_t widthA = Get<K_VALUE>(problemShape_); 
++        int64_t widthAScale = Ops::Base::CeilDiv((int64_t)widthA, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE; 
++        uint32_t copyInNum = Ops::Base::CeilAlign((int64_t)(mxFp8TokenAlignBytes_ + mxFp8ScaleAlignBytes_), (int64_t)ALIGN_32); 
++
++        // 目的地址基址按照当前专家在dispatchRevDataPtr中的起始位置 
++        GlobalTensor<QuantOutType> tokenRevGlobalTensor; 
++        GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor; 
++        tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>( 
++            params_.workspaceInfo.dispatchRevDataPtr + priorExpertCumsum * widthA)); 
++        scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>( 
++            params_.workspaceInfo.dispatchRevScalePtr + priorExpertCumsum * widthAScale)); 
++
++        int32_t curRank = startRank; 
++        int32_t curRankExprStart = (startRank == 0) ? 0 : 
++            (cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + startRank - 1) - priorExpertCumsum); 
++        int32_t curRankExprEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + startRank) - priorExpertCumsum; 
++
++        uint64_t sendCntCurRank = 0; 
++        GatherMask(validTopkIndexTensor_, topkIndexTensor_, 
++            gatherMaskInt32Tensor_[curRank * (maskAlignSize_ / sizeof(uint32_t))], 
++            true, sendTotalNum_, {1, 1, 0, 0}, sendCntCurRank); 
++        SyncFunc<AscendC::HardEvent::V_S>(); 
++
++        GlobalTensor<QuantOutType> remoteRankGlobalTensor; 
++        remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>( 
++            GetRankWinAddrWithOffset(curRank, PEERMEM_DATA_OFFSET + worldSize_ * topkOffsetPerRank_))); 
++
++        for (int32_t i_in_core = 0; i_in_core < tokensThisCore; ++i_in_core) { 
++            int32_t globalIdxInExpert = coreIdx + i_in_core * totalCores; 
++
++            bool rankChanged = false; 
++            while (globalIdxInExpert >= curRankExprEnd) { 
++                ++curRank; 
++                curRankExprStart = curRankExprEnd; 
++                curRankExprEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + curRank) - priorExpertCumsum; 
++                rankChanged = true; 
++            } 
++            if (rankChanged) { 
++                GatherMask(validTopkIndexTensor_, topkIndexTensor_, 
++                    gatherMaskInt32Tensor_[curRank * (maskAlignSize_ / sizeof(uint32_t))], 
++                    true, sendTotalNum_, {1, 1, 0, 0}, sendCntCurRank); 
++                SyncFunc<AscendC::HardEvent::V_S>(); 
++                remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>( 
++                    GetRankWinAddrWithOffset(curRank, PEERMEM_DATA_OFFSET + worldSize_ * topkOffsetPerRank_))); 
++            } 
++
++            int32_t withinRankIdx = globalIdxInExpert - curRankExprStart; 
++            int32_t topkIndex = validTopkIndexTensor_.GetValue(withinRankIdx); 
++            int32_t tokenIndex = topkIndex / topK_; 
++
++            tripleTensor_[i_in_core * 8].SetValue(0, curRank); 
++            tripleTensor_[i_in_core * 8].SetValue(1, tokenIndex); 
++            tripleTensor_[i_in_core * 8].SetValue(2, topkIndex % topK_); 
++
++            pingpongId = (pingpongId + 1) % BufferNum; 
++            TEventID EVENT_ID_CUR = (pingpongId == 0) ? EVENT_ID0 : EVENT_ID1; 
++            LocalTensor<QuantOutType> tokenScalebuf = (pingpongId == 0) ? copyTmpTensor1_ : copyTmpTensor2_; 
++            LocalTensor<QuantScaleOutType> bufScale = 
++                tokenScalebuf[mxFp8TokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>(); 
++
++            auto remoteCopyOffset = tokenIndex * copyInNum; 
++
++            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID_CUR); 
++            DataCopy(tokenScalebuf, remoteRankGlobalTensor[remoteCopyOffset], copyInNum); 
++            SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR); 
++            WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR); 
++
++            // 按核错位排布：核c的第i_in_core个token写到专家内偏移 coreIdx + i_in_core * totalCores 
++            int32_t dstOffsetInExpert = coreIdx + i_in_core * totalCores; 
++            DataCopyPad(tokenRevGlobalTensor[dstOffsetInExpert * widthA], tokenScalebuf, 
++                {1, static_cast<uint16_t>(widthA * sizeof(QuantOutType)), 0U, 0U, 0U}); 
++            DataCopyPad(scaleRevGlobalTensor[dstOffsetInExpert * widthAScale], bufScale, 
++                {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U}); 
++            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID_CUR); 
++        } 
++
++        // 三元组按错位排布搬出（与数据同顺序） 
++        SyncFunc<AscendC::HardEvent::S_MTE3>(); 
++        for (int32_t i = 0; i < tokensThisCore; ++i) { 
++            int32_t dstAbsIdx = priorExpertCumsum + coreIdx + i * totalCores; 
++            DataCopy(tripleGloablTensor_[dstAbsIdx * 8], tripleTensor_[i * 8], 8); 
++        } 
++    } 
++
++    // 保持原有计数：总AtomicAdd次数 = worldSize_ * blockNumPerRank_，与GMM等待目标一致 
++    SyncFunc<AscendC::HardEvent::MTE3_S>(); 
++    for (uint32_t idx = blockIdx_; idx < worldSize_ * blockNumPerRank_; idx += blockNum_) { 
++        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1)); 
++    } 
++
+     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
