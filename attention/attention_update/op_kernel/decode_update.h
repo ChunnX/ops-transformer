@@ -23,6 +23,7 @@
 using namespace AscendC;
 
 namespace AttentionUpdate {
+//  123
 static constexpr uint32_t BUFFER_NUM = 2;
 static constexpr uint32_t NUM0 = 0;
 static constexpr uint32_t NUM1 = 1;
