@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef GEMM_COORD_HPP
-#define GEMM_COORD_HPP
+#ifndef BSA_GEMM_COORD_HPP
+#define BSA_GEMM_COORD_HPP
 
 #include "../attn_infra/bsa_coord.hpp"
 

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef LAYOUT_MATRIX_HPP
-#define LAYOUT_MATRIX_HPP
+#ifndef BSA_MATRIX_HPP
+#define BSA_MATRIX_HPP
 
 #include "../../attn_infra/bsa_base_defs.hpp"
 #include "../../attn_infra/bsa_coord.hpp"

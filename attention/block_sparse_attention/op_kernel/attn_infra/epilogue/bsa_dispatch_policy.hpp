@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_DISPATCH_POLICY_HPP
-#define EPILOGUE_DISPATCH_POLICY_HPP
+#ifndef BSA_EPILOGUE_DISPATCH_POLICY_HPP
+#define BSA_EPILOGUE_DISPATCH_POLICY_HPP
 
 #include "../../attn_infra/bsa_base_defs.hpp"
 #include "../../attn_infra/arch/bsa_arch.hpp"

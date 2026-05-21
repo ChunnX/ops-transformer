@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MATRIX_COORD_HPP
-#define MATRIX_COORD_HPP
+#ifndef BSA_MATRIX_COORD_HPP
+#define BSA_MATRIX_COORD_HPP
 
 #include "../attn_infra/bsa_coord.hpp"
 

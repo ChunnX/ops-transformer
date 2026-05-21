@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_HELPER_HPP
-#define GEMM_HELPER_HPP
+#ifndef BSA_HELPER_HPP
+#define BSA_HELPER_HPP
 
 #include "../../attn_infra/arch/bsa_arch.hpp"
 #include "../../attn_infra/bsa_base_defs.hpp"
