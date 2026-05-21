@@ -356,10 +356,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
         if constexpr (isPa) {
-            bool isNz = inputParamsRegbase.paLayoutType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ);
-            if (isNz) {
-                this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
-            }
+            this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
     }
     this->constInfo.isRowInvalid = inputParamsRegbase.isRowInvalid;
@@ -545,7 +542,11 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
                                         this->constInfo.sInnerLoopSize :
                                         tailSInnerLoopSize;
             }
-            runParam.s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
+            if (constInfo.isGqa) {
+                runParam.s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
+            } else {
+                runParam.s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
+            }
         }
         int64_t tempGS1End = lastBN ? (runParam.s1LoopTimes + 2) : runParam.s1LoopTimes;
         for (int64_t gS1Index = gS1StartIdx; gS1Index < tempGS1End; ++gS1Index) {

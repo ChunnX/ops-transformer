@@ -954,14 +954,19 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
     uint64_t nextTokenOffset = (tokenIdx + 1) * tokenStructLen_;
     uint32_t copyNum = FLAG_SIZE / sizeof(uint64_t);
     DataCopy(statusTensor, readStatusTensor, copyNum);
+    // 考虑到指令下发与数据实际传输的异步特性，可能出现tokenFlag先于endFlag写入UB的情况，
+    // 且endFlag写入时数据可能恰好到达。此时若提前读取tokenFlag，可能获取到数据未就绪时的无效值，
+    // 因此必须确保endFlag搬运完成后，再进行tokenFlag的读取操作。
+    PipeBarrier<PIPE_MTE2>();
     DataCopy(statusTensor[copyNum], TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
+    PipeBarrier<PIPE_MTE2>();
     DataCopy(statusTensor[copyNum * 2U], TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0);
     uint64_t tokenFlagValue = statusTensor.GetValue(copyNum);
     uint64_t nextTokenFlagValue = statusTensor.GetValue(copyNum * 2U);
 
-    //等到发送结束信号，没等到token结束信号，则返回结束等待状态
+    // 下一个Token flag到达，说明当前Token已到达。
     if (nextTokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
         if (justExpInfo) {
             DataCopy(localUB_U8, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
@@ -974,7 +979,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
         // 等待 token 或者 endOfWrite
         return WAIT_STATUS;
-    } else { //得到上个token->可以处理
+    } else { // 若endFlag已到达且当前TokenFlag有效，那么当前Token是最后一个可处理的Token
         if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
             if (justExpInfo) {
                 DataCopy(localUB_U8, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
@@ -982,7 +987,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
                 DataCopy(localUB_U8, TokensGtU8[TokenOffset], tokenStructLen_);
             }
             return ARRIVAL_STATUS;
-        } else {
+        } else { // 若只有endFlag有效，那么后续无Token可处理。
             return FINISH_STATUS;
         }
     }

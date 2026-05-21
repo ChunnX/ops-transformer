@@ -4,7 +4,7 @@
 
 ## 安装第三方依赖
 
-> **说明**：对于WebIDE或Docker环境，默认联网，编译过程中会自动下载第三方依赖，无需手动安装，可跳过本章操作。
+> **说明**：对于CANNLab或Docker环境，默认联网，编译过程中会自动下载第三方依赖，无需手动安装，可跳过本章操作。
 
 本项目编译过程依赖的第三方开源软件列表如下：
 
@@ -18,6 +18,7 @@
 | protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
 | abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
 | opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://gitcode.com/cann/opbase) |
+| cann-cmake | master-007 | [cmake-master-007.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-007.tar.gz) |
 
 若您的编译环境可以访问网络，请参考[联网编译](#联网编译)，编译脚本会自动联网下载第三方软件。否则，请参考[未联网编译](#未联网编译)手动下载第三方软件。
 
@@ -270,3 +271,18 @@ Global Environment TearDown
 
 \$\{n\}表示执行了n个用例，\$\{m\}表示m项测试，\$\{x\}表示执行用例消耗的时间，单位为毫秒。
 > 说明：add_example算子仅是为了帮助理解如何开发算子，仅设计了ophost的ut用例，并未设计opapi和opkernel的ut用例。开发者可以参考其他算子的ut用例以实现看护。
+
+## FAQ
+
+### 本地编译报错 "ERROR: No matching distribution found for setuptools>=40.8.0"
+
+```
+Could not fetch URL XXX (Caused by SSLError(SSLCertVerificationError))
+ERROR: Could not find a version that satisfies the requirement setuptools>=40.8.0 (from versions: none)
+ERROR: No matching distribution found for setuptools>=40.8.0
+```
+1、检查[环境部署](docs/zh/install/quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
+
+2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf 指定的pip源是否可用
+
+

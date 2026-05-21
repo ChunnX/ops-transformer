@@ -283,10 +283,7 @@ int main() {
 
   LOG_PRINT("MhcSinkhornBackward compute success!\n");
 
-  // ========== 8. 打印结果 ==========
-  PrintTensorData(grad_input_shape, grad_input_device_addr, "grad_input");
-
-  // ========== 9. 释放资源 ==========
+  // ========== 8. 释放资源 ==========
   // 销毁Tensor
   aclDestroyTensor(grad_y_tensor);
   aclDestroyTensor(norm_tensor);

@@ -126,6 +126,7 @@ if (BUILD_OPEN_PROJECT)
             graph
             graph_base
             register
+            ops_base
             ascendalog
             error_manager
             platform
@@ -955,6 +956,8 @@ if (NOT ENABLE_AICPU_KERNEL)
             ${ASCEND_IMPL_OUT_DIR}
             ${ASCEND_AUTOGEN_DIR}
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
+            --compute-unit ${ASCEND_COMPUTE_UNIT}
+            --enable-experimental ${ENABLE_EXPERIMENTAL}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
@@ -996,7 +999,7 @@ endforeach(    )
     install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/op_kernel
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
@@ -1188,13 +1191,10 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     set(CPACK_GENERATOR External)
     set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
     set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
+    
     if (ENABLE_BUILD_PKG)
-      if (EXISTS ${ASCEND_CMAKE_DIR}/makeself.cmake)
-        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_CMAKE_DIR}/makeself.cmake)
-      else()
         set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
-        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${CMAKE_SOURCE_DIR}/cmake/makeself_custom.cmake)
-      endif()
+        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_PROJECT_DIR}/fwk_modules/makeself.cmake)
     endif()
     set(CPACK_EXTERNAL_BUILT_PACKAGES ${CPACK_PACKAGE_DIRECTORY}/_CPack_Packages/Linux/External/${CPACK_PACKAGE_FILE_NAME}/${CPACK_PACKAGE_FILE_NAME})
     include(CPack)
