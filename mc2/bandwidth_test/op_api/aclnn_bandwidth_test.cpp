@@ -25,9 +25,6 @@
 #endif
 #endif
 
-using namespace Ops::Transformer;
-using namespace op;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
