@@ -281,7 +281,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>out</td>
       <td>输出</td>
       <td>输出结果。</td>
-      <td>shape与self相同。</td>
+      <td>-</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>(batch, n)</td>
