@@ -11,7 +11,7 @@
 #ifndef EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_COLUMN_HPP
 #define EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_COLUMN_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {

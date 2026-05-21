@@ -11,9 +11,9 @@
 #ifndef EPILOGUE_TILE_TILE_SWIZZLE_HPP
 #define EPILOGUE_TILE_TILE_SWIZZLE_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/detail/alignment.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/detail/bsag_alignment.hpp"
+#include "../../../attn_infra/bsag_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {
