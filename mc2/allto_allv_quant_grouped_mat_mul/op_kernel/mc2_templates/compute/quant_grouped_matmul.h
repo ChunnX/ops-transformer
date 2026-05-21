@@ -103,6 +103,19 @@ public:
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
+        // AGENT debug: 打印地址和MNK信息确认是否越界
+        AscendC::printf("[AGENT] QuantGroupedMatmul Process: isLocal=%d expertIdx=%d\n", isLocal ? 1 : 0, expertIdx);
+        AscendC::printf("[AGENT] xAddr=%llu wAddr=%llu yAddr=%llu\n",
+            reinterpret_cast<uint64_t>(xAddr), reinterpret_cast<uint64_t>(wAddr), reinterpret_cast<uint64_t>(yAddr));
+        AscendC::printf("[AGENT] h1=%llu n1=%llu bs=%llu a=%llu expertTokenOffset=%llu groupListToken=%llu\n",
+            h1_, n1_, bs_, a_, expertTokenOffset_, isLocal ? bs_ : expertTokenNum_[expertIdx]);
+        AscendC::printf("[AGENT] gmmQuantParams aQuantMode=%d bQuantMode=%d\n",
+            gmmTilingData_->gmmQuantParams.aQuantMode, gmmTilingData_->gmmQuantParams.bQuantMode);
+        AscendC::printf("[AGENT] mmTilingData M=%d N=%d Ka=%d Kb=%d baseM=%d baseN=%d baseK=%d\n",
+            gmmTilingData_->mmTilingData.M, gmmTilingData_->mmTilingData.N,
+            gmmTilingData_->mmTilingData.Ka, gmmTilingData_->mmTilingData.Kb,
+            gmmTilingData_->mmTilingData.baseM, gmmTilingData_->mmTilingData.baseN,
+            gmmTilingData_->mmTilingData.baseK);
         // 4. 构建 GetTensorAddr 指针表
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
