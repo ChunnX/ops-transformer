@@ -1,14 +1,35 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd. All rights reserved.
- * ...
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*
+ * MoeDistributeCombineV2 -> MoeDistributeCombineV3 fusion pass
+ *
+ *   expand_x expert_ids expand_idx ep_send_counts expert_scales tp_send_counts ...
+ *                                   |
+ *                          MoeDistributeCombineV2
+ *                                   |
+ *                                   x
+ *
+ *   After fusion (A5 only, non-ccu):
+ *   context expand_x expert_ids expand_idx ep_send_counts expert_scales tp_send_counts ...
+ *                                   |
+ *                          MoeDistributeCombineV3
+ *                                   |
+ *                                   x
+ */
 #include "moe_distribute_combine_v2_fusion_pass.h"
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
-#include <unordered_map>
 #include "graph/graph.h"
 #include "graph/gnode.h"
 #include "graph/operator.h"
+#include "graph/attr_value.h"
 #include "graph/tensor.h"
 #include "graph/ge_error_codes.h"
 #include "ge/fusion/pass/pattern_fusion_pass.h"
@@ -18,92 +39,106 @@
 
 namespace ops {
 namespace {
-constexpr uint32_t COMBINE_V3_OPTIONAL_ATTR_NUM = 13;
+
 const std::string PASS_NAME = "MoeDistributeCombineV2FusionPass";
+const std::string FUSED_OP_TYPE_V2 = "MoeDistributeCombineV2";
+const std::string FUSED_OP_TYPE_V3 = "MoeDistributeCombineV3";
+const std::string MOE_CONTEXT_TAG = "MOE_DISPATCH_COMBINE_V2_CONTEXT";
+const std::string MOE_EP_NAME = "group_ep";
 
-const std::unordered_map<int, std::pair<std::string, std::string>> combineV3OptionalAttr = {
-    {0, {"int", "tp_world_size"}}, {1, {"int", "tp_rank_id"}}, {2, {"int", "expert_shard_type"}},
-    {3, {"int", "shared_expert_num"}}, {4, {"int", "shared_expert_rank_num"}}, {5, {"int", "global_bs"}},
-    {6, {"int", "out_dtype"}}, {7, {"int", "comm_quant_mode"}}, {8, {"int", "group_list_type"}},
-    {9, {"string", "comm_alg"}}, {10, {"int", "zero_expert_num"}}, {11, {"int", "copy_expert_num"}},
-    {12, {"int", "const_expert_num"}}};
+const std::vector<std::string> REQUIRED_INT_ATTRS = {
+    "ep_world_size", "ep_rank_id", "moe_expert_num"
+};
 
-void CopyRequiredAttr(ge::Operator &dst, const ge::GNode &src)
+const std::vector<std::string> OPTIONAL_INT_ATTRS = {
+    "tp_world_size", "tp_rank_id", "expert_shard_type", "shared_expert_num",
+    "shared_expert_rank_num", "global_bs", "out_dtype", "comm_quant_mode",
+    "group_list_type", "zero_expert_num", "copy_expert_num", "const_expert_num"
+};
+
+const std::vector<std::string> OPTIONAL_STR_ATTRS = {"comm_alg"};
+
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+ge::GNode CreateContextConstNode(ge::Graph &graph, const Mc2MoeContext &context)
 {
-    auto copyIntAttr = [&](const std::string &name) {
-        int64_t val = 0;
-        if (src.GetAttr(ge::AscendString(name.c_str()), val) == ge::GRAPH_SUCCESS) {
-            dst.SetAttr(name, val);
-        }
-    };
-    copyIntAttr("ep_world_size");
-    copyIntAttr("ep_rank_id");
-    copyIntAttr("moe_expert_num");
-}
-
-void CopyOptionalAttrs(ge::Operator &dst, const ge::GNode &src, int64_t cclBufferSize)
-{
-    dst.SetAttr("ccl_buffer_size", cclBufferSize);
-    for (uint32_t i = 0; i < COMBINE_V3_OPTIONAL_ATTR_NUM; i++) {
-        const auto &opt = combineV3OptionalAttr.at(i);
-        if (opt.first == "string") {
-            ge::AscendString val;
-            if (src.GetAttr(ge::AscendString(opt.second.c_str()), val) == ge::GRAPH_SUCCESS) {
-                dst.SetAttr(opt.second, std::string(val.GetString()));
-            }
-        } else {
-            int64_t val = 0;
-            if (src.GetAttr(ge::AscendString(opt.second.c_str()), val) == ge::GRAPH_SUCCESS) {
-                dst.SetAttr(opt.second, val);
-            }
-        }
-    }
-}
-
-ge::GNode CreateContextConstNode(ge::Graph &graph, const ops::Mc2MoeContext &context)
-{
-    ge::Shape shape({static_cast<int64_t>(sizeof(ops::Mc2MoeContext) / sizeof(int32_t))});
+    ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
-    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t*>(&context), sizeof(ops::Mc2MoeContext));
-    ge::Operator constOp((PASS_NAME + "_context").c_str(), "Const");
+    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t *>(&context), sizeof(Mc2MoeContext));
+    ge::Operator constOp((PASS_NAME + "_ctx").c_str(), "Const");
     ge::AttrValue attr;
     attr.SetAttrValue(tensorValue);
     constOp.SetAttr("value", std::move(attr));
     return graph.AddNodeByOp(constOp);
 }
+#endif
 
-bool IsA5Platform() { return ops::IsTargetPlatformNpuArch(PASS_NAME.c_str(), ops::NPUARCH_A5); }
-
-bool IsCCUComm(const ge::GNode &node)
+ge::graphStatus CopyAttrToV3Node(ge::GNode &v2Node, ge::Operator &v3Op)
 {
-    ge::AscendString commAlg;
-    return (node.GetAttr(ge::AscendString("comm_alg"), commAlg) == ge::GRAPH_SUCCESS &&
-            std::string(commAlg.GetString()) == "ccu");
+    int64_t intVal = 0;
+
+    for (const auto &attrName : REQUIRED_INT_ATTRS) {
+        if (v2Node.GetAttr(ge::AscendString(attrName.c_str()), intVal) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_E(PASS_NAME.c_str(), "Get required attr %s failed", attrName.c_str());
+            return ge::GRAPH_FAILED;
+        }
+        v3Op.SetAttr(attrName, intVal);
+    }
+
+    for (const auto &attrName : OPTIONAL_INT_ATTRS) {
+        if (v2Node.GetAttr(ge::AscendString(attrName.c_str()), intVal) == ge::GRAPH_SUCCESS) {
+            v3Op.SetAttr(attrName, intVal);
+        }
+    }
+
+    ge::AscendString strVal;
+    for (const auto &attrName : OPTIONAL_STR_ATTRS) {
+        if (v2Node.GetAttr(ge::AscendString(attrName.c_str()), strVal) == ge::GRAPH_SUCCESS) {
+            v3Op.SetAttr(attrName, std::string(strVal.GetString()));
+        }
+    }
+
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ReplaceCombineV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
 {
-#if defined(HCOMM_VERSION_NUM) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    ops::Mc2MoeContext mc2Ctx;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    ge::AscendString nameStr;
+    v2Node.GetName(nameStr);
+
+    ge::AscendString groupEp;
+    if (v2Node.GetAttr(ge::AscendString(MOE_EP_NAME.c_str()), groupEp) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "node %s: Get group_ep attr failed, skip V3 fusion", nameStr.GetString());
+        return ge::GRAPH_SUCCESS;
+    }
+
+    Mc2MoeContext mc2Ctx;
     int64_t cclBufferSize = 0;
-    if (ops::MoeContextManager::GetMc2ContextA5(
-            "MOE_DISPATCH_COMBINE_V2_CONTEXT", "group_ep", mc2Ctx, cclBufferSize) != ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(PASS_NAME.c_str(), "GetMc2ContextA5 failed, skip");
+    if (MoeContextManager::GetMc2ContextA5(MOE_CONTEXT_TAG, std::string(groupEp.GetString()), mc2Ctx,
+                                           cclBufferSize) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_I(PASS_NAME.c_str(), "node %s: GetMc2ContextA5 failed, skip V3 fusion", nameStr.GetString());
         return ge::GRAPH_SUCCESS;
     }
     auto contextNode = CreateContextConstNode(graph, mc2Ctx);
-    ge::AscendString nameStr;
-    v2Node.GetName(nameStr);
-    ge::Operator v3Op((std::string(nameStr.GetString()) + "_V3").c_str(), "MoeDistributeCombineV3");
-    CopyRequiredAttr(v3Op, v2Node);
-    CopyOptionalAttrs(v3Op, v2Node, cclBufferSize);
+
+    ge::Operator v3Op((std::string(nameStr.GetString()) + "_V3").c_str(), FUSED_OP_TYPE_V3.c_str());
+
+    if (CopyAttrToV3Node(v2Node, v3Op) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "CopyAttrToV3Node failed");
+        return ge::GRAPH_FAILED;
+    }
+    v3Op.SetAttr("ccl_buffer_size", cclBufferSize);
+
     auto v3Node = graph.AddNodeByOp(v3Op);
+
     graph.AddDataEdge(contextNode, 0, v3Node, 0);
+
     size_t inputSize = v2Node.GetInputsSize();
     for (size_t i = 0; i < inputSize; i++) {
         auto srcPair = v2Node.GetInDataNodesAndPortIndexs(static_cast<int32_t>(i));
         graph.AddDataEdge(*srcPair.first, srcPair.second, v3Node, static_cast<int32_t>(i + 1));
     }
+
     size_t outputSize = v2Node.GetOutputsSize();
     for (size_t i = 0; i < outputSize; i++) {
         auto outNodes = v2Node.GetOutDataNodesAndPortIndexs(static_cast<int32_t>(i));
@@ -111,32 +146,61 @@ ge::graphStatus ReplaceCombineV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
             graph.AddDataEdge(v3Node, static_cast<int32_t>(i), *outPair.first, outPair.second);
         }
     }
+
     graph.RemoveNode(v2Node);
+#else
+    OPS_LOG_I(PASS_NAME.c_str(), "HCOMM not available, skip V3 fusion");
 #endif
     return ge::GRAPH_SUCCESS;
 }
+
 }  // namespace
 
 ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::CustomPassContext &pass_context)
 {
     OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeCombineV2FusionPass Run start!");
+
+    if (IsTargetPlatformSocVersion(PASS_NAME.c_str(), PLATFORM_A2)) {
+        OPS_LOG_I(PASS_NAME.c_str(), "A2 platform, skip V3 fusion");
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (!IsTargetPlatformNpuArch(PASS_NAME.c_str(), NPUARCH_A5)) {
+        OPS_LOG_I(PASS_NAME.c_str(), "Not A5 platform, skip V3 fusion");
+        return ge::GRAPH_SUCCESS;
+    }
+
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
-        if (gNode.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType != "MoeDistributeCombineV2") continue;
-        if (ops::IsTargetPlatformSocVersion(PASS_NAME.c_str(), ops::PLATFORM_A2)) continue;
-        if (!IsA5Platform()) continue;
-        if (IsCCUComm(gNode)) {
-            OPS_LOG_I(PASS_NAME.c_str(), "comm_alg is ccu, skip V2 fusion");
+        if (gNode.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType != FUSED_OP_TYPE_V2.c_str()) {
             continue;
         }
-        OPS_LOG_I(PASS_NAME.c_str(), "found MoeDistributeCombineV2 node, replacing with V3...");
-        ReplaceCombineV2WithV3(*graph, gNode);
+
+        ge::AscendString nameStr;
+        gNode.GetName(nameStr);
+        OPS_LOG_I(PASS_NAME.c_str(), "found MoeDistributeCombineV2 node: %s", nameStr.GetString());
+
+        ge::AscendString commAlg;
+        if (gNode.GetAttr(ge::AscendString("comm_alg"), commAlg) == ge::GRAPH_SUCCESS &&
+            std::string(commAlg.GetString()) == "ccu") {
+            OPS_LOG_I(PASS_NAME.c_str(), "node %s: comm_alg is ccu, skip V3 fusion, keep V2",
+                      nameStr.GetString());
+            continue;
+        }
+
+        OPS_LOG_I(PASS_NAME.c_str(), "node %s: replacing with MoeDistributeCombineV3...", nameStr.GetString());
+        auto ret = ReplaceCombineV2WithV3(*graph, gNode);
+        if (ret == ge::GRAPH_SUCCESS) {
+            OPS_LOG_I(PASS_NAME.c_str(), "node %s: fusion to V3 succeeded!", nameStr.GetString());
+        } else {
+            OPS_LOG_I(PASS_NAME.c_str(), "node %s: fusion to V3 failed, keep V2", nameStr.GetString());
+        }
     }
+
     OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeCombineV2FusionPass Run end!");
     return ge::GRAPH_SUCCESS;
 }
 
-REG_FUSION_PASS(MoeDistributeCombineV2FusionPass)
-    .Stage(ge::CustomPassStage::kCompatibleInherited);
+REG_FUSION_PASS(MoeDistributeCombineV2FusionPass).Stage(ge::CustomPassStage::kCompatibleInherited);
 }  // namespace ops
-#endif // GRAPH_FUSION_SUPPORT_VERSION
+#endif  // GRAPH_FUSION_SUPPORT_VERSION
