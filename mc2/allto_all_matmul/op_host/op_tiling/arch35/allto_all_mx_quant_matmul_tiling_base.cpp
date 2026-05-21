@@ -402,7 +402,7 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, Tensor
     if (out == nullptr) return;
 
     uint64_t fullN  = contextInfo.args_.nValue;
-    uint64_t fullK  = contextInfo.args_.orgKValue;
+    uint64_t fullK  = contextInfo.args_.orgKValue * contextInfo.args_.rankDim;
     uint64_t fullM  = contextInfo.args_.orgMValue;
     uint64_t aicNum = contextInfo.args_.aicCoreNum;
     if (aicNum == 0) aicNum = 1;
@@ -410,6 +410,18 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, Tensor
     Mc2MxTiling tiling(blockM, fullN, fullK, 512 * 1024, 256 * 1024, aicNum, 1, 1);
     auto r = tiling.Compute();
     if (!r.valid) return;
+
+    uint64_t rankK = contextInfo.args_.orgKValue;
+    if (r.kL1 > rankK) {
+        r.kL1 = rankK;
+    }
+    while (r.kL1 > 0 && (rankK % r.kL1) != 0) {
+        r.kL1 -= r.baseK;
+    }
+    if (r.kL1 == 0) {
+        r.kL1 = r.baseK;
+    }
+    r.scaleKL1 = std::min(r.scaleKL1, r.kL1);
 
     out->tileM             = blockM;
     out->fullK             = fullK;

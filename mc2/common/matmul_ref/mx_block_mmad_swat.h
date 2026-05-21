@@ -106,6 +106,10 @@ public:
     uint64_t l0PingPong_{0UL};
     uint64_t l0cPingPong_{0UL};
     bool enableL0cPingPong_{false};
+    uint32_t rankDim_{1};
+    uint32_t rankK_{0};
+    GM_ADDR *aGmAddrs_{nullptr};
+    GM_ADDR *gmScaleAAddrs_{nullptr};
 
     using MakeLayoutAL1 = AscendC::Te::NzLayoutFormat<AType>;
     using MakeLayoutBL1 = AscendC::Te::ZnLayoutFormat<BType>;
@@ -191,6 +195,14 @@ public:
         kL1Iter_ = CeilDiv(k_, kL1_);
     }
 
+    __aicore__ inline void SetMultiRankInfo(uint32_t rankDim, uint32_t rankK, GM_ADDR *aGmAddrs, GM_ADDR *scaleAGmAddrs)
+    {
+        rankDim_ = rankDim;
+        rankK_ = rankK;
+        aGmAddrs_ = aGmAddrs;
+        gmScaleAAddrs_ = scaleAGmAddrs;
+    }
+
     template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB, typename TensorC>
     __aicore__ inline void operator()(
         TensorA gmA, TensorB gmB, TensorScaleA gmScaleA, TensorScaleB gmScaleB, TensorC gmC, BlockShape singleShape)
@@ -210,6 +222,8 @@ public:
             auto curGmBKL1 = (iter0 + 1 == kL1Iter_) ? (k_ - kL1Offset) : kL1_;
             auto curPadKL1 = CeilAlign(curGmBKL1, MXFP_DIVISOR_SIZE);
             auto curGmAKL1 = curGmBKL1;
+            uint64_t rankIdx = (rankDim_ > 1) ? (kL1Offset / rankK_) : 0;
+            uint64_t kInRank = (rankDim_ > 1) ? (kL1Offset % rankK_) : kL1Offset;
             if (scaleWindowIter == 0) {
                 // Scale fragments are refreshed only when the current K chunk
                 // enters a new scale reuse window.
@@ -226,11 +240,24 @@ public:
                 auto tensorScaleAL1 = AscendC::Te::MakeTensor(
                     AscendC::Te::MakeL1memPtr<fp8_e8m0_t>(l1BufferScaleAOffset_[scaleL1BufId]),
                     layoutScaleAL1);
-                auto gmBlockScaleA = gmScaleA(
-                    AscendC::Te::MakeCoord(0, kL1Offset / MXFP_GROUP_SIZE),
-                    AscendC::Te::MakeShape(
-                        curM, CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
-                AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleAL1, gmBlockScaleA);
+                if (rankDim_ > 1) {
+                    uint64_t scaleKInRank = kInRank / MXFP_GROUP_SIZE;
+                    auto gmScaleA_rank = AscendC::Te::MakeTensor(
+                        AscendC::Te::MakeGMmemPtr(
+                            reinterpret_cast<__gm__ ScaleAType *>(gmScaleAAddrs_[rankIdx])),
+                        AscendC::Te::MakeScaleANDLayout<ScaleAType>(curM, CeilDiv(rankK_, MXFP_GROUP_SIZE)));
+                    auto gmBlockScaleA = gmScaleA_rank(
+                        AscendC::Te::MakeCoord(0, scaleKInRank),
+                        AscendC::Te::MakeShape(
+                            curM, CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
+                    AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleAL1, gmBlockScaleA);
+                } else {
+                    auto gmBlockScaleA = gmScaleA(
+                        AscendC::Te::MakeCoord(0, kL1Offset / MXFP_GROUP_SIZE),
+                        AscendC::Te::MakeShape(
+                            curM, CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
+                    AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleAL1, gmBlockScaleA);
+                }
 
                 auto layoutScaleBL1 =
                     AscendC::Te::MakeNnLayout<fp8_e8m0_t>(scaleKL1Group_, curN);
@@ -249,12 +276,26 @@ public:
             auto layoutAL1 = MakeLayoutAL1{}(curM, curPadKL1);
             auto tensorAL1 =
                 AscendC::Te::MakeTensor(AscendC::Te::MakeL1memPtr<AType>(l1BufferAOffset_[l1BufId]), layoutAL1);
-            auto gmBlockA = gmA(AscendC::Te::MakeCoord(0, kL1Offset), 
-                                AscendC::Te::MakeShape(curM, curGmAKL1));
-            if constexpr (!isDTypeFp4) {
-                ::Tile::PadMxKAL1::PadZero(tensorAL1, gmBlockA);
+            if (rankDim_ > 1) {
+                auto gmA_rank = AscendC::Te::MakeTensor(
+                    AscendC::Te::MakeGMmemPtr(
+                        reinterpret_cast<__gm__ AType *>(aGmAddrs_[rankIdx])),
+                    AscendC::Te::MakeNDLayout<AType>(curM, rankK_));
+                auto gmBlockA = gmA_rank(
+                    AscendC::Te::MakeCoord(0, kInRank),
+                    AscendC::Te::MakeShape(curM, curGmAKL1));
+                if constexpr (!isDTypeFp4) {
+                    ::Tile::PadMxKAL1::PadZero(tensorAL1, gmBlockA);
+                }
+                AscendC::Te::Copy(copyGM2L1, tensorAL1, gmBlockA);
+            } else {
+                auto gmBlockA = gmA(AscendC::Te::MakeCoord(0, kL1Offset),
+                                    AscendC::Te::MakeShape(curM, curGmAKL1));
+                if constexpr (!isDTypeFp4) {
+                    ::Tile::PadMxKAL1::PadZero(tensorAL1, gmBlockA);
+                }
+                AscendC::Te::Copy(copyGM2L1, tensorAL1, gmBlockA);
             }
-            AscendC::Te::Copy(copyGM2L1, tensorAL1, gmBlockA);
 
             auto layoutBL1 = MakeLayoutBL1{}(curGmBKL1, curN);
             auto tensorBL1 =

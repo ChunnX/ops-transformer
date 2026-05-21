@@ -162,10 +162,10 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
         * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
 
     tilingData_->mxTensorTileTilingData.tileM = mc2Tiling_.tileM;
-    tilingData_->mxTensorTileTilingData.fullK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTileTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTileTilingData.fullN = mc2Tiling_.rankN;
     tilingData_->mxTensorTailTilingData.tileM = mc2Tiling_.tailM;
-    tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTileTilingData);
 
@@ -216,7 +216,7 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
         * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
 
     tilingData_->mxTensorTailTilingData.tileM = mc2Tiling_.tailM;
-    tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTailTilingData);
 

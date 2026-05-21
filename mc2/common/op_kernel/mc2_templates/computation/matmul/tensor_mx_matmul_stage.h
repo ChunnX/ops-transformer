@@ -87,82 +87,85 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
     uint32_t l1k    = tiling->kL1;
     uint32_t skl1   = tiling->scaleKL1;
 
-    static constexpr uint64_t SYNC_MODE0 = 0;
-    static constexpr uint16_t SYNC_AIC_RANK_FLAG = 10;
+    uint32_t rankK_ = k_ / rankDim;
+    uint32_t kScaleGrp = ((k_ + 63U) / 64U) * 2U;
+    uint32_t scaleKPerRank = ((rankK_ + 63U) / 64U) * 2U;
 
     GM_ADDR cGM_base = base.cGM + taskIndex * base.cOffset;
     GM_ADDR bGM = base.bGM;
     GM_ADDR x2ScaleGM = add.x2Scale;
 
-    for (uint32_t rankIdx = 0; rankIdx < rankDim; rankIdx++) {
-        GM_ADDR aGM_rank = base.aGM + rankIdx * globalStride + taskIndex * tileStride;
-        GM_ADDR x1ScaleGM_rank = add.x1Scale + rankIdx * scaleGlobalStride + taskIndex * scaleTileStride;
-
-        if (rankIdx >= 1) {
-            AscendC::SetAtomicAdd<CType>();
-        }
-
-        BlockOp mxMmadOp_;
-        typename BlockOp::L1Params l1Params{l1k, skl1};
-        typename BlockOp::TupleShape problemShape{static_cast<int64_t>(m_), static_cast<int64_t>(n_), static_cast<int64_t>(k_)};
-        typename BlockOp::BlockShape l0TileShape{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), static_cast<int64_t>(baseK_), 0};
-        mxMmadOp_.Init(problemShape, l0TileShape, l1Params, tiling->dbL0c > 1);
-
-        uint32_t kScaleGrp = (k_ + 32 - 1) / 32;
-        auto layoutA = AscendC::Te::MakeNDLayout<AType>(m_, k_);
-        auto layoutB = AscendC::Te::MakeNDLayout<BType>(n_, k_);
-        auto layoutC = AscendC::Te::MakeNDLayout<CType>(m_, n_);
-        auto layoutSA = AscendC::Te::MakeScaleANDLayout<ScaleAType>(m_, kScaleGrp);
-        auto layoutSB = AscendC::Te::MakeScaleBDNLayout<ScaleBType>(kScaleGrp, n_);
-
-        auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ AType*>(aGM_rank)), layoutA);
-        auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), layoutB);
-        auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ CType*>(cGM_base)), layoutC);
-        auto gmScaleA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ ScaleAType*>(x1ScaleGM_rank)), layoutSA);
-        auto gmScaleB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ ScaleBType*>(x2ScaleGM)), layoutSB);
-
-        ProblemShape problem{m_, n_, k_, 1L};
-        using SchParams = typename SchedulerOp::Params;
-        SchParams schParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_),
-                            static_cast<int64_t>(tiling->mTailTile), static_cast<int64_t>(tiling->nTailTile),
-                            static_cast<int64_t>(tiling->mBaseTailSplitCnt), static_cast<int64_t>(tiling->nBaseTailSplitCnt),
-                            static_cast<int64_t>(tiling->mTailMain), static_cast<int64_t>(tiling->nTailMain)};
-        SchedulerOp bs(problem, schParams);
-
-        using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
-        BlockCoord blockIdx;
-        constexpr int64_t kPos = 0L;
-
-        uint32_t loopCnt = 0;
-        const uint32_t MAX_LOOP = (m_ / baseM_ + 1) * (n_ / baseN_ + 1) + 1;
-        while (bs.GetTileIdx(blockIdx)) {
-            if (++loopCnt > MAX_LOOP) {
-                if (AscendC::GetBlockIdx() == 0) {
-                }
-                break;
-            }
-            int64_t mPos = AscendC::Std::get<MNK_M>(blockIdx);
-            int64_t nPos = AscendC::Std::get<MNK_N>(blockIdx);
-            auto singleShape = bs.GetBlockShape(blockIdx);
-
-            if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
-                break;
-            }
-
-            auto gmBlockA = gmA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), k_));
-            auto gmBlockB = gmB(AscendC::Te::MakeCoord(nPos, kPos), AscendC::Te::MakeShape(Get<MNK_N>(singleShape), k_));
-            auto gmBlockC = gmC(AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
-            auto gmBlockScaleA = gmScaleA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), kScaleGrp));
-            auto gmBlockScaleB = gmScaleB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleGrp, Get<MNK_N>(singleShape)));
-
-            mxMmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
-        }
-
-        AscendC::CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_AIC_RANK_FLAG);
-        AscendC::CrossCoreWaitFlag(SYNC_AIC_RANK_FLAG);
+    constexpr uint32_t MAX_RANK = 8;
+    GM_ADDR aGmBases[MAX_RANK];
+    GM_ADDR scaleAGmBases[MAX_RANK];
+    for (uint32_t r = 0; r < rankDim; r++) {
+        aGmBases[r] = base.aGM + r * globalStride + taskIndex * tileStride;
+        scaleAGmBases[r] = add.x1Scale + r * scaleGlobalStride + taskIndex * scaleTileStride;
     }
 
-    AscendC::SetAtomicNone();
+    auto layoutB = AscendC::Te::MakeDNLayout<BType>(k_, n_);
+    auto layoutC = AscendC::Te::MakeNDLayout<CType>(m_, n_);
+    auto layoutSB = AscendC::Te::MakeScaleBDNLayout<ScaleBType>(kScaleGrp, n_);
+
+    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), layoutB);
+    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ CType*>(cGM_base)), layoutC);
+    auto gmScaleB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ ScaleBType*>(x2ScaleGM)), layoutSB);
+
+    BlockOp mxMmadOp_;
+    typename BlockOp::L1Params l1Params{l1k, skl1};
+    typename BlockOp::TupleShape problemShape{static_cast<int64_t>(m_), static_cast<int64_t>(n_), static_cast<int64_t>(k_)};
+    typename BlockOp::BlockShape l0TileShape{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), static_cast<int64_t>(baseK_), 0};
+    mxMmadOp_.Init(problemShape, l0TileShape, l1Params, tiling->dbL0c > 1);
+
+    ProblemShape problem{m_, n_, k_, 1L};
+    using SchParams = typename SchedulerOp::Params;
+    SchParams schParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_),
+                        static_cast<int64_t>(tiling->mTailTile), static_cast<int64_t>(tiling->nTailTile),
+                        static_cast<int64_t>(tiling->mBaseTailSplitCnt), static_cast<int64_t>(tiling->nBaseTailSplitCnt),
+                        static_cast<int64_t>(tiling->mTailMain), static_cast<int64_t>(tiling->nTailMain)};
+    SchedulerOp bs(problem, schParams);
+
+    using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
+    BlockCoord blockIdx;
+    constexpr int64_t kPos = 0L;
+
+    uint32_t loopCnt = 0;
+    const uint32_t MAX_LOOP = (m_ / baseM_ + 1) * (n_ / baseN_ + 1) + 1;
+    while (bs.GetTileIdx(blockIdx)) {
+        if (++loopCnt > MAX_LOOP) {
+            if (AscendC::GetBlockIdx() == 0) {
+            }
+            break;
+        }
+        int64_t mPos = AscendC::Std::get<MNK_M>(blockIdx);
+        int64_t nPos = AscendC::Std::get<MNK_N>(blockIdx);
+        auto singleShape = bs.GetBlockShape(blockIdx);
+
+        if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
+            break;
+        }
+
+        GM_ADDR aGmAddrs[MAX_RANK];
+        GM_ADDR scaleAGmAddrs[MAX_RANK];
+        for (uint32_t r = 0; r < rankDim; r++) {
+            aGmAddrs[r] = aGmBases[r] + static_cast<uint64_t>(mPos) * rankK_ * sizeof(AType);
+            scaleAGmAddrs[r] = scaleAGmBases[r] + static_cast<uint64_t>(mPos) * scaleKPerRank * sizeof(ScaleAType);
+        }
+        mxMmadOp_.SetMultiRankInfo(rankDim, rankK_, aGmAddrs, scaleAGmAddrs);
+
+        auto layoutA_ph = AscendC::Te::MakeNDLayout<AType>(Get<MNK_M>(singleShape), rankK_);
+        auto gmBlockA = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ AType*>(aGmAddrs[0])), layoutA_ph);
+        auto gmBlockB = gmB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(k_, Get<MNK_N>(singleShape)));
+        auto gmBlockC = gmC(AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
+
+        auto layoutSA_ph = AscendC::Te::MakeScaleANDLayout<ScaleAType>(Get<MNK_M>(singleShape), scaleKPerRank);
+        auto gmBlockScaleA = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ ScaleAType*>(scaleAGmAddrs[0])), layoutSA_ph);
+        auto gmBlockScaleB = gmScaleB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleGrp, Get<MNK_N>(singleShape)));
+
+        mxMmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
+    }
 }
 
 } // namespace Mc2Kernel
