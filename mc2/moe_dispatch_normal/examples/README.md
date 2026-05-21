@@ -5,25 +5,23 @@
 ## 目录结构
 
 ```
-experimental/mc2/
-├── common/examples/           # 共享工具和主prefill示例
-│   ├── utils.py               # 通用辅助函数 (bench, init_dist 等)
-│   ├── moe_prefill_sample.py  # 完整prefill workflow测试
-│   └── README.md              # 本文件
+mc2/
+├── moe_dispatch_normal/examples/    # 主prefill示例和共享工具
+│   ├── utils.py                     # 通用辅助函数 (bench, init_dist 等)
+│   ├── moe_prefill_sample.py        # 完整prefill workflow测试
+│   ├── moe_dispatch_prefill_sample.py  # 引用 moe_prefill_sample.py
+│   └── README.md                    # 本文件
 │
 ├── notify_dispatch/examples/
-│   └── notify_dispatch_sample.py  # Notify dispatch 独立测试
+│   └── notify_dispatch_sample.py    # Notify dispatch 独立测试
 │
 ├── dispatch_layout/examples/
-│   ├── dispatch_layout_sample.py      # 独立布局测试
-│   ├── get_dispatch_layout_sample.py  # 引用 moe_prefill_sample.py
+│   ├── dispatch_layout_sample.py        # 独立布局测试
+│   ├── get_dispatch_layout_sample.py    # 引用 moe_prefill_sample.py
 │   └── README.md
 │
-├── moe_dispatch_normal/examples/
-│   └── moe_dispatch_prefill_sample.py  # 引用 moe_prefill_sample.py
-│
 └── moe_combine_normal/examples/
-│   └── moe_combine_prefill_sample.py  # 引用 moe_prefill_sample.py
+    └── moe_combine_prefill_sample.py    # 引用 moe_prefill_sample.py
 ```
 
 ## Workflow
@@ -85,7 +83,7 @@ moe_dispatch_normal ──→ moe_combine_normal
 测试从布局 → 分发 → 合并的完整流程：
 
 ```bash
-cd experimental/mc2/common/examples
+cd mc2/moe_dispatch_normal/examples
 python moe_prefill_sample.py --num-processes 16 --num-tokens 1024 --hidden 7168 --num-topk 8 --num-experts 16
 ```
 
@@ -93,7 +91,7 @@ python moe_prefill_sample.py --num-processes 16 --num-tokens 1024 --hidden 7168 
 
 ```bash
 # 测试 get_dispatch_layout (简化版本)
-cd experimental/mc2/dispatch_layout/examples
+cd mc2/dispatch_layout/examples
 python dispatch_layout_sample.py --test-type get_dispatch_layout --num-processes 16
 
 # 测试 dispatch_layout (原始版本)
@@ -106,7 +104,7 @@ python dispatch_layout_sample.py --num-processes 16
 ### 独立通信测试（中等）
 
 ```bash
-cd experimental/mc2/notify_dispatch/examples
+cd mc2/notify_dispatch/examples
 python notify_dispatch_sample.py --num-processes 16 --num-tokens 1024
 ```
 
@@ -135,3 +133,4 @@ python notify_dispatch_sample.py --num-processes 16 --num-tokens 1024
 2. Prefill workflow 测试端到端正确性，验证 dispatch + combine 返回原始 token 按 expert 选择加权
 3. 独立测试 (dispatch_layout, notify_dispatch) 用于底层验证
 4. 生产使用建议采用组合算子 (`moe_dispatch_prefill`, `moe_combine_prefill`)，自动处理所有依赖
+5. 各算子examples目录下的简化测试脚本通过 sys.path 引用 moe_dispatch_normal/examples 下的共享工具
