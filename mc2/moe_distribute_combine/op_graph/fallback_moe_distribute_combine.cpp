@@ -37,7 +37,7 @@ struct OpOptionalInput {
 };
 
 struct OpOutput {
-    const gert::Tensor *y; 
+    const gert::Tensor *y;
 };
 
 struct OpAttrs {
@@ -58,30 +58,36 @@ struct OpAttrs {
 };
 
 // 获取必选输入
-graphStatus MoeDistributeCombineGetOpInput(OpExecuteContext* host_api_ctx, OpInput &opInput)
+graphStatus MoeDistributeCombineGetOpInput(OpExecuteContext *host_api_ctx, OpInput &opInput)
 {
     opInput.expandX = host_api_ctx->GetInputTensor(static_cast<size_t>(0));
-    OP_CHECK_IF(opInput.expandX == nullptr, OP_LOGE(moeDistributeCombineInfo,"expandX is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opInput.expandX == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "expandX"),
+                return ge::GRAPH_FAILED);
 
     opInput.expertIds = host_api_ctx->GetInputTensor(static_cast<size_t>(1));
-    OP_CHECK_IF(opInput.expertIds == nullptr, OP_LOGE(moeDistributeCombineInfo,"expertIds is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opInput.expertIds == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "expertIds"),
+                return ge::GRAPH_FAILED);
 
     opInput.expandIdx = host_api_ctx->GetInputTensor(static_cast<size_t>(2));
-    OP_CHECK_IF(opInput.expandIdx == nullptr, OP_LOGE(moeDistributeCombineInfo,"expandIdx is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opInput.expandIdx == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "expandIdx"),
+                return ge::GRAPH_FAILED);
 
     opInput.epSendCounts = host_api_ctx->GetInputTensor(static_cast<size_t>(3));
-    OP_CHECK_IF(opInput.epSendCounts == nullptr, OP_LOGE(moeDistributeCombineInfo,"epSendCounts is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opInput.epSendCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "epSendCounts"),
+                return ge::GRAPH_FAILED);
 
     opInput.expertScales = host_api_ctx->GetInputTensor(static_cast<size_t>(4));
-    OP_CHECK_IF(opInput.expertScales == nullptr, OP_LOGE(moeDistributeCombineInfo,"expertScales is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opInput.expertScales == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "expertScales"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 // 获取可选输入
-graphStatus MoeDistributeCombineGetOpOptionalInput(OpExecuteContext* host_api_ctx, OpOptionalInput &opOptionalInput)
+graphStatus MoeDistributeCombineGetOpOptionalInput(OpExecuteContext *host_api_ctx, OpOptionalInput &opOptionalInput)
 {
     opOptionalInput.tpSendCounts = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(5));
-    OP_CHECK_IF(opOptionalInput.tpSendCounts == nullptr, OP_LOGE(moeDistributeCombineInfo,"tpSendCounts is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opOptionalInput.tpSendCounts == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "tpSendCounts"), return ge::GRAPH_FAILED);
 
     opOptionalInput.xActiveMask = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(6));
     opOptionalInput.activationScale = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(7));
@@ -92,69 +98,86 @@ graphStatus MoeDistributeCombineGetOpOptionalInput(OpExecuteContext* host_api_ct
 }
 
 // 获取输出
-graphStatus MoeDistributeCombineGetOpOutput(OpExecuteContext* host_api_ctx, OpOutput &opOutput)
+graphStatus MoeDistributeCombineGetOpOutput(OpExecuteContext *host_api_ctx, OpOutput &opOutput)
 {
     opOutput.y = host_api_ctx->GetOutputTensor(static_cast<size_t>(0));
-    OP_CHECK_IF(opOutput.y == nullptr, OP_LOGE(moeDistributeCombineInfo,"y is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opOutput.y == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "y"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 // 获取属性
-graphStatus MoeDistributeCombineGetOpAttrs(OpExecuteContext* host_api_ctx, OpAttrs &opAttrs)
+graphStatus MoeDistributeCombineGetOpAttrs(OpExecuteContext *host_api_ctx, OpAttrs &opAttrs)
 {
     const auto attrs = host_api_ctx->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(moeDistributeCombineInfo,"attrs is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "attrs"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.groupEp = attrs->GetStr(static_cast<size_t>(0));
-    OP_CHECK_IF(opAttrs.groupEp == nullptr, OP_LOGE(moeDistributeCombineInfo,"groupEp is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.groupEp == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "groupEp"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.epWorldSize = attrs->GetInt(static_cast<size_t>(1));
-    OP_CHECK_IF(opAttrs.epWorldSize == nullptr, OP_LOGE(moeDistributeCombineInfo,"epWorldSize is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.epWorldSize == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "epWorldSize"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.epRankId = attrs->GetInt(static_cast<size_t>(2));
-    OP_CHECK_IF(opAttrs.epRankId == nullptr, OP_LOGE(moeDistributeCombineInfo,"epRankId is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.epRankId == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "epRankId"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.moeExpertNum = attrs->GetInt(static_cast<size_t>(3));
-    OP_CHECK_IF(opAttrs.moeExpertNum == nullptr, OP_LOGE(moeDistributeCombineInfo,"moeExpertNum is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.moeExpertNum == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "moeExpertNum"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.groupTp = attrs->GetStr(static_cast<size_t>(4));
-    OP_CHECK_IF(opAttrs.groupTp == nullptr, OP_LOGE(moeDistributeCombineInfo,"groupTp is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.groupTp == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "groupTp"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.tpWorldSize = attrs->GetInt(static_cast<size_t>(5));
-    OP_CHECK_IF(opAttrs.tpWorldSize == nullptr, OP_LOGE(moeDistributeCombineInfo,"tpWorldSize is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.tpWorldSize == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "tpWorldSize"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.tpRankId = attrs->GetInt(static_cast<size_t>(6));
-    OP_CHECK_IF(opAttrs.tpRankId == nullptr, OP_LOGE(moeDistributeCombineInfo,"tpRankId is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.tpRankId == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "tpRankId"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.expertShardType = attrs->GetInt(static_cast<size_t>(7));
-    OP_CHECK_IF(opAttrs.expertShardType == nullptr, OP_LOGE(moeDistributeCombineInfo,"expertShardType is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.expertShardType == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "expertShardType"), return ge::GRAPH_FAILED);
 
     opAttrs.sharedExpertNum = attrs->GetInt(static_cast<size_t>(8));
-    OP_CHECK_IF(opAttrs.sharedExpertNum == nullptr, OP_LOGE(moeDistributeCombineInfo,"sharedExpertNum is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.sharedExpertNum == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "sharedExpertNum"), return ge::GRAPH_FAILED);
 
     opAttrs.sharedExpertRankNum = attrs->GetInt(static_cast<size_t>(9));
-    OP_CHECK_IF(opAttrs.sharedExpertRankNum == nullptr, OP_LOGE(moeDistributeCombineInfo,"sharedExpertRankNum is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.sharedExpertRankNum == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "sharedExpertRankNum"), return ge::GRAPH_FAILED);
 
     opAttrs.globalBs = attrs->GetInt(static_cast<size_t>(10));
-    OP_CHECK_IF(opAttrs.globalBs == nullptr, OP_LOGE(moeDistributeCombineInfo,"globalBs is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.globalBs == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "globalBs"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.outDtype = attrs->GetInt(static_cast<size_t>(11));
-    OP_CHECK_IF(opAttrs.outDtype == nullptr, OP_LOGE(moeDistributeCombineInfo,"out_dtype is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.outDtype == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "out_dtype"),
+                return ge::GRAPH_FAILED);
 
     opAttrs.commQuantMode = attrs->GetInt(static_cast<size_t>(12));
-    OP_CHECK_IF(opAttrs.commQuantMode == nullptr, OP_LOGE(moeDistributeCombineInfo,"comm_quant_mode is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.commQuantMode == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "comm_quant_mode"), return ge::GRAPH_FAILED);
 
     opAttrs.groupListType = attrs->GetInt(static_cast<size_t>(13));
-    OP_CHECK_IF(opAttrs.groupListType == nullptr, OP_LOGE(moeDistributeCombineInfo,"group_list_type is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opAttrs.groupListType == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "group_list_type"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 } // namespace
 
-static graphStatus MoeDistributeCombineExecuteFunc(OpExecuteContext* host_api_ctx)
+static graphStatus MoeDistributeCombineExecuteFunc(OpExecuteContext *host_api_ctx)
 {
     OP_LOGD(moeDistributeCombineInfo, "start to fallback for moeDistributeCombine");
-    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE(moeDistributeCombineInfo,"host_api_ctx is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeCombineInfo, "host_api_ctx"),
+                return ge::GRAPH_FAILED);
 
     OpInput opInput;
     OpOptionalInput opOptionalInput;
@@ -162,27 +185,27 @@ static graphStatus MoeDistributeCombineExecuteFunc(OpExecuteContext* host_api_ct
     OpAttrs opAttrs;
 
     OP_CHECK_IF(MoeDistributeCombineGetOpInput(host_api_ctx, opInput) != ge::GRAPH_SUCCESS,
-                OP_LOGE(moeDistributeCombineInfo,"get input failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(moeDistributeCombineInfo, "get input failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(MoeDistributeCombineGetOpOptionalInput(host_api_ctx, opOptionalInput) != ge::GRAPH_SUCCESS,
-                OP_LOGE(moeDistributeCombineInfo,"get optional input failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(moeDistributeCombineInfo, "get optional input failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(MoeDistributeCombineGetOpOutput(host_api_ctx, opOutput) != ge::GRAPH_SUCCESS,
-                OP_LOGE(moeDistributeCombineInfo,"get output failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(moeDistributeCombineInfo, "get output failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(MoeDistributeCombineGetOpAttrs(host_api_ctx, opAttrs) != ge::GRAPH_SUCCESS,
-                OP_LOGE(moeDistributeCombineInfo,"get attrs failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(moeDistributeCombineInfo, "get attrs failed"), return ge::GRAPH_FAILED);
 
-    const auto apiRet = EXEC_OPAPI_CMD(aclnnMoeDistributeCombine,
-        opInput.expandX, opInput.expertIds, opInput.expandIdx, opInput.epSendCounts,
+    const auto apiRet = EXEC_OPAPI_CMD(
+        aclnnMoeDistributeCombine, opInput.expandX, opInput.expertIds, opInput.expandIdx, opInput.epSendCounts,
         opInput.expertScales, opOptionalInput.tpSendCounts, opOptionalInput.xActiveMask,
         opOptionalInput.activationScale, opOptionalInput.weightScale, opOptionalInput.groupList,
-        opOptionalInput.expandScales, opAttrs.groupEp, *opAttrs.epWorldSize, *opAttrs.epRankId,
-        *opAttrs.moeExpertNum, opAttrs.groupTp, *opAttrs.tpWorldSize, *opAttrs.tpRankId,
-        *opAttrs.expertShardType, *opAttrs.sharedExpertNum, *opAttrs.sharedExpertRankNum,
-        *opAttrs.globalBs, *opAttrs.outDtype, *opAttrs.commQuantMode,
+        opOptionalInput.expandScales, opAttrs.groupEp, *opAttrs.epWorldSize, *opAttrs.epRankId, *opAttrs.moeExpertNum,
+        opAttrs.groupTp, *opAttrs.tpWorldSize, *opAttrs.tpRankId, *opAttrs.expertShardType, *opAttrs.sharedExpertNum,
+        *opAttrs.sharedExpertRankNum, *opAttrs.globalBs, *opAttrs.outDtype, *opAttrs.commQuantMode,
         *opAttrs.groupListType, opOutput.y);
-    OP_CHECK_IF(apiRet != ge::GRAPH_SUCCESS, OP_LOGE(moeDistributeCombineInfo,"aclnn api error code %u", apiRet), return apiRet);
+    OP_CHECK_IF(apiRet != ge::GRAPH_SUCCESS, OP_LOGE(moeDistributeCombineInfo, "aclnn api error code %u", apiRet),
+                return apiRet);
     return GRAPH_SUCCESS;
 }
 
 IMPL_OP(MoeDistributeCombine).OpExecuteFunc(MoeDistributeCombineExecuteFunc);
 
-}  // namespace fallback
+} // namespace fallback
