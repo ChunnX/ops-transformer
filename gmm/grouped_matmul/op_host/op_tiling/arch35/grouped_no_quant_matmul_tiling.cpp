@@ -458,6 +458,95 @@ OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSi
     return false;
 }
 
+/** @brief split M：single-single-single(s-s-s)
+ */
+bool GroupedNoQuantMatmulTiling::SplitMSingleXSingleWeightSingleY(const gert::Shape xShape, const gert::Shape wShape)
+{
+    groupNum_ = static_cast<int32_t>(wShape.GetDim(0));
+    int64_t m = xShape.GetDim(0);
+    int64_t k = xShape.GetDim(xKDim_);
+    int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
+    m_ = static_cast<uint64_t>(m);
+    k_ = static_cast<uint64_t>(k);
+    n_ = static_cast<uint64_t>(n);
+    kZero = kZero || (k == 0);
+    weightNoL2Cache_ = true;
+    return true;
+}
+
+/** @brief split M：single-multi-single(s-m-s)/single-multi-multi(s-m-m), share the same function.
+ */
+bool GroupedNoQuantMatmulTiling::SplitMSingleXSeparatedWeight(const gert::TilingContext *context,
+                                                              const gert::Shape xShape)
+{
+    int64_t m = xShape.GetDim(0);
+    int64_t k = xShape.GetDim(xKDim_);
+    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
+        auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i);
+        if (wTensor == nullptr) {
+            break;
+        } // when x has multi tensors, xTensor is allowed to be empty
+        auto wShape = wTensor->GetOriginShape();
+
+        groupNum_ += 1U;
+        int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
+        n_ = std::max(n_, static_cast<uint64_t>(n));
+    }
+    m_ = static_cast<uint64_t>(m);
+    k_ = static_cast<uint64_t>(k);
+    kZero = kZero || (k == 0);
+    weightNoL2Cache_ = isSingleY_;
+    return true;
+}
+
+/** @brief split M：multi-multi-single(m-m-s); no split: multi-multi-multi(m-m-m), share the same function
+ */
+bool GroupedNoQuantMatmulTiling::SeparatedXSeparatedWeight(const gert::TilingContext *context)
+{
+    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
+        auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i);
+        auto xTensor = context->GetDynamicInputTensor(INDEX_X, i);
+        if (wTensor == nullptr || xTensor == nullptr) {
+            break;
+        }
+        auto wShape = wTensor->GetOriginShape();
+        auto xShape = xTensor->GetStorageShape();
+        groupNum_ += 1U;
+        int64_t m = xShape.GetDim(0);
+        int64_t k = xShape.GetDim(xKDim_);
+        kZero = kZero || (k == 0);
+        int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
+        m_ = std::max(m_, static_cast<uint64_t>(m));
+        k_ = std::max(k_, static_cast<uint64_t>(k));
+        n_ = std::max(n_, static_cast<uint64_t>(n));
+    }
+    groupType_ = NO_SPLIT;
+    return true;
+}
+
+/** @brief split M : multi-single-multi(m-s-m), split K : multi-single-multi(m-s-m), share the same function
+ */
+bool GroupedNoQuantMatmulTiling::SeparatedXSingleWeight(const gert::TilingContext *context, const gert::Shape wShape)
+{
+    int64_t n = wShape.GetDim(weightNDim_) * nzFactor_;
+    for (uint32_t i = 0; i < MAX_TENSOR; i++) {
+        auto xTensor = context->GetDynamicInputTensor(INDEX_X, i);
+        if (xTensor == nullptr) {
+            break;
+        } // when x has multi tensors, xTensor is allowed to be empty
+        auto xShape = xTensor->GetStorageShape();
+        groupNum_ += 1U;
+        int64_t m = xShape.GetDim(0);
+        int64_t k = xShape.GetDim(xKDim_);
+        kZero = kZero || (k == 0);
+        m_ = std::max(m_, static_cast<uint64_t>(m));
+        k_ = std::max(k_, static_cast<uint64_t>(k));
+    }
+    n_ = static_cast<uint64_t>(n);
+    groupType_ = NO_SPLIT;
+    return true;
+}
+
 /** @brief split K single-single-single
  */
 bool GroupedNoQuantMatmulTiling::SplitKSingleXSingleWeightSingleY(const gert::TilingContext *context,
