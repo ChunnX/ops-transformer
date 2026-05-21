@@ -2029,7 +2029,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBmm31TilingData(uint32_
     mm31.SetBias(false);
     if (tmpData_.isL1CustomEnable) {
         mm31.SetFixSplit(128, -1, -1);
+    } else if (tmpData_.isMM345NZOut){
+        mm31.SetFixSplit(-1, dimD, -1);
     }
+
     mm31.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize);
     OP_CHECK_IF((mm31.GetTiling(td_->mm31TilingData) != 0),
                OP_LOGW(context_, "FlashAttentionScoreGradTilingS1s2Bn2 mm31 GetTiling Failed."),
@@ -2122,6 +2125,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBmm4TilingData(uint32_t
     }
     if (tmpData_.isL1CustomEnable) {
         mm4.SetFixSplit(128, -1, -1);
+    } else if (tmpData_.isMM345NZOut){
+        mm4.SetFixSplit(-1, dimD, -1);
     }
 
     mm4.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize);

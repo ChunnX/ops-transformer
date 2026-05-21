@@ -55,7 +55,6 @@ struct DyncReal {
     // 动态参数
     uint32_t processM = 0;
     uint32_t processN = 0;
-    uint32_t processMAlign = 0;
     // ping pong
     uint32_t vPingS1Inner = 0;
     uint32_t vPongS1Inner = 0;
@@ -1089,7 +1088,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         intriParams.blockCount = insn.s2InnerAlign / C0_SIZE;
         intriParams.blockLen = insn.s1Inner * C0_SIZE * sizeof(T1);
         intriParams.srcStride = 1;
-        intriParams.dstStride = (rp.processMAlign - insn.s1Inner) * C0_SIZE * sizeof(T1);
+        intriParams.dstStride = (vec.singleM - insn.s1Inner) * C0_SIZE * sizeof(T1);
     } else {
         if (b16AlignProcessN == insn.s2InnerAlign) {
             intriParams.blockCount = 1;
@@ -1250,7 +1249,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     int64_t s1Size = dimS1;
     if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
-        s1Size = rp.processMAlign;
+        s1Size = vec.singleM;
     }
     if (mmDVScalar != align_n) {
         mmDVScalar = align_n;
@@ -1386,7 +1385,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     int64_t s1Size = dimS1;
     if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
-        s1Size = rp.processMAlign;
+        s1Size = vec.singleM;
     }
     if (mmDQScalar != align_n) {
         mmDQScalar = align_n;
@@ -2988,9 +2987,9 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
         mm3PingAddr = mm3Addr + static_cast<int64_t>(rp.vPingLoopS1) * vec.baseM * C0_SIZE +
-                      static_cast<int64_t>(rp.vPingLoopS2) * rp.processMAlign * vec.baseN;
+                      static_cast<int64_t>(rp.vPingLoopS2) * vec.singleM * vec.baseN;
         mm4PingAddr = mm4Addr + static_cast<int64_t>(rp.vPingLoopS1) * vec.baseM * C0_SIZE +
-                      static_cast<int64_t>(rp.vPingLoopS2) * rp.processMAlign * vec.baseN;
+                      static_cast<int64_t>(rp.vPingLoopS2) * vec.singleM * vec.baseN;
     } else {
         mm3PingAddr = mm3Addr + static_cast<int64_t>(rp.vPingLoopS1) * vec.baseM * b16AlignProcessN +
                       static_cast<int64_t>(rp.vPingLoopS2) * vec.baseN;
@@ -3079,9 +3078,9 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
         mm3PongAddr = mm3Addr + static_cast<int64_t>(rp.vPongLoopS1) * vec.baseM * C0_SIZE +
-                      static_cast<int64_t>(rp.vPongLoopS2) * rp.processMAlign * vec.baseN;
+                      static_cast<int64_t>(rp.vPongLoopS2) * vec.singleM * vec.baseN;
         mm4PongAddr = mm4Addr + static_cast<int64_t>(rp.vPongLoopS1) * vec.baseM * C0_SIZE +
-                      static_cast<int64_t>(rp.vPongLoopS2) * rp.processMAlign * vec.baseN;
+                      static_cast<int64_t>(rp.vPongLoopS2) * vec.singleM * vec.baseN;
     } else {
         mm3PongAddr = mm3Addr + static_cast<int64_t>(rp.vPongLoopS1) * vec.baseM * b16AlignProcessN +
                       static_cast<int64_t>(rp.vPongLoopS2) * vec.baseN;
@@ -3695,7 +3694,6 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             rp.processM = vec.singleMTail;
             lp.s1OuterInnerNum = (rp.processM + vec.baseM - 1) / vec.baseM;
         }
-        rp.processMAlign = RoundUp<uint32_t>(rp.processM, 16);
 
         // Sparse
         if constexpr (!L1CUSTOM) {
