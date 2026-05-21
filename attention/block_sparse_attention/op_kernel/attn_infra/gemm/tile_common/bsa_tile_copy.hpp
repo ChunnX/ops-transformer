@@ -12,7 +12,7 @@
 #define GEMM_TILE_TILE_COPY_HPP
 
 #include <type_traits>
-#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/detail/tag_to_layout.hpp"
 #include "../../../tla/tensor.hpp"
 #if (__CCE_AICORE__ == 310)
@@ -26,11 +26,11 @@
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm_a2.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a2.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b_a2.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_l1_to_bt.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_gm_to_ub.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_ub_to_gm.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_copy_l1_to_bt.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_copy_gm_to_ub.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_copy_ub_to_gm.hpp"
 #endif
-#include "../../../attn_infra/gemm/helper.hpp"
+#include "../../../attn_infra/gemm/bsa_helper.hpp"
 
 
 namespace NpuArch::Gemm::Tile {

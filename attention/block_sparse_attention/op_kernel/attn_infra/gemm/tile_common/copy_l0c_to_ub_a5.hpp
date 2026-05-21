@@ -11,8 +11,8 @@
 #ifndef GEMM_TILE_COPY_L0C_TO_UB_A5_HPP
 #define GEMM_TILE_COPY_L0C_TO_UB_A5_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
+#include "../../../attn_infra/arch/bsa_arch.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_dst.hpp"
 #include "../../../tla/tensor.hpp"
 

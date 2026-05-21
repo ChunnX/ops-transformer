@@ -20,9 +20,9 @@
 
 #include <kernel_operator.h>
 
-#include "../attn_infra/detail/alignment.hpp"
-#include "../attn_infra/detail/dependent_false.hpp"
-#include "../attn_infra/detail/macros.hpp"
+#include "../attn_infra/detail/bsa_alignment.hpp"
+#include "../attn_infra/detail/bsa_dependent_false.hpp"
+#include "../attn_infra/detail/bsa_macros.hpp"
 
 namespace NpuArch {
 

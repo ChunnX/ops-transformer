@@ -11,7 +11,7 @@
 #ifndef ARCH_ARCH_HPP
 #define ARCH_ARCH_HPP
 
-#include "../../attn_infra/base_defs.hpp"
+#include "../../attn_infra/bsa_base_defs.hpp"
 
 namespace NpuArch::Arch 
 {

@@ -11,15 +11,15 @@
 #ifndef GEMM_BLOCK_MMAD_SFAI_PV_HPP
 #define GEMM_BLOCK_MMAD_SFAI_PV_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/coord.hpp"
-#include "../../../attn_infra/arch/cross_core_sync.hpp"
-#include "../../../attn_infra/gemm/dispatch_policy.hpp"
-#include "../../../attn_infra/gemm/helper.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
+#include "../../../attn_infra/arch/bsa_resource.hpp"
+#include "../../../attn_infra/bsa_coord.hpp"
+#include "../../../attn_infra/arch/bsa_cross_core_sync.hpp"
+#include "../../../attn_infra/gemm/bsa_dispatch_policy.hpp"
+#include "../../../attn_infra/gemm/bsa_helper.hpp"
+#include "../../../attn_infra/bsa_gemm_coord.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 
 ////////////////////////////////////////////////////////////////////
 

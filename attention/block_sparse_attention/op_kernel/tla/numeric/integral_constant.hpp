@@ -11,7 +11,7 @@
 #ifndef TLA_NUMERIC_INTEGER_CONSTANT_HPP
 #define TLA_NUMERIC_INTEGER_CONSTANT_HPP
 
-#include "../../attn_infra/detail/macros.hpp"
+#include "../../attn_infra/detail/bsa_macros.hpp"
 #include "../../tla/type_traits.hpp"
 #include "../../tla/numeric/math.hpp"
 

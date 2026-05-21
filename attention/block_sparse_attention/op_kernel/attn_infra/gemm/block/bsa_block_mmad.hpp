@@ -11,9 +11,9 @@
 #ifndef GEMM_BLOCK_BLOCK_MMAD_HPP
 #define GEMM_BLOCK_BLOCK_MMAD_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {
 
@@ -55,8 +55,8 @@ struct BlockMmadTla {
 
 } // namespace NpuArch::Gemm::Block
 #if (__CCE_AICORE__ == 220)
-#include "../../../attn_infra/gemm/block/block_mmad_qk.hpp"
-#include "../../../attn_infra/gemm/block/block_mmad_pv.hpp"
+#include "../../../attn_infra/gemm/block/bsa_block_mmad_qk.hpp"
+#include "../../../attn_infra/gemm/block/bsa_block_mmad_pv.hpp"
 #endif
 #if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/gemm/block/block_mmad_pv_arch35_ABf16_C_to_UB.hpp"

@@ -11,13 +11,13 @@
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/cross_core_sync.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
+#include "../../../attn_infra/arch/bsa_cross_core_sync.hpp"
+#include "../../../attn_infra/arch/bsa_resource.hpp"
+#include "../../../attn_infra/epilogue/bsa_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/bsa_tile_copy.hpp"
+#include "../../../attn_infra/bsa_gemm_coord.hpp"
+#include "../../../attn_infra/bsa_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
