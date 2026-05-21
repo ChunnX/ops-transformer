@@ -980,7 +980,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     }
     if (templateType_ == TEMPLATE_NZ) { // && IsNonContiguous()) {
         templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS;
-        printf("TEMPLATE_NZ is contiguous :%d\n ", IsNonContiguous());
+        printf("TEMPLATE_NZ is contiguous :%d, dimNum:%d\n ", IsNonContiguous(), inputKeyCacheInShape_.GetDimNum());
         if (inputKeyCacheInShape_.GetDimNum() != DIM4) {
             templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM;
         }
