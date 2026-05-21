@@ -11,8 +11,8 @@
 #ifndef LAYOUT_LAYOUT_HPP
 #define LAYOUT_LAYOUT_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/layout/matrix.hpp"
-#include "../../attn_infra/layout/vector.hpp"
+#include "../../attn_infra/rain_base_defs.hpp"
+#include "../../attn_infra/layout/rain_matrix.hpp"
+#include "../../attn_infra/layout/rain_vector.hpp"
 
 #endif  // LAYOUT_LAYOUT_HPP
