@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torchair as tng
 from torch_npu import npu
-import ascend_ops
+import fast_kernel_launch
 
 logging.basicConfig(
     level=logging.INFO,
