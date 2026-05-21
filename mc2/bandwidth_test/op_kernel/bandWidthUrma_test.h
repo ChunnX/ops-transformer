@@ -264,6 +264,11 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
     PRINTF("+============================start===========================\n");
     context_ = (__gm__ Mc2MoeContext *)context;
     PRINTF("context addr is %u\n", context_->hcommHandle_[0]);
+    urmaCommHandle_[0] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[0]); // todo:需要确认
+    PRINTF("urmaCommHandle_[0]  localNotifyNum is  %u\n", urmaCommHandle_[0]->localNotifyNum);
+    PRINTF("urmaCommHandle_[0]  remoteNotifyNum is  %u\n", urmaCommHandle_[0]->remoteNotifyNum);
+    PRINTF("urmaCommHandle_[0]  localBufferNum is  %u\n", urmaCommHandle_[0]->localBufferNum);
+    PRINTF("urmaCommHandle_[0]  remoteBufferNum is  %u\n", urmaCommHandle_[0]->remoteBufferNum);
     PRINTF("+============================end===========================\n");
 
 
