@@ -12,8 +12,8 @@
  * \file grouped_mat_mul_allto_allv_tiling_base.h
  * \brief
  */
-#ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H
-#define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H
+#ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_BASE_H
+#define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_BASE_H
 
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
@@ -23,20 +23,15 @@
 
 namespace optiling {
 
-class GmmAlltoAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
-{
+class GmmAlltoAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GmmAlltoAllvTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit GmmAlltoAllvTilingBase(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
 protected:
-    ge::graphStatus GetPlatformInfo() override;
-    ge::graphStatus GetShapeAttrsInfo() override;
-    ge::graphStatus DoLibApiTiling() override;
-    ge::graphStatus GetWorkspaceSize() override;
-    ge::graphStatus PostTiling() override;
-
+    const char *opName_{nullptr};
     NpuArch npuArch_;
 };
 } // namespace optiling
 
-#endif // MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H
+#endif // MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_BASE_H
