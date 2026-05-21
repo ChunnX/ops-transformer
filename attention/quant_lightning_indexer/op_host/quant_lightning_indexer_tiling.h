@@ -88,6 +88,7 @@ constexpr uint32_t SPARSE_MODE_LOWER = 3;
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLITilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
+TILING_DATA_FIELD_DEF(uint32_t, tSize)
 TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
@@ -139,6 +140,7 @@ public:
     // Base Param
     NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
+    uint32_t tSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
@@ -216,6 +218,7 @@ public:
 
     // BaseParams
     uint32_t bSize_ = 0;
+    uint32_t tSize_ = 0;
     uint32_t n1Size_ = 0;
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;

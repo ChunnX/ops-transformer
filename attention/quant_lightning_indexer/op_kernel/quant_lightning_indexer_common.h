@@ -46,6 +46,10 @@ struct RunInfo {
     uint32_t n2Idx = 0;
     uint32_t gS1Idx;
     uint32_t s2Idx;
+    uint32_t s2Start;  // S2的起始位置
+    uint32_t validS2Len;
+    uint32_t qScaleLoop;
+    uint32_t kScaleLoop;
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
@@ -99,6 +103,7 @@ struct ConstInfo {
     uint32_t s2BaseSize = 1ULL;
 
     uint64_t batchSize = 0ULL;
+    uint64_t tSize = 0ULL;
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;
