@@ -70,165 +70,71 @@ constexpr int32_t DBG_BK_B = 25;  // 之前是 30, 改成 25 因为日志显示 
 constexpr int64_t SPIN_TIMEOUT_CYCLES = 5000000LL;
 
 // ============================================================================
-// DYN_SCHED_DESIGN — 单核 V 调度器 (Centralized Scheduler on a Single AIV)
+// DYN_SCHED_DESIGN — 单写者协议 (Single-Writer Protocol)
 // ============================================================================
 //
-// 问题回顾：上一版用 per-(expert, wave) HBM 原子计数器 + AIC AtomicAdd 自取号 的
-// 去中心化认领方案。看似清爽，实测多次卡死。根因：本硬件上 AscendC::AtomicAdd
-// 只保证"加法对内存的更新原子"，并不保证返回值是 fetch-and-add 的旧值。两个核
-// 并发对同一 counter 各加 1，最终值 +2 没错，但两核拿到的返回值可能都是 0。
-// 这就让"用返回值当 nTileIdx" 的认领协议失效：两个核认领了同一个 tile，导致 epi
-// 多 atomic_add 一次 → groupFlag 永远超过 tileNumGmm1 但某些 tile 实际没跑，其它
-// 核卡在 ClaimNextTask 自旋等不到那一个 tile 的完成。
+// 核心: 每个 HBM int32 地址只有一个核会 store。物理上不可能 race。无 atomic。
 //
-// --- 新设计：单写者调度 ---
+// --- 内存布局 (workspace, 一次 kernel 调用开始时清零) ---
 //
-// 用 bk=0 的 AIV0 当 scheduler（单核单线程），它独占写 taskSlot 的权利。其它
-// 31 个 AIC + AIV0 + AIV1 当 worker。这样：
-//   - 任务计数器只有 scheduler 一个写者 → AtomicAdd 的弱语义不再是问题
-//   - worker 端逻辑大幅简化：spin slot → 处理 → clear slot
-//   - 跨 expert 之间也是 scheduler 一手管理状态
+//   taskData[bk*2 + ch]              : scheduler 写, AIC/AIV 只读
+//                                       packed task (PackDynamicTask 编码 32 bit)
+//   taskSeq [bk*2 + ch]              : scheduler 写, AIC/AIV 只读
+//                                       单调递增计数器, 表示本队列总共下发了多少 task
+//   taskAck [bk*4 + ch*2 + owner]    : worker (自己 owner) 写, scheduler 只读
+//                                       worker 已处理到哪个 seq
+//   ch ∈ {0=GMM1, 1=GMM2}, owner ∈ {0=AIC, 1=AIV}
 //
-// 代价：丢 bk=0 的 AIC（动态分核能让剩 31 核更均衡，弥补 ~3% 算力）。
+// --- 派发协议 (per (bk, ch)) ---
 //
-// --- 任务空间 ---
+//   scheduler 本地 my_seq[bk*2+ch]: 下一个待派 task 的 seq
+//   每 iter: scheduler 用 DataCopyPad 一次性把整片 ack 数组从 HBM DMA 到 UB
+//            (~500ns vs 124 次单点 read ~12μs, 快 ~24x)
+//   派发条件: ack[bk*4+ch*2+0] == my_seq[bk*2+ch] && ack[bk*4+ch*2+1] == my_seq[bk*2+ch]
+//            (AIC 和 AIV 都已确认上个 task)
+//   派发动作:
+//     1. write taskData[bk*2+ch] = packed
+//     2. PipeBarrier (保证 taskData 落盘先于 taskSeq)
+//     3. my_seq[bk*2+ch] += 1; write taskSeq[bk*2+ch] = my_seq[bk*2+ch]
+//     4. PipeBarrier
+//   batch: 一 iter 可对多个 (bk, ch) 同时派, 共享 2 次 PipeBarrier
 //
-// 每 expert 仍是 GMM1[w][n] + GMM2[w][n]：
-//   GMM1[w][n]：n ∈ [0, tileNumGmm1)
-//   GMM2[w][n]：n ∈ [0, tileNumGmm2)，需 groupFlagListGm[w] ≥ tileNumGmm1
+// --- worker 处理 (per (bk, ch, owner)) ---
 //
-// --- 通信 slot 布局 ---
-//
-// 每 worker (bk ∈ [1, blockNum)) 有 4 个 slot：
-//   slot[bk][channel=0=GMM1][owner=0=AIC] : scheduler → AIC bk
-//   slot[bk][channel=0=GMM1][owner=1=AIV] : scheduler → AIV0 bk
-//   slot[bk][channel=1=GMM2][owner=0=AIC] : scheduler → AIC bk
-//   slot[bk][channel=1=GMM2][owner=1=AIV] : scheduler → AIV1 bk
-//
-// slotIdx = bk * 4 + channel * 2 + owner，与 workspace 已有布局一致。
-//
-// 每个 task 调度器写 2 个 slot（AIC + 对应 AIV 各一份），保证 AIC 和 AIV 都能独立
-// 读到完整 task 描述。
-//
-// --- 跨核同步 ---
-//
-// GMM1 (AIC bk ↔ AIV0 bk 同 pair)：UB 需要 cube↔vec 屏障。沿用静态
-// GroupMatmulSwigluQuant 内部的 WaitForCube(0) / NotifyVector(0) / NotifyCube(0)。
-// 每 task 调一次该静态函数，vecSetSyncCom=0 让函数内的 WaitForVector 不触发，由
-// 外层在两个 task 之间手动 WaitForVector(0) 保证 UB 复用前 AIV0 已写完。
-//
-// GMM2 (AIC bk ↔ AIV1 bk 同 pair)：cube 直接写 GM，rowReadyFlags HBM 计数器同步，
-// 不依赖 cube↔vec flag。沿用静态 GroupMatmul2 内部的实现。
-//
-// 跨 worker 间没有同步——所有同步都 worker 本核内 + worker 与 scheduler 间。
-// scheduler 与 worker 间用 slot 的 HBM 读写做无锁通信（写者唯一 → 无 race）。
-//
-// --- AIC worker 主循环 ---
-//
-//   g1_first = true; g1_end = false; g2_end = false;
-//   while (!(g1_end && g2_end)):
-//     if (!g1_end && ReadSlot(slot_aic_g1) != 0):
-//       packed = ReadSlot(slot_aic_g1)
-//       ClearSlot(slot_aic_g1, packed)
-//       if (!g1_first) WaitForVector(0)   // 等上一个 G1 task 的 AIV0 NotifyCube
-//       if (task.op == END):
-//         g1_end = true; continue
-//       call static GMM1 (single tile, vecSetSyncCom=0)
-//         // 内含: mmad + NotifyVector(0)
-//       g1_first = false; continue
-//     if (!g2_end && ReadSlot(slot_aic_g2) != 0):
-//       packed = ReadSlot(slot_aic_g2)
-//       ClearSlot(slot_aic_g2, packed)
-//       if (task.op == END):
-//         g2_end = true; continue
-//       call static GMM2 (single tile)
-//         // 内含: mmad + atomic_add rowReadyFlags
-//       continue
-//
-// --- AIV worker 主循环（AIV0 / AIV1 镜像） ---
-//
-//   while (true):
-//     spin slot_aiv != 0
-//     packed = Read; ClearSlot
-//     if (END): break
-//     call static GMM1 (AIV0) / GMM2 (AIV1) (single tile)
-//
-// --- Scheduler 主循环 ---
-//
-//   wait dispatch flag
-//   for (bk = 1..blockNum-1):
-//     while (still有未发完的 G1 或 G2 task / END):
-//       // GMM1 channel
-//       if (!end_g1[bk] && slot_aic_g1[bk]==0 && slot_aiv_g1[bk]==0):
-//         task = next_G1_task() (轮 wave，挑还有空 tile 的)
-//         if (task): write 2 slots, dispatched_g1[w]++
-//         else if (allG1Dispatched()): write END to 2 slots, end_g1[bk] = true
-//       // GMM2 channel
-//       if (!end_g2[bk] && slot_aic_g2[bk]==0 && slot_aiv_g2[bk]==0):
-//         task = next_G2_task() (只要 swigluFlag[w] ≥ tnG1 的 wave)
-//         if (task): write 2 slots, dispatched_g2[w]++
-//         else if (allG2Dispatched()): write END to 2 slots, end_g2[bk] = true
-//   wait all slots == 0 (worker ack END)
-//
-// 调度器是 AIV core，操作的是 HBM 上的 int32 slot；每 task 几次 ReadGmByPassDCache
-// + 2 次 AtomicAdd（slot 初始 0 → 加上 packed 等价于赋值）。开销很小。
+//   last_seen = 0
+//   loop:
+//     cur = ReadGmByPassDCache(taskSeq[bk*2+ch])
+//     if cur > last_seen:
+//       packed = ReadGmByPassDCache(taskData[bk*2+ch])
+//       task = unpack(packed)
+//       if task.op == END:
+//         write taskAck[bk*4+ch*2+owner] = cur
+//         break
+//       process(task)
+//       write taskAck[bk*4+ch*2+owner] = cur
+//       last_seen = cur
 //
 // --- 跨 expert ---
 //
-// 每个 expert 结束时所有 slot 都被 worker clear 回 0，scheduler 也 drain 完 ACK。
-// 下一 expert scheduler 重置局部状态（dispatched_*、end_*），进入新一轮。
+//   taskSeq / taskAck / my_seq 全部跨 expert 单调递增, 永不回退。
+//   不需要 expert 边界 reset HBM, 不需要 SyncAll。kernel 调用开始时一次性 reset 即可。
 //
 // ============================================================================
 
-// slot owner enum：用 pp 字段表达"AIC slot vs AIV slot"
-//   pp=0：scheduler → AIC bk 的 slot
-//   pp=1：scheduler → AIV bk 的 slot
-constexpr int32_t DYN_SLOT_AIC = 0;
-constexpr int32_t DYN_SLOT_AIV = 1;
+constexpr int32_t OWNER_AIC = 0;
+constexpr int32_t OWNER_AIV = 1;
 
-// ----------------------------------------------------------------------------
-// taskSlot 读写: 每 slot 1 个 int32, AtomicAdd 写 / ReadGmByPassDCache 读 / AtomicAdd 清 0
-// ----------------------------------------------------------------------------
-// slot 索引 = blockIdx * 4 + channel * 2 + owner。
-// 协议（slot 初始 0，startup reset）:
-//   scheduler 写: 此前 slot=0（worker 已 clear），AtomicAdd(slot, packed) → slot=packed
-//   worker 读 : ReadGmByPassDCache → packed → unpack
-//   worker 清 : AtomicAdd(slot, -packed) → slot=0  （让 scheduler 知道 task 已被消费）
-// 单写者保证：scheduler 是 slot 的唯一写者（worker 的 clear 是减去自己读到的 packed，
-// 等价于回到 0），所以没有 "fetch-and-add 弱语义" 相关 race。
-__aicore__ inline __gm__ int32_t* GetTaskSlotPtr(
-    const Params& params, int32_t blockIdx, int32_t channel, int32_t owner)
+__aicore__ inline __gm__ int32_t* GetTaskDataPtr(const Params& p, int32_t bk, int32_t ch)
 {
-    int32_t slotIdx = blockIdx * 4 + channel * 2 + owner;
-    return (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + slotIdx;
+    return (__gm__ int32_t*)p.workspaceInfo.ptrTaskData + (bk * 2 + ch);
 }
-
-__aicore__ inline void WriteTaskSlot(
-    const Params& params, int32_t blockIdx, int32_t channel,
-    int32_t owner, const DynamicTask& task)
+__aicore__ inline __gm__ int32_t* GetTaskSeqPtr(const Params& p, int32_t bk, int32_t ch)
 {
-    __gm__ int32_t* p = GetTaskSlotPtr(params, blockIdx, channel, owner);
-    AscendC::AtomicAdd(p, PackDynamicTask(task));
-    PipeBarrier<PIPE_ALL>();
+    return (__gm__ int32_t*)p.workspaceInfo.ptrTaskSeq + (bk * 2 + ch);
 }
-
-__aicore__ inline int32_t ReadTaskSlot(
-    const Params& params, int32_t blockIdx, int32_t channel,
-    int32_t owner, DynamicTask& outTask)
+__aicore__ inline __gm__ int32_t* GetTaskAckPtr(const Params& p, int32_t bk, int32_t ch, int32_t owner)
 {
-    __gm__ int32_t* p = GetTaskSlotPtr(params, blockIdx, channel, owner);
-    int32_t packed = AscendC::ReadGmByPassDCache(p);
-    UnpackDynamicTask(packed, outTask);
-    return packed;
-}
-
-__aicore__ inline void ClearTaskSlot(
-    const Params& params, int32_t blockIdx, int32_t channel,
-    int32_t owner, int32_t packed)
-{
-    __gm__ int32_t* p = GetTaskSlotPtr(params, blockIdx, channel, owner);
-    AscendC::AtomicAdd(p, -packed);
-    PipeBarrier<PIPE_ALL>();
+    return (__gm__ int32_t*)p.workspaceInfo.ptrTaskAck + (bk * 4 + ch * 2 + owner);
 }
 
 
@@ -508,12 +414,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 }
                 AscendC::SetCtrlSpr<60, 60>(0);
                 epilogueOp(epilogueShape, epilogueOffset, pingpongIdx);
-                // ★ epi 末尾的 AtomicAdd(groupFlagListGm, 1) 在 scalar 流水, NotifyCube 在 PIPE_V。
-                //   PIPE_V drain 不包含 scalar pipe → 不加 barrier 时 NotifyCube 可能在 atomic-add
-                //   commit 到 HBM 之前触发, 跨核读 flag 看不到更新, 动态调度下其它核会卡在 spin。
-                //   静态 cross-wave 下同 blockIdx 包揽 wave, 等的是自己核内 atomic-add (scalar 自序),
-                //   所以不出问题; 动态调度跨核观察必须强 drain。
-                PipeBarrier<PIPE_ALL>();
+                // PIPE_ALL 删除: scheduler / AIC 后续读 groupFlagListGm 都在 spin 循环里,
+                // atomic_add commit 稍微晚一点不影响正确性 (eventually consistent)。
+                // PipeBarrier<PIPE_ALL>();
                 NotifyCube(pingpongIdx);
             } else {
                 // 单 UB（交织+L1_TILE_M=256 或 非交织）：单通道 cube↔vec sync
@@ -530,8 +433,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                     // 非交织：epi 跨 UbFirst+UbSecond 读 gate/up
                     epilogueOp(epilogueShape, epilogueOffset);
                 }
-                // ★ 同上, 强 drain scalar pipe (atomic-add) 后再发 cube-vec flag
-                PipeBarrier<PIPE_ALL>();
+                // PIPE_ALL 删除: 同上,atomic_add 跨核可见性靠 spin 轮询,不需要立即 drain
+                // PipeBarrier<PIPE_ALL>();
                 NotifyCube();
             }
 
@@ -721,9 +624,9 @@ __aicore__ inline void GroupMatmul2(
             SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
             WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
-            // ★ 强制 atomic_add 的 PIPE_S commit 完成再返回, 否则下一个 task 的 mmad 流水可能
-            //   抢在 commit 之前发出, 配对 AIV1 spin rowReadyFlags 读到旧值 → 整核错位。
-            PipeBarrier<PIPE_ALL>();
+            // PIPE_ALL 删除: AIV1 spin 是循环 ReadGmByPassDCache, eventually 会看到 atomic_add 的更新,
+            // 不需要在写者侧立即 drain。
+            // PipeBarrier<PIPE_ALL>();
 
             // [TRACE] sp8 / sp9: AIC GMM2 first / last tile 完成（mmad+atomic_add 后）
             if (isFirstTile) {
@@ -736,16 +639,23 @@ __aicore__ inline void GroupMatmul2(
             }
         } else {
             // AIV: 等待对应C核完成并combine发送
+            //
+            // ★ 关键: 这里 *绝对不能* 在 timeout 时 break 然后 atomic_sub。
+            //   动态调度下, AIV1 收到 G2 task 后立刻进入这里 spin, AIC 可能还在啃 G1 backlog
+            //   没轮到 G2, 几 ms 后才 atomic_add(+1)。若 break 后 atomic_sub(-1), rowReadyFlags
+            //   被错误减成 -1, 同 bk 后续所有 G2 task 永远 spin 不到 >=1 → 级联崩盘 (print8.log 现象)。
+            //   只打一次 warning 然后继续 spin, 直到 AIC 确实 +1。
             {
                 int64_t _spinStart = GetSystemCycle();
+                bool _warned = false;
                 while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
-                    if (GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
+                    if (!_warned && GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
                         int dbgBk = (int)blockIdx;
                         unsigned dbgLoop = (unsigned)loopIdx;
                         int32_t dbgCur = ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx);
-                        AscendC::PRINTF("[static GMM2 AIV1 bk=%d] *** TIMEOUT spin rowReadyFlags loopIdx=%u cur=%d\n",
+                        AscendC::PRINTF("[static GMM2 AIV1 bk=%d] WARN long spin rowReadyFlags loopIdx=%u cur=%d (keep spinning)\n",
                                         dbgBk, dbgLoop, dbgCur);
-                        break;
+                        _warned = true;
                     }
                     int64_t st = GetSystemCycle();
                     while (GetSystemCycle() - st < 100) {}
@@ -782,22 +692,21 @@ __aicore__ inline void GroupMatmul2(
 // ============================================================================
 // SchedulerLoop — 单核 V 调度器主循环 (bk=0 AIV0)
 // ============================================================================
-// 任务：
-//   1. 等本 expert 的 dispatch flag (epWorldSize * blockNumPerEP)
-//   2. 维护每 wave 的 G1/G2 已派发计数; 监控 swiglu→gmm2 flag 判 G2 解锁
-//   3. 扫描 worker 的 (slot_aic, slot_aiv) 对, 都为 0 时派发新 task 或 END
-//   4. 全部 END 派发完 + 全部 slot 收到 ack 后退出
+// 单写者协议(见文件顶部 DYN_SCHED_DESIGN)。每 iter:
+//   1. DataCopyPad 一次性 DMA 整片 ack 数组到 UB (~500ns)
+//   2. 在 UB 内 scalar 比较 ack vs my_seq, 标记 idle (bk, ch)
+//   3. 决策派发: 找下个 G1 / G2 task 或发 END, 暂存到 dispatch buf
+//   4. Phase A: 批量写 taskData (无 PipeBarrier 间隔)
+//   5. 1 次 PipeBarrier
+//   6. Phase B: 批量写 taskSeq, 更新 my_seq[]
+//   7. 1 次 PipeBarrier
+// 退出条件: 所有 (bk, ch) end_acked。
 //
-// task 编码用 PackDynamicTask, 每 task 写 2 个 slot:
-//   slot[bk][channel][AIC]  和  slot[bk][channel][AIV]
-// AtomicAdd 加上 packed (slot 此前 = 0)。同 channel 的两个 slot 都被 worker clear
-// 回 0 后才能写下一 task。
-//
-// 跨 expert 隔离: 局部状态 dispatched_*[] / end_*[] 每 expert 重置。slot 由 worker
-// clear 后保持 0，下一 expert scheduler 直接复用。
+// my_seq 由调用方维护, 跨 expert 单调递增不复位。 配合 worker last_seen 也单调递增,
+// 整个 kernel 调用期间无需任何 reset / SyncAll。
 // ============================================================================
-constexpr int32_t SCHED_MAX_WAVES = 64;     // waveCnt 上限 (m_i ≤ 16K token / 256 = 64)
-constexpr int32_t SCHED_MAX_WORKERS = 64;   // blockNum 上限 (实际 32, 留余量)
+constexpr int32_t SCHED_MAX_WAVES   = 64;   // waveCnt 上限
+constexpr int32_t SCHED_MAX_WORKERS = 64;   // blockNum 上限
 
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB,
@@ -809,22 +718,23 @@ __aicore__ inline void SchedulerLoop(
                           int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
     int32_t rankId, uint32_t expertIdx, uint32_t blockNum,
     uint64_t waveCnt, uint64_t m_i,
-    uint32_t tileNumGmm1, uint32_t tileNumGmm2)
+    uint32_t tileNumGmm1, uint32_t tileNumGmm2,
+    int32_t* my_seq)  // [bk*2 + ch], 跨 expert 持续累积
 {
     #if MEGA_MOE_DYN_DEBUG
-    AscendC::PRINTF("[rank=%d SCHED] >>> ENTRY exp=%u tnG1=%u tnG2=%u waveCnt=%lu m_i=%lu blockNum=%u\n",
-                    rankId, expertIdx, tileNumGmm1, tileNumGmm2, waveCnt, m_i, blockNum);
+    AscendC::PRINTF("[rank=%d SCHED] >>> ENTRY exp=%u tnG1=%u tnG2=%u waveCnt=%lu m_i=%lu\n",
+                    rankId, expertIdx, tileNumGmm1, tileNumGmm2, waveCnt, m_i);
     #endif
 
-    // -- Step 1: wait dispatch flag --
+    // --- 1. 等本 expert 的 dispatch flag ---
     __gm__ int32_t* dispatchFlagAddr = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
-    uint32_t targetValue = params.tilingData->epWorldSize * params.tilingData->blockNumPerEP;
+    int32_t targetValue = static_cast<int32_t>(params.tilingData->epWorldSize * params.tilingData->blockNumPerEP);
     {
         int64_t st = AscendC::GetSystemCycle();
-        while (AscendC::ReadGmByPassDCache(dispatchFlagAddr) != static_cast<int32_t>(targetValue)) {
+        while (AscendC::ReadGmByPassDCache(dispatchFlagAddr) != targetValue) {
             if (AscendC::GetSystemCycle() - st > SPIN_TIMEOUT_CYCLES) {
                 int32_t dbgCur = AscendC::ReadGmByPassDCache(dispatchFlagAddr);
-                AscendC::PRINTF("[rank=%d SCHED] TIMEOUT dispatch flag exp=%u tgt=%u cur=%d\n",
+                AscendC::PRINTF("[rank=%d SCHED] TIMEOUT dispatch flag exp=%u tgt=%d cur=%d\n",
                                 rankId, expertIdx, targetValue, dbgCur);
                 break;
             }
@@ -837,166 +747,140 @@ __aicore__ inline void SchedulerLoop(
     __gm__ int32_t* swigluFlagBase =
         (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 + flagOffsetForExpert;
 
-    // -- Step 1.5: 强制 reset 所有 worker 的 slot 到 0 --
-    //   防御上 expert 残留：若有 worker 在上 expert 超时退出而没 clear slot，slot 里会
-    //   留下 packed 值。本 expert 进入后 scheduler 看到 slot != 0 会判它"被占用"永远不
-    //   往里写新 task，造成卡死。SyncAll<true>() 已保证所有 worker 已退出上 expert，
-    //   此处单核 reset 是安全的。
-    {
-        __gm__ int32_t* slotBase = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot;
-        for (uint32_t bk = 1; bk < blockNum; ++bk) {
-            for (int32_t off = 0; off < 4; ++off) {
-                __gm__ int32_t* p = slotBase + (bk * 4 + off);
-                int32_t cur = AscendC::ReadGmByPassDCache(p);
-                if (cur != 0) {
-                    AscendC::AtomicAdd(p, -cur);
-                }
-            }
-        }
-        PipeBarrier<PIPE_ALL>();
-    }
-
-    // -- Step 2: local dispatch state --
+    // --- 2. 本 expert 局部状态 ---
     int32_t dispatched_g1[SCHED_MAX_WAVES];
     int32_t dispatched_g2[SCHED_MAX_WAVES];
     for (int32_t i = 0; i < SCHED_MAX_WAVES; ++i) {
         dispatched_g1[i] = 0;
         dispatched_g2[i] = 0;
     }
-    bool end_g1_sent[SCHED_MAX_WORKERS];
-    bool end_g2_sent[SCHED_MAX_WORKERS];
-    bool end_g1_acked[SCHED_MAX_WORKERS];
-    bool end_g2_acked[SCHED_MAX_WORKERS];
-    for (int32_t i = 0; i < SCHED_MAX_WORKERS; ++i) {
-        end_g1_sent[i] = false;
-        end_g2_sent[i] = false;
-        end_g1_acked[i] = false;
-        end_g2_acked[i] = false;
+    bool end_sent [SCHED_MAX_WORKERS * 2];   // [bk*2 + ch]
+    bool end_acked[SCHED_MAX_WORKERS * 2];
+    for (int32_t i = 0; i < SCHED_MAX_WORKERS * 2; ++i) {
+        end_sent[i]  = false;
+        end_acked[i] = false;
     }
 
     int32_t lastWaveM = static_cast<int32_t>(
         (m_i % L1_TILE_M != 0) ? (m_i % L1_TILE_M) : L1_TILE_M);
     int32_t lastWaveIdx = static_cast<int32_t>(waveCnt - 1);
 
-    // -- Step 3: main dispatch + ack loop --
+    // --- 3. UB tensor 用来一次性 DMA ack 数组 ---
+    int32_t ackElems = static_cast<int32_t>(blockNum * 4);
+    int32_t ackElemsAligned = (ackElems + 7) & ~7;
+    LocalTensor<int32_t> ubAck = LocalTensor<int32_t>(TPosition::VECIN, 0, ackElemsAligned);
+    GlobalTensor<int32_t> gmAck;
+    gmAck.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrTaskAck);
+
+    // --- 4. 主循环 ---
     int64_t loopStart = AscendC::GetSystemCycle();
     while (true) {
+        // 4a. DMA: HBM ack 数组 → UB
+        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(ackElems * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+        DataCopyPad(ubAck, gmAck, copyParams, padParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        // 4b. 扫描 + 决策 + 写 taskData (Phase A)
         bool allDone = true;
+        int32_t numDispatched = 0;
+        int32_t dispatchIdx[SCHED_MAX_WORKERS * 2];
+        int32_t dispatchSeq[SCHED_MAX_WORKERS * 2];
+
         for (uint32_t bk = 1; bk < blockNum; ++bk) {
-            // === GMM1 channel ===
-            if (!end_g1_acked[bk]) {
+            for (int32_t ch = 0; ch < 2; ++ch) {
+                int32_t idx = static_cast<int32_t>(bk) * 2 + ch;
+                if (end_acked[idx]) continue;
                 allDone = false;
-                __gm__ int32_t* sAIC = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                         + (bk * 4 + DYN_CHANNEL_GMM1 * 2 + DYN_SLOT_AIC);
-                __gm__ int32_t* sAIV = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                         + (bk * 4 + DYN_CHANNEL_GMM1 * 2 + DYN_SLOT_AIV);
-                int32_t vA = AscendC::ReadGmByPassDCache(sAIC);
-                int32_t vB = AscendC::ReadGmByPassDCache(sAIV);
-                if (vA == 0 && vB == 0) {
-                    if (!end_g1_sent[bk]) {
-                        // 找下一个有空 tile 的 wave
-                        int32_t wDispatch = -1;
-                        for (uint64_t w = 0; w < waveCnt; ++w) {
-                            if (dispatched_g1[w] < static_cast<int32_t>(tileNumGmm1)) {
-                                wDispatch = static_cast<int32_t>(w);
-                                break;
-                            }
+
+                int32_t aicAck = ubAck.GetValue(bk * 4 + ch * 2 + OWNER_AIC);
+                int32_t aivAck = ubAck.GetValue(bk * 4 + ch * 2 + OWNER_AIV);
+                if (aicAck != my_seq[idx] || aivAck != my_seq[idx]) continue;   // worker busy
+
+                if (end_sent[idx]) {                                            // END 已发 + 已 ack
+                    end_acked[idx] = true;
+                    continue;
+                }
+
+                // 找下一个 task
+                int32_t wDispatch = -1;
+                if (ch == 0) {                                                  // G1
+                    for (uint64_t w = 0; w < waveCnt; ++w) {
+                        if (dispatched_g1[w] < static_cast<int32_t>(tileNumGmm1)) {
+                            wDispatch = static_cast<int32_t>(w); break;
                         }
-                        if (wDispatch >= 0) {
-                            DynamicTask t;
-                            t.opType = DYN_OP_GMM1;
-                            t.waveIdx = wDispatch;
-                            t.nTileIdx = dispatched_g1[wDispatch];
-                            t.waveM = (wDispatch == lastWaveIdx) ? lastWaveM : static_cast<int32_t>(L1_TILE_M);
-                            int32_t packed = PackDynamicTask(t);
-                            AscendC::AtomicAdd(sAIC, packed);
-                            AscendC::AtomicAdd(sAIV, packed);
-                            PipeBarrier<PIPE_ALL>();
-                            dispatched_g1[wDispatch]++;
-                        } else {
-                            // 全部派完, 发 END
-                            DynamicTask endT;
-                            endT.opType = DYN_OP_END;
-                            endT.waveIdx = 0;
-                            endT.nTileIdx = 0;
-                            endT.waveM = 0;
-                            int32_t packed = PackDynamicTask(endT);
-                            AscendC::AtomicAdd(sAIC, packed);
-                            AscendC::AtomicAdd(sAIV, packed);
-                            PipeBarrier<PIPE_ALL>();
-                            end_g1_sent[bk] = true;
-                        }
-                    } else {
-                        // END 已派发 + slot 都 0 = worker 已 ack END
-                        end_g1_acked[bk] = true;
+                    }
+                } else {                                                        // G2
+                    for (uint64_t w = 0; w < waveCnt; ++w) {
+                        if (dispatched_g2[w] >= static_cast<int32_t>(tileNumGmm2)) continue;
+                        int32_t flagVal = AscendC::ReadGmByPassDCache(swigluFlagBase + w);
+                        if (flagVal < static_cast<int32_t>(tileNumGmm1)) continue;
+                        wDispatch = static_cast<int32_t>(w); break;
                     }
                 }
-            }
-            // === GMM2 channel ===
-            if (!end_g2_acked[bk]) {
-                allDone = false;
-                __gm__ int32_t* sAIC = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                         + (bk * 4 + DYN_CHANNEL_GMM2 * 2 + DYN_SLOT_AIC);
-                __gm__ int32_t* sAIV = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                         + (bk * 4 + DYN_CHANNEL_GMM2 * 2 + DYN_SLOT_AIV);
-                int32_t vA = AscendC::ReadGmByPassDCache(sAIC);
-                int32_t vB = AscendC::ReadGmByPassDCache(sAIV);
-                if (vA == 0 && vB == 0) {
-                    if (!end_g2_sent[bk]) {
-                        // 找下一个: wave 已解锁 (flag ≥ tnG1) 且还有空 tile
-                        int32_t wDispatch = -1;
+
+                int32_t packed;
+                bool isEnd = false;
+                if (wDispatch >= 0) {
+                    DynamicTask t;
+                    t.opType  = (ch == 0) ? DYN_OP_GMM1 : DYN_OP_GMM2;
+                    t.waveIdx = wDispatch;
+                    t.nTileIdx = (ch == 0) ? dispatched_g1[wDispatch] : dispatched_g2[wDispatch];
+                    t.waveM   = (wDispatch == lastWaveIdx) ? lastWaveM : static_cast<int32_t>(L1_TILE_M);
+                    packed = PackDynamicTask(t);
+                    if (ch == 0) dispatched_g1[wDispatch]++;
+                    else         dispatched_g2[wDispatch]++;
+                } else {
+                    // 是否全派完?
+                    bool allDispatched = true;
+                    if (ch == 0) {
                         for (uint64_t w = 0; w < waveCnt; ++w) {
-                            if (dispatched_g2[w] >= static_cast<int32_t>(tileNumGmm2)) continue;
-                            int32_t flagVal = AscendC::ReadGmByPassDCache(swigluFlagBase + w);
-                            if (flagVal < static_cast<int32_t>(tileNumGmm1)) continue;
-                            wDispatch = static_cast<int32_t>(w);
-                            break;
-                        }
-                        if (wDispatch >= 0) {
-                            DynamicTask t;
-                            t.opType = DYN_OP_GMM2;
-                            t.waveIdx = wDispatch;
-                            t.nTileIdx = dispatched_g2[wDispatch];
-                            t.waveM = (wDispatch == lastWaveIdx) ? lastWaveM : static_cast<int32_t>(L1_TILE_M);
-                            int32_t packed = PackDynamicTask(t);
-                            AscendC::AtomicAdd(sAIC, packed);
-                            AscendC::AtomicAdd(sAIV, packed);
-                            PipeBarrier<PIPE_ALL>();
-                            dispatched_g2[wDispatch]++;
-                        } else {
-                            // 检查所有 G2 是否派完, 是的话发 END
-                            bool allG2Dispatched = true;
-                            for (uint64_t w = 0; w < waveCnt; ++w) {
-                                if (dispatched_g2[w] < static_cast<int32_t>(tileNumGmm2)) {
-                                    allG2Dispatched = false;
-                                    break;
-                                }
-                            }
-                            if (allG2Dispatched) {
-                                DynamicTask endT;
-                                endT.opType = DYN_OP_END;
-                                endT.waveIdx = 0;
-                                endT.nTileIdx = 0;
-                                endT.waveM = 0;
-                                int32_t packed = PackDynamicTask(endT);
-                                AscendC::AtomicAdd(sAIC, packed);
-                                AscendC::AtomicAdd(sAIV, packed);
-                                PipeBarrier<PIPE_ALL>();
-                                end_g2_sent[bk] = true;
-                            }
-                            // else: 等 swiglu 解锁更多 wave; 跳过本 bk 本轮
+                            if (dispatched_g1[w] < static_cast<int32_t>(tileNumGmm1)) { allDispatched = false; break; }
                         }
                     } else {
-                        end_g2_acked[bk] = true;
+                        for (uint64_t w = 0; w < waveCnt; ++w) {
+                            if (dispatched_g2[w] < static_cast<int32_t>(tileNumGmm2)) { allDispatched = false; break; }
+                        }
                     }
+                    if (!allDispatched) continue;                               // 等 swiglu 解锁
+                    DynamicTask endT;
+                    endT.opType = DYN_OP_END; endT.waveIdx = 0; endT.nTileIdx = 0; endT.waveM = 0;
+                    packed = PackDynamicTask(endT);
+                    isEnd = true;
                 }
+
+                // Phase A: 写 taskData
+                __gm__ int32_t* tdPtr = GetTaskDataPtr(params, static_cast<int32_t>(bk), ch);
+                AscendC::WriteGmByPassDCache(tdPtr, packed);
+                dispatchIdx[numDispatched] = idx;
+                dispatchSeq[numDispatched] = my_seq[idx] + 1;
+                numDispatched++;
+                if (isEnd) end_sent[idx] = true;
             }
         }
+
         if (allDone) break;
 
-        // 超时诊断 (主循环): 4 倍 SPIN_TIMEOUT 后印出每 wave 的状态, 帮助定位卡死
+        // 4c. Phase B: 写 taskSeq
+        //   PIPE_ALL 删除: WriteGmByPassDCache 走 scalar pipe, scalar 严格自序,
+        //   Phase A 的 taskData 写一定先于 Phase B 的 taskSeq 写落 HBM。
+        if (numDispatched > 0) {
+            // PipeBarrier<PIPE_ALL>();
+            for (int32_t i = 0; i < numDispatched; ++i) {
+                int32_t idx = dispatchIdx[i];
+                int32_t bkN = idx / 2;
+                int32_t chN = idx % 2;
+                int32_t newSeq = dispatchSeq[i];
+                __gm__ int32_t* tsPtr = GetTaskSeqPtr(params, bkN, chN);
+                AscendC::WriteGmByPassDCache(tsPtr, newSeq);
+                my_seq[idx] = newSeq;
+            }
+            // PipeBarrier<PIPE_ALL>();
+        }
+
+        // 超时诊断
         if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
-            AscendC::PRINTF("[rank=%d SCHED] TIMEOUT main loop exp=%u\n", rankId, expertIdx);
+            AscendC::PRINTF("[rank=%d SCHED] TIMEOUT exp=%u\n", rankId, expertIdx);
             for (uint64_t w = 0; w < waveCnt; ++w) {
                 int32_t dbgFlag = AscendC::ReadGmByPassDCache(swigluFlagBase + w);
                 int32_t dbgD1 = dispatched_g1[w];
@@ -1004,23 +888,18 @@ __aicore__ inline void SchedulerLoop(
                 uint64_t dbgW = w;
                 AscendC::PRINTF("  wave=%lu flag=%d d1=%d d2=%d\n", dbgW, dbgFlag, dbgD1, dbgD2);
             }
-            // 只打没 ack 的 bk: 这些就是卡住的 bk, 让定位更准
             for (uint32_t bk = 1; bk < blockNum; ++bk) {
-                int dbgE1s = end_g1_sent[bk] ? 1 : 0;
-                int dbgE1a = end_g1_acked[bk] ? 1 : 0;
-                int dbgE2s = end_g2_sent[bk] ? 1 : 0;
-                int dbgE2a = end_g2_acked[bk] ? 1 : 0;
-                if (dbgE1a == 1 && dbgE2a == 1) continue;  // 已 ack, 跳过
-                int32_t s0 = AscendC::ReadGmByPassDCache(
-                    (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + (bk * 4 + 0));
-                int32_t s1 = AscendC::ReadGmByPassDCache(
-                    (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + (bk * 4 + 1));
-                int32_t s2 = AscendC::ReadGmByPassDCache(
-                    (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + (bk * 4 + 2));
-                int32_t s3 = AscendC::ReadGmByPassDCache(
-                    (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot + (bk * 4 + 3));
-                AscendC::PRINTF("  STUCK bk=%u slot_g1aic=%d _aiv=%d slot_g2aic=%d _aiv=%d e1s=%d e1a=%d e2s=%d e2a=%d\n",
-                                bk, s0, s1, s2, s3, dbgE1s, dbgE1a, dbgE2s, dbgE2a);
+                for (int32_t ch = 0; ch < 2; ++ch) {
+                    int32_t idx = static_cast<int32_t>(bk) * 2 + ch;
+                    if (end_acked[idx]) continue;
+                    int32_t myS = my_seq[idx];
+                    int32_t aicA = AscendC::ReadGmByPassDCache(GetTaskAckPtr(params, static_cast<int32_t>(bk), ch, OWNER_AIC));
+                    int32_t aivA = AscendC::ReadGmByPassDCache(GetTaskAckPtr(params, static_cast<int32_t>(bk), ch, OWNER_AIV));
+                    int dbgEs = end_sent[idx] ? 1 : 0;
+                    int dbgEa = end_acked[idx] ? 1 : 0;
+                    AscendC::PRINTF("  STUCK bk=%u ch=%d myseq=%d aicAck=%d aivAck=%d es=%d ea=%d\n",
+                                    bk, ch, myS, aicA, aivA, dbgEs, dbgEa);
+                }
             }
             break;
         }
@@ -1033,16 +912,16 @@ __aicore__ inline void SchedulerLoop(
 
 
 // ============================================================================
-// DynamicAicLoop — AIC worker 主循环 (bk ∈ [1, blockNum))
+// DynamicAicLoop — AIC worker, bk ∈ [1, blockNum)
 // ============================================================================
-// 协议:
-//   - 不再自取号; 由 scheduler 把 task 写到 slot_aic_g1/_g2 (HBM)
-//   - 主循环轮询两个 slot, 拿到非 0 就 clear + 处理
-//   - G1: 调静态 GroupMatmulSwigluQuant (单 tile), 内含 mmad + NotifyVector(0)
-//     上一个 G1 task 的 AIV0 NotifyCube 用本核外层 WaitForVector(0) 在下一 G1 task
-//     之前 drain, 保证 UB 复用安全
-//   - G2: 调静态 GroupMatmul2 (单 tile), 内含 mmad + atomic_add rowReadyFlags
-//   - END (op=2) 跳过工作; 退出时 drain 最后一发 G1 NotifyCube (若有)
+// 单写者协议. 轮询 taskSeq[bk*2+0] (G1) 和 taskSeq[bk*2+1] (G2)。
+//   cur = ReadGmByPassDCache(taskSeq)
+//   if cur > last_seen[ch]:
+//     packed = ReadGmByPassDCache(taskData)
+//     if END: write taskAck = cur; mark end[ch]
+//     else: process(packed); write taskAck = cur
+//     last_seen[ch] = cur
+// last_seen 由调用方维护, 跨 expert 单调累积。
 // ============================================================================
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB,
@@ -1054,7 +933,8 @@ __aicore__ inline void DynamicAicLoop(
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
     int32_t blockIdx, int32_t rankId, uint32_t expertIdx,
-    uint32_t tileNumGmm1, uint32_t tileNumGmm2)
+    uint32_t tileNumGmm1, uint32_t tileNumGmm2,
+    int32_t* last_seen)  // [0]=G1 channel, [1]=G2 channel; 跨 expert 持续
 {
     #if MEGA_MOE_DYN_DEBUG
     if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
@@ -1072,39 +952,36 @@ __aicore__ inline void DynamicAicLoop(
     uint64_t scaleOutputN = Ops::Base::CeilDiv(outputN, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
                              MXFP_MULTI_BASE_SIZE;
 
-    __gm__ int32_t* slotAicG1 = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                  + (blockIdx * 4 + DYN_CHANNEL_GMM1 * 2 + DYN_SLOT_AIC);
-    __gm__ int32_t* slotAicG2 = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                  + (blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + DYN_SLOT_AIC);
+    __gm__ int32_t* seqG1 = GetTaskSeqPtr(params, blockIdx, 0);
+    __gm__ int32_t* seqG2 = GetTaskSeqPtr(params, blockIdx, 1);
+    __gm__ int32_t* dataG1 = GetTaskDataPtr(params, blockIdx, 0);
+    __gm__ int32_t* dataG2 = GetTaskDataPtr(params, blockIdx, 1);
+    __gm__ int32_t* ackG1 = GetTaskAckPtr(params, blockIdx, 0, OWNER_AIC);
+    __gm__ int32_t* ackG2 = GetTaskAckPtr(params, blockIdx, 1, OWNER_AIC);
 
-    // g1Pending: 是否有"还没被 WaitForVector drain"的 G1 NotifyCube
-    bool g1Pending = false;
-    bool g1End = false;
-    bool g2End = false;
-    int g1Seq = 0;
-    int g2Seq = 0;
+    bool g1Pending = false;  // 上次 G1 mmad 的 NotifyVector 没被 drain
+    bool g1End = false, g2End = false;
+    int g1Seq = 0, g2Seq = 0;
 
     int64_t loopStart = AscendC::GetSystemCycle();
     while (!g1End || !g2End) {
-        // -- 1. 优先轮 G1 slot --
+        // -- G1 channel --
         if (!g1End) {
-            int32_t packed = AscendC::ReadGmByPassDCache(slotAicG1);
-            if (packed != 0) {
+            int32_t cur = AscendC::ReadGmByPassDCache(seqG1);
+            if (cur > last_seen[0]) {
+                int32_t packed = AscendC::ReadGmByPassDCache(dataG1);
                 DynamicTask task;
                 UnpackDynamicTask(packed, task);
-                ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, DYN_SLOT_AIC, packed);
 
                 if (task.opType == DYN_OP_END) {
+                    AscendC::WriteGmByPassDCache(ackG1, cur);
+                    // PIPE_ALL 删: 后续是 last_seen 标量赋值, scalar 自序无需 sync
+                    last_seen[0] = cur;
                     g1End = true;
-                    #if MEGA_MOE_DYN_DEBUG
-                    if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
-                        AscendC::PRINTF("[rank=%d AIC bk=%d] G1 END seen\n", rankId, blockIdx);
-                    }
-                    #endif
                     continue;
                 }
 
-                // 在下一个 G1 mmad 前 drain 上一 G1 task 的 AIV0 NotifyCube
+                // UB 屏障: 下一 G1 mmad 前等上次 AIV0 NotifyCube
                 if (g1Pending) {
                     WaitForVector(0);
                     g1Pending = false;
@@ -1154,25 +1031,28 @@ __aicore__ inline void DynamicAicLoop(
                     epilogueOp, params, taskProblemShape, gmmAddrInfo,
                     static_cast<uint32_t>(task.nTileIdx), tileNumGmm1,
                     funcSync, 0);
-                g1Pending = true;  // 静态函数内已发 NotifyVector(0)
+                g1Pending = true;
+
+                AscendC::WriteGmByPassDCache(ackG1, cur);
+                // PIPE_ALL 删
+                last_seen[0] = cur;
                 continue;
             }
         }
-        // -- 2. 否则轮 G2 slot --
+
+        // -- G2 channel --
         if (!g2End) {
-            int32_t packed = AscendC::ReadGmByPassDCache(slotAicG2);
-            if (packed != 0) {
+            int32_t cur = AscendC::ReadGmByPassDCache(seqG2);
+            if (cur > last_seen[1]) {
+                int32_t packed = AscendC::ReadGmByPassDCache(dataG2);
                 DynamicTask task;
                 UnpackDynamicTask(packed, task);
-                ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, DYN_SLOT_AIC, packed);
 
                 if (task.opType == DYN_OP_END) {
+                    AscendC::WriteGmByPassDCache(ackG2, cur);
+                    // PIPE_ALL 删
+                    last_seen[1] = cur;
                     g2End = true;
-                    #if MEGA_MOE_DYN_DEBUG
-                    if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
-                        AscendC::PRINTF("[rank=%d AIC bk=%d] G2 END seen\n", rankId, blockIdx);
-                    }
-                    #endif
                     continue;
                 }
 
@@ -1214,33 +1094,34 @@ __aicore__ inline void DynamicAicLoop(
                     params, taskProblemShape, gmmAddrInfo,
                     static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
                     expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
+
+                AscendC::WriteGmByPassDCache(ackG2, cur);
+                // PIPE_ALL 删
+                last_seen[1] = cur;
                 continue;
             }
         }
-        // 两个 slot 都空, 短暂等待 (scheduler 正在派或上一 task 还没消费完)
-        // 超时诊断: 防止永久卡死
+
+        // 两个 channel 都没新 task: 等一下
         if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
-            int32_t dbgS1 = AscendC::ReadGmByPassDCache(slotAicG1);
-            int32_t dbgS2 = AscendC::ReadGmByPassDCache(slotAicG2);
+            int32_t dbgSeqG1 = AscendC::ReadGmByPassDCache(seqG1);
+            int32_t dbgSeqG2 = AscendC::ReadGmByPassDCache(seqG2);
+            int32_t dbgLastG1 = last_seen[0];
+            int32_t dbgLastG2 = last_seen[1];
             int dbgG1End = g1End ? 1 : 0;
             int dbgG2End = g2End ? 1 : 0;
             int dbgG1Pending = g1Pending ? 1 : 0;
-            AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT idle exp=%u g1End=%d g2End=%d g1=%d g2=%d g1Pending=%d\n",
-                            rankId, blockIdx, expertIdx, dbgG1End, dbgG2End,
-                            dbgS1, dbgS2, dbgG1Pending);
+            AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT idle exp=%u seqG1=%d seqG2=%d lastG1=%d lastG2=%d g1End=%d g2End=%d g1Pending=%d\n",
+                            rankId, blockIdx, expertIdx, dbgSeqG1, dbgSeqG2, dbgLastG1, dbgLastG2,
+                            dbgG1End, dbgG2End, dbgG1Pending);
             break;
         }
         int64_t ss = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - ss < 50) {}
     }
 
-    // 最后一发 G1 NotifyCube 必须 drain (没 drain 的话退出 expert 后 flag 残留)
+    // 最后一发 G1 NotifyCube drain
     if (g1Pending) {
-        #if MEGA_MOE_DYN_DEBUG
-        if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
-            AscendC::PRINTF("[rank=%d AIC bk=%d] final WaitForVector(0) drain\n", rankId, blockIdx);
-        }
-        #endif
         WaitForVector(0);
     }
 
@@ -1253,10 +1134,7 @@ __aicore__ inline void DynamicAicLoop(
 }
 
 // ============================================================================
-// DynamicAiv0Loop — AIV0 worker, GMM1 epi 端
-// ============================================================================
-// 协议: spin AIV slot → read & clear → 调静态 GroupMatmulSwigluQuant (AIV 分支:
-//   WaitForCube(0) → epi → NotifyCube(0))。END 跳过函数, 不发 flag (AIC 不等)。
+// DynamicAiv0Loop — AIV0 worker, G1 channel (epi)
 // ============================================================================
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB,
@@ -1267,13 +1145,15 @@ __aicore__ inline void DynamicAiv0Loop(
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
-    int32_t blockIdx, int32_t rankId, uint32_t expertIdx, uint32_t tileNumGmm1)
+    int32_t blockIdx, int32_t rankId, uint32_t expertIdx, uint32_t tileNumGmm1,
+    int32_t* last_seen)  // 单元素, 跨 expert 持续
 {
     #if MEGA_MOE_DYN_DEBUG
     if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
         AscendC::PRINTF("[rank=%d AIV0 bk=%d] >>> ENTRY exp=%d\n", rankId, blockIdx, expertIdx);
     }
     #endif
+
     int64_t flagOffsetForExpert = Get<IDX_FLAG_OFFSET>(baseOffset);
     uint64_t k_full = static_cast<uint64_t>(Get<K_VALUE>(problemShape));
     uint64_t n_full = static_cast<uint64_t>(Get<N_VALUE>(problemShape));
@@ -1283,92 +1163,96 @@ __aicore__ inline void DynamicAiv0Loop(
     uint64_t scaleOutputN = Ops::Base::CeilDiv(outputN, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
                              MXFP_MULTI_BASE_SIZE;
 
-    __gm__ int32_t* slotPtr = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                + (blockIdx * 4 + DYN_CHANNEL_GMM1 * 2 + DYN_SLOT_AIV);
+    __gm__ int32_t* seqPtr  = GetTaskSeqPtr(params, blockIdx, 0);
+    __gm__ int32_t* dataPtr = GetTaskDataPtr(params, blockIdx, 0);
+    __gm__ int32_t* ackPtr  = GetTaskAckPtr(params, blockIdx, 0, OWNER_AIV);
 
-    int taskSeq = 0;
+    int taskCnt = 0;
+    int64_t loopStart = AscendC::GetSystemCycle();
     while (true) {
-        int32_t packed = 0;
-        int64_t spinStart = AscendC::GetSystemCycle();
-        bool timedOut = false;
-        while (true) {
-            packed = AscendC::ReadGmByPassDCache(slotPtr);
-            if (packed != 0) break;
-            if (AscendC::GetSystemCycle() - spinStart > SPIN_TIMEOUT_CYCLES * 40) {
-                int dbgSeq = taskSeq + 1;
-                AscendC::PRINTF("[rank=%d AIV0 bk=%d] *** TIMEOUT spin slot exp=%u seq=%d\n",
-                                rankId, blockIdx, expertIdx, dbgSeq);
-                timedOut = true;
+        int32_t cur = AscendC::ReadGmByPassDCache(seqPtr);
+        if (cur > last_seen[0]) {
+            int32_t packed = AscendC::ReadGmByPassDCache(dataPtr);
+            DynamicTask task;
+            UnpackDynamicTask(packed, task);
+
+            if (task.opType == DYN_OP_END) {
+                AscendC::WriteGmByPassDCache(ackPtr, cur);
+                // PIPE_ALL 删
+                last_seen[0] = cur;
                 break;
             }
-            int64_t ss = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - ss < 50) {}
+            taskCnt++;
+            #if MEGA_MOE_DYN_DEBUG
+            if (taskCnt <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
+                int32_t dbgW = task.waveIdx;
+                int32_t dbgN = task.nTileIdx;
+                int dbgSeq = taskCnt;
+                AscendC::PRINTF("[rank=%d AIV0 bk=%d] #%d w=%d nT=%d\n",
+                                rankId, blockIdx, dbgSeq, dbgW, dbgN);
+            }
+            #endif
+
+            auto taskProblemShape = problemShape;
+            Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
+            int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+
+            GMMAddrInfo gmmAddrInfo;
+            gmmAddrInfo.aGlobal = params.workspaceInfo.ptrA +
+                (Get<IDX_A_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) *
+                sizeof(ElementA);
+            gmmAddrInfo.aScaleGlobal = params.workspaceInfo.ptrAScale +
+                (Get<IDX_A_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleK_gmm1)) *
+                sizeof(ElementMxScaleA);
+            gmmAddrInfo.bGlobal = params.bGmAddr +
+                Get<IDX_B_OFFSET>(baseOffset) * sizeof(ElementB);
+            gmmAddrInfo.bScaleGlobal = params.bScaleGmAddr +
+                Get<IDX_B_SCALE_OFFSET>(baseOffset) * sizeof(ElementMxScaleB);
+            gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
+                flagOffsetForExpert + static_cast<int64_t>(task.waveIdx);
+            gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
+            gmmAddrInfo.gmm2OutGlobal = nullptr;
+
+            AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
+                Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN),
+                Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN),
+                Get<IDX_FLAG_OFFSET>(baseOffset) + static_cast<int64_t>(task.waveIdx),
+                0L, 0L, 0L};
+            epilogueOp.UpdateGlobalAddr(vecBaseOffset);
+
+            int32_t funcSync = 0;
+            GroupMatmulSwigluQuant<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
+                epilogueOp, params, taskProblemShape, gmmAddrInfo,
+                static_cast<uint32_t>(task.nTileIdx), tileNumGmm1,
+                funcSync, 0);
+
+            AscendC::WriteGmByPassDCache(ackPtr, cur);
+            // PIPE_ALL 删
+            last_seen[0] = cur;
+            loopStart = AscendC::GetSystemCycle();  // reset timeout
+            continue;
         }
-        if (timedOut) break;
 
-        DynamicTask task;
-        UnpackDynamicTask(packed, task);
-        ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM1, DYN_SLOT_AIV, packed);
-
-        if (task.opType == DYN_OP_END) {
+        if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
+            int32_t dbgSeq = cur;
+            int32_t dbgLast = last_seen[0];
+            AscendC::PRINTF("[rank=%d AIV0 bk=%d] *** TIMEOUT exp=%u seq=%d last=%d\n",
+                            rankId, blockIdx, expertIdx, dbgSeq, dbgLast);
             break;
         }
-        taskSeq++;
-        #if MEGA_MOE_DYN_DEBUG
-        if (taskSeq <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
-            int32_t dbgW = task.waveIdx;
-            int32_t dbgN = task.nTileIdx;
-            int dbgSeq = taskSeq;
-            AscendC::PRINTF("[rank=%d AIV0 bk=%d] #%d w=%d nT=%d\n",
-                            rankId, blockIdx, dbgSeq, dbgW, dbgN);
-        }
-        #endif
-
-        auto taskProblemShape = problemShape;
-        Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
-        int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
-
-        GMMAddrInfo gmmAddrInfo;
-        gmmAddrInfo.aGlobal = params.workspaceInfo.ptrA +
-            (Get<IDX_A_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) *
-            sizeof(ElementA);
-        gmmAddrInfo.aScaleGlobal = params.workspaceInfo.ptrAScale +
-            (Get<IDX_A_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleK_gmm1)) *
-            sizeof(ElementMxScaleA);
-        gmmAddrInfo.bGlobal = params.bGmAddr +
-            Get<IDX_B_OFFSET>(baseOffset) * sizeof(ElementB);
-        gmmAddrInfo.bScaleGlobal = params.bScaleGmAddr +
-            Get<IDX_B_SCALE_OFFSET>(baseOffset) * sizeof(ElementMxScaleB);
-        gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
-            flagOffsetForExpert + static_cast<int64_t>(task.waveIdx);
-        gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
-        gmmAddrInfo.gmm2OutGlobal = nullptr;
-
-        AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
-            Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN),
-            Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN),
-            Get<IDX_FLAG_OFFSET>(baseOffset) + static_cast<int64_t>(task.waveIdx),
-            0L, 0L, 0L};
-        epilogueOp.UpdateGlobalAddr(vecBaseOffset);
-
-        int32_t funcSync = 0;
-        GroupMatmulSwigluQuant<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
-            epilogueOp, params, taskProblemShape, gmmAddrInfo,
-            static_cast<uint32_t>(task.nTileIdx), tileNumGmm1,
-            funcSync, 0);
+        int64_t ss = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - ss < 50) {}
     }
+
     #if MEGA_MOE_DYN_DEBUG
     if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
-        AscendC::PRINTF("[rank=%d AIV0 bk=%d] <<< EXIT (tasks=%d)\n", rankId, blockIdx, taskSeq);
+        AscendC::PRINTF("[rank=%d AIV0 bk=%d] <<< EXIT (tasks=%d)\n", rankId, blockIdx, taskCnt);
     }
     #endif
 }
 
 // ============================================================================
-// DynamicAiv1Loop — AIV1 worker, GMM2 combine 端
-// ============================================================================
-// 协议: spin AIV slot → read & clear → 调静态 GroupMatmul2 (AIV 分支:
-//   spin rowReadyFlags ≥ 1 → atomic_sub → CombineTile)。END 跳过函数。
+// DynamicAiv1Loop — AIV1 worker, G2 channel (combine)
 // ============================================================================
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB,
@@ -1378,13 +1262,15 @@ __aicore__ inline void DynamicAiv1Loop(
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
                           int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>& baseOffset,
-    int32_t blockIdx, int32_t rankId, uint32_t expertIdx, uint32_t tileNumGmm2)
+    int32_t blockIdx, int32_t rankId, uint32_t expertIdx, uint32_t tileNumGmm2,
+    int32_t* last_seen)
 {
     #if MEGA_MOE_DYN_DEBUG
     if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
         AscendC::PRINTF("[rank=%d AIV1 bk=%d] >>> ENTRY exp=%d\n", rankId, blockIdx, expertIdx);
     }
     #endif
+
     int64_t flagOffsetForExpert = Get<IDX_FLAG_OFFSET>(baseOffset);
     uint64_t k_full = static_cast<uint64_t>(Get<K_VALUE>(problemShape));
     uint64_t n_full = static_cast<uint64_t>(Get<N_VALUE>(problemShape));
@@ -1392,77 +1278,84 @@ __aicore__ inline void DynamicAiv1Loop(
     uint64_t scaleOutputN = Ops::Base::CeilDiv(outputN, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
                              MXFP_MULTI_BASE_SIZE;
 
-    __gm__ int32_t* slotPtr = (__gm__ int32_t*)params.workspaceInfo.ptrTaskSlot
-                                + (blockIdx * 4 + DYN_CHANNEL_GMM2 * 2 + DYN_SLOT_AIV);
+    __gm__ int32_t* seqPtr  = GetTaskSeqPtr(params, blockIdx, 1);
+    __gm__ int32_t* dataPtr = GetTaskDataPtr(params, blockIdx, 1);
+    __gm__ int32_t* ackPtr  = GetTaskAckPtr(params, blockIdx, 1, OWNER_AIV);
 
-    int taskSeq = 0;
+    int taskCnt = 0;
+    int64_t loopStart = AscendC::GetSystemCycle();
     while (true) {
-        int32_t packed = 0;
-        int64_t spinStart = AscendC::GetSystemCycle();
-        bool timedOut = false;
-        while (true) {
-            packed = AscendC::ReadGmByPassDCache(slotPtr);
-            if (packed != 0) break;
-            if (AscendC::GetSystemCycle() - spinStart > SPIN_TIMEOUT_CYCLES * 40) {
-                int dbgSeq = taskSeq + 1;
-                AscendC::PRINTF("[rank=%d AIV1 bk=%d] *** TIMEOUT spin slot exp=%u seq=%d\n",
-                                rankId, blockIdx, expertIdx, dbgSeq);
-                timedOut = true;
+        int32_t cur = AscendC::ReadGmByPassDCache(seqPtr);
+        if (cur > last_seen[0]) {
+            int32_t packed = AscendC::ReadGmByPassDCache(dataPtr);
+            DynamicTask task;
+            UnpackDynamicTask(packed, task);
+
+            if (task.opType == DYN_OP_END) {
+                AscendC::WriteGmByPassDCache(ackPtr, cur);
+                // PIPE_ALL 删
+                last_seen[0] = cur;
                 break;
             }
-            int64_t ss = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - ss < 50) {}
+            taskCnt++;
+            #if MEGA_MOE_DYN_DEBUG
+            if (taskCnt <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
+                int32_t dbgW = task.waveIdx;
+                int32_t dbgN = task.nTileIdx;
+                int dbgSeq = taskCnt;
+                AscendC::PRINTF("[rank=%d AIV1 bk=%d] #%d w=%d nT=%d\n",
+                                rankId, blockIdx, dbgSeq, dbgW, dbgN);
+            }
+            #endif
+
+            auto taskProblemShape = problemShape;
+            Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
+            int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
+
+            GMMAddrInfo gmmAddrInfo;
+            gmmAddrInfo.aGlobal = params.workspaceInfo.ptrA2 +
+                (Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN)) *
+                sizeof(ElementA);
+            gmmAddrInfo.aScaleGlobal = params.workspaceInfo.ptrA2Scale +
+                (Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN)) *
+                sizeof(ElementMxScaleA);
+            gmmAddrInfo.bGlobal = params.b2GmAddr +
+                Get<IDX_B2_OFFSET>(baseOffset) * sizeof(ElementB);
+            gmmAddrInfo.bScaleGlobal = params.b2ScaleGmAddr +
+                Get<IDX_B2_SCALE_OFFSET>(baseOffset) * sizeof(ElementMxScaleB);
+            gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
+                flagOffsetForExpert + static_cast<int64_t>(task.waveIdx);
+            gmmAddrInfo.groupFlagList2 = nullptr;
+            gmmAddrInfo.gmm2OutGlobal = params.workspaceInfo.ptrGmmOut +
+                (Get<IDX_Y2_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) *
+                sizeof(ElementC);
+
+            GroupMatmul2<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
+                params, taskProblemShape, gmmAddrInfo,
+                static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
+                expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
+
+            AscendC::WriteGmByPassDCache(ackPtr, cur);
+            // PIPE_ALL 删
+            last_seen[0] = cur;
+            loopStart = AscendC::GetSystemCycle();
+            continue;
         }
-        if (timedOut) break;
 
-        DynamicTask task;
-        UnpackDynamicTask(packed, task);
-        ClearTaskSlot(params, blockIdx, DYN_CHANNEL_GMM2, DYN_SLOT_AIV, packed);
-
-        if (task.opType == DYN_OP_END) {
+        if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
+            int32_t dbgSeq = cur;
+            int32_t dbgLast = last_seen[0];
+            AscendC::PRINTF("[rank=%d AIV1 bk=%d] *** TIMEOUT exp=%u seq=%d last=%d\n",
+                            rankId, blockIdx, expertIdx, dbgSeq, dbgLast);
             break;
         }
-        taskSeq++;
-        #if MEGA_MOE_DYN_DEBUG
-        if (taskSeq <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
-            int32_t dbgW = task.waveIdx;
-            int32_t dbgN = task.nTileIdx;
-            int dbgSeq = taskSeq;
-            AscendC::PRINTF("[rank=%d AIV1 bk=%d] #%d w=%d nT=%d\n",
-                            rankId, blockIdx, dbgSeq, dbgW, dbgN);
-        }
-        #endif
-
-        auto taskProblemShape = problemShape;
-        Get<M_VALUE>(taskProblemShape) = static_cast<int64_t>(task.waveM);
-        int64_t waveRowOffset = static_cast<int64_t>(task.waveIdx) * static_cast<int64_t>(L1_TILE_M);
-
-        GMMAddrInfo gmmAddrInfo;
-        gmmAddrInfo.aGlobal = params.workspaceInfo.ptrA2 +
-            (Get<IDX_C_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(outputN)) *
-            sizeof(ElementA);
-        gmmAddrInfo.aScaleGlobal = params.workspaceInfo.ptrA2Scale +
-            (Get<IDX_C_SCALE_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(scaleOutputN)) *
-            sizeof(ElementMxScaleA);
-        gmmAddrInfo.bGlobal = params.b2GmAddr +
-            Get<IDX_B2_OFFSET>(baseOffset) * sizeof(ElementB);
-        gmmAddrInfo.bScaleGlobal = params.b2ScaleGmAddr +
-            Get<IDX_B2_SCALE_OFFSET>(baseOffset) * sizeof(ElementMxScaleB);
-        gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 +
-            flagOffsetForExpert + static_cast<int64_t>(task.waveIdx);
-        gmmAddrInfo.groupFlagList2 = nullptr;
-        gmmAddrInfo.gmm2OutGlobal = params.workspaceInfo.ptrGmmOut +
-            (Get<IDX_Y2_OFFSET>(baseOffset) + waveRowOffset * static_cast<int64_t>(k_full)) *
-            sizeof(ElementC);
-
-        GroupMatmul2<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
-            params, taskProblemShape, gmmAddrInfo,
-            static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
-            expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
+        int64_t ss = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - ss < 50) {}
     }
+
     #if MEGA_MOE_DYN_DEBUG
     if (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B) {
-        AscendC::PRINTF("[rank=%d AIV1 bk=%d] <<< EXIT (tasks=%d)\n", rankId, blockIdx, taskSeq);
+        AscendC::PRINTF("[rank=%d AIV1 bk=%d] <<< EXIT (tasks=%d)\n", rankId, blockIdx, taskCnt);
     }
     #endif
 }
