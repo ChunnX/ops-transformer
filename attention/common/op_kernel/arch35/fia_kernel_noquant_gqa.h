@@ -854,12 +854,12 @@ public:
         uint32_t n2Size = constInfo.n2Size;
         uint32_t bIdx = bN2Cur / n2Size;
         uint32_t n2Idx = bN2Cur % n2Size;
-        // 若跨到新batch, 更新actSeqLensQ和gS1LoopTimes
+        // bN2Cur++可能跨batch, 更新actSeqLensQ
         if (bIdx != bIdxOld) {
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
-            gS1Size = actSeqLensQ * constInfo.gSize;
-            gS1LoopTimes = actSeqLensQ == 0 ? gS1Size : (gS1Size + mBaseSize - 1) / mBaseSize;
         }
+        uint64_t gS1SizeNew = actSeqLensQ * constInfo.gSize;
+        gS1LoopTimes = actSeqLensQ == 0 ? gS1SizeNew : (gS1SizeNew + mBaseSize - 1) / mBaseSize;
         // 跳N2
         uint64_t gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
         PRINTF("update n2Idx:%d, n2Size:%d, gS1RemainCurBatch:%d, gS1Skip:%d, bIdx:%d \n", n2Idx, n2Size, gS1RemainCurBatch, gS1Skip, bIdx);
