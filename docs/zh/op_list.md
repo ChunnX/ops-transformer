@@ -158,6 +158,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_grad/README.md">lightning_indexer_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>lightning_indexer的反向梯度计算算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
     <td>✓</td>
     <td>✓</td>
