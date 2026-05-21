@@ -59,7 +59,7 @@ struct Args {
 };
 
 const uint32_t MACHINE_NUM = 1;
-const char* env_dev_num = std::getenv("ENV_DEV_NUM");
+// const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
 const uint32_t EP_WORLD_SIZE = 2;
 const uint32_t TP_WORLD_SIZE = 1;
@@ -918,7 +918,7 @@ int main(int argc, char *argv[])
     //     LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
     //     int ret = run_example_on_A3A5();
     // }
-    run_example_on_A3A5()
+    run_example_on_A3A5();
 
     return 0;
 }
