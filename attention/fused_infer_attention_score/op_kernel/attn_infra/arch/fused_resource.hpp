@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef INCLUDE_ARCH_RESOURCE_HPP
-#define INCLUDE_ARCH_RESOURCE_HPP
+#ifndef FUSED_RESOURCE_HPP
+#define FUSED_RESOURCE_HPP
 
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/arch/fused_local_tensor_buffer.hpp"
 
-namespace NpuArch::Arch 
+namespace NpuArch::Arch
 {
 
 template<class ArchTag>

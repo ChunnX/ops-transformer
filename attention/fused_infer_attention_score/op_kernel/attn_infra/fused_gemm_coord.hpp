@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef GEMM_COORD_HPP
-#define GEMM_COORD_HPP
+#ifndef FUSED_GEMM_COORD_HPP
+#define FUSED_GEMM_COORD_HPP
 
 #include "../attn_infra/fused_coord.hpp"
 

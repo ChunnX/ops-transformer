@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef LAYOUT_MATRIX_HPP
-#define LAYOUT_MATRIX_HPP
+#ifndef FUSED_MATRIX_HPP
+#define FUSED_MATRIX_HPP
 
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/fused_coord.hpp"

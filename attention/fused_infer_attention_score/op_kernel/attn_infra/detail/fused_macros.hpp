@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef DETAIL_MACROS_HPP
-#define DETAIL_MACROS_HPP
+#ifndef FUSED_MACROS_HPP
+#define FUSED_MACROS_HPP
 
 #define HOST_DEVICE __host_aicore__ inline
 

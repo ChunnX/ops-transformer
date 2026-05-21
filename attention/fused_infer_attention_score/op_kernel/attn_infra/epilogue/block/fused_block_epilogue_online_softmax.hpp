@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
+#ifndef FUSED_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
+#define FUSED_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
 
 #include <type_traits>
 #include <limits>

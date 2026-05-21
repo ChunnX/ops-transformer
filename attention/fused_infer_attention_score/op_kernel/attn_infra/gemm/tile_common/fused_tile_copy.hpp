@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_TILE_TILE_COPY_HPP
-#define GEMM_TILE_TILE_COPY_HPP
+#ifndef FUSED_TILE_COPY_HPP
+#define FUSED_TILE_COPY_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_copy_gm_to_l1.hpp"
