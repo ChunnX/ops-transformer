@@ -17,11 +17,10 @@
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#include "kernel_operator.h"
 #else
 #include "kernel_operator.h"
 #endif
-
-#include "shmem.h"
 
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
