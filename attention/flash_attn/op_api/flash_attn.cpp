@@ -79,8 +79,8 @@ const std::array<const aclTensor *, 2> FlashAttn(
                            OP_INPUT(q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-                            OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                                    layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
+                           OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
+                                   layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn InferShape failed.");
         return {nullptr, nullptr};
