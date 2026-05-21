@@ -311,8 +311,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     LocalTensor<int32_t> tmpTensor = CumsumBuf_.Get<int32_t>();
     DataCopyPad(tmpTensor, tokenPerExpertWin_[rankId_ * expertPerRank_],
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)),
-         static_cast<uint16_t>((AlignUp(worldSize_ * expertPerRank_, ALIGN_128)
-             - expertPerRank_) * sizeof(int32_t)), 0},
+         static_cast<uint16_t>((perRankStridesInTokenPerExpert_ - expertPerRank_) * sizeof(int32_t)),
+         static_cast<uint16_t>((expertPerRankAligned - expertPerRank_) * sizeof(int32_t))},
         {});
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
@@ -323,7 +323,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     }
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyPad(cumsumInWorkSpace_, tmpTensor,
-        {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
+        {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)),
+         static_cast<uint16_t>((expertPerRankAligned - expertPerRank_) * sizeof(int32_t)), 0});
 
     LocalTensor<float> sumOutTensor = tempBuf_.Get<float>();
     LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
@@ -442,9 +443,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
     if (aivCoreIdx_ == 0) {
         GetCumsumForMMAIV();
     }
-    if (blockIdx_ < worldSize_ * dispatchBlockNumPerEP_) {
-        prevSum_ = preSumBeforeRankWorkSpace_(blockIdx_ / dispatchBlockNumPerEP_ * expertPerRank_);
-    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -511,8 +509,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             if (rowStartInDst + rowsCopyCnt > maxOutputSize_) {
                 rowsCopyCnt = maxOutputSize_ - rowStartInDst;
             }
-            int32_t rowSrcOffset = prevSum_;
-            prevSum_ += rowsCopyCnt;
+            int32_t rowSrcOffset = preSumBeforeRankWorkSpace_(dstRankIdx * expertPerRank_ + expertIdx);
             int32_t rowsPerCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(dispatchBlockNumPerEP_));
             int32_t rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
             int32_t rowSrcOffsetPerCore = rowSrcOffset + aivIdxInGroup * rowsPerCore;
