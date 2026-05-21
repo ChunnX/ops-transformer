@@ -20,134 +20,68 @@ GMM 模块下存在多个名为 `tool.h` 的头文件，分布在不同算子子
 
 ---
 
-## 2. 可选方案对比
+## 2. 方案决策
 
-| 方案 | 思路 | 优点 | 缺点 | 适用阶段 |
-|------|------|------|------|---------|
-| **A. 提取公共代码** | 将文件 1 与文件 2 的公共内容下沉到 `gmm/common/` 共享目录，差异部分在各自模块内单独维护 | 彻底消除重复代码与同名冲突；后续修改只需维护一处 | 涉及跨算子目录重构，需同步修改 CMake/include 路径；需梳理两个文件的细微差异（如 `VEC_MAX_ELEM_B32`） | **长期推荐** |
-| **B. 重命名文件** | 按模块语义重命名，如 `gmm_fr_arch35_weight_quant_tool.h`、`grouped_matmul_arch35_weight_quant_tool.h` 等，并赋予唯一保护宏 | 改动范围可控，不引入跨模块依赖；可快速消除冲突 | 代码重复问题仍未解决，后续仍需同步修改多份文件 | **短期应急** |
-| **C. 符号链接** | 保留一份物理文件，其余位置使用软链接指向它 | 无代码重复 | 跨平台兼容性差（Windows 构建环境可能不支持）；符号链接在版本控制中行为不一致；IDE 索引可能异常 | 不推荐 |
-| **D. 仅修复保护宏** | 不改文件名，仅将三处 `GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H` 改为各自唯一的宏 | 改动最小，风险最低 | 同名文件继续存在，开发者体验差；代码重复依旧 | 不推荐 |
+| 方案 | 思路 | 优点 | 缺点 | 决策 |
+|------|------|------|------|------|
+| **A. 提取公共代码** | 将文件 1 与文件 2 的公共内容下沉到 `gmm/common/` 共享目录 | 彻底消除重复代码与同名冲突；后续修改只需维护一处 | 涉及跨算子目录重构，需同步修改 include 路径 | **✅ 采用（第二阶段）** |
+| **B. 重命名文件** | 按模块语义重命名，赋予唯一保护宏 | 改动范围可控，可快速消除冲突 | 代码重复问题仍未解决 | **✅ 采用（第一阶段）** |
+| **C. 符号链接** | 保留一份物理文件，其余位置使用软链接 | 无代码重复 | 跨平台兼容性差；版本控制行为不一致 | 不采用 |
+| **D. 仅修复保护宏** | 不改文件名，仅修改宏 | 改动最小 | 同名文件继续存在，开发者体验差；代码重复依旧 | 不采用 |
+
+最终采用 **A + B 组合方案**：先重命名消除冲突，再提取公共代码消除重复。
 
 ---
 
-## 3. 推荐方案：A+B 组合实施
+## 3. 实施记录
 
-建议采用 **"短期重命名去冲突 + 中期提取公共代码"** 的分阶段策略，兼顾风险与代码健康度。
+### 3.1 第一次提交：提取公共代码并修复宏
 
-### 3.1 第一阶段：重命名与修复宏（已完成）
+**提交信息**：`fix(gmm): resolve tool.h name conflict in arch35 weight quant kernels`
 
-**目标**：立即消除同名冲突与宏重复定义风险。
+**完成内容**：
 
-#### 3.1.1 文件 1 & 2（Arch35 WeightQuant）
+1. **提取公共头文件**
+   - 新建 `gmm/common/op_kernel/arch35/weight_quant_tool.h`
+   - 合并原文件 1 与文件 2 的并集，保留 `VEC_MAX_ELEM_B32` 差异项
+   - 命名空间保持 `WeightQuantBatchMatmulV2::Arch35`
+   - 保护宏定义为 `GMM_COMMON_WEIGHT_QUANT_ARCH35_TOOL_H`
 
-由于文件 1 和文件 2 位于 Arch35 weight quant 相关目录下，建议统一重命名为具有明确上下文的名称：
+2. **重命名 Arch35 文件并添加 Wrapper**
+   - `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h`
+     → `weight_quant_arch35_tool.h`（仅包含 `#include "../../../../common/op_kernel/arch35/weight_quant_tool.h"`）
+   - `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/tool.h`
+     → `gmm_fr_weight_quant_arch35_tool.h`（仅包含 `#include "../../../../common/op_kernel/arch35/weight_quant_tool.h"`）
 
-- `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h`
-  → `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/**weight_quant_arch35_tool.h**`
+3. **重命名 A16W4 MSD 文件**
+   - `gmm/grouped_matmul/op_kernel/a16w4_msd/tool.h`
+     → `a16w4_msd_tool.h`
+   - 保护宏更新为 `GROUPED_MATMUL_A16W4_MSD_TOOL_H`
 
-- `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/tool.h`
-  → `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/**gmm_fr_weight_quant_arch35_tool.h**`
+4. **批量更新引用路径**
+   - 更新所有 `#include "tool.h"` 为对应的新文件名
+   - 涉及文件见第 6 节附录
 
-并同步修改头文件保护宏：
+### 3.2 第二次提交：删除 Wrapper 头文件，扁平化 Include 链
 
-```cpp
-// weight_quant_arch35_tool.h
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_ARCH35_TOOL_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_ARCH35_TOOL_H
-// ...
-#endif
+**提交信息**：`fix(gmm): remove arch35 wrapper headers and flatten includes`
 
-// gmm_fr_weight_quant_arch35_tool.h
-#ifndef GMM_FR_WEIGHT_QUANT_ARCH35_TOOL_H
-#define GMM_FR_WEIGHT_QUANT_ARCH35_TOOL_H
-// ...
-#endif
-```
+**完成内容**：
 
-#### 3.1.2 文件 3（A16W4 MSD）
+1. **删除中间 Wrapper 头文件**
+   - 删除 `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/weight_quant_arch35_tool.h`
+   - 删除 `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/gmm_fr_weight_quant_arch35_tool.h`
 
-- `gmm/grouped_matmul/op_kernel/a16w4_msd/tool.h`
-  → `gmm/grouped_matmul/op_kernel/a16w4_msd/**a16w4_msd_tool.h**`
+2. **扁平化 Include 路径**
+   - 将两侧模块中共 14 个源文件的 `#include` 直接指向公共头文件：
+   ```cpp
+   #include "../../../../common/op_kernel/arch35/weight_quant_tool.h"
+   ```
 
-```cpp
-#ifndef GROUPED_MATMUL_A16W4_MSD_TOOL_H
-#define GROUPED_MATMUL_A16W4_MSD_TOOL_H
-// ...
-#endif
-```
+3. **确认无残留引用**
+   - 全局搜索确认代码库中已无对上述两个 wrapper 头文件的引用
 
-#### 3.1.3 批量更新引用路径
-
-需修改所有 `#include "tool.h"` 及相对路径引用：
-
-```bash
-# 使用 ripgrep 确认引用点（示例）
-rg '#include.*tool\.h' gmm/ --type cpp --type h
-```
-
-主要涉及的文件列表（需根据实际情况补充）：
-
-- `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/*.h`
-- `gmm/grouped_matmul/op_kernel/a16w4_msd/*.h`
-- `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/weight_quant_basic_block/*.h`
-- `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/*.h`
-
-### 3.2 第二阶段：提取公共代码（已完成）
-
-**目标**：消除文件 1 与文件 2 之间的重复代码。
-
-#### 3.2.1 差异分析
-
-当前文件 1 与文件 2 的主要差异：
-
-| 差异项 | 文件 1（grouped_matmul） | 文件 2（gmm_fr） | 处理建议 |
-|--------|------------------------|------------------|---------|
-| `VEC_MAX_ELEM_B32` | ❌ 缺失 | ✅ 存在 | 该常量属于通用向量计算工具，应下沉到公共头文件 |
-| 常量/函数内容 | 其余 99% 相同 | 其余 99% 相同 | 提取到公共头文件 |
-
-> **结论**：两个文件本质上应是同一份代码，差异项 `VEC_MAX_ELEM_B32` 可合并到公共版本中。
-
-#### 3.2.2 新建公共目录与文件
-
-建议新建共享目录（若不存在）：
-
-```
-gmm/
-└── common/
-    └── op_kernel/
-        └── arch35/
-            └── weight_quant_tool.h      <-- 新增公共头文件
-```
-
-公共头文件内容：取文件 1 与文件 2 的并集（保留 `VEC_MAX_ELEM_B32`），命名空间保持 `WeightQuantBatchMatmulV2::Arch35`。
-
-```cpp
-// gmm/common/op_kernel/arch35/weight_quant_tool.h
-#ifndef GMM_COMMON_WEIGHT_QUANT_ARCH35_TOOL_H
-#define GMM_COMMON_WEIGHT_QUANT_ARCH35_TOOL_H
-
-#include "kernel_operator.h"
-// ... 公共内容（含 VEC_MAX_ELEM_B32）...
-namespace WeightQuantBatchMatmulV2::Arch35 {
-// ...
-}
-#endif
-```
-
-#### 3.2.3 删除重复文件并更新引用
-
-- 删除 `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/weight_quant_arch35_tool.h`
-- 删除 `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/gmm_fr_weight_quant_arch35_tool.h`
-
-在两侧模块中统一改为：
-
-```cpp
-// 相对路径引用（实际采用）
-#include "../../../../common/op_kernel/arch35/weight_quant_tool.h"
-```
-
-> **注意**：当前实现采用相对路径引用，未统一为 `gmm/common/op_kernel/arch35/weight_quant_tool.h` 的绝对风格路径。后续若构建系统支持基于目录的 include path（如 `-I${PROJECT_ROOT}`），可再统一为绝对路径以提升可读性。
+> **注意**：当前实现采用相对路径引用。后续若构建系统支持基于目录的 include path（如 `-I${PROJECT_ROOT}`），可再统一为绝对路径 `gmm/common/op_kernel/arch35/weight_quant_tool.h` 以提升可读性。
 
 ### 3.3 命名规范建议（预防复发）
 
@@ -185,7 +119,7 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 |------|------|------|---------|
 | 引用路径遗漏导致编译失败 | 中 | 中 | 全局搜索所有 `#include`；CI 流水线编译验证 |
 | 提取公共代码后引入宏/命名空间冲突 | 低 | 中 | 保持原有命名空间不变；确保保护宏唯一 |
-| 删除旧文件后 git 历史追溯困难 | 低 | 低 | 分两次 commit（先重命名，再提取），保留 git mv 记录 |
+| 删除旧文件后 git 历史追溯困难 | 低 | 低 | 分两次 commit（先重命名+提取，再删除 wrapper），保留 git mv 记录 |
 | 跨模块 include 路径导致构建系统不兼容 | 低 | 高 | 提前确认 CMake/编译脚本的 include 规则；必要时新增 include 目录 |
 
 ---
