@@ -350,8 +350,8 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     - 如果未传入sequsedKOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
     - 除上所述，使用batchSize
   - Sequence Length取值规则
-    - 优先获取sequsedKOptional中的seqence信息
-    - 如果未传入sequsedKOptional，且layoutKOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
+    - 优先获取sequsedKOptional中的Sequence Length信息
+    - 如果未传入sequsedKOptional，且layoutKOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
     - 除上所述，使用maxSeqlenQ
     - key与query的获取规则一致
   - layout约束
