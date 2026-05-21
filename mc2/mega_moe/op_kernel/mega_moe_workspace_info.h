@@ -59,6 +59,7 @@ constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
+constexpr int64_t SIZE_256_BIT = 8U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
@@ -106,6 +107,54 @@ struct WorkspaceInfo {
         ptrFlagDispatchToGmm1 = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         expandedRowIdxGather = ptrA;
+    }
+};
+
+struct WorkspaceInfoWave {
+    GM_ADDR dispatchRevDataPtr;
+    GM_ADDR dispatchRevScalePtr;
+    GM_ADDR swigluQuantDataPtr;
+    GM_ADDR swigluQuantScalePtr;
+    GM_ADDR expertRevTokenNumsPtr;
+    GM_ADDR tripleInfoPtr;
+    GM_ADDR flagSwiGluToGmm2Ptr;
+    GM_ADDR flagDispatchToGmm1Ptr;
+
+    int64_t workspaceSize;
+    HOST_DEVICE WorkspaceInfoWave() = default;
+    HOST_DEVICE WorkspaceInfoWave(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    {
+        workspaceSize = 0;
+        dispatchRevDataPtr = base;
+
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+        dispatchRevScalePtr = base + workspaceSize;
+
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
+            MXFP_SCALE_GROUP_NUM, ALIGN_512);
+
+        swigluQuantDataPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
+            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
+
+        swigluQuantScalePtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
+            SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
+
+        expertRevTokenNumsPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->expertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
+
+        tripleInfoPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
+
+        flagSwiGluToGmm2Ptr = base + workspaceSize;
+
+
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+
+        flagDispatchToGmm1Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
