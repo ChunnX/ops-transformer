@@ -1513,6 +1513,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    tilingData->aicNum = aicNum;
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE(nodeName, "aivNum(%u) or aicNum(%u) less than or equal 0.", aivNum, aicNum),
         return ge::GRAPH_FAILED);
