@@ -622,10 +622,10 @@ public:
         }
 
         // ===================DataCopy to L1 ====================
+        uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
             this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
             this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-            uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
             LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
             mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
             uint64_t copyBlockCount = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE / blockBytes;
@@ -639,6 +639,9 @@ public:
                 DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
                     {copyCount, 1, 0, dstStride}); // todo pscale打印看搬运偏移
             }
+        } else if (runInfo.actSingleLoopS2Size <= 256) {
+            LocalTensor<int16_t> mm2AScaleL1Tensor = outputBuf.GetTensor<int16_t>(pScaleL1Offset);
+            InitConstValue(mm2AScaleL1Tensor, {1, mBaseSize * s2BaseSize / MXFP_GROUP_SIZE / blockBytes, 0, 0x7f7f});
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
         
