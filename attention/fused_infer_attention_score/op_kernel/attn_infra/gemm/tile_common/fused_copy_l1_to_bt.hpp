@@ -11,10 +11,10 @@
 #ifndef GEMM_TILE_COPY_L1_TO_BT_HPP
 #define GEMM_TILE_COPY_L1_TO_BT_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
-#include "../../../attn_infra/layout/layout.hpp"
-#include "../../../attn_infra/gemm/gemm_type.hpp"
+#include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/arch/fused_arch.hpp"
+#include "../../../attn_infra/layout/fused_layout.hpp"
+#include "../../../attn_infra/gemm/fused_gemm_type.hpp"
 
 
 namespace NpuArch::Gemm::Tile {

@@ -11,9 +11,9 @@
 #ifndef GEMM_BLOCK_BLOCK_MMAD_HPP
 #define GEMM_BLOCK_BLOCK_MMAD_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/gemm/tile_common/fused_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/fused_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {
 
@@ -34,9 +34,9 @@ struct BlockMmad {
 
 } // namespace NpuArch::Gemm::Block
 
-#include "../../../attn_infra/gemm/block/block_mmad_qk.hpp"
+#include "../../../attn_infra/gemm/block/fused_block_mmad_qk.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_qk_decode.hpp"
-#include "../../../attn_infra/gemm/block/block_mmad_pv.hpp"
+#include "../../../attn_infra/gemm/block/fused_block_mmad_pv.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_pv_decode.hpp"
 
 #endif // GEMM_BLOCK_BLOCK_MMAD_HPP
