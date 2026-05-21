@@ -16,7 +16,6 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
-#include "common/op_host/op_api/matmul_util.h"
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
