@@ -360,10 +360,10 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CalcMaxRows()
         bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace + bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
     int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> NUM_TWO;
+    // queSpace: gradYQueSpace; indicesQueSpace; xQueSpace; outQueSpace
+    // bufSpace: bufk0Space = bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
+    //           bufn2Space == bufn3Space; bufsSpace
     while (maxRows > 0) {
-        // queSpace: gradYQueSpace; indicesQueSpace; xQueSpace; outQueSpace
-        // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
-        //           bufn2Space == bufn3Space; bufsSpace
         int64_t queSpace = DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(gradYQuePerTokenSpace) +
                            DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(indicesQuePerTokenSpace) +
                            DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
