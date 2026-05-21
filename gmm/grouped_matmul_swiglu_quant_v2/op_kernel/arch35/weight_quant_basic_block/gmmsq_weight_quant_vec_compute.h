@@ -192,7 +192,8 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::Init(__gm__ yType *yFp32Addr,
 
     scaleE8M0Buffer_ = LocalTensor<fp8_e8m0_t>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.scaleE8M0TotalSize);
 
-    yFp8Buffer_ = weightLowBit_.template ReinterpretCast<fp8_e4m3fn_t>();
+    ubOffset += UB_BUFFER_INFO.scaleE8M0TotalSize * sizeof(fp8_e8m0_t);
+    yFp8Buffer_ = LocalTensor<fp8_e4m3fn_t>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.yFp8TotalSize);
 
     for (uint16_t idx = 0; idx < UB_BUFFER_INFO.weightHighBitBufferNum; idx++) {
         SetFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V + idx);
@@ -264,7 +265,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
 
     DataCopyPad2D(
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize +
-                      128 * C0_SIZE]
+                      (128 * C0_SIZE / 2)]
             .template ReinterpretCast<wType>(),
         wGlobal_[kOffset + gateNOffset],
         CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
