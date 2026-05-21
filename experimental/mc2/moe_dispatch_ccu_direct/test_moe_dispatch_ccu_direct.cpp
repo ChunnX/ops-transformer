@@ -124,6 +124,8 @@ int main(int argc, char *argv[])
     }
     printf("[rank %d] [1/5] GM 缓冲分配完成（%zu 块）\n", rankId, blocks.size());
 
+
+    
     // ============================================================
     // 【控制面 —— 待真实 CCU kernel 落地后接入，本轮（方案 A）不实现】
     //   真实流程参考 SE 草图 + hcomm/include/hccl：
