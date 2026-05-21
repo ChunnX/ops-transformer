@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef INCLUDE_ARCH_MEMORY_H
-#define INCLUDE_ARCH_MEMORY_H
+#ifndef BSA_LOCAL_TENSOR_BUFFER_HPP
+#define BSA_LOCAL_TENSOR_BUFFER_HPP
 
 #include "../../attn_infra/bsa_base_defs.hpp"
 #include "../../attn_infra/arch/bsa_arch.hpp"
 
-namespace NpuArch::Arch 
+namespace NpuArch::Arch
 {
 
 struct LocalTensorBufferBase {

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_TILE_TILE_COPY_HPP
-#define EPILOGUE_TILE_TILE_COPY_HPP
+#ifndef BSA_EPILOGUE_TILE_COPY_HPP
+#define BSA_EPILOGUE_TILE_COPY_HPP
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/arch/bsa_arch.hpp"

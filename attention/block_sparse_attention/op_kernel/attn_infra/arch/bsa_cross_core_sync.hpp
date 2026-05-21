@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ARCH_CROSS_CORE_SYNC_HPP
-#define ARCH_CROSS_CORE_SYNC_HPP
+#ifndef BSA_CROSS_CORE_SYNC_HPP
+#define BSA_CROSS_CORE_SYNC_HPP
 
 #include "../../attn_infra/bsa_base_defs.hpp"
 
-namespace NpuArch::Arch 
+namespace NpuArch::Arch
 {
 
 constexpr uint32_t MAX_REVERSE_DEPTH = 16;
