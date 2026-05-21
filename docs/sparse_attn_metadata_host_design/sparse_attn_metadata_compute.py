@@ -50,7 +50,7 @@ FD_METADATA_SIZE = 8
 
 FA_TOLERANCE_RATIO = 2
 M_BASE_SIZE = 64
-S2_BASE_SIZE = 512
+S2_BASE_SIZE = 128
 
 
 def compute_metadata_python(
@@ -78,6 +78,7 @@ def compute_metadata_python(
     device: str = "npu",
     aic_core_num: int = AIC_CORE_NUM,
     aiv_core_num: int = AIV_CORE_NUM,
+    s2_base_size: int = S2_BASE_SIZE,
 ) -> torch.Tensor:
     """
     Python端Metadata计算主函数
@@ -110,6 +111,7 @@ def compute_metadata_python(
         device: 返回tensor的设备（"npu"或"cpu"）
         aic_core_num: AICore数量，36
         aiv_core_num: AIVCore数量，72
+        s2_base_size: S2轴基本块大小，默认128
     
     返回:
         metadata: [1024] int32 tensor
@@ -118,6 +120,10 @@ def compute_metadata_python(
         - SWA: cmp_ratio=None, cmp_topk=None
         - CFA: cmp_ratio有值, cmp_topk=None
         - SCFA: cmp_ratio有值, cmp_topk有值
+    
+    基本块大小（A5标准）:
+        - M_BASE_SIZE = 64
+        - S2_BASE_SIZE = 128 (一次迭代处理128个KV token)
     """
     
     group_size = num_heads_q // num_heads_kv
@@ -126,7 +132,7 @@ def compute_metadata_python(
     s1_sizes = _get_s1_sizes(cu_seqlens_q, seqused_q, batch_size, max_seqlen_q, layout_q)
     s2_sizes = _get_s2_sizes(seqused_kv, batch_size, max_seqlen_kv, layout_kv)
     
-    split_info = _calc_split_info_numpy(batch_size, s1_sizes, s2_sizes, group_size)
+    split_info = _calc_split_info_numpy(batch_size, s1_sizes, s2_sizes, group_size, s2_base_size)
     
     cmp_topk_val = cmp_topk if cmp_topk is not None else 512
     cmp_ratio_val = cmp_ratio if cmp_ratio is not None else 4
@@ -134,7 +140,7 @@ def compute_metadata_python(
     cost_info = _calc_cost_info_numpy(
         split_info, batch_size, s1_sizes, s2_sizes, group_size,
         has_cmp_kv, cmp_ratio_val, cmp_topk_val,
-        ori_mask_mode, ori_win_left, ori_win_right
+        ori_mask_mode, ori_win_left, ori_win_right, s2_base_size
     )
     
     split_result = _balance_schedule_numpy(
@@ -227,14 +233,18 @@ def _get_s2_sizes(seqused_kv: Optional[torch.Tensor], batch_size: int,
 
 
 def _calc_split_info_numpy(batch_size: int, s1_sizes: np.ndarray, s2_sizes: np.ndarray,
-                           group_size: int) -> Dict:
-    """计算切分信息（NumPy优化版本）"""
+                           group_size: int, s2_base_size: int = S2_BASE_SIZE) -> Dict:
+    """计算切分信息（NumPy优化版本）
+    
+    Args:
+        s2_base_size: S2轴基本块大小，A3=512, A5=128
+    """
     s1_g_base_num = np.ceil(s1_sizes * group_size / M_BASE_SIZE).astype(np.int32)
     s1_g_tail_size = (s1_sizes * group_size) % M_BASE_SIZE
     s1_g_tail_size = np.where(s1_g_tail_size == 0, M_BASE_SIZE, s1_g_tail_size)
     
-    s2_base_num = np.ceil(s2_sizes / S2_BASE_SIZE).astype(np.int32)
-    s2_tail_size = s2_sizes % S2_BASE_SIZE
+    s2_base_num = np.ceil(s2_sizes / s2_base_size).astype(np.int32)
+    s2_tail_size = s2_sizes % s2_base_size
     
     is_kv_seq_all_zero = not np.any((s1_g_base_num > 0) & (s2_base_num > 0))
     
@@ -243,7 +253,8 @@ def _calc_split_info_numpy(batch_size: int, s1_sizes: np.ndarray, s2_sizes: np.n
         's2BaseNum': s2_base_num,
         's1GTailSize': s1_g_tail_size,
         's2TailSize': s2_tail_size,
-        'isKvSeqAllZero': is_kv_seq_all_zero
+        'isKvSeqAllZero': is_kv_seq_all_zero,
+        's2BaseSize': s2_base_size
     }
 
 
@@ -290,8 +301,18 @@ def _calc_s2_token_range(s1_g_idx: int, s1_size: int, s2_size: int,
 
 def _calc_cost_info_numpy(split_info: Dict, batch_size: int, s1_sizes: np.ndarray, s2_sizes: np.ndarray,
                           group_size: int, has_cmp_kv: bool, cmp_ratio: int, cmp_topk: int,
-                          ori_mask_mode: int, ori_win_left: int, ori_win_right: int) -> Dict:
-    """计算开销信息（NumPy优化版本）"""
+                          ori_mask_mode: int, ori_win_left: int, ori_win_right: int,
+                          s2_base_size: int = S2_BASE_SIZE) -> Dict:
+    """计算开销信息（NumPy优化版本）
+    
+    Args:
+        s2_base_size: S2轴基本块大小，A3=512, A5=128
+    
+    Note:
+        A3机器基本块(64, 512): 每次迭代处理512个KV token
+        A5机器基本块(64, 128): 每次迭代处理128个KV token
+        block数量变化: A5是A3的4倍
+    """
     total_rows = int(np.sum(split_info['s1GBaseNum']))
     s1GCostList = np.zeros(total_rows, dtype=np.int32)
     bN2CostOfEachBatch = np.zeros(batch_size, dtype=np.int32)
@@ -313,8 +334,8 @@ def _calc_cost_info_numpy(split_info: Dict, batch_size: int, s1_sizes: np.ndarra
                 s1_g_idx, s1_size, s2_size, ori_win_left, ori_win_right, ori_mask_mode
             )
             
-            win_block_num = (s2_last - s2_first) // S2_BASE_SIZE + 1
-            win_tail_size = (s2_last - s2_first + 1) % S2_BASE_SIZE
+            win_block_num = (s2_last - s2_first) // s2_base_size + 1
+            win_tail_size = (s2_last - s2_first + 1) % s2_base_size
             
             normal_s2_num = win_block_num - (1 if win_tail_size > 0 else 0)
             tail_s2_num = 1 if win_tail_size > 0 else 0
@@ -323,9 +344,9 @@ def _calc_cost_info_numpy(split_info: Dict, batch_size: int, s1_sizes: np.ndarra
             
             m_size = int(split_info['s1GTailSize'][b]) if is_m_tail_row else M_BASE_SIZE
             
-            win_cost = _calc_cost(m_size, S2_BASE_SIZE) * normal_s2_num
+            win_cost = _calc_cost(m_size, s2_base_size) * normal_s2_num
             if tail_s2_num > 0:
-                win_cost += _calc_cost(m_size, win_tail_size if win_tail_size > 0 else S2_BASE_SIZE)
+                win_cost += _calc_cost(m_size, win_tail_size if win_tail_size > 0 else s2_base_size)
             
             cmp_cost = 0
             cmp_block_num = 0
@@ -334,15 +355,15 @@ def _calc_cost_info_numpy(split_info: Dict, batch_size: int, s1_sizes: np.ndarra
                 if cmp_topk > 0:
                     cmp_s2_size = min(cmp_s2_size, cmp_topk)
                 
-                cmp_block_num = (cmp_s2_size + S2_BASE_SIZE - 1) // S2_BASE_SIZE
-                cmp_tail_size = cmp_s2_size % S2_BASE_SIZE
+                cmp_block_num = (cmp_s2_size + s2_base_size - 1) // s2_base_size
+                cmp_tail_size = cmp_s2_size % s2_base_size
                 
                 cmp_normal_num = cmp_block_num - (1 if cmp_tail_size > 0 else 0)
                 cmp_tail_num = 1 if cmp_tail_size > 0 else 0
                 
-                cmp_cost = _calc_cost(m_size, S2_BASE_SIZE) * cmp_normal_num
+                cmp_cost = _calc_cost(m_size, s2_base_size) * cmp_normal_num
                 if cmp_tail_num > 0:
-                    cmp_cost += _calc_cost(m_size, cmp_tail_size if cmp_tail_size > 0 else S2_BASE_SIZE)
+                    cmp_cost += _calc_cost(m_size, cmp_tail_size if cmp_tail_size > 0 else s2_base_size)
             
             row_cost = win_cost + cmp_cost
             row_block = win_block_num + cmp_block_num
@@ -362,7 +383,8 @@ def _calc_cost_info_numpy(split_info: Dict, batch_size: int, s1_sizes: np.ndarra
         'totalCost': int(np.sum(bN2CostOfEachBatch)),
         'totalBlockNum': int(np.sum(bN2BlockOfEachBatch)),
         'maxS1GCost': max_s1_g_cost,
-        's1GCostList': s1GCostList
+        's1GCostList': s1GCostList,
+        's2BaseSize': s2_base_size
     }
 
 
@@ -464,12 +486,20 @@ def _gen_metadata_numpy(split_result: Dict, aic_core_num: int, aiv_core_num: int
 
 
 if __name__ == "__main__":
+    print("=" * 60)
+    print("Metadata计算测试 (基本块大小: 64, 128)")
+    print("=" * 60)
+    
     batch_size = 4
     s1 = 128
     s2 = 4096
     
     cu_seqlens_q = torch.arange(0, (batch_size + 1) * s1, step=s1, dtype=torch.int32)
     seqused_kv = torch.tensor([s2] * batch_size, dtype=torch.int32)
+    
+    print(f"\n输入参数:")
+    print(f"  batch_size={batch_size}, s1={s1}, s2={s2}")
+    print(f"  基本块大小: M={M_BASE_SIZE}, S2={S2_BASE_SIZE}")
     
     metadata_cpu = compute_metadata_python(
         num_heads_q=64,
@@ -488,13 +518,20 @@ if __name__ == "__main__":
         device="cpu"
     )
     
-    print(f"metadata shape: {metadata_cpu.shape}")
-    print(f"metadata dtype: {metadata_cpu.dtype}")
-    print(f"metadata device: {metadata_cpu.device}")
-    print(f"used cores: {sum(metadata_cpu[i * 8] == 1 for i in range(36))}")
+    print(f"\n输出:")
+    print(f"  shape: {metadata_cpu.shape}")
+    print(f"  dtype: {metadata_cpu.dtype}")
+    print(f"  device: {metadata_cpu.device}")
+    used_cores = sum(metadata_cpu[i * 8] == 1 for i in range(36))
+    print(f"  used cores: {used_cores}")
     
     print("\nMetadata fields (first 3 cores):")
-    for i in range(min(3, sum(metadata_cpu[i * 8] == 1 for i in range(36)))):
+    for i in range(min(3, used_cores)):
         print(f"  Core {i}: CORE_ENABLE={metadata_cpu[i*8+0]}, "
               f"BN2_START={metadata_cpu[i*8+1]}, M_START={metadata_cpu[i*8+2]}, "
               f"BN2_END={metadata_cpu[i*8+4]}, M_END={metadata_cpu[i*8+5]}")
+    
+    print("\n说明:")
+    print(f"  基本块(64,128): 每次迭代处理128个KV token")
+    print(f"  ceil(4096/128) = 32 blocks/batch")
+    print(f"  更细粒度的切分 → 更精确的负载均衡")
