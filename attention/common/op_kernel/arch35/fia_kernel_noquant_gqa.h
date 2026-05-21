@@ -848,32 +848,22 @@ public:
         // 先跳过当前BN2剩余的S1G，再跳N2
         gS1Skip = gS1Skip - gS1RemainCurBN2;
         gS1Cur = 0;
-        uint32_t bIdxOld = bN2Cur / constInfo.n2Size;
-        bN2Cur++;
 
         uint32_t n2Size = constInfo.n2Size;
         uint32_t bIdx = bN2Cur / n2Size;
         uint32_t n2Idx = bN2Cur % n2Size;
-        // bN2Cur++在batch末尾n2Idx时跨batch, 更新actSeqLensQ和gS1LoopTimes
-        if (bIdx != bIdxOld) {
-            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
-            uint64_t gS1SizeNew = actSeqLensQ * constInfo.gSize;
-            gS1LoopTimes = actSeqLensQ == 0 ? gS1SizeNew : (gS1SizeNew + mBaseSize - 1) / mBaseSize;
-        }
-        // 跳N2
-        uint64_t gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
+        // 跳N2: 先在当前batch剩余N2中跳, 不够再跨batch
+        uint64_t gS1RemainCurBatch = gS1LoopTimes * (n2Size - 1 - n2Idx);
         PRINTF("update n2Idx:%d, n2Size:%d, gS1RemainCurBatch:%d, gS1Skip:%d, bIdx:%d \n", n2Idx, n2Size, gS1RemainCurBatch, gS1Skip, bIdx);
-        // 这个batch剩余的N2足够 gS1Skip
         if (gS1Skip < gS1RemainCurBatch) {
-            bN2Cur += gS1Skip / gS1LoopTimes;
+            bN2Cur += 1 + gS1Skip / gS1LoopTimes;
             gS1Cur = gS1Skip % gS1LoopTimes;
             return;
         }
-        // 先跳过当前Batch剩余的N2，再跳batch
+        // 当前batch剩余N2不够跳, 全部跳过再跨batch
         gS1Skip -= gS1RemainCurBatch;
-        n2Idx = 0;
         bIdx++;
-        PRINTF("update bIdx:%d, n2Idx:%d, gS1Skip:%d\n", bIdx, n2Idx, gS1Skip);
+        bN2Cur = bIdx * n2Size;
 
         // 跳batch
         while (bIdx < constInfo.bSize) {
