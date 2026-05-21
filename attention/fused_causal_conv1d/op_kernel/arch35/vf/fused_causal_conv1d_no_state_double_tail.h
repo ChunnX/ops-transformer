@@ -13,19 +13,18 @@
  * \brief
  */
 
-#ifndef FUSED_CAUSAL_CONV1D_NO_STATE_DOUBLE_TAIL
-#define FUSED_CAUSAL_CONV1D_NO_STATE_DOUBLE_TAIL
+#ifndef FUSED_CAUSAL_CONV1D_NO_STATE_DOUBLE_TAIL_H
+#define FUSED_CAUSAL_CONV1D_NO_STATE_DOUBLE_TAIL_H
 
 #include "kernel_operator.h"
-#include "fused_causal_conv1d_state.h"
+#include "fused_causal_conv1d_state_single_tail.h"
 
 using namespace AscendC;
 
 ////残差连接模式，不含尾行
 template <typename T>
 __simd_vf__ void Conv1dNoStateDoubleTailConNoResVF(
-    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen,
-    uint8_t dimLoopNum, uint16_t dimRem)
+    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -37,6 +36,8 @@ __simd_vf__ void Conv1dNoStateDoubleTailConNoResVF(
     MicroAPI::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
     MicroAPI::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
     MicroAPI::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
+    uint8_t dimLoopNum = dimLen / (B32_REP_SIZE * 2);
+    uint8_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE * 2;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -139,7 +140,7 @@ __simd_vf__ void Conv1dNoStateDoubleTailConNoResVF(
         }
         offset += 2 * B32_REP_SIZE;
     }
-    //尾块非128对齐
+    // 尾块非128对齐
     uint32_t sreg = dimRem - B32_REP_SIZE;
     maskRem = MicroAPI::UpdateMask<float>(sreg);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
@@ -162,22 +163,17 @@ __simd_vf__ void Conv1dNoStateDoubleTailConNoResVF(
         MicroAPI::Duplicate(y3B32, 0, maskB32);
         MicroAPI::Duplicate(y4B32, 0, maskRem);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x21B16, xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x22B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x23B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x41B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -242,8 +238,7 @@ __simd_vf__ void Conv1dNoStateDoubleTailConNoResVF(
 // 残差连接模式，含尾行
 template <typename T>
 __simd_vf__ void Conv1dNoStateDoubleTailConResVF(
-    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen,
-    uint8_t dimLoopNum, uint16_t dimRem)
+    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -255,6 +250,8 @@ __simd_vf__ void Conv1dNoStateDoubleTailConResVF(
     MicroAPI::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
     MicroAPI::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
     MicroAPI::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
+    uint8_t dimLoopNum = dimLen / (B32_REP_SIZE * 2);
+    uint8_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE * 2;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -397,10 +394,9 @@ __simd_vf__ void Conv1dNoStateDoubleTailConResVF(
 
         offset += 2 * B32_REP_SIZE;
     }
-
-    //尾块双寄存器处理
+    // 尾块双寄存器处理
     uint32_t sreg = dimRem - B32_REP_SIZE;
-    maskRem =  MicroAPI::UpdateMask<float>(sreg);
+    maskRem = MicroAPI::UpdateMask<float>(sreg);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
@@ -421,22 +417,17 @@ __simd_vf__ void Conv1dNoStateDoubleTailConResVF(
         MicroAPI::Duplicate(y3B32, 0, maskB32);
         MicroAPI::Duplicate(y4B32, 0, maskRem);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x21B16, xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x22B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x23B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x41B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -499,10 +490,8 @@ __simd_vf__ void Conv1dNoStateDoubleTailConResVF(
     MicroAPI::Duplicate(y1B32, 0, maskB32);
     MicroAPI::Duplicate(y2B32, 0, maskRem);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoopNum * dimLen);
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        x12B16, xAddr + offset + (2 * xLoopNum + 1) * dimLen);
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        x13B16, xAddr + offset + (2 * xLoopNum + 2) * dimLen);
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoopNum + 1) * dimLen);
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoopNum + 2) * dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
         x21B16, xAddr + offset + B32_REP_SIZE + 2 * xLoopNum * dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -540,8 +529,7 @@ __simd_vf__ void Conv1dNoStateDoubleTailConResVF(
 // 非残差连接模式，不含尾行
 template <typename T>
 __simd_vf__ void Conv1dNoStateDoubleTailNoConNoResVF(
-    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen,
-    uint8_t dimLoopNum, uint16_t dimRem)
+    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -554,6 +542,8 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConNoResVF(
     MicroAPI::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
     MicroAPI::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    uint8_t dimLoopNum = dimLen / (B32_REP_SIZE * 2);
+    uint8_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE * 2;
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
     for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
@@ -651,9 +641,9 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConNoResVF(
         }
         offset += 2 * B32_REP_SIZE;
     }
-    //dim尾块双寄存器处理
+    // dim尾块双寄存器处理
     uint32_t sreg = dimRem - B32_REP_SIZE;
-    maskRem =  MicroAPI::UpdateMask<float>(sreg);
+    maskRem = MicroAPI::UpdateMask<float>(sreg);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
@@ -674,22 +664,17 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConNoResVF(
         MicroAPI::Duplicate(y3B32, 0, maskB32);
         MicroAPI::Duplicate(y4B32, 0, maskRem);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x21B16, xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x22B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x23B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x41B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -750,8 +735,7 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConNoResVF(
 // 非残差连接模式，含尾行
 template <typename T>
 __simd_vf__ void Conv1dNoStateDoubleTailNoConResVF(
-    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen,
-    uint8_t dimLoopNum, uint16_t dimRem)
+    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr, uint32_t xLoopNum, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -763,6 +747,8 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConResVF(
     MicroAPI::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
     MicroAPI::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
     MicroAPI::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
+    uint8_t dimLoopNum = dimLen / (B32_REP_SIZE * 2);
+    uint8_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE * 2;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -899,9 +885,9 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConResVF(
 
         offset += 2 * B32_REP_SIZE;
     }
-    //尾块双寄存器处理
+    // 尾块双寄存器处理
     uint32_t sreg = dimRem - B32_REP_SIZE;
-    maskRem =  MicroAPI::UpdateMask<float>(sreg);
+    maskRem = MicroAPI::UpdateMask<float>(sreg);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
@@ -922,22 +908,17 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConResVF(
         MicroAPI::Duplicate(y3B32, 0, maskB32);
         MicroAPI::Duplicate(y4B32, 0, maskB32);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x21B16, xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x22B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x23B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
             x41B16, xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -996,10 +977,8 @@ __simd_vf__ void Conv1dNoStateDoubleTailNoConResVF(
     MicroAPI::Duplicate(y1B32, 0, maskB32);
     MicroAPI::Duplicate(y2B32, 0, maskB32);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoopNum * dimLen);
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        x12B16, xAddr + offset + (2 * xLoopNum + 1) * dimLen);
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        x13B16, xAddr + offset + (2 * xLoopNum + 2) * dimLen);
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoopNum + 1) * dimLen);
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoopNum + 2) * dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
         x21B16, xAddr + offset + B32_REP_SIZE + 2 * xLoopNum * dimLen);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -1041,25 +1020,17 @@ __aicore__ inline void Conv1dNoStateDoubleTail(LocalTensor<T> &xUb, LocalTensor<
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
     uint32_t xLoopNum = xSLen / 2;
     uint8_t xLoopRem = xSLen % 2;
-    uint8_t dimLoopNum = dimLen / (B32_REP_SIZE * 2);
-    uint16_t dimRem = dimLen - dimLoopNum * (B32_REP_SIZE * 2);
-    if(dimRem == 0) {
-        dimLoopNum -= 1;
-        dimRem = B32_REP_SIZE * 2;
-    }
-    // PRINTF("dimLen %d", dimLen);
-    // PRINTF("dimLoopNum %d,dimRem %d ", dimLoopNum, dimRem);
     if (isResidualConnection == 1) {
         if (xLoopRem == 1) {
-            Conv1dNoStateDoubleTailConResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen, dimLoopNum, dimRem);
+            Conv1dNoStateDoubleTailConResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
         } else if (xLoopRem == 0) {
-            Conv1dNoStateDoubleTailConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen, dimLoopNum, dimRem);
+            Conv1dNoStateDoubleTailConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
         }
     } else {
         if (xLoopRem == 1) {
-            Conv1dNoStateDoubleTailNoConResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen, dimLoopNum, dimRem);
+            Conv1dNoStateDoubleTailNoConResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
         } else if (xLoopRem == 0) {
-            Conv1dNoStateDoubleTailNoConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen, dimLoopNum, dimRem);
+            Conv1dNoStateDoubleTailNoConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
         }
     }
 }

@@ -32,24 +32,13 @@
 
 namespace optiling {
 
-// -------------------------------------------------------------------------
-// 编译期平台信息结构体
-// 用于在无法访问运行时 PlatformInfo 时（如 AOT 编译）提供核数和 UB 大小
-// -------------------------------------------------------------------------
 struct FusedCausalConv1dCutBHCompileInfo {
     uint64_t coreNum = 0;   // AIV 核数
     uint64_t ubSize = 0;    // 单核 UB 大小（字节）
 };
-
-// -------------------------------------------------------------------------
-// TilingKey：用于在运行时选择不同的 kernel 分支（按数据类型区分）
-// -------------------------------------------------------------------------
 constexpr uint64_t TILING_KEY_BH_BF16 = 20000;  // BF16 数据类型对应的 kernel 分支
 constexpr uint64_t TILING_KEY_BH_FP16 = 20001;  // FP16 数据类型对应的 kernel 分支
 
-// -------------------------------------------------------------------------
-// 输入张量索引（与 op_def.cpp 中的输入顺序严格对应）
-// -------------------------------------------------------------------------
 constexpr int32_t X_INDEX = 0;                             // 输入特征 x：[batch, seq_len, dim] 或 [cu_seq_len, dim]
 constexpr int32_t WEIGHT_INDEX = 1;                        // 卷积权重：[kernel_size, dim]
 constexpr int32_t CONV_STATES_INDEX = 2;                   // KV 缓存状态：[batch, state_len, dim]
@@ -64,28 +53,17 @@ constexpr int32_t BLOCK_IDX_FIRST_SCHEDULED_TOKEN_INDEX = 9;  // APC: 首个调�
 constexpr int32_t BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX = 10;  // APC: 最后调度 token 所在 block 索引（可选）
 constexpr int32_t INITIAL_STATE_IDX_INDEX = 11;            // 初始状态索引（可选）
 
-// -------------------------------------------------------------------------
-// 输出张量索引
-// -------------------------------------------------------------------------
 constexpr int32_t Y_INDEX = 0;                   // 输出特征 y（与 x 形状相同）
 constexpr int32_t OUTPUT_CONV_STATES_INDEX = 1;  // 更新后的 conv_states（与输入 conv_states 形状相同）
-
-// -------------------------------------------------------------------------
-// 属性索引（与 op_def.cpp 中的属性顺序严格对应）
-// -------------------------------------------------------------------------
 constexpr int32_t ATTR_ACTIVATION_MODE_INDEX = 0;    // 激活函数模式：0=无，1=silu 等
 constexpr int32_t ATTR_PAD_SLOT_ID_INDEX = 1;        // padding slot id，用于标识 padding 样本
 constexpr int32_t ATTR_RUN_MODE_INDEX = 2;           // 运行模式（预留）
 constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;      // 2D 输入时的最大序列长度
 constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4; // 是否使用残差连接：0=否，1=是
-// 第二期新增属性
 constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;         // APC block 大小（APC 开启时必须非零）
 constexpr int32_t ATTR_CONV_MODE_INDEX = 6;          // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
 constexpr int32_t ATTR_INPLACE_INDEX = 7;            // 是否原地更新 conv_states：0=否，1=是
 
-// -------------------------------------------------------------------------
-// 形状/内存校验常量
-// -------------------------------------------------------------------------
 constexpr int64_t DIM_ALIGN_ELEMENT = 128;    // dim 方向的最小对齐单元（128 个元素，fp16/bf16 = 256 字节）
 constexpr int64_t COARSE_GRAIN_THRESHOLD = 1024; // dim >= 1024 时切换到粗粒度 tiling 模式
 constexpr int64_t COARSE_GRAIN_ELEMENT = 1024;   // 粗粒度模式下每块的元素数
@@ -110,14 +88,6 @@ constexpr int64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024;  // 系统为运行时预�
 constexpr int64_t X_INPUT_3D = 0;  // 3D 输入 [batch, seq_len, dim]
 constexpr int64_t X_INPUT_2D = 1;  // 2D 输入 [cu_seq_len, dim]，需配合 query_start_loc 拆分 batch
 
-// -------------------------------------------------------------------------
-// FusedCausalConv1dCutBHTiling 类
-// 继承自 TilingBaseClass，实现 BH 模板的分核分块策略
-//
-// 核心流程：
-//   GetPlatformInfo() → GetShapeAttrsInfo() → DoOpTiling()
-//   → PostTiling() → DumpTilingInfo()
-// -------------------------------------------------------------------------
 class FusedCausalConv1dCutBHTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit FusedCausalConv1dCutBHTiling(gert::TilingContext* context) : TilingBaseClass(context) {}
@@ -185,11 +155,6 @@ private:
                         int64_t &outLoopDim, int64_t &outLoopBS,
                         int64_t &outUbTailDim, int64_t &outUbTailBS);
 
-    // =========================================================================
-    // 成员变量
-    // =========================================================================
-
-    // ---- 硬件参数（由 GetPlatformInfo 填充）----
     uint64_t ubSize_ = 0;        // 单核 UB 总大小（字节）
     uint64_t totalCoreNum_ = 0;  // 总 AIV 核数
     uint64_t ubBlockSize_ = 0;   // UB 块大小（用于辅助计算，来自 GetUbBlockSize）
@@ -234,15 +199,6 @@ private:
     int64_t hasNumComputedTokens_ = 0;  // numComputedTokens 是否有效：0=无，1=有
     int64_t maxQueryLen_     = MAX_M + 1;  // 2D 输入时最大序列长度（来自 max_query_len 属性）
 
-    // =========================================================================
-    // 核间切分结果（由 ComputeInterCoreSplit / ComputeInterCoreSplitCoarse 填充）
-    //
-    // 切分策略：
-    //   先将 dim 按 128（或 1024）元素分块，再将 batch 按核数均分，
-    //   两个方向各自做非均匀切分（大核多分 1 块，小核分基础数量）。
-    //
-    //   实际使用核数 = dimCoreCnt_ × batchCoreCnt_
-    // =========================================================================
     int64_t limitedCoreNum_ = 0;      // 按数据量限制的最大可用核数（参考值）
     int64_t usedCoreNum_ = 0;         // 实际使用的总核数（= dimCoreCnt_ × batchCoreCnt_）
     int64_t dimCoreCnt_ = 0;          // dim 方向分配的核数
@@ -258,14 +214,6 @@ private:
     int64_t mainCoreBatchNum_ = 0;    // 大核负责的 batch 数
     int64_t tailCoreBatchNum_ = 0;    // 小核负责的 batch 数
 
-    // =========================================================================
-    // 核内 UB 切分结果（由 ComputeIntraCoreUbTiling 填充）
-    //
-    // 对大核（mainCore）和小核（tailBlock）分别计算 UB 循环参数：
-    //   loopNumDim_  = ceil(coreDimElems / ubMainFactorDim_)  —— dim 方向循环次数
-    //   loopNumBS_   = ceil(coreBatch    / ubMainFactorBS_)   —— batch 方向循环次数
-    //   ubTailFactor* = 最后一次循环的实际尺寸（尾块大小）
-    // =========================================================================
     // ---- 大核（main core）UB 参数 ----
     int64_t loopNumBS_ = 0;             // 大核 batch 方向循环次数
     int64_t loopNumDim_ = 0;            // 大核 dim 方向循环次数
@@ -287,7 +235,6 @@ private:
     int64_t lastCoreubMainFactorDim_ = 0;       // 最后一个 dim 核的 UB 主块 dim 大小
     int64_t lastCoreubTailFactorDim_ = 0;       // 最后一个 dim 核的 UB 尾块 dim 大小
 
-    // ---- 传递给 kernel 的 tiling 数据结构 ----
     FusedCausalConv1dCutBHTilingData tilingData_;
 };
 

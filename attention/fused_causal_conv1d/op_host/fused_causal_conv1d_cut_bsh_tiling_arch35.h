@@ -147,7 +147,6 @@ private:
     ge::DataType xType_;
     ge::DataType weightType_;
 
-    // ===== v2.0 新增：APC / conv_mode / inplace / MTP / 路由 =====
     uint64_t apcEnabled_ = 0;          // 0/1，等价于 cache_indices 是否为 2D
     uint64_t blockSize_ = 0;           // APC block 大小（0 表示未启用）
     uint64_t maxNumBlocks_ = 0;        // cache_indices 第二维大小（APC 模式下 > 0）

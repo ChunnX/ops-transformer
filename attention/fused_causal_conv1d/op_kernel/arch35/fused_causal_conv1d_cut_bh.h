@@ -11,26 +11,6 @@
 /*!
  * \file fused_causal_conv1d_cut_bh.h
  * \brief FusedCausalConv1dCutBH kernel implementation
- *
- * 本文件实现了fused_causal_conv1d_cut_bh算子的核函数，用于执行因果一维卷积并更新缓存状态。
- *
- * 算子功能：
- * 1. 对输入序列执行因果1D卷积（每个特征通道独立）
- * 2. 根据acceptTokenNum动态使用历史cache state和当前输入x
- * 3. 计算完成后自动更新cache state，确保后续推理能正确延续上下文
- * 4. 保证输出满足因果性约束（输出位置j只能看到输入位置0到j）
- *
- * 主要特点：
- * - 支持FP16/BF16数据类型
- * - 使用双Buffer机制提高数据搬运和计算的并行度
- * - 支持核间切分（只切batch维度）和核内切分（BS和Dim方向）
- * - 针对序列位置<K-1和>=K-1采用不同的计算策略
- * - 支持APC（Automatic Prefix Caching）模式（F1）
- * - 支持cache_indices可选（F2）
- * - 支持输出原地更新（F3）
- * - m范围扩展至[0,7]（F4）
- * - cache缓存尾对齐机制（F5）
- * - conv_mode支持Pangu v2（F6）
  */
 
 #ifndef CAUSAL_CONV1D_CUT_BH_H
@@ -38,46 +18,28 @@
 
 #include "kernel_operator.h"
 #include "fused_causal_conv1d_cut_bh_struct.h"
-#include "vf/fused_causal_conv1d_state.h"
+#include "vf/fused_causal_conv1d_state_single_tail.h"
 #include "vf/fused_causal_conv1d_no_state_single_tail.h"
 #include "vf/fused_causal_conv1d_no_state_double_tail.h"
-
+#include "vf/fused_causal_conv1d_128dim.h"
 
 using namespace AscendC;
 
 // ========== 常量定义 ==========
-constexpr int32_t DOUBLE_BUFFER = 2;  // 双Buffer数量，用于重叠数据搬运和计算
-constexpr int32_t ALIGN_BYTES = 32;   // 32字节对齐，用于DataCopyParams的stride和对齐计算
+constexpr int32_t DOUBLE_BUFFER = 2;     // 双Buffer数量，用于重叠数据搬运和计算
+constexpr int32_t ALIGN_BYTES = 32;      // 32字节对齐，用于DataCopyParams的stride和对齐计算
 constexpr int32_t MAX_SEQUENCE_LEN = 8;  // F4: m最大为7，seqLen最大为m+1=8
 constexpr int32_t CAST_REP_SIZE = 64;
 
-// TilingData结构定义在Host侧：op_host/fused_causal_conv1d_cut_bh_tiling_arch35.h
-// 核间切分策略：二维切分（Dim方向 × Batch方向）
-// - Dim方向：256B对齐分割，mainCoredimLen_ * (dimCoreCnt-1) + dimTailSize = dim
-// - Batch方向：按照有效batch范围分配，支持过滤无效batch
-
-// ========== 核函数主类 ==========
-/**
- * @brief FusedCausalConv1dCutBH核函数实现类
- * @tparam T 数据类型（half或bfloat16）
- */
 template <typename T>
 class FusedCausalConv1dCutBH {
 public:
     __aicore__ inline FusedCausalConv1dCutBH(TPipe *pipe) : pipe_(pipe){};
 
-    /**
-     * @brief 初始化函数
-     * @param numComputedTokens      [batch] 已处理token总数（APC/Pangu v2）
-     * @param blockIdxFirstScheduledToken [batch] APC：本次调度第一个token所在block索引
-     * @param blockIdxLastScheduledToken  [batch] APC：本次调度最后一个token所在block索引
-     * @param initialStateIdx        [batch] APC：读取初始conv_state所用block索引
-     */
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
-        GM_ADDR cacheIndices, GM_ADDR numAcceptedToken,
-        GM_ADDR numComputedTokens, GM_ADDR blockIdxFirstScheduledToken,
-        GM_ADDR blockIdxLastScheduledToken, GM_ADDR initialStateIdx,
-        GM_ADDR y, const FusedCausalConv1dCutBHTilingData *tilingData);
+        GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens, GM_ADDR blockIdxFirstScheduledToken,
+        GM_ADDR blockIdxLastScheduledToken, GM_ADDR initialStateIdx, GM_ADDR y,
+        const FusedCausalConv1dCutBHTilingData *tilingData);
 
     __aicore__ inline void Process();
 
@@ -88,31 +50,18 @@ private:
 
     // ========== 三阶段流水线函数 ==========
     __aicore__ inline void CopyIn(int32_t batchLoop, int32_t dimLoop, uint16_t blockCount, int64_t xOffset);
-    __aicore__ inline void Compute(int32_t batchLoop, int32_t dimLoop,
-        const LocalTensor<int32_t> &indicesLocal,
-        const LocalTensor<int32_t> &acceptTokenLocal,
-        const LocalTensor<int32_t> &queryStartLocLocal,
-        const LocalTensor<int32_t> &numComputedTokensLocal,
-        const LocalTensor<int32_t> &blockIdxFirstLocal,
-        const LocalTensor<int32_t> &blockIdxLastLocal,
-        const LocalTensor<int32_t> &initialStateIdxLocal,
+    __aicore__ inline void Compute(int32_t batchLoop, int32_t dimLoop, const LocalTensor<int32_t> &indicesLocal,
+        const LocalTensor<int32_t> &acceptTokenLocal, const LocalTensor<int32_t> &queryStartLocLocal,
+        const LocalTensor<int32_t> &numComputedTokensLocal, const LocalTensor<int32_t> &blockIdxFirstLocal,
+        const LocalTensor<int32_t> &blockIdxLastLocal, const LocalTensor<int32_t> &initialStateIdxLocal,
         uint16_t yBlockCount, int64_t yOffset, int64_t xOffset);
 
-    // F5: 尾对齐机制（新增 writeCacheLine 替代原 convStatesIdx）
-    __aicore__ inline void UpdateConvStates(const LocalTensor<T> &xLocal,
-        const LocalTensor<T> &convStatesLocal,
-        int32_t curBatchUbOffset,
-        int64_t writeCacheLine,
-        int32_t curBatchSeq,
-        int32_t offset);
+    __aicore__ inline void UpdateConvStates(const LocalTensor<T> &xLocal, const LocalTensor<T> &convStatesLocal,
+        int32_t curBatchUbOffset, int64_t writeCacheLine, int32_t curBatchSeq, int32_t offset);
 
-    // F1: APC prefix cache 写入
-    __aicore__ inline void WriteApcPrefixCache(const LocalTensor<T> &xLocal,
-        const LocalTensor<T> &convStatesLocalOut,
-        const LocalTensor<int32_t> &indicesLocal,
-        const LocalTensor<int32_t> &blockIdxFirstLocal,
-        const LocalTensor<int32_t> &blockIdxLastLocal,
-        int32_t curBatchIdx, int32_t curBatchUbOffset,
+    __aicore__ inline void WriteApcPrefixCache(const LocalTensor<T> &xLocal, const LocalTensor<T> &convStatesLocalOut,
+        const LocalTensor<int32_t> &indicesLocal, const LocalTensor<int32_t> &blockIdxFirstLocal,
+        const LocalTensor<int32_t> &blockIdxLastLocal, int32_t curBatchIdx, int32_t curBatchUbOffset,
         int32_t curBatchSeq, int32_t numComputed);
 
     template <HardEvent event>
@@ -124,45 +73,39 @@ private:
     }
 
     // ========== Global Memory指针 ==========
-    GlobalTensor<T> xGm;                     // 输入序列 [batch, seqLen, dim]
-    GlobalTensor<T> weightGm;                // 卷积核 [K, dim]
-    GlobalTensor<T> convStatesGm;            // 输入cache state [-1, K-1+m, dim]
-    GlobalTensor<int32_t> cacheIndicesGm;    // cache索引：非APC=[batch]，APC=[batch, maxNumBlocks]
-    GlobalTensor<int32_t> acceptTokenNumGm;  // 接受的token数 [batch]
-    GlobalTensor<int32_t> queryStartLocGm;   // query起始位置 [batch+1]
-    GlobalTensor<T> yGm;                     // 输出序列 [batch, seqLen, dim]
-    // F1: APC 新增 GM 指针
-    GlobalTensor<int32_t> numComputedTokensGm;           // [batch] 已处理token总数
-    GlobalTensor<int32_t> blockIdxFirstScheduledTokenGm; // [batch] APC：第一个调度token的block索引
-    GlobalTensor<int32_t> blockIdxLastScheduledTokenGm;  // [batch] APC：最后一个调度token的block索引
-    GlobalTensor<int32_t> initialStateIdxGm;             // [batch] APC：读取初始state的block索引
+    GlobalTensor<T> xGm;                                  // 输入序列 [batch, seqLen, dim]
+    GlobalTensor<T> weightGm;                             // 卷积核 [K, dim]
+    GlobalTensor<T> convStatesGm;                         // 输入cache state [-1, K-1+m, dim]
+    GlobalTensor<int32_t> cacheIndicesGm;                 // cache索引：非APC=[batch]，APC=[batch, maxNumBlocks]
+    GlobalTensor<int32_t> acceptTokenNumGm;               // 接受的token数 [batch]
+    GlobalTensor<int32_t> queryStartLocGm;                // query起始位置 [batch+1]
+    GlobalTensor<T> yGm;                                  // 输出序列 [batch, seqLen, dim]
+    GlobalTensor<int32_t> numComputedTokensGm;            // [batch] 已处理token总数
+    GlobalTensor<int32_t> blockIdxFirstScheduledTokenGm;  // [batch] APC：第一个调度token的block索引
+    GlobalTensor<int32_t> blockIdxLastScheduledTokenGm;   // [batch] APC：最后一个调度token的block索引
+    GlobalTensor<int32_t> initialStateIdxGm;              // [batch] APC：读取初始state的block索引
 
     // ========== UB队列（Unified Buffer中的数据缓存） ==========
     TQue<QuePosition::VECIN, 1> cacheQueueIn;
     TQue<QuePosition::VECOUT, 1> cacheQueueOut;
     TQue<QuePosition::VECIN, 1> xWeightQueue;  // x和weight合并队列（前半段x，后半段weight）
-    // TQue<QuePosition::VECIN, 1> xQueue;  // x和weight合并队列（前半段x，后半段weight）
-    // TQue<QuePosition::VECIN, 1> weightQueue;
     TQue<QuePosition::VECOUT, 1> yQueue;
-    TQue<QuePosition::VECIN, 1> indicesQueue;  // APC 2D indices 专用队列（DB，消除数据竞争）
-    // 常驻固定 buffer
-    TBuf<TPosition::VECCALC> indicesBuf;           // cache索引：非APC 1D=[batch]
-    TBuf<TPosition::VECCALC> acceptTokenBuf;       // acceptToken（始终）
-    TBuf<TPosition::VECCALC> queryStartLocBuf;     // queryStartLoc（2D输入时）
-    TBuf<TPosition::VECCALC> numComputedTokensBuf; // numComputedTokens（APC或convMode时）
-    TBuf<TPosition::VECCALC> initialStateIdxBuf;   // APC: initialStateIdx
-    TBuf<TPosition::VECCALC> blockIdxFirstBuf;     // APC: blockIdxFirst
-    TBuf<TPosition::VECCALC> blockIdxLastBuf;      // APC: blockIdxLast
-
-    TPipe *pipe_;  // Pipeline管理对象
+    TQue<QuePosition::VECIN, 1> indicesQueue;       // APC 2D indices 专用队列（DB，消除数据竞争）
+    TBuf<TPosition::VECCALC> indicesBuf;            // cache索引：非APC 1D=[batch]
+    TBuf<TPosition::VECCALC> acceptTokenBuf;        // acceptToken（始终）
+    TBuf<TPosition::VECCALC> queryStartLocBuf;      // queryStartLoc（2D输入时）
+    TBuf<TPosition::VECCALC> numComputedTokensBuf;  // numComputedTokens（APC或convMode时）
+    TBuf<TPosition::VECCALC> initialStateIdxBuf;    // APC: initialStateIdx
+    TBuf<TPosition::VECCALC> blockIdxFirstBuf;      // APC: blockIdxFirst
+    TBuf<TPosition::VECCALC> blockIdxLastBuf;       // APC: blockIdxLast
+    TPipe *pipe_;                                   // Pipeline管理对象
 
     // ========== Tiling参数（二维切分：Dim方向 × Batch方向） ==========
     // 核间切分参数
-    int64_t dimCoreCnt_;      // dim方向的核数
-    int64_t dimMainCoreCnt_;  // dim方向的主核个数
-    int64_t mainCoredimLen_;  // 主核处理的Dim大小（128对齐），尾核可能含不足128的余数元素
-    int64_t tailCoredimLen_;  // 尾核处理的Dim大小
-
+    int64_t dimCoreCnt_;        // dim方向的核数
+    int64_t dimMainCoreCnt_;    // dim方向的主核个数
+    int64_t mainCoredimLen_;    // 主核处理的Dim大小（128对齐），尾核可能含不足128的余数元素
+    int64_t tailCoredimLen_;    // 尾核处理的Dim大小
     int64_t batchMainCoreCnt_;  // batch方向的主核个数
     int64_t mainCoreBatchNum_;  // 主核batch个数
     int64_t tailCoreBatchNum_;  // 尾核batch个数
@@ -172,9 +115,8 @@ private:
     int64_t ubTailFactorBS_;   // 尾UB循环处理的batch数
     int64_t ubMainFactorDim_;  // 主UB循环处理的dim数
     int64_t ubTailFactorDim_;  // 尾UB循环处理的dim数
-
-    int64_t loopNumBS_;   // Batch方向的循环次数
-    int64_t loopNumDim_;  // Dim方向的循环次数
+    int64_t loopNumBS_;        // Batch方向的循环次数
+    int64_t loopNumDim_;       // Dim方向的循环次数
 
     // ========== Shape参数 ==========
     int64_t batchSize_;   // Batch大小
@@ -203,41 +145,36 @@ private:
     int64_t isResidualConnection_;
     int8_t padSlotId_;
     int64_t yDim_;
-
-    // ========== 新增成员变量（第二期需求）==========
-    int64_t apcEnable_;       // APC 是否开启（F1）
-    int64_t blockSize_;       // APC block 大小（F1）
-    int64_t maxNumBlocks_;    // cacheIndices 第二维大小（F1）
-    int64_t hasCacheIndices_; // cacheIndices 是否有效（F2）
-    int64_t inplace_;         // 是否原地更新（F3）
-    int64_t convMode_;        // 0=Qwen3，1=Pangu v2（F5 convMode）
+    int64_t apcEnable_;             // APC 是否开启（F1）
+    int64_t blockSize_;             // APC block 大小（F1）
+    int64_t maxNumBlocks_;          // cacheIndices 第二维大小（F1）
+    int64_t hasCacheIndices_;       // cacheIndices 是否有效（F2）
+    int64_t inplace_;               // 是否原地更新（F3）
+    int64_t convMode_;              // 0=Qwen3，1=Pangu v2（F5 convMode）
     int64_t hasNumComputedTokens_;  // numComputedTokens 是否有效
     int32_t xWeightQueueSize_;      // xWeightQueue 单 buffer 大小（x部分 + weight部分）
     int32_t xPartSize_;             // xWeightQueue 中 x 部分的元素个数（用于计算weight偏移）
 };
 
-// ==================== 函数实现 ====================
-
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates,
-    GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR numAcceptedToken,
-    GM_ADDR numComputedTokens, GM_ADDR blockIdxFirstScheduledToken,
-    GM_ADDR blockIdxLastScheduledToken, GM_ADDR initialStateIdx,
-    GM_ADDR y, const FusedCausalConv1dCutBHTilingData *tilingData)
+    GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
+    GM_ADDR blockIdxFirstScheduledToken, GM_ADDR blockIdxLastScheduledToken, GM_ADDR initialStateIdx, GM_ADDR y,
+    const FusedCausalConv1dCutBHTilingData *tilingData)
 {
     InitParams(tilingData);
 
     // === 设置Global Memory buffers ===
     if (xInputMode_ == 0) {
         xGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * dimSum_);
-        if(inplace_) {
+        if (inplace_) {
             yGm.SetGlobalBuffer((__gm__ T *)x, batchSize_ * seqLen_ * yDim_);
         } else {
             yGm.SetGlobalBuffer((__gm__ T *)y, batchSize_ * seqLen_ * yDim_);
         }
     } else {
         xGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * dimSum_);
-        if(inplace_) {
+        if (inplace_) {
             yGm.SetGlobalBuffer((__gm__ T *)x, cuSeqLen_ * yDim_);
         } else {
             yGm.SetGlobalBuffer((__gm__ T *)y, cuSeqLen_ * yDim_);
@@ -248,14 +185,11 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight
 
     // F1/F2: 根据 APC 模式绑定 cacheIndices GM
     if (apcEnable_) {
-        // APC 开启：cacheIndices 为 2D [batch, maxNumBlocks]
-        // APC 辅助 GM
         cacheIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cacheIndices, batchSize_ * maxNumBlocks_);
         blockIdxFirstScheduledTokenGm.SetGlobalBuffer((__gm__ int32_t *)blockIdxFirstScheduledToken, batchSize_);
         blockIdxLastScheduledTokenGm.SetGlobalBuffer((__gm__ int32_t *)blockIdxLastScheduledToken, batchSize_);
         initialStateIdxGm.SetGlobalBuffer((__gm__ int32_t *)initialStateIdx, batchSize_);
     } else {
-        // 非 APC：cacheIndices 为可选 1D [batch]
         cacheIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cacheIndices, batchSize_);
     }
     // numComputedTokens 以 hasNumComputedTokens_ 为准（与 APC/convMode 无关）
@@ -272,8 +206,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight
 
     InitQueues();
 }
-
-// ==================== Init子函数实现 ====================
 
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalConv1dCutBHTilingData *tilingData)
@@ -298,14 +230,12 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     xInputMode_ = tilingData->xInputMode;
     isResidualConnection_ = tilingData->residualConnection;
     padSlotId_ = tilingData->padSlotId;
-
-    // === 新增参数（第二期需求）===
-    apcEnable_       = tilingData->apcEnable;
-    blockSize_       = tilingData->blockSize;
-    maxNumBlocks_    = tilingData->maxNumBlocks;
+    apcEnable_ = tilingData->apcEnable;
+    blockSize_ = tilingData->blockSize;
+    maxNumBlocks_ = tilingData->maxNumBlocks;
     hasCacheIndices_ = tilingData->hasCacheIndices;
-    inplace_         = tilingData->inplace;
-    convMode_        = tilingData->convMode;
+    inplace_ = tilingData->inplace;
+    convMode_ = tilingData->convMode;
     hasNumComputedTokens_ = tilingData->hasNumComputedTokens;
 
     // === stride参数 ===
@@ -379,7 +309,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
     xPartSize_ = xQueueSize / sizeof(T);
     xWeightQueueSize_ = xQueueSize + weightQueueSize;
     pipe_->InitBuffer(xWeightQueue, 1, xWeightQueueSize_);
-    // pipe_->InitBuffer(WeightQueue, 1, weightQueueSize);
     pipe_->InitBuffer(yQueue, 1, xQueueSize);
 
     // cacheQueue: 存储cache state（stateLen行）
@@ -440,14 +369,12 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
         DataCopyPad(acceptTokenLocal, acceptTokenNumGm, batchCopyParams, padParams);
     }
 
-    // 声明 indicesLocal（非APC 1D路径，整个 Process 范围可见）
     LocalTensor<int32_t> indicesLocal;
     if (!apcEnable_ && hasCacheIndices_) {
         // 非APC且有cacheIndices：一次性将全部 batch 的 1D 索引从 GM 搬入 UB
         indicesLocal = indicesBuf.Get<int32_t>();
         DataCopyPad(indicesLocal, cacheIndicesGm, batchCopyParams, padParams);
     }
-    // APC 2D路径：indicesQueue 在 Compute() 的 batch 循环内逐批 AllocTensor/EnQue/DeQue
 
     // 2D输入时搬运 queryStartLoc
     LocalTensor<int32_t> queryStartLocLocal;
@@ -469,7 +396,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
         DataCopyPad(numComputedTokensLocal, numComputedTokensGm, batchCopyParams, padParams);
     }
 
-    // F1: APC 专用辅助数组
     LocalTensor<int32_t> initialStateIdxLocal;
     LocalTensor<int32_t> blockIdxFirstLocal;
     LocalTensor<int32_t> blockIdxLastLocal;
@@ -488,7 +414,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     // === 主双重循环（BS方向 × Dim方向）===
-    // printf("loopNumBS_ %d, loopNumDim_ %d", loopNumBS_, loopNumDim_);
     for (int32_t batchLoop = 0; batchLoop < loopNumBS_; batchLoop++) {
         for (int32_t dimLoop = 0; dimLoop < loopNumDim_; dimLoop++) {
             batchNumInLoop_ = (batchLoop == loopNumBS_ - 1) ? ubTailFactorBS_ : ubMainFactorBS_;
@@ -501,15 +426,23 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
             if (xInputMode_ == 1) {
                 blockCount = queryStartLocLocal.GetValue(firstBatchIdxInLoop + batchNumInLoop_) -
                              queryStartLocLocal.GetValue(firstBatchIdxInLoop);
-                startSeqIdx = queryStartLocLocal.GetValue(firstBatchIdxInLoop) -
-                              queryStartLocLocal.GetValue(0);
+                startSeqIdx = queryStartLocLocal.GetValue(firstBatchIdxInLoop) - queryStartLocLocal.GetValue(0);
                 yOffset = startSeqIdx * yDim_ + dimOffset_ + dimOffsetPerLoop_;
             }
             int64_t xOffset = startSeqIdx * dimSum_ + dimOffset_ + dimOffsetPerLoop_;
             CopyIn(batchLoop, dimLoop, blockCount, xOffset);
-            Compute(batchLoop, dimLoop, indicesLocal, acceptTokenLocal, queryStartLocLocal,
-                    numComputedTokensLocal, blockIdxFirstLocal, blockIdxLastLocal, initialStateIdxLocal,
-                    blockCount, yOffset, xOffset);
+            Compute(batchLoop,
+                dimLoop,
+                indicesLocal,
+                acceptTokenLocal,
+                queryStartLocLocal,
+                numComputedTokensLocal,
+                blockIdxFirstLocal,
+                blockIdxLastLocal,
+                initialStateIdxLocal,
+                blockCount,
+                yOffset,
+                xOffset);
         }
     }
 }
@@ -521,9 +454,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(
     LocalTensor<T> xWeightLocal = xWeightQueue.AllocTensor<T>();
     LocalTensor<T> xLocal = xWeightLocal[0];
     LocalTensor<T> weightLocal = xWeightLocal[xPartSize_];
-    // LocalTensor<T> xLocal = xQueue.AllocTensor<T>();
-    // LocalTensor<T> weightLocal = weightQueue.AllocTensor<T>();
-    // printf("xOffset %d, blockCount %d, dimSizeInLoop_ %d", xOffset, blockCount, dimSizeInLoop_);
 
     // === 拷贝x数据：[blockCount, dimSizeInLoop] ===
     DataCopyPadParams padParams{false, 0, 0, 0};
@@ -544,20 +474,14 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(
     DataCopyPad(weightLocal, weightGm[weightOffset], weightCopyParams, padParams);
 
     xWeightQueue.EnQue(xWeightLocal);
-    // xQueue.EnQue(xLocal);
-    // weightQueue.EnQue(weightLocal);
 }
 
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int32_t dimLoop,
-    const LocalTensor<int32_t> &indicesLocal,
-    const LocalTensor<int32_t> &acceptTokenLocal,
-    const LocalTensor<int32_t> &queryStartLocLocal,
-    const LocalTensor<int32_t> &numComputedTokensLocal,
-    const LocalTensor<int32_t> &blockIdxFirstLocal,
-    const LocalTensor<int32_t> &blockIdxLastLocal,
-    const LocalTensor<int32_t> &initialStateIdxLocal,
-    uint16_t yBlockCount, int64_t yOffset, int64_t xOffset)
+    const LocalTensor<int32_t> &indicesLocal, const LocalTensor<int32_t> &acceptTokenLocal,
+    const LocalTensor<int32_t> &queryStartLocLocal, const LocalTensor<int32_t> &numComputedTokensLocal,
+    const LocalTensor<int32_t> &blockIdxFirstLocal, const LocalTensor<int32_t> &blockIdxLastLocal,
+    const LocalTensor<int32_t> &initialStateIdxLocal, uint16_t yBlockCount, int64_t yOffset, int64_t xOffset)
 {
     LocalTensor<T> xWeightLocal = xWeightQueue.DeQue<T>();
     LocalTensor<T> xLocal = xWeightLocal[0];
@@ -576,7 +500,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
 
     for (int32_t b = 0; b < batchNumInLoop_; b++) {
         int32_t curBatchIdx = firstBatchIdx_ + batchNumPerLoop + b;
-
         // F1: APC模式下，通过 indicesQueue 加载当前 batch 的 2D block 索引（DB，消除数据竞争）
         LocalTensor<int32_t> indicesQueueLocal;
         if (apcEnable_) {
@@ -589,9 +512,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             DataCopyPad(indicesQueueLocal, cacheIndicesGm[curBatchIdx * maxNumBlocks_], indices2DCopyParams, padParams);
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         }
-
         LocalTensor<T> convStatesLocalIn = cacheQueueIn.AllocTensor<T>();
-
         // ========== F1/F2: 统一 read/write cache 索引计算 ==========
         int64_t readCacheLine = curBatchIdx;
         int64_t writeCacheLine = curBatchIdx;
@@ -600,11 +521,11 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             // APC 开启：从 indicesQueueLocal 中取 block 物理行号
             int32_t initStateIdx = initialStateIdxLocal.GetValue(curBatchIdx);
             int32_t idxLast = blockIdxLastLocal.GetValue(curBatchIdx);
-            readCacheLine  = indicesQueueLocal.GetValue(initStateIdx);
+            readCacheLine = indicesQueueLocal.GetValue(initStateIdx);
             writeCacheLine = indicesQueueLocal.GetValue(idxLast);
         } else {
             if (hasCacheIndices_) {
-                readCacheLine  = indicesLocal.GetValue(curBatchIdx);
+                readCacheLine = indicesLocal.GetValue(curBatchIdx);
                 writeCacheLine = indicesLocal.GetValue(curBatchIdx);
             }
         }
@@ -647,8 +568,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         if (numComputed == 0) {
             Duplicate(convStatesLocalIn, static_cast<T>(0), (kernelSize_ - 1) * dimSizeInLoop_);
         } else {
-            int32_t convStatesGmOffset =
-                readCacheLine * cacheBatchLenSum_  + dimOffset_ + dimOffsetPerLoop_;
+            int32_t convStatesGmOffset = readCacheLine * cacheBatchLenSum_ + dimOffset_ + dimOffsetPerLoop_;
             DataCopyPad(convStatesLocalIn, convStatesGm[convStatesGmOffset], cacheCopyParams, padParams);
         }
         cacheQueueIn.EnQue<T>(convStatesLocalIn);
@@ -662,16 +582,21 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         // ========== F5: 尾对齐机制更新 running cache ==========
         convStatesLocalOut = cacheQueueOut.DeQue<T>();
         // 传入完整 stateLen_ 行的 convStatesLocalOut，offset 作为参数传入，由 UpdateConvStates 内部处理坐标偏移
-        UpdateConvStates(xLocal, convStatesLocalOut, curBatchUbOffset, writeCacheLine, curBatchSeq,
-            (numComputed == 0) ? 0 : offset);
+        UpdateConvStates(
+            xLocal, convStatesLocalOut, curBatchUbOffset, writeCacheLine, curBatchSeq, (numComputed == 0) ? 0 : offset);
 
         // ========== F1: APC prefix cache 写入 ==========
-        // convStatesLocalOut（convStatesLocalIn 的副本）在 FreeTensor 前仍有效，可安全传入
-        // 传入从 offset 处切片的视图，WriteApcPrefixCache 内部直接用 boundaryIdx 索引
         if (apcEnable_ && hasNumComputedTokens_) {
             LocalTensor<T> convStatesLocalOutSlice = convStatesLocalOut[offset * dimSizeInLoop_];
-            WriteApcPrefixCache(xLocal, convStatesLocalOutSlice, indicesQueueLocal, blockIdxFirstLocal,
-                            blockIdxLastLocal, curBatchIdx, curBatchUbOffset, curBatchSeq, numComputed);
+            WriteApcPrefixCache(xLocal,
+                convStatesLocalOutSlice,
+                indicesQueueLocal,
+                blockIdxFirstLocal,
+                blockIdxLastLocal,
+                curBatchIdx,
+                curBatchUbOffset,
+                curBatchSeq,
+                numComputed);
             indicesQueue.FreeTensor(indicesQueueLocal);
         }
         cacheQueueOut.FreeTensor<T>(convStatesLocalOut);
@@ -679,10 +604,19 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         // ========== 卷积计算（情况A：seq[0, K-2]含cache；情况B：seq[K-1, end]纯x）==========
         uint32_t convStateLen = (curBatchSeq < 2) ? curBatchSeq : kernelSize_ - 1;
         LocalTensor<T> xSlice = xLocal[curBatchUbOffset];
-        if(convStateLen >0) {
+        uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / (CAST_REP_SIZE * 2) * (CAST_REP_SIZE * 2);
+        if (convStateLen > 0) {
             LocalTensor<T> y1Slice = yLocal[yUbOffset];
-            LocalTensor<T> convStatesSlice = (numComputed == 0) ? convStatesLocalIn : convStatesLocalIn[offset * dimSizeInLoop_];
-            Conv1dNeedStateBH(xSlice, weightLocal, convStatesSlice, y1Slice, convStateLen, dimSizeInLoop_, isResidualConnection_);
+            LocalTensor<T> convStatesSlice =
+                (numComputed == 0) ? convStatesLocalIn : convStatesLocalIn[offset * dimSizeInLoop_];
+            uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / CAST_REP_SIZE * CAST_REP_SIZE;
+            if (dimRem == 0) {
+                Conv1dNeedStateBH(
+                    xSlice, weightLocal, convStatesSlice, y1Slice, convStateLen, dimSizeInLoop_, isResidualConnection_);
+            } else {
+                Conv1dNeedStateSingleTailBH(
+                    xSlice, weightLocal, convStatesSlice, y1Slice, convStateLen, dimSizeInLoop_, isResidualConnection_);
+            }
         }
         cacheQueueIn.FreeTensor<T>(convStatesLocalIn);
 
@@ -690,11 +624,13 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         if (blockCount > 0) {
             uint8_t xSLen = static_cast<uint8_t>(blockCount);
             LocalTensor<T> y2Slice = yLocal[yUbOffset + convStateLen * dimSizeInLoop_];
-            uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / (CAST_REP_SIZE * 2) * (CAST_REP_SIZE * 2);
-            if(dimRem > CAST_REP_SIZE || dimRem == 0) {
-                Conv1dNoStateDoubleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
-            } else {
+            uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / (2 * CAST_REP_SIZE) * (2 * CAST_REP_SIZE);
+            if (dimRem == 0) {
+                Conv1dNoNeedState(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
+            } else if (dimRem <= CAST_REP_SIZE) {
                 Conv1dNoStateSingleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
+            } else {
+                Conv1dNoStateDoubleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
             }
         }
         // ========== F3 convMode: Pangu v2 前 width-1 token 置零 ==========
@@ -703,14 +639,13 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             if (lastResetIdx > 0) {
                 SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
                 lastResetIdx = lastResetIdx < curBatchSeq ? lastResetIdx : curBatchSeq;
-                if(isResidualConnection_ == 1)
+                if (isResidualConnection_ == 1)
                     DataCopy(yLocal[yUbOffset], xLocal[yUbOffset], lastResetIdx * dimSizeInLoop_);
-                else{
+                else {
                     Duplicate(yLocal[yUbOffset], static_cast<T>(0), lastResetIdx * dimSizeInLoop_);
                 }
             }
         }
-
         yUbOffset += curBatchSeq * dimSizeInLoop_;
     }
 
@@ -723,10 +658,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
     yParams.blockLen = dimSizeInLoop_ * sizeof(T);
     yParams.srcStride = 0;
     yParams.dstStride = (yDim_ - dimSizeInLoop_) * sizeof(T);
-
     // 写 y GM
     DataCopyPad(yGm[yOffset], yLocal, yParams);
-
     xWeightQueue.FreeTensor(xWeightLocal);
     yQueue.FreeTensor(yLocal);
 }
@@ -734,23 +667,20 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
 // ========== F5: UpdateConvStates（尾对齐机制重构）==========
 template <typename T>
 __aicore__ inline void FusedCausalConv1dCutBH<T>::UpdateConvStates(const LocalTensor<T> &xLocal,
-    const LocalTensor<T> &convStatesLocal, int32_t curBatchUbOffset,
-    int64_t writeCacheLine, int32_t curBatchSeq, int32_t offset)
+    const LocalTensor<T> &convStatesLocal, int32_t curBatchUbOffset, int64_t writeCacheLine, int32_t curBatchSeq,
+    int32_t offset)
 {
     // padded_input 总长 = (offset + K-1) + seq_len
     int64_t paddedLen = offset + (kernelSize_ - 1) + curBatchSeq;
     // 实际写入行数（尾对齐：最多写 stateLen_ 行）
     int64_t cacheLen = paddedLen < stateLen_ ? paddedLen : stateLen_;
-
-    // 来源分解：末尾 cacheLen 行 = cacheRows（来自旧cache） + xRows（来自xLocal）
-    int64_t xRows    = cacheLen < (int64_t)curBatchSeq ? cacheLen : (int64_t)curBatchSeq;
+    int64_t xRows = cacheLen < (int64_t)curBatchSeq ? cacheLen : (int64_t)curBatchSeq;
     int64_t cacheRows = cacheLen - xRows;  // 可能为0
 
     // 写入 GM 的起始偏移（尾对齐：从 stateLen_ - cacheLen 行开始写）
-    int64_t dstBaseGmOffset = writeCacheLine * cacheBatchLenSum_
-                              + (stateLen_ - cacheLen) * cacheLenSum_
-                              + dimOffset_ + dimOffsetPerLoop_;
-    uint32_t blockLen  = dimSizeInLoop_ * sizeof(T);
+    int64_t dstBaseGmOffset =
+        writeCacheLine * cacheBatchLenSum_ + (stateLen_ - cacheLen) * cacheLenSum_ + dimOffset_ + dimOffsetPerLoop_;
+    uint32_t blockLen = dimSizeInLoop_ * sizeof(T);
     uint32_t dstStride = (cacheLenSum_ - dimSizeInLoop_) * sizeof(T);
 
     // Step1：拷贝旧 cache 末尾 cacheRows 行（跳过头部 (K-1-cacheRows) 行）
@@ -758,41 +688,37 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::UpdateConvStates(const LocalTe
         int32_t srcCacheSkip = offset + (kernelSize_ - 1) - cacheRows;
         DataCopyParams cacheToGmParams;
         cacheToGmParams.blockCount = cacheRows;
-        cacheToGmParams.blockLen   = blockLen;
-        cacheToGmParams.srcStride  = 0;
-        cacheToGmParams.dstStride  = dstStride;
+        cacheToGmParams.blockLen = blockLen;
+        cacheToGmParams.srcStride = 0;
+        cacheToGmParams.dstStride = dstStride;
         DataCopyPad(convStatesGm[dstBaseGmOffset], convStatesLocal[srcCacheSkip * dimSizeInLoop_], cacheToGmParams);
     }
 
     // Step2：拷贝 xLocal 末尾 xRows 行
     int32_t xStartRowInUb = curBatchUbOffset + (curBatchSeq - xRows) * dimSizeInLoop_;
-    int64_t xDstGmOffset  = dstBaseGmOffset + cacheRows * cacheLenSum_;
+    int64_t xDstGmOffset = dstBaseGmOffset + cacheRows * cacheLenSum_;
     DataCopyParams xToGmParams;
     xToGmParams.blockCount = xRows;
-    xToGmParams.blockLen   = blockLen;
-    xToGmParams.srcStride  = 0;
-    xToGmParams.dstStride  = dstStride;
+    xToGmParams.blockLen = blockLen;
+    xToGmParams.srcStride = 0;
+    xToGmParams.dstStride = dstStride;
     DataCopyPad(convStatesGm[xDstGmOffset], xLocal[xStartRowInUb], xToGmParams);
 }
 
 // ========== F1: APC prefix cache 写入 ==========
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::WriteApcPrefixCache(
-    const LocalTensor<T> &xLocal,
-    const LocalTensor<T> &convStatesLocalOut,
-    const LocalTensor<int32_t> &indicesLocal,
-    const LocalTensor<int32_t> &blockIdxFirstLocal,
-    const LocalTensor<int32_t> &blockIdxLastLocal,
-    int32_t curBatchIdx, int32_t curBatchUbOffset,
-    int32_t curBatchSeq, int32_t numComputed)
+__aicore__ inline void FusedCausalConv1dCutBH<T>::WriteApcPrefixCache(const LocalTensor<T> &xLocal,
+    const LocalTensor<T> &convStatesLocalOut, const LocalTensor<int32_t> &indicesLocal,
+    const LocalTensor<int32_t> &blockIdxFirstLocal, const LocalTensor<int32_t> &blockIdxLastLocal, int32_t curBatchIdx,
+    int32_t curBatchUbOffset, int32_t curBatchSeq, int32_t numComputed)
 {
-    int32_t idxFirst   = blockIdxFirstLocal.GetValue(curBatchIdx);
-    int32_t idxLast    = blockIdxLastLocal.GetValue(curBatchIdx);
+    int32_t idxFirst = blockIdxFirstLocal.GetValue(curBatchIdx);
+    int32_t idxLast = blockIdxLastLocal.GetValue(curBatchIdx);
     int32_t nBlockFill = idxLast - idxFirst;
 
     // seq_completed_offset: 上一次调度最后一个 token 在新调度中的相对位置
     int32_t completedOffsetToken = numComputed % blockSize_;
-    int32_t seqCompletedOffset   = blockSize_ - completedOffsetToken;
+    int32_t seqCompletedOffset = blockSize_ - completedOffsetToken;
 
     // lastFullBlockTokenIndex: seq_x 坐标系中最后完整 block 的末尾索引
     int32_t seqEndOffset = (curBatchSeq - seqCompletedOffset) % blockSize_;
@@ -801,33 +727,24 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::WriteApcPrefixCache(
         lastFullBlockTokenIndex -= blockSize_;
     }
 
-    // W-1: 需要写入 conv_state 的行数
-
     DataCopyPadParams padParams{false, 0, 0, 0};
-    uint32_t blockLen  = dimSizeInLoop_ * sizeof(T);
+    uint32_t blockLen = dimSizeInLoop_ * sizeof(T);
     uint32_t dstStride = (cacheLenSum_ - dimSizeInLoop_) * sizeof(T);
 
-    // printf("lastFullBlockTokenIndex %d", lastFullBlockTokenIndex);
     for (int32_t chunk = 0; chunk < nBlockFill; chunk++) {
         int32_t boundaryIdx = lastFullBlockTokenIndex - (nBlockFill - chunk - 1) * blockSize_;
         int64_t prefixCacheLine = indicesLocal.GetValue(idxFirst + chunk);
-        int64_t prefixGmOffset = prefixCacheLine * cacheBatchLenSum_ + (stateLen_ - kernelSize_ + 1) * cacheLenSum_
-                                 + dimOffset_ + dimOffsetPerLoop_;
-        // boundaryIdx 是 padded_input 的索引，padded_input = [cached_state(W-1行), seq_x]
-        // 需要写入的 W-1 行范围：padded_input[boundaryIdx : boundaryIdx + W-1]
-        //
+        int64_t prefixGmOffset = prefixCacheLine * cacheBatchLenSum_ + (stateLen_ - kernelSize_ + 1) * cacheLenSum_ +
+                                 dimOffset_ + dimOffsetPerLoop_;
         // 分两段处理：
         //   cacheRows: 落在 cached_state 区域 [0, W-1) 的行数
         //   xRows:     落在 seq_x 区域 [W-1, ...) 的行数
-        //
-        // cacheRows = max(0, W-1 - boundaryIdx)
-        // xRows     = W-1 - cacheRows
         int32_t cacheRows = (kernelSize_ - 1 - boundaryIdx > 0) ? kernelSize_ - 1 - boundaryIdx : 0;
         int32_t xRows = kernelSize_ - 1 - cacheRows;
         DataCopyParams apcParams;
-        apcParams.blockLen   = blockLen;
-        apcParams.srcStride  = 0;
-        apcParams.dstStride  = dstStride;
+        apcParams.blockLen = blockLen;
+        apcParams.srcStride = 0;
+        apcParams.dstStride = dstStride;
 
         // --- 段1：从 convStatesLocalOut 拷贝 cacheRows 行 ---
         if (cacheRows > 0) {
@@ -839,7 +756,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::WriteApcPrefixCache(
         // --- 段2：从 xLocal 拷贝 xRows 行 ---
         if (xRows > 0) {
             apcParams.blockCount = xRows;
-            int64_t xUbOffset = (cacheRows > 0) ? curBatchUbOffset : curBatchUbOffset + (boundaryIdx - kernelSize_ + 1) * dimSizeInLoop_;
+            int64_t xUbOffset = (cacheRows > 0) ? curBatchUbOffset
+                                                : curBatchUbOffset + (boundaryIdx - kernelSize_ + 1) * dimSizeInLoop_;
             int64_t xDstGmOffset = prefixGmOffset + cacheRows * cacheLenSum_;
             DataCopyPad(convStatesGm[xDstGmOffset], xLocal[xUbOffset], apcParams);
         }
