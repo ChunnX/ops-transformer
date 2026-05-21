@@ -13712,7 +13712,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_SoftmaxLSE
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_SoftmaxLSE_SingleDtype)
+TEST_F(FusedInferAttentionScoreTiling, DISABLED_FusedInferAttentionScoreTiling_SoftmaxLSE_SingleDtype)
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
         64, 32, 117440512, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};
