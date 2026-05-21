@@ -566,7 +566,7 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
                 int64_t actualInnerBlockNums =
                     GetActualInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums) +
                     GetActualInnerBlockNums(sInnerIndexStartPrefix, sInnerIndexEndPrefix, innerBlockNumsPrefix);
-                if (double(actualInnerBlockNums) - dif > dif && 
+                if (double(actualInnerBlockNums) - dif > dif &&
                     !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
                     coreNidEnd[curCore] = tmpCoreNidEnd;
                     coreSidEnd[curCore] = tmpCoreSidEnd;
