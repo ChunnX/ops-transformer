@@ -67,7 +67,7 @@ TEST_F(moe_gating_top_k_backward_test, test_case_0)
 
     system(
     "cp -r "
-    "../../../../moe/moe_gating_top_k_backward/tests/ut/op_kernel/"
+    "../../../../../moe/moe_gating_top_k_backward/tests/ut/op_kernel/"
     "moe_gating_top_k_backward_data ./ && chmod -R 755 ./moe_gating_top_k_backward_data/");
     system("cd ./moe_gating_top_k_backward_data/ && rm -rf ./*bin");
     system("cd ./moe_gating_top_k_backward_data/ && python3 gen_data.py test_moe_gating_top_k_backward_case_00");
