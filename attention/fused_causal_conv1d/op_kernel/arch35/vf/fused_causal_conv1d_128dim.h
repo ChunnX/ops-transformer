@@ -13,33 +13,15 @@
  * \brief
  */
 
-#ifndef COMPUTE_H
-#define COMPUTE_H
+#ifndef FUSED_CAUSAL_CONV1D_128DIM_H
+#define FUSED_CAUSAL_CONV1D_128DIM_H
 
 #include "kernel_operator.h"
-
-using namespace AscendC;
-
-constexpr MicroAPI::CastTrait castTraitB162B32 = {
-    MicroAPI::RegLayout::ZERO,
-    MicroAPI::SatMode::UNKNOWN,
-    MicroAPI::MaskMergeMode::ZEROING,
-    RoundMode::UNKNOWN,
-};
-
-constexpr MicroAPI::CastTrait castTraitB322B16 = {
-    MicroAPI::RegLayout::ZERO,
-    MicroAPI::SatMode::NO_SAT,
-    MicroAPI::MaskMergeMode::ZEROING,
-    RoundMode::CAST_RINT,
-};
-
-constexpr uint32_t REGSIZE = 256;
-constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float);
+#include "fused_causal_conv1d_state_single_tail.h"
 
 template <typename T>
-__simd_vf__ void Conv1dNeedStateNoConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-    __ubuf__ T *yAddr, uint32_t dimLen)
+__simd_vf__ void Conv1dNeedStateNoConBHVF(
+    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr, __ubuf__ T *yAddr, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -97,8 +79,8 @@ __simd_vf__ void Conv1dNeedStateNoConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightA
 }
 
 template <typename T>
-__simd_vf__ void Conv1dNeedStateConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-    __ubuf__ T *yAddr, uint32_t dimLen)
+__simd_vf__ void Conv1dNeedStateConBHVF(
+    __ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr, __ubuf__ T *yAddr, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -232,6 +214,7 @@ __simd_vf__ void Conv1dNeedStateNoConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAdd
         offset += B32_REP_SIZE;
     }
 }
+
 ////残差连接模式，不含尾行
 template <typename T>
 __simd_vf__ void Conv1dNoNeedStateConNoResVF(
@@ -794,6 +777,33 @@ __aicore__ inline void Conv1dNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weig
 }
 
 template <typename T>
+__aicore__ inline void Conv1dNeedStateBH(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
+    LocalTensor<T> &yUb, uint32_t convStateLen, uint32_t dimLen, int32_t isResidualConnection)
+{
+    __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
+    __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
+    __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
+    __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
+    if (isResidualConnection == 1) {
+        if (convStateLen == 2) {
+            Conv1dNeedStateConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+        } else {
+            uint32_t stateSLen = 2;
+            uint32_t xSLen = 1;
+            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        }
+    } else {
+        if (convStateLen == 2) {
+            Conv1dNeedStateNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+        } else {
+            uint32_t stateSLen = 2;
+            uint32_t xSLen = 1;
+            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        }
+    }
+}
+
+template <typename T>
 __aicore__ inline void Conv1dNoNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &yUb,
     uint32_t xSLen, uint32_t dimLen, int32_t isResidualConnection)
 {
@@ -814,21 +824,6 @@ __aicore__ inline void Conv1dNoNeedState(LocalTensor<T> &xUb, LocalTensor<T> &we
         } else if (xLoopRem == 0) {
             Conv1dNoNeedStateNoConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
         }
-    }
-}
-
-template <typename T>
-__aicore__ inline void Conv1dNeedStateBH(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
-    LocalTensor<T> &yUb, uint32_t dimLen, int32_t isResidualConnection)
-{
-    __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
-    __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
-    __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
-    __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
-    if (isResidualConnection == 1) {
-        Conv1dNeedStateConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
-    } else {
-        Conv1dNeedStateNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
     }
 }
 
