@@ -466,7 +466,7 @@ public:
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if (enableS1OutSplit) {
-            return coreGS1Loops < varlenCalcTimes;
+            return bN2Cur < constInfo.bSize * constInfo.n2Size;
         }
         return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
     }
@@ -819,11 +819,9 @@ public:
             PRINTF("zzyzzy FINISHED\n");
             return;
         }
-        // if (bN2Cur / constInfo.n2Size >= constInfo.bSize) {
-        //     PRINTF("zzyzzy ERROR: aicIdx:%u coreGS1:%u varlenCalc:%u\n", constInfo.aicIdx, coreGS1Loops, varlenCalcTimes);
-        //     coreGS1Loops = varlenCalcTimes;
-        //     return;
-        // }
+        if (bN2Cur / constInfo.n2Size >= constInfo.bSize) {
+            return;
+        }
         task_i_curr = ComputeFlatTaskIdx();
 
         int64_t gS1Skip = task_i_curr - task_i_prev_;
