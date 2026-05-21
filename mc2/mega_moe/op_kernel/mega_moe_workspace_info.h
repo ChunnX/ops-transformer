@@ -76,17 +76,17 @@ struct WorkspaceInfo {
     GM_ADDR ptrGmmOut;
     GM_ADDR ptrGmm2RowReady;
     // ========================================================================
-    // 动态调度 (Dynamic Scheduling) workspace 区
-    // 设计 doc: 见 mega_moe_impl.h 顶部 DYN_SCHED_DESIGN 注释块
+    // 动态调度 (Dynamic Scheduling) workspace 区  —  单写者协议
     // ========================================================================
-    // gmm1NextTile / gmm2NextTile: 每 (expert, wave) 一个 int32 原子计数器。
-    //   AIC 用 AtomicAdd(_, 1) 认领，返回值 = 老值 = 本次拿到的 nTileIdx。
-    //   值 >= tileNum 表示该 wave 已被认完。每 expert 起始时重置 0。
-    GM_ADDR ptrGmm1NextTile;
-    GM_ADDR ptrGmm2NextTile;
-    // taskSlot: 每 blockIdx × 2 channel × 2 pingpong 一个 32 byte 任务结构。
-    //   AIC 写 (scalar)，AIV 读 (ReadGmByPassDCache)，通过 NotifyVector + WaitForCube 同步。
-    GM_ADDR ptrTaskSlot;
+    // 每 (bk, ch) 一份 task 队列, 每 (bk, ch, owner) 一份 ack 计数器:
+    //   ptrTaskData[bk*2 + ch]              : scheduler 单独写, AIC/AIV 只读
+    //   ptrTaskSeq [bk*2 + ch]              : scheduler 单独写 (单调递增), AIC/AIV 只读
+    //   ptrTaskAck [bk*4 + ch*2 + owner]    : worker(AIC=0/AIV=1) 单独写, scheduler 只读
+    // 无任何 atomic_add: 普通 GM 写 + ReadGmByPassDCache 读, 在物理上不可能 race。
+    // scheduler 用 DataCopyPad 一次 DMA 把整片 ack 数组搬到 UB, 比 31 次 HBM 单读快 ~30x。
+    GM_ADDR ptrTaskData;
+    GM_ADDR ptrTaskSeq;
+    GM_ADDR ptrTaskAck;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -126,19 +126,19 @@ struct WorkspaceInfo {
         ptrGmm2RowReady = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->blockNum), ALIGN_128);
-        // === 动态调度: per-(expert, wave) 原子计数器 + per-blockIdx taskSlot ===
-        int64_t counterElems = Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->expertPerRank * maxWavesPerExpert),
-            static_cast<int64_t>(ALIGN_128));
-        ptrGmm1NextTile = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * counterElems;
-        ptrGmm2NextTile = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * counterElems;
-        // taskSlot: blockNum × 4 slot (2 channel × 2 pingpong) × 32 byte
-        ptrTaskSlot = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->blockNum) * 4 * 32,
-            ALIGN_512);
+        // === 动态调度: 单写者 task 队列 + ack 计数器 ===
+        // 全部按 ALIGN_128 (128 字节 = 32 个 int32) 对齐, DataCopyPad 友好。
+        int64_t taskDataElems = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->blockNum) * 2, static_cast<int64_t>(ALIGN_128 / 4));
+        int64_t taskSeqElems  = taskDataElems;
+        int64_t taskAckElems  = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->blockNum) * 4, static_cast<int64_t>(ALIGN_128 / 4));
+        ptrTaskData = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * taskDataElems;
+        ptrTaskSeq  = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * taskSeqElems;
+        ptrTaskAck  = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * taskAckElems;
         expandedRowIdxGather = ptrA;
     }
 };
