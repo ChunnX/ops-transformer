@@ -48,9 +48,9 @@ torch.npu.set_device(DEVICE)
 #   "npu_fusion_attention"            - torch_npu's npu_fusion_attention (PFA)
 #   "npu_fused_infer_attention_score" - torch_npu's npu_fused_infer_attention_score (FIAS)
 TORCH_REF_VALS = ["npu_fusion_attention"]
-B_VALS = [1]
+B_VALS = [1]  # B > 1 is not yet supported by blitz_sparse_attention
 H_VALS = [1, 2, 3, 4]
-S_VALS = [24_000, 36000]   # query and key sequence lengths are kept equal; batch size is restricted to 1 because larger batch sizes currently produce wrong outputs
+S_VALS = [24_000, 36000]   # query and key sequence lengths are kept equal; 
 D_VALS = [128]   # head dimension
 # `frame_kind` is a label; the actual FrameWidths is resolved per block_shape
 # in the test body. `left_cols` is in <block_size_kv>-token units and `top_rows`

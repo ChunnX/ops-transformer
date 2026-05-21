@@ -804,11 +804,11 @@ protected:
             }
 
             // T2.A: attentionMaskType ∈ {0, 1} only — band ElewiseCompute removed.
-            this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], 
-                                             souterSize, 
+            this->template ElewiseCompute<U>(this->mmResUb[ubPingpong],
+                                             souterSize,
                                              params->singleProcessSInnerSizeNow,
-                                             params->maskCopyInCol, 
-                                             params->useMask, 
+                                             params->maskCopyInCol,
+                                             params->useMask,
                                              this->bmm1ResCopyInEvent[ubPingpong], 0);
 
             // With true sub-tile gather, every score-buffer column is a kept K
