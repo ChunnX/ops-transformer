@@ -892,23 +892,51 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
-        uint32_t tkIndex = startTokenId_ + ((loop + epRankId_) % sendCntNum_); // 错位发送
-        uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
-        uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));     // 位置0是rank_id
-        uint32_t toRankId = rankIdExpandIdx;     // 位置0是rank_id
-        uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));  // 位置1是token_id
-        uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));   // 位置2是topk_id
+    for (uint32_t loop = 0; loop < sendCntNum_;) {
+        // 处理第一个 token（总是存在）
+        uint32_t tkIndexFirst = startTokenId_ + ((loop + epRankId_) % sendCntNum_);  // 错位发送
+        uint32_t baseOffsetFirst = (tkIndexFirst - startTokenId_) * EXPAND_IDX_INFO;
+        uint32_t rankIdExpandIdxFirst = static_cast<uint32_t>(expandIdxLocal(baseOffsetFirst)); // 位置0是rank_id
+        uint32_t toRankIdFirst = rankIdExpandIdxFirst;   // 位置0是rank_id
+        uint32_t tokenIdFirst = static_cast<uint32_t>(expandIdxLocal(baseOffsetFirst + 1));   // 位置1是token_id
+        uint32_t topkIdFirst = static_cast<uint32_t>(expandIdxLocal(baseOffsetFirst + 2));   // 位置2是topk_id
         if (isScalingDownFlag_) {
-            toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx);
+            toRankIdFirst = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
+                epWorldSizeOriginal_ + rankIdExpandIdxFirst);
         }
-        ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+        ExpertAlltoAllDispatchInnerCopyAdd(toRankIdFirst, tokenIdFirst, topkIdFirst, tkIndexFirst);
+        // 处理第二个 token（如果存在）
+        bool hasSecond = (loop + 1 < sendCntNum_);
+        uint32_t tkIndexSecond = 0, baseOffsetSecond = 0, rankIdExpandIdxSecond = 0;
+        uint32_t toRankIdSecond = 0, tokenIdSecond = 0, topkIdSecond = 0;
+        if (hasSecond) {
+            uint32_t loop2 = loop + 1;
+            tkIndexSecond = startTokenId_ + ((loop2 + epRankId_) % sendCntNum_);
+            baseOffsetSecond = (tkIndexSecond - startTokenId_) * EXPAND_IDX_INFO;
+            rankIdExpandIdxSecond = static_cast<uint32_t>(expandIdxLocal(baseOffsetSecond));
+            toRankIdSecond = rankIdExpandIdxSecond;
+            tokenIdSecond = static_cast<uint32_t>(expandIdxLocal(baseOffsetSecond + 1));
+            topkIdSecond = static_cast<uint32_t>(expandIdxLocal(baseOffsetSecond + 2));
+            if (isScalingDownFlag_) {
+                toRankIdSecond = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
+                    epWorldSizeOriginal_ + rankIdExpandIdxSecond);
+            }
+            ExpertAlltoAllDispatchInnerCopyAdd(toRankIdSecond, tokenIdSecond, topkIdSecond, tkIndexSecond);
+        }
         PipeBarrier<PIPE_MTE3>();
-        GM_ADDR stateGM = GetWinStateAddrByRankId(toRankId, EP_DOMAIN) + tokenId * flagRcvCount_ * stateOffset_ +
-            topkId * stateOffset_;  // 计算地址偏移
-        GlobalTensor<float> stateGMTensor;
-        stateGMTensor.SetGlobalBuffer((__gm__ float*)stateGM);
-        DataCopy<float>(stateGMTensor, statusTensor, FLOAT_PER_UB_ALIGN);  // 8是数据大小，按32对齐拷贝
+        GM_ADDR stateGMFirst = GetWinStateAddrByRankId(toRankIdFirst, EP_DOMAIN) +
+                        tokenIdFirst * flagRcvCount_ * stateOffset_ + topkIdFirst * stateOffset_;  // 计算地址偏移
+        GlobalTensor<float> stateGMTensorFirst;
+        stateGMTensorFirst.SetGlobalBuffer((__gm__ float*)stateGMFirst);
+        DataCopy<float>(stateGMTensorFirst, statusTensor, FLOAT_PER_UB_ALIGN);  // 8是数据大小，按32对齐拷贝
+        if (hasSecond) {
+            GM_ADDR stateGMSecond = GetWinStateAddrByRankId(toRankIdSecond, EP_DOMAIN) +
+                            tokenIdSecond * flagRcvCount_ * stateOffset_ + topkIdSecond * stateOffset_;
+            GlobalTensor<float> stateGMTensorSecond;
+            stateGMTensorSecond.SetGlobalBuffer((__gm__ float*)stateGMSecond);
+            DataCopy<float>(stateGMTensorSecond, statusTensor, FLOAT_PER_UB_ALIGN);
+        }
+        loop += (hasSecond ? 2 : 1);
     }
 }
 
