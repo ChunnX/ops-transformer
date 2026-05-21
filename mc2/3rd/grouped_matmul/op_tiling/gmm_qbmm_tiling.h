@@ -15,7 +15,7 @@
 #ifndef MC2_GMM_QBMM_TILING_H
 #define MC2_GMM_QBMM_TILING_H
 
-#include "grouped_matmul_tiling.h"
+#include "mc2_grouped_matmul_tiling.h"
 #include "../op_kernel/grouped_matmul_tiling_data_apt.h"
 #include "op_host/tiling_base.h"
 
