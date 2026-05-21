@@ -336,7 +336,11 @@ __global__ __aicore__ void blitz_sparse_attention(__gm__ uint8_t* query, __gm__ 
         query, key, value, pseShift, attenMask, sabi,
         actualSeqLengths, actualSeqLengthsKV,
         deq_scale1, quant_scale1, deq_scale2, quant_scale2, quant_offset2,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        // FIAS-only optional tensors (antiquant, paged-KV, prefix, rope, learnable-sink) — unused by BSA:
+        nullptr, nullptr,                                // antiquant_scale, antiquant_offset
+        nullptr, nullptr, nullptr,                       // blocktable, queryPaddingSize, kvPaddingSize
+        nullptr, nullptr, nullptr, nullptr,              // key/value antiquant_scale/offset
+        nullptr, nullptr, nullptr,                       // keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen
+        nullptr, nullptr, nullptr,                       // queryRope, keyRope, learnableSink
         attentionOut, softmaxLse, workspace, tiling);
 }
