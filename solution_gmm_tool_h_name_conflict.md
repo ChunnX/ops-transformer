@@ -35,7 +35,7 @@ GMM 模块下存在多个名为 `tool.h` 的头文件，分布在不同算子子
 
 建议采用 **"短期重命名去冲突 + 中期提取公共代码"** 的分阶段策略，兼顾风险与代码健康度。
 
-### 3.1 第一阶段：重命名与修复宏（短期，1~2 天）
+### 3.1 第一阶段：重命名与修复宏（已完成）
 
 **目标**：立即消除同名冲突与宏重复定义风险。
 
@@ -93,7 +93,7 @@ rg '#include.*tool\.h' gmm/ --type cpp --type h
 - `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/weight_quant_basic_block/*.h`
 - `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/*.h`
 
-### 3.2 第二阶段：提取公共代码（中期，1 周内）
+### 3.2 第二阶段：提取公共代码（已完成）
 
 **目标**：消除文件 1 与文件 2 之间的重复代码。
 
@@ -143,10 +143,11 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 在两侧模块中统一改为：
 
 ```cpp
-#include "gmm/common/op_kernel/arch35/weight_quant_tool.h"
+// 相对路径引用（实际采用）
+#include "../../../../common/op_kernel/arch35/weight_quant_tool.h"
 ```
 
-> **注意**：若构建系统使用基于目录的 include path（如 `-I${PROJECT_ROOT}`），则上述绝对风格路径可直接使用；若使用相对路径，需在 CMake 中新增 `gmm/common/op_kernel/arch35` 的 include 目录，或保持相对路径引用 `../../common/op_kernel/arch35/weight_quant_tool.h`。建议优先采用统一 include prefix 风格，提升可读性。
+> **注意**：当前实现采用相对路径引用，未统一为 `gmm/common/op_kernel/arch35/weight_quant_tool.h` 的绝对风格路径。后续若构建系统支持基于目录的 include path（如 `-I${PROJECT_ROOT}`），可再统一为绝对路径以提升可读性。
 
 ### 3.3 命名规范建议（预防复发）
 
@@ -167,12 +168,12 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
 
 ## 4. 实施检查清单（Checklist）
 
-- [ ] 完成文件重命名（第一阶段）
-- [ ] 所有头文件保护宏已唯一化，不再重复
-- [ ] 所有 `#include` 引用路径已更新，编译通过
-- [ ] 新增公共目录 `gmm/common/op_kernel/arch35/`（第二阶段）
-- [ ] 公共 `weight_quant_tool.h` 已合并 `VEC_MAX_ELEM_B32` 差异
-- [ ] 删除旧重复文件，确认无残留引用
+- [x] 完成文件重命名（第一阶段）
+- [x] 所有头文件保护宏已唯一化，不再重复
+- [x] 所有 `#include` 引用路径已更新，编译通过
+- [x] 新增公共目录 `gmm/common/op_kernel/arch35/`（第二阶段）
+- [x] 公共 `weight_quant_tool.h` 已合并 `VEC_MAX_ELEM_B32` 差异
+- [x] 删除旧重复文件 `weight_quant_arch35_tool.h`、`gmm_fr_weight_quant_arch35_tool.h`，确认无残留引用
 - [ ] 运行 GMM 相关单元测试/算子测试，验证功能无损
 - [ ] 代码审查（CR）通过
 
