@@ -17,8 +17,13 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_dispatch_normal_tiling.h"
-#include "../../common/inc/op_kernel/moe_distribute_base.h"
-#include "../../common/inc/op_kernel/comm_args.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/comm_args.h"
+#else
+#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/comm_args.h"
+#endif
 
 using namespace Moe;
 namespace MoeDispatchNormalImpl {
