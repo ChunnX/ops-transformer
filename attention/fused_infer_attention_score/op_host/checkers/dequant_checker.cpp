@@ -652,11 +652,6 @@ ge::graphStatus DequantChecker::CheckFeatureMXFP8Fullquant(const FiaTilingInfo &
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
                 OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, key/value tensorlist is not supported."),
                 return ge::GRAPH_FAILED);
-
-    // 不支持 rope
-    OP_CHECK_IF(fiaInfo.mlaMode != MlaMode::NO_MLA,
-                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, rope is not supported."),
-                return ge::GRAPH_FAILED);   
     
     // innerPrecise 仅支持 0/1
     OP_CHECK_IF((fiaInfo.innerPrecise != HIGH_PRECISION) && (fiaInfo.innerPrecise != HIGH_PERFORMANCE),
@@ -999,7 +994,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     }
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus DequantChecker::CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo)
 {
