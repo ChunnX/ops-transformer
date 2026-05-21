@@ -266,11 +266,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     // Duplicate(initTensor, 0, maxAlign) 会越界。
     uint32_t blockNumAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
         static_cast<int32_t>(blockNum_), static_cast<int32_t>(8)));
-    uint32_t counterAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
-        static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_), static_cast<int32_t>(8)));
-    uint32_t slotAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
+    // ack 数组最大: blockNum * 4 (per owner)
+    uint32_t ackAlign = static_cast<uint32_t>(Ops::Base::CeilAlign(
         static_cast<int32_t>(blockNum_) * 4, static_cast<int32_t>(8)));
-    uint32_t resetMaxElems = max(max(totalFlagCount, blockNumAlign), max(counterAlign, slotAlign));
+    uint32_t resetMaxElems = max(max(totalFlagCount, blockNumAlign), ackAlign);
     uint32_t maxResetBufAlign = Ops::Base::CeilAlign(
         static_cast<int32_t>(resetMaxElems * sizeof(int32_t)), static_cast<int32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
@@ -339,24 +338,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags(
             return;
         }
         // ============================================================
-        // kernel startup 一次性 reset 三类 GM flag/counter (后续 Process 的
-        // SyncAll<false>() 保证写对所有核可见)：
-        //   1. rowReadyFlags     : blockNum 个 int32     (静态 GMM2 用，保留兼容)
-        //   2. gmm1/gmm2NextTile : expertPerRank*maxWavesPerExpert 个 int32  (动态调度认领计数器)
-        //   3. taskSlot          : blockNum*4 个 int32   (动态调度任务槽，必须清 0：
-        //                          WriteTaskSlot 用 AtomicAdd，要求 slot 初值 0)
-        // 用一个足够大的 0 tensor，多次 DataCopy 到不同 GM 区。各 DataCopy 只读同一
-        // 个 initTensor，无 WAR 冲突，中间不需要再 SyncFunc。
+        // kernel startup 一次性 reset 动态调度用的 GM 区:
+        //   1. rowReadyFlags : blockNum 个 int32   (静态 GMM2 内部 AIC↔AIV1 同步, 保留)
+        //   2. taskData      : blockNum*2 个 int32 (scheduler 写, 单写者)
+        //   3. taskSeq       : blockNum*2 个 int32 (scheduler 写, 单调递增)
+        //   4. taskAck       : blockNum*4 个 int32 (worker 各自写, 单写者每位)
+        // 用一个足够大的 0 tensor 多次 DataCopy。
         // ============================================================
         int32_t blockNumAlign  = Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8));
-        int32_t counterAlign   = Ops::Base::CeilAlign(
-            static_cast<int32_t>(expertPerRank_) * static_cast<int32_t>(maxWavesPerExpert_),
+        int32_t taskDataAlign  = Ops::Base::CeilAlign(static_cast<int32_t>(blockNum_) * 2,
             static_cast<int32_t>(8));
-        int32_t slotAlign      = Ops::Base::CeilAlign(static_cast<int32_t>(blockNum_) * 4,
+        int32_t taskAckAlign   = Ops::Base::CeilAlign(static_cast<int32_t>(blockNum_) * 4,
             static_cast<int32_t>(8));
         int32_t maxAlign = blockNumAlign;
-        if (counterAlign > maxAlign) { maxAlign = counterAlign; }
-        if (slotAlign > maxAlign)    { maxAlign = slotAlign; }
+        if (taskDataAlign > maxAlign) { maxAlign = taskDataAlign; }
+        if (taskAckAlign  > maxAlign) { maxAlign = taskAckAlign; }
 
         LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
         Duplicate(initTensor, 0, maxAlign);
@@ -366,17 +362,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags(
         rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
         DataCopy(rowReadyFlags, initTensor, blockNumAlign);
 
-        GlobalTensor<int32_t> gmm1Counters;
-        gmm1Counters.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm1NextTile);
-        DataCopy(gmm1Counters, initTensor, counterAlign);
+        GlobalTensor<int32_t> taskData;
+        taskData.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrTaskData);
+        DataCopy(taskData, initTensor, taskDataAlign);
 
-        GlobalTensor<int32_t> gmm2Counters;
-        gmm2Counters.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2NextTile);
-        DataCopy(gmm2Counters, initTensor, counterAlign);
+        GlobalTensor<int32_t> taskSeq;
+        taskSeq.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrTaskSeq);
+        DataCopy(taskSeq, initTensor, taskDataAlign);
 
-        GlobalTensor<int32_t> taskSlots;
-        taskSlots.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrTaskSlot);
-        DataCopy(taskSlots, initTensor, slotAlign);
+        GlobalTensor<int32_t> taskAck;
+        taskAck.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrTaskAck);
+        DataCopy(taskAck, initTensor, taskAckAlign);
     }
 }
 
@@ -932,6 +928,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     GMMAddrInfo gmmAddrInfo;
+
+    // ★ 单写者协议的 worker / scheduler 状态: 跨 expert 单调累积, 在 expert 循环外预分配 ★
+    //   - scheduler: my_seq[bk*2+ch], 表示已派给某 (bk, ch) 多少 task
+    //   - AIC worker: last_seen[ch], 已处理到的最新 seq
+    //   - AIV0/AIV1 worker: last_seen, 单元素
+    // 用栈数组(64 是 SCHED_MAX_WORKERS*2 上限的 ceiling), 每核 ~256B, 可忽略。
+    int32_t scheduler_my_seq[MegaMoeImpl::SCHED_MAX_WORKERS * 2];
+    int32_t aic_last_seen[2];
+    int32_t aiv0_last_seen[1];
+    int32_t aiv1_last_seen[1];
+    for (int i = 0; i < MegaMoeImpl::SCHED_MAX_WORKERS * 2; ++i) scheduler_my_seq[i] = 0;
+    aic_last_seen[0] = 0; aic_last_seen[1] = 0;
+    aiv0_last_seen[0] = 0; aiv1_last_seen[0] = 0;
+
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         bool valid = UpdateGroupParams(expertIdx);
 
@@ -950,15 +960,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        // valid=false 不能直接 continue, 否则该核跳过本 expert 的 SyncAll 而其它核还在等
-        // → 死锁。改成 if(valid){ ...dispatch... } 包住主体, 末尾的 SyncAll<true>() 大家都到达。
-        uint64_t m_i = valid ? Get<M_VALUE>(problemShape_) : 0;
-        uint64_t waveCnt = valid ? (m_i + L1_TILE_M - 1) / L1_TILE_M : 0;
-        if (!valid) {
-            // SyncAll<true>() 在 if(valid) 之外, 保证 invalid 路径也会 sync
-            SyncAll<true>();
-            continue;
-        }
+        if (!valid) continue;  // 单写者协议 + 单调 seq 不需要跨核同步, 可以直接跳过
+        uint64_t m_i = Get<M_VALUE>(problemShape_);
+        uint64_t waveCnt = (m_i + L1_TILE_M - 1) / L1_TILE_M;
 
         // 按本 expert 的 waveCnt 决定分组：让 wavesParallel 尽量等于 waveCnt
         uint32_t maxGroups = blockNum_ / minCoresPerWaveGmm1;
@@ -979,22 +983,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 
-        // ★★★ Wave loop: 动态调度 (Dynamic Scheduling) ★★★
+        // ★★★ Wave loop: 动态调度 (单写者协议) ★★★
         // 详细设计见 mega_moe_impl.h 顶部 DYN_SCHED_DESIGN 注释块。
         //
-        // 总流程：
-        //   1. 算本 expert 的 tileNumGmm1 / tileNumGmm2 (取决于交织/非交织 + n_full + hidden)
-        //   2. AIC 调 DynamicAicLoop  ：claim → 写 slot → mmad → Notify
-        //      sub0 调 DynamicAiv0Loop：WaitForCube → ReadSlot → epi (sw+quant)
-        //      sub1 调 DynamicAiv1Loop：WaitForCube → ReadSlot → CombineTile
-        //   每个 loop 内部自带 END 哨兵处理，loop 结束 = 本 expert 所有 task 完成
+        // 流程: AIV0 bk=0 跑 SchedulerLoop, 用 DataCopyPad 批量读 worker ack,
+        //       决定派发 task 给哪些 idle worker, 写 taskData + taskSeq;
+        //       其它核为 worker, 轮询 taskSeq, 看到新 seq 就读 taskData 处理, 写自己的 ack。
         //
-        // 计数器 / taskSlot 在 kernel startup 阶段已由 ResetGmm2RowReadyFlags 一次性
-        // reset 0，expert 内部不再 reset / SyncAll。跨 expert 隔离：
-        //   - 计数器：每 expert 占 [expertIdx*maxW, +maxW) 不同段
-        //   - taskSlot：每 expert 末尾被 AIV ClearTaskSlot 清回 0
-        //   - cube/vec flag：每 expert 内 Notify/Wait 配平，归零后下个 expert 干净开始
-        // 注：sub1 在进 DynamicAiv1Loop 之前已做完本 expert 的 dispatch prefetch（上面那段）
+        // 跨 expert: 状态 (my_seq, last_seen, HBM seq, HBM ack) 单调递增, 不复位,
+        //           无需 SyncAll。kernel 启动时一次性把这些数组清 0 即可。
 
         // -- 计算 tileNumGmm1 / tileNumGmm2 --
         uint64_t schedulerN_gmm1 = IsInterleaved ?
@@ -1008,13 +1005,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             static_cast<uint64_t>(L1_TILE_N));
         if (tileNumGmm2 < 1U) { tileNumGmm2 = 1U; }
 
-        // 计数器在 kernel startup 阶段已经一次性 reset (ResetGmm2RowReadyFlags 一起做)，
-        // 这里直接进 dynamic loop，不需要 per-expert reset / SyncAll。
-        //
-        // 跨 expert 隔离：每个 expert 的计数器占 [expertIdx*maxW, expertIdx*maxW+maxW) 不同段，
-        // 互不冲突。expert 顺序串行执行 → 不同 expert 的 counter 不会被同时访问。
-        //
-        // -- 分发到三个 dynamic loop --
+        // -- 分发到 scheduler / 3 个 worker loop --
 #if MEGA_MOE_DYN_DEBUG
         if (blockIdx_ == MegaMoeImpl::DBG_BK_A || blockIdx_ == MegaMoeImpl::DBG_BK_B) {
             AscendC::PRINTF("[rank=%u DISPATCH bk=%u ct=%d sub=%u] expert=%u tnG1=%u tnG2=%u waveCnt=%lu m_i=%lu\n",
@@ -1024,6 +1015,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 #endif
         // 单核 V 调度: blockIdx_=0 的 AIV0 当 scheduler, 它的 AIC/AIV1 idle (但 sub1 仍
         // 在外层负责 dispatch prefetch — 这里只是 main loop 不参与 GMM)。workers = bk ∈ [1, blockNum)。
+        // 状态数组(scheduler_my_seq / *_last_seen) 在 expert 循环外预分配, 跨 expert 单调累积。
         if (blockIdx_ == 0U) {
             if constexpr (g_coreType == AscendC::AIV) {
                 if (subBlockIdx_ == 0) {
@@ -1031,39 +1023,36 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                         QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         params_, problemShape_, baseOffset_,
                         static_cast<int32_t>(rankId_), expertIdx, blockNum_,
-                        waveCnt, m_i, tileNumGmm1, tileNumGmm2);
+                        waveCnt, m_i, tileNumGmm1, tileNumGmm2,
+                        scheduler_my_seq);
                 }
-                // sub1 idle (dispatch prefetch 在外层已做)
             }
-            // AIC bk=0 idle: 它的 paired AIV0 是 scheduler, 无法做 GMM1 epi
         } else if constexpr (g_coreType == AscendC::AIC) {
             MegaMoeImpl::DynamicAicLoop<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                 epilogueOp_, params_, problemShape_, baseOffset_,
                 static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
-                expertIdx, tileNumGmm1, tileNumGmm2);
+                expertIdx, tileNumGmm1, tileNumGmm2,
+                aic_last_seen);
         } else if (subBlockIdx_ == 0) {
             MegaMoeImpl::DynamicAiv0Loop<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                 epilogueOp_, params_, problemShape_, baseOffset_,
                 static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
-                expertIdx, tileNumGmm1);
+                expertIdx, tileNumGmm1,
+                aiv0_last_seen);
         } else if (subBlockIdx_ == 1) {
             MegaMoeImpl::DynamicAiv1Loop<
                 QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                 params_, problemShape_, baseOffset_,
                 static_cast<int32_t>(blockIdx_), static_cast<int32_t>(rankId_),
-                expertIdx, tileNumGmm2);
+                expertIdx, tileNumGmm2,
+                aiv1_last_seen);
         }
 
-        waveTraceIdx_ += static_cast<int>(waveCnt);  // 给 trace 留 waveCnt 个 slot
+        waveTraceIdx_ += static_cast<int>(waveCnt);
         Get<M_VALUE>(problemShape_) = m_i;
-
-        // ★ Expert 边界 SyncAll: scheduler 和 worker 必须步调一致进下一 expert,
-        //   否则 scheduler 在本 expert timeout 期间 worker 已进下一 expert 空轮也 timeout,
-        //   级联到下个 expert 时彻底卡死 (实测 print7.log 现象)。
-        //   开销: 每 expert 一次 SyncAll<true>() ≈ 几 us, 总共几次, 可接受。
-        SyncAll<true>();
+        // 不需要 SyncAll: 单写者协议下, seq/ack 单调递增, 跨 expert 无需对齐。
     }
 
     // ★ 全部 expert 跑完后：dynamic 路径在每个 expert 内部已经自己 drain 干净 NotifyCube
