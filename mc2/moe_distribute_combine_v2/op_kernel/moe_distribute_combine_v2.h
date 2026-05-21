@@ -23,10 +23,6 @@
 
 #include "shmem.h"
 
-#include "mpi.h"
-#include "acl/acl.h"
-#include <iterator>
-
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_v2_tiling.h"
