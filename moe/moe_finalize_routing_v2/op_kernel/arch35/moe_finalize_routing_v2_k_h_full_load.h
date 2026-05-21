@@ -19,6 +19,9 @@
 #include "moe_finalize_routing_v2_base.h"
 namespace MoeFinalizeRoutingV2Regbase {
 using namespace AscendC;
+
+constexpr int64_t BATCH_COPY_SIZE = 16;
+
 template <typename T, typename S, int32_t dropPadMode>
 class MoeFinalizeRoutingV2KHFullLoad
 {
@@ -50,6 +53,7 @@ public:
         // k == 1时，expandedX/bias大小是row_num, h，其他情况是k*row_num, h
         // k表示从总的专家E中选出K个专家， E表示expert num,即专家数，E需要大于等于K
         k1 = k == 1;
+        k4 = k <= 4;
         x1Gm.SetGlobalBuffer((__gm__ T*)x1);
         x2Gm.SetGlobalBuffer((__gm__ T*)x2);
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
@@ -63,6 +67,8 @@ public:
         vGm.SetGlobalBuffer((__gm__ T*)v);
         expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
 
+        yGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * h);
         int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * h);
         int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * k);
@@ -70,6 +76,8 @@ public:
         if (k1) {
             pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, tilingData->rowFactor * hAligned * sizeof(T));
             pipe->InitBuffer(expandedRowIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
+        } else if (k4 && tilingData->rowFactor > BATCH_COPY_SIZE) {
+            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, BATCH_COPY_SIZE * k * hAligned * sizeof(T));
         } else {
             pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
         }
@@ -78,6 +86,8 @@ public:
             if (k1) {
                 pipe->InitBuffer(biasQue, DOUBLE_BUFFER, tilingData->rowFactor * hAligned * sizeof(T));
                 pipe->InitBuffer(expertIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
+            } else if (k4 && tilingData->rowFactor > BATCH_COPY_SIZE) {
+                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, BATCH_COPY_SIZE * k * hAligned * sizeof(T));
             } else {
                 pipe->InitBuffer(biasQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
             }
@@ -118,6 +128,8 @@ public:
             if (k1) {
                 // k == 1
                 ProcessYWithInputK1(rowOuterIdx, rowInnerLoop);
+            } else if (k4 && tilingData->rowFactor > BATCH_COPY_SIZE) {
+                ProcessYWithInputK4(rowOuterIdx, rowInnerLoop);
             } else {
                 ProcessYWithInput(rowOuterIdx, rowInnerLoop);
             }
@@ -205,6 +217,84 @@ private:
         }
     }
 
+    __aicore__ inline void LoadBatchAsync(int64_t rowOuterIdx, int64_t batchStart, int64_t batchSize)
+    {
+        expandedXLocal = expandedXQue.AllocTensor<T>();
+        int64_t offset = 0;
+        if (hasBiasAndExpertIdx) {
+            biasLocal = biasQue.AllocTensor<T>();
+        }
+
+        for (int64_t i = 0; i < batchSize; i++) {
+            int64_t rowInnerIdx = batchStart + i;
+            ProcessExpandedXBiasAndScale(rowOuterIdx, rowInnerIdx, offset);
+            offset += tilingData->k * hAligned;
+        }
+
+        if (hasBiasAndExpertIdx) {
+            biasQue.EnQue(biasLocal);
+        }
+        expandedXQue.EnQue(expandedXLocal);
+    }
+
+    __aicore__ inline void ComputeBatch(int64_t rowOuterIdx, int64_t batchStart, int64_t batchSize)
+    {
+        int64_t offset = 0;
+        expandedXLocal = expandedXQue.DeQue<T>();
+        for (int64_t i = 0; i < batchSize; i++) {
+            int64_t rowInnerIdx = batchStart + i;
+
+            if (hasBiasAndExpertIdx) {
+                biasLocal = biasQue.DeQue<T>();
+            }
+
+            LocalTensor<S> innerScaleLocal;
+            if (hasScales) {
+                innerScaleLocal = scalesLocal[rowInnerIdx * tilingData->k];
+            }
+
+            ProcessExpandXBiasScaleOptimized<T, S>(yLocal[rowInnerIdx * tilingData->h], expandedXLocal[offset], biasLocal,
+                                                    innerScaleLocal, validK, tilingData->h, hasBiasAndExpertIdx, hasScales);
+
+            offset += tilingData->k * h;
+
+            if (hasBiasAndExpertIdx) {
+                biasQue.FreeTensor(biasLocal);
+            }
+        }
+
+        expandedXQue.FreeTensor(expandedXLocal);
+    }
+
+    __aicore__ inline void ProcessYWithInputK4(int64_t rowOuterIdx, int64_t rowInnerLoop)
+    {
+        constexpr int64_t BATCH_SIZE = BATCH_COPY_SIZE;
+        int64_t numBatches = (rowInnerLoop + BATCH_SIZE - 1) / BATCH_SIZE;
+
+        if (numBatches > 0) {
+            int64_t batchStart = 0;
+            int64_t batchSize = min(BATCH_SIZE, rowInnerLoop - batchStart);
+            LoadBatchAsync(rowOuterIdx, batchStart, batchSize);
+        }
+
+        for (int64_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+            int64_t batchStart = batchIdx * BATCH_SIZE;
+            int64_t batchSize = min(BATCH_SIZE, rowInnerLoop - batchStart);
+
+            ComputeBatch(rowOuterIdx, batchStart, batchSize);
+
+            if (batchIdx + 1 < numBatches) {
+                int64_t nextBatchStart = (batchIdx + 1) * BATCH_SIZE;
+                int64_t nextBatchSize = min(BATCH_SIZE, rowInnerLoop - nextBatchStart);
+                LoadBatchAsync(rowOuterIdx, nextBatchStart, nextBatchSize);
+            }
+        }
+
+        if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
+            Cast(yLocal.template ReinterpretCast<T>(), yLocal, RoundMode::CAST_RINT, rowInnerLoop * tilingData->h);
+        }
+    }
+
     __aicore__ inline void AllocTensorsForProcessY()
     {
         expandedXLocal = expandedXQue.AllocTensor<T>();
@@ -263,7 +353,7 @@ private:
     {
         for (int64_t rowInnerIdx = 0; rowInnerIdx < rowInnerLoop; rowInnerIdx += 1) {
             AllocTensorsForProcessY();
-            ProcessExpandedXBiasAndScale(rowOuterIdx, rowInnerIdx);
+            ProcessExpandedXBiasAndScale(rowOuterIdx, rowInnerIdx, 0);
             EnQueDeQueTensors();
             LocalTensor<S> innerScaleLocal;
             if (hasScales) {
@@ -305,7 +395,7 @@ private:
     }
 
     __aicore__ inline bool LoadExpandedXForK(int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t expertIdx,
-                                             int64_t expandedRowIdxGmValue)
+                                             int64_t expandedRowIdxGmValue, int64_t offset)
     {
         if (hasX && hasExpertIdx) {
             if (expertIdx >= tilingData->zeroExpertStart && expertIdx < tilingData->zeroExpertEnd) {
@@ -315,7 +405,7 @@ private:
                 // x = x[i]
                 int64_t xGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * h +
                                     rowOuterIdx * tilingData->rowFactor * h + rowInnerIdx * h;
-                CopyIn(xGm[xGmOffset], expandedXLocal[validK * tilingData->hAligned], 1, tilingData->h);
+                CopyIn(xGm[xGmOffset], expandedXLocal[offset + validK * tilingData->hAligned], 1, tilingData->h);
             } else if (hasConstExpert && expertIdx >= tilingData->constantExpertStart &&
                        expertIdx < tilingData->constantExpertEnd) {
                 // x = a1 * x[i] +  a2 * v
@@ -331,19 +421,19 @@ private:
                 vLocal = vLocal * constExpertAlpha2Local;
                 xLocal = xLocal * constExpertAlpha1Local;
                 xLocal = xLocal + vLocal;
-                AscendC::Copy(expandedXLocal[validK * tilingData->hAligned], xLocal, tilingData->h);
+                AscendC::Copy(expandedXLocal[offset + validK * tilingData->hAligned], xLocal, tilingData->h);
             } else {
                 CopyIn(expandedXGm[expandedRowIdxGmValue * tilingData->h],
-                       expandedXLocal[validK * tilingData->hAligned], 1, tilingData->h);
+                       expandedXLocal[offset + validK * tilingData->hAligned], 1, tilingData->h);
             }
         } else {
-            CopyIn(expandedXGm[expandedRowIdxGmValue * tilingData->h], expandedXLocal[validK * tilingData->hAligned], 1,
-                   tilingData->h);
+            CopyIn(expandedXGm[expandedRowIdxGmValue * tilingData->h],
+                    expandedXLocal[offset + validK * tilingData->hAligned], 1, tilingData->h);
         }
         return true;
     }
 
-    __aicore__ inline void ProcessExpandedXBiasAndScale(int64_t rowOuterIdx, int64_t rowInnerIdx)
+    __aicore__ inline void ProcessExpandedXBiasAndScale(int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t offset)
     {
         validK = 0;
         for (int64_t kIdx = 0; kIdx < tilingData->k; kIdx += 1) {
@@ -353,12 +443,12 @@ private:
                 continue;
             }
             int64_t expertIdx = GetExpertIdxValue(rowInnerIdx, rowOuterIdx, kIdx);
-            if (!LoadExpandedXForK(rowOuterIdx, rowInnerIdx, expertIdx, expandedRowIdxGmValue)) {
+            if (!LoadExpandedXForK(rowOuterIdx, rowInnerIdx, expertIdx, expandedRowIdxGmValue, offset)) {
                 continue;
             }
             if (hasBiasAndExpertIdx) {
                 int64_t biasGmOffset = expertIdxGm.GetValue(expertIdxOffset) * tilingData->h;
-                CopyIn(biasGm[biasGmOffset], biasLocal[validK * tilingData->hAligned], 1, tilingData->h);
+                CopyIn(biasGm[biasGmOffset], biasLocal[offset + validK * tilingData->hAligned], 1, tilingData->h);
             }
             // 由于会将k轴融到VF中，所以drop_pad场景需要将有效的Scale按序设置
             if (hasScales) {
@@ -544,6 +634,7 @@ private:
     bool hasExpertIdx{false};
     bool hasScales{false};
     bool k1{false};
+    bool k4{false};
     bool hasX{false};
     bool hasConstExpert{false};
 
