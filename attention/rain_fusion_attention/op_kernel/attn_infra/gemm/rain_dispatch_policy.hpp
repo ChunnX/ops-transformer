@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_DISPATCH_POLICY_HPP
-#define GEMM_DISPATCH_POLICY_HPP
+#ifndef RAIN_DISPATCH_POLICY_HPP
+#define RAIN_DISPATCH_POLICY_HPP
 
 #include "../../attn_infra/rain_base_defs.hpp"
 #include "../../attn_infra/arch/rain_arch.hpp"

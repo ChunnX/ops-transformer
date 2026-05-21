@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef GEMM_COORD_HPP
-#define GEMM_COORD_HPP
+#ifndef RAIN_GEMM_COORD_HPP
+#define RAIN_GEMM_COORD_HPP
 
 #include "../attn_infra/rain_coord.hpp"
 

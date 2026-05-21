@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef HPP_HPP
-#define HPP_HPP
+#ifndef RAIN_BASE_DEFS_HPP
+#define RAIN_BASE_DEFS_HPP
 
 #include <cstdint>
 

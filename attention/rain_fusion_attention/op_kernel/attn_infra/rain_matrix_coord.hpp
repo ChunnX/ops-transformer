@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MATRIX_COORD_HPP
-#define MATRIX_COORD_HPP
+#ifndef RAIN_MATRIX_COORD_HPP
+#define RAIN_MATRIX_COORD_HPP
 
 #include "../attn_infra/rain_coord.hpp"
 

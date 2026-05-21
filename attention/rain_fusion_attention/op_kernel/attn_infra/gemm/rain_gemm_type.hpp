@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_GEMM_TYPE_HPP
-#define GEMM_GEMM_TYPE_HPP
+#ifndef RAIN_GEMM_TYPE_HPP
+#define RAIN_GEMM_TYPE_HPP
 
 #include "../../attn_infra/rain_base_defs.hpp"
 

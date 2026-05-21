@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
-#define EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
+#ifndef RAIN_EPILOGUE_COPY_GM_TO_UB_HPP
+#define RAIN_EPILOGUE_COPY_GM_TO_UB_HPP
 
 #include "../../../attn_infra/rain_base_defs.hpp"
 #include "../../../attn_infra/arch/rain_arch.hpp"
