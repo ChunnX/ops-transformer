@@ -11,7 +11,7 @@
 #ifndef GEMM_TILE_TILE_COPY_TLA_HPP
 #define GEMM_TILE_TILE_COPY_TLA_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
 
 namespace NpuArch::Gemm::Tile {
 template <

@@ -11,8 +11,8 @@
 #ifndef EPILOGUE_TILE_COPY_GM_TO_UB_TLA_HPP
 #define EPILOGUE_TILE_COPY_GM_TO_UB_TLA_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
+#include "../../../attn_infra/bsa_base_defs.hpp"
+#include "../../../attn_infra/arch/bsa_arch.hpp"
 #include "../../../tla/tensor.hpp"
 #include "../../../tla/layout.hpp"
 

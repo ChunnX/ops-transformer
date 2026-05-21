@@ -11,10 +11,10 @@
 #ifndef GEMM_HELPER_HPP
 #define GEMM_HELPER_HPP
 
-#include "../../attn_infra/arch/arch.hpp"
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/layout/layout.hpp"
-#include "../../attn_infra/gemm/gemm_type.hpp"
+#include "../../attn_infra/arch/bsa_arch.hpp"
+#include "../../attn_infra/bsa_base_defs.hpp"
+#include "../../attn_infra/layout/bsa_layout.hpp"
+#include "../../attn_infra/gemm/bsa_gemm_type.hpp"
 #include "../../tla/layout.hpp"
 
 namespace NpuArch::Gemm::helper 
