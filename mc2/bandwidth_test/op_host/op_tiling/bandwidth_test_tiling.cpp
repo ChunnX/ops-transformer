@@ -359,13 +359,16 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     auto hcclBufferSize = *(attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX));
     auto worldSize = *(attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX));
 
+    uint64_t dataSize = static_cast<uint64_t>(worldSize * hcclBufferSize);
+    OP_LOGD(nodeName, "dataSize = %lu", dataSize);
+
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr,
         OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hcclBufferSize * worldSize;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + 4UL* 1024UL * 1024UL * 1024UL;
     
     return ge::GRAPH_SUCCESS;
 }
