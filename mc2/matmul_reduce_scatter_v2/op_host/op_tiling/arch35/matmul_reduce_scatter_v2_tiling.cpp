@@ -53,16 +53,6 @@ bool MatmulReduceScatterV2Tiling::IsCapable()
     return false;
 }
 
-ge::graphStatus MatmulReduceScatterV2Tiling::GetPlatformInfo()
-{
-    GE_ASSERT_GRAPH_SUCCESS(MatmulReduceScatterTilingBase::GetPlatformInfo());
-
-    if (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) {
-        isA2APath_ = false;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
