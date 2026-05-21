@@ -544,7 +544,7 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray,
 
 
 # 暂不支持xactivemask
-def isinvalid_token(pos, xactivemask, k, expid, moe_expert_num):
+def isinvalid_token(expid, moe_expert_num):
     if expid >= moe_expert_num or expid < 0:
         return True
     return False
@@ -561,7 +561,7 @@ def check_single_card_expandidx(expandidx_input, expertids, xactivemask,
     count_dict = {}
     for i in range(expertids_flatten.size):
         expid = expertids_flatten[i].item()
-        if isinvalid_token(i, xactivemask, k, expid, moe_expert_num):
+        if isinvalid_token(expid, moe_expert_num):
             continue
         count_dict[expid] = count_dict.get(expid, -1) + 1
         expandidx_golden[i] = count_dict[expid]
@@ -684,7 +684,7 @@ def cal_dis_win_status_golden(expertids_func, xactivemask_func,
         if xactivemask is not None:
             xactivemask = np.array(xactivemask, dtype=np.uint8)
         for expidx, expid in enumerate(expertids_flatten):
-            if not isinvalid_token(expidx, xactivemask, k, expid, moe_expert_num):
+            if not isinvalid_token(expid, moe_expert_num):
                 status_golden[expid // local_moe_expert_num, expid % local_moe_expert_num] += 1
         dis_win_status_golden[int(ep_rankid)] = status_golden
     return dis_win_status_golden
