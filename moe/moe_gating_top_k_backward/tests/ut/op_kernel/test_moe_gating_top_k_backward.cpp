@@ -50,10 +50,10 @@ TEST_F(moe_gating_top_k_backward_test, test_case_0)
     uint64_t tilingKey = 1;
     uint32_t blockDim = 1;
 
-    size_t x_norm_FileSize = m * n * sizeof(float);
-    size_t grad_y_FileSize = m * k * sizeof(float);
-    size_t expert_idx_FileSize = m * k * sizeof(int32_t);
-    size_t grad_x_FileSize = m * n * sizeof(float);
+    size_t x_norm_FileSize = m * n * sizeof(float) * 2;
+    size_t grad_y_FileSize = m * k * sizeof(float) * 2;
+    size_t expert_idx_FileSize = m * k * sizeof(int32_t) * 2;
+    size_t grad_x_FileSize = m * n * sizeof(float) * 2;
     size_t workspace_FileSize = 16781184;
     size_t tiling_FileSize = sizeof(MoeGatingTopKBackwardTilingData);
 

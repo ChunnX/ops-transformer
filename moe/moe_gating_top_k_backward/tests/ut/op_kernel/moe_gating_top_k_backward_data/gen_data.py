@@ -59,7 +59,7 @@ params_info = {
         "m": 1,
         "n": 8,
         "k": 4,
-        "dtype": torch.bfloat16,
+        "dtype": torch.float32,
         "seed": 44,
     },
 }
