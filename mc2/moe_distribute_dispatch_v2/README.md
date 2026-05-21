@@ -432,7 +432,7 @@ $$
             - ""：默认值，使能fullmesh_v1模板。
             - "fullmesh_v1"：使能fullmesh_v1模板。
             - "fullmesh_v2"：使能fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下使能。
-            - "hierarchy": 使能通信域跨超模板。
+            - "hierarchy": 使能通信域跨超模板，需要根据不同的逻辑超节点设置环境变量`HCCL_LOGIC_SUPERPOD_ID`，例如两机分别设为0和1。
         - `epRecvCountsOut`：要求shape为 (`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
     - 参数说明里shape格式说明：
