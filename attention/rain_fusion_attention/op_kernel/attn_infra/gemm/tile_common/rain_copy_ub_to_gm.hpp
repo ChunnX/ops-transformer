@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_TILE_COPY_UB_TO_GM_HPP
-#define GEMM_TILE_COPY_UB_TO_GM_HPP
+#ifndef RAIN_COPY_UB_TO_GM_HPP
+#define RAIN_COPY_UB_TO_GM_HPP
 
 #include "../../../attn_infra/rain_base_defs.hpp"
 #include "../../../attn_infra/arch/rain_arch.hpp"

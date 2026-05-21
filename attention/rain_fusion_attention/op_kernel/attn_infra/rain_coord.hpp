@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef COORD_HPP
-#define COORD_HPP
+#ifndef RAIN_COORD_HPP
+#define RAIN_COORD_HPP
 
 #include "../attn_infra/rain_base_defs.hpp"
 

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ALIGNMENT_HPP
-#define ALIGNMENT_HPP
+#ifndef RAIN_ALIGNMENT_HPP
+#define RAIN_ALIGNMENT_HPP
 
 #include <limits>
 

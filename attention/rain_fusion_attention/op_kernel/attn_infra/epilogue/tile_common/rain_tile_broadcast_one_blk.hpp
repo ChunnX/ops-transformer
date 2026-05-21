@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_TILE_TILE_BROADCAST_ONE_BLK_HPP
-#define EPILOGUE_TILE_TILE_BROADCAST_ONE_BLK_HPP
+#ifndef RAIN_TILE_BROADCAST_ONE_BLK_HPP
+#define RAIN_TILE_BROADCAST_ONE_BLK_HPP
 
 #include "../../../attn_infra/rain_base_defs.hpp"
 
