@@ -94,15 +94,15 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
     <td>INT</td>
   </tr>
   <tr>
-    <td>SHARE_EXPERT_NUM</td>
-    <td>可选输入</td>
-    <td>构造dump数据时的输入共享专家数,未输入时默认值为0, SHARE_EXPERT_NUM > 0，如:SHARE_EXPERT_NUM=1</td>
-    <td>INT</td>
-  </tr>
-  <tr>
     <td>START_A2_CLUSTER</td>
     <td>可选输入</td>
     <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：解析dump数据时,区分是否开始分析多机数据，未输入时默认值为0，输入为1时开启多机分析，需先得到各机解析结果再执行，如:START_A2_CLUSTER=1</td>
+    <td>INT</td>
+  </tr>
+  <tr>
+    <td>PROFILING_PATH</td>
+    <td>可选输入</td>
+    <td>指定profiling数据的存放路径,未输入时默认在TARGET_DIR下查找，如:PROFILING_PATH=xxx</td>
     <td>INT</td>
   </tr>
     <tr>
