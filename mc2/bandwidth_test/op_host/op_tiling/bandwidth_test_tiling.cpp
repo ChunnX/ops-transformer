@@ -71,6 +71,7 @@ constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
 // constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+constexpr uint32_t ATTR_HCCL_BUFFER_INDEX = 4U;       // HCCL缓冲区大小
 constexpr uint32_t ATTR_COMM_MODE_INDEX = 5U;  // 通信模式
 
 
@@ -117,6 +118,7 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+    auto hcclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX);
     auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
 
     OP_TILING_CHECK(groupPtr == nullptr,
@@ -129,6 +131,8 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
         OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hcclBufferSizePtr == nullptr,
+        OP_LOGE(nodeName, "hcclBufferSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commModePtr == nullptr,
         OP_LOGE(nodeName, "commModePtr is null."), return ge::GRAPH_FAILED);
     
@@ -351,13 +355,17 @@ static uint64_t CalTilingKey(const char *nodeName, const std::string & commMode)
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
     const char *nodeName)
 {
+    auto attrs = context->GetAttrs();
+    auto hcclBufferSize = *(attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_INDEX));
+    auto worldSize = *(attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX));
+
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr,
         OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + 2UL * 1024UL * 1024UL * 1024UL; //2GB
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hcclBufferSize * worldSize;
     
     return ge::GRAPH_SUCCESS;
 }
