@@ -80,7 +80,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     workspaceGM_ = workspaceGM;
     // MX场景下，通信数据的存储顺序是commX1Scale、commX1、transX1Scale_、transOut
     commX1ScaleGM1_ = workspaceGM;
-    uint64_t x1ScaleLen = CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO *
+    uint64_t x1ScaleLen = mc2Tiling_.rankKScaleGrp *
                  static_cast<uint64_t>(mc2Tiling_.rankM) * sizeof(AscendC::fp8_e8m0_t);
     x1ScaleLen = CeilDiv(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM; // 对齐
     commOutGM_ = workspaceGM + x1ScaleLen;
@@ -132,7 +132,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
 
-    uint64_t rankKdivByGroupSize = CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO;
+    uint64_t rankKdivByGroupSize = mc2Tiling_.rankKScaleGrp;
     // x1Scale通信相关地址
     pipeLineContext_.communicationContext->taskCnt = 1;
     pipeLineContext_.communicationContext->sendBuffer = x1Scale_;
@@ -204,18 +204,22 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
         static_cast<uint64_t>(mc2Tiling_.tileM * mc2Tiling_.rankN * sizeof(DTYPE_Y));
     pipeLineContext_.computationContext->additionalData.x1Scale = transX1ScaleGM1_;
     pipeLineContext_.computationContext->additionalData.x1ScaleOffset =
-        static_cast<uint64_t>(mc2Tiling_.tileM) * CeilDiv(static_cast<uint64_t>(mc2Tiling_.rankK) * mc2Tiling_.rankDim, MXFP_GROUP_SIZE) *
-        NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+        static_cast<uint64_t>(mc2Tiling_.tileM) * mc2Tiling_.rankKScaleGrp *
+        mc2Tiling_.rankDim * sizeof(AscendC::fp8_e8m0_t);
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
-    // 填 MX tensor tiling 信息和所有路径（供不同 context 使用）
     tilingData_->mxTensorTileTilingData.tileM = mc2Tiling_.tileM;
     tilingData_->mxTensorTileTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTileTilingData.fullN = mc2Tiling_.rankN;
+    tilingData_->mxTensorTileTilingData.rankK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTileTilingData.rankDim = mc2Tiling_.rankDim;
+    tilingData_->mxTensorTileTilingData.rankKScaleGrp = mc2Tiling_.rankKScaleGrp;
     tilingData_->mxTensorTailTilingData.tileM = mc2Tiling_.tailM;
     tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
-    // 按 context 类型选择 tilingDataPtr：tensor API → mxTensor*，原 MatMulASWKernel → mc2QuantMm*
-    if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, TensorMatmulTilingData>) {
+    tilingData_->mxTensorTailTilingData.rankK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTailTilingData.rankDim = mc2Tiling_.rankDim;
+    tilingData_->mxTensorTailTilingData.rankKScaleGrp = mc2Tiling_.rankKScaleGrp;
+    if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, MxTensorMatmulTilingData>) {
         pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTileTilingData);
     } else {
         pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTileTilingData);
@@ -251,7 +255,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
 
     // quantMatmul相关的地址和偏移
     uint64_t tempScaleKBytes = 
-        CeilDiv(static_cast<uint64_t>(mc2Tiling_.rankK) * mc2Tiling_.rankDim, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+        mc2Tiling_.rankKScaleGrp * mc2Tiling_.rankDim * sizeof(AscendC::fp8_e8m0_t);
     pipeLineContext_.computationContext->baseData.aGM =
         transOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1) * mc2Tiling_.rankDim;
     pipeLineContext_.computationContext->baseData.bGM = x2_;
@@ -267,7 +271,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x1ScaleOffset =
         static_cast<uint64_t>(mc2Tiling_.tileM) * tempScaleKBytes;
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
-    if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, TensorMatmulTilingData>) {
+    if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, MxTensorMatmulTilingData>) {
         pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTailTilingData);
     } else {
         pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTailTilingData);

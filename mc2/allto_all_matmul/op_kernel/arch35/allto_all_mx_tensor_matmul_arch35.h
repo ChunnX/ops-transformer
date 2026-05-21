@@ -44,8 +44,6 @@ private:
     GM_ADDR commOutGM_;
     uint64_t rankForComm_;
 private:
-    static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
-    static constexpr uint64_t NUM_TWO = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
@@ -58,26 +56,29 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM, AlltoAllMatmulTilingDataType *tilingData, AscendC::TPipe *tPipe)
 {
+    pipeLine_->Init();
+
+    if ASCEND_IS_AIV { return; }
+
     tilingData_ = tilingData;
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     tPipe_ = tPipe;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
-    bias_ = bias;
+    bias_ = bias_;
     x1Scale_ = x1_scale;
     x2Scale_ = x2_scale;
     workspaceGM_ = workspaceGM;
 
     commX1ScaleGM1_ = workspaceGM;
-    uint64_t x1ScaleLen = CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO *
+    uint64_t x1ScaleLen = mc2Tiling_.rankKScaleGrp *
                  static_cast<uint64_t>(mc2Tiling_.rankM) * sizeof(AscendC::fp8_e8m0_t);
     x1ScaleLen = CeilDiv(x1ScaleLen, ALIGN_NUM) * ALIGN_NUM;
     commOutGM_ = workspaceGM + x1ScaleLen;
 
-    rankForComm_ = tilingData_->alltoAllQuantMatmulTilingInfo.rankK;
+    rankForComm_ = mc2Tiling_.rankK;
 
-    pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
 }
 
@@ -85,6 +86,8 @@ template <typename SchedulerType, typename SchedulerContextType, typename AlltoA
 __aicore__ inline void
 AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Process()
 {
+    if ASCEND_IS_AIV { return; }
+
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
 
     ProcessScale();
@@ -106,7 +109,7 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
 
-    uint64_t rankKdivByGroupSize = CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO;
+    uint64_t rankKdivByGroupSize = mc2Tiling_.rankKScaleGrp;
     pipeLineContext_.communicationContext->taskCnt = 1;
     pipeLineContext_.communicationContext->sendBuffer = x1Scale_;
     pipeLineContext_.communicationContext->recvBuffer = commX1ScaleGM1_;
@@ -156,17 +159,23 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
         * mc2Tiling_.rankK * sizeof(DTYPE_X1);
     pipeLineContext_.computationContext->scaleGlobalStride =
         static_cast<uint64_t>(mc2Tiling_.rankM) / mc2Tiling_.rankDim
-        * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+        * mc2Tiling_.rankKScaleGrp * sizeof(AscendC::fp8_e8m0_t);
     pipeLineContext_.computationContext->scaleTileStride =
         static_cast<uint64_t>(mc2Tiling_.tileM)
-        * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+        * mc2Tiling_.rankKScaleGrp * sizeof(AscendC::fp8_e8m0_t);
 
     tilingData_->mxTensorTileTilingData.tileM = mc2Tiling_.tileM;
     tilingData_->mxTensorTileTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTileTilingData.fullN = mc2Tiling_.rankN;
+    tilingData_->mxTensorTileTilingData.rankK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTileTilingData.rankDim = mc2Tiling_.rankDim;
+    tilingData_->mxTensorTileTilingData.rankKScaleGrp = mc2Tiling_.rankKScaleGrp;
     tilingData_->mxTensorTailTilingData.tileM = mc2Tiling_.tailM;
     tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
+    tilingData_->mxTensorTailTilingData.rankK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTailTilingData.rankDim = mc2Tiling_.rankDim;
+    tilingData_->mxTensorTailTilingData.rankKScaleGrp = mc2Tiling_.rankKScaleGrp;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTileTilingData);
 
     pipeLine_->Process(taskCnt);
@@ -197,7 +206,7 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
     pipeLineContext_.computationContext->baseData.cOffset =
         static_cast<uint64_t>(mc2Tiling_.tailM) * mc2Tiling_.rankN * sizeof(DTYPE_Y);
     pipeLineContext_.computationContext->additionalData.x1Scale = commX1ScaleGM1_ + mc2Tiling_.tileCnt * mc2Tiling_.tileM 
-    * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+    * mc2Tiling_.rankKScaleGrp * sizeof(AscendC::fp8_e8m0_t);
     pipeLineContext_.computationContext->additionalData.x1ScaleOffset = 0UL;
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
     
@@ -210,14 +219,17 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
         * mc2Tiling_.rankK * sizeof(DTYPE_X1);
     pipeLineContext_.computationContext->scaleGlobalStride =
         static_cast<uint64_t>(mc2Tiling_.rankM) / mc2Tiling_.rankDim
-        * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+        * mc2Tiling_.rankKScaleGrp * sizeof(AscendC::fp8_e8m0_t);
     pipeLineContext_.computationContext->scaleTileStride =
         static_cast<uint64_t>(mc2Tiling_.tailM)
-        * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
+        * mc2Tiling_.rankKScaleGrp * sizeof(AscendC::fp8_e8m0_t);
 
     tilingData_->mxTensorTailTilingData.tileM = mc2Tiling_.tailM;
     tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
     tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
+    tilingData_->mxTensorTailTilingData.rankK = mc2Tiling_.rankK;
+    tilingData_->mxTensorTailTilingData.rankDim = mc2Tiling_.rankDim;
+    tilingData_->mxTensorTailTilingData.rankKScaleGrp = mc2Tiling_.rankKScaleGrp;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTailTilingData);
 
     pipeLine_->Process(taskCnt);

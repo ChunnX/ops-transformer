@@ -66,15 +66,6 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
 {
     if ASCEND_IS_AIV { return; }
 
-    auto& base = MMcontext_.baseData;
-    auto& add  = MMcontext_.additionalData;
-
-    uint32_t rankDim = MMcontext_.rankDim;
-    uint64_t globalStride = MMcontext_.globalStride;
-    uint64_t tileStride = MMcontext_.tileStride;
-    uint64_t scaleGlobalStride = MMcontext_.scaleGlobalStride;
-    uint64_t scaleTileStride = MMcontext_.scaleTileStride;
-
     tPipePtr_->Reset();
 
     auto* tiling = MMcontext_.tilingDataPtr;
@@ -87,9 +78,18 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
     uint32_t l1k    = tiling->kL1;
     uint32_t skl1   = tiling->scaleKL1;
 
-    uint32_t rankK_ = k_ / rankDim;
-    uint32_t kScaleGrp = ((k_ + 63U) / 64U) * 2U;
-    uint32_t scaleKPerRank = ((rankK_ + 63U) / 64U) * 2U;
+    uint32_t rankDim = tiling->rankDim;
+    uint32_t rankK_ = tiling->rankK;
+    uint32_t scaleKPerRank = tiling->rankKScaleGrp;
+    uint32_t kScaleGrp = scaleKPerRank * rankDim;
+
+    auto& base = MMcontext_.baseData;
+    auto& add  = MMcontext_.additionalData;
+
+    uint64_t globalStride = MMcontext_.globalStride;
+    uint64_t tileStride = MMcontext_.tileStride;
+    uint64_t scaleGlobalStride = MMcontext_.scaleGlobalStride;
+    uint64_t scaleTileStride = MMcontext_.scaleTileStride;
 
     GM_ADDR cGM_base = base.cGM + taskIndex * base.cOffset;
     GM_ADDR bGM = base.bGM;
@@ -120,9 +120,7 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
     ProblemShape problem{m_, n_, k_, 1L};
     using SchParams = typename SchedulerOp::Params;
     SchParams schParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_),
-                        static_cast<int64_t>(tiling->mTailTile), static_cast<int64_t>(tiling->nTailTile),
-                        static_cast<int64_t>(tiling->mBaseTailSplitCnt), static_cast<int64_t>(tiling->nBaseTailSplitCnt),
-                        static_cast<int64_t>(tiling->mTailMain), static_cast<int64_t>(tiling->nTailMain)};
+                        1L, 1L, 1L, 1L, 0L, 0L};
     SchedulerOp bs(problem, schParams);
 
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
@@ -147,9 +145,12 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
 
         GM_ADDR aGmAddrs[MAX_RANK];
         GM_ADDR scaleAGmAddrs[MAX_RANK];
+        uint64_t mPosU64 = static_cast<uint64_t>(mPos);
+        uint64_t mStrideA = static_cast<uint64_t>(rankK_) * sizeof(AType);
+        uint64_t mStrideScaleA = static_cast<uint64_t>(scaleKPerRank) * sizeof(ScaleAType);
         for (uint32_t r = 0; r < rankDim; r++) {
-            aGmAddrs[r] = aGmBases[r] + static_cast<uint64_t>(mPos) * rankK_ * sizeof(AType);
-            scaleAGmAddrs[r] = scaleAGmBases[r] + static_cast<uint64_t>(mPos) * scaleKPerRank * sizeof(ScaleAType);
+            aGmAddrs[r] = aGmBases[r] + mPosU64 * mStrideA;
+            scaleAGmAddrs[r] = scaleAGmBases[r] + mPosU64 * mStrideScaleA;
         }
         mxMmadOp_.SetMultiRankInfo(rankDim, rankK_, aGmAddrs, scaleAGmAddrs);
 

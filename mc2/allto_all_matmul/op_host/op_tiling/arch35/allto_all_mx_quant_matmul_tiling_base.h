@@ -59,7 +59,7 @@ protected:
     ge::graphStatus CheckOpInputInfo();
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMxQuantMMTiling();
-    void FillMxTensorTiling(uint32_t blockM, TensorMatmulTilingData* out);
+    void FillMxTensorTiling(uint32_t blockM, MxTensorMatmulTilingData* out);
     ge::graphStatus SetHcclTiling();
     ge::graphStatus CheckGroupSize(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
     void SetUserWorkSpace();

@@ -116,8 +116,8 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
                                            CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
         using ComputationContextType = MC2KernelTemplate::MC2MMContext<                                                \
-            MC2KernelTemplate::MXQuantMMAdditionalData, TensorMatmulTilingData>;                                       \
-        using ComputationType = Mc2Kernel::TensorMXQuantMatmulStage<TensorMatmulTilingData, X2TRANSPOSE>;              \
+            MC2KernelTemplate::MXQuantMMAdditionalData, MxTensorMatmulTilingData>;                                       \
+        using ComputationType = Mc2Kernel::TensorMXQuantMatmulStage<MxTensorMatmulTilingData, X2TRANSPOSE>;              \
         ComputationType matmulImplName(&pipe);                                                                         \
         using SchedulerContextType = Mc2Kernel::AlltoAllMXTensorQmmPipelineContext<ComputationContextType>;              \
         using SchedulerType = Mc2Kernel::AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, SchedulerContextType>; \
@@ -134,7 +134,12 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
+     ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     TPipe pipe;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))

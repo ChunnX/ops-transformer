@@ -233,6 +233,7 @@ public:
                 if (kL1Offset + curScaleKL1 > k_) {
                     curScaleKL1 = k_ - kL1Offset;
                 }
+                uint64_t curScaleKL1Groups = CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
                 auto CopyScaleGM2L1 = AscendC::Te::MakeCopy(::Tile::CopyScaleGM2L1{});
                 auto layoutScaleAL1 =
@@ -249,13 +250,13 @@ public:
                     auto gmBlockScaleA = gmScaleA_rank(
                         AscendC::Te::MakeCoord(0, scaleKInRank),
                         AscendC::Te::MakeShape(
-                            curM, CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
+                            curM, curScaleKL1Groups));
                     AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleAL1, gmBlockScaleA);
                 } else {
                     auto gmBlockScaleA = gmScaleA(
                         AscendC::Te::MakeCoord(0, kL1Offset / MXFP_GROUP_SIZE),
                         AscendC::Te::MakeShape(
-                            curM, CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
+                            curM, curScaleKL1Groups));
                     AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleAL1, gmBlockScaleA);
                 }
 
@@ -267,7 +268,7 @@ public:
                 auto gmBlockScaleB = gmScaleB(
                     AscendC::Te::MakeCoord(kL1Offset / MXFP_GROUP_SIZE, 0),
                     AscendC::Te::MakeShape(
-                        CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, curN));
+                        curScaleKL1Groups, curN));
                 AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleBL1, gmBlockScaleB);
             }
 
@@ -314,6 +315,7 @@ public:
             for (uint16_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
                 auto kL0Offset = iter1 * baseK_;
                 auto curKL0 = (kL0Offset + baseK_ > curPadKL1) ? (curPadKL1 - kL0Offset) : baseK_;
+                uint64_t curKL0ScaleGroups = CeilDiv(curKL0, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
                 uint64_t l0BufId = l0PingPong_ & 0x1;
                 uint16_t mte1WaitMFlag = l0BufId + M_MTE1_FLAG_0;
                 uint64_t l0Offset = HALF_L0_SIZE * l0BufId;
@@ -336,7 +338,7 @@ public:
 
                 auto coordScaleKL1 = scaleWindowIter * kL1ScaleSize_;
                 auto layoutScaleAL0 =
-                    AscendC::Te::MakeZzLayout<fp8_e8m0_t>(curM, CeilDiv(curKL0, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE);
+                    AscendC::Te::MakeZzLayout<fp8_e8m0_t>(curM, curKL0ScaleGroups);
                 auto tensorScaleAL0 =
                     AscendC::Te::MakeTensor(AscendC::Te::MakeL0AmemPtr<fp8_e8m0_t>(l0Offset), layoutScaleAL0);
                 auto layoutScaleAL1 =
@@ -353,7 +355,7 @@ public:
                     AscendC::Te::MakeCoord(0, kL0Offset));
 
                 auto layoutScaleBL0 =
-                    AscendC::Te::MakeNnLayout<fp8_e8m0_t>(CeilDiv(curKL0, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, curN);
+                    AscendC::Te::MakeNnLayout<fp8_e8m0_t>(curKL0ScaleGroups, curN);
                 auto tensorScaleBL0 =
                     AscendC::Te::MakeTensor(AscendC::Te::MakeL0BmemPtr<>((__cb__ fp8_e8m0_t*)(l0Offset)), layoutScaleBL0);
                 auto layoutScaleBL1 =

@@ -382,11 +382,14 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
  */
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
+    // printf("=== DoMxQuantMMTiling called ===\n");
+    // fflush(stdout);
     // 在切m时已经考虑除了rankDim
     mmMvalueLen_ = inferredInfo.tileM;
     AlltoAllMxQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mmMvalueLen_);
     GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
     FillMxTensorTiling(inferredInfo.tileM, &localTilingData_.mxTensorTileTilingData);
+    // fflush(stdout);
     if (inferredInfo.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
@@ -394,10 +397,11 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
     AlltoAllMxQuantMatmulHelper mmTail(*this, localTilingData_.mc2QuantMmTailTilingData, mmMvalueLen_);
     GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
     FillMxTensorTiling(inferredInfo.tailM, &localTilingData_.mxTensorTailTilingData);
+    // fflush(stdout);
     return ge::GRAPH_SUCCESS;
 }
 
-void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, TensorMatmulTilingData* out)
+void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, MxTensorMatmulTilingData* out)
 {
     if (out == nullptr) return;
 
@@ -407,37 +411,76 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, Tensor
     uint64_t aicNum = contextInfo.args_.aicCoreNum;
     if (aicNum == 0) aicNum = 1;
 
+    // printf("[FillMxTensorTiling] input: blockM=%u fullN=%lu fullK=%lu aicNum=%lu rankK=%lu rankDim=%lu\n",
+    //        blockM, fullN, fullK, aicNum, contextInfo.args_.orgKValue, contextInfo.args_.rankDim);
+
     Mc2MxTiling tiling(blockM, fullN, fullK, 512 * 1024, 256 * 1024, aicNum, 1, 1);
     auto r = tiling.Compute();
     if (!r.valid) return;
 
+    // printf("[FillMxTensorTiling] Compute result: kL1=%lu scaleKL1=%lu baseM=%lu baseN=%lu baseK=%lu dbL0c=%lu\n",
+    //        r.kL1, r.scaleKL1, r.baseM, r.baseN, r.baseK, (uint64_t)r.dbL0c);
+
     uint64_t rankK = contextInfo.args_.orgKValue;
+    uint64_t kL1Before = r.kL1;
     if (r.kL1 > rankK) {
         r.kL1 = rankK;
     }
-    while (r.kL1 > 0 && (rankK % r.kL1) != 0) {
+    while (r.kL1 > r.baseK && (r.kL1 % r.baseK) != 0) {
         r.kL1 -= r.baseK;
     }
-    if (r.kL1 == 0) {
+    if (r.kL1 < r.baseK) {
         r.kL1 = r.baseK;
     }
-    r.scaleKL1 = std::min(r.scaleKL1, r.kL1);
+    uint64_t scaleKL1Before = r.scaleKL1;
+    uint64_t halfL1 = 256 * 1024;
+    uint64_t abL1PerHalf = r.baseM * r.kL1 + r.baseN * r.kL1;
+    uint64_t scaleAvail = halfL1 - abL1PerHalf;
+    uint64_t maxScaleGroups = scaleAvail / 2 / ((r.baseM + r.baseN) * 2);
+    uint64_t maxScaleKL1ByL1 = maxScaleGroups * 64;
+    uint64_t maxScaleKL1 = std::min(maxScaleKL1ByL1, (rankK / r.kL1) * r.kL1);
+    r.scaleKL1 = std::max(r.scaleKL1, maxScaleKL1);
+    r.scaleKL1 = std::min(r.scaleKL1, maxScaleKL1);
+    if (r.scaleKL1 < r.kL1) r.scaleKL1 = r.kL1;
+    while (r.scaleKL1 > r.kL1 && (r.scaleKL1 % r.kL1) != 0) {
+        r.scaleKL1 -= r.kL1;
+    }
+    if (r.scaleKL1 < r.kL1) r.scaleKL1 = r.kL1;
+    uint64_t actualScalePerSlot = r.baseM * ((r.scaleKL1 + 63) / 64) * 2 + r.baseN * ((r.scaleKL1 + 63) / 64) * 2;
+    if (2 * actualScalePerSlot > scaleAvail) {
+        r.scaleKL1 = r.kL1;
+    }
+    // printf("[FillMxTensorTiling] scaleKL1: %lu -> %lu (L1_max=%lu, rankK=%lu, scalePerSlot=%lu, scaleAvail=%lu)\n",
+    //        scaleKL1Before, r.scaleKL1, maxScaleKL1ByL1, rankK, actualScalePerSlot, scaleAvail);
+
+    uint64_t scaleAL1PerSlot = r.baseM * ((r.scaleKL1 + 63) / 64) * 2;
+    uint64_t scaleBL1PerSlot = r.baseN * ((r.scaleKL1 + 63) / 64) * 2;
+    uint64_t totalUsedPerHalf = abL1PerHalf + scaleAL1PerSlot + scaleBL1PerSlot;
+    double l1Utilization = static_cast<double>(totalUsedPerHalf) / static_cast<double>(halfL1) * 100.0;
+    OP_LOGI(opName_, "[MxTensorTiling] L1 utilization: %.1f%% (A=%luKB B=%luKB ScaleA=%luKB ScaleB=%luKB, total=%luKB/256KB, scaleKL1=%lu, rankK=%lu)",
+            l1Utilization,
+            (r.baseM * r.kL1) / 1024, (r.baseN * r.kL1) / 1024,
+            scaleAL1PerSlot / 1024, scaleBL1PerSlot / 1024,
+            totalUsedPerHalf / 1024, r.scaleKL1, rankK);
 
     out->tileM             = blockM;
     out->fullK             = fullK;
     out->fullN             = fullN;
+    out->rankK             = static_cast<uint32_t>(rankK);
+    out->rankDim           = static_cast<uint32_t>(contextInfo.args_.rankDim);
+    out->rankKScaleGrp     = static_cast<uint32_t>((rankK + 63) / 64 * 2);
     out->baseM             = r.baseM;
     out->baseN             = r.baseN;
     out->baseK             = r.baseK;
     out->kL1               = r.kL1;
     out->scaleKL1          = r.scaleKL1;
-    out->mTailTile         = r.mTailTile;
-    out->nTailTile         = r.nTailTile;
-    out->mBaseTailSplitCnt = r.mBaseTailSplitCnt;
-    out->nBaseTailSplitCnt = r.nBaseTailSplitCnt;
-    out->mTailMain         = r.mTailMain;
-    out->nTailMain         = r.nTailMain;
     out->dbL0c             = r.dbL0c;
+
+    // printf("[FillMxTensorTiling] final MxTensorTilingData:\n"
+    //        "  tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u\n"
+    //        "  baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+    //        out->tileM, out->fullK, out->fullN, out->rankK, out->rankDim, out->rankKScaleGrp,
+    //        out->baseM, out->baseN, out->baseK, out->kL1, out->scaleKL1, out->dbL0c);
 }
 
 /**
@@ -666,19 +709,14 @@ void AllToAllMxQuantMatmulTilingBase::PrintExtendMatmulTiling(const std::string 
  * @param tilingInfo
  */
 void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName,
-                                                                           AlltoAllMatmulTilingInfo &tilingInfo)
+                                                                            AlltoAllMatmulTilingInfo &tilingInfo)
 {
-    OP_LOGD(opName, "TilingInfo.tailCnt: %u", tilingInfo.tailCnt);
-    OP_LOGD(opName, "TilingInfo.tailM: %u", tilingInfo.tailM);
-    OP_LOGD(opName, "TilingInfo.tileCnt: %u", tilingInfo.tileCnt);
-    OP_LOGD(opName, "TilingInfo.tileM: %u", tilingInfo.tileM);
-    OP_LOGD(opName, "TilingInfo.rankDim: %u", tilingInfo.rankDim);
-    OP_LOGD(opName, "TilingInfo.rankM: %u", tilingInfo.rankM);
-    OP_LOGD(opName, "TilingInfo.rankN: %u", tilingInfo.rankN);
-    OP_LOGD(opName, "TilingInfo.rankK: %u", tilingInfo.rankK);
-    OP_LOGD(opName, "TilingInfo.commLen: %u", tilingInfo.commLen);
-    OP_LOGD(opName, "TilingInfo.permuteLen: %u", tilingInfo.permuteLen);
-    OP_LOGD(opName, "TilingInfo.hcclDataType: %u", tilingInfo.hcclDataType);
+    // printf("[AlltoAllMatmulTilingInfo] rankDim=%u tileM=%u tileCnt=%u tailM=%u tailCnt=%u"
+    //        " rankM=%u rankN=%u rankK=%u rankKScaleGrp=%u aicCoreNum=%u"
+    //        " commLen=%lu permuteLen=%lu hcclDataType=%lu\n",
+    //        tilingInfo.rankDim, tilingInfo.tileM, tilingInfo.tileCnt, tilingInfo.tailM, tilingInfo.tailCnt,
+    //        tilingInfo.rankM, tilingInfo.rankN, tilingInfo.rankK, tilingInfo.rankKScaleGrp, tilingInfo.aicCoreNum,
+    //        tilingInfo.commLen, tilingInfo.permuteLen, tilingInfo.hcclDataType);
 }
 
 /**
@@ -690,11 +728,27 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(
     AlltoAllQuantMatmulTilingData &outTilingData)
 {
     PrintAlltoAllMxQuantMatmulTilingInfo(opName_, outTilingData.alltoAllQuantMatmulTilingInfo);
+    // printf("[mxTensorTileTilingData] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+    //        outTilingData.mxTensorTileTilingData.tileM, outTilingData.mxTensorTileTilingData.fullK,
+    //        outTilingData.mxTensorTileTilingData.fullN, outTilingData.mxTensorTileTilingData.rankK,
+    //        outTilingData.mxTensorTileTilingData.rankDim, outTilingData.mxTensorTileTilingData.rankKScaleGrp,
+    //        outTilingData.mxTensorTileTilingData.baseM, outTilingData.mxTensorTileTilingData.baseN,
+    //        outTilingData.mxTensorTileTilingData.baseK, outTilingData.mxTensorTileTilingData.kL1,
+    //        outTilingData.mxTensorTileTilingData.scaleKL1, outTilingData.mxTensorTileTilingData.dbL0c);
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTileTilingData);
     if (outTilingData.alltoAllQuantMatmulTilingInfo.tailCnt == 0) {
         return;
     }
     OP_LOGD(opName_, "AlltoallMxQuantMatmul has tail");
+    // printf("[mxTensorTailTilingData] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+    //        outTilingData.mxTensorTailTilingData.tileM, outTilingData.mxTensorTailTilingData.fullK,
+    //        outTilingData.mxTensorTailTilingData.fullN, outTilingData.mxTensorTailTilingData.rankK,
+    //        outTilingData.mxTensorTailTilingData.rankDim, outTilingData.mxTensorTailTilingData.rankKScaleGrp,
+    //        outTilingData.mxTensorTailTilingData.baseM, outTilingData.mxTensorTailTilingData.baseN,
+    //        outTilingData.mxTensorTailTilingData.baseK, outTilingData.mxTensorTailTilingData.kL1,
+    //        outTilingData.mxTensorTailTilingData.scaleKL1, outTilingData.mxTensorTailTilingData.dbL0c);
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTailTilingData);
 }
 
@@ -724,7 +778,49 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
             sizeof(AlltoAllQuantMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
     context_->SetBlockDim(contextInfo.args_.aicCoreNum);
-    PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
+    // printf("=== MXFP8 TENSOR TILING FINAL ===\n");
+    // printf("[AlltoAllMatmulTilingInfo] rankDim=%u tileM=%u tileCnt=%u tailM=%u tailCnt=%u"
+    //        " rankM=%u rankN=%u rankK=%u rankKScaleGrp=%u aicCoreNum=%u\n",
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankDim,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.tileM,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.tileCnt,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.tailM,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.tailCnt,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankM,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankN,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankK,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankKScaleGrp,
+    //        outTilingData->alltoAllQuantMatmulTilingInfo.aicCoreNum);
+    // printf("[mxTensorTile] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+    //        outTilingData->mxTensorTileTilingData.tileM,
+    //        outTilingData->mxTensorTileTilingData.fullK,
+    //        outTilingData->mxTensorTileTilingData.fullN,
+    //        outTilingData->mxTensorTileTilingData.rankK,
+    //        outTilingData->mxTensorTileTilingData.rankDim,
+    //        outTilingData->mxTensorTileTilingData.rankKScaleGrp,
+    //        outTilingData->mxTensorTileTilingData.baseM,
+    //        outTilingData->mxTensorTileTilingData.baseN,
+    //        outTilingData->mxTensorTileTilingData.baseK,
+    //        outTilingData->mxTensorTileTilingData.kL1,
+    //        outTilingData->mxTensorTileTilingData.scaleKL1,
+    //        outTilingData->mxTensorTileTilingData.dbL0c);
+    // printf("[mxTensorTail] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+    //        outTilingData->mxTensorTailTilingData.tileM,
+    //        outTilingData->mxTensorTailTilingData.fullK,
+    //        outTilingData->mxTensorTailTilingData.fullN,
+    //        outTilingData->mxTensorTailTilingData.rankK,
+    //        outTilingData->mxTensorTailTilingData.rankDim,
+    //        outTilingData->mxTensorTailTilingData.rankKScaleGrp,
+    //        outTilingData->mxTensorTailTilingData.baseM,
+    //        outTilingData->mxTensorTailTilingData.baseN,
+    //        outTilingData->mxTensorTailTilingData.baseK,
+    //        outTilingData->mxTensorTailTilingData.kL1,
+    //        outTilingData->mxTensorTailTilingData.scaleKL1,
+    //        outTilingData->mxTensorTailTilingData.dbL0c);
+    // fflush(stdout);
+    // PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -735,7 +831,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
  */
 void AllToAllMxQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const
 {
-    // 基本字段拷贝
     tilingInfo.tileM = inferredInfo.tileM;
     tilingInfo.tailM = inferredInfo.tailM;
     tilingInfo.tileCnt = inferredInfo.tileCnt;
@@ -743,12 +838,13 @@ void AllToAllMxQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.rankK = contextInfo.args_.orgKValue;
     tilingInfo.rankN = contextInfo.args_.nValue;
     tilingInfo.rankM = contextInfo.args_.orgMValue;
+    tilingInfo.rankKScaleGrp = ((contextInfo.args_.orgKValue + 63) / 64) * 2;
     tilingInfo.commLen = inferredInfo.commLen;
     tilingInfo.permuteLen = inferredInfo.permuteLen;
     tilingInfo.rankDim = contextInfo.args_.rankDim;
     tilingInfo.hcclDataType =
-        (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType))); // hccl数据类型
-    tilingInfo.dynamicExtraSpace = 0UL;  
+        (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType)));
+    tilingInfo.dynamicExtraSpace = 0UL;
 }
 
 /**

@@ -53,6 +53,17 @@ public:
         r.nBaseTailSplitCnt = 1;
         r.mTailMain         = 0;
         r.nTailMain         = 0;
+        // printf("[Mc2MxTiling] input: m=%lu n=%lu k=%lu l1=%lu l0c=%lu aicNum=%lu aB=%u bB=%u\n",
+        //        m_, n_, k_, l1_, l0c_, aicNum_, (unsigned)aB_, (unsigned)bB_);
+        // printf("[Mc2MxTiling] block: baseM=%lu baseN=%lu baseK=%lu dbL0c=%u\n",
+        //        baseM_, baseN_, baseK_, dbL0c_);
+        // printf("[Mc2MxTiling] L1 depth: depthA1=%lu depthB1=%lu stepKa=%lu stepKb=%lu\n",
+        //        depthA1_, depthB1_, stepKa_, stepKb_);
+        // printf("[Mc2MxTiling] scale: scaleFactorA=%lu scaleFactorB=%lu\n",
+        //        scaleFactorA_, scaleFactorB_);
+        // printf("[Mc2MxTiling] output: kL1=%lu(r.stepK*baseK=%lu*%lu) scaleKL1=%lu stepK=%lu\n",
+        //        r.kL1, r.stepK, baseK_, r.scaleKL1, r.stepK);
+
         r.valid             = true;
         return r;
     }

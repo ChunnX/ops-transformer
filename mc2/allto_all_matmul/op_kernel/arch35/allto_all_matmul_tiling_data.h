@@ -22,22 +22,23 @@
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 
 struct AlltoAllMatmulTilingInfo {
-    uint32_t rankDim;            // 卡数:kernel能通过hccl接口获取到就直接删除
-    uint32_t tileM;              // 头块大小
-    uint32_t tileCnt;            // 头块数量
-    uint32_t tailM;              // 尾块大小
-    uint32_t tailCnt;            // 尾块数量
-    uint32_t biasLen;            // bias地址大小
-    uint32_t rankM;              // M轴大小,此处的rankM是X1的M
-    uint32_t rankN;              // N轴大小，此处的rankN是X2的N（非转置）
-    uint32_t rankK;              // K轴大小,此处的rankK是X1的K
-    uint32_t aicCoreNum;         // 核数
-    uint64_t commLen;            // 通信地址大小
-    uint64_t permuteLen;         // 重排空间大小
-    uint64_t hcclDataType;       // hccl通信枚举值
-    uint64_t x1ScaleOptionalLen; // x1Scale所需空间大小
-    uint64_t dynamicExtraSpace;  // 动态量化所需的额外空间
-    uint64_t x1QuantDtype;       // x1动态量化后的结果
+    uint32_t rankDim;
+    uint32_t tileM;
+    uint32_t tileCnt;
+    uint32_t tailM;
+    uint32_t tailCnt;
+    uint32_t biasLen;
+    uint32_t rankM;
+    uint32_t rankN;
+    uint32_t rankK;
+    uint32_t rankKScaleGrp;
+    uint32_t aicCoreNum;
+    uint64_t commLen;
+    uint64_t permuteLen;
+    uint64_t hcclDataType;
+    uint64_t x1ScaleOptionalLen;
+    uint64_t dynamicExtraSpace;
+    uint64_t x1QuantDtype;
 };
 
 struct AlltoAllMatmulTilingData {
@@ -50,13 +51,13 @@ struct AlltoAllMatmulTilingData {
 
 // MX量化tiling结构体
 struct AlltoAllQuantMatmulTilingData {
-    Mc2InitTiling mc2InitTiling;                                                // 初始化通信任务配置
-    Mc2CcTiling mc2CcTiling;                                                    // 具体每个通信任务的参数配置
-    AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo;                     // 传递给kernel的tiling info
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // KC通算切分头块matmul tiling数据
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // KC通算切分尾块matmul tiling数据
-    TensorMatmulTilingData mxTensorTileTilingData;                              // MX tensor API 头块tiling
-    TensorMatmulTilingData mxTensorTailTilingData;                              // MX tensor API 尾块tiling
+    Mc2InitTiling mc2InitTiling;
+    Mc2CcTiling mc2CcTiling;
+    AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo;
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData;
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData;
+    MxTensorMatmulTilingData mxTensorTileTilingData;
+    MxTensorMatmulTilingData mxTensorTailTilingData;
 };
 
 #endif // ALLTO_ALL_MATMUL_TILING_H
