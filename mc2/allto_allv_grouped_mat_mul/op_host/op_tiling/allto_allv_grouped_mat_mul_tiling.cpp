@@ -814,6 +814,24 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     if (permuteOutFlagPtr_ != nullptr) {
         permuteOutFlag_ = *permuteOutFlagPtr_;
     }
+
+    // 非量化算子的mmX/mmWeight在index 4/5，而非量化base class用MM_X_INDEX=6/MM_WEIGHT_INDEX=7
+    // 这里必须用正确索引读取，否则PostTiling会写入默认值(bs_=0, h2_=0, isNeedMM=false)
+    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        auto mmXShape = context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
+        bs_ = mmXShape.GetDim(0);
+        h2_ = mmXShape.GetDim(1);
+        hasSharedExpertFlag_ = true;
+        mmXDataType_ = context_->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
+        mmWeightDataType_ = context_->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
+        auto mmWeightShape = context_->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
+        uint64_t n2DimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
+        n2_ = mmWeightShape.GetDim(n2DimIndex);
+    } else {
+        // mmWeight为null时强制transMmWeight_=false
+        transMmWeight_ = false;
+    }
+
     OP_LOGD(context_->GetNodeName(), "AGENT end GetShapeAttrsInfo.");
     return ge::GRAPH_SUCCESS;
 }
