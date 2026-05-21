@@ -17,6 +17,22 @@
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
+// ============ Cycle Profiling: set_mark ============
+// 在instr_log中搜索"COND"即可找到对应标记值和cycle
+#if defined(__DAV_C310__) || defined(__DAV_310R6__)
+__aicore__ inline void set_mark(uint64_t v)
+{
+#if defined(__CCE_KT_TEST__) && __CCE_KT_TEST__ == 1
+    // KT仿真环境下不执行汇编
+#else
+    __asm__ __volatile__("");
+    asm volatile("MOV COND, %0\n" : "+l"(v));
+    __asm__ __volatile__("");
+#endif
+}
+#endif
+// ===================================================
+
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
 // CUBE与VEC核间同步的模式

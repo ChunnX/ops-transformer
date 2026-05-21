@@ -474,6 +474,7 @@ public:
         if (!fd.fdCoreEnable) {
             return;
         }
+        set_mark(0x80000000); // FlashDecode开始
         uint32_t fdBalanceMBaseSize = 8U;
         uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
         uint32_t fdBalanceMTailSize =
@@ -501,10 +502,12 @@ public:
 
             LocalTensor<T> lseExp = fdLseExpBuf;
             LocalTensor<T> reduceOut = fdReduceBuf;
+            set_mark(0x80010000); // CopyLseIn开始
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
             SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+            set_mark(0x800100FF); // CopyLseIn结束
             if (unlikely(learnableSinkFlag)) {
                 CopySinkIn(reduceMLoop);
             }
@@ -549,6 +552,7 @@ public:
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
 
+            set_mark(0x80020000); // ReduceFinalRes开始
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
                 LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1 : fdMm2ResBuf2;
                 if (i >= preLoadNum) {
@@ -561,9 +565,13 @@ public:
                 SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 reduceGlobaLoop += 1;
             }
+            set_mark(0x800200FF); // ReduceFinalRes结束
+            set_mark(0x80030000); // CopyFinalResOut开始
             CopyFinalResOut(reduceOut, startRow, actualGSplitSize, reduceMLoop);
+            set_mark(0x800300FF); // CopyFinalResOut结束
             reduceMLoop += 1;
         }
+        set_mark(0x800000FF); // FlashDecode结束
     }
 };
 

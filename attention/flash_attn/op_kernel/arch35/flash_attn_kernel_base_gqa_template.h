@@ -162,6 +162,7 @@ public:
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
                                 const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
+        set_mark(0x10000000); // Init开始
         this->pipe = tPipe;
         this->tilingData = tiling;
 
@@ -223,6 +224,7 @@ public:
             }
         }
 
+        set_mark(0x100000FF); // Init结束（基础部分）
         if (isFd) {
             if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();
@@ -630,30 +632,38 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
+        set_mark(0x40000000); // BMM1开始
         cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        set_mark(0x400000FF); // BMM1结束
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
+        set_mark(0x60000000); // BMM2开始
         if constexpr (BMM2_TOUB) {
             cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
         } else {
             cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
         }
+        set_mark(0x600000FF); // BMM2结束
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
+        set_mark(0x50000000); // Vec1开始
         vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        set_mark(0x500000FF); // Vec1结束
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
+        set_mark(0x70000000); // Vec2开始
         if constexpr (BMM2_TOUB) {
             this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
         } else {
             this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo);
         }
+        set_mark(0x700000FF); // Vec2结束
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
@@ -829,11 +839,15 @@ public:
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
+                set_mark(0x30000000); // AIV InitBuffers开始
                 vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
                 vecFaBlock.AllocEventID();
+                set_mark(0x300000FF); // AIV InitBuffers结束
             } else {
+                set_mark(0x20000000); // AIC InitBuffers开始
                 cubeBlock.InitBuffers();
                 cubeBlock.AllocEventID();
+                set_mark(0x200000FF); // AIC InitBuffers结束
             }
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
@@ -846,12 +860,14 @@ public:
         }
 
         if (constInfo.aicIdx < constInfo.coreNum) {
+            set_mark(0x90000000); // Uninit开始
             if ASCEND_IS_AIV {
                 vecFaBlock.FreeEventID();
             } else {
                 cubeBlock.FreeEventID();
             }
             CrossCoreBufferUnInit();
+            set_mark(0x900000FF); // Uninit结束
         }
     }
 }; // FlashAttentionNoQuantGqaKernel

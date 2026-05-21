@@ -498,8 +498,10 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
+            set_mark(0x50010000); // AttenMaskCopyIn开始
             attenMaskUb = this->attenMaskInQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
+            set_mark(0x500100FF); // AttenMaskCopyIn结束
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
@@ -519,6 +521,7 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
+        set_mark(0x50020000); // Softmax VF开始
         if (runInfo.isFirstS2Loop) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
                 ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, EQ_128, hasAtten,
@@ -584,12 +587,14 @@ public:
                 }
             }
         }
+        set_mark(0x500200FF); // Softmax VF结束
         bmm1ResBuf.SetCrossCore();
         if constexpr (hasAtten) {
             this->attenMaskInQue[runInfo.loop % DB].template FreeTensor(attenMaskUb);
         }
 
         // ===================DataCopy to L1 ====================
+        set_mark(0x50030000); // DataCopy UB→L1开始
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm2AL1Tensor;
@@ -603,6 +608,7 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+        set_mark(0x500300FF); // DataCopy UB→L1结束
 
         outputBuf.SetCrossCore();
         // ======================================================
@@ -978,6 +984,7 @@ public:
 
         bmm2ResBuf.WaitCrossCore();
 
+        set_mark(0x70010000); // FlashUpdate计算开始
         if constexpr (bmm2Write2Ub) {
             ProcessVec2OnUb(bmm2ResBuf, runInfo);
         } else if constexpr (splitD) {
@@ -987,6 +994,7 @@ public:
             GlobalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
             ProcessVec2_C2GmUpdateUb(mmRes, runInfo);
         }
+        set_mark(0x700100FF); // FlashUpdate计算结束
         return;
     }
 

@@ -592,6 +592,7 @@ public:
     __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
         Buffer<BufferType::L1> mm1A;
+        set_mark(0x40010000); // CopyQ开始
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1A = l1QBuffers.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
@@ -602,18 +603,22 @@ public:
             mm1A = l1QBuffers.GetPre();
             mm1A.Set<HardEvent::MTE2_MTE1>();
         }
+        set_mark(0x400100FF); // CopyQ结束
 
+        set_mark(0x40020000); // CopyK开始
         Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
         CopyKeyTile(mm1BTensor, runInfo);
         mm1B.Set<HardEvent::MTE2_MTE1>();
+        set_mark(0x400200FF); // CopyK结束
         mm1A.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
+        set_mark(0x40030000); // BMM1 Matmul开始
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                     (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
         if constexpr (dBaseSize > 128) {
@@ -632,6 +637,8 @@ public:
                 param);
         }
 
+        set_mark(0x400300FF); // BMM1 Matmul结束
+
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
         }
@@ -641,7 +648,9 @@ public:
 
         outputBuf.WaitCrossCore();
 
+        set_mark(0x40040000); // FixpipeMm1开始
         FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        set_mark(0x400400FF); // FixpipeMm1结束
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
@@ -926,10 +935,12 @@ public:
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
         mm2A.WaitCrossCore();
+        set_mark(0x60010000); // CopyV开始
         mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
         LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
         CopyValueTile(mm2BTensor, runInfo);
         mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
+        set_mark(0x600100FF); // CopyV结束
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
@@ -945,6 +956,7 @@ public:
         }
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
+        set_mark(0x60020000); // BMM2 Matmul开始
         if constexpr ((uint32_t)dVTemplateType > 128) {
             MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
                 mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
@@ -958,6 +970,8 @@ public:
             }
         }
 
+        set_mark(0x600200FF); // BMM2 Matmul结束
+
         mm2B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
         mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
@@ -966,7 +980,9 @@ public:
             outputBuf.WaitCrossCore();
         }
 
+        set_mark(0x60030000); // FixpipeMm2开始
         FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
+        set_mark(0x600300FF); // FixpipeMm2结束
 
         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
         outputBuf.SetCrossCore();
