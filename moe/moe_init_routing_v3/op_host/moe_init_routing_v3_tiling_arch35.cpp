@@ -246,7 +246,8 @@ private:
     bool IsSupportFullloadQuantMode() const
     {
         return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
-                (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
+               (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC) ||
+               (quantMode_ == QUANT_MODE_MXFP8_E5M2) || (quantMode_ == QUANT_MODE_MXFP8_E4M3FN);
     }
 
     // 辅助工具函数
@@ -443,10 +444,14 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTilingKey()");
     int64_t quantModeFactor = quantMode_ + 1;
 
-    if (isFullload_  && IsSupportFullloadQuantMode()) {
+    if (isFullload_ && IsSupportFullloadQuantMode()) {
+        // MXFP8两种格式统一使用quantModeFactor=3，与分载模板保持一致
+        if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
+            quantModeFactor = QUANT_MODE_MXFP8_E5M2 - QUANT_MODE_UNQUANT; // = 3
+        }
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
-    
+
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
@@ -1574,6 +1579,22 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
         int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
         int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
         remainUb -= (quantSpace + scaleOutSpace);
+    } else if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
+        int64_t mxQuantBlockNum = Ops::Base::CeilDiv(cols_, MX_QUANT_BLOCK_SIZE);
+        int64_t scaleCols = Ops::Base::CeilAlign(mxQuantBlockNum, NUM_TWO);
+        // MXFP8全载逐行处理，xInputQueue_与gatherSpace对应同一缓冲区，不重复计算
+        int64_t maxExpSpace = AlignBytes(scaleCols, inputXDtypeSize_);
+        int64_t invScaleSpace = AlignBytes(scaleCols, inputXDtypeSize_) * NUM_THREE;
+        int64_t xQuantSpace = AlignBytes(cols_, sizeof(int8_t));
+        int64_t scaleOutSpace = AlignBytes(scaleCols, sizeof(int8_t)) * NUM_TWO;
+        int64_t quantSpace = maxExpSpace + invScaleSpace + xQuantSpace + scaleOutSpace;
+        // gatherSpace已包含xInputQueue_空间（1行），此处不再重复减去
+        int64_t mxFp8GatherSpace = Ops::Base::CeilDiv(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE) * UB_BLOCK_SIZE;
+        remainUb -= (mxFp8GatherSpace + quantSpace);
+        OP_LOGD(context_,
+                "MXFP8 FullLoad UB check: sortSpace=%ld, rowIdxSpace=%ld, expertSpace=%ld, "
+                "mxFp8GatherSpace=%ld, quantSpace=%ld, remainUb=%ld",
+                sortSpace, rowIdxSpace, expertSpace, mxFp8GatherSpace, quantSpace, remainUb);
     }
 
     return remainUb > 0;
