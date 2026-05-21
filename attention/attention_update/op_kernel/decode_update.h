@@ -64,6 +64,7 @@ public:
             this->gmStartOffset = tdata->formerNum * tdata->formerLength +
                                   (GetBlockIdx() - tdata->formerNum) * tdata->tailLength; // tail block
         }
+        uint32_t temp123 = 123;
         uint32_t spAligned = (NUM8 + 7) / NUM8 * NUM8;
         //  用94K的UB大小推算出 tileLength 最大能设置到多少
         uint32_t maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
