@@ -8,13 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_TILE_TILE_COPY_TLA_HPP
-#define GEMM_TILE_TILE_COPY_TLA_HPP
+#ifndef LAYOUT_LAYOUT_HPP
+#define LAYOUT_LAYOUT_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
+#include "../../attn_infra/base_defs.hpp"
+#include "../../attn_infra/layout/matrix.hpp"
+#include "../../attn_infra/layout/vector.hpp"
 
-namespace NpuArch::Gemm::Tile {
-
-} // namespace NpuArch::Gemm::Tile
-
-#endif // GEMM_TILE_TILE_COPY_TLA_HPP
+#endif  // LAYOUT_LAYOUT_HPP
