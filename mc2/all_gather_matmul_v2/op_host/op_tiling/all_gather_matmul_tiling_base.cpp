@@ -134,12 +134,17 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
     int64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
     int64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
 
+    int64_t x2KValue = 0;
+    if (args_.isBTrans) {
+        x2KValue = x2Dim1;
+    } else {
+        x2KValue = x2Dim0;
+    }
+
     if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST)) {
-        OP_TILING_CHECK(
-            (x1Dim0 == 0) || (x1Dim1 == 0) || (x2Dim0 == 0) || (x2Dim1 == 0),
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim0 %ld, x1Dim1 %ld, x2Dim0 %ld, x2Dim1 %ld",
-                                            x1Dim0, x1Dim1, x2Dim0, x2Dim1),
-            return false);
+        OP_TILING_CHECK((x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
+            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim1 %ld, x2KValue %ld",
+                                           x1Dim1, x2KValue), return false);
     }
 
     OP_TILING_CHECK(
