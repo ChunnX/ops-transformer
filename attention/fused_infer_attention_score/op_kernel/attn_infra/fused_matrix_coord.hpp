@@ -16,7 +16,7 @@
 #ifndef MATRIX_COORD_HPP
 #define MATRIX_COORD_HPP
 
-#include "../attn_infra/coord.hpp"
+#include "../attn_infra/fused_coord.hpp"
 
 namespace NpuArch {
 

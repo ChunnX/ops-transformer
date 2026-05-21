@@ -11,7 +11,7 @@
 #ifndef ALIGNMENT_HPP
 #define ALIGNMENT_HPP
 
-#include "../../attn_infra/detail/macros.hpp"
+#include "../../attn_infra/detail/fused_macros.hpp"
 
 namespace NpuArch::Detail::Alignment
 {
