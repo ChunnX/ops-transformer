@@ -109,6 +109,8 @@ protected:
             uint32_t tailCnt = paramInTiling_->tailCnt;
             uint64_t stride = tileInfo_.aOffset * tileCnt + tailInfo_.aOffset * tailCnt;
 
+            // 当N=0时，stride在UpdateMC2TileInfo中已正确计算，tileCnt/tailCnt保持不变
+
             // 处理主块
             for (uint32_t i = 0; i < tileCnt; i++) {
                 // 计算sendBuffer, recvBuffer偏移
@@ -204,6 +206,15 @@ private:
             tailInfo_.cOffset =
                 (uint64_t)tailInfo_.mmTiling->matmulTiling.M * (uint64_t)tailInfo_.mmTiling->matmulTiling.N;
             tailInfo_.cAddrOffset = tailInfo_.cOffset * sizeof(CType);
+        }
+        // 当N=0时，tiling参数为0，重新计算tileInfo_.aOffset和tailInfo_.aOffset
+        if (paramInTiling_->rankN == 0) {
+            uint64_t stride = (uint64_t)paramInTiling_->rankM * (uint64_t)paramInTiling_->rankK;
+            tileInfo_.aOffset = stride / paramInTiling_->tileCnt;
+            tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(AType);
+            tailInfo_.aOffset = (paramInTiling_->tailCnt > 0) ?
+                (stride - tileInfo_.aOffset * paramInTiling_->tileCnt) / paramInTiling_->tailCnt : 0;
+            tailInfo_.aAddrOffset = tailInfo_.aOffset * sizeof(AType);
         }
     }
 
