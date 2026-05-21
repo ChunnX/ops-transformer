@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MATRIX_COORD_HPP
-#define MATRIX_COORD_HPP
+#ifndef FUSED_MATRIX_COORD_HPP
+#define FUSED_MATRIX_COORD_HPP
 
 #include "../attn_infra/fused_coord.hpp"
 

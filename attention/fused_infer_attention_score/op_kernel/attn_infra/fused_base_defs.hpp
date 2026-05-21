@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef HPP_HPP
-#define HPP_HPP
+#ifndef FUSED_BASE_DEFS_HPP
+#define FUSED_BASE_DEFS_HPP
 
 
 #if ASC_DEVKIT_MAJOR >= 9

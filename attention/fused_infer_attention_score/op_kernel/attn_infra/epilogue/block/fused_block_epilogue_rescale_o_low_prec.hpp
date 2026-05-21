@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_LOW_PREC_O_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_LOW_PREC_O_HPP
+#ifndef FUSED_BLOCK_EPILOGUE_RESCALE_O_LOW_PREC_HPP
+#define FUSED_BLOCK_EPILOGUE_RESCALE_O_LOW_PREC_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/arch/fused_resource.hpp"

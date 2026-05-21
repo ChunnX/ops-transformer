@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#ifndef FUSED_BLOCK_EPILOGUE_HPP
+#define FUSED_BLOCK_EPILOGUE_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
 

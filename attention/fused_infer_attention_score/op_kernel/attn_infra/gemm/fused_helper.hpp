@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_HELPER_HPP
-#define GEMM_HELPER_HPP
+#ifndef FUSED_HELPER_HPP
+#define FUSED_HELPER_HPP
 
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/layout/fused_layout.hpp"

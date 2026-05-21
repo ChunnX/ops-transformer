@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_DISPATCH_POLICY_HPP
-#define EPILOGUE_DISPATCH_POLICY_HPP
+#ifndef FUSED_EPILOGUE_DISPATCH_POLICY_HPP
+#define FUSED_EPILOGUE_DISPATCH_POLICY_HPP
 
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/arch/fused_arch.hpp"

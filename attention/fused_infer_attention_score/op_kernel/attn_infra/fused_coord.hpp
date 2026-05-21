@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef COORD_HPP
-#define COORD_HPP
+#ifndef FUSED_COORD_HPP
+#define FUSED_COORD_HPP
 
 #include "../attn_infra/fused_base_defs.hpp"
 
