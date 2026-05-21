@@ -60,7 +60,7 @@ aclnnStatus FusedCausalConv1dCommonProcessImpl(
     CHECK_COND(weightFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous weight failed.");
 
     // Optional tensors: contiguous if non-null
-    auto ensureContiguous = [&](const aclTensor *t) -> const aclTensor * {
+    auto ensureContiguous = [&](const aclTensor *t) -> const aclTensor* {
         if (t == nullptr) {
             return nullptr;
         }

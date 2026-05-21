@@ -29,10 +29,10 @@
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]（无作用）
-    num_computed_tokens: [bacth]
-    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
-    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
-    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    num_computed_tokens: [batch]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[batch]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[batch]
+    initial_state_idx: 不开APC:None, 开APC:[batch]
     activation_mode: （无作用）
     pad_slot_id: 默认值 -1
     run_mode: （无作用）
@@ -54,10 +54,10 @@
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
-    num_computed_tokens: [bacth]
-    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
-    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
-    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    num_computed_tokens: [batch]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[batch]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[batch]
+    initial_state_idx: 不开APC:None, 开APC:[batch]
     activation_mode: （无作用）
     pad_slot_id: 默认值 -1
     run_mode: （无作用）
@@ -80,10 +80,10 @@
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
-    num_computed_tokens: [bacth]
-    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
-    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
-    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    num_computed_tokens: [batch]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[batch]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[batch]
+    initial_state_idx: 不开APC:None, 开APC:[batch]
     activation_mode: （无作用）
     pad_slot_id: 默认值 -1
     run_mode: （无作用）
@@ -106,10 +106,10 @@
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
-    num_computed_tokens: [bacth]
-    block_idx_first_scheduled_token: 不开APC:None, 开APC:[bacth]
-    block_idx_last_scheduled_token: 不开APC:None, 开APC:[bacth]
-    initial_state_idx: 不开APC:None, 开APC:[bacth]
+    num_computed_tokens: [batch]
+    block_idx_first_scheduled_token: 不开APC:None, 开APC:[batch]
+    block_idx_last_scheduled_token: 不开APC:None, 开APC:[batch]
+    initial_state_idx: 不开APC:None, 开APC:[batch]
     activation_mode: （无作用）
     pad_slot_id: 默认值 -1
     run_mode: （无作用）

@@ -20,31 +20,31 @@ class FusedCausalConv1d : public OpDef {
 public:
     explicit FusedCausalConv1d(const char* name) : OpDef(name)
     {
-          this->Input("x")
+        this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-         this->Input("weight")
+        this->Input("weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-         this->Input("conv_states")
+        this->Input("conv_states")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-         this->Input("query_start_loc")
+        this->Input("query_start_loc")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-         this->Input("cache_indices")
+        this->Input("cache_indices")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-         this->Input("initial_state_mode")
+        this->Input("initial_state_mode")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-         this->Input("bias")
+        this->Input("bias")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});

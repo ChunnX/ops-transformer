@@ -55,7 +55,6 @@ constexpr uint64_t SEQ_START_INDEX_DIM_NUM = 1;
 
 constexpr uint64_t DIM_MIN = 16;
 constexpr uint64_t DIM_MAX = 16384;
-constexpr uint64_t DIM_ALIGN = 16;
 constexpr uint64_t CU_SEQ_LEN_MIN = 1;
 constexpr uint64_t CU_SEQ_LEN_MAX = 1048576;
 constexpr uint64_t BATCH_MIN = 1;
@@ -196,9 +195,9 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckXDim()
                 OP_LOGE(context_->GetNodeName(), "cu_seq_len must in [%lu, %lu], but got: %lu",
                         CU_SEQ_LEN_MIN, CU_SEQ_LEN_MAX, cuSeqLen_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(dim_ >= DIM_MIN && dim_ <= DIM_MAX && dim_ % DIM_ALIGN == 0),
+    OP_CHECK_IF(!(dim_ >= DIM_MIN && dim_ <= DIM_MAX && dim_ % DIM_MIN == 0),
                 OP_LOGE(context_->GetNodeName(), "dim must be >= %lu, <= %lu and be multiple of %lu, but got: %lu",
-                        DIM_MIN, DIM_MAX, DIM_ALIGN, dim_),
+                        DIM_MIN, DIM_MAX, DIM_MIN, dim_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
