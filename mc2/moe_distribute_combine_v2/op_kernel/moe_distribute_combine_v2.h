@@ -901,7 +901,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         uint32_t tokenId1 = static_cast<uint32_t>(expandIdxLocal(baseOffset1 + 1));   // 位置1是token_id
         uint32_t topkId1 = static_cast<uint32_t>(expandIdxLocal(baseOffset1 + 2));   // 位置2是topk_id
         if (isScalingDownFlag_) {
-        toRankId1 = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx1);
+            toRankId1 = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx1);
         }
         ExpertAlltoAllDispatchInnerCopyAdd(toRankId1, tokenId1, topkId1, tkIndex1);
         // 处理第二个 token（如果存在）
