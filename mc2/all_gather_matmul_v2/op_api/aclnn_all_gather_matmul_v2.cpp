@@ -403,7 +403,17 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
 static bool checkInputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 {
     if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
-        CHECK_RET(DealEmptyTensor(x1, x2), ACLNN_ERR_PARAM_INVALID);
+        // FP8/HIF8场景：支持x2为空tensor（N=0）
+        if (x1->IsEmpty()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "AllGahterMatmulV2 not support empty tensor x1 when input datatype is fp8/hif8.");
+            return false;
+        }
+        if (x2->IsEmpty()) {
+            // N=0场景，返回true走空tensor处理路径
+            return true;
+        }
+        return false;
     } else {
         const auto kValX1 = x1->GetViewShape().GetDim(1);
         if (kValX1 != 0) {
