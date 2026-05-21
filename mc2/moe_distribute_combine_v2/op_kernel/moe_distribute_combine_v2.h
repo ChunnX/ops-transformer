@@ -901,7 +901,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         uint32_t tokenIdFirst = static_cast<uint32_t>(expandIdxLocal(baseOffsetFirst + 1));   // 位置1是token_id
         uint32_t topkIdFirst = static_cast<uint32_t>(expandIdxLocal(baseOffsetFirst + 2));   // 位置2是topk_id
         if (isScalingDownFlag_) {
-            toRankIdFirst = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + 
+            toRankIdFirst = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
                 epWorldSizeOriginal_ + rankIdExpandIdxFirst);
         }
         ExpertAlltoAllDispatchInnerCopyAdd(toRankIdFirst, tokenIdFirst, topkIdFirst, tkIndexFirst);
@@ -918,7 +918,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
             tokenIdSecond = static_cast<uint32_t>(expandIdxLocal(baseOffsetSecond + 1));
             topkIdSecond = static_cast<uint32_t>(expandIdxLocal(baseOffsetSecond + 2));
             if (isScalingDownFlag_) {
-                toRankIdSecond = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + 
+                toRankIdSecond = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
                     epWorldSizeOriginal_ + rankIdExpandIdxSecond);
             }
             ExpertAlltoAllDispatchInnerCopyAdd(toRankIdSecond, tokenIdSecond, topkIdSecond, tkIndexSecond);
