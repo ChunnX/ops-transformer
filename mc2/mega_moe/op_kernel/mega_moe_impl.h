@@ -35,13 +35,13 @@ using namespace AscendC;
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
 constexpr uint32_t ALIGN32 = 32U;
-constexpr uint32_t L1_TILE_M = 128;
+constexpr uint32_t L1_TILE_M = 256;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
 constexpr uint32_t SCALE_K_L1_RATE = 2;
 constexpr uint32_t SWIGLU_N_HALF = 2;
-constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
+constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
