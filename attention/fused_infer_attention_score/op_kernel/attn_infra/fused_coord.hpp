@@ -16,7 +16,7 @@
 #ifndef COORD_HPP
 #define COORD_HPP
 
-#include "../attn_infra/base_defs.hpp"
+#include "../attn_infra/fused_base_defs.hpp"
 
 namespace NpuArch {
 

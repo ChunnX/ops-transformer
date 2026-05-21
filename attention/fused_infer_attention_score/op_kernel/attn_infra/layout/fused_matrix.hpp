@@ -11,10 +11,10 @@
 #ifndef LAYOUT_MATRIX_HPP
 #define LAYOUT_MATRIX_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/coord.hpp"
-#include "../../attn_infra/detail/alignment.hpp"
-#include "../../attn_infra/matrix_coord.hpp"
+#include "../../attn_infra/fused_base_defs.hpp"
+#include "../../attn_infra/fused_coord.hpp"
+#include "../../attn_infra/detail/fused_alignment.hpp"
+#include "../../attn_infra/fused_matrix_coord.hpp"
 
 namespace NpuArch::layout 
 {

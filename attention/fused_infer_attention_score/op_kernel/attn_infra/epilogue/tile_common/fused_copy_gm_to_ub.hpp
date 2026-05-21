@@ -11,10 +11,10 @@
 #ifndef EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
 #define EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
-#include "../../../attn_infra/layout/layout.hpp"
-#include "../../../attn_infra/gemm/gemm_type.hpp"
+#include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/arch/fused_arch.hpp"
+#include "../../../attn_infra/layout/fused_layout.hpp"
+#include "../../../attn_infra/gemm/fused_gemm_type.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {

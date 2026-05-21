@@ -11,8 +11,8 @@
 #ifndef LAYOUT_VECTOR_HPP
 #define LAYOUT_VECTOR_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/coord.hpp"
+#include "../../attn_infra/fused_base_defs.hpp"
+#include "../../attn_infra/fused_coord.hpp"
 
 namespace NpuArch::layout 
 {

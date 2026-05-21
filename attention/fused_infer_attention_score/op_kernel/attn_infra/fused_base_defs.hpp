@@ -23,9 +23,9 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../attn_infra/detail/alignment.hpp"
-#include "../attn_infra/detail/dependent_false.hpp"
-#include "../attn_infra/detail/macros.hpp"
+#include "../attn_infra/detail/fused_alignment.hpp"
+#include "../attn_infra/detail/fused_dependent_false.hpp"
+#include "../attn_infra/detail/fused_macros.hpp"
 
 namespace NpuArch {
 

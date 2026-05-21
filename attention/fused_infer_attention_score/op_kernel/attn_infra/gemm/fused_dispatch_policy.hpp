@@ -11,8 +11,8 @@
 #ifndef GEMM_DISPATCH_POLICY_HPP
 #define GEMM_DISPATCH_POLICY_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/arch/arch.hpp"
+#include "../../attn_infra/fused_base_defs.hpp"
+#include "../../attn_infra/arch/fused_arch.hpp"
 
 namespace NpuArch::Gemm 
 {
