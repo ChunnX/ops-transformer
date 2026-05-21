@@ -613,7 +613,7 @@ def check_epsendcnt(epsendcnt_input_func, expertids_func, xactivemask_func,
             mask = (xactivemask == 1) & (expert_ids < moe_expert_num) & (expert_ids >= 0)
             active_indices = np.where(mask)[0]
             expert_ids = expert_ids[active_indices]
-        epsendcnt_golden[ep_rankid] = np.bincount(expert_ids, minlength=moe_expert_num)
+        epsendcnt_golden[int(ep_rankid)] = np.bincount(expert_ids, minlength=moe_expert_num)
 
     cumulative_shape = (ep_worldsize, moe_expert_num)
     epsendcnt_golden = np.cumsum(
@@ -623,12 +623,12 @@ def check_epsendcnt(epsendcnt_input_func, expertids_func, xactivemask_func,
     error_rankid = []
     for ep_rankid in sorted(epsendcnt_input_func.keys(), key=lambda x: int(x)):
         epsendcnt = np.array(epsendcnt_input_func[ep_rankid], dtype=np.int32)
-        if not np.array_equal(epsendcnt, epsendcnt_golden[ep_rankid]):
+        if not np.array_equal(epsendcnt, epsendcnt_golden[int(ep_rankid)]):
             error_rankid.append(ep_rankid)
             logging.error(
                 "[A2][Fullmesh] Combine EP send count mismatch: "
                 "golden=%s, dump=%s",
-                epsendcnt_golden[ep_rankid].tolist(), epsendcnt.tolist())
+                epsendcnt_golden[int(ep_rankid)].tolist(), epsendcnt.tolist())
     if error_rankid:
         print_log = f"Combine SendCount is wrong. Wrong EP: {error_rankid}"
         logging.error("[A2][Fullmesh] %s", print_log)
@@ -787,7 +787,9 @@ def analysis_all_cards(parent_path=PARENT_PATH):
         with open(os.path.join(parent_path, filename), 'r', encoding="gbk") as f:
             for row in csv.DictReader(f):
                 ep_rankid = row['ep_rankid'].strip()
-                dis_win_state_func[ep_rankid] = ast.literal_eval(row['dispatch接收状态'])
+                islayer = int(row['是否分层'])
+                if islayer == 0:
+                    dis_win_state_func[ep_rankid] = ast.literal_eval(row['dispatch接收状态'])
                 d_c = row['当前报错算子'].strip()
                 expertids_func[ep_rankid] = ast.literal_eval(row['expertids'])
                 xactivemask_func[ep_rankid] = ast.literal_eval(row['xactivemask_input'])
@@ -795,14 +797,14 @@ def analysis_all_cards(parent_path=PARENT_PATH):
                     expandidx_input_func[ep_rankid] = ast.literal_eval(row['expandidx_input'])
                     epsendcnt_input_func[ep_rankid] = ast.literal_eval(row['epsendcnt_input'])
                     unfinish_ep_func[ep_rankid] = ast.literal_eval(row['combine未完成行为'])
-                    com_win_state_func[ep_rankid] = ast.literal_eval(row['combine接收状态'])
+                    if islayer == 0:
+                        com_win_state_func[ep_rankid] = ast.literal_eval(row['combine接收状态'])
                 else:
                     unfinish_ep_func[ep_rankid] = ast.literal_eval(row['dispatch未完成行为'])
                 ep_worldsize = int(row['ep_worldsize'])
                 moe_expert_num = int(row['moe_expert_num'])
                 bs = int(row['bs'])
                 k = int(row['k'])
-                islayer = int(row['是否分层'])
 
     logging.info("[A2] Start to analysis %s", filename)
     logging.info("[A2] ep_worldsize: %s, moe_expert_num: %s, bs: %s, k: %s, islayer: %s, d_c: %s",
