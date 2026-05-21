@@ -14,7 +14,7 @@
 #include <type_traits>
 #include "../../../attn_infra/rain_base_defs.hpp"
 #include "../../../attn_infra/gemm/tile_common/rain_copy_gm_to_l1.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm.hpp"
+#include "../../../attn_infra/gemm/tile_common/rain_copy_l0c_to_gm.hpp"
 #include "../../../attn_infra/gemm/tile_common/rain_copy_l1_to_l0a.hpp"
 #include "../../../attn_infra/gemm/tile_common/rain_copy_l1_to_l0b.hpp"
 #include "../../../attn_infra/gemm/tile_common/rain_copy_l1_to_bt.hpp"
