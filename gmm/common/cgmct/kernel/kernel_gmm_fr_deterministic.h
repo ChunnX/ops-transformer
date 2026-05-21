@@ -435,7 +435,9 @@ public:
                     uint64_t globalWriteBase = static_cast<uint64_t>(
                         logitBase + groupInnerMOffset) - globalRowOffset;
 
-                    if (globalWriteBase + halfSingleM > windowSizeRows) {
+                    // Cycling check must account for ALL rows written by both AIV subBlocks.
+                    // Each tile writes tileM rows total (halfSingleM per subBlock at different offsets).
+                    if (globalWriteBase + static_cast<uint64_t>(tileM) > windowSizeRows) {
                         uint64_t totalM = globalWriteBase;
                         // A5 1:2 AIC:AIV model: both AIV subBlocks share same physId.
                         // Only subBlock 0 aggregates to avoid double-counting AtomicAdd.
