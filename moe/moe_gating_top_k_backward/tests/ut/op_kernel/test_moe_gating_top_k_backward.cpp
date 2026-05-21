@@ -29,7 +29,7 @@ using namespace std;
 extern "C" __global__ __aicore__ void moe_gating_top_k_backward(
     uint8_t* norm_x, uint8_t* grad_y, uint8_t* expert_idx, uint8_t* grad_x, uint8_t* workspace, uint8_t* tiling);
 
-class moe_gating_top_k_test : public testing::Test
+class moe_gating_top_k_backward_test : public testing::Test
 {
 protected:
     static void SetUpTestCase()
@@ -55,7 +55,7 @@ TEST_F(moe_gating_top_k_backward_test, test_case_0)
     size_t expert_idx_FileSize = m * k * sizeof(int32_t);
     size_t grad_x_FileSize = m * n * sizeof(float);
     size_t workspace_FileSize = 16781184;
-    size_t tiling_FileSize = sizeof(MoeGatingTopKTilingData);
+    size_t tiling_FileSize = sizeof(MoeGatingTopKBackwardTilingData);
 
     uint8_t* norm_x = (uint8_t*)AscendC::GmAlloc(norm_x_FileSize);
     uint8_t* grad_y = (uint8_t*)AscendC::GmAlloc(grad_y_FileSize);
@@ -68,7 +68,7 @@ TEST_F(moe_gating_top_k_backward_test, test_case_0)
     tiling_data->normType = 1;
 
     ICPU_SET_TILING_KEY(tilingKey);
-    // ICPU_RUN_KF(moe_gating_top_k_backwardd, blockDim, norm_x, grad_y, expert_idx, grad_x, workspace, (uint8_t*)tiling_data);
+    // ICPU_RUN_KF(moe_gating_top_k_backward, blockDim, norm_x, grad_y, expert_idx, grad_x, workspace, (uint8_t*)tiling_data);
 
     AscendC::GmFree((void*)norm_x);
     AscendC::GmFree((void*)grad_y);
@@ -87,11 +87,11 @@ TEST_F(moe_gating_top_k_backward_test, test_case_1)
     uint32_t blockDim = 16;
 
     size_t norm_x_FileSize = m * n * sizeof(float);
-    size_t grad_y_FileSize = m * k * sizeof(half);
+    size_t grad_y_FileSize = m * k * sizeof(float);
     size_t expert_idx_FileSize = m * k * sizeof(int32_t);
-    size_t grad_x_FileSize = m * n * sizeof(half);
+    size_t grad_x_FileSize = m * n * sizeof(float);
     size_t workspace_FileSize = 16781184;
-    size_t tiling_FileSize = sizeof(MoeGatingTopKTilingData);
+    size_t tiling_FileSize = sizeof(MoeGatingTopKBackwardTilingData);
 
     uint8_t* norm_x = (uint8_t*)AscendC::GmAlloc(norm_x_FileSize);
     uint8_t* grad_y = (uint8_t*)AscendC::GmAlloc(grad_y_FileSize);
@@ -104,7 +104,7 @@ TEST_F(moe_gating_top_k_backward_test, test_case_1)
     tiling_data->normType = 1;
 
     ICPU_SET_TILING_KEY(tilingKey);
-    // ICPU_RUN_KF(moe_gating_top_k_backwardd, blockDim, norm_x, grad_y, expert_idx, grad_x, workspace, (uint8_t*)tiling_data);
+    // ICPU_RUN_KF(moe_gating_top_k_backward, blockDim, norm_x, grad_y, expert_idx, grad_x, workspace, (uint8_t*)tiling_data);
 
     AscendC::GmFree((void*)norm_x);
     AscendC::GmFree((void*)grad_y);
@@ -127,7 +127,7 @@ TEST_F(moe_gating_top_k_backward_test, test_case_2)
     size_t expert_idx_FileSize = m * k * sizeof(int32_t);
     size_t grad_x_FileSize = m * n * sizeof(float);
     size_t workspace_FileSize = 16781184;
-    size_t tiling_FileSize = sizeof(MoeGatingTopKTilingData);
+    size_t tiling_FileSize = sizeof(MoeGatingTopKBackwardTilingData);
 
     uint8_t* norm_x = (uint8_t*)AscendC::GmAlloc(norm_x_FileSize);
     uint8_t* grad_y = (uint8_t*)AscendC::GmAlloc(grad_y_FileSize);
@@ -140,7 +140,7 @@ TEST_F(moe_gating_top_k_backward_test, test_case_2)
     tiling_data->normType = 1;
 
     ICPU_SET_TILING_KEY(tilingKey);
-    // ICPU_RUN_KF(moe_gating_top_k_backwardd, blockDim, norm_x, grad_y, expert_idx, grad_x, workspace, (uint8_t*)tiling_data);
+    // ICPU_RUN_KF(moe_gating_top_k_backward, blockDim, norm_x, grad_y, expert_idx, grad_x, workspace, (uint8_t*)tiling_data);
 
     AscendC::GmFree((void*)norm_x);
     AscendC::GmFree((void*)grad_y);

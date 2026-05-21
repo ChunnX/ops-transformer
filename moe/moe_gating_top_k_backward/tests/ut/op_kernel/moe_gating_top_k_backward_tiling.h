@@ -62,9 +62,9 @@ inline void InitTilingData(uint8_t* tiling, MoeGatingTopKBackwardTilingData* con
     InitTilingData(tiling_arg, &tiling_data)
 
 #define GET_TILING_DATA(tiling_data, tiling_arg) \
-    MoeGatingTopKTilingData tiling_data;         \
+    MoeGatingTopKBackwardTilingData tiling_data;         \
     InitTilingData(tiling_arg, &tiling_data)
 
-#define DTYPE_X float
+#define DTYPE_GRAD_Y float
 
 #endif
