@@ -22,6 +22,8 @@
 #include "kernel_operator.h"
 #endif
 
+#include "shmem.h"
+
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_v2_tiling.h"
