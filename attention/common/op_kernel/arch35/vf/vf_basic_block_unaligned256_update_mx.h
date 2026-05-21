@@ -512,6 +512,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
     uint32_t maskLen = 128;
     MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+    MaskReg preg_all_b8_half = CreateMask<int8_t, MaskPattern::ALL>();
     uint32_t pScaleMaskLen = 8;
     MaskReg preg_all_b8_8 = UpdateMask<fp8_e8m0_t>(pScaleMaskLen);
     RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
