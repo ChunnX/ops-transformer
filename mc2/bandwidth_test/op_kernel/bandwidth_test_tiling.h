@@ -22,12 +22,8 @@
 
 struct BandwidthTestTilingData {
     // ============ HCCL通信相关Tiling ============
-    // Mc2InitTiling mc2InitTiling;  // MC2初始化Tiling数据
-    // Mc2CcTiling mc2CcTiling;      // MC2集合通信Tiling数据
-
     int32_t data_size;    // hidden size，即特征维度大小
     int32_t world_size;   // EP世界大小，即参与通信的rank总数
-    // int32_t rank_id;      // 当前rank的ID，范围 [0, world_size)
     int32_t max_bs;           // batch size，即token数量
     int32_t mode;         // 执行模式: 0=完整流程(发送+同步+接收), 1=仅发送
     int32_t aiv_num;      // AIV核总数，用于任务分发
