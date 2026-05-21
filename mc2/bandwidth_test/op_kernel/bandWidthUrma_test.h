@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file bandwidth_ura_test.h
+ * \file bandwidthurma_test.h
  * \brief Bandwidth test kernel - MOE AlltoAll Dispatch 通信带宽测试算子
  * 
  * 算子功能说明：
@@ -38,7 +38,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "bandwidth_test_tiling.h"
 #include "adv_api/hccl/hccl.h"
-#include "adv_api/hcomm/hcomm.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../common/op_kernel/mc2_moe_context.h"
@@ -52,10 +51,6 @@
 #endif
 
 namespace BandwidthTestImpl {
-#define READ_STATUS_FLAG 0U
-#define WRITE_STATUS_FLAG 1U
-#define STATUS_LOCAL_SIZE 512U
-#define STATUS_OFFSET_SIZE 256U
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -67,83 +62,57 @@ using namespace Mc2Aclnn;
 #define TemplateBandwidthTestTypeFunc XType, YType
 
 template <TemplateBandwidthTestTypeClass>
-class BandwidthUramaTestImpl {
+class BandwidthUrmaTest {
 public:
-    __aicore__ inline BandwidthUramaTestImpl() {};
+    __aicore__ inline BandwidthUrmaTest() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
         GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitCommStatus(GM_ADDR context);
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void BufferInit();
-    __aicore__ inline void ProcessToken(GM_ADDR rankGM, uint32_t tokenIndex, uint32_t dstRankId);
+    __aicore__ inline void ProcessToken(GM_ADDR urmaLocalAddr, GM_ADDR remoteAddr, uint32_t tokenIndex, uint32_t dstRankId);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
-
-    __aicore__ inline GM_ADDR GetLocalBaseAddrByRankId(const int32_t rankId) 
-    {
-        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        if (currRankId == epRankId_) {
-            currRankId = 0;
-        }
-        return (GM_ADDR)urmaCommHandle_[currRankId]->localBufferAddr->bufferInfo.rma.addr;
-    }
-
-    __aicore__ inline GM_ADDR GetRemoteBaseAddrByRankId(const int32_t rankId) 
-    {
-        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        if (currRankId == epRankId_) {
-            currRankId = 0;
-        }
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;
-    }
-
-    __aicore__ inline GM_ADDR GetWinWriteLocalAddrByRankId(const int32_t rankId) 
-    {
-        return GetLocalBaseAddrByRankId(rankId) + STATE_SIZE * 2 + winDataSizeOffset_ + winReadorWriteOffset_ * WRITE_STATUS_FLAG;
-    }
-
-    __aicore__ inline GM_ADDR GetWinWriteRemoteAddrByRankId(const int32_t rankId) 
-    {   // 写远端相当于远端读
-        return GetRemoteBaseAddrByRankId(rankId) + STATE_SIZE * 2 + winDataSizeOffset_ + winReadorWriteOffset_ * READ_STATUS_FLAG;
-    }
-
-    __aicore__ inline GM_ADDR GetWinReadLocalAddrByRankId(const int32_t rankId) 
-    {
-        return GetLocalBaseAddrByRankId(rankId) + STATE_SIZE * 2 + winDataSizeOffset_ + winReadorWriteOffset_ * READ_STATUS_FLAG;
-    }
     
-    __aicore__ inline GM_ADDR GetWinWriteLocalStatusByRankId(const int32_t rankId)
+                                       
+    __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
-        return GetLocalBaseAddrByRankId(rankId) + STATE_SIZE + STATUS_LOCAL_SIZE * dataState_ + STATUS_OFFSET_SIZE * WRITE_STATUS_FLAG;
+        if (rankId == epRankId_) {
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+        }
+        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
     }
 
-    __aicore__ inline GM_ADDR GetWinWriteRemoteStatusByRankId(const int32_t rankId)
+    __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return GetRemoteBaseAddrByRankId(rankId) + STATE_SIZE + STATUS_LOCAL_SIZE * dataState_ + STATUS_OFFSET_SIZE * READ_STATUS_FLAG;
-    }
-
-    __aicore__ inline GM_ADDR GetWinReadLocalStatusByRankId(const int32_t rankId)
-    {
-        return GetLocalBaseAddrByRankId(rankId) + STATE_SIZE + STATUS_LOCAL_SIZE * dataState_ + STATUS_OFFSET_SIZE * READ_STATUS_FLAG;
+        if (rankId == epRankId_) {
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+        }
+        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
     }
 
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
+        //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
+        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + STATE_SIZE + winDataSizeOffset_;
+        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+        // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
+        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
     }
 
     TPipe *tpipe_{nullptr};
@@ -175,14 +144,14 @@ private:
     GM_ADDR receiveCntGM_;     // 接收计数的GM地址
     GM_ADDR statusSpaceGm_;    // 状态空间的GM地址
     GM_ADDR windowGM_;         // 本地窗口的GM地址
+    GM_ADDR localUrmaWorkspace_;      // 工作空间的GM地址
 
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
     __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
+    AscendC::Hcomm<CommEngine::AIV, CommProtocol::URMA> hcomm_; // todo: 通信上下文
 
-    AscendC::Hcomm<CommEngine::AIV, CommProtocol::URMA> hcomm_; // todo:
-
-     uint32_t axisBS_{0};       // batch size (token数量)
+    uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
     uint32_t aivNum_{0};       // AIV核总数
     uint32_t epWorldSize_{0};  // rank总数
@@ -202,7 +171,6 @@ private:
     uint32_t dataState_{0};        // 数据状态 (用于双缓冲)
     uint32_t totalUsedUB_{0};      // 已使用的UB大小
     uint64_t winDataSizeOffset_{0}; // 窗口数据区偏移
-    uint64_t winReadorWriteOffset_{0}; // 窗口读写偏移
     uint64_t expertPerSizeOnWin_{0}; // 每个expert在窗口中占用的空间
     uint32_t stateOffset_{0};      // 状态偏移 (32字节)
     uint32_t recStatusNumPerCore_{0}; // 每个核负责等待的rank数量
@@ -216,43 +184,22 @@ private:
 };
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::InitCommStatus(GM_ADDR context)
-{
-    // context_ = (__gm__ Mc2MoeContext *)context;
-    // epRankId_ = context_->epRankId;
-    // TBuf<> dataStateBuf;
-    // tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    // PRINTF("InitCommStatus epRankId_ is %d\n", epRankId_);
-    // for (uint32_t i = 0; i < epWorldSize_ - 1; i++) {
-    //     urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]); // todo:需要确认
-    //     PRINTF("i is %u, local addr is %u, remote addr is %u\n", i, urmaCommHandle_[i]->localBufferAddr->bufferInfo.rma.addr, urmaCommHandle_[i]->remoteBufferAddr->bufferInfo.rma.addr);
-    // }
-    // statusSpaceGm_ = GetLocalBaseAddrByRankId(epRankId_);
-    // GlobalTensor<uint32_t> selfDataStatusGMTensor;
-
-    // //selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + aivId_ * WIN_ADDR_ALIGN)); //1M STATE_SIZE
-    // // dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankId_, epWorldSize_,
-    // //                                                 epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
-    // // winDataSizeOffset_ = dataState_ * ((totalWinSizeEp_ - 2 * STATE_SIZE) / 2); // 0 1 分区
-    // // winReadorWriteOffset_  = winDataSizeOffset_ / 2; // 读写偏移
-    // winWriteOffset_ = ((totalWinSizeEp_ - STATE_SIZE) / 2);
-    // statusSpaceGm_ = GetLocalBaseAddrByRankId(epRankId_);
-    // windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_ + STATE_SIZE)); //todo:
-
-    // // windowGM_ = GetWinReadLocalAddrByRankId(epRankId_);
-    
-}
-
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Init(
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
 {
-    PRINTF("BandwidthUramaTestImpl Init start\n");
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
-    // ============ 从tiling获取配置参数 ============
+    // epRankId_ = tilingData->rank_id; // 获取当前rank ID
+    localUrmaWorkspace_ = workspaceGM;
+
+    // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
+    context_ = (__gm__ Mc2MoeContext *)context;
+    // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
+
+    // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
     axisBS_ = tilingData->max_bs;           // token数量
     axisH_ = tilingData->data_size;     // hidden size
@@ -261,111 +208,111 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::In
     aivNum_ = tilingData->aiv_num;
     mode_ = tilingData->mode;
 
-    PRINTF("+============================start===========================\n");
-    context_ = (__gm__ Mc2MoeContext *)context;
-    PRINTF("context addr is %u\n", context_->hcommHandle_[0]);
-    urmaCommHandle_[0] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[0]); // todo:需要确认
-    PRINTF("urmaCommHandle_[0]  localNotifyNum is  %u\n", urmaCommHandle_[0]->localNotifyNum);
-    PRINTF("urmaCommHandle_[0]  remoteNotifyNum is  %u\n", urmaCommHandle_[0]->remoteNotifyNum);
-    PRINTF("urmaCommHandle_[0]  localBufferNum is  %u\n", urmaCommHandle_[0]->localBufferNum);
-    PRINTF("urmaCommHandle_[0]  remoteBufferNum is  %u\n", urmaCommHandle_[0]->remoteBufferNum);
-    PRINTF("+============================end===========================\n");
-
-
+    for (uint32_t i = 0; i < epWorldSize_ -1; i++) {
+        urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]);
+    }
     // ============ 初始化窗口状态 ============
     // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
-    // InitCommStatus(context);
+    TBuf<> dataStateBuf;
+    tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
+    uint32_t epRankIdHccl{0};
+    uint32_t epWorldSizeHccl{0};
+    epRankIdHccl =  context_->epRankId;
+    statusSpaceGm_ = urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;
+    epWorldSizeHccl = epWorldSize_;
+    GlobalTensor<uint32_t> selfDataStatusGMTensor;
+    epRankId_ = epRankIdHccl;
+    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
+                                                    epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
 
-    // // // ============ 设置全局张量 ============
-    // xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
-    // expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
-    // yGMTensor_.SetGlobalBuffer((__gm__ YType*)y);
-    // receiveCntGMTensor_.SetGlobalBuffer((__gm__ int32_t*)receiveCnt);
+    // ============ 设置全局张量 ============
+    xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
+    expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
+    yGMTensor_.SetGlobalBuffer((__gm__ YType*)y);
+    receiveCntGMTensor_.SetGlobalBuffer((__gm__ int32_t*)receiveCnt);
 
-    // yGM_ = y;
-    // receiveCntGM_ = receiveCnt;
+    yGM_ = y;
+    receiveCntGM_ = receiveCnt;
 
-    // // ============ 计算对齐参数 ============
-    // hOutSize_ = axisH_ * sizeof(XType);                             // 原始hidden size
-    // hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
-    // hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
-    // hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
-    // hOutAlignUbSize_ = hAlignSize_;
+    // ============ 计算对齐参数 ============
+    hOutSize_ = axisH_ * sizeof(XType);                             // 原始hidden size
+    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
+    hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
+    hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
+    hOutAlignUbSize_ = hAlignSize_;
 
-    // // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
-    // uint32_t axisMaxBS = globalBS_ / epWorldSize_;
-    // expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
+    // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
+    uint32_t axisMaxBS = globalBS_ / epWorldSize_;
+    expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
 
+    // ============ 计算状态等待的任务分发 ============
+    // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
+    stateOffset_ = 32UL;  // 32字节
+    rscvStatusNum_ = epWorldSize_;
+    recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
+    remainderRankNum_ = rscvStatusNum_ % aivNum_;
+    startStatusIndex_ = recStatusNumPerCore_ * aivId_;
+    if (aivId_ < remainderRankNum_) {
+        recStatusNumPerCore_ += 1;
+        startStatusIndex_ += aivId_;
+    } else {
+        startStatusIndex_ += remainderRankNum_;
+    }
 
-    // // ============ 计算状态等待的任务分发 ============
-    // // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
-    // stateOffset_ = 32UL;  // 32字节
-    // rscvStatusNum_ = epWorldSize_;
-    // recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
-    // remainderRankNum_ = rscvStatusNum_ % aivNum_;
-    // startStatusIndex_ = recStatusNumPerCore_ * aivId_;
-    // if (aivId_ < remainderRankNum_) {
-    //     recStatusNumPerCore_ += 1;
-    //     startStatusIndex_ += aivId_;
-    // } else {
-    //     startStatusIndex_ += remainderRankNum_;
-    // }
+    // ============ 初始化状态缓冲区 ============
+    uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
+    uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
+    tpipe_->InitBuffer(statusBuf_, statusBufSize);
+    totalUsedUB_ += statusBufSize;
+    statusTensor_ = statusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
+    statusSpaceGm_ = GetUrmaStateAddrByRankId(epRankId_);
 
-    // // ============ 初始化状态缓冲区 ============
-    // uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
-    // uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
-    // tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    // totalUsedUB_ += statusBufSize;
-    // statusTensor_ = statusBuf_.Get<int32_t>();
-    // Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
-    // // statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
+    // 初始化状态为 1.0f (0x3F800000)，用于状态同步
+    sumTarget_ = static_cast<float>(1.0);
+    uint64_t mask[2] = { 0x101010101010101, 0 };
+    PipeBarrier<PIPE_V>();
+    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
 
-    // // 初始化状态为 1.0f (0x3F800000)，用于状态同步
-    // sumTarget_ = static_cast<float>(1.0);
-    // uint64_t mask[2] = { 0x101010101010101, 0 };
-    // PipeBarrier<PIPE_V>();
-    // Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
+    // ============ 计算窗口数据区偏移 ============
+    uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
+    windowGM_ = GetUrmaAddrByRankId(epRankId_);
+    windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
 
-    // // ============ 计算窗口数据区偏移 ============
-    // // uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    // // winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
-    // // windowGM_ = GetWindAddrByRankId(epRankId_);
-    // // windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
+    // ============ 初始化其他缓冲区 ============
+    uint32_t expertIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
+    tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize);
+    totalUsedUB_ += expertIdsBufSize;
+    expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
 
+    uint32_t hFp32Size = axisH_ * sizeof(float);
+    uint32_t maxSize = expertIdsSize;
+    maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
+    tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
+    totalUsedUB_ += maxSize;
 
+    workLocalTensor_ = gatherMaskOutBuf_.Get<float>();
 
-    // // ============ 初始化其他缓冲区 ============
-    // uint32_t expertIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    // uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-    // uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
-    // tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize);
-    // totalUsedUB_ += expertIdsBufSize;
-    // expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
+    tpipe_->InitBuffer(dstExpBuf_, maxSize);
+    totalUsedUB_ += maxSize;
+    tpipe_->InitBuffer(subExpBuf_, maxSize);
+    totalUsedUB_ += maxSize;
 
-    // uint32_t hFp32Size = axisH_ * sizeof(float);
-    // uint32_t maxSize = expertIdsSize;
-    // maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
-    // tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
-    // totalUsedUB_ += maxSize;
+    // ============ 初始化数据队列 ============
+    uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
+    bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
+    tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
 
-    // workLocalTensor_ = gatherMaskOutBuf_.Get<float>();
-
-    // tpipe_->InitBuffer(dstExpBuf_, maxSize);
-    // totalUsedUB_ += maxSize;
-    // tpipe_->InitBuffer(subExpBuf_, maxSize);
-    // totalUsedUB_ += maxSize;
-
-    // // ============ 初始化数据队列 ============
-    // uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
-    // bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
-    // tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
-
-    // dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
-    // subExpIdTensor_ = subExpBuf_.Get<int32_t>();
+    dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
+    subExpIdTensor_ = subExpBuf_.Get<int32_t>();
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::SplitToCore(
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
     uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
@@ -384,14 +331,17 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Sp
 
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::ProcessToken( 
-    GM_ADDR rankGM, uint32_t tokenIndex, uint32_t dstRankId)
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToken(
+    GM_ADDR urmaLocaLAddr,  GM_ADDR remoteAddr, uint32_t tokenIndex, uint32_t dstRankId)
 {
-    GlobalTensor<XType> dstWinGMTensor;
-    dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
     // 处理单个token：
     // 1. 从输入GM读取token数据到UB
     // 2. 将token数据写入目标rank的窗口
+    GlobalTensor<XType>& outTokenGT;
+    outTokenGT.SetGlobalBuffer((__gm__ XType*)urmaLocaLAddr);
+    if (dstRankId == epRankId_) {
+        outTokenGT.SetGlobalBuffer((__gm__ XType*)remoteAddr); // 目标rank是epRankId，直接写入remoteAddr
+    }
     
     DataCopyPadParams padParams = {true, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
@@ -406,18 +356,18 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Pr
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 
     // 写入目标rank的窗口
-    DataCopyPad(dstWinGMTensor, xTmpTensor_, hCommuCopyOutParams);
+    DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
+    // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        GM_ADDR dstRankGM = GetWinWriteRemoteAddrByRankId(currRankId);
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
         hcomm_.Wait(handle);
     }
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::CalTokenSendExpertCnt(
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalTokenSendExpertCnt(
     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
 {
     SyncFunc<AscendC::HardEvent::S_V>();
@@ -442,12 +392,13 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Ca
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
 {
     // 发送token到目标rank的窗口
     // 根据 expert_id 确定目标 rank，将 token 写入该 rank 的通信窗口
     
     // ============ 计算当前核处理的token范围 ============
+
     uint32_t startRankId, endRankId, sendRankNum;
     SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
 
@@ -456,85 +407,89 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Se
     }
 
     // ============ 读取expert_id数组到UB ============
+    GlobalTensor<XType> dstWinGMTensor;
     DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-
-    // ============ 遍历token并发送到目标rank ============
     for (uint32_t rankId = startRankId; rankId < endRankId; ++rankId) {
+        // ============ 遍历token并发送到目标rank ============
         for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
             uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
+            int32_t curExpertCnt = 0;
             if (dstRankId != rankId) { // 只处理当前rank负责的token
                 continue;
             }
-            int32_t curExpertCnt = 0;
+            // SyncFunc<AscendC::HardEvent::S_V>();
             CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
-            SyncFunc<AscendC::HardEvent::S_V>();
+            // SyncFunc<AscendC::HardEvent::S_V>();
             
-            // 计算目标窗口地址: 包括本地窗口和远程窗口
+            // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-            GM_ADDR baseAddr = rankId == epRankId_ ? GetWinReadLocalAddrByRankId(dstRankId) : GetWinWriteLocalAddrByRankId(dstRankId);
-            
-            GM_ADDR rankGM = (GM_ADDR)(baseAddr  + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_);
-            ProcessToken(rankGM, tokenIndex, dstRankId);
-            // 更新发送计数
-            // SyncFunc<AscendC::HardEvent::V_S>();
+            GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
+                                            epRankId_ * expertPerSizeOnWin_ +
+                                            curExpertCnt * hAlignWinSize_);
+            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+                                            epRankId_ * expertPerSizeOnWin_ +
+                                            curExpertCnt * hAlignWinSize_);
+
+            ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::SetStatus()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
 {
     // 设置状态：统计发送到各rank的token数量，并写入状态区通知对端
     // 状态区结构: [flag(1.0f), count, rank_id, world_size, ...]
     // ============ 计算当前核负责的rank范围 ============
-
     SplitToCore(epWorldSize_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
-    if (startExpertId_ >= epWorldSize_ || sendExpertNum_ == 0) { 
-        return; 
-    }
 
     // ============ 统计发送到各rank的token数量 ============
     for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
         int32_t curExpertCnt = 0;
         int32_t cntPosIndex = (curExpertId - startExpertId_) * 8 + 1;
+        SyncFunc<AscendC::HardEvent::S_V>();
+        
         CalTokenSendExpertCnt(curExpertId, axisBS_, curExpertCnt);
         statusTensor_(cntPosIndex) = curExpertCnt;
     }
 
-    // PipeBarrier<PIPE_ALL>();
-    // SyncAll<true>(); // 等待所有核完成统计
-    // if (startExpertId_ >= epWorldSize_) { return; }
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>(); // 等待所有核完成统计
+    if (startExpertId_ >= epWorldSize_) { return; }
 
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
-    uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
     GlobalTensor<int32_t> rankGMTensor;
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
-        GM_ADDR baseAddr = dstRankId == epRankId_ ?GetWinReadLocalStatusByRankId(dstRankId) : GetWinWriteLocalStatusByRankId(dstRankId);
-        GM_ADDR rankGM = (GM_ADDR)(baseAddr + offset);
+        uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
+        GM_ADDR rankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
+        if (dstRankId == epRankId_) { 
+           rankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
+        }
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
     }
     PipeBarrier<PIPE_ALL>();
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
-        GM_ADDR baseAddr = dstRankId == epRankId_ ?GetWinReadLocalStatusByRankId(dstRankId) : GetWinWriteLocalStatusByRankId(dstRankId);
-        GM_ADDR rankGM = (GM_ADDR)(baseAddr + offset);
-        if (dstRankId != epRankId_) {
-            uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-            GM_ADDR dstRankGM = GetWinWriteRemoteStatusByRankId(currRankId);
-            auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, rankGM, hAlignSize_);
-            hcomm_.Wait(handle);
+        if (dstRankId == epRankId_) { 
+            continue;
         }
+        uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
+        GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
+        GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
+        uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
+        hcomm_.Wait(handle);
     }
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::BufferInit()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit()
 {
     // 重新初始化缓冲区，用于WaitDispatch阶段
     tpipe_->Reset();
@@ -552,47 +507,9 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Bu
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::WaitDispatch()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
 {
-    // // 等待所有rank完成数据发送
-    // // 通过轮询状态区，等待所有rank的状态flag变为1.0f
-    
-    // BufferInit();
-    // startExpertId_ = startStatusIndex_;
-    // endExpertId_ = startExpertId_ + recStatusNumPerCore_;
-    // sendExpertNum_ = recStatusNumPerCore_;
-
-    // // 如果当前核没有需要等待的rank，直接返回
-    // if (unlikely(startStatusIndex_ >= rscvStatusNum_)) {
-    //     SyncAll<true>();
-    //     return;
-    // }
-
-    // float compareTarget = sumTarget_ * recStatusNumPerCore_;  // 目标值 = 1.0 * 等待的rank数量
-    // float sumOfFlag = static_cast<float>(-1.0);
-
-    // // ============ 轮询等待状态 ============
-    // SyncFunc<AscendC::HardEvent::S_V>();
-    // uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
-    // while (sumOfFlag != compareTarget) {
-    //     float cnt = 0.0;
-    //     for (uint32_t expertId = startStatusIndex_; expertId < endExpertId_, expertId++) {
-    //         uint32_t dstRankId = expertId;
-    //         GM_ADDR baseAddr = GetWinReadLocalStatusByRankId(dstRankId) + offset;
-    //         windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(baseAddr));
-    //         cnt + = windowInStatusFp32Tensor_.GetValue(0);
-    //     }
-    //     sumOfFlag = cnt;
-    // }
-    // SyncAll<true>();  // 等待所有核完成
-    // for (uint32_t expertId = startStatusIndex_; expertId < endExpertId_, expertId++) {
-    //     uint32_t dstRankId = expertId;
-    //     GM_ADDR baseAddr = GetWinReadLocalStatusByRankId(dstRankId) + offset;
-    //     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(baseAddr));
-    //     windowInStatusFp32Tensor_.SetValue(0,0.0);
-    // }
-
-        // 等待所有rank完成数据发送
+    // 等待所有rank完成数据发送
     // 通过轮询状态区，等待所有rank的状态flag变为1.0f
     
     BufferInit();
@@ -645,95 +562,96 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Wa
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::LocalWindowCopy()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindowCopy()
 {
     // 从本地窗口读取接收到的数据，拷贝到输出tensor
     // 输出格式: y[rank_id * max_bs * hidden : (rank_id+1) * max_bs * hidden] = 来自该rank的数据
+    
     if (startExpertId_ >= rscvStatusNum_) { return; }
 
-    // // ============ 读取状态数据 ============
-    // TBuf<> localStatusBuf;
-    // // 状态区包含 world_size 个状态块，每个块 8 个 int32 (32B)
-    // const uint32_t statusCopySize = Ceil(epWorldSize_ * 8 * sizeof(int32_t), UB_ALIGN);
-    // tpipe_->InitBuffer(localStatusBuf, statusCopySize);
-    // // 获取状态张量（int32 视图）
-    // LocalTensor<int32_t> localStatusTensor = localStatusBuf.Get<int32_t>();
+    // ============ 读取状态数据 ============
+    TBuf<> localStatusBuf;
+    // 状态区包含 world_size 个状态块，每个块 8 个 int32 (32B)
+    const uint32_t statusCopySize = Ceil(epWorldSize_ * 8 * sizeof(int32_t), UB_ALIGN);
+    tpipe_->InitBuffer(localStatusBuf, statusCopySize);
+    // 获取状态张量（int32 视图）
+    LocalTensor<int32_t> localStatusTensor = localStatusBuf.Get<int32_t>();
 
-    // // 从窗口状态区读取所有状态
-    // GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
-    // DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
-    // DataCopy(localStatusTensor, srcStatus, statusCopyParams);
-    // SyncFunc<AscendC::HardEvent::MTE3_S>();
+    // 从窗口状态区读取所有状态
+    GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
+    DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
+    DataCopy(localStatusTensor, srcStatus, statusCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 
-    // // 计算前缀和：当前核之前所有核收到的token总数
-    // uint32_t preCnt = 0;
-    // for (uint32_t i = 0; i < startExpertId_; i++) {
-    //     uint32_t value = localStatusTensor(i * 8 + 1);
-    //     preCnt += value; // token数量存储在位置1
-    // }
+    // 计算前缀和：当前核之前所有核收到的token总数
+    uint32_t preCnt = 0;
+    for (uint32_t i = 0; i < startExpertId_; i++) {
+        uint32_t value = localStatusTensor(i * 8 + 1);
+        preCnt += value; // token数量存储在位置1
+    }
 
-    // for (uint32_t idx = 0; idx < epWorldSize_; idx++) {
-    //     // 只取 token 计数（索引 1）
-    //     uint32_t receiveCount = localStatusTensor(idx * 8 + 1);
-    //     receiveCntGMTensor_.SetValue(idx, receiveCount);
-    // }
-    // SyncFunc<AscendC::HardEvent::MTE3_S>();
+    for (uint32_t idx = 0; idx < epWorldSize_; idx++) {
+        // 只取 token 计数（索引 1）
+        uint32_t receiveCount = localStatusTensor(idx * 8 + 1);
+        receiveCntGMTensor_.SetValue(idx, receiveCount);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 
-    // uint32_t hOutElemCount = hOutSize_ / sizeof(XType);
-    // DataCopyPadParams padParams = {false, 0U, 0U, 0U};
-    // DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
+    uint32_t hOutElemCount = hOutSize_ / sizeof(XType);
+    DataCopyPadParams padParams = {false, 0U, 0U, 0U};
+    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
 
-    // // ============ 初始化数据拷贝队列 ============
-    // TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;
-    // uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
-    // uint32_t dataSize = leftUBSize / BUFFER_NUM;
-    // tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
+    // ============ 初始化数据拷贝队列 ============
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;
+    uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
+    uint32_t dataSize = leftUBSize / BUFFER_NUM;
+    tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
 
-    // uint32_t countPerDataSize = dataSize / hOutAlignUbSize_; // 每次拷贝的token数量
-    // uint32_t beginIdx = preCnt;
+    uint32_t countPerDataSize = dataSize / hOutAlignUbSize_; // 每次拷贝的token数量
+    uint32_t beginIdx = preCnt;
 
-    // // ============ 遍历每个rank，从窗口拷贝数据到输出 ============
-    // for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
-    //     uint32_t i = index - startExpertId_;
-    //     uint32_t count = localStatusTensor(index * 8 + 1); // 从该rank收到的token数量
+    // ============ 遍历每个rank，从窗口拷贝数据到输出 ============
+    for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
+        uint32_t i = index - startExpertId_;
+        uint32_t count = localStatusTensor(index * 8 + 1); // 从该rank收到的token数量
         
-    //     // 计算窗口中该rank数据的起始地址
-    //     GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + index * expertPerSizeOnWin_;
-    //     GlobalTensor<YType> tokGlobal, yOutGlobal;
-    //     tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        // 计算窗口中该rank数据的起始地址
+        GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + index * expertPerSizeOnWin_;
+        GlobalTensor<YType> tokGlobal, yOutGlobal;
+        tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
-    //     // 分批拷贝数据
-    //     uint32_t loopTimes = Ceil(count, countPerDataSize);
-    //     uint32_t lastTimeCount = count - countPerDataSize * (loopTimes - 1);
-    //     for (uint32_t loopIdx = 0; loopIdx < loopTimes; loopIdx++) {
-    //         uint32_t tokenCopiedNumThisExpert = countPerDataSize * loopIdx;
-    //         tokGlobal.SetGlobalBuffer((__gm__ YType *)(wAddr + tokenCopiedNumThisExpert * hAlignWinSize_));
+        // 分批拷贝数据
+        uint32_t loopTimes = Ceil(count, countPerDataSize);
+        uint32_t lastTimeCount = count - countPerDataSize * (loopTimes - 1);
+        for (uint32_t loopIdx = 0; loopIdx < loopTimes; loopIdx++) {
+            uint32_t tokenCopiedNumThisExpert = countPerDataSize * loopIdx;
+            tokGlobal.SetGlobalBuffer((__gm__ YType *)(wAddr + tokenCopiedNumThisExpert * hAlignWinSize_));
 
-    //         uint16_t blockCount = static_cast<uint16_t>(((loopIdx < loopTimes - 1) ? countPerDataSize : lastTimeCount));
-    //         uint16_t copyBlockLen = static_cast<uint16_t>(hOutAlignUbSize_ / UB_ALIGN);
-    //         uint16_t srcStrideTokGlobal = static_cast<uint16_t>((hAlignWinSize_ - hOutAlignUbSize_) / UB_ALIGN);
-    //         DataCopyParams dataCopyParamsTokGlobal{blockCount, copyBlockLen, srcStrideTokGlobal, 0U};
+            uint16_t blockCount = static_cast<uint16_t>(((loopIdx < loopTimes - 1) ? countPerDataSize : lastTimeCount));
+            uint16_t copyBlockLen = static_cast<uint16_t>(hOutAlignUbSize_ / UB_ALIGN);
+            uint16_t srcStrideTokGlobal = static_cast<uint16_t>((hAlignWinSize_ - hOutAlignUbSize_) / UB_ALIGN);
+            DataCopyParams dataCopyParamsTokGlobal{blockCount, copyBlockLen, srcStrideTokGlobal, 0U};
             
-    //         // 从窗口读取到UB
-    //         LocalTensor<YType> tripleLocal = tripleQueue.AllocTensor<YType>();
-    //         DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
-    //         tripleQueue.EnQue(tripleLocal);
-    //         tripleLocal = tripleQueue.DeQue<YType>();
+            // 从窗口读取到UB
+            LocalTensor<YType> tripleLocal = tripleQueue.AllocTensor<YType>();
+            DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
+            tripleQueue.EnQue(tripleLocal);
+            tripleLocal = tripleQueue.DeQue<YType>();
 
-    //         // 从UB写入输出tensor
-    //         yOutGlobal.SetGlobalBuffer((__gm__ YType *)(yGM_ + (beginIdx + tokenCopiedNumThisExpert) * hOutSize_));
-    //         uint32_t srcStrideY = (hOutAlignUbSize_ - hOutSize_) / UB_ALIGN;
-    //         DataCopyExtParams dataCopyParamsY{blockCount, hOutSize_, srcStrideY, 0U, 0U};
-    //         DataCopyPad(yOutGlobal, tripleLocal, dataCopyParamsY);
-    //         tripleQueue.FreeTensor(tripleLocal);
-    //     }
-    //     beginIdx += count;
-    // }
-    // totalCnt_ = beginIdx;
+            // 从UB写入输出tensor
+            yOutGlobal.SetGlobalBuffer((__gm__ YType *)(yGM_ + (beginIdx + tokenCopiedNumThisExpert) * hOutSize_));
+            uint32_t srcStrideY = (hOutAlignUbSize_ - hOutSize_) / UB_ALIGN;
+            DataCopyExtParams dataCopyParamsY{blockCount, hOutSize_, srcStrideY, 0U, 0U};
+            DataCopyPad(yOutGlobal, tripleLocal, dataCopyParamsY);
+            tripleQueue.FreeTensor(tripleLocal);
+        }
+        beginIdx += count;
+    }
+    totalCnt_ = beginIdx;
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Process()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     // 主处理函数
     // mode=0: 完整流程 (发送 + 同步 + 接收)
@@ -753,4 +671,4 @@ __aicore__ inline void BandwidthUramaTestImpl<TemplateBandwidthTestTypeFunc>::Pr
 }
 
 } // namespace BandwidthTestImpl
-#endif // BANDWIDTH_URMA_TEST_H
+#endif // BANDWIDTH_TEST_H
