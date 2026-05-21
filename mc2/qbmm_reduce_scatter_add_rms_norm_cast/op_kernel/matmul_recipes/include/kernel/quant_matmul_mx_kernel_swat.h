@@ -23,7 +23,6 @@
 #endif
 
 #include "kernel_utils/common_utils.h"
-#include "kernel_utils/tuple_utils.h"
 #include "include/tensor_api/tensor.h"
 
 #include "../block/quant_matmul_mx_block_mmad_swat.h"
@@ -73,6 +72,7 @@ public:
     __aicore__ inline ~QuantMatmulMxKernelSwat()
     {}
 
+    static constexpr bool weightNz = BlockMmad::weightNz;
     static constexpr bool transA = BlockMmad::transA;
     static constexpr bool transB = BlockMmad::transB;
     using AType = typename BlockMmad::AType;
@@ -88,6 +88,7 @@ public:
 
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
+
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
@@ -206,7 +207,8 @@ private:
     float epsilon_;
 
     TQueBind<TPosition::VECIN, TPosition::VECOUT,BUFFER_NUM> inQueue_;
-    TQueBind<TPosition::VECIN, TPosition::VECOUT, BUFFER_NUM> tokenQueue_;
+    // TQueBind<TPosition::VECIN, TPosition::VECOUT, BUFFER_NUM> tokenQueue_;
+    AscendC::TQue<AscendC::TPosition::VECIN, 1> tokenQueue_;
     TBuf<> writeStateBuf_;
     TBuf<> readStateBuf_;
     TBuf<> resetStateBuf_;
@@ -269,6 +271,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         armAvgFactor_ = ONE / n_;
         epsilon_ = EPSILON;
         // PRINTF("[DBG] AIV rank=%u core=%u m=%u n=%u baseN=%u\n", rankId_, coreVid_, m_, n_, params.qbmmParams.baseN);
+        if (coreVid_ == 0) { PRINTF("[DBG_ND] rank%u core%u n_=%u m_=%u tpWorldSize=%u\n", rankId_, coreVid_, n_, m_, tpWorldSize_); }
 
         yGM_.SetGlobalBuffer(yGmAddr_);
         gammaGM_.SetGlobalBuffer(gammaGmAddr_);
@@ -278,12 +281,14 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
 
         // uint32_t tileCount = 0;
         BlockCoord blockIdx;
-        while (bs.GetTileIdx(blockIdx)) {
-            int64_t mPos = Get<MNK_M>(blockIdx);
-            int64_t nPos = Get<MNK_N>(blockIdx);
-            BlockShape singleShape = bs.GetBlockShape(blockIdx);
-            if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
-                break;
+        while (bs.template GetTileIdx<weightNz>(blockIdx)) {
+            int64_t mPos = AscendC::Te::Get<MNK_M>(blockIdx);
+            int64_t nPos = AscendC::Te::Get<MNK_N>(blockIdx);
+            BlockShape singleShape = bs.template GetBlockShape<weightNz>(blockIdx);
+            if (AscendC::Te::Get<MNK_M>(singleShape) <= 0 || AscendC::Te::Get<MNK_N>(singleShape) <= 0) {
+                // Tail splitting can create empty logical slices; ignore them and
+                // stop the current block once no useful work remains.
+                return;
             }
             CrossCoreWaitFlag(9);
             // tileCount++;
@@ -366,7 +371,7 @@ QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::Process(
     const Params& params, BlockSchedulerOp& bs)
 {
-    // Build full-GM tensor views once, then slice them per scheduled block.
+     // Build full-GM tensor views once, then slice them per scheduled block.
     int64_t kScaleSize =
         ::CeilDiv(static_cast<int64_t>(params.problemShape.k), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
@@ -374,32 +379,27 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     auto layoutScaleA = MakeLayoutScaleA{}(params.problemShape.m, kScaleSize);
     auto layoutB = MakeLayoutB{}(params.problemShape.k, params.problemShape.n);
     auto layoutScaleB = MakeLayoutScaleB{}(kScaleSize, params.problemShape.n);
-    auto layoutC = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn>(params.problemShape.m, params.problemShape.n);
+    auto layoutC =
+        AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn>(params.problemShape.m, params.problemShape.n);
 
     auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(aGmAddr_), layoutA);
-    auto gmScaleA = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(scaleAGmAddr_), layoutScaleA);
+    auto gmScaleA =
+        AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(scaleAGmAddr_), layoutScaleA);
     auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(bGmAddr_), layoutB);
-    auto gmScaleB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
+    auto gmScaleB =
+        AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
     auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(cGmAddr_), layoutC);
 
     BlockCoord blockIdx;
     constexpr int64_t kPos = 0L;
     SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN, gmB, gmScaleB);
-    
-    // debug
-    GlobalTensor<bfloat16_t> workspaceGm;
-    workspaceGm.SetGlobalBuffer(cGmAddr_);
-
-    while (bs.GetTileIdx(blockIdx)) {
+    while (bs.template GetTileIdx<weightNz>(blockIdx)) {
         // The scheduler packs GM origin into M/N and retains logical tile
         // indices in K/B so shape reconstruction still works.
-        int64_t mPos = Get<MNK_M>(blockIdx);
-        int64_t nPos = Get<MNK_N>(blockIdx);
-        BlockShape singleShape = bs.GetBlockShape(blockIdx);
-        // if (AscendC::GetBlockIdx() == 4) {
-        //     PRINTF("singleShape: %d, %d\n", Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
-        // }
-        if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
+        int64_t mPos = AscendC::Te::Get<MNK_M>(blockIdx);
+        int64_t nPos = AscendC::Te::Get<MNK_N>(blockIdx);
+        BlockShape singleShape = bs.template GetBlockShape<weightNz>(blockIdx);
+        if (AscendC::Te::Get<MNK_M>(singleShape) <= 0 || AscendC::Te::Get<MNK_N>(singleShape) <= 0) {
             // Tail splitting can create empty logical slices; ignore them and
             // stop the current block once no useful work remains.
             return;
@@ -407,52 +407,20 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
 
         // `blockIdx` now carries both GM origin and logical tile metadata.
         auto gmBlockA =
-            gmA.Slice(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), params.problemShape.k));
+            gmA.Slice(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(AscendC::Te::Get<MNK_M>(singleShape), params.problemShape.k));
         auto gmBlockScaleA =
-            gmScaleA.Slice(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), kScaleSize));
+            gmScaleA.Slice(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(AscendC::Te::Get<MNK_M>(singleShape), kScaleSize));
         auto gmBlockB =
-            gmB.Slice(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(params.problemShape.k, Get<MNK_N>(singleShape)));
+            gmB.Slice(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(params.problemShape.k, AscendC::Te::Get<MNK_N>(singleShape)));
         auto gmBlockScaleB =
-            gmScaleB.Slice(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleSize, Get<MNK_N>(singleShape)));
+            gmScaleB.Slice(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleSize, AscendC::Te::Get<MNK_N>(singleShape)));
         auto gmBlockC =
             gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
-                AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
+                AscendC::Te::MakeShape(AscendC::Te::Get<MNK_M>(singleShape), AscendC::Te::Get<MNK_N>(singleShape)));
 
         // The block MMAD layer owns all data movement below GM granularity and
         // performs the actual accumulation for this scheduled tile.
-
-        // GlobalTensor<fp8_e4m3fn_t> aCheck;
-        // aCheck.SetGlobalBuffer(aGmAddr_);
-        // if (AscendC::GetBlockIdx() == 0) {
-        //     DumpTensor(aCheck[255 * 2560], 999, 2561);
-        // }
-
-        // GlobalTensor<fp8_e4m3fn_t> bCheck;
-        // bCheck.SetGlobalBuffer(bGmAddr_);
-        // if (AscendC::GetBlockIdx() == 0) {
-        //     DumpTensor(bCheck[2559 * 5120], 888, 5121);
-        // }
-
-        // GlobalTensor<fp8_e8m0_t> scCheck;
-        // scCheck.SetGlobalBuffer(scaleBGmAddr_);
-
-        // GlobalTensor<fp8_e8m0_t> scCheck2;
-        // scCheck2.SetGlobalBuffer(scaleAGmAddr_);
-
-        // if (AscendC::GetBlockIdx() == 0) {
-        //     DumpTensor(scCheck, 777, 5120 + 1);
-        //     DumpTensor(scCheck2, 777, 256 + 1);
-        // }
-
         mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
-
-        // if (AscendC::GetBlockIdx() <= 4) {
-        //     DumpTensor(workspaceGm[mPos * 5120 + nPos], 111, 3);
-        // }
-
-        // DumpTensor(workspaceGm[mPos * 5120 + nPos], 111, 3);
-
-        
         CrossCoreSetFlag<0x2, PIPE_FIX>(9);
     }
 }
@@ -490,8 +458,8 @@ __aicore__ inline void
 QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::CommProcess(
     int64_t mPos, int64_t nPos, const BlockShape& singleShape, const Params& params)
 {
-    int64_t singleM = Get<MNK_M>(singleShape);
-    int64_t singleN = Get<MNK_N>(singleShape);
+    int64_t singleM = AscendC::Te::Get<MNK_M>(singleShape);
+    int64_t singleN = AscendC::Te::Get<MNK_N>(singleShape);
     if (singleM <= 0 || singleN <= 0) {
         return;
     }
@@ -676,31 +644,21 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         tokenIndex = startRowId + tileIdx;
         uint32_t curVidTileOffset = tokenIndex * n_;
         for(int tpIndex = 0; tpIndex < tpWorldSize_; ++tpIndex) {
-            // PipeBarrier<PIPE_ALL>();
-            
             uint32_t curOffset = curVidTileOffset + tpIndex * (m_ / tpWorldSize_ * n_);
-            // PRINTF("curOffset is %d, m_ is %d, n_ is %d, tokenIndex is %d", curOffset, m_, n_, tokenIndex);
-
             tokenTensor_ = tokenQueue_.AllocTensor<bfloat16_t>();
             DataCopy(tokenTensor_, localWinTensor[curOffset], n_);
             tokenQueue_.EnQue(tokenTensor_);
             tokenTensor_ = tokenQueue_.DeQue<bfloat16_t>();
-
-            // DumpTensor(tokenTensor_, 555, n_);
-
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             Cast(tokenFp32Tensor, tokenTensor_, RoundMode::CAST_NONE, n_);
             PipeBarrier<PIPE_V>();
-            // PipeBarrier<PIPE_ALL>();
-
             Add(sumFp32Tensor, sumFp32Tensor, tokenFp32Tensor, n_);
             // DataCopy(xOutTensor[curOffset], tokenTensor_, n_);
             // DumpTensor(xOutTensor[curOffset], 888, n_);
             tokenQueue_.FreeTensor<bfloat16_t>(tokenTensor_);
-
-            // PipeBarrier<PIPE_ALL>();
+            PipeBarrier<PIPE_V>();
         }
-
+        
         rowTmpFloatLocal_ = rowTmpFloatBuf_.Get<float>();
         AddRmsNormAddCompute(tokenIndex, n_, sumFp32Tensor, rowTmpFloatLocal_, sumFp32Tensor, expandXCopyParams, copyPadXTypeParams);
         // 执行AddRmsNorm--Add，输出x

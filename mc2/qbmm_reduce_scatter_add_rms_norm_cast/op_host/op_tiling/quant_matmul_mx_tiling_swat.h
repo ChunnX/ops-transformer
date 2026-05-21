@@ -149,13 +149,20 @@ private:
         CalStepKs(args_, runInfo_);
         CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize);
 
-        // Clamp stepKa to avoid a hardware ND->NZ DMA issue on FP8 A-side tiles
-        // whose padded size fills the entire L0A (65536 elements).
+        // Clamp stepKa/stepKb to avoid a hardware ND->NZ DMA issue on FP8 tiles
+        // whose padded size fills the entire L0A/L0B (65536 elements).
         constexpr uint64_t L0A_FP8_CAPACITY = 64UL * 1024UL;
-        while (runInfo_.stepKa > 1UL && aDataType == mm::DataType::DT_FLOAT8_E4M3FN &&
-            runInfo_.baseM * runInfo_.stepKa * runInfo_.baseK >= L0A_FP8_CAPACITY) {
-            runInfo_.stepKa -= 1UL;
-            runInfo_.stepKb = std::min(runInfo_.stepKa, runInfo_.stepKb);
+        while (aDataType == mm::DataType::DT_FLOAT8_E4M3FN &&
+               ((runInfo_.stepKa > 0UL && runInfo_.baseM * runInfo_.stepKa * runInfo_.baseK >= L0A_FP8_CAPACITY) ||
+                (runInfo_.stepKb > 0UL && runInfo_.baseN * runInfo_.stepKb * runInfo_.baseK >= L0A_FP8_CAPACITY))) {
+            if (runInfo_.stepKa > 1UL && runInfo_.baseM * runInfo_.stepKa * runInfo_.baseK >= L0A_FP8_CAPACITY) {
+                runInfo_.stepKa -= 1UL;
+            }
+            if (runInfo_.stepKb > 1UL && runInfo_.baseN * runInfo_.stepKb * runInfo_.baseK >= L0A_FP8_CAPACITY) {
+                runInfo_.stepKb -= 1UL;
+            }
+            runInfo_.stepKa = std::min(runInfo_.stepKa, runInfo_.stepKb);
+            runInfo_.stepKb = runInfo_.stepKa;
             runInfo_.depthA1 = runInfo_.stepKa * DB_SIZE;
             runInfo_.depthB1 = runInfo_.stepKb * DB_SIZE;
         }
@@ -380,13 +387,20 @@ private:
         runInfo.depthA1 = runInfo.stepKa * DB_SIZE;
         runInfo.depthB1 = runInfo.stepKb * DB_SIZE;
 
-        // Clamp stepKa to avoid a hardware ND->NZ DMA issue on FP8 A-side tiles
-        // whose padded size fills the entire L0A (65536 elements).
+        // Clamp stepKa/stepKb to avoid a hardware ND->NZ DMA issue on FP8 tiles
+        // whose padded size fills the entire L0A/L0B (65536 elements).
         constexpr uint64_t L0A_FP8_CAPACITY = 64UL * 1024UL;
-        while (runInfo.stepKa > 1UL && aDataType == mm::DataType::DT_FLOAT8_E4M3FN &&
-            runInfo.baseM * runInfo.stepKa * runInfo.baseK >= L0A_FP8_CAPACITY) {
-            runInfo.stepKa -= 1UL;
-            runInfo.stepKb = std::min(runInfo.stepKa, runInfo.stepKb);
+        while (aDataType == mm::DataType::DT_FLOAT8_E4M3FN &&
+               ((runInfo.stepKa > 0UL && runInfo.baseM * runInfo.stepKa * runInfo.baseK >= L0A_FP8_CAPACITY) ||
+                (runInfo.stepKb > 0UL && runInfo.baseN * runInfo.stepKb * runInfo.baseK >= L0A_FP8_CAPACITY))) {
+            if (runInfo.stepKa > 1UL && runInfo.baseM * runInfo.stepKa * runInfo.baseK >= L0A_FP8_CAPACITY) {
+                runInfo.stepKa -= 1UL;
+            }
+            if (runInfo.stepKb > 1UL && runInfo.baseN * runInfo.stepKb * runInfo.baseK >= L0A_FP8_CAPACITY) {
+                runInfo.stepKb -= 1UL;
+            }
+            runInfo.stepKa = std::min(runInfo.stepKa, runInfo.stepKb);
+            runInfo.stepKb = runInfo.stepKa;
             runInfo.depthA1 = runInfo.stepKa * DB_SIZE;
             runInfo.depthB1 = runInfo.stepKb * DB_SIZE;
         }

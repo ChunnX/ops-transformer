@@ -20,6 +20,10 @@
 
 #include "tiling/platform/platform_ascendc.h"
 
+// Logical L0C address space (256KB).  The physical L0C is larger (1MB),
+// but AscendC MakeL0CmemPtr uses the logical address range.
+constexpr uint64_t LOGICAL_L0C_SIZE = 256UL * 1024UL;
+
 // Static hardware information queried from the Ascend platform runtime.
 struct QuantMatmulPlatformInfo {
     uint64_t aicNum{0UL};
@@ -98,4 +102,3 @@ struct QuantMatmulRunInfo {
     // Whether the current shape allows the "A full load" fast path.
     bool isAFullLoad{false};
 };
-

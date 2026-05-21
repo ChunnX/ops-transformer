@@ -30,10 +30,10 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
-                    # -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/
-                    # -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/
-                    # -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/impl/tensor_api
-                    # -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/tensor_api/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/impl/tensor_api
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/tensor_api/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/include/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/common/
         )

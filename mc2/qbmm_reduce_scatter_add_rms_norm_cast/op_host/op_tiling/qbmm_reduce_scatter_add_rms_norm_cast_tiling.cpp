@@ -103,6 +103,7 @@ static void SetTilingKey(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     ge::Format x2Format = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(X2_INDEX)->GetStorageFormat()));
+    OP_LOGD(nodeName, "SetTilingKey: x2Format=%d (ND=%d FRACTAL_NZ=%d)", x2Format, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ);
     if (x2Format == ge::FORMAT_ND) {
         context->SetTilingKey(0);
     } else if (x2Format == ge::FORMAT_FRACTAL_NZ) {
@@ -125,7 +126,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
     if (x2Format == ge::FORMAT_ND) {
         N = x2Shape->GetStorageShape().GetDim(DIM_ONE);
     } else if (x2Format == ge::FORMAT_FRACTAL_NZ) {
-        N = x2Shape->GetStorageShape().GetDim(DIM_ZERO) * x2Shape->GetStorageShape().GetDim(DIM_THREE);
+        N = x2Shape->GetStorageShape().GetDim(DIM_ZERO) * x2Shape->GetStorageShape().GetDim(DIM_THREE);  // Dim0*Dim3
     } 
     
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + M * N * sizeof(float32_t);
@@ -152,8 +153,15 @@ static ge::graphStatus SetTilingData(
     ge::Format x2Format = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(X2_INDEX)->GetStorageFormat()));
     if (x2Format == ge::FORMAT_ND) {
         N = x2Shape->GetStorageShape().GetDim(DIM_ONE);
+        printf("enter nd tiling mode\n");
     } else if (x2Format == ge::FORMAT_FRACTAL_NZ) {
-        N = x2Shape->GetStorageShape().GetDim(DIM_ZERO) * x2Shape->GetStorageShape().GetDim(DIM_THREE);
+        // NZ storage: (Nt, Kt, 16, 32) = (ceil(N/32), ceil(K/16), 16, 32), N = Nt*32
+        auto d0 = x2Shape->GetStorageShape().GetDim(DIM_ZERO);
+        auto d3 = x2Shape->GetStorageShape().GetDim(DIM_THREE);
+        N = d0 * d3;
+        printf("[NZ Tiling Debug] storage dims: [%lu,%lu,%lu,%lu], N=%lu\n",
+               d0, x2Shape->GetStorageShape().GetDim(DIM_ONE),
+               x2Shape->GetStorageShape().GetDim(DIM_TWO), d3, N);
     } else {
         OP_LOGE(nodeName, "Unsupported format: %d", x2Format);
         return ge::GRAPH_FAILED;
@@ -163,7 +171,8 @@ static ge::graphStatus SetTilingData(
     
     // 3. 使用 SWAT tiling engine 计算 matmul tiling 参数
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-    tilingEngine.GetTilingData(M, N, K, tilingData->qbmmTilingdata);
+    bool transB = (x2Format == ge::FORMAT_ND); // ND→transB=true, NZ→transB=false
+    tilingEngine.GetTilingData(M, N, K, false, transB, tilingData->qbmmTilingdata);
     
     // 注意：GetTilingData 会自动填充 qbmmTilingdata 的所有字段，包括：
     // - m, n, k

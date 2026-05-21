@@ -56,6 +56,9 @@ public:
     using ProblemShape = ProblemShape_;
     using AType = AType_;
 
+    static constexpr int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
+    static constexpr uint64_t BLOCK_CUBE = 16UL;
+
     static constexpr int64_t WINDOW_LEN = 4;
 
     struct Params {
@@ -135,8 +138,8 @@ public:
     {
         // `blockCoord` carries GM coordinates in M/N and keeps the logical
         // tile indices in K/B. Shape reconstruction must therefore read K/B.
-        int64_t mTileIdx = Get<MNK_K>(blockCoord);
-        int64_t nTileIdx = Get<MNK_B>(blockCoord);
+        int64_t mTileIdx = AscendC::Te::Get<MNK_K>(blockCoord);
+        int64_t nTileIdx = AscendC::Te::Get<MNK_B>(blockCoord);
         if constexpr (!TransA_) {
             if (mTileIdx >= mBaseNormCnt_) {
                 singleCoreM = mTileIdx < mCnt_ - 1 ? mBaseTailMain_ : mBaseTailLast_;
@@ -157,6 +160,7 @@ public:
         }
     }
 
+    template <bool weightNz = false>
     __aicore__ inline BlockShape GetBlockShape(BlockCoord blockCoord)
     {
         int64_t singleCoreM = baseM_;
@@ -180,6 +184,7 @@ public:
         if constexpr (AscendC::IsSameType<AType, fp4x2_e2m1_t>::value && !TransB_) {
             singleCoreNSplit = (singleCoreNSplit + 1) & ~1;
         }
+        ApplyWeightNzTailNSplitAlign<weightNz>(singleCoreNSplit);
         int64_t mSplitIdx = (blockIdx_ % totalTailTile_) % mTailTile_;
         int64_t nSplitIdx = (blockIdx_ % totalTailTile_) / mTailTile_;
         int64_t mSplitAddrOffset = mSplitIdx * singleCoreMSplit;
@@ -194,6 +199,7 @@ public:
         return {singleCoreM, singleCoreN, mSplitAddrOffset, nSplitAddrOffset};
     }
 
+    template <bool weightNz = false>
     __aicore__ inline bool GetTileIdx(BlockCoord& blockCoord)
     {
         if (roundIdx_ >= round_) {
@@ -232,8 +238,8 @@ public:
         }
 
         BlockCoord shapeCoord{};
-        Get<MNK_K>(shapeCoord) = mTileIdx;
-        Get<MNK_B>(shapeCoord) = nTileIdx;
+        AscendC::Std::get<MNK_K>(shapeCoord) = mTileIdx;
+        AscendC::Std::get<MNK_B>(shapeCoord) = nTileIdx;
         int64_t singleCoreM = baseM_;
         int64_t singleCoreN = baseN_;
         CalSingleCoreShapeByCoord(singleCoreM, singleCoreN, shapeCoord);
@@ -250,6 +256,7 @@ public:
             if constexpr (AscendC::IsSameType<AType, fp4x2_e2m1_t>::value && !TransB_) {
                 singleCoreNSplit = (singleCoreNSplit + 1) & ~1;
             }
+            ApplyWeightNzTailNSplitAlign<weightNz>(singleCoreNSplit);
             int64_t mSplitIdx = (blockIdx_ % totalTailTile_) % mTailTile_;
             int64_t nSplitIdx = (blockIdx_ % totalTailTile_) / mTailTile_;
             mSplitAddrOffset = mSplitIdx * singleCoreMSplit;
@@ -272,12 +279,25 @@ public:
         // Pack one scheduler result into `blockCoord`:
         // M/N hold GM origin, while K/B preserve logical tile indices for the
         // later `GetBlockShape` call.
-        Get<MNK_M>(blockCoord) = mPos;
-        Get<MNK_N>(blockCoord) = nPos;
-        Get<MNK_K>(blockCoord) = mTileIdx;
-        Get<MNK_B>(blockCoord) = nTileIdx;
+        AscendC::Std::get<MNK_M>(blockCoord) = mPos;
+        AscendC::Std::get<MNK_N>(blockCoord) = nPos;
+        AscendC::Std::get<MNK_K>(blockCoord) = mTileIdx;
+        AscendC::Std::get<MNK_B>(blockCoord) = nTileIdx;
         roundIdx_++;
         return true;
+    }
+
+private:
+    template <bool weightNz>
+    __aicore__ inline static void ApplyWeightNzTailNSplitAlign(int64_t& singleCoreNSplit)
+    {
+        if constexpr (weightNz) {
+            if constexpr (!TransB_) {
+                singleCoreNSplit = CeilAlign(singleCoreNSplit, static_cast<int64_t>(C0_SIZE));
+            } else {
+                singleCoreNSplit = CeilAlign(singleCoreNSplit, static_cast<int64_t>(BLOCK_CUBE));
+            }
+        }
     }
 };
 
@@ -287,4 +307,3 @@ struct BlockSchedulerSelector<ProblemShape_, QuantMatmulMxSwatScheduler<NO_FULL_
 };
 
 } // namespace Block
-

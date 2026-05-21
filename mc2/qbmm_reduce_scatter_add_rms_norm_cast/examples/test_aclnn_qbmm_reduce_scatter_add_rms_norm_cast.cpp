@@ -57,7 +57,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 template<typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor, bool isColumnMajor = false)
+    aclDataType dataType, aclTensor **tensor, bool isColumnMajor = false, aclFormat format = aclFormat::ACL_FORMAT_ND)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -81,7 +81,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
         }
     }
     
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, format,
         shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
@@ -150,22 +150,19 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d\n", ret); return -1);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p\n", args.rankId, hcomName, args.stream);
 
-    // 定义输入输出shape
-    // MX 量化规则：每32个元素共享一个 scale (fp8_e8m0)
-    // 注意：B矩阵存储shape是 (N, K)，与kernel期望 (K, N) 不同！
-
-    const uint32_t perRankM = 63; // 单卡M, ranges from 20 to 128
-
-    std::vector<int64_t> x1Shape = {perRankM * RANK_SIZE, 2560};           // M x K (A矩阵)
-    std::vector<int64_t> x2Shape = {2560, 5120};           // K x N (kernel期望shape) -- KN转置
-    std::vector<int64_t> yShape = {perRankM, 5120};            // residual per rank (BF16)
-    std::vector<int64_t> gammaShape = {5120};             // RMS Norm gamma
-    std::vector<int64_t> scaleShape = {5120, 40, 2};       // Scale B: (N, ceil(K/128), 2) - 存储shape
-    std::vector<int64_t> pertokenScaleShape = {perRankM * RANK_SIZE, 40, 2}; // Scale A: (M, ceil(K/128), 2)
-    std::vector<int64_t> y1Shape = {perRankM, 5120};           // output float
-    std::vector<int64_t> y2Shape = {perRankM, 5120};           // output bf16
-    std::vector<int64_t> xOutShape = {perRankM, 5120};         // output bf16
-
+    bool isNzMode = (getenv("NZ_MODE") != nullptr);
+    int64_t M = 252, K = 2560, N = 5120;  // M=128 rankSize=4
+    int64_t kt = (K + 15) / 16, nt = (N + 31) / 32;
+    std::vector<int64_t> x1Shape = {M, K};
+    std::vector<int64_t> x2Shape = isNzMode ? std::vector<int64_t>{nt, kt, 16, 32} : std::vector<int64_t>{K, N};
+    std::vector<int64_t> yShape = {M / RANK_SIZE, N};
+    std::vector<int64_t> gammaShape = {N};
+    int64_t kd = (K + 63) / 64;
+    std::vector<int64_t> scaleShape = isNzMode ? std::vector<int64_t>{kd, N, 2} : std::vector<int64_t>{N, kd, 2};
+    std::vector<int64_t> pertokenScaleShape = {M, kd, 2};
+    std::vector<int64_t> y1Shape = {M / RANK_SIZE, N};
+    std::vector<int64_t> y2Shape = {M / RANK_SIZE, N};
+    std::vector<int64_t> xOutShape = {M / RANK_SIZE, N};  // full matmul for AIV-skip mode
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
     void *yDeviceAddr = nullptr;
@@ -202,8 +199,8 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     long long x2ShapeSize = GetShapeSize(x2Shape);
     long long yShapeSize = GetShapeSize(yShape);
     long long gammaShapeSize = GetShapeSize(gammaShape);
-    long long scaleShapeSize = GetShapeSize(scaleShape);        // (4, 2, 5120) = 4096
-    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);  // (256, 4, 2) = 1024
+    long long scaleShapeSize = GetShapeSize(scaleShape);     // (5120, 40, 2)
+    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);  // (128, 40, 2)
     long long y1ShapeSize = GetShapeSize(y1Shape);
     long long y2ShapeSize = GetShapeSize(y2Shape);
     long long xOutShapeSize = GetShapeSize(xOutShape);
@@ -222,22 +219,23 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     std::vector<uint8_t> scaleHostData;
     std::vector<uint8_t> pertokenScaleHostData;
     
-    std::string rankSuffix = "_rank" + std::to_string(args.rankId) + ".bin";
-    ret = LoadBinFile(inputDir + "/input_a_fp8" + rankSuffix, x1HostData);
+    // Per-rank inputs: A, scaleA, y, gamma — different per rank
+    // Shared inputs: B, scaleB — same for all ranks (weight matrix)
+    std::string rankSuffix = "_rank" + std::to_string(args.rankId);
+    ret = LoadBinFile(inputDir + "/input_a_fp8" + rankSuffix + ".bin", x1HostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_b_fp8" + rankSuffix, x2HostData);
+    ret = LoadBinFile(inputDir + "/input_scaleA" + rankSuffix + ".bin", pertokenScaleHostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_scaleA" + rankSuffix, pertokenScaleHostData);
+    ret = LoadBinFile(inputDir + "/input_b_fp8" + rankSuffix + ".bin", x2HostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_scaleB" + rankSuffix, scaleHostData);
+    ret = LoadBinFile(inputDir + "/input_scaleB" + rankSuffix + ".bin", scaleHostData);
     CHECK_RET(ret == 0, return ret);
     
-    // Load y (bf16) and gamma (fp32) from bin files
     std::vector<uint16_t> yHostData;
     std::vector<float> gammaHostData;
-    ret = LoadBinFile(inputDir + "/input_y" + rankSuffix, yHostData);
+    ret = LoadBinFile(inputDir + "/input_y" + rankSuffix + ".bin", yHostData);
     CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_gamma" + rankSuffix, gammaHostData);
+    ret = LoadBinFile(inputDir + "/input_gamma" + rankSuffix + ".bin", gammaHostData);
     CHECK_RET(ret == 0, return ret);
     
     // 输出初始化为0
@@ -250,7 +248,7 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
     // B矩阵：kernel用ColumnMajor，stride设置为 [1, K]
-    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2, true);  // ← ColumnMajor
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2, false, isNzMode ? aclFormat::ACL_FORMAT_FRACTAL_NZ : aclFormat::ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
     ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_BF16, &y);

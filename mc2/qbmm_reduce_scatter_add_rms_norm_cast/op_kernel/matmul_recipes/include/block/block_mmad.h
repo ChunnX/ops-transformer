@@ -15,14 +15,14 @@
 
 #pragma once
 
-#include "kernel_utils/integral_constant.h"
+#include "kernel_utils/common_utils.h"
 
 namespace Block {
 template <
-    class DispatchPolicy_, class ATypeTuple_, class LayoutATuple_, class BTypeTuple_,
-    class LayoutBTuple_, class CType_, class LayoutC_, class Enable = void>
+    class DispatchPolicy_, class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_,
+    class Enable = void>
 class BlockMmad {
-    static_assert(AscendC::Std::always_false_v<DispatchPolicy_>, "Should not be here!");
+    static_assert(!AscendC::Std::is_same_v<DispatchPolicy_, DispatchPolicy_>, "Should not be here!");
 };
 } // namespace Block
 
@@ -31,4 +31,4 @@ class BlockMmad {
 // #include "matmul_a16w16_block_mmad_streamk.h"
 #include "quant_matmul_mx_block_mmad_swat.h"
 // #include "quant_matmul_mx_block_mmad_swat_4_buffer.h"
-#include "quant_matmul_mx_block_mmad_a_full_load.h"
+// #include "quant_matmul_mx_block_mmad_a_full_load.h"

@@ -79,7 +79,6 @@ constexpr uint64_t FP4_C0_SIZE = 64UL;
 constexpr uint64_t FP8_C0_SIZE = 32UL;
 constexpr uint64_t BASEK_LIMIT = 4095UL;
 constexpr uint64_t DATA_SIZE_L0C = 4UL;
-constexpr uint64_t LOGICAL_L0C_SIZE = 256UL * 1024UL;  // Addressable L0C per core
 constexpr uint64_t MX_GROUP_SIZE = 32UL;
 constexpr uint64_t TILING_MXFP_DIVISOR_SIZE = 64UL;
 constexpr uint64_t TILING_MXFP_MULTI_BASE_SIZE = 2UL;
