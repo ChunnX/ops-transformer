@@ -29,7 +29,7 @@
  
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(                                                                 \
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist,            \
-    isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink)                     \
+    isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter)                     \
     do {                                                                                                               \
         FlashAttentionGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isSink, isOriKVSparse, isCmpKVSparse> opPre;  \
         opPre.Init(user, dsinks, ori_softmax_l1, cmp_softmax_l1, tilingData, &pipeIn);                                           \
@@ -38,11 +38,11 @@
         pipeIn.Destroy();                                                                                              \
         TPipe pipeBase;                                                                                                \
         using CubeBlockType =                                                                                          \
-            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockCube<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink>,               \
-                                      SfagBaseApi::FAGBlockCubeDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink>>::type;                               \
+            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockCube<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter>,               \
+                                      SfagBaseApi::FAGBlockCubeDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter>>::type;                               \
         using VecBlockType =                                                                                           \
-            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockVecDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink>,           \
-                                      SfagBaseApi::FAGBlockVec<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink>>::type;                                     \
+            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockVecDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter>,           \
+                                      SfagBaseApi::FAGBlockVec<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter>>::type;                                     \
                                                                                                                        \
         SfagBaseApi::FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType> op;                                     \
         op.Init(query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q,                \
@@ -96,13 +96,13 @@ RegbaseSFAG(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_k
     const optiling::sfmg::SparseFlashMlaGradTilingDataRegbase *__restrict tilingData = &tiling_data_in;
     #if (ORIG_DTYPE_Q == DT_FLOAT16)
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
-                    half, float, half, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink);
+                    half, float, half, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, deterministic);
         return;
     #endif
 
     #if (ORIG_DTYPE_Q == DT_BF16)
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
-                    bfloat16_t, float, bfloat16_t, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink);
+                    bfloat16_t, float, bfloat16_t, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, deterministic);
             return;
     #endif
 }

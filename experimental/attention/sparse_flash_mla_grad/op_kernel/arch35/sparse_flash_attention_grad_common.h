@@ -30,6 +30,9 @@ constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
 constexpr uint8_t SYNC_C5_TO_V5_FLAG = 6;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
+constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 11;
+constexpr uint8_t SCATTER_VEC_SYNC_FLAG = 12;
+constexpr uint8_t SCATTER_SYNC_FLAG = 13;
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -68,7 +71,8 @@ struct DqkvResPos {
     X(HasUsedSeqCmpKV, bool, false)                                                                                    \
     X(HasOriTopK, bool, false)                                                                                         \
     X(HasCmpTopK, bool, false)                                                                                         \
-    X(IsSink, bool, false)
+    X(IsSink, bool, false)                                                                                             \
+    X(IsDETER, bool, false)
  
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,

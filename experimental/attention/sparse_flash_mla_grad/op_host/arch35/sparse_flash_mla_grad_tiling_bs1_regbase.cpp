@@ -808,6 +808,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         OP_LOGE(context_, "SparseFlashMlaGrad the input shpae of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
+    int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? tmpData.t1 : tmpData.b * tmpData.s1;
+    baseParams_->set_totalSize(nNums);
 
     return ge::GRAPH_SUCCESS;
 }
