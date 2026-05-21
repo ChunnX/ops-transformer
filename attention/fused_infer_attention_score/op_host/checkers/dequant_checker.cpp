@@ -938,17 +938,19 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     }
     // shape告警
     if (!enableMxfp8Decode && dequantScaleQueryDimNum == 5) {
-        OP_LOGW(fiaInfo.opName, "In the mxfp8 prefill scenario, to achieve better performance, "
+        OP_LOGE(fiaInfo.opName, "In the mxfp8 prefill scenario, "
                 "the query scale is recommended to use the shape [T, N, D//64, 2], "
                 "which corresponds to [%ld, %ld, %ld, %ld] in this case.", queryInputShape.GetDim(DIM_NUM_0),
                 *fiaInfo.opParamInfo.numHeads, CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2);
+        return ge::GRAPH_FAILED;
     }
     if (enableMxfp8Decode && dequantScaleQueryDimNum == 4) {
-        OP_LOGW(fiaInfo.opName, "In the mxfp8 decode scenario, to achieve better performance, "
+        OP_LOGE(fiaInfo.opName, "In the mxfp8 decode scenario, "
                 "the query scale is recommended to use the shape [N2, T, G, D//64, 2], "
                 "which corresponds to [%ld, %ld, %ld, %ld, %ld] in this case.", *fiaInfo.opParamInfo.kvHeadNums,
                 queryInputShape.GetDim(DIM_NUM_0), fiaInfo.gSize,
                 CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2);
+        return ge::GRAPH_FAILED;
     }
     // kv scale
     if (fiaInfo.pageAttentionFlag) {
