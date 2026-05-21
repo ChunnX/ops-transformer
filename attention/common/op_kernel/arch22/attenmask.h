@@ -19,7 +19,7 @@
 
 #include "../vector_common.h"
 
-namespace fia_arch22 {
+namespace AttentionCommon {
 
 // layoutQ and isReconstructTemp are compile-time parameters.
 // isReconstructTemp=true means the caller has already performed the skip check externally,
@@ -43,6 +43,6 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
     }
 }
 
-} // namespace fia_arch22
+} // namespace AttentionCommon
 
 #endif // ARCH22_ATTENMASK_H

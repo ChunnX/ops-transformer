@@ -485,10 +485,10 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
             if (maskInfo.sparseMode == fa_base_vector::TREE) {
-                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, true>(
+                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, true>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             } else {
-                fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, false>(
+                AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true, false>(
                     maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             }
             AscendC::PipeBarrier<PIPE_V>();
@@ -500,7 +500,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
             attenMaskTmpUb = attenMaskTmpBuff.Get<bool>(); // 后续改成attenMaskTmpBuff，加上pingpong
             maskUb = inputBuff2.Get<bool>();
             maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-            fia_arch22::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
+            AttentionCommon::AttentionmaskCopyIn<bool, bool, MASK_LAYOUT_Q, true>(
                 maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
