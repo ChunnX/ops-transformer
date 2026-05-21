@@ -67,7 +67,7 @@ public:
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
-            .ExtendCfgInfo("opFile.value", "moe_init_routing_apt");
+            .ExtendCfgInfo("opFile.value", "moe_init_routing");
         this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };

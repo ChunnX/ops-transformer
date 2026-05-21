@@ -53,18 +53,8 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED);
     const uint32_t inputMode = *(attrs->GetAttrPointer<char>(MODE_ATTR_IDX));
     OP_LOGI("[RotaryPositionEmbedding]", "[mode]: %d", inputMode);
-
-    auto platformInfo = context_->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
-        (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
-        std::string modeStr = std::to_string(inputMode);
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mode",
-            modeStr.c_str(), "0 or 1");
-        return ge::GRAPH_FAILED;
-    }
     inputMode_ = inputMode;
-    return ge::GRAPH_SUCCESS;
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus Tiling4RotaryPositionEmbeddingGrad(gert::TilingContext* context)
@@ -143,9 +133,6 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbeddingGrad(gert::TilingParseCon
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     compileInfoPtr->ubSize = ubSizePlatForm;
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
-        return TilingPrepare4ReduceOp(context, &compileInfoPtr->opInfo);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
