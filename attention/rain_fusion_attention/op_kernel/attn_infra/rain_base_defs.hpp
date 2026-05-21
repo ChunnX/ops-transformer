@@ -20,9 +20,9 @@
 
 #include <kernel_operator.h>
 
-#include "../attn_infra/detail/alignment.hpp"
-#include "../attn_infra/detail/dependent_false.hpp"
-#include "../attn_infra/detail/macros.hpp"
+#include "../attn_infra/detail/rain_alignment.hpp"
+#include "../attn_infra/detail/rain_dependent_false.hpp"
+#include "../attn_infra/detail/rain_macros.hpp"
 
 namespace NpuArch {
 

@@ -11,7 +11,7 @@
 #ifndef ARCH_CROSS_CORE_SYNC_HPP
 #define ARCH_CROSS_CORE_SYNC_HPP
 
-#include "../../attn_infra/base_defs.hpp"
+#include "../../attn_infra/rain_base_defs.hpp"
 
 namespace NpuArch::Arch 
 {

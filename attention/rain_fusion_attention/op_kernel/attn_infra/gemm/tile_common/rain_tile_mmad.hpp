@@ -11,8 +11,8 @@
 #ifndef GEMM_TILE_TILE_MMAD_HPP
 #define GEMM_TILE_TILE_MMAD_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/gemm/helper.hpp"
+#include "../../../attn_infra/rain_base_defs.hpp"
+#include "../../../attn_infra/gemm/rain_helper.hpp"
 namespace NpuArch::Gemm::Tile {
 
 ///////////////////////////////////////////////////////////

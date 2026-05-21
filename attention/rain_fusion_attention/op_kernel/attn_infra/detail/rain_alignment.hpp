@@ -13,7 +13,7 @@
 
 #include <limits>
 
-#include "../../attn_infra/detail/macros.hpp"
+#include "../../attn_infra/detail/rain_macros.hpp"
 
 template <uint32_t ALIGN, typename T>
 HOST_DEVICE
