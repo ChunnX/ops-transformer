@@ -22,11 +22,6 @@ This kernel is based on PromptFlashAttentionV3, extending it with a new argument
 > All tests and benchmarks must be run with `B=1` until the multi-batch issue
 > is diagnosed and fixed.
 
-> **TODO 3: move `fallback_blitz_sparse_attention.cpp` under the `op_graph`
-> subdirectory** (as requested by liusixia). This is necessary in order to
-> compile it into the `opgraph` library instead of the `ophost` library as
-> it is now.
-
 ## Quick test and benchmark in python:
 build the kernel as a custom experimental package, install it, then install our "torch_bsa" torch interface package
 
@@ -53,9 +48,7 @@ when no frame applies (sparsity 0 ⇒ every block kept ⇒ frame irrelevant).
 Trimmed sample on Ascend910B2:
 ```shell
 ========================================================================================================================
-  DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True
-  frame applied to block_shapes: [(128, 128), (128, 256), (128, 512), ...]
-  TORCH_REFERENCE='npu_fusion_attention'
+  DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
 ========================================================================================================================
   block_shape   H   B    s_q   s_kv    D  frame(L,R,T,B)  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
 ------------------------------------------------------------------------------------------------------------------------
@@ -84,16 +77,22 @@ To invoke our block-sparse prompt flash attention kernel from python, use our pr
 import torch
 import torch_bsa
 
+# Sabi granularity. Both values must be in {128, 256, 512, 1024}; smaller
+# values give finer per-block control at the cost of a larger sabi tensor.
+# Default (when block_shape is omitted) is [128, 128].
+BLOCK_SIZE_Q, BLOCK_SIZE_KV = 128, 128
+
+# sabi: torch.uint16, shape [B, N, ceil(S/BLOCK_SIZE_Q), ceil(S/BLOCK_SIZE_KV)].
+# Each row lists the kept KV-block column indices for that Q-block, padded on
+# the right with 0xFFFF (the uint16 "skip" sentinel).
+sabi = ...  # build from your sparsity pattern
+
 # Returns a tuple (attention_out, softmax_lse).
 # softmax_lse is a [B, N, S] float32 tensor when softmax_lse_flag=True,
 # or an empty tensor ({0}-shaped) when softmax_lse_flag=False (default).
 attention_out, softmax_lse = torch_bsa.blitz_sparse_attention(
-    q,
-    k,
-    v,
-    sabi=sabi,  # torch.uint16, shape [B, N, ceil(S/BLOCK_SIZE_Q), ceil(S/BLOCK_SIZE_KV)]
-                # Each entry is a KV-block index at BLOCK_SIZE_KV-token granularity.
-                # Pad unused slots with 0xFFFF (= uint16 sentinel for "skip").
+    q, k, v,
+    sabi=sabi,
     actual_seq_lengths=actseqlen,
     actual_seq_lengths_kv=actseqlenkv,
     num_heads=h,
@@ -101,13 +100,8 @@ attention_out, softmax_lse = torch_bsa.blitz_sparse_attention(
     input_layout='BNSD',
     scale_value=scale,
     sparse_mode=0,
-    softmax_lse_flag=False,   # set True to compute a valid 2nd output (log-sum-exp)
-    block_shape=[128, 128],   # [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Default [128, 128].
-                              # Both dimensions accept any value in
-                              # {128, 256, 512, 1024}. Each sabi entry addresses
-                              # one BLOCK_SIZE_KV-wide KV chunk, so the sabi
-                              # tensor's last two dims are
-                              # (ceil(S / BLOCK_SIZE_Q), ceil(S / BLOCK_SIZE_KV)).
+    softmax_lse_flag=False,                   # set True to also return the log-sum-exp output
+    block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
 )
 ```
 
@@ -183,21 +177,6 @@ bash build.sh --experimental --run_example blitz_sparse_attention eager cust --s
 
 ## Kernel integration plan
 If this block-sparse kernel is of interest, please consider merging it with the official `attention/prompt_flash_attention`. The source is based on `attention/prompt_flash_attention` at git commit `a574b5d71faa7c360934a6c7d1b4aa85e1a49147`.
-
-## Useful — this kernel is compiled in 6 variants:
-
-All 6 variants use `sabi`; they differ only in the dtype combination:
-
-| Variant	| hash code appended to kernel name | Q/K/V dtype	| atten_mask dtype |	Output dtype |
-|---------|-----------------------------------|-------------|------------------|---------------|
-|0	      | 2ad3cf6768a72f0973ebe8ee1c8bb05f  | float16	    | float16	         |   float16     |
-|1	      | 818336327b27f912b9a48cff3654f4eb  | float16	    | bool	           |   int8        |
-|2	      | 6bef8107fae19793f01f334db68fe6e1  | bfloat16	  | bool	           |   bfloat16    |
-|3	      | f15cddcfd1c9fe426075b16824a6b31c  | int8	      | bool	           |   float16     |
-|4	      | f6be907da9badbf0cf71456e7c466197  | int8	      | bool	           |   int8        |
-|5	      | aa172a5d9ea668f6b2110718890ad5fc  | bfloat16	  | bool	           |   int8        |
-
-Select a single variant with `--op-variant=2` (etc.) when invoking `build.sh` to speed up incremental builds.
 
 ## 产品支持情况
 
