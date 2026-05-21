@@ -635,13 +635,14 @@ public:
             uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
-                    {copyCount, 1, 0, dstStride}); // todo pscale打印看搬运偏移
+                    {copyCount, 1, 0, dstStride});
                 DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
-                    {copyCount, 1, 0, dstStride}); // todo pscale打印看搬运偏移
+                    {copyCount, 1, 0, dstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= 256) {
-            LocalTensor<int16_t> mm2AScaleL1Tensor = outputBuf.GetTensor<int16_t>(pScaleL1Offset);
-            InitConstValue(mm2AScaleL1Tensor, {1, mBaseSize * s2BaseSize / MXFP_GROUP_SIZE / blockBytes, 0, 0x7f7f});
+            uint16_t copyCount = runInfo.actVecMSizeAlign16 / 16;
+            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
+            DataCopy(mm2AScaleL1Tensor[vecOffset], pScaleSubLoop0Tensor, {copyCount, 4, 0, 0});
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
         
