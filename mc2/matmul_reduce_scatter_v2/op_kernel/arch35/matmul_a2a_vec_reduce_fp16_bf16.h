@@ -227,63 +227,35 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     GM_ADDR currRecvPtr = recvGMAddr; // 当前接收缓冲区起始地址
     GM_ADDR currOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
 
-    // --- Prologue: 启动第 0 轮通信 ---
-    VecWaitCube(); // 确保依赖的 MatMul 已完成
-    handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
-        currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
-    );
-    
-    // 移动指针准备下一轮
-    currSendPtr += rankSliceBytes;
-    currRecvPtr += rankSliceBytes;
-    currOutPtr += rankSliceBytes;
+    // --- [DEBUG] 两步模式: AlltoAll<false> + Commit，对齐参考算子 matmul_allto_all ---
+    for (uint32_t i = 0; i < count; i++) {
+        // 1. 等待 AIC 完成当前 MatMul slice
+        VecWaitCube();
 
-    // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
-    for (uint32_t i = 0; i < count - 1; i++) {
-        // 1. 等待上一轮 (i) 通信结束
+        // 2. Prepare + Commit 当前轮 All2All 通信 (AlltoAll<false> 仅创建任务描述符)
+        handles_[i + handleShift] = hccl_.template AlltoAll<false>(
+            currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
+        );
         if (GetBlockIdx() == 0) {
-            hccl_.Wait(handles_[i + handleShift]); 
+            hccl_.Commit(handles_[i + handleShift]);
+        }
+
+        // 3. 等待当前轮通信结束
+        if (GetBlockIdx() == 0) {
+            hccl_.Wait(handles_[i + handleShift]);
         }
         SyncAll<true>();
 
-        // 2. 启动下一轮 (i+1) 通信
-        VecWaitCube(); 
-        handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
-            currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
-        );
-
-        // 3. 执行上一轮 (i) 数据的 ReduceSum
-        // 计算地址 = 当前指针 - 一步偏移
-        GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
-        GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
-
+        // 4. 执行当前轮数据的 ReduceSum
         tPipe_->Reset();
-        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
+        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, currRecvPtr, currOutPtr, tPipe_);
         reduceSum_.ExecuteReduceSum();
 
-        // 指针前移
+        // 5. 指针前移
         currSendPtr += rankSliceBytes;
         currRecvPtr += rankSliceBytes;
         currOutPtr += rankSliceBytes;
     }
-
-    // --- Epilogue: 处理最后一轮 ---
-    uint32_t lastIdx = count - 1;
-    
-    // 等待最后一轮通信结束
-    if (GetBlockIdx() == 0) {
-        hccl_.Wait(handles_[lastIdx + handleShift]); 
-    }
-    SyncAll<true>();
-
-    // 执行最后一轮数据的 reduceSum
-    // 此时的计算地址同样是 "当前指针 - 偏移量"
-    GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
-    GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
-
-    tPipe_->Reset();
-    reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
-    reduceSum_.ExecuteReduceSum();
 }
 
 TEMPLATE_CLASS_PARAMS
