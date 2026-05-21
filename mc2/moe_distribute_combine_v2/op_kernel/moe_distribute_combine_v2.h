@@ -894,45 +894,45 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t loop = 0; loop < sendCntNum_;) {
         // 处理第一个 token（总是存在）
-        uint32_t tkIndex1 = startTokenId_ + ((loop + epRankId_) % sendCntNum_);  // 错位发送
-        uint32_t baseOffset1 = (tkIndex1 - startTokenId_) * EXPAND_IDX_INFO;
-        uint32_t rankIdExpandIdx1 = static_cast<uint32_t>(expandIdxLocal(baseOffset1)); // 位置0是rank_id
-        uint32_t toRankId1 = rankIdExpandIdx1;   // 位置0是rank_id
-        uint32_t tokenId1 = static_cast<uint32_t>(expandIdxLocal(baseOffset1 + 1));   // 位置1是token_id
-        uint32_t topkId1 = static_cast<uint32_t>(expandIdxLocal(baseOffset1 + 2));   // 位置2是topk_id
+        uint32_t tkIndex_first = startTokenId_ + ((loop + epRankId_) % sendCntNum_);  // 错位发送
+        uint32_t baseOffset_first = (tkIndex_first - startTokenId_) * EXPAND_IDX_INFO;
+        uint32_t rankIdExpandIdx_first = static_cast<uint32_t>(expandIdxLocal(baseOffset_first)); // 位置0是rank_id
+        uint32_t toRankId_first = rankIdExpandIdx_first;   // 位置0是rank_id
+        uint32_t tokenId_first = static_cast<uint32_t>(expandIdxLocal(baseOffset_first + 1));   // 位置1是token_id
+        uint32_t topkId_first = static_cast<uint32_t>(expandIdxLocal(baseOffset_first + 2));   // 位置2是topk_id
         if (isScalingDownFlag_) {
-            toRankId1 = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx1);
+            toRankId_first = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx_first);
         }
-        ExpertAlltoAllDispatchInnerCopyAdd(toRankId1, tokenId1, topkId1, tkIndex1);
+        ExpertAlltoAllDispatchInnerCopyAdd(toRankId_first, tokenId_first, topkId_first, tkIndex_first);
         // 处理第二个 token（如果存在）
         bool hasSecond = (loop + 1 < sendCntNum_);
-        uint32_t tkIndex2 = 0, baseOffset2 = 0, rankIdExpandIdx2 = 0;
-        uint32_t toRankId2 = 0, tokenId2 = 0, topkId2 = 0;
+        uint32_t tkIndex_second = 0, baseOffset_second = 0, rankIdExpandIdx_second = 0;
+        uint32_t toRankId_second = 0, tokenId_second = 0, topkId_second = 0;
         if (hasSecond) {
             uint32_t loop2 = loop + 1;
-            tkIndex2 = startTokenId_ + ((loop2 + epRankId_) % sendCntNum_);
-            baseOffset2 = (tkIndex2 - startTokenId_) * EXPAND_IDX_INFO;
-            rankIdExpandIdx2 = static_cast<uint32_t>(expandIdxLocal(baseOffset2));
-            toRankId2 = rankIdExpandIdx2;
-            tokenId2 = static_cast<uint32_t>(expandIdxLocal(baseOffset2 + 1));
-            topkId2 = static_cast<uint32_t>(expandIdxLocal(baseOffset2 + 2));
+            tkIndex_second = startTokenId_ + ((loop2 + epRankId_) % sendCntNum_);
+            baseOffset_second = (tkIndex_second - startTokenId_) * EXPAND_IDX_INFO;
+            rankIdExpandIdx_second = static_cast<uint32_t>(expandIdxLocal(baseOffset_second));
+            toRankId_second = rankIdExpandIdx_second;
+            tokenId_second = static_cast<uint32_t>(expandIdxLocal(baseOffset_second + 1));
+            topkId_second = static_cast<uint32_t>(expandIdxLocal(baseOffset_second + 2));
             if (isScalingDownFlag_) {
-                toRankId2 = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx2);
+                toRankId_second = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx_second);
             }
-            ExpertAlltoAllDispatchInnerCopyAdd(toRankId2, tokenId2, topkId2, tkIndex2);
+            ExpertAlltoAllDispatchInnerCopyAdd(toRankId_second, tokenId_second, topkId_second, tkIndex_second);
         }
         PipeBarrier<PIPE_MTE3>();
-        GM_ADDR stateGM1 = GetWinStateAddrByRankId(toRankId1, EP_DOMAIN) +
-                        tokenId1 * flagRcvCount_ * stateOffset_ + topkId1 * stateOffset_;  // 计算地址偏移
-        GlobalTensor<float> stateGMTensor1;
-        stateGMTensor1.SetGlobalBuffer((__gm__ float*)stateGM1);
-        DataCopy<float>(stateGMTensor1, statusTensor, FLOAT_PER_UB_ALIGN);  // 8是数据大小，按32对齐拷贝
+        GM_ADDR stateGM_first = GetWinStateAddrByRankId(toRankId_first, EP_DOMAIN) +
+                        tokenId_first * flagRcvCount_ * stateOffset_ + topkId_first * stateOffset_;  // 计算地址偏移
+        GlobalTensor<float> stateGMTensor_first;
+        stateGMTensor_first.SetGlobalBuffer((__gm__ float*)stateGM_first);
+        DataCopy<float>(stateGMTensor_first, statusTensor, FLOAT_PER_UB_ALIGN);  // 8是数据大小，按32对齐拷贝
         if (hasSecond) {
-            GM_ADDR stateGM2 = GetWinStateAddrByRankId(toRankId2, EP_DOMAIN) +
-                            tokenId2 * flagRcvCount_ * stateOffset_ + topkId2 * stateOffset_;
-            GlobalTensor<float> stateGMTensor2;
-            stateGMTensor2.SetGlobalBuffer((__gm__ float*)stateGM2);
-            DataCopy<float>(stateGMTensor2, statusTensor, FLOAT_PER_UB_ALIGN);
+            GM_ADDR stateGM_second = GetWinStateAddrByRankId(toRankId_second, EP_DOMAIN) +
+                            tokenId_second * flagRcvCount_ * stateOffset_ + topkId_second * stateOffset_;
+            GlobalTensor<float> stateGMTensor_second;
+            stateGMTensor_second.SetGlobalBuffer((__gm__ float*)stateGM_second);
+            DataCopy<float>(stateGMTensor_second, statusTensor, FLOAT_PER_UB_ALIGN);
         }
         loop += (hasSecond ? 2 : 1);
     }
