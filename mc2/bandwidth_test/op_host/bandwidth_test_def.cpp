@@ -19,13 +19,12 @@ public:
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-      
     this->Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16})
         .Format({ge::FORMAT_ND})
         .AutoContiguous();
-    this->Input("dstrank_id")
+    this->Input("expert_id")
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
         .Format({ge::FORMAT_ND})
@@ -42,10 +41,10 @@ public:
 
     this->Attr("group").AttrType(REQUIRED).String();
     this->Attr("world_size").AttrType(REQUIRED).Int();
+    this->Attr("max_bs").AttrType(REQUIRED).Int();
+    this->Attr("mode").AttrType(REQUIRED).Int();
     this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
-    this->Attr("max_bs").AttrType(OPTIONAL).Int();
-    this->Attr("mode").AttrType(OPTIONAL).Int();
-    this->Attr("comm_alg").AttrType(OPTIONAL).Int();
+    this->Attr("comm_alg").AttrType(OPTIONAL).String("");
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
