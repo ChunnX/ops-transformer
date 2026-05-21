@@ -229,6 +229,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
+    SyncAll<true>(); // 内存栅栏, 保证 AIC 写入 sendBuf_ 对 HCCL DMA 可见
     handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
         currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
     );
@@ -247,7 +248,8 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         SyncAll<true>();
 
         // 2. 启动下一轮 (i+1) 通信
-        VecWaitCube(); 
+        VecWaitCube();
+        SyncAll<true>(); // 内存栅栏, 保证 AIC 写入 sendBuf_ 对 HCCL DMA 可见
         handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
             currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
         );
