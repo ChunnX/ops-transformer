@@ -414,7 +414,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxDataCopyOut
         return;
     }
     if (constInfo.learnableSinkFlag) {
-        if (constInfo.isGqa) {
+        if (constInfo.isGqa && constInfo.gSize > 1) {
             this->Vec1SinkComputeGSFused(runInfo, constInfo, sumUb, maxUb);
         } else {
             this->Vec1SinkCompute(runInfo, constInfo, sumUb, maxUb);
