@@ -80,13 +80,18 @@ public:
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
         // 计算类使用的workspace起始地址（偏移后的workspace）
+        // localComputeOp 和 computeOp 使用不同偏移的workspace，避免 groupList/ptrTable 重叠
+        // perOpInternalWorkspace = groupListSize(8*e_) + ptrTableSize(5*16=80)
+        uint64_t perOpInternalWorkspace = sizeof(int64_t) * e_ + 5 * 16;
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
+        localComputeWorkspaceGm_ = computeWorkspaceGm_;
+        computeOpWorkspaceGm_ = computeWorkspaceGm_ + perOpInternalWorkspace;
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
+                                localComputeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
+        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeOpWorkspaceGm_,
                        tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
@@ -161,6 +166,8 @@ private:
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR computeWorkspaceGm_ = nullptr;
+    GM_ADDR localComputeWorkspaceGm_ = nullptr;
+    GM_ADDR computeOpWorkspaceGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
     bool isScaleBatchMode_ = false;
