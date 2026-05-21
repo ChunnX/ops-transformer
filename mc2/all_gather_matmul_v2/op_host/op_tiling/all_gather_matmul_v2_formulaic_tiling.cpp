@@ -6,15 +6,15 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
- * \file all_gather_formulaic_tiling.cpp
+ * \file all_gather_matmul_v2_formulaic_tiling.cpp
  * \brief
  */
 #include <iostream>
 #include "mc2_log.h"
-#include "all_gather_formulaic_tiling.h"
+#include "all_gather_matmul_v2_formulaic_tiling.h"
 
 void AllGatherPlusMMV2::PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime)
 {
@@ -89,16 +89,16 @@ void AllGatherPlusMMV2::SetCommTimeFactorForOther()
         commPerf_.ChangeCommTimeFactorByDivision(gatherLargerNKCommGrowRatio2); // 1.5x time of factor
     }
     commPerf_.ChangeCommTimeFactorByDivision(commGrowRatio); // 1.15x time of factor
-	if (clusterInfo_.socType == SocVersion::SOC910_93) {
-		commPerf_.ChangeCommTimeFactorByDivision(0.6);   // 0.6x time of factor
+	if(clusterInfo_.socType == SocVersion::SOC910_93) {
+	    commPerf_.ChangeCommTimeFactorByDivision(0.6);   // 0.6x time of factor
 	}
 }
 
 void AllGatherPlusMMV2::SetCommTimeFactor()
 {
-	if (clusterInfo_.socType == SocVersion::SOC950) {
-		SetCommTimeFactorForA5();
-	}else{
+    if (clusterInfo_.socType == SocVersion::SOC950) {
+	    SetCommTimeFactorForA5();
+	} else {
         SetCommTimeFactorForOther();
     }
 }

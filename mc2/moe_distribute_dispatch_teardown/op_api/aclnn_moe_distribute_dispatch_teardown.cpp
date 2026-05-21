@@ -11,7 +11,7 @@
 #include "aclnn_moe_distribute_dispatch_teardown.h"
 #include <algorithm>
 #include "common/utils/op_mc2.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"

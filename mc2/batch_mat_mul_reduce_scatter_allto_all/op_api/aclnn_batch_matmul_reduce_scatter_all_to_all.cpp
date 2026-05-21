@@ -10,7 +10,7 @@
 
 #include "aclnn_batch_matmul_reduce_scatter_all_to_all.h"
 #include "common/utils/op_mc2.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"

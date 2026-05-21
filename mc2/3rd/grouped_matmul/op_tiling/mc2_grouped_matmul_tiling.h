@@ -1,5 +1,5 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
   */
 
 /* !
- * \file grouped_matmul_tiling.h
+ * \file mc2_grouped_matmul_tiling.h
  * \brief
  */
 #ifndef MC2_GROUPED_MATMUL_TILING_H
@@ -18,7 +18,7 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
 
-#include "grouped_matmul_host_util.h"
+#include "mc2_grouped_matmul_host_util.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
