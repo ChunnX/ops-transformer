@@ -11,8 +11,8 @@
 #ifndef INCLUDE_ARCH_RESOURCE_HPP
 #define INCLUDE_ARCH_RESOURCE_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/arch/local_tensor_buffer.hpp"
+#include "../../attn_infra/bsag_base_defs.hpp"
+#include "../../attn_infra/arch/bsag_local_tensor_buffer.hpp"
 
 namespace NpuArch::Arch 
 {

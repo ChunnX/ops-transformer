@@ -11,7 +11,7 @@
 #ifndef EPILOGUE_TILE_TILE_BROADCAST_MUL_HPP
 #define EPILOGUE_TILE_TILE_BROADCAST_MUL_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {
