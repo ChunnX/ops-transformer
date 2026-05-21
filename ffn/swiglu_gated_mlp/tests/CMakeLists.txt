@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.activation.swiglu_gated_mlp.tests.CMakeLists.txt ")
 file(GLOB CURRENT_SOURCE_DIRS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/*)
 foreach(SUB_DIR ${CURRENT_SOURCE_DIRS})
     if(EXISTS "${SUB_DIR}/CMakeLists.txt")

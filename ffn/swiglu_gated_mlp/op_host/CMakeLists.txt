@@ -8,7 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.activation.swiglu_gated_mlp.op_host.CMakeLists.txt ")
+if (BUILD_OPEN_PROJECT)
+    target_sources(op_host_aclnnExc PRIVATE
+        swiglu_gated_mlp_def.cpp
+    )
+endif()
+
 add_modules_sources(
     HOSTNAME ${OPHOST_NAME}
     MODE PRIVATE
@@ -16,14 +21,3 @@ add_modules_sources(
     OPTYPE swiglu_gated_mlp
     ACLNNTYPE aclnn_exclude
 )
-
-function(swiglu_gated_mlp_link_opapi)
-    if(TARGET cust_opapi)
-        target_link_libraries(cust_opapi PRIVATE ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64/libopapi.so)
-    endif()
-    if(TARGET ${OPAPI_NAME})
-        target_link_libraries(${OPAPI_NAME} PRIVATE ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64/libopapi.so)
-    endif()
-endfunction()
-
-cmake_language(DEFER DIRECTORY ${PROJECT_SOURCE_DIR} CALL swiglu_gated_mlp_link_opapi)

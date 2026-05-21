@@ -8,5 +8,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.activation.swiglu_gated_mlp.graph_plugin.CMakeLists.txt ")
 add_graph_plugin_sources()

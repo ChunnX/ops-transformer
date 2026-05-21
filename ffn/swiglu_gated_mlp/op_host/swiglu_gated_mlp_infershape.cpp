@@ -21,7 +21,6 @@
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "error_util.h"
 
 using namespace ge;
 
@@ -175,16 +174,16 @@ namespace ops {
 static ge::graphStatus InferShapeForSwigluGatedMlp(gert::InferShapeContext* context)
 {
     auto x_shape = context->GetInputShape(SWIGLU_GATED_MLP_IN_X);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, x_shape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, x_shape);
 
     auto gate_up_weight_shape = context->GetInputShape(SWIGLU_GATED_MLP_IN_GATE_UP_WEIGHT);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, gate_up_weight_shape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gate_up_weight_shape);
 
     auto down_weight_shape = context->GetInputShape(SWIGLU_GATED_MLP_IN_DOWN_WEIGHT);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, down_weight_shape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, down_weight_shape);
 
     auto y_shape = context->GetOutputShape(SWIGLU_GATED_MLP_OUT_Y);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, y_shape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, y_shape);
 
     if (IsUnknownDimNum(*x_shape)) {
         y_shape->SetDimNum(1);

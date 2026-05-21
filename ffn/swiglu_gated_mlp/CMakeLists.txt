@@ -9,7 +9,6 @@
 # ----------------------------------------------------------------------------
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
-message(STATUS "=== Debug: ops.activation.swiglu_gated_mlp CURRENT_DIRS =${CURRENT_DIRS} ")
 if(NOT ENABLE_TEST AND NOT BENCHMARK)
     list(REMOVE_ITEM CURRENT_DIRS tests)
 endif()

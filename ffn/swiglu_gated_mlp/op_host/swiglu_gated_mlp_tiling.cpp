@@ -24,11 +24,19 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "error_util.h"
+#include "log/log.h"
 #include "register/op_impl_registry.h"
 
 namespace optiling {
 namespace {
+#define SWIGLU_GATED_MLP_TILING_CHECK(cond, log_func, expr) \
+    do {                                                    \
+        if (cond) {                                         \
+            log_func;                                       \
+            expr;                                           \
+        }                                                   \
+    } while (0)
+
 constexpr uint32_t UB_RESERVED_BUFF = 0;
 constexpr uint32_t DEFAULT_BLOCK_DIM = 1;
 constexpr uint32_t TILE_ALIGN = 16;
@@ -322,10 +330,10 @@ ge::graphStatus GetTilingInputs(gert::TilingContext *context, TilingInputs &inpu
     inputs.downWeightShape = context->GetInputShape(INPUT_DOWN_WEIGHT);
     auto *xDesc = context->GetInputDesc(INPUT_X);
 
-    OPS_CHECK_NULL_WITH_CONTEXT(context, inputs.xShape);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, inputs.gateUpWeightShape);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, inputs.downWeightShape);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, xDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, inputs.xShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, inputs.gateUpWeightShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, inputs.downWeightShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     inputs.dtype = xDesc->GetDataType();
     return ge::GRAPH_SUCCESS;
 }
@@ -336,8 +344,8 @@ ge::graphStatus GetPlatformResource(gert::TilingContext *context, PlatformResour
     resource.aivCoreNum = resource.ascendcPlatform.GetCoreNumAiv();
     resource.ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, resource.ubSize);
 
-    OP_TILING_CHECK((resource.aicCoreNum == 0) || (resource.aivCoreNum == 0) ||
-                        (resource.ubSize <= UB_RESERVED_BUFF),
+    SWIGLU_GATED_MLP_TILING_CHECK((resource.aicCoreNum == 0) || (resource.aivCoreNum == 0) ||
+                                      (resource.ubSize <= UB_RESERVED_BUFF),
         OP_LOGE(context->GetNodeName(), "Invalid platform resource, aicCoreNum:%u aivCoreNum:%u ubSize:%lu",
             resource.aicCoreNum, resource.aivCoreNum, resource.ubSize),
         return ge::GRAPH_FAILED);
@@ -349,13 +357,14 @@ ge::graphStatus GetPlatformResource(gert::TilingContext *context, PlatformResour
 ge::graphStatus InitBasicTiling(gert::TilingContext *context, const TilingInputs &inputs, int64_t stage,
     const PlatformResource &resource, StageDims &dims, SwigluGatedMlpTilingData &tilingData)
 {
-    OP_TILING_CHECK(!GetFlattenRowsAndHidden(inputs.xShape->GetStorageShape(), dims.totalRows, dims.hiddenSize),
+    SWIGLU_GATED_MLP_TILING_CHECK(
+        !GetFlattenRowsAndHidden(inputs.xShape->GetStorageShape(), dims.totalRows, dims.hiddenSize),
         OP_LOGE(context->GetNodeName(), "Invalid x shape."),
         return ge::GRAPH_FAILED);
 
     ge::DataType dtype = inputs.dtype;
     const uint32_t dtypeSize = GetDataTypeSize(dtype);
-    OP_TILING_CHECK(dtypeSize == 0,
+    SWIGLU_GATED_MLP_TILING_CHECK(dtypeSize == 0,
         OP_LOGE(context->GetNodeName(), "Unsupported dtype:%d", static_cast<int32_t>(dtype)),
         return ge::GRAPH_FAILED);
 
@@ -373,7 +382,7 @@ ge::graphStatus InitBasicTiling(gert::TilingContext *context, const TilingInputs
 ge::graphStatus FillSwigluStageDims(gert::TilingContext *context, uint64_t ubSize, StageDims &dims,
     SwigluGatedMlpTilingData &tilingData)
 {
-    OP_TILING_CHECK(dims.hiddenSize == 0 || (dims.hiddenSize % 2 != 0),
+    SWIGLU_GATED_MLP_TILING_CHECK(dims.hiddenSize == 0 || (dims.hiddenSize % 2 != 0),
         OP_LOGE(context->GetNodeName(), "stage swiglu input last dim must be even, got %lu", dims.hiddenSize),
         return ge::GRAPH_FAILED);
     dims.gateUpSize = dims.hiddenSize;
@@ -388,21 +397,21 @@ ge::graphStatus FillFusedStageDims(gert::TilingContext *context, const TilingInp
     uint64_t gateUpIn = 0;
     uint64_t gateUpOut = 0;
     uint64_t downIn = 0;
-    OP_TILING_CHECK(!GetMatrixShape(inputs.gateUpWeightShape->GetStorageShape(), gateUpIn, gateUpOut),
+    SWIGLU_GATED_MLP_TILING_CHECK(!GetMatrixShape(inputs.gateUpWeightShape->GetStorageShape(), gateUpIn, gateUpOut),
         OP_LOGE(context->GetNodeName(), "Invalid fused gate_up_weight shape."),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!GetMatrixShape(inputs.downWeightShape->GetStorageShape(), downIn, dims.outSize),
+    SWIGLU_GATED_MLP_TILING_CHECK(!GetMatrixShape(inputs.downWeightShape->GetStorageShape(), downIn, dims.outSize),
         OP_LOGE(context->GetNodeName(), "Invalid fused down_weight shape."),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gateUpIn != dims.hiddenSize,
+    SWIGLU_GATED_MLP_TILING_CHECK(gateUpIn != dims.hiddenSize,
         OP_LOGE(context->GetNodeName(), "fused hidden mismatch, x:%lu gate_up_weight:%lu", dims.hiddenSize, gateUpIn),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gateUpOut == 0 || (gateUpOut % 2 != 0),
+    SWIGLU_GATED_MLP_TILING_CHECK(gateUpOut == 0 || (gateUpOut % 2 != 0),
         OP_LOGE(context->GetNodeName(), "fused gate_up_weight output dim must be even, got %lu", gateUpOut),
         return ge::GRAPH_FAILED);
     dims.gateUpSize = gateUpOut;
     dims.intermediateSize = gateUpOut / 2U;
-    OP_TILING_CHECK(downIn != dims.intermediateSize,
+    SWIGLU_GATED_MLP_TILING_CHECK(downIn != dims.intermediateSize,
         OP_LOGE(context->GetNodeName(), "fused down_weight input mismatch, down:%lu intermediate:%lu",
             downIn, dims.intermediateSize),
         return ge::GRAPH_FAILED);
@@ -414,23 +423,23 @@ ge::graphStatus FillMatmulStageDims(gert::TilingContext *context, const TilingIn
 {
     uint64_t weightIn = 0;
     uint64_t weightOut = 0;
-    OP_TILING_CHECK(!GetMatrixShape(inputs.gateUpWeightShape->GetStorageShape(), weightIn, weightOut),
+    SWIGLU_GATED_MLP_TILING_CHECK(!GetMatrixShape(inputs.gateUpWeightShape->GetStorageShape(), weightIn, weightOut),
         OP_LOGE(context->GetNodeName(), "Invalid matmul weight shape."),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(weightIn != dims.hiddenSize,
+    SWIGLU_GATED_MLP_TILING_CHECK(weightIn != dims.hiddenSize,
         OP_LOGE(context->GetNodeName(), "matmul hidden mismatch, x:%lu weight:%lu", dims.hiddenSize, weightIn),
         return ge::GRAPH_FAILED);
 
     dims.outSize = weightOut;
     dims.gateUpSize = (stage == WG_MLP_STAGE_MM1) ? weightOut : 0U;
     dims.intermediateSize = (stage == WG_MLP_STAGE_MM1) ? (weightOut / 2U) : dims.hiddenSize;
-    OP_TILING_CHECK(stage == WG_MLP_STAGE_MM1 && (weightOut == 0 || (weightOut % 2 != 0)),
+    SWIGLU_GATED_MLP_TILING_CHECK(stage == WG_MLP_STAGE_MM1 && (weightOut == 0 || (weightOut % 2 != 0)),
         OP_LOGE(context->GetNodeName(), "stage mm1 output dim must be even, got %lu", weightOut),
         return ge::GRAPH_FAILED);
 
     ge::DataType dtype = inputs.dtype;
-    OP_TILING_CHECK(FillMatmulTiling(tilingData, resource.ascendcPlatform, resource.aicCoreNum, dtype,
-                         dims.totalRows, dims.outSize, dims.hiddenSize) != ge::GRAPH_SUCCESS,
+    SWIGLU_GATED_MLP_TILING_CHECK(FillMatmulTiling(tilingData, resource.ascendcPlatform, resource.aicCoreNum, dtype,
+                                      dims.totalRows, dims.outSize, dims.hiddenSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "Fill matmul tiling failed."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -511,7 +520,7 @@ ge::graphStatus SaveTilingAndWorkspace(gert::TilingContext *context, int64_t sta
     context->SetTilingKey(tilingData.get_dtypeTag());
 
     size_t *userWorkspaceSize = context->GetWorkspaceSizes(1);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, userWorkspaceSize);
+    OP_CHECK_NULL_WITH_CONTEXT(context, userWorkspaceSize);
     if (stage == WG_MLP_STAGE_SWIGLU) {
         userWorkspaceSize[0] = 0UL;
     } else if (stage == WG_MLP_STAGE_FUSED) {
@@ -527,13 +536,13 @@ ge::graphStatus SaveTilingAndWorkspace(gert::TilingContext *context, int64_t sta
 
 static ge::graphStatus TilingPrepareForSwigluGatedMlp(gert::TilingParseContext *context)
 {
-    OP_TILING_CHECK(context == nullptr,
-        CUBE_INNER_ERR_REPORT("SwigluGatedMlp", "context is null"),
+    SWIGLU_GATED_MLP_TILING_CHECK(context == nullptr,
+        OP_LOGE("SwigluGatedMlp", "context is null"),
         return ge::GRAPH_FAILED);
 
     auto *platformInfo = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "platformInfo is null"),
+    SWIGLU_GATED_MLP_TILING_CHECK(platformInfo == nullptr,
+        OP_LOGE(context->GetNodeName(), "platformInfo is null"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -541,8 +550,8 @@ static ge::graphStatus TilingPrepareForSwigluGatedMlp(gert::TilingParseContext *
 
 static ge::graphStatus TilingForSwigluGatedMlp(gert::TilingContext *context)
 {
-    OP_TILING_CHECK(context == nullptr,
-        CUBE_INNER_ERR_REPORT("SwigluGatedMlp", "context is null"),
+    SWIGLU_GATED_MLP_TILING_CHECK(context == nullptr,
+        OP_LOGE("SwigluGatedMlp", "context is null"),
         return ge::GRAPH_FAILED);
 
     TilingInputs inputs;
@@ -551,8 +560,8 @@ static ge::graphStatus TilingForSwigluGatedMlp(gert::TilingContext *context)
     }
 
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "platformInfo is null"),
+    SWIGLU_GATED_MLP_TILING_CHECK(platformInfo == nullptr,
+        OP_LOGE(context->GetNodeName(), "platformInfo is null"),
         return ge::GRAPH_FAILED);
 
     PlatformResource resource(platformInfo);
