@@ -24,6 +24,7 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 constexpr int64_t FP8_PERBLOCK_BLOCK_SIZE = 128;
+constexpr int64_t FP8_PERBLOCK_SCALE_SLOT_ELEMS = 8;
 constexpr float FP8_E4M3_MAX_VALUE = 448.0f;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr uint32_t FP32_INF_VALUE = 0x7f800000;
@@ -64,6 +65,7 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
 
         MaskReg preg0;
         MaskReg maskAll = CreateMask<uint16_t, MaskPattern::ALL>();
+        MaskReg scaleMask = CreateMask<float, MaskPattern::VL1>();
         MaskReg yMaskReg;
 
         Duplicate((RegTensor<uint16_t> &)vreg2, FP16_MAX_VALUE_MASK);
@@ -82,7 +84,7 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
 
         Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
         Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
-        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, scaleReg, maskAll);
+        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, scaleReg, scaleMask);
 
         for (uint16_t i = 0; i < outputVfLoop; i++) {
             yMaskReg = UpdateMask<float>(outputNum);
@@ -115,7 +117,7 @@ private:
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
     __aicore__ inline void CopyExpandedXandFP8Quant(int64_t progress);
     __aicore__ inline void CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols);
-    __aicore__ inline void Compute(int64_t loopCols, int64_t loopScaleCols);
+    __aicore__ inline void Compute(int64_t loopCols, int64_t loopValidScaleCols, int64_t loopScaleCols);
     __aicore__ inline void CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols, int64_t loopScaleCols);
 
 private:
@@ -242,8 +244,8 @@ MoeGatherOutFP8PerBlockQuant<T, U>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr
     colLoops_ = gatherOutTilingData_->colsLoops;
 
     perLoopScaleCols_ = perLoopCols_ / FP8_PERBLOCK_BLOCK_SIZE;
-    lastLoopValidScaleCols_ = validScaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
-    lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
+    lastLoopValidScaleCols_ = Ops::Base::CeilDiv<int64_t>(lastLoopCols_, FP8_PERBLOCK_BLOCK_SIZE);
+    lastLoopScaleCols_ = Ops::Base::CeilAlign<int64_t>(lastLoopValidScaleCols_, 2);
 }
 
 template <typename T, typename U>
@@ -251,7 +253,7 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::InitBuffer()
 {
     int64_t inQueueBuffer = perLoopCols_ * sizeof(T);
     int64_t outQueueBuffer = perLoopCols_ * sizeof(U);
-    int64_t scaleQueueBuffer = perLoopScaleCols_ * sizeof(float);
+    int64_t scaleQueueBuffer = AlignBytes(perLoopScaleCols_ * FP8_PERBLOCK_SCALE_SLOT_ELEMS, sizeof(float));
 
     pipe_->InitBuffer(inQueue_, 1, inQueueBuffer);
     pipe_->InitBuffer(outQueue_, 1, outQueueBuffer);
@@ -297,10 +299,11 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyExpandedXandFP8Qu
 
         for (int64_t j = 0; j < colLoops_; j++) {
             int64_t loopCols = (j == colLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
+            int64_t loopValidScaleCols = (j == colLoops_ - 1) ? lastLoopValidScaleCols_ : perLoopScaleCols_;
             int64_t loopScaleCols = (j == colLoops_ - 1) ? lastLoopScaleCols_ : perLoopScaleCols_;
 
             CopyIn(srcIdx / k_, j, loopCols);
-            Compute(loopCols, loopScaleCols);
+            Compute(loopCols, loopValidScaleCols, loopScaleCols);
             CopyOut(dstIdx, j, loopCols, loopScaleCols);
         }
     }
@@ -331,7 +334,8 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyIn(int64_t srcIdx
 }
 
 template <typename T, typename U>
-__aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopCols, int64_t loopScaleCols)
+__aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopCols, int64_t loopValidScaleCols,
+                                                                   int64_t loopScaleCols)
 {
     LocalTensor<T> xLocal = inQueue_.DeQue<T>();
     __ubuf__ T *xAddr = reinterpret_cast<__ubuf__ T *>(xLocal.GetPhyAddr());
@@ -342,12 +346,23 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopC
     LocalTensor<float> scaleLocal = scaleQueue_.AllocTensor<float>();
     __ubuf__ float *scaleAddr = reinterpret_cast<__ubuf__ float *>(scaleLocal.GetPhyAddr());
 
-    for (int64_t blockIdx = 0; blockIdx < loopScaleCols; blockIdx++) {
-        int64_t blockOffset = blockIdx * FP8_PERBLOCK_BLOCK_SIZE;
-        int64_t blockElemNum = (blockIdx == loopScaleCols - 1) ? (loopCols - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
+    Duplicate(scaleLocal, 0.0f, Align(loopScaleCols * FP8_PERBLOCK_SCALE_SLOT_ELEMS, sizeof(float)));
 
-        VF_CALL<ComputeVF<T, U>>(xAddr + blockOffset, scaleAddr + blockIdx, outAddr + blockOffset,
-                                 static_cast<uint32_t>(blockElemNum), fp8MaxValue_);
+    for (int64_t blockIdx = 0; blockIdx < loopValidScaleCols; blockIdx++) {
+        int64_t blockOffset = blockIdx * FP8_PERBLOCK_BLOCK_SIZE;
+        int64_t blockElemNum =
+            (blockIdx == loopValidScaleCols - 1) ? (loopCols - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
+
+        VF_CALL<ComputeVF<T, U>>(xAddr + blockOffset, scaleAddr + blockIdx * FP8_PERBLOCK_SCALE_SLOT_ELEMS,
+                                 outAddr + blockOffset, static_cast<uint32_t>(blockElemNum), fp8MaxValue_);
+    }
+
+    PipeBarrier<PIPE_ALL>();
+    for (int64_t blockIdx = 0; blockIdx < loopValidScaleCols; blockIdx++) {
+        scaleLocal.SetValue(blockIdx, scaleLocal.GetValue(blockIdx * FP8_PERBLOCK_SCALE_SLOT_ELEMS));
+    }
+    for (int64_t blockIdx = loopValidScaleCols; blockIdx < loopScaleCols; blockIdx++) {
+        scaleLocal.SetValue(blockIdx, 0.0f);
     }
 
     inQueue_.FreeTensor(xLocal);
