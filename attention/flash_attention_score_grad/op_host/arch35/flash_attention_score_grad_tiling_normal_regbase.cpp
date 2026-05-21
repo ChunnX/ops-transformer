@@ -208,8 +208,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
                     OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "compile_info is null"),
                     return ge::GRAPH_FAILED);
         npuArch = compileInfoPtr->npuArch;
-        fBaseParams.coreNum = compileInfoPtr->aivNum;
-        fBaseParams.aicNum = compileInfoPtr->aicNum;
+        fBaseParams.coreNum = 56;
+        fBaseParams.aicNum = 28;
         fBaseParams.ubSize = compileInfoPtr->ubSize;
         fBaseParams.l1Size = compileInfoPtr->l1Size;
         fBaseParams.l0aSize = compileInfoPtr->l0aSize;
@@ -219,8 +219,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         npuArch = ascendcPlatform.GetCurNpuArch();
         coreNum = ascendcPlatform.GetCoreNumAiv();
-        fBaseParams.coreNum = coreNum;
-        fBaseParams.aicNum = ascendcPlatform.GetCoreNumAic();
+        fBaseParams.coreNum = 56;
+        fBaseParams.aicNum = 28;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, fBaseParams.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, fBaseParams.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, fBaseParams.l0aSize);
@@ -1647,9 +1647,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
-    s1s2BNGS1S2BaseParams_->set_qSize(fBaseParams.qSize);
-    s1s2BNGS1S2BaseParams_->set_kSize(fBaseParams.kSize);
-    s1s2BNGS1S2BaseParams_->set_vSize(fBaseParams.vSize);
 
     bool isSplitByBlockIdx =
         fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
