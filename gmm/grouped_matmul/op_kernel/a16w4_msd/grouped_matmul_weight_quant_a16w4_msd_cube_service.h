@@ -21,6 +21,8 @@
 #include "static_diag_constant.h"
 #include "gmm/op_kernel/common/gmm_tool_common.h"
 
+using GmmOpKernelCommon::GetKBUnit;
+
 namespace GROUPED_MATMUL::A16W4Msd {
 #define GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM template <typename mm1InputType, typename mm1OutputType>
 

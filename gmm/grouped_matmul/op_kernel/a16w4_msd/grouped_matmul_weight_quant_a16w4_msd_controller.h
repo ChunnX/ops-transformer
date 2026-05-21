@@ -112,8 +112,8 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::Process(GM_ADDR worksp
             basicBlock.UpdateGlobalAddr(aUnfoldS8WsAddr_, weightGm_, antiquantScaleGm_, biasGm_, yGm_, aMaxWs_,
                                         gmmBaseTiling_->withOffset);
 
-            uint32_t mBlockNum = A16W4Msd::CeilDiv(mSize, BASE_ML1_SIZE);
-            uint32_t nBlockNum = A16W4Msd::CeilDiv(constParams.nSize, constParams.nL1BaseSize);
+            uint32_t mBlockNum = GmmOpKernelCommon::CeilDiv(mSize, BASE_ML1_SIZE);
+            uint32_t nBlockNum = GmmOpKernelCommon::CeilDiv(constParams.nSize, constParams.nL1BaseSize);
 
             uint32_t totalBasicBlockCount = startBasicBlockId + mBlockNum * nBlockNum;
             uint32_t curCoreStartBlockId =

@@ -20,9 +20,11 @@
 #include "kernel_operator_intf.h"
 #include "gmm/op_kernel/common/gmm_tool_common.h"
 
+using GmmOpKernelCommon::GetKBUnit;
 using AscendC::RoundMode;
 
 namespace GROUPED_MATMUL::A16W4Msd {
+using GmmOpKernelCommon::DataCopyPad2D;
 #define GMM_WQ_A16W4_MSD_VEC_SERVICE_TEMPLATE_PARAM template <typename xType, typename wType, typename biasType>
 
 #define GMM_WQ_A16W4_MSD_VEC_SERVICE_CLASS GMMA16W4MsdVecService<xType, wType, biasType>
