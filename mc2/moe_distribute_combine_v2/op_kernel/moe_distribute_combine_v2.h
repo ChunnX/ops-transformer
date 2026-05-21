@@ -311,7 +311,7 @@ private:
     LocalTensor<float> mulBufLocal_;
     LocalTensor<float> sumFloatBufLocal_;
 
-    static constexpr uint32_t DATA_FLAG_SIZE = 1 * 1024 * 1024 * 1024; // 1G TODO 这里存疑 已有的数据和flag区域占用空间
+    static constexpr uint32_t DATA_FLAG_SIZE = 1 * 1024 * 1024 * 1024 - 1 * 1024 * 1024; // 1G TODO 这里存疑 已有的数据和flag区域占用空间
     __gm__ uint32_t *flag_gm;
     GM_ADDR token_buffer;
     GM_ADDR base_addr[256];
