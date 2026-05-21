@@ -683,7 +683,7 @@ def cal_dis_win_status_golden(expertids_func, xactivemask_func,
         xactivemask = xactivemask_func[ep_rankid]
         if xactivemask is not None:
             xactivemask = np.array(xactivemask, dtype=np.uint8)
-        for expidx, expid in enumerate(expertids_flatten):
+        for expid in expertids_flatten:
             if not isinvalid_token(expid, moe_expert_num):
                 status_golden[expid // local_moe_expert_num, expid % local_moe_expert_num] += 1
         dis_win_status_golden[int(ep_rankid)] = status_golden
