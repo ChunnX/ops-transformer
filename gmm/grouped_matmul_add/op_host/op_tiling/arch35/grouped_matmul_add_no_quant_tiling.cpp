@@ -69,12 +69,10 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     if (groupType_ == SPLIT_K) {
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
-    if (groupType_ != SPLIT_K) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "group_type",
-            FormatString("%d", groupType_).c_str(),
-            FormatString("The value of %s must be %s", "group_type", "2").c_str());
-        return false;
-    }
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "group_type",
+        FormatString("%d", groupType_).c_str(),
+        FormatString("The value of %s must be %s", "group_type", "2").c_str());
+    return false;
 }
 
 bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
