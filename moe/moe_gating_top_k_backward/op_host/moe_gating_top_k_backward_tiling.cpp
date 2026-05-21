@@ -18,7 +18,7 @@
 
 namespace optiling {
 // Attribute constants
-const static int64_t RENORM_TYPE_ZERO = 0; // Re-norm before top K
+const static int64_t RENORM_TYPE_ONE = 1; // Re-norm before top K
 const static int64_t NORM_TYPE_SOFTMAX = 0;
 const static int64_t NORM_TYPE_SIGMOID = 1;
 
@@ -132,7 +132,7 @@ private:
     int64_t expertCount_ = 0;
     int64_t k_ = 0;
     int64_t gradYDtypeSize_ = 0;
-    int64_t renorm_ = RENORM_TYPE_ZERO;
+    int64_t renorm_ = RENORM_TYPE_ONE;
     int64_t normType_ = NORM_TYPE_SOFTMAX;
     float routedScalingFactor_ = 1.0f;
     float eps_ = 1e-20f;
@@ -251,10 +251,6 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CheckAttr()
         renorm_ = *renormPtr;
     }
     OP_LOGI(context_, "Attr renorm: %ld.", renorm_);
-
-    OP_CHECK_IF(renorm_ != RENORM_TYPE_ZERO,
-                OP_LOGE(context_, "Attr renorm: expected %ld, but got %ld.", RENORM_TYPE_ZERO, renorm_),
-                return ge::GRAPH_FAILED);
 
     const int64_t *normTypePtr = attrs->GetAttrPointer<int64_t>(NORM_TYPE_ATTR_INDEX);
     if (normTypePtr != nullptr) {
