@@ -94,9 +94,15 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
     <td>INT</td>
   </tr>
   <tr>
-    <td>PROFILING_PATH</td>
+    <td>SHARE_EXPERT_NUM</td>
     <td>可选输入</td>
-    <td>指定profiling数据的存放路径,未输入时默认在TARGET_DIR下查找，如:PROFILING_PATH=xxx</td>
+    <td>构造dump数据时的输入共享专家数,未输入时默认值为0, SHARE_EXPERT_NUM > 0，如:SHARE_EXPERT_NUM=1</td>
+    <td>INT</td>
+  </tr>
+  <tr>
+    <td>START_A2_CLUSTER</td>
+    <td>可选输入</td>
+    <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：解析dump数据时,区分是否开始分析多机数据，未输入时默认值为0，输入为1时开启多机分析，需先得到各机解析结果再执行，如:START_A2_CLUSTER=1</td>
     <td>INT</td>
   </tr>
     <tr>
@@ -180,6 +186,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 | dump_analysis.sh脚本直调 | bash dump_analysis.sh TARGET_DIR=xxx TOOL_PATH=xxx PROFILING_PATH=xxx SP_MOE_NUM=0 TP_WORLDSIZE=1 SOC_VERSION=950 SHARE_EXPERT_CARD_COUNT=1 SHARE_EXPERT_NUM=1 GRAPH_PATH=xxx PLOG_PATH=xxx| 通过对sh脚本进行入参对指定的TARGET_DIR路径下的dump数据进行dump数据解析、对PROFILING_PATH下的profiling数据进行分析、对GRAPH_PATH下的图文件数据进行分析以及对PLOG_PATH下的plog日志进行分析。 |
+| dump_analysis.sh脚本直调 | bash dump_analysis.sh SOC_VERSION=910B START_A2_CLUSTER=1 | 将START_A2_CLUSTER=0时解析的结果放在同一台设备相同路径后执行,通过sh脚本对各机进行解析多机数据, A2 Dispatch和Combine Fullmesh方案建议使用 |
 
 ## 样例代码结果说明
 
