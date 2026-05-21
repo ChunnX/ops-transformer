@@ -34,7 +34,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse, int64_t deterministic, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("start aclnnFlashAttnGetWorkspaceSize");
@@ -50,7 +50,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerFlashAttnGetWorkspaceSize(
         q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
         sinksOptional, attnMaskOptional, metadataOptional, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ,
-        maxSeqlenKV, layoutQ, layoutKv, layoutOut, returnSoftmaxLse, deterministic, attnOut, placeHolder, workspaceSize,
+        maxSeqlenKV, layoutQ, layoutKv, layoutOut, returnSoftmaxLse, attnOut, placeHolder, workspaceSize,
         executor);
 
     // 销毁占位符
