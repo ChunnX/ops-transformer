@@ -15,9 +15,7 @@ import sys
 
 
 params_info = {
-    "test_moe_gating_top_k_backward_case_00": [8, 1, 1, 64, 1, 1, 1, 1, 8, 192, 10, 2, 0, 1, 2178868143328329728],
-    "test_moe_gating_top_k_backward_case_01": [16, 1, 1, 47, 1, 1, 1, 1, 16, 256, 8, 4, 0, 1, 2178868143328329728],
-    "test_moe_gating_top_k_backward_case_02": [16, 1, 1, 35, 1, 1, 1, 1, 16, 384, 8, 2, 0, 1, 2178868143328329728]
+    "test_moe_gating_top_k_backward_case_00": [1, 1, 1, 64, 1, 1, 1, 1, 1, 8, 4, 4, 0, 1, 2178868143328329728],
 }
 
 

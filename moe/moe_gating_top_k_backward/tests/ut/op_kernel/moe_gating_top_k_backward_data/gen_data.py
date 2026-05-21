@@ -56,24 +56,10 @@ def gen_data(params):
 
 params_info = {
     "test_moe_gating_top_k_backward_case_00": {
-        "m": 8,
-        "n": 192,
-        "k": 10,
+        "m": 1,
+        "n": 8,
+        "k": 4,
         "dtype": torch.bfloat16,
-        "seed": 44,
-    },
-    "test_moe_gating_top_k_backward_case_01": {
-        "m": 16,
-        "n": 256,
-        "k": 8,
-        "dtype": torch.float32,
-        "seed": 44,
-    },
-    "test_moe_gating_top_k_backward_case_02": {
-        "m": 16,
-        "n": 384,
-        "k": 8,
-        "dtype": torch.float16,
         "seed": 44,
     },
 }

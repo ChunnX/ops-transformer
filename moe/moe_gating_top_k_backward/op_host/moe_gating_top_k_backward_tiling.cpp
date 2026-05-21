@@ -390,7 +390,7 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CalcMaxRows()
         OP_LOGD(context_, "queSpace: %ld.\nbufSpace: %ld.\nsharebuf: %ld", queSpace, bufSpace,
                 static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace)));
 
-        if (usedSpace <= aicoreParams_.ubSize) {
+        if (usedSpace <= static_cast<int64_t>(aicoreParams_.ubSize)) {
             break;
         }
         maxRows--;
