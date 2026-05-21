@@ -185,7 +185,7 @@ private:
 };
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
 {
@@ -313,7 +313,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SplitToCore(
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
     uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
@@ -332,7 +332,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SplitToCore
 
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToken(
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::ProcessToken(
     GM_ADDR urmaLocaLAddr,  GM_ADDR remoteAddr, uint32_t tokenIndex, uint32_t dstRankId)
 {
     // 处理单个token：
@@ -368,7 +368,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToke
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalTokenSendExpertCnt(
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalTokenSendExpertCnt(
     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
 {
     SyncFunc<AscendC::HardEvent::S_V>();
@@ -393,7 +393,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalTokenSen
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
 {
     // 发送token到目标rank的窗口
     // 根据 expert_id 确定目标 rank，将 token 写入该 rank 的通信窗口
@@ -440,7 +440,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStatus()
 {
     // 设置状态：统计发送到各rank的token数量，并写入状态区通知对端
     // 状态区结构: [flag(1.0f), count, rank_id, world_size, ...]
@@ -490,7 +490,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit()
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::BufferInit()
 {
     // 重新初始化缓冲区，用于WaitDispatch阶段
     tpipe_->Reset();
@@ -508,7 +508,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit(
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
 {
     // 等待所有rank完成数据发送
     // 通过轮询状态区，等待所有rank的状态flag变为1.0f
@@ -563,7 +563,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindowCopy()
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::LocalWindowCopy()
 {
     // 从本地窗口读取接收到的数据，拷贝到输出tensor
     // 输出格式: y[rank_id * max_bs * hidden : (rank_id+1) * max_bs * hidden] = 来自该rank的数据
@@ -652,7 +652,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
+__aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     // 主处理函数
     // mode=0: 完整流程 (发送 + 同步 + 接收)
