@@ -603,6 +603,7 @@ function(add_bin_compile_target)
             set(DYNAMIC_PY_FILE ${OP_SRC_OUT_DIR}/${op_type}.py)
             add_custom_command(OUTPUT ${DYNAMIC_PY_FILE}
                     COMMAND cp -rf ${ASCEND_IMPL_OUT_DIR}/dynamic/${op_file}.py ${DYNAMIC_PY_FILE}
+                    DEPENDS ${ASCEND_IMPL_OUT_DIR}/dynamic/${op_file}.py
                     # COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/update_get_kernel_source.sh ${DYNAMIC_PY_FILE}
             )
 
