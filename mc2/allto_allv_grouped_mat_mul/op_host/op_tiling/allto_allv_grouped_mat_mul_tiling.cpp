@@ -128,7 +128,8 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     auto transMmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK(transMmWeightPtr == nullptr,
         OP_LOGE(A_INNER_DEBUG, "transMmWeightPtr is null."), return ge::GRAPH_FAILED);
-    transMmWeight_ = *transMmWeightPtr;
+    // mmWeight为null时强制transMmWeight_=false，否则base class GetMmWeightShapeInfo会报错
+    transMmWeight_ = (mmXStorageShape != nullptr) ? *transMmWeightPtr : false;
     
     OP_LOGI(A_INNER_DEBUG, "AGENT epGroup is %s, epWorldSize is %lu.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
