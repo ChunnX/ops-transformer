@@ -17,9 +17,15 @@
 #endif
 #include <climits>
 
-#include "../../common/inc/op_kernel/comm_args.h"
-#include "../../common/inc/op_kernel/data_copy.h"
-#include "../../common/inc/op_kernel/moe_distribute_base.h"
+#if __has_include("../common/op_kernel/comm_args.h")
+#include "../common/op_kernel/comm_args.h"
+#include "../common/op_kernel/data_copy.h"
+#include "../common/op_kernel/moe_distribute_base.h"
+#else
+#include "../../common/op_kernel/comm_args.h"
+#include "../../common/op_kernel/data_copy.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
+#endif
 
 using namespace AscendC;
 using namespace Moe;

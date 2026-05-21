@@ -26,7 +26,11 @@
 #include "moe_combine_normal_tiling.h"
 #include "adv_api/reduce/sum_utils.h"
 #include "adv_api/reduce/sum.h"
-#include "../../common/inc/op_kernel/moe_distribute_base.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#else
+#include "../../common/op_kernel/moe_distribute_base.h"
+#endif
 
 using namespace AscendC;
 namespace MoeCombineNormalImpl {

@@ -22,8 +22,13 @@
 #include "kernel_operator.h"
 #endif
 #include "dispatch_layout_tiling.h"
-#include "../../common/inc/op_kernel/moe_distribute_base.h"
-#include "../../common/inc/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/mc2_kernel_utils.h"
+#else
+#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
+#endif
 
 using namespace AscendC;
 namespace MoeDispatchLayout {
