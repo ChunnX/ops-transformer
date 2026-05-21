@@ -49,7 +49,7 @@ public:
         // x通信输出区域：isPermuteOut=true时不占用workspace
         if (!tilingData_->isPermuteOut) {
             uint64_t commOutLen =
-                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR),
+                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR) * X_TYPE_SIZE,
                       TENSOR_LIST_SIZE);
             commOutGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += commOutLen;
