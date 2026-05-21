@@ -8,34 +8,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-########################################################################################################################
-# 调用编译方法, 生成对应编译目标
-########################################################################################################################
-
-set(_nsag_TilingSourcesExt
-        ${OPS_ADV_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling_bs1.cpp
-        ${OPS_ADV_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling_bs1_basic.cpp
-        ${OPS_ADV_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling_common.cpp
-        ${OPS_ADV_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling.cpp
+set(_nsa_selected_attention_grad_TilingSourcesExt
+        ${OPS_TRANSFORMER_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling_bs1.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling_bs1_basic.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling_common.cpp
 )
 
-set(_nsag_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
-        ${CMAKE_SOURCE_DIR}/attention/nsa_selected_attention_grad/op_host/nsa_selected_attention_grad_tiling.h
-)
-
-set(_nsag_TargetPrivateLinkLibrariesExt
-        ${UTest_NamePrefix}_OpTiling
-        error_manager
-)
-aux_source_directory(${CMAKE_SOURCE_DIR}/attention/nsa_selected_attention_grad/op_kernel _nsag_KernelSourcesExt)
-
-OpsTest_Level2_AddOp(
-        SUB_SYSTEM                              transformer/attention
-        BRIEF                                   nsaGrad
-        SNAKE                                   nsa_selected_attention_grad
-        KERNEL_TILING_DATA_DEF_H                ${_nsag_KernelTilingDataDefH}
-        KERNEL_SOURCES_EXT                      ${_nsag_KernelSourcesExt}
-        TILING_SOURCES_EXT                      ${_nsag_TilingSourcesExt}
-        UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_nsag_TargetPrivateLinkLibrariesExt}
-)
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
