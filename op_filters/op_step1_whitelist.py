@@ -232,10 +232,18 @@ def main() -> int:
         input_files = read_file_lines(args.input, logger)
         whitelist_paths = read_file_lines(args.whitelist, logger)
         
-        logger.info(f"读取到 {len(input_files)} 个输入文件")
-        logger.info(f"读取到 {len(whitelist_paths)} 个白名单路径")
+        logger.info(f"读取到 {len(input_files)} 个变更文件:")
+        for f in input_files:
+            logger.info(f"  变更文件: {f}")
+        logger.info(f"读取到 {len(whitelist_paths)} 个白名单路径:")
+        for p in whitelist_paths:
+            logger.info(f"  白名单: {p}")
         
         result = filter_whitelist(input_files, whitelist_paths, logger)
+        
+        logger.info(f"白名单过滤后剩余 {len(result['filtered_files'])} 个变更文件:")
+        for f in result["filtered_files"]:
+            logger.info(f"  剩余文件: {f}")
         
         if args.output:
             output_dir = Path(args.output).parent

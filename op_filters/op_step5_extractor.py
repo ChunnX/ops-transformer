@@ -295,14 +295,25 @@ def main() -> int:
     try:
         logger.info(f"输入文件: {args.input}")
         logger.info(f"输出文件: {args.output}")
+        logger.info(f"arch 限制输出文件: {args.arch_restrictions}")
         if args.soc:
             logger.info(f"SOC 类型: {args.soc}")
         
         input_files = read_file_lines(args.input, logger)
         
-        logger.info(f"读取到 {len(input_files)} 个输入文件")
+        logger.info(f"读取到 {len(input_files)} 个变更文件:")
+        for f in input_files:
+            logger.info(f"  输入文件: {f}")
         
         result = extract_operators(input_files, logger)
+        
+        logger.info(f"提取到 {len(result['changed_ops'])} 个算子:")
+        for op in sorted(result["changed_ops"]):
+            logger.info(f"  算子: {op}")
+        if result["op_arch_restrictions"]:
+            logger.info(f"arch 限制信息:")
+            for op, arch in result["op_arch_restrictions"].items():
+                logger.info(f"  {op}: {arch}")
         
         soc_types = set(args.soc) if args.soc else set()
         

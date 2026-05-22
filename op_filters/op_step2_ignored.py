@@ -185,9 +185,15 @@ def main() -> int:
         
         input_files = read_file_lines(args.input, logger)
         
-        logger.info(f"读取到 {len(input_files)} 个输入文件")
+        logger.info(f"读取到 {len(input_files)} 个变更文件:")
+        for f in input_files:
+            logger.info(f"  输入文件: {f}")
         
         result = filter_ignored(input_files, args.mc2, logger)
+        
+        logger.info(f"忽略规则过滤后剩余 {len(result['remaining_files'])} 个变更文件:")
+        for f in result["remaining_files"]:
+            logger.info(f"  剩余文件: {f}")
         
         if args.output:
             output_dir = Path(args.output).parent

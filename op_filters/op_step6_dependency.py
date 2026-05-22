@@ -176,13 +176,19 @@ def main() -> int:
         input_ops = read_file_lines(args.input, logger)
         dependency_data = load_dependency_json(args.dependency_json, logger)
         
-        logger.info(f"读取到 {len(input_ops)} 个变更算子")
+        logger.info(f"读取到 {len(input_ops)} 个变更算子:")
+        for op in input_ops:
+            logger.info(f"  变更算子: {op}")
         
         changed_ops = set(input_ops)
         
         reverse_graph = build_reverse_dependency_graph(dependency_data, logger)
         
         ops_to_run = find_dependent_ops(changed_ops, reverse_graph, logger)
+        
+        logger.info(f"反向依赖搜索后共 {len(ops_to_run)} 个算子需要测试:")
+        for op in sorted(ops_to_run):
+            logger.info(f"  测试算子: {op}")
         
         if args.output:
             output_dir = Path(args.output).parent

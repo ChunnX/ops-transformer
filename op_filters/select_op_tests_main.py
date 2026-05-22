@@ -161,14 +161,14 @@ def main() -> int:
             logger.info(f"SOC 类型: {sorted(soc_types)}")
         
         changed_files = read_file_lines(args.pr, logger)
-        logger.info(f"读取到 {len(changed_files)} 个变更文件")
-        for i, f in enumerate(changed_files, 1):
-            logger.debug(f"  变更文件 {i}: {f}")
+        logger.info(f"读取到 {len(changed_files)} 个变更文件:")
+        for f in changed_files:
+            logger.info(f"  变更文件: {f}")
         
         whitelist_paths = read_file_lines(args.whitelist, logger)
-        logger.info(f"读取到 {len(whitelist_paths)} 个白名单路径")
-        for i, p in enumerate(whitelist_paths, 1):
-            logger.debug(f"  白名单 {i}: {p}")
+        logger.info(f"读取到 {len(whitelist_paths)} 个白名单路径:")
+        for p in whitelist_paths:
+            logger.info(f"  白名单: {p}")
         
         logger.info("=" * 60)
         logger.info(f"动态生成依赖关系文件: {args.dependency_json}")
@@ -179,6 +179,9 @@ def main() -> int:
         
         whitelist_result = filter_whitelist(changed_files, whitelist_paths, logger)
         filtered_files = whitelist_result["filtered_files"]
+        logger.info(f"白名单过滤后剩余 {len(filtered_files)} 个变更文件:")
+        for f in filtered_files:
+            logger.info(f"  剩余文件: {f}")
         
         if not filtered_files:
             logger.info("=" * 60)
@@ -191,6 +194,9 @@ def main() -> int:
         
         ignored_result = filter_ignored(filtered_files, mc2_path, logger)
         remaining_files = ignored_result["remaining_files"]
+        logger.info(f"忽略规则过滤后剩余 {len(remaining_files)} 个变更文件:")
+        for f in remaining_files:
+            logger.info(f"  剩余文件: {f}")
         
         if not remaining_files:
             logger.info("=" * 60)
@@ -232,10 +238,20 @@ def main() -> int:
         other_files = common_3rd_result["other_files"]
         special_3rd_ops = common_3rd_result["special_3rd_ops"]
         special_common_ops = common_3rd_result["special_common_ops"]
+        logger.info(f"common/3rd过滤后剩余 {len(other_files)} 个变更文件:")
+        for f in other_files:
+            logger.info(f"  算子文件: {f}")
         
         extraction_result = extract_operators(other_files, logger)
         changed_ops = extraction_result["changed_ops"]
         op_arch_restrictions = extraction_result.get("op_arch_restrictions", {})
+        logger.info(f"提取到 {len(changed_ops)} 个算子:")
+        for op in sorted(changed_ops):
+            logger.info(f"  算子: {op}")
+        if op_arch_restrictions:
+            logger.info(f"arch 限制信息:")
+            for op, arch in op_arch_restrictions.items():
+                logger.info(f"  {op}: {arch}")
         
         if soc_types and op_arch_restrictions:
             logger.info("=" * 60)

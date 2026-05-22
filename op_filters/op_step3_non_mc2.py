@@ -166,9 +166,15 @@ def main() -> int:
         input_files = read_file_lines(args.input, logger)
         dependency_data = load_dependency_json(args.dependency_json, logger)
         
-        logger.info(f"读取到 {len(input_files)} 个输入文件")
+        logger.info(f"读取到 {len(input_files)} 个变更文件:")
+        for f in input_files:
+            logger.info(f"  输入文件: {f}")
         
         result = filter_non_mc2(input_files, args.mc2, dependency_data, logger)
+        
+        logger.info(f"非mc2过滤后剩余 {len(result['mc2_files'])} 个变更文件:")
+        for f in result["mc2_files"]:
+            logger.info(f"  mc2文件: {f}")
         
         output_files = result["mc2_files"]
         if args.output:

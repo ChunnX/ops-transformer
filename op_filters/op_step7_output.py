@@ -486,20 +486,26 @@ def main() -> int:
             if Path(args.input).exists():
                 logger.info(f"输入文件: {args.input}")
                 input_ops = read_file_lines(args.input, logger)
-                logger.info(f"读取到 {len(input_ops)} 个算子名称")
+                logger.info(f"读取到 {len(input_ops)} 个算子名称:")
+                for op in input_ops:
+                    logger.info(f"  算子: {op}")
                 all_ops_set.update(input_ops)
             
             if Path(args.special_3rd_ops).exists():
                 logger.info(f"特殊 3rd 算子文件: {args.special_3rd_ops}")
                 special_ops = read_file_lines(args.special_3rd_ops, logger)
-                logger.info(f"读取到 {len(special_ops)} 个特殊 3rd 算子")
+                logger.info(f"读取到 {len(special_ops)} 个特殊 3rd 算子:")
+                for op in special_ops:
+                    logger.info(f"  3rd算子: {op}")
                 all_ops_set.update(special_ops)
             
             if not all_ops_set:
                 logger.warning("没有读取到任何算子名称，输出空列表")
                 final_ops = []
             else:
-                logger.info(f"合并后共 {len(all_ops_set)} 个算子")
+                logger.info(f"合并后共 {len(all_ops_set)} 个算子:")
+                for op in sorted(all_ops_set):
+                    logger.info(f"  合入算子: {op}")
                 
                 if soc_types and arch_restrictions:
                     logger.info("=" * 60)
