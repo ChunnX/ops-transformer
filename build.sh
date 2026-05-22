@@ -1783,6 +1783,20 @@ build_ut() {
   fi
 }
 
+function testhbl() {
+    echo "hbltest"
+    echo "ls /home/phisik3/jenkins/workspace/work_code/open_source"
+    ls /home/phisik3/jenkins/workspace/work_code/open_source
+    echo "ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase"
+    ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase
+    echo "/home/phisik3/jenkins/workspace/work_code/open_source/opbase/include"
+    ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include
+    echo "ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common"
+    ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common
+    echo "ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common/log"
+    ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common/log
+}
+
 function build_pkg_for_single_soc() {
     local single_soc_option="$1"
     local original_option="${CUSTOM_OPTION}"
@@ -1975,7 +1989,9 @@ elif [[ "$ENABLE_BUILD_PKG" == "TRUE" ]]; then      # --pkg 新命令新使用
         soc=$(echo "${soc}" | xargs)  # 去除前后空格
         soc_options=" -DASCEND_COMPUTE_UNIT=${soc}"
         if [[ -n "${soc}" ]]; then  # 检查非空
+            testhbl
             build_pkg_for_single_soc ${soc_options} && make clean
+            testhbl
         fi
     done
 else
