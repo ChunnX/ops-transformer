@@ -258,6 +258,7 @@ if (BUILD_OPS_RTY_KERNEL)
             ascendalog
             error_manager
             platform
+            cust_opmaster
             -Wl,--as-needed
             c_sec
     )
