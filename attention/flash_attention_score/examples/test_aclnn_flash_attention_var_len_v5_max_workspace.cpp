@@ -194,111 +194,112 @@ int RunSingleTest(const TestConfig& cfg, aclrtStream stream) {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("  create smSum failed\n"); goto cleanup);
   }
 
-  // ---- IntArray 参数 ----
-  aclIntArray* prefix = nullptr;
-  if (cfg.hasPrefix) {
-    std::vector<int64_t> prefixData(cfg.numBatches, 0);
-    prefix = aclCreateIntArray(prefixData.data(), prefixData.size());
-  }
+  // ---- IntArray 参数 + 公共参数 + API 调用 (独立作用域，避免 goto 跨初始化) ----
+  do {
+    aclIntArray* prefix = nullptr;
+    if (cfg.hasPrefix) {
+      std::vector<int64_t> prefixData(cfg.numBatches, 0);
+      prefix = aclCreateIntArray(prefixData.data(), prefixData.size());
+    }
 
-  std::vector<int64_t> seqQLenData, seqKvLenData;
-  if (cfg.numBatches == 1) {
-    seqQLenData = {T1};
-    seqKvLenData = {T2};
-  } else {
-    seqQLenData = {128, T1};
-    seqKvLenData = {128, T2};
-  }
-  aclIntArray* acSeqQLen = aclCreateIntArray(seqQLenData.data(), seqQLenData.size());
-  aclIntArray* acSeqKvLen = aclCreateIntArray(seqKvLenData.data(), seqKvLenData.size());
+    std::vector<int64_t> seqQLenData, seqKvLenData;
+    if (cfg.numBatches == 1) {
+      seqQLenData = {T1};
+      seqKvLenData = {T2};
+    } else {
+      seqQLenData = {128, T1};
+      seqKvLenData = {128, T2};
+    }
+    aclIntArray* acSeqQLen = aclCreateIntArray(seqQLenData.data(), seqQLenData.size());
+    aclIntArray* acSeqKvLen = aclCreateIntArray(seqKvLenData.data(), seqKvLenData.size());
 
-  aclIntArray* qStartIdx = nullptr;
-  aclIntArray* kvStartIdx = nullptr;
-  if (cfg.hasStartIdx) {
-    std::vector<int64_t> qIdx(cfg.numBatches, 0);
-    std::vector<int64_t> kvIdx(cfg.numBatches, 0);
-    qStartIdx = aclCreateIntArray(qIdx.data(), qIdx.size());
-    kvStartIdx = aclCreateIntArray(kvIdx.data(), kvIdx.size());
-  }
+    aclIntArray* qStartIdx = nullptr;
+    aclIntArray* kvStartIdx = nullptr;
+    if (cfg.hasStartIdx) {
+      std::vector<int64_t> qIdx(cfg.numBatches, 0);
+      std::vector<int64_t> kvIdx(cfg.numBatches, 0);
+      qStartIdx = aclCreateIntArray(qIdx.data(), qIdx.size());
+      kvStartIdx = aclCreateIntArray(kvIdx.data(), kvIdx.size());
+    }
 
-  // ---- 公共参数 ----
-  char layOut[] = "TND";
-  char softmaxLayoutSame[] = "same_as_input";
-  char softmaxLayoutEmpty[] = "";
-  char* softmaxOutLayout = cfg.softmaxSameAsInput ? softmaxLayoutSame : softmaxLayoutEmpty;
-  double scaleValue = 0.088388;
-  double keepProb = 1.0;
-  int64_t preTokens = 65536;
-  int64_t nextTokens = 65536;
-  int64_t headNum = cfg.N1;
-  int64_t innerPrecise = 0;
+    char layOut[] = "TND";
+    char softmaxLayoutSame[] = "same_as_input";
+    char softmaxLayoutEmpty[] = "";
+    char* softmaxOutLayout = cfg.softmaxSameAsInput ? softmaxLayoutSame : softmaxLayoutEmpty;
+    double scaleValue = 0.088388;
+    double keepProb = 1.0;
+    int64_t preTokens = 65536;
+    int64_t nextTokens = 65536;
+    int64_t headNum = cfg.N1;
+    int64_t innerPrecise = 0;
 
-  // ==================== 调用 GetWorkspaceSize ====================
-  ret = aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
-      q, ropeQ, k, ropeK, v, pse,
-      nullptr,    // dropMask
-      nullptr,    // paddingMask (预留未使用)
-      mask,       // attenMask
-      nullptr,    // sink
-      prefix, acSeqQLen, acSeqKvLen, qStartIdx, kvStartIdx,
-      scaleValue, keepProb, preTokens, nextTokens, headNum, layOut,
-      innerPrecise, cfg.sparseMode, cfg.pseType, softmaxOutLayout,
-      smMax, smSum, nullptr, out,
-      &ws, &executor);
-  if (ret != ACL_SUCCESS) {
-    LOG_PRINT("  [ERROR] GetWorkspaceSize failed: %d\n", ret);
-    errorCount++;
-    goto cleanup;
-  }
+    // ==================== 调用 GetWorkspaceSize ====================
+    ret = aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
+        q, ropeQ, k, ropeK, v, pse,
+        nullptr,    // dropMask
+        nullptr,    // paddingMask (预留未使用)
+        mask,       // attenMask
+        nullptr,    // sink
+        prefix, acSeqQLen, acSeqKvLen, qStartIdx, kvStartIdx,
+        scaleValue, keepProb, preTokens, nextTokens, headNum, layOut,
+        innerPrecise, cfg.sparseMode, cfg.pseType, softmaxOutLayout,
+        smMax, smSum, nullptr, out,
+        &ws, &executor);
+    if (ret != ACL_SUCCESS) {
+      LOG_PRINT("  [ERROR] GetWorkspaceSize failed: %d\n", ret);
+      errorCount++;
+      break;
+    }
 
-  // ==================== 调用 GetMaxWorkspaceSize ====================
-  ret = aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(
-      q, ropeQ, k, ropeK, v, pse,
-      nullptr, nullptr, mask, nullptr,
-      prefix, acSeqQLen, acSeqKvLen, qStartIdx, kvStartIdx,
-      scaleValue, keepProb, preTokens, nextTokens, headNum, layOut,
-      innerPrecise, cfg.sparseMode, cfg.pseType, softmaxOutLayout,
-      smMax, smSum, nullptr, out,
-      &wsMax, &executorMax);
-  if (ret != ACL_SUCCESS) {
-    LOG_PRINT("  [ERROR] GetMaxWorkspaceSize failed: %d\n", ret);
-    errorCount++;
-    goto cleanup;
-  }
+    // ==================== 调用 GetMaxWorkspaceSize ====================
+    ret = aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(
+        q, ropeQ, k, ropeK, v, pse,
+        nullptr, nullptr, mask, nullptr,
+        prefix, acSeqQLen, acSeqKvLen, qStartIdx, kvStartIdx,
+        scaleValue, keepProb, preTokens, nextTokens, headNum, layOut,
+        innerPrecise, cfg.sparseMode, cfg.pseType, softmaxOutLayout,
+        smMax, smSum, nullptr, out,
+        &wsMax, &executorMax);
+    if (ret != ACL_SUCCESS) {
+      LOG_PRINT("  [ERROR] GetMaxWorkspaceSize failed: %d\n", ret);
+      errorCount++;
+      break;
+    }
 
-  // ==================== 比较结果 ====================
-  LOG_PRINT("  WorkspaceSize     = %lu\n", ws);
-  LOG_PRINT("  MaxWorkspaceSize  = %lu\n", wsMax);
-  if (wsMax >= ws) {
-    LOG_PRINT("  [PASS] %s\n", cfg.name);
-    passedCount++;
-  } else {
-    LOG_PRINT("  [FAIL] %s: MaxWorkspace(%lu) < Workspace(%lu)\n", cfg.name, wsMax, ws);
-    failedCount++;
-  }
+    // ==================== 比较结果 ====================
+    LOG_PRINT("  WorkspaceSize     = %lu\n", ws);
+    LOG_PRINT("  MaxWorkspaceSize  = %lu\n", wsMax);
+    if (wsMax >= ws) {
+      LOG_PRINT("  [PASS] %s\n", cfg.name);
+      passedCount++;
+    } else {
+      LOG_PRINT("  [FAIL] %s: MaxWorkspace(%lu) < Workspace(%lu)\n", cfg.name, wsMax, ws);
+      failedCount++;
+    }
 
-  // ==================== 用真实 workspace 执行计算 ====================
-  {
-    void* wsAddr = nullptr;
-    if (ws > 0) {
-      ret = aclrtMalloc(&wsAddr, ws, ACL_MEM_MALLOC_HUGE_FIRST);
+    // ==================== 用真实 workspace 执行计算 ====================
+    {
+      void* wsAddr = nullptr;
+      if (ws > 0) {
+        ret = aclrtMalloc(&wsAddr, ws, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (ret != ACL_SUCCESS) {
+          LOG_PRINT("  [WARN] workspace malloc failed\n");
+          break;
+        }
+      }
+      ret = aclnnFlashAttentionVarLenScoreV5(wsAddr, ws, executor, stream);
       if (ret != ACL_SUCCESS) {
-        LOG_PRINT("  [WARN] workspace malloc failed\n");
-        goto cleanup;
+        LOG_PRINT("  [WARN] execution failed: %d\n", ret);
+      }
+      ret = aclrtSynchronizeStream(stream);
+      if (ret != ACL_SUCCESS) {
+        LOG_PRINT("  [WARN] sync failed: %d\n", ret);
+      }
+      if (wsAddr != nullptr) {
+        aclrtFree(wsAddr);
       }
     }
-    ret = aclnnFlashAttentionVarLenScoreV5(wsAddr, ws, executor, stream);
-    if (ret != ACL_SUCCESS) {
-      LOG_PRINT("  [WARN] execution failed: %d\n", ret);
-    }
-    ret = aclrtSynchronizeStream(stream);
-    if (ret != ACL_SUCCESS) {
-      LOG_PRINT("  [WARN] sync failed: %d\n", ret);
-    }
-    if (wsAddr != nullptr) {
-      aclrtFree(wsAddr);
-    }
-  }
+  } while (false);
 
 cleanup:
   if (q)       aclDestroyTensor(q);
