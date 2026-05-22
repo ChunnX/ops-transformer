@@ -226,10 +226,12 @@ bool GMMFRWeightQuantTiling::InferScenario()
         return true;
     }
 
-    OP_LOGE(
-        context_->GetNodeName(), "Only support MX-A8W4-WEIGHT-NZ mode. current xDtype: %s, wDtype: %s, scaleDtype: %s",
-        ge::TypeUtils::DataTypeToSerialString(xDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(wDtype).c_str(),
-        ge::TypeUtils::DataTypeToSerialString(scaleDtype).c_str());
+    std::string incorrectDtypes = std::string("xDtype=") + ge::TypeUtils::DataTypeToSerialString(xDtype).c_str() +
+        ", wDtype=" + ge::TypeUtils::DataTypeToSerialString(wDtype).c_str() +
+        ", scaleDtype=" + ge::TypeUtils::DataTypeToSerialString(scaleDtype).c_str();
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x, w, scale",
+        incorrectDtypes.c_str(),
+        "Only support MX-A8W4-WEIGHT-NZ mode (xDtype=DT_FLOAT8_E4M3FN, wDtype=DT_FLOAT4_E2M1, scaleDtype=DT_FLOAT8_E8M0)");
     return false;
 }
 
@@ -286,33 +288,55 @@ bool CheckMxA8W4NzAttrPtr(gert::TilingContext *contex)
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(contex->GetNodeName(), "Attrs is nullptr"), return false);
 
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
-    OP_CHECK_IF((transposeXPtr != nullptr && (*transposeXPtr)),
-                OP_LOGE(contex->GetNodeName(), "transpose_x should be false or nullptr, but now is true"),
-                return false);
+    if (unlikely(transposeXPtr != nullptr && (*transposeXPtr))) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "transpose_x",
+            "true", "transpose_x should be false or nullptr, but now is true");
+        return false;
+    }
 
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
-    OP_CHECK_IF(transposeWeightPtr == nullptr,
-                OP_LOGE(contex->GetNodeName(), "transpose_w should not be nullptr, but now is nullptr"), return false);
-    OP_CHECK_IF(!(*transposeWeightPtr),
-                OP_LOGE(contex->GetNodeName(), "transpose_w should be true, but now is false"), return false);
+    if (unlikely(transposeWeightPtr == nullptr)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "transpose_w",
+            "nullptr", "transpose_w should not be nullptr, but now is nullptr");
+        return false;
+    }
+    if (unlikely(!(*transposeWeightPtr))) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "transpose_w",
+            "false", "transpose_w should be true, but now is false");
+        return false;
+    }
 
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
-    OP_CHECK_IF(groupListTypePtr == nullptr, OP_LOGE(contex->GetNodeName(), "group_list_type should not be nullptr"),
-                return false);
-    OP_CHECK_IF(*groupListTypePtr != 0 && *groupListTypePtr != 1,
-                OP_LOGE(contex->GetNodeName(), "Attr groupListType must be 0 or 1, actual is %d.", *groupListTypePtr),
-                return false);
+    if (unlikely(groupListTypePtr == nullptr)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "group_list_type",
+            "nullptr", "group_list_type should not be nullptr");
+        return false;
+    }
+    if (unlikely(*groupListTypePtr != 0 && *groupListTypePtr != 1)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "groupListType",
+            std::to_string(*groupListTypePtr).c_str(), "Attr groupListType must be 0 or 1");
+        return false;
+    }
 
     const int64_t *outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
-    OP_CHECK_IF(outputDtypePtr == nullptr, OP_LOGE(contex->GetNodeName(), "dtype should not be nullptr"), return false);
-    OP_CHECK_IF(*outputDtypePtr != 0,
-                OP_LOGE(contex->GetNodeName(), "Attr dtype only support 0(float32), actual is %d.", *outputDtypePtr),
-                return false);
+    if (unlikely(outputDtypePtr == nullptr)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "dtype",
+            "nullptr", "dtype should not be nullptr");
+        return false;
+    }
+    if (unlikely(*outputDtypePtr != 0)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "dtype",
+            std::to_string(*outputDtypePtr).c_str(), "Attr dtype only support 0(float32)");
+        return false;
+    }
 
     // offset must be nullptr in MxA8W4 weight Nz scenario
     auto offsetDesc = contex->GetOptionalInputDesc(OFFSET_INDEX);
-    OP_CHECK_IF(offsetDesc != nullptr,
-                OP_LOGE(contex->GetNodeName(), "offset must be nullptr in MxA8W4 weight Nz scenario."), return false);
+    if (unlikely(offsetDesc != nullptr)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "offset",
+            "not nullptr", "offset must be nullptr in MxA8W4 weight Nz scenario");
+        return false;
+    }
 
     return true;
 }
@@ -324,9 +348,12 @@ static bool ValidateXShape(gert::TilingContext *contex, int64_t &mSize, int64_t 
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto xDimNum = xShape.GetDimNum();
 
-    OP_CHECK_IF(xDimNum != DIM_NUM_X,
-                OP_LOGE(contex->GetNodeName(), "The dimension of x must be %u, actual is %zu", DIM_NUM_X, xDimNum),
-                return false);
+    if (unlikely(xDimNum != DIM_NUM_X)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x",
+            std::to_string(xDimNum).c_str(),
+            ("The dimension of x must be " + std::to_string(DIM_NUM_X)).c_str());
+        return false;
+    }
     mSize = xShape.GetDim(0);
     kSize = xShape.GetDim(1);
     return true;
@@ -341,18 +368,22 @@ static bool ValidateWShape(gert::TilingContext *contex, ge::Format wFormat, int6
     auto wStorageDimNum = wStorageShape.GetDimNum();
 
     if (wFormat == ge::FORMAT_FRACTAL_NZ || wFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
-        OP_CHECK_IF(wStorageDimNum != DIM_NUM_WEIGHT_NZ,
-                    OP_LOGE(contex->GetNodeName(), "The dimension of w (FRACTAL_NZ) must be %u, actual is %zu",
-                            DIM_NUM_WEIGHT_NZ, wStorageDimNum),
-                    return false);
+        if (unlikely(wStorageDimNum != DIM_NUM_WEIGHT_NZ)) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w",
+                std::to_string(wStorageDimNum).c_str(),
+                ("The dimension of w (FRACTAL_NZ) must be " + std::to_string(DIM_NUM_WEIGHT_NZ)).c_str());
+            return false;
+        }
         const gert::Shape &wOriginShape = wShape->GetOriginShape();
         nSize = wOriginShape.GetDim(1);
         kFromW = wOriginShape.GetDim(2); // w origin shape is [E, N, K], dim 2 is K axis
     } else {
-        OP_CHECK_IF(wStorageDimNum != DIM_NUM_WEIGHT,
-                    OP_LOGE(contex->GetNodeName(), "The dimension of w must be %u, actual is %zu", DIM_NUM_WEIGHT,
-                            wStorageDimNum),
-                    return false);
+        if (unlikely(wStorageDimNum != DIM_NUM_WEIGHT)) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w",
+                std::to_string(wStorageDimNum).c_str(),
+                ("The dimension of w must be " + std::to_string(DIM_NUM_WEIGHT)).c_str());
+            return false;
+        }
         nSize = wStorageShape.GetDim(1);
         kFromW = wStorageShape.GetDim(2); // w storage shape is [E, N, K], dim 2 is K axis
     }
@@ -365,10 +396,14 @@ static bool ValidateGroupListShape(gert::TilingContext *contex, int64_t eFromW)
 {
     auto groupListStorageShape = contex->GetOptionalInputShape(GROUPLIST_INDEX);
     const gert::Shape &groupListShape = groupListStorageShape->GetOriginShape();
-    OP_CHECK_IF(
-        eFromW != groupListShape.GetDim(0),
-        OP_LOGE(contex->GetNodeName(), "E mismatch: w has E=%ld, group_list has %ld", eFromW, groupListShape.GetDim(0)),
-        return false);
+    if (unlikely(eFromW != groupListShape.GetDim(0))) {
+        std::string incorrectValues = "w E=" + std::to_string(eFromW) +
+            ", group_list dim[0]=" + std::to_string(groupListShape.GetDim(0));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w and group_list",
+            incorrectValues.c_str(),
+            "E mismatch: w E dimension must equal group_list dim[0]");
+        return false;
+    }
     return true;
 }
 
@@ -377,14 +412,19 @@ static bool ValidateRowIndexShape(gert::TilingContext *contex, int64_t mSize)
 {
     auto rowIndexStorageShape = contex->GetOptionalInputShape(ROW_INDEX_INDEX);
     const gert::Shape &rowIndexShape = rowIndexStorageShape->GetOriginShape();
-    OP_CHECK_IF(rowIndexShape.GetDimNum() != DIM_NUM_ROW_INDEX,
-                OP_LOGE(contex->GetNodeName(), "The dimension of row_index must be %u, actual is %zu",
-                        DIM_NUM_ROW_INDEX, rowIndexShape.GetDimNum()),
-                return false);
-    OP_CHECK_IF(
-        rowIndexShape.GetDim(0) != mSize,
-        OP_LOGE(contex->GetNodeName(), "row_index shape[0]=%ld must equal M=%ld", rowIndexShape.GetDim(0), mSize),
-        return false);
+    if (unlikely(rowIndexShape.GetDimNum() != DIM_NUM_ROW_INDEX)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "row_index",
+            std::to_string(rowIndexShape.GetDimNum()).c_str(),
+            ("The dimension of row_index must be " + std::to_string(DIM_NUM_ROW_INDEX)).c_str());
+        return false;
+    }
+    if (unlikely(rowIndexShape.GetDim(0) != mSize)) {
+        std::string incorrectShapes = "row_index shape[0]=" + std::to_string(rowIndexShape.GetDim(0)) +
+            ", M=" + std::to_string(mSize);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "row_index",
+            incorrectShapes.c_str(), "row_index shape[0] must equal M");
+        return false;
+    }
     return true;
 }
 
@@ -397,13 +437,19 @@ static bool ValidateLogitShape(gert::TilingContext *contex, int64_t mSize)
 
     auto logitStorageShape = contex->GetOptionalInputShape(LOGIT_INDEX);
     const gert::Shape &logitShape = logitStorageShape->GetOriginShape();
-    OP_CHECK_IF(logitShape.GetDimNum() != DIM_NUM_LOGIT,
-                OP_LOGE(contex->GetNodeName(), "The dimension of logit must be %u, actual is %zu", DIM_NUM_LOGIT,
-                        logitShape.GetDimNum()),
-                return false);
-    OP_CHECK_IF(logitShape.GetDim(0) != mSize,
-                OP_LOGE(contex->GetNodeName(), "logit shape[0]=%ld must equal M=%ld", logitShape.GetDim(0), mSize),
-                return false);
+    if (unlikely(logitShape.GetDimNum() != DIM_NUM_LOGIT)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "logit",
+            std::to_string(logitShape.GetDimNum()).c_str(),
+            ("The dimension of logit must be " + std::to_string(DIM_NUM_LOGIT)).c_str());
+        return false;
+    }
+    if (unlikely(logitShape.GetDim(0) != mSize)) {
+        std::string incorrectShapes = "logit shape[0]=" + std::to_string(logitShape.GetDim(0)) +
+            ", M=" + std::to_string(mSize);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "logit",
+            incorrectShapes.c_str(), "logit shape[0] must equal M");
+        return false;
+    }
     return true;
 }
 
@@ -422,16 +468,26 @@ static bool ValidateBiasShape(gert::TilingContext *contex, int64_t eFromW, int64
     if (biasShape.GetDimNum() == 0)
         return true;
 
-    OP_CHECK_IF(biasShape.GetDimNum() != DIM_NUM_BIAS,
-                OP_LOGE(contex->GetNodeName(), "The dimension of bias must be %u, actual is %zu", DIM_NUM_BIAS,
-                        biasShape.GetDimNum()),
-                return false);
-    OP_CHECK_IF(biasShape.GetDim(0) != eFromW,
-                OP_LOGE(contex->GetNodeName(), "bias shape[0]=%ld must equal E=%ld", biasShape.GetDim(0), eFromW),
-                return false);
-    OP_CHECK_IF(biasShape.GetDim(1) != nSize,
-                OP_LOGE(contex->GetNodeName(), "bias shape[1]=%ld must equal N=%ld", biasShape.GetDim(1), nSize),
-                return false);
+    if (unlikely(biasShape.GetDimNum() != DIM_NUM_BIAS)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "bias",
+            std::to_string(biasShape.GetDimNum()).c_str(),
+            ("The dimension of bias must be " + std::to_string(DIM_NUM_BIAS)).c_str());
+        return false;
+    }
+    if (unlikely(biasShape.GetDim(0) != eFromW)) {
+        std::string incorrectShapes = "bias shape[0]=" + std::to_string(biasShape.GetDim(0)) +
+            ", E=" + std::to_string(eFromW);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "bias",
+            incorrectShapes.c_str(), "bias shape[0] must equal E");
+        return false;
+    }
+    if (unlikely(biasShape.GetDim(1) != nSize)) {
+        std::string incorrectShapes = "bias shape[1]=" + std::to_string(biasShape.GetDim(1)) +
+            ", N=" + std::to_string(nSize);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "bias",
+            incorrectShapes.c_str(), "bias shape[1] must equal N");
+        return false;
+    }
     return true;
 }
 
@@ -442,23 +498,41 @@ static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int6
     const gert::Shape &scaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = scaleShape.GetDimNum();
 
-    OP_CHECK_IF(scaleDimNum != DIM_NUM_MX_SCALE,
-                OP_LOGE(contex->GetNodeName(), "The dimension of scale must be %u, actual is %zu", DIM_NUM_MX_SCALE,
-                        scaleDimNum),
-                return false);
-    OP_CHECK_IF(scaleShape.GetDim(0) != eFromW,
-                OP_LOGE(contex->GetNodeName(), "scale shape[0]=%ld must equal E=%ld", scaleShape.GetDim(0), eFromW),
-                return false);
-    OP_CHECK_IF(scaleShape.GetDim(1) != nSize,
-                OP_LOGE(contex->GetNodeName(), "scale shape[1]=%ld must equal N=%ld", scaleShape.GetDim(1), nSize),
-                return false);
-    OP_CHECK_IF(scaleShape.GetDim(2) != kCeilDiv64,
-                OP_LOGE(contex->GetNodeName(), "scale shape[2]=%ld must equal CeilDiv(K, 64)=%ld", scaleShape.GetDim(2),
-                        kCeilDiv64),
-                return false);
-    OP_CHECK_IF(scaleShape.GetDim(3) != MX_INNER_DIM,
-                OP_LOGE(contex->GetNodeName(), "scale shape[3]=%ld must equal %d", scaleShape.GetDim(3), MX_INNER_DIM),
-                return false);
+    if (unlikely(scaleDimNum != DIM_NUM_MX_SCALE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            std::to_string(scaleDimNum).c_str(),
+            ("The dimension of scale must be " + std::to_string(DIM_NUM_MX_SCALE)).c_str());
+        return false;
+    }
+    if (unlikely(scaleShape.GetDim(0) != eFromW)) {
+        std::string incorrectShapes = "scale shape[0]=" + std::to_string(scaleShape.GetDim(0)) +
+            ", E=" + std::to_string(eFromW);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            incorrectShapes.c_str(), "scale shape[0] must equal E");
+        return false;
+    }
+    if (unlikely(scaleShape.GetDim(1) != nSize)) {
+        std::string incorrectShapes = "scale shape[1]=" + std::to_string(scaleShape.GetDim(1)) +
+            ", N=" + std::to_string(nSize);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            incorrectShapes.c_str(), "scale shape[1] must equal N");
+        return false;
+    }
+    if (unlikely(scaleShape.GetDim(2) != kCeilDiv64)) {
+        std::string incorrectShapes = "scale shape[2]=" + std::to_string(scaleShape.GetDim(2)) +
+            ", CeilDiv(K, 64)=" + std::to_string(kCeilDiv64);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            incorrectShapes.c_str(), "scale shape[2] must equal CeilDiv(K, 64)");
+        return false;
+    }
+    if (unlikely(scaleShape.GetDim(3) != MX_INNER_DIM)) {
+        std::string incorrectShapes = "scale shape[3]=" + std::to_string(scaleShape.GetDim(3)) +
+            ", expected=" + std::to_string(MX_INNER_DIM);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            incorrectShapes.c_str(),
+            ("scale shape[3] must equal " + std::to_string(MX_INNER_DIM)).c_str());
+        return false;
+    }
     return true;
 }
 
@@ -469,22 +543,34 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
     const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
     auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
 
-    OP_CHECK_IF(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
-                OP_LOGE(contex->GetNodeName(), "The dimension of pertokenScale must be %u, actual is %zu",
-                        DIM_NUM_MX_PERTOKENSCALE, pertokenScaleDimNum),
-                return false);
-    OP_CHECK_IF(pertokenScaleShape.GetDim(0) != mSize,
-                OP_LOGE(contex->GetNodeName(), "pertokenScale shape[0]=%ld must equal M=%ld",
-                        pertokenScaleShape.GetDim(0), mSize),
-                return false);
-    OP_CHECK_IF(pertokenScaleShape.GetDim(1) != kCeilDiv64,
-                OP_LOGE(contex->GetNodeName(), "pertokenScale shape[1]=%ld must equal CeilDiv(K, 64)=%ld",
-                        pertokenScaleShape.GetDim(1), kCeilDiv64),
-                return false);
-    OP_CHECK_IF(pertokenScaleShape.GetDim(2) != MX_INNER_DIM,
-                OP_LOGE(contex->GetNodeName(), "pertokenScale shape[2]=%ld must equal %d", pertokenScaleShape.GetDim(2),
-                        MX_INNER_DIM),
-                return false);
+    if (unlikely(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScale",
+            std::to_string(pertokenScaleDimNum).c_str(),
+            ("The dimension of pertokenScale must be " + std::to_string(DIM_NUM_MX_PERTOKENSCALE)).c_str());
+        return false;
+    }
+    if (unlikely(pertokenScaleShape.GetDim(0) != mSize)) {
+        std::string incorrectShapes = "pertokenScale shape[0]=" + std::to_string(pertokenScaleShape.GetDim(0)) +
+            ", M=" + std::to_string(mSize);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScale",
+            incorrectShapes.c_str(), "pertokenScale shape[0] must equal M");
+        return false;
+    }
+    if (unlikely(pertokenScaleShape.GetDim(1) != kCeilDiv64)) {
+        std::string incorrectShapes = "pertokenScale shape[1]=" + std::to_string(pertokenScaleShape.GetDim(1)) +
+            ", CeilDiv(K, 64)=" + std::to_string(kCeilDiv64);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScale",
+            incorrectShapes.c_str(), "pertokenScale shape[1] must equal CeilDiv(K, 64)");
+        return false;
+    }
+    if (unlikely(pertokenScaleShape.GetDim(2) != MX_INNER_DIM)) {
+        std::string incorrectShapes = "pertokenScale shape[2]=" + std::to_string(pertokenScaleShape.GetDim(2)) +
+            ", expected=" + std::to_string(MX_INNER_DIM);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScale",
+            incorrectShapes.c_str(),
+            ("pertokenScale shape[2] must equal " + std::to_string(MX_INNER_DIM)).c_str());
+        return false;
+    }
     return true;
 }
 
@@ -509,27 +595,40 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
                 OP_LOGE(contex->GetNodeName(), "ValidateWShape failed."), return false);
 
     // Validate K consistency between x and w
-    OP_CHECK_IF(kSize != kFromW,
-                OP_LOGE(contex->GetNodeName(), "K dimension mismatch: x has K=%ld, w has K=%ld", kSize, kFromW),
-                return false);
+    if (unlikely(kSize != kFromW)) {
+        std::string incorrectDims = "x K=" + std::to_string(kSize) + ", w K=" + std::to_string(kFromW);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x and w",
+            incorrectDims.c_str(), "K dimension mismatch: x K must equal w K");
+        return false;
+    }
 
     // Validate K and N alignment for MX-A8W4 weight quant
-    OP_CHECK_IF(
-        kSize % ALIGN_SIZE_KN != 0,
-        OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%ld", ALIGN_SIZE_KN, kSize),
-        return false);
-    OP_CHECK_IF(
-        nSize % ALIGN_SIZE_KN != 0,
-        OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%ld", ALIGN_SIZE_KN, nSize),
-        return false);
+    if (unlikely(kSize % ALIGN_SIZE_KN != 0)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x",
+            ("K=" + std::to_string(kSize)).c_str(),
+            ("K dimension must be aligned to " + std::to_string(ALIGN_SIZE_KN)).c_str());
+        return false;
+    }
+    if (unlikely(nSize % ALIGN_SIZE_KN != 0)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w",
+            ("N=" + std::to_string(nSize)).c_str(),
+            ("N dimension must be aligned to " + std::to_string(ALIGN_SIZE_KN)).c_str());
+        return false;
+    }
 
     // Validate K and N minimum size for MX-A8W4 weight quant
-    OP_CHECK_IF(kSize < MIN_KN_SIZE,
-                OP_LOGE(contex->GetNodeName(), "K dimension must be >= %ld, actual K=%ld", MIN_KN_SIZE, kSize),
-                return false);
-    OP_CHECK_IF(nSize < MIN_KN_SIZE,
-                OP_LOGE(contex->GetNodeName(), "N dimension must be >= %ld, actual N=%ld", MIN_KN_SIZE, nSize),
-                return false);
+    if (unlikely(kSize < MIN_KN_SIZE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x",
+            ("K=" + std::to_string(kSize)).c_str(),
+            ("K dimension must be >= " + std::to_string(MIN_KN_SIZE)).c_str());
+        return false;
+    }
+    if (unlikely(nSize < MIN_KN_SIZE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w",
+            ("N=" + std::to_string(nSize)).c_str(),
+            ("N dimension must be >= " + std::to_string(MIN_KN_SIZE)).c_str());
+        return false;
+    }
 
     // 3. Validate group_list shape
     OP_CHECK_IF(!ValidateGroupListShape(contex, eFromW),
@@ -568,29 +667,50 @@ bool CheckMxA8W4AttrWithInput(gert::TilingContext *contex)
 
     const int64_t *outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
     int64_t outputBS = outputBSPtr != nullptr ? *outputBSPtr : 0;
-    OP_CHECK_IF(outputBS < 0, OP_LOGE(contex->GetNodeName(), "Attr outputBS should be >=0."), return false);
+    if (unlikely(outputBS < 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "outputBS",
+            std::to_string(outputBS).c_str(), "Attr outputBS should be >=0");
+        return false;
+    }
 
     auto sharedInputDesc = contex->GetOptionalInputDesc(SHARE_INPUT_INDEX);
     if (sharedInputDesc != nullptr) {
         auto sharedInputStorageShape = contex->GetOptionalInputShape(SHARE_INPUT_INDEX);
-        OP_CHECK_IF(sharedInputStorageShape == nullptr,
-                    OP_LOGE(contex->GetNodeName(), "Input sharedInputStorageShape should not be nullptr."),
-                    return false);
+        if (unlikely(sharedInputStorageShape == nullptr)) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "sharedInput",
+                "nullptr", "Input sharedInputStorageShape should not be nullptr");
+            return false;
+        }
 
         const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
-        OP_CHECK_IF(shareInputWeightPtr == nullptr,
-                    OP_LOGE(contex->GetNodeName(), "Input shareInputWeightPtr should not be nullptr."), return false);
+        if (unlikely(shareInputWeightPtr == nullptr)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "shareInputWeight",
+                "nullptr", "Input shareInputWeightPtr should not be nullptr");
+            return false;
+        }
 
         const int64_t *shareInputOffsetPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SHARE_INPUT_OFFSET);
-        OP_CHECK_IF(shareInputOffsetPtr == nullptr,
-                    OP_LOGE(contex->GetNodeName(), "Input shareInputOffsetPtr should not be nullptr."), return false);
+        if (unlikely(shareInputOffsetPtr == nullptr)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "shareInputOffset",
+                "nullptr", "Input shareInputOffsetPtr should not be nullptr");
+            return false;
+        }
 
-        OP_CHECK_IF((*shareInputOffsetPtr) < 0, OP_LOGE(contex->GetNodeName(), "Attr shareInputOffset should be >=0."),
-                    return false);
-        OP_CHECK_IF((*shareInputOffsetPtr) + sharedInputStorageShape->GetOriginShape().GetDim(0) > outputBS,
-                    OP_LOGE(contex->GetNodeName(), "Attr shareInputOffset[%lu] should less or equal to outputBS[%ld].",
-                            (*shareInputOffsetPtr), outputBS),
-                    return false);
+        if (unlikely((*shareInputOffsetPtr) < 0)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "shareInputOffset",
+                std::to_string(*shareInputOffsetPtr).c_str(), "Attr shareInputOffset should be >=0");
+            return false;
+        }
+        if (unlikely((*shareInputOffsetPtr) + sharedInputStorageShape->GetOriginShape().GetDim(0) > outputBS)) {
+            std::string incorrectValues = "shareInputOffset=" + std::to_string(*shareInputOffsetPtr) +
+                ", sharedInputStorageShape.GetDim(0)=" +
+                std::to_string(sharedInputStorageShape->GetOriginShape().GetDim(0)) +
+                ", outputBS=" + std::to_string(outputBS);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "shareInputOffset",
+                incorrectValues.c_str(),
+                "Attr shareInputOffset + sharedInputStorageShape.GetDim(0) should be <= outputBS");
+            return false;
+        }
     }
 
     return true;
