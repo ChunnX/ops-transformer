@@ -146,8 +146,8 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
 
     // 获取commMode
     uint8_t commMode = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, commMode) !=
-        ge::GRAPH_SUCCESS) {
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
@@ -485,8 +485,8 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     uint32_t biasDType = DTYPE_BIAS_FP32;
 
     uint8_t commMode = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, commMode) !=
-        ge::GRAPH_SUCCESS) {
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
