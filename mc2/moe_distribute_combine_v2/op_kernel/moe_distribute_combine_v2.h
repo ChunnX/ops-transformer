@@ -1712,6 +1712,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
 template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
 {
+    return ;
     if ASCEND_IS_AIV { // 全aiv处理
         if constexpr (IsNeedReduceScatter) {
             ReduceScatterTrans();
