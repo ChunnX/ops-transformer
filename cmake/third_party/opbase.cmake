@@ -12,11 +12,11 @@ set(OPBASE_TAG_ID 6604d3c3aab00e34221fb2690db0a5d5c8771599)
 if(EXISTS "${PROJECT_SOURCE_DIR}/../../ops-base")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../../ops-base REALPATH)
-  message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
+  message(STATUS "1Find opbase source dir: ${OPBASE_SOURCE_PATH}")
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/opbase")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/opbase REALPATH)
-  message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
+  message(STATUS "2Find opbase source dir: ${OPBASE_SOURCE_PATH}")
   execute_process(
     COMMAND git checkout ${OPBASE_TAG_ID}
     WORKING_DIRECTORY ${OPBASE_SOURCE_PATH}
@@ -38,6 +38,8 @@ else()
 
   set(OPBASE_SOURCE_PATH ${CANN_3RD_LIB_PATH}/opbase)
 
+  message(STATUS "3Find opbase source dir: ${OPBASE_SOURCE_PATH}")
+
   if(EXISTS ${OPBASE_SOURCE_PATH}/aicpu_common)
     file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/aicpu_common)
   endif()
@@ -51,3 +53,10 @@ else()
     file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel)
   endif()
 endif()
+
+file(GLOB MY_FILES "/home/phisik3/jenkins/workspace/work_code/open_source/*")
+
+message(STATUS "opb Files in open_source:")
+foreach(f ${MY_FILES})
+    message(STATUS "  ${f}")
+endforeach()
