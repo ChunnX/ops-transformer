@@ -29,7 +29,7 @@ protected:
 
     static void TearDownTestCase()
     {
-        cout << "MhcSinkhornOpapiUt TearDown" << endl; 1
+        cout << "MhcSinkhornOpapiUt TearDown" << endl;
     }
 };
 
