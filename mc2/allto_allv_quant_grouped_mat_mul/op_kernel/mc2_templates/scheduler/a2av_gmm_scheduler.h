@@ -79,16 +79,17 @@ public:
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
-        // 计算类使用的workspace起始地址（偏移后的workspace）
-        // localComputeOp和computeOp串行执行，共享同一份workspace（groupList/ptrTable在各自Process内写入和消费）
+        // groupList和workspace共享同一片GM区域（groupList在开头，ptrTable紧跟，剩余给gmmASWKernel内部缓冲）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
+        // localComputeOp和computeOp串行执行，共享同一份workspace（groupList/ptrTable在各自Process内写入和消费）
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
+                                computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
-                       tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM,
+                       computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe,
+                       isA2avGmmFlag);
     }
 
     __aicore__ inline void Process()

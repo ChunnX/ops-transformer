@@ -35,7 +35,7 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
-        GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
+        GM_ADDR groupListGM, GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
         TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
     {
         if ASCEND_IS_AIV {
@@ -59,17 +59,8 @@ public:
         bs_ = tilingData_->taskTilingInfo.BS;
         a_ = tilingData_->taskTilingInfo.A;
 
-        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * CeilDiv(h1_, PACK_FACTOR) * X_TYPE_SIZE);
-        // 将 permuteOutSize 对齐到 512 字节
-        permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
-        uint64_t permuteXScaleSize =
-            a_ * Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-            Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
-        // permuteXScaleSize 对齐到512字节
-        permuteXScaleSize = Mc2QuantUtils::Align(permuteXScaleSize, TENSOR_LIST_SIZE);
-        uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_; // GMM计算所需的groupList GM空间大小
-        groupListGm_ = workspaceGM_;
-
+        uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_;
+        groupListGm_ = groupListGM;
         ptrTableBase_ = groupListGm_ + groupListSize;
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
