@@ -33,8 +33,10 @@ struct MegaMoeConfig {
     uint32_t weightTwoIndex = 5U;
     uint32_t weightScalesOneIndex = 6U;
     uint32_t weightScalesTwoIndex = 7U;
-    uint32_t xActiveMaskIndex = 8U;
-    uint32_t scalesIndex = 9U;
+    uint32_t biasOneIndex = 8U;
+    uint32_t biasTwoIndex = 9U;
+    uint32_t xActiveMaskIndex = 10U;
+    uint32_t scalesIndex = 11U;
     uint32_t yIndex = 0U;
     uint32_t expertTokenNumsIndex = 1U;
     uint32_t attrMoeExpertNumIndex = 0U;
@@ -45,7 +47,13 @@ struct MegaMoeConfig {
     uint32_t attrDispatchQuantOutTypeIndex = 5U;
     uint32_t attrCombineQuantModeIndex = 6U;
     uint32_t attrCommAlgIndex = 7U;
-    uint32_t attrGlobalBsIndex = 8U;
+    uint32_t attrNumMaxTokenPerRankIndex = 8U;
+    uint32_t attrActivationIndex = 9U;
+    uint32_t attrActivationClampIndex = 10U;
+    uint32_t attrGmm2XDtypeIndex = 11U;
+    uint32_t attrTransposeWeight1Index = 12U;
+    uint32_t attrTransposeWeight2Index = 13U;
+    uint32_t attrWeight1InterleaveIndex = 14U;
     bool isMc2Context = false;
 };
 using namespace Ops::Transformer::OpTiling;

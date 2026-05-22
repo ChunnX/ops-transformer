@@ -28,10 +28,13 @@ extern "C" {
 extern aclnnStatus aclnnInnerMegaMoeGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* topkIds, const aclTensor* topkWeights,
     const aclTensorList* weight1, const aclTensorList* weight2, const aclTensorList* weightScales1Optional,
-    const aclTensorList* weightScales2Optional, const aclTensor* xActiveMaskOptional,
+    const aclTensorList* weightScales2Optional, const aclTensorList* bias1Optional,
+    const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
-    const char* commAlg, int64_t globalBs, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
+    const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
+    int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
+    aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor);
 
 
@@ -41,10 +44,13 @@ extern aclnnStatus aclnnInnerMegaMoe(void* workspace, uint64_t workspaceSize,
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* topkIds, const aclTensor* topkWeights,
     const aclTensorList* weight1, const aclTensorList* weight2, const aclTensorList* weightScales1Optional,
-    const aclTensorList* weightScales2Optional, const aclTensor* xActiveMaskOptional,
+    const aclTensorList* weightScales2Optional, const aclTensorList* bias1Optional,
+    const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
-    const char* commAlg, int64_t globalBs, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
+    const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
+    int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
+    aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
@@ -60,9 +66,12 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
-        weightScales1Optional, weightScales2Optional, xActiveMaskOptional, scalesOptional,
+        weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
+        xActiveMaskOptional, scalesOptional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutType,
-        combineQuantMode, commAlg, globalBs, yOut, expertTokenNumsOut, workspaceSize, executor);
+        combineQuantMode, commAlg, numMaxTokenPerRank, activation, activationClamp,
+        gmm2XDtype, transposeWeight1, transposeWeight2, weight1Interleave,
+        yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
