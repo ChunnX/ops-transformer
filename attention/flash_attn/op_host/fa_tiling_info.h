@@ -124,7 +124,8 @@ const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"BNSD", FaLayout::BNSD},
                                                    {"TND", FaLayout::TND},
                                                    {"PA_BBND", FaLayout::PA_BBND},
-                                                   {"PA_BNBD", FaLayout::PA_BNBD}};
+                                                   {"PA_BNBD", FaLayout::PA_BNBD},
+                                                   {"PA_Nz", FaLayout::PA_Nz}};
 
 enum class FaAxis : uint32_t {
     B = 0,

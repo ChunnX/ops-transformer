@@ -45,7 +45,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    0: 连续（不开pageattention）
                       //    1: PA_BBND
                       //    2: PA_BNBD
-                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2),
+                      //    3: PA_NZ
+                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2, 3),
 
                       // hasAttenMask (1-bit)
                       //    0: false
@@ -60,7 +61,7 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
                                                           InOutLayoutType_BNSD, InOutLayoutType_TND,
                                                           InOutLayoutType_BNSD_BSND),
-                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2),
+                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
                                      ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1),
                                      ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
