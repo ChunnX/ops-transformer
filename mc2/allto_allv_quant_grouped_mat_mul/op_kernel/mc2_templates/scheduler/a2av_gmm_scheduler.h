@@ -57,11 +57,11 @@ public:
             commOutGm_ = permuteOutOptionalGM;
         }
         computeScaleGm_ = gmmxScaleGm_;
-        // gmmX comm init
-        const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
-        uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
-                                      offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
-        commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_);
+        // gmmX comm init (disabled for debugging: no HCCL init/end to avoid hang)
+        // const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
+        // uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
+        //                               offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
+        // commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_);
         // scale commOut区域：MX场景scale通信输出
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
@@ -97,7 +97,7 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
-        // Communication + compute flow (disabled for debugging)
+        // Communication + compute flow (disabled for debugging: shared expert only)
         // if constexpr (MX_QUANT_MODE) {
         //     if (isScaleBatchMode_) {
         //         ProcessScaleCommBatchMode();
@@ -113,7 +113,7 @@ public:
 protected:
     __aicore__ inline void End()
     {
-        commOp.End();
+        // commOp.End(); // disabled for debugging: no HCCL finalize
         computeOp.End();
         localComputeOp.End();
     }
