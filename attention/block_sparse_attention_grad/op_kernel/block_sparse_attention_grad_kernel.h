@@ -16,17 +16,17 @@
 #ifndef BLOCK_SPARSE_ATTENTION_GRAD_KERNEL_H
 #define BLOCK_SPARSE_ATTENTION_GRAD_KERNEL_H
 
-#include "attn_infra/base_defs.hpp"
-#include "attn_infra/arch/arch.hpp"
-#include "attn_infra/arch/cross_core_sync.hpp"
-#include "attn_infra/arch/resource.hpp"
-#include "attn_infra/layout/layout.hpp"
+#include "attn_infra/bsag_base_defs.hpp"
+#include "attn_infra/arch/bsag_arch.hpp"
+#include "attn_infra/arch/bsag_cross_core_sync.hpp"
+#include "attn_infra/arch/bsag_resource.hpp"
+#include "attn_infra/layout/bsag_layout.hpp"
 
-#include "attn_infra/gemm/block/block_mmad.hpp"
-#include "attn_infra/gemm/dispatch_policy.hpp"
-#include "attn_infra/gemm/gemm_type.hpp"
-#include "attn_infra/epilogue/block/block_epilogue.hpp"
-#include "attn_infra/epilogue/dispatch_policy.hpp"
+#include "attn_infra/gemm/block/bsag_block_mmad.hpp"
+#include "attn_infra/gemm/bsag_gemm_dispatch_policy.hpp"
+#include "attn_infra/gemm/bsag_gemm_type.hpp"
+#include "attn_infra/epilogue/block/bsag_block_epilogue.hpp"
+#include "attn_infra/epilogue/bsag_epilogue_dispatch_policy.hpp"
 #include "attn_infra/epilogue/block/block_epilogue_fag_pre.hpp"
 #include "attn_infra/epilogue/block/block_epilogue_post.hpp"
 #include "attn_infra/epilogue/block/block_epilogue_softmaxgrad.hpp"
