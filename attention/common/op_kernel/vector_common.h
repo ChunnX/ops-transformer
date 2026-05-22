@@ -1127,15 +1127,11 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
     return false;
 }
 
-template <typename T, typename U, bool ENABLE_TREE = false>
+template <typename T, typename U, LAYOUT_Q layoutQ, bool ENABLE_TREE = false>
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
                                            LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
-    if (info.layout == GS) {
-        AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-    } else if (info.layout == SG) { // sg
-        AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-    } else if (info.layout == S1_EQUAL1) {
+    if (info.layout == S1_EQUAL1) {
         uint32_t treeMaskStart = 0;
         if constexpr (ENABLE_TREE) {
             treeMaskStart = info.s2Size - info.s1Size;
@@ -1191,6 +1187,14 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
         for (uint32_t i = 1; i < info.gs1dealNum; i++) {
             uint32_t offset = i * Align(info.s2dealNum, 32U);
             DataCopy(attenMaskUb[offset], attenMaskUb, Align(info.s2dealNum, 32U));
+        }
+    } else {
+        if constexpr (layoutQ == GS) {
+            AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(
+                attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+        } else {
+            AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(
+                attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
         }
     }
 }
