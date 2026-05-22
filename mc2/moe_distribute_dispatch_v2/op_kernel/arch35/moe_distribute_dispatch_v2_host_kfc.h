@@ -122,7 +122,7 @@ public:
 #endif
 public:
     __aicore__ inline MoeDistributeDispatchV2HostKfc(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, 
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, 
                                 GM_ADDR expertScales, GM_ADDR elasticInfo,GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
                                 GM_ADDR expandIdxOut,GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
                                 GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
@@ -138,7 +138,7 @@ private:
     __aicore__ inline void CleanTokenFlag(uint32_t serverId, uint32_t startTokenId, uint32_t cleanTokenNum);
     __aicore__ inline void CalServerSplitCore(uint32_t serverNum, uint32_t startAivId, uint32_t useAivNum,
                                               uint32_t &startServerId, uint32_t &endServerId, uint32_t &useAivPerServer, uint32_t &firstAivId);
-    __aicore__ inline void InitCommInfo();
+    __aicore__ inline void InitCommInfo(GM_ADDR mc2Context);
     __aicore__ inline void CalExpertOffset(uint32_t startTokenId, uint32_t endTokenId);
     __aicore__ inline void HcclCommSend();
     template <bool isContinueWait> __aicore__ inline bool WaitFlag(GM_ADDR flagAddr, LocalTensor<float32_t> flagInLTTensor, uint32_t stride, uint32_t waitNum);
@@ -731,12 +731,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 }
 
 template <TemplateDispatchKFCTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommInfo()
+__aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommInfo(GM_ADDR mc2Context)
 {
-    mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
+    mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
     uint32_t epRankIdHccl = mc2Context_->epRankId;
 
-    winContext_[COMM_EP_IDX] = reinterpret_cast<__gm__ HcclOpParam*>(AscendC::GetHcclContext<HCCL_GROUP_ID_0>());
+    // winContext_[COMM_EP_IDX] = reinterpret_cast<__gm__ HcclOpParam*>(AscendC::GetHcclContext<HCCL_GROUP_ID_0>());
     bufferChosenGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(bufferChoseAddr_));
     bufferId_ = bufferChosenGlobal_(0);
     //CheckWindowSize(totalWinSizeEp_, GetWinSize(winContext_[COMM_EP_IDX]), tpipe_, expandXOut);
@@ -754,7 +754,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::Init(
-    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
+    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
     GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
     GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchV2TilingData *tilingData)
@@ -780,7 +780,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         scalesGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scales));
     }
     InitRecieveTilingContext(expandXOut, pipe, tilingData);
-    InitCommInfo();
+    InitCommInfo(mc2Context);
     InitComputeInfo();
     InitSetWindows(tilingData);
     InitExtraInfo();
