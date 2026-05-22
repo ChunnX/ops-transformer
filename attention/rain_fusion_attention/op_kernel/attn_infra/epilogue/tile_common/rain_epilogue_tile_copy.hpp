@@ -13,8 +13,8 @@
 
 #include "../../../attn_infra/rain_base_defs.hpp"
 #include "../../../attn_infra/arch/rain_arch.hpp"
-#include "../../../attn_infra/epilogue/tile_common/rain_copy_gm_to_ub.hpp"
-#include "../../../attn_infra/epilogue/tile_common/rain_copy_ub_to_gm.hpp"
+#include "../../../attn_infra/epilogue/tile_common/rain_epilogue_copy_gm_to_ub.hpp"
+#include "../../../attn_infra/epilogue/tile_common/rain_epilogue_copy_ub_to_gm.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {

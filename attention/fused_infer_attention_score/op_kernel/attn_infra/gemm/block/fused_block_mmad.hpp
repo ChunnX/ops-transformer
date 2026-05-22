@@ -12,7 +12,7 @@
 #define FUSED_BLOCK_MMAD_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/fused_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/fused_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {

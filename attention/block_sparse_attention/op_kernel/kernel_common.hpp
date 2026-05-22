@@ -16,13 +16,13 @@
 #include "attn_infra/layout/bsa_layout.hpp"
 
 #include "attn_infra/gemm/block/bsa_block_mmad.hpp"
-#include "attn_infra/gemm/bsa_dispatch_policy.hpp"
+#include "attn_infra/gemm/bsa_gemm_dispatch_policy.hpp"
 #include "attn_infra/gemm/bsa_gemm_type.hpp"
 
 #include "attn_infra/arch/bsa_cross_core_sync.hpp"
 #include "attn_infra/arch/bsa_resource.hpp"
 #include "attn_infra/epilogue/block/bsa_block_epilogue.hpp"
-#include "attn_infra/epilogue/bsa_dispatch_policy.hpp"
+#include "attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"

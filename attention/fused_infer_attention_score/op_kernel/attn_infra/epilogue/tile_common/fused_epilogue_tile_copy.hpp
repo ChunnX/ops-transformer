@@ -13,8 +13,8 @@
 
 #include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/arch/fused_arch.hpp"
-#include "../../../attn_infra/epilogue/tile_common/fused_copy_gm_to_ub.hpp"
-#include "../../../attn_infra/epilogue/tile_common/fused_copy_ub_to_gm.hpp"
+#include "../../../attn_infra/epilogue/tile_common/fused_epilogue_copy_gm_to_ub.hpp"
+#include "../../../attn_infra/epilogue/tile_common/fused_epilogue_copy_ub_to_gm.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {

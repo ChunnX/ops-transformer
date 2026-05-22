@@ -21,13 +21,13 @@
 #include "attn_infra/layout/fused_layout.hpp"
 
 #include "attn_infra/gemm/block/fused_block_mmad.hpp"
-#include "attn_infra/gemm/fused_dispatch_policy.hpp"
+#include "attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
 #include "attn_infra/gemm/fused_gemm_type.hpp"
 
 #include "attn_infra/arch/fused_cross_core_sync.hpp"
 #include "attn_infra/arch/fused_resource.hpp"
 #include "attn_infra/epilogue/block/fused_block_epilogue.hpp"
-#include "attn_infra/epilogue/fused_dispatch_policy.hpp"
+#include "attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"

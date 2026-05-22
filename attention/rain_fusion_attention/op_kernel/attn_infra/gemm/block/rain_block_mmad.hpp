@@ -12,7 +12,7 @@
 #define RAIN_BLOCK_MMAD_HPP
 
 #include "../../../attn_infra/rain_base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/rain_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/rain_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/rain_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {

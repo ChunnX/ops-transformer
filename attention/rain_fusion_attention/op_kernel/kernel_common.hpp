@@ -16,13 +16,13 @@
 #include "attn_infra/layout/rain_layout.hpp"
 
 #include "attn_infra/gemm/block/rain_block_mmad.hpp"
-#include "attn_infra/gemm/rain_dispatch_policy.hpp"
+#include "attn_infra/gemm/rain_gemm_dispatch_policy.hpp"
 #include "attn_infra/gemm/rain_gemm_type.hpp"
 
 #include "attn_infra/arch/rain_cross_core_sync.hpp"
 #include "attn_infra/arch/rain_resource.hpp"
 #include "attn_infra/epilogue/block/rain_block_epilogue.hpp"
-#include "attn_infra/epilogue/rain_dispatch_policy.hpp"
+#include "attn_infra/epilogue/rain_epilogue_dispatch_policy.hpp"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
