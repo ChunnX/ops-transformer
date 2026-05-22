@@ -240,11 +240,12 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclrtMemcpy(
         custom_ptr + aclshmem_my_pe() * trans_size * sizeof(int32_t), trans_size * sizeof(int32_t), input.data(),
         trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+        std::cout << "5" << std::endl;
     // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
     if (xHostData.size() >= 4) {
         std::memcpy(xHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
     }
-
+    std::cout << "2" << std::endl;
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -268,7 +269,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);             
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
+    std::cout << "3" << std::endl;
     /* 声明算子执行必需变量 */
     uint64_t dispatchV2WorkspaceSize = 0;
     aclOpExecutor *dispatchV2Executor = nullptr;
