@@ -1127,7 +1127,7 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
         OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
-                    OP_LOGE(opName_, "PseType(%ld) is not support, pseType must be 0.", pseType_),
+                    OP_LOGE(opName_, "PseType(%ld) is not supported, pseType must be 0.", pseType_),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
