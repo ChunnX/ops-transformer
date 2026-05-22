@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2.cpp
@@ -20,25 +20,26 @@
 
 using namespace LIV2Kernel;
 
-#define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...)                                                                   \
-    do {                                                                                                               \
-        templateClass<LIV2Type<__VA_ARGS__>> op;                                                                         \
-        GET_TILING_DATA_WITH_STRUCT(LIV2TilingData, tiling_data_in, tiling);                                             \
-        const LIV2TilingData *__restrict tiling_data = &tiling_data_in;                                                  \
-        op.Init(q, k, w, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,                                  \
-                blocktable, outputIdxOffset, metadata, sparseIndices, sparseValues, user,                           \
-                tiling_data, &tPipe);                                                                                  \
-        op.Process();                                                                                                  \
+#define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...)                                                             \
+    do {                                                                                                         \
+        templateClass<LIV2Type<__VA_ARGS__>> op;                                                                 \
+        GET_TILING_DATA_WITH_STRUCT(LIV2TilingData, tiling_data_in, tiling);                                     \
+        const LIV2TilingData *__restrict tiling_data = &tiling_data_in;                                          \
+        op.Init(q, k, w, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,                               \
+                blocktable, outputIdxOffset, metadata, sparseIndices, sparseValues, user,                        \
+                tiling_data, &tPipe);                                                                            \
+        op.Process();                                                                                            \
     } while (0)
 
 template <int DT_Q, int DT_K, int DT_OUT, int PAGE_ATTENTION, int LAYOUT_T, int K_LAYOUT_T, int DT_W_FLAG, int TOPK_SCORE_PRECISION>
 __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
                                                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
-                                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
-                                                __gm__ uint8_t *blocktable,__gm__ uint8_t *outputIdxOffset,  
-                                                __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, 
-                                                __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace, 
-                                                __gm__ uint8_t *tiling)
+                                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                                __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blocktable,
+                                                __gm__ uint8_t *outputIdxOffset,  __gm__ uint8_t *metadata,
+                                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                                __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                                
 {
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);

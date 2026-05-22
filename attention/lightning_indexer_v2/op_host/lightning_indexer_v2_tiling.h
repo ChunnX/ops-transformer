@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_tiling.h
@@ -55,7 +55,7 @@ constexpr uint32_t CMP_RESIDUAL_K_INDEX = 7;
 constexpr uint32_t BLOCK_TABLE_INDEX = 8;
 constexpr uint32_t OUTPUT_IDX_OFFSET_INDEX = 9;
 constexpr uint32_t METADATA_INDEX = 10;
-//Outputs Index
+// Outputs Index
 constexpr uint32_t LIGHTNING_INDEXER = 0;
 constexpr uint32_t LIGHTNING_VALUES = 1;
 // Attributes Index
