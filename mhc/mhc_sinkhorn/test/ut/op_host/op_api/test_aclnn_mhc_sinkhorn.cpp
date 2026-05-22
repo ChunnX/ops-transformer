@@ -16,7 +16,6 @@
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
-#include <iostream>
 
 using namespace std;
 using namespace op;
