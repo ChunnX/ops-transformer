@@ -7,26 +7,41 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from .sparse_flash_mla import npu_sparse_flash_mla
-from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
-from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
-from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
-from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
-from .mega_moe import (
-    get_symm_buffer_for_mega_moe,
-    mega_moe,
-    npu_get_mega_moe_ccl_buffer_size
-)
-from .deep_ep import MoeDistributeBuffer
-from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
-from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
-from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
-from .flash_attn import npu_flash_attn
-from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
-from .flash_attn_metadata import npu_flash_attn_metadata
-from .lightning_indexer_v2_metadata import npu_lightning_indexer_v2_metadata
-from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
-from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_npu_lightning_indexer_v2_metadata
-from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
-    convert_npu_quant_lightning_indexer_v2_metadata
-)
+
+_LAZY_IMPORTS = {
+    "npu_sparse_flash_mla": ".sparse_flash_mla",
+    "npu_moe_distribute_dispatch_v2": ".moe_distribute_dispatch_v2",
+    "npu_moe_distribute_combine_v2": ".moe_distribute_combine_v2",
+    "npu_moe_distribute_dispatch_v3": ".moe_distribute_dispatch_v3",
+    "npu_moe_distribute_combine_v3": ".moe_distribute_combine_v3",
+    "get_symm_buffer_for_mega_moe": ".mega_moe",
+    "mega_moe": ".mega_moe",
+    "npu_get_mega_moe_ccl_buffer_size": ".mega_moe",
+    "MoeDistributeBuffer": ".deep_ep",
+    "converter_moe_distribute_dispatch_v3": ".graph_convert.graph_convert_moe_distribute_dispatch_v3",
+    "convert_npu_moe_distribute_combine_v3": ".graph_convert.graph_convert_moe_distribute_combine_v3",
+    "convert_npu_mega_moe": ".graph_convert.graph_convert_mega_moe",
+    "npu_flash_attn": ".flash_attn",
+    "convert_npu_flash_attn": ".graph_convert.graph_convert_flash_attn",
+    "npu_flash_attn_metadata": ".flash_attn_metadata",
+    "npu_lightning_indexer_v2_metadata": ".lightning_indexer_v2_metadata",
+    "npu_quant_lightning_indexer_v2_metadata": ".quant_lightning_indexer_v2_metadata",
+    "convert_npu_lightning_indexer_v2_metadata": ".graph_convert.graph_convert_lightning_indexer_v2_metadata",
+    "convert_npu_quant_lightning_indexer_v2_metadata": ".graph_convert.graph_convert_quant_lightning_indexer_v2_metadata",
+}
+
+_LOADED = {}
+
+
+def __getattr__(name):
+    if name in _LAZY_IMPORTS:
+        if name not in _LOADED:
+            import importlib
+            module = importlib.import_module(_LAZY_IMPORTS[name], __package__)
+            _LOADED[name] = getattr(module, name)
+        return _LOADED[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return list(_LAZY_IMPORTS.keys())
