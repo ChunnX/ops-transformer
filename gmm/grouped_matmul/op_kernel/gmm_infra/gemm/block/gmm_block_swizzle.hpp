@@ -548,4 +548,4 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
 
 } // namespace Catlass::Gemm::Block
 
-#endif // CATLASS_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
+#endif.*GMM_BLOCK_SWIZZLE_HPP

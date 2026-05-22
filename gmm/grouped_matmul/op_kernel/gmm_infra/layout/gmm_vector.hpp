@@ -131,4 +131,4 @@ private:
 
 } // namespace Catlass::layout
 
-#endif  // CATLASS_LAYOUT_VECTOR_HPP
+#endif.*GMM_VECTOR_HPP

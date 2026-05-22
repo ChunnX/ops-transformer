@@ -19,4 +19,4 @@ template <class... Args>
 constexpr bool DEPENDENT_FALSE = DEPENDENT_BOOL_VALUE<false, Args...>;
 }
 
-#endif  // CATLASS_DETAIL_DEPENDENT_FALSE_HPP
+#endif.*GMM_DEPENDENT_FALSE_HPP

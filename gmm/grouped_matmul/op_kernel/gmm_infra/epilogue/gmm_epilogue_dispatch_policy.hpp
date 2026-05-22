@@ -112,4 +112,4 @@ struct EpilogueAtlasA2Gemv {
 ///////////////////////////
 }  // namespace Catlass::Epilogue
 
-#endif  // CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
+#endif.*GMM_EPILOGUE_DISPATCH_POLICY_HPP

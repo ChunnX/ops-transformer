@@ -82,4 +82,4 @@ constexpr auto Min(T const &a, U const &b) {
     }
 }
 }
-#endif  // CATLASS_ALIGNMENT_HPP
+#endif.*GMM_ALIGNMENT_HPP

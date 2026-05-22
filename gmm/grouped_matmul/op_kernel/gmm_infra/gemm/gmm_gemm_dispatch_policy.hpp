@@ -267,4 +267,4 @@ struct MmadPingpong : public MmadBase<ArchTag_, false> {
 
 }  // namespace Catlass::Gemm
 
-#endif  // CATLASS_GEMM_DISPATCH_POLICY_HPP
+#endif.*GMM_GEMM_DISPATCH_POLICY_HPP

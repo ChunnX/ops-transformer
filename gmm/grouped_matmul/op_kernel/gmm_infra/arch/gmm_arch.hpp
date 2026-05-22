@@ -51,4 +51,4 @@ struct PositionUB {
 
 } // namespace Catlass::Arch
 
-#endif // CATLASS_ARCH_ARCH_HPP
+#endif.*GMM_ARCH_HPP

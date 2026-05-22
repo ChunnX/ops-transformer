@@ -60,4 +60,4 @@ Callback MakeCallback(Func *func)
     return callback;
 }
 }
-#endif // CATLASS_DETAIL_CALLBACK_HPP
+#endif.*GMM_CALLBACK_HPP

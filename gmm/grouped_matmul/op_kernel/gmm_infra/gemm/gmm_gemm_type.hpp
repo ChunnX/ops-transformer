@@ -26,4 +26,4 @@ struct GemmType {
 
 } // namespace Catlass::Gemm
 
-#endif // CATLASS_GEMM_GEMM_TYPE_HPP
+#endif.*GMM_GEMM_TYPE_HPP

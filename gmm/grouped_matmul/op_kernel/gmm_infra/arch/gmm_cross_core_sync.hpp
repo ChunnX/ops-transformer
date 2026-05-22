@@ -117,4 +117,4 @@ void CrossCoreWaitFlagWithReverse(CrossCoreFlagWithReverse<REVERSE_DEPTH> &flag)
 
 }  // namespace Catlass::Arch
 
-#endif // CATLASS_ARCH_CROSS_CORE_SYNC_HPP
+#endif.*GMM_CROSS_CORE_SYNC_HPP

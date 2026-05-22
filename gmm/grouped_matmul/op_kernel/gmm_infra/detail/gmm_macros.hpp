@@ -22,4 +22,4 @@
 #endif
 #define CATLASS_GLOBAL __global__ [aicore]
 
-#endif  // CATLASS_DETAIL_MACROS_HPP
+#endif.*GMM_MACROS_HPP

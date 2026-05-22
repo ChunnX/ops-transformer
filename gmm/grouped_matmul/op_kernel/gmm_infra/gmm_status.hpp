@@ -17,4 +17,4 @@ enum class Status{ kSuccess, kInvalid };
 
 } // namespace Catlass
 
-#endif // CATLASS_STATUS_HPP
+#endif.*GMM_STATUS_HPP

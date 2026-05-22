@@ -1609,4 +1609,4 @@ private:
 };
 }  // namespace Catlass::layout
 
-#endif  // CATLASS_LAYOUT_MATRIX_HPP
+#endif.*GMM_MATRIX_HPP

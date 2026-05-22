@@ -41,4 +41,4 @@ constexpr ReturnType BytesToBits(T bytes)
 
 } // namespace Catlass
 
-#endif // CATLASS_NUMERIC_SIZE_HPP
+#endif.*GMM_NUMERIC_SIZE_HPP

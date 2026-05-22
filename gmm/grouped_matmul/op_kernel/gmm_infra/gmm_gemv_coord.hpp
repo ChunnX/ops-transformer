@@ -97,4 +97,4 @@ struct GemvCoord : public Coord<2, uint32_t> {
 
 }  // namespace Catlass
 
-#endif  // CATLASS_GEMV_COORD_HPP
+#endif.*GMM_GEMV_COORD_HPP

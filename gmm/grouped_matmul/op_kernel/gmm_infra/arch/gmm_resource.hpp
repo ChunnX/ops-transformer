@@ -40,4 +40,4 @@ public:
 
 } // namespace Catlass::Arch
 
-#endif // INCLUDE_CATLASS_ARCH_RESOURCE_HPP
+#endif.*GMM_RESOURCE_HPP

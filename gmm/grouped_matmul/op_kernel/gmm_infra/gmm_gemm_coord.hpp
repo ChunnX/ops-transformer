@@ -155,4 +155,4 @@ struct GemmCoord : public Coord<3, uint32_t> {
 
 } // namespace Catlass
 
-#endif  // CATLASS_GEMM_COORD_HPP
+#endif.*GMM_GEMM_COORD_HPP

@@ -642,4 +642,4 @@ private:
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
+#endif.*GMM_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
