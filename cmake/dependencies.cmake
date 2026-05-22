@@ -28,6 +28,8 @@ else()
 endif()
 message(STATUS "Search libs under install path ${ASCEND_DIR}")
 
+set(ASCEND_CANN_PACKAGE_PATH ${ASCEND_DIR})
+
 set(CMAKE_PREFIX_PATH ${ASCEND_DIR}/)
 
 set(CMAKE_MODULE_PATH
@@ -63,6 +65,7 @@ find_package(mmpa MODULE)
 find_package(runtime MODULE REQUIRED)
 find_package(nnopbase MODULE REQUIRED)
 find_package(tilingapi MODULE REQUIRED)
+find_package(ops_tensor MODULE REQUIRED)
 find_package(aicpu MODULE REQUIRED)
 
 if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)

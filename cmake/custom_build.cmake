@@ -989,6 +989,12 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
+    install(DIRECTORY ${BLAZE}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+    install(DIRECTORY ${TENSOR_API}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
 foreach(_3rd_op_dir ${_3rd_op_dirs})
@@ -1092,6 +1098,20 @@ if (ALL_COMMON_SRC_DIRS)
             )
         endif()
     endforeach()
+    if(EXISTS "${BLAZE}")
+        file(GLOB_RECURSE BLAZE_FILES CONFIGURE_DEPENDS ${BLAZE}/*)
+        list(APPEND ALL_COMMON_FILES ${BLAZE_FILES})
+        list(APPEND COMMON_COPY_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${_COMMON_OUT_SRC_DIR}/blaze
+        )
+    endif()
+    if(EXISTS "${TENSOR_API}")
+        file(GLOB_RECURSE TENSOR_API_FILES CONFIGURE_DEPENDS ${TENSOR_API}/*)
+        list(APPEND ALL_COMMON_FILES ${TENSOR_API_FILES})
+        list(APPEND COMMON_COPY_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API} ${_COMMON_OUT_SRC_DIR}/tensor_api
+        )
+    endif()
 
     if(NOT TARGET common_src_copy)
         set(ALL_COMMON_COPY_STAMP "${_COMMON_OUT_SRC_DIR}/.all_common_copy.stamp")
