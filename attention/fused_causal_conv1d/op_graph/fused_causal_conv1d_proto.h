@@ -42,14 +42,14 @@ namespace ge {
  * @li initial_state_idx: Optional. Initial state block index per batch (APC). shape [batch]. int32.
  *
  * @par Attributes:
- * @li activation_mode: A required int. Activation function type: 0 (None), 1 (silu), 2 (swish).
- * @li pad_slot_id: A required int. Slot ID used to skip padding batches.
- * @li run_mode: A required int. Execution mode (legacy, not supported).
- * @li max_query_len: A required int. Max sequence length across all batches.
- * @li residual_connection: A required int. Whether to use residual connection: 0 (no), 1 (yes).
- * @li block_size: A required int. APC block size, supports 128/256.
- * @li conv_mode: A required int. Convolution mode: 0 (Qwen3-Next), 1 (Pangu v2).
- * @li inplace: A required bool. false: non-inplace (output y), true: inplace (write back to x).
+ * @li activation_mode: A optional int. Activation function type: 0 (None), 1 (silu), 2 (swish).
+ * @li pad_slot_id: A optional int. Slot ID used to skip padding batches.
+ * @li run_mode: A optional int. Execution mode (legacy, not supported).
+ * @li max_query_len: A optional int. Max sequence length across all batches.
+ * @li residual_connection: A optional int. Whether to use residual connection: 0 (no), 1 (yes).
+ * @li block_size: A optional int. APC block size, supports 128/256.
+ * @li conv_mode: A optional int. Convolution mode: 0 (Qwen3-Next), 1 (Pangu v2).
+ * @li inplace: A optional bool. false: non-inplace (output y), true: inplace (write back to x).
  *
  * @par Outputs:
  * @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.
@@ -68,14 +68,14 @@ REG_OP(FusedCausalConv1d)
     .OPTIONAL_INPUT(block_idx_first_scheduled_token, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(block_idx_last_scheduled_token, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(initial_state_idx, TensorType({DT_INT32}))
-    .REQUIRED_ATTR(activation_mode, Int)
-    .REQUIRED_ATTR(pad_slot_id, Int)
-    .REQUIRED_ATTR(run_mode, Int)
-    .REQUIRED_ATTR(max_query_len, Int)
-    .REQUIRED_ATTR(residual_connection, Int)
-    .REQUIRED_ATTR(block_size, Int)
-    .REQUIRED_ATTR(conv_mode, Int)
-    .REQUIRED_ATTR(inplace, Bool)
+    .OPTIONAL_ATTR(activation_mode, Int)
+    .OPTIONAL_ATTR(pad_slot_id, Int)
+    .OPTIONAL_ATTR(run_mode, Int)
+    .OPTIONAL_ATTR(max_query_len, Int)
+    .OPTIONAL_ATTR(residual_connection, Int)
+    .OPTIONAL_ATTR(block_size, Int)
+    .OPTIONAL_ATTR(conv_mode, Int)
+    .OPTIONAL_ATTR(inplace, Bool)
     .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
     .OP_END_FACTORY_REG(FusedCausalConv1d)
