@@ -43,7 +43,8 @@ private:
     template <uint8_t RES_IDX>
     __aicore__ inline uint16_t FindAvailableRows(FagConstInfo &constInfo,
         uint64_t writeStartAddr, uint64_t writeLastAddr,
-        uint16_t blockCount, uint32_t blockLen, uint32_t dstStride);
+        uint16_t blockCount, uint32_t blockLen, uint32_t dstStride,
+        uint64_t gmLimitOffset);
  
 public:
     __aicore__ inline FAGBlockVec(){};
@@ -187,7 +188,7 @@ public:
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), GlobalTensor<float>, std::nullptr_t>::type dkWorkSpaceGm;
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), GlobalTensor<float>, std::nullptr_t>::type dvWorkSpaceGm;
 };
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::SetVecBlockParams(TPipe *pipe, FagTilingType tilingData,
                                                                      uint32_t vBlockIdx, uint32_t cBlockIdx,
@@ -1218,14 +1219,24 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDq(FagConstInfo &
             }
             dqOffset[cIx] += constInfo.deterConstInfo.deterVecCoreS1Offset;
             if constexpr (IS_FP32_INPUT) {
+                uint64_t dqGmBaseAddr = (uint64_t)(dqWorkSpaceGm.GetPhyAddr());
+                uint64_t qSize = 0;
+                if constexpr (IS_TND) {
+                    qSize = ((__gm__ int64_t *)constInfo.seqS1_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2GD;
+                } else {
+                    qSize = constInfo.bSize * constInfo.commonConstInfo.n2GS1D;
+                }
+                uint64_t dqSizeByte = qSize * sizeof(CALC_TYPE);
+                uint64_t dqGmLimitOffset = dqGmBaseAddr + dqSizeByte;
                 dataCopyPadParams.blockCount = static_cast<uint16_t>(constInfo.deterConstInfo.eachVecCoreS1Offset);
                 uint64_t totalCopySizeBytes = dataCopyPadParams.blockCount <= 0 ? 0 :
                     ((dataCopyPadParams.blockCount * dataCopyPadParams.blockLen) +
                     ((dataCopyPadParams.blockCount - 1) * dataCopyPadParams.dstStride));
-                uint64_t writeStartAddr = constInfo.deterConstInfo.dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddr = dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddr = writeStartAddr + totalCopySizeBytes;
                 uint16_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
-                    dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
+                    dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride,
+                    dqGmLimitOffset);
                 if (avaliableRows == 0) {
                     continue;
                 }
@@ -1301,10 +1312,9 @@ TEMPLATES_DEF_NO_DEFAULT
 template <uint8_t RES_IDX>
 __aicore__ inline uint16_t FAGBlockVec<TEMPLATE_ARGS>::FindAvailableRows(FagConstInfo &constInfo,
     uint64_t writeStartAddr, uint64_t writeLastAddr,
-    uint16_t blockCount, uint32_t blockLen, uint32_t dstStride)
+    uint16_t blockCount, uint32_t blockLen, uint32_t dstStride,
+    uint64_t gmLimitOffset)
 {
-    uint64_t gmLimitOffset = RES_IDX == DQ_IDX ? constInfo.deterConstInfo.dqGmLimitOffset :
-        (RES_IDX == DK_IDX ? constInfo.deterConstInfo.dkGmLimitOffset : constInfo.deterConstInfo.dvGmLimitOffset);
     if (writeLastAddr > gmLimitOffset) {
         uint64_t remainBytes = writeStartAddr > gmLimitOffset ? 0 : gmLimitOffset - writeStartAddr;
         if (remainBytes == 0 || blockCount == 0) {
@@ -1398,14 +1408,24 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDqkv(LocalTensor<
             }
             dqOffset[cIx] += constInfo.deterConstInfo.deterVecCoreS1Offset;
             if constexpr (IS_FP32_INPUT) {
+                uint64_t dqGmBaseAddr = (uint64_t)(dqWorkSpaceGm.GetPhyAddr());
+                uint64_t qSize = 0;
+                if constexpr (IS_TND) {
+                    qSize = ((__gm__ int64_t *)constInfo.seqS1_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2GD;
+                } else {
+                    qSize = constInfo.bSize * constInfo.commonConstInfo.n2GS1D;
+                }
+                uint64_t dqSizeByte = qSize * sizeof(CALC_TYPE);
+                uint64_t dqGmLimitOffset = dqGmBaseAddr + dqSizeByte;
                 dataCopyPadParams.blockCount = static_cast<uint16_t>(constInfo.deterConstInfo.eachVecCoreS1Offset);
                 uint64_t totalCopySizeBytes = dataCopyPadParams.blockCount <= 0 ? 0 :
                     ((dataCopyPadParams.blockCount * dataCopyPadParams.blockLen) +
                     ((dataCopyPadParams.blockCount - 1) * dataCopyPadParams.dstStride));
-                uint64_t writeStartAddr = constInfo.deterConstInfo.dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddr = dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddr = writeStartAddr + totalCopySizeBytes;
                 uint16_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
-                    dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
+                    dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride,
+                    dqGmLimitOffset);
                 if (avaliableRows == 0) {
                     continue;
                 }
@@ -1490,6 +1510,21 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::WriteDataToDkv(LocalTensor<CA
             dkOffset[cIx] += constInfo.deterConstInfo.deterDkVecCoreS2Offset;
             dvOffset[cIx] += constInfo.deterConstInfo.deterDvVecCoreS2Offset;
             if constexpr (IS_FP32_INPUT) {
+                uint64_t dkGmBaseAddr = (uint64_t)(dkWorkSpaceGm.GetPhyAddr());
+                uint64_t dvGmBaseAddr = (uint64_t)(dvWorkSpaceGm.GetPhyAddr());
+                uint64_t kSize = 0;
+                uint64_t vSize = 0;
+                if constexpr (IS_TND) {
+                    kSize = ((__gm__ int64_t *)constInfo.seqS2_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2D;
+                    vSize = ((__gm__ int64_t *)constInfo.seqS2_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2Dv;
+                } else {
+                    kSize = constInfo.bSize * constInfo.commonConstInfo.n2S2D;
+                    vSize = constInfo.bSize * constInfo.commonConstInfo.n2S2Dv;
+                }
+                uint64_t dkSizeByte = kSize * sizeof(CALC_TYPE);
+                uint64_t dvSizeByte = vSize * sizeof(CALC_TYPE);
+                uint64_t dkGmLimitOffset = dkGmBaseAddr + dkSizeByte;
+                uint64_t dvGmLimitOffset = dvGmBaseAddr + dvSizeByte;
                 dataCopyPadParams.blockCount = static_cast<uint16_t>(constInfo.deterConstInfo.eachVecCoreS2Offset);
                 dataCopyDvPadParams.blockCount = static_cast<uint16_t>(constInfo.deterConstInfo.eachVecCoreS2Offset);
                 uint64_t totalCopySizeBytesDk = dataCopyPadParams.blockCount <= 0 ? 0 :
@@ -1498,14 +1533,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::WriteDataToDkv(LocalTensor<CA
                 uint64_t totalCopySizeBytesDv = dataCopyDvPadParams.blockCount <= 0 ? 0 :
                     ((dataCopyDvPadParams.blockCount * dataCopyDvPadParams.blockLen) +
                     ((dataCopyDvPadParams.blockCount - 1) * dataCopyDvPadParams.dstStride));
-                uint64_t writeStartAddrDk = constInfo.deterConstInfo.dkGmBaseAddr + dkOffset[cIx] * sizeof(CALC_TYPE);
-                uint64_t writeStartAddrDv = constInfo.deterConstInfo.dvGmBaseAddr + dvOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddrDk = dkGmBaseAddr + dkOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddrDv = dvGmBaseAddr + dvOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddrDk = writeStartAddrDk + totalCopySizeBytesDk;
                 uint64_t writeLastAddrDv = writeStartAddrDv + totalCopySizeBytesDv;
                 uint16_t avaliableRowsDk = FindAvailableRows<DK_IDX>(constInfo, writeStartAddrDk, writeLastAddrDk,
-                    dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
+                    dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride,
+                    dkGmLimitOffset);
                 uint16_t avaliableRowsDv = FindAvailableRows<DV_IDX>(constInfo, writeStartAddrDv, writeLastAddrDv,
-                    dataCopyDvPadParams.blockCount, dataCopyDvPadParams.blockLen, dataCopyDvPadParams.dstStride);
+                    dataCopyDvPadParams.blockCount, dataCopyDvPadParams.blockLen, dataCopyDvPadParams.dstStride,
+                    dvGmLimitOffset);
                 if (avaliableRowsDk == 0 && avaliableRowsDv == 0) {
                     continue;
                 }
