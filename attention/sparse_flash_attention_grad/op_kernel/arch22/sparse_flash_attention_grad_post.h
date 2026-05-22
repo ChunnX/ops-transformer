@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_post.h
@@ -58,7 +58,6 @@ public:
     // input
     AscendC::GlobalTensor<float> dqWorkSpaceGm;
     AscendC::GlobalTensor<float> dkWorkSpaceGm;
-    AscendC::GlobalTensor<float> dvWorkSpaceGm;
 
     const TILING_TYPE *__restrict tilingData;
     constexpr static uint32_t SYNC_GLOBAL_WORKSPACE_SIZE = 16 * 1024;
@@ -183,10 +182,6 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
                                   tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                   tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
-    if constexpr (CAST_DV) {
-        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                      tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
-    }
 
     if constexpr (INPUT_FORMAT == NZ) {
         pipe->InitBuffer(inQueuePing, 1, ubBaseSize * 2 + nzReservedSize);
@@ -467,21 +462,6 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
         dataSize1 = i + kPostBaseNum >= kPostBlockTotal ? 0 : dataSize1;
         NZVecClc(dkWorkSpaceGm, dkGm, dataSize1, actual_seq_kvlen_addr, 1, s2, d, dAlign, true, 1);
     }
-
-    // init v
-    if constexpr (CAST_DV) {
-        uint64_t vBegin = cBlockIdx * vPostBlockFactor * vPostBaseNum;
-        uint64_t vEnd = (cBlockIdx + 1) * vPostBlockFactor * vPostBaseNum;
-        InitIndex(vBegin, 1, s2, d2, d2Align, actual_seq_kvlen_addr);
-        for (uint64_t i = vBegin; i < vEnd; i = i + 2 * vPostBaseNum) {
-            uint64_t dataSize = i + vPostBaseNum < vPostBlockTotal ? vPostBaseNum : vPostTailNum;
-            NZVecClc(dvWorkSpaceGm, dvGm, dataSize, actual_seq_kvlen_addr, 1, s2, d2, d2Align, false, 0);
-            uint64_t dataSize1 = i + 2 * vPostBaseNum < vPostBlockTotal ? vPostBaseNum : vPostTailNum;
-            dataSize1 = i + vPostBaseNum >= vPostBlockTotal ? 0 : dataSize1;
-            NZVecClc(dvWorkSpaceGm, dvGm, dataSize1, actual_seq_kvlen_addr, 1, s2, d2, d2Align, false, 1);
-        }
-        PIPE_BARRIER(PIPE_ALL);
-    }
 }
 
 template <typename OUT_TYPE, typename TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
@@ -603,34 +583,4 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
     }
     WaitFlag<HardEvent::V_MTE2>(0);
     PIPE_BARRIER(PIPE_ALL);
-
-    // init v
-    if constexpr (CAST_DV && !AscendC::IsSameType<OUT_TYPE, float>::value) {
-        uint64_t vBegin = cBlockIdx * vPostBlockFactor * vPostBaseNum;
-        uint64_t vEnd = (cBlockIdx + 1) * vPostBlockFactor * vPostBaseNum;
-        if (((cBlockIdx + 1) * vPostBlockFactor * vPostBaseNum) > vPostBlockTotal) {
-            vEnd = vPostBlockTotal;
-        }
-
-        SetFlag<HardEvent::V_MTE2>(0);
-        for (uint64_t i = vBegin; i < vEnd; i = i + vPostBaseNum) {
-            AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
-            AscendC::LocalTensor<OUT_TYPE> vecOut = outQueue.template AllocTensor<OUT_TYPE>();
-            uint64_t dataSize = i + vPostBaseNum < vPostBlockTotal ? vPostBaseNum : vPostTailNum;
-            WaitFlag<HardEvent::V_MTE2>(0);
-            DataCopy(vecIn, dvWorkSpaceGm[i], (dataSize + 7) / 8 * 8); // dataSize(fp32) align 32B
-            inQueue.EnQue(vecIn);
-            inQueue.template DeQue<float>();
-
-            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_ROUND, dataSize);
-            outQueue.EnQue(vecOut);
-            outQueue.template DeQue<OUT_TYPE>();
-
-            DataCopy(dvGm[i], vecOut, (dataSize + 15) / 16 * 16); // dataSize(fp16) align 32B
-            inQueue.FreeTensor(vecIn);
-            outQueue.FreeTensor(vecOut);
-            SetFlag<HardEvent::V_MTE2>(0);
-        }
-        WaitFlag<HardEvent::V_MTE2>(0);
-    }
 }
