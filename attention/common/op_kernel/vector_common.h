@@ -862,14 +862,6 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
     return bOffset + s1Offset + s2Offset;
 }
 
-__aicore__ inline uint64_t ComputeAttenMaskOffsetTree(MaskInfo &info, uint32_t s1StartIdx, uint64_t treeMaskStart)
-{
-    uint64_t bOffset = info.attenMaskBatchStride;
-    uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
-    uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
-    return bOffset + s1Offset + s2Offset;
-}
-
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
@@ -918,9 +910,10 @@ __aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1Sta
             return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
         }
         if constexpr (ENABLE_TREE) {
-            if (info.sparseMode == TREE) {
-                return ComputeAttenMaskOffsetTree(info, s1StartIdx, treeMaskStart);
-            }
+            uint64_t bOffset = info.attenMaskBatchStride;
+            uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
+            uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
+            return bOffset + s1Offset + s2Offset;
         }
         return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
     }
@@ -1134,15 +1127,11 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
     return false;
 }
 
-template <typename T, typename U, bool ENABLE_TREE = false>
+template <typename T, typename U, LAYOUT_Q layoutQ, bool ENABLE_TREE = false>
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
                                            LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
-    if (info.layout == GS) {
-        AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-    } else if (info.layout == SG) { // sg
-        AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-    } else if (info.layout == S1_EQUAL1) {
+    if (info.layout == S1_EQUAL1) {
         uint32_t treeMaskStart = 0;
         if constexpr (ENABLE_TREE) {
             treeMaskStart = info.s2Size - info.s1Size;
@@ -1198,6 +1187,14 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
         for (uint32_t i = 1; i < info.gs1dealNum; i++) {
             uint32_t offset = i * Align(info.s2dealNum, 32U);
             DataCopy(attenMaskUb[offset], attenMaskUb, Align(info.s2dealNum, 32U));
+        }
+    } else {
+        if constexpr (layoutQ == GS) {
+            AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(
+                attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+        } else {
+            AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(
+                attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
         }
     }
 }

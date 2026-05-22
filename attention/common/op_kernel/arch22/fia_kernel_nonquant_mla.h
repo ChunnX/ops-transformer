@@ -76,6 +76,7 @@ public:
     static constexpr uint8_t ANTIQUANT_MODE = FIAT::antiquantMode;
     static constexpr bool ANTIQUANT = !IsSameType<Q_T, KV_T>::value;
     static constexpr bool ANTIQUANT_PER_CHANNEL = (ANTIQUANT && (ANTIQUANT_MODE == PER_CHANNEL_MODE));
+    static constexpr bool ENABLE_TREE = FIAT::enableTree;
     using ANTIQ_PARAMS_T = Q_T;
     using Q_ROPE_T = typename AscendC::Conditional<ANTIQUANT, Q_T, ORIGIN_T>::type;
     using K_ROPE_T = typename AscendC::Conditional<ANTIQUANT, KV_T, ORIGIN_T>::type;
@@ -887,10 +888,14 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
         preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
     }
 
-    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
     } else if (constInfo.sparseMode == fa_base_vector::BAND) {
         nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
+    }
+
+    if constexpr (ENABLE_TREE) {
+        nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
     }
 }
 
