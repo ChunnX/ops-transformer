@@ -103,8 +103,8 @@ private:
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
-                UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
+        return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + winDataSizeOffset_ +
+                //UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
