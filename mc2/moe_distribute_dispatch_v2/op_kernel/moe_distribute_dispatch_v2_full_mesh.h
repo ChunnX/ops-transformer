@@ -35,6 +35,9 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+
+#include "shmem.h"
+
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeDispatchV2FullMeshImpl {
 constexpr uint8_t BUFFER_NUM = 2;        // 多buf
@@ -1670,14 +1673,88 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Process()
 {
     if ASCEND_IS_AIV {          // 全aiv处理
-        if (aivId_ < aivUsedAllToAll_) {
-            AllToAllDispatch(); // 前面核all2all发送
-        } else {
-            CalCumSum();        // 后面核发送当前卡给每个专家的tokenCnt，输出epRecvCnt/exportTokenNums
+        // if (aivId_ < aivUsedAllToAll_) {
+        //     AllToAllDispatch(); // 前面核all2all发送
+        // } else {
+        //     CalCumSum();        // 后面核发送当前卡给每个专家的tokenCnt，输出epRecvCnt/exportTokenNums
+        // }
+        // // localWindowCopy中包含reset操作，需确保前面操作完成
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+
+        AscendC::printf("====================== zzz In moe_distribute_dispatch_v2 ==========================\n");
+        AscendC::printf("Shmem Interface my_pe: %d \n", aclshmem_my_pe());
+
+        __gm__ ACLSHMEMAIVUDMAInfo* udmaInfo = aclshmemi_udma_qp_info_fetch();
+        AscendC::printf("====================== Shmem udmaInfo address: %p ====================== \n", udmaInfo);
+
+        __gm__ ACLSHMEMUDMAWQCtx* qpCtxEntry = aclshmemi_udma_get_qp_ctx(udmaInfo, (aclshmem_my_pe() + 1) % aclshmem_n_pes(), 0, 0);
+        AscendC::printf("====================== Shmem udma qpCtxEntry address: %p ====================== \n", qpCtxEntry);
+
+        auto wqeSize = 1 << qpCtxEntry->baseBkShift; // basebk_shift
+        auto curHardwareHeadAddr = qpCtxEntry->headAddr;
+        uint32_t curHead = ld_dev((__gm__ uint32_t*)(curHardwareHeadAddr), 0);
+        AscendC::printf("====================== Shmem udma wqeSize: %d ====================== \n", wqeSize);
+        AscendC::printf("====================== Shmem udma curHead: %d ====================== \n", curHead);
+
+        __gm__ uint32_t* doorBellAddr = (__gm__ uint32_t*)qpCtxEntry->dbAddr;
+        AscendC::printf("====================== Shmem udma doorBell: %d ====================== \n", (*doorBellAddr));
+
+        AscendC::TBuf<AscendC::TPosition::VECOUT> buf;
+        tpipe_->InitBuffer(buf, UB_ALIGN_SIZE * 2);
+        // A user-provided LocalTensor of at least 64 bytes is required to submit UDMA tasks.
+        AscendC::LocalTensor<uint8_t> ubLocal = buf.GetWithOffset<uint8_t>(UB_ALIGN_SIZE * 2, 0);
+
+        uint64_t custom_ptr_addr = *((__gm__ uint64_t*)(xGMTensor_.GetPhyAddr()));
+        AscendC::printf("[DEVICE custom_ptr_addr] %llu\n", custom_ptr_addr);
+        __gm__ uint8_t* custom_ptr = (__gm__ uint8_t*)custom_ptr_addr;
+
+        int message_length = 64;    // trans_size * sizeof(int32_t)
+
+        int64_t my_pe = aclshmem_my_pe();
+        int64_t pe_size = aclshmem_n_pes();
+
+        // ring
+        int64_t target_pe = (my_pe + 1) % pe_size;
+
+        constexpr int32_t warmupIter = 5;
+        constexpr int32_t benchIter = 1;    //PKG_NUM / NUM_THREAD_CPP;
+        int64_t totalCycles = 0;
+        int64_t start = 0;
+        int64_t end = 0;
+        int64_t end2 = 0;
+
+        // for (int32_t idx = 0; idx < warmupIter; idx++) {
+        //     aclshmemx_udma_put_nbi(
+        //         custom_ptr, custom_ptr, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
+        //         message_length, target_pe);
+        // }
+        // aclshmemx_udma_quiet(target_pe);
+
+        aclshmemx_barrier_all_vec();
+
+        if (AscendC::GetBlockIdx() == 0) {
+            start = AscendC::GetSystemCycle();
+            for (int32_t pe = 0; pe < aclshmem_n_pes(); pe++) {
+                if (pe == aclshmem_my_pe()) {
+                    continue;
+                }
+                aclshmemx_udma_put_nbi(
+                    custom_ptr + my_pe * message_length, custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
+                    message_length, pe);
+                aclshmemx_udma_quiet(pe);
+            }
+            end = AscendC::GetSystemCycle();
+            end2 = AscendC::GetSystemCycle();
+
+            *((__gm__ int64_t*)(expertIdsGMTensor_.GetPhyAddr())) = end - start;
+            *((__gm__ int64_t*)((expertIdsGMTensor_.GetPhyAddr()) + 8)) = end2 - start;
+
+            AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
         }
-        // localWindowCopy中包含reset操作，需确保前面操作完成
+
+        aclshmemx_barrier_all_vec();
         PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
