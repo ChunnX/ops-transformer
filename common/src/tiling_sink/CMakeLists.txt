@@ -90,13 +90,30 @@ target_include_directories(opmaster PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include/tiling_sink
 )
 
+get_filename_component(SRC_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    PARENT_DIRECTORY
+)
+
+get_filename_component(COMMON_DIR
+    ${SRC_DIR}
+    PARENT_DIRECTORY
+)
+
+get_filename_component(TRANSFORMER_DIR
+    ${COMMON_DIR}
+    PARENT_DIRECTORY
+)
+
+set(THIRD_PARTY_PATH "${TRANSFORMER_DIR}/third_party")
+
 if (BUILD_OPEN_PROJECT)
   target_include_directories(opmaster PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/include
     ${ASCEND_CANN_PACKAGE_PATH}/include/base
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-    ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
-    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
+    ${THIRD_PARTY_PATH}/opbase/include/op_common
+    ${THIRD_PARTY_PATH}/opbase/pkg_inc/op_common
     ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/common
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/utils
