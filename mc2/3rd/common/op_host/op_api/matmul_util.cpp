@@ -162,64 +162,6 @@ static bool CheckShapeValid(const aclTensor* self, const aclTensor* mat2, bool t
     return true;
 }
 
-static bool CheckShapeValidWithTrans(const aclTensor* self, const aclTensor* mat2, int64_t transSelf, int64_t transMat2)
-{
-    OP_CHECK_WRONG_DIMENSION(self, DIMS_TWO, return false);
-    OP_CHECK_WRONG_DIMENSION(mat2, DIMS_TWO, return false);
-    op::Shape selfShape = self->GetViewShape();
-    op::Shape mat2Shape = mat2->GetViewShape();
-    auto selfKDim = (transSelf != 0LL) ? selfShape.GetDim(0) : selfShape.GetDim(1);
-    auto mat2KDim = (transMat2 != 0LL) ? mat2Shape.GetDim(1) : mat2Shape.GetDim(0);
-    if (selfKDim != mat2KDim) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The k-axis of the two inputs are different.");
-        return false;
-    }
-    return true;
-}
-
-static const aclTensor* ProcessEmptyTensor(const aclTensor* self, const aclTensor* mat2, aclOpExecutor* executor)
-{
-    // 获取shape信息
-    op::Shape selfShape = self->GetViewShape();
-    op::Shape mat2Shape = mat2->GetViewShape();
-    op::Shape outShape = {selfShape.GetDim(0), mat2Shape.GetDim(1)};
-    auto out = executor->AllocTensor(outShape, self->GetDataType());
-    if (out->IsEmpty()) {
-        OP_LOGI("Returning an empty tensor without actually doing calculation");
-        return out;
-    }
-    FVector<int64_t> fillShape = GetShape(out);
-    const aclTensor* dims = executor->ConvertToTensor(fillShape.data(), fillShape.size(), op::DataType::DT_INT64);
-    aclIntArray* shapeArray = executor->AllocIntArray(fillShape.data(), fillShape.size());
-    const aclScalar* valueScalar = executor->AllocScalar(0);
-    const aclTensor* valueTensor = executor->ConvertToTensor(valueScalar, out->GetDataType());
-    auto fillTensor = l0op::Fill(dims, valueTensor, shapeArray, executor);
-    return fillTensor;
-}
-
-static const aclTensor* ProcessEmptyTensorWithTrans(
-    const aclTensor* self, const aclTensor* mat2, int64_t transSelf, int64_t transMat2, aclOpExecutor* executor)
-{
-    // 获取shape信息
-    op::Shape selfShape = self->GetViewShape();
-    op::Shape mat2Shape = mat2->GetViewShape();
-    auto mDim = (transSelf != 0LL) ? selfShape.GetDim(1) : selfShape.GetDim(0);
-    auto nDim = (transMat2 != 0LL) ? mat2Shape.GetDim(0) : mat2Shape.GetDim(1);
-    op::Shape outShape = {mDim, nDim};
-    auto out = executor->AllocTensor(outShape, self->GetDataType());
-    if (out->IsEmpty()) {
-        OP_LOGI("Returning an empty tensor without calculation");
-        return out;
-    }
-    FVector<int64_t> fillShape = GetShape(out);
-    const aclTensor* dims = executor->ConvertToTensor(fillShape.data(),
-        fillShape.size(), op::DataType::DT_INT64);
-    aclIntArray* shapeArray = executor->AllocIntArray(fillShape.data(), fillShape.size());
-    const aclScalar* valueScalar = executor->AllocScalar(0);
-    const aclTensor* valueTensor = executor->ConvertToTensor(valueScalar, out->GetDataType());
-    auto fillTensor = l0op::Fill(dims, valueTensor, shapeArray, executor);
-    return fillTensor;
-}
 
 static bool CheckSupportSingleSplitKFp16Bf16(
     const aclTensor* self, const aclTensor* mat2, const DataType selfDtype, const DataType mat2Dtype)
@@ -292,43 +234,6 @@ static aclnnStatus SetMatmulOpSupportInfo(
     return ACLNN_SUCCESS;
 }
 
-static MmOpInfo GetMatmulOpInfoWithTrans(
-    const aclTensor* self, const aclTensor* mat2, int64_t transSelf, int64_t transMat2, int8_t cubeMathType)
-{
-    // 获取m、k、n轴的大小
-    op::Shape selfShape = self->GetViewShape();
-    op::Shape mat2Shape = mat2->GetViewShape();
-    int64_t mDim = (transSelf != 0LL)  ? selfShape.GetDim(1) : selfShape.GetDim(0);
-    int64_t kDim = (transSelf != 0LL)  ? selfShape.GetDim(0) : selfShape.GetDim(1);
-    int64_t nDim = (transMat2 != 0LL) ? mat2Shape.GetDim(0) : mat2Shape.GetDim(1);
-
-    // Dtype和Format初始化
-    MmOpInfo mmOpInfo;
-    mmOpInfo.ori_info.self_dtype = self->GetDataType();
-    mmOpInfo.ori_info.self_format = op::Format::FORMAT_ND;
-    mmOpInfo.ori_info.mat2_dtype = mat2->GetDataType();
-    mmOpInfo.ori_info.mat2_format = op::Format::FORMAT_ND;
-    mmOpInfo.ori_info.output_dtype = self->GetDataType();
-    mmOpInfo.ori_info.output_format = op::Format::FORMAT_ND;
-
-    mmOpInfo.shapeInfo.kDim = kDim;
-    mmOpInfo.shapeInfo.nDim = nDim;
-    mmOpInfo.shapeInfo.mDim = mDim;
-
-    mmOpInfo.shapeInfo.transposeX1 = (transSelf != 0LL) ? true : false;
-    mmOpInfo.shapeInfo.transposeX2 = (transMat2 != 0LL) ? true : false;
-    mmOpInfo.support_info = mmOpInfo.ori_info;
-    // 如果允许降精度处理， 则开启HF32模式（0x40），否则采用默认模式; 后续此字段配置需要按照字段表进行配置
-    mmOpInfo.opImplModeEnum = (cubeMathType == ALLOW_FP32_DOWN_PRECISION) || (cubeMathType == USE_HF32) ? 0x40 : 0x1;
-    mmOpInfo.enableHf32 = (cubeMathType == ALLOW_FP32_DOWN_PRECISION) || (cubeMathType == USE_HF32);
-    OP_LOGD(
-        "opImplModeEnum=%ld, enableHf32=%d, cubeMathType=%d", mmOpInfo.opImplModeEnum, mmOpInfo.enableHf32,
-        cubeMathType);
-
-    SetMatmulOpSupportInfo(self, mat2, mmOpInfo, cubeMathType);
-    GetMmInfo(mmOpInfo);
-    return mmOpInfo;
-}
 
 static inline bool IsSplitKThenForbiddenNd2Nz(const uint64_t mDim, const uint64_t kDim, const uint64_t nDim,
                                               const bool transposeX1, const bool transposeX2) {

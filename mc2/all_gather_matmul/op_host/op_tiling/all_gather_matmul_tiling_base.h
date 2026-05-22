@@ -19,7 +19,6 @@
 #include "mc2_hcom_topo_info.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "all_gather_formulaic_tiling.h"
-#include "mc2_log.h"
 #include "ops_utils.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
@@ -39,7 +38,7 @@ public:
                               mc2tiling::TilingArgs& args);
     ge::graphStatus GetAllGatherFormulateTileCnt(const gert::TilingContext* ctx,
         Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args);
-    ge::graphStatus InitHcclParam(gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData,
+    ge::graphStatus InitHcclParam(const gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData,
                                   const char* group);
     virtual CutResult GetCutResult(Mc2Tiling::AllGatherMatmulTilingData& tilingData,
                                    mc2tiling::TilingArgs& args) = 0;

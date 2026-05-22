@@ -14,7 +14,6 @@
  */
 #include "matmul_reduce_scatter_tiling_a5.h"
 #include "vector"
-#include "ops_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_log.h"
 #include "register/op_def_registry.h"

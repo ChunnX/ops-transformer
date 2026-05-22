@@ -535,7 +535,7 @@ static bool NeedGatherOut(const gert::TilingContext* context)
     }
 }
 
-ge::graphStatus AllGatherMatmulTilingBase::InitHcclParam(gert::TilingContext *context,
+ge::graphStatus AllGatherMatmulTilingBase::InitHcclParam(const gert::TilingContext *context,
     Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
 {
     std::string algConfig = GetAlgConfig(tilingData);
