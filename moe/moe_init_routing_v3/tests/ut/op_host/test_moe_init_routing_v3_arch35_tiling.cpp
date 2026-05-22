@@ -11,6 +11,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cstdint>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_init_routing_v3_tiling.h"
 #include "tiling_context_faker.h"
@@ -128,6 +129,54 @@ void RunFailureTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity,
         },
         &compileInfo, "Ascend950", A5SocInfo, 4096);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+void RunDropPadTilingTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity,
+                              std::vector<int64_t> activeExpertRange, int64_t rowIdxType, ge::graphStatus result,
+                              int64_t expectTilingKey = UINT64_MAX)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    int64_t activeNum = N * K;
+    int64_t expertNum = EXPERT_NUM;
+    int64_t expertRange = activeExpertRange[1] - activeExpertRange[0];
+    gert::TilingContextPara tilingContextPara(
+        "MoeInitRoutingV3",
+        {
+            {{{N, H}, {N, H}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{N, K}, {N, K}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{expertNum, expertCapacity, H}, {expertNum, expertCapacity, H}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{N * K}, {N * K}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{expertRange}, {expertRange}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{expertNum * expertCapacity}, {expertNum * expertCapacity}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertCapacity)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertNum)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(QUANT_MODE_UNQUANT)},
+            {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(activeExpertRange)},
+            {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(rowIdxType)},
+        },
+        &compileInfo, "Ascend950", A5SocInfo, 4096);
+    ExecuteTestCase(tilingContextPara, result, expectTilingKey);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_full_load_unquant_success)
+{
+    RunDropPadTilingTestcase(4, 16, 2, 2, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 200000);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_reject_scatter_row_idx)
+{
+    RunDropPadTilingTestcase(4, 16, 2, 2, {0, EXPERT_NUM}, ROW_IDX_TYPE_SCATTER, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_reject_partial_expert_range)
+{
+    RunDropPadTilingTestcase(4, 16, 2, 2, {0, 128}, ROW_IDX_TYPE_GATHER, ge::GRAPH_FAILED);
 }
 
 // fullload + not quant 200000
