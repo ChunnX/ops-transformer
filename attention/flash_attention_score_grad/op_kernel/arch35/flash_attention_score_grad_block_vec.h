@@ -54,7 +54,7 @@ public:
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
                                             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
-                                            GM_ADDR workspace);
+                                            GM_ADDR workspace, FagConstInfo &constInfo);
     __aicore__ inline void InitUbBuffer();
     __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs);
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo);
@@ -186,6 +186,18 @@ public:
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), GlobalTensor<float>, std::nullptr_t>::type dqWorkSpaceGm;
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), GlobalTensor<float>, std::nullptr_t>::type dkWorkSpaceGm;
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), GlobalTensor<float>, std::nullptr_t>::type dvWorkSpaceGm;
+    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT,
+        uint64_t, std::nullptr_t>::type dqGmBaseAddr;
+    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT,
+        uint64_t, std::nullptr_t>::type dkGmBaseAddr;
+    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT,
+        uint64_t, std::nullptr_t>::type dvGmBaseAddr;
+    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT,
+        uint64_t, std::nullptr_t>::type dqGmLimitOffset;
+    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT,
+        uint64_t, std::nullptr_t>::type dkGmLimitOffset;
+    typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT,
+        uint64_t, std::nullptr_t>::type dvGmLimitOffset;
 };
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -215,7 +227,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
                                                                     GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
                                                                     GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR dq,
                                                                     GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
-                                                                    GM_ADDR workspace)
+                                                                    GM_ADDR workspace,
+                                                                    FagConstInfo &constInfo)
 {
     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
     dyGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dy);
@@ -261,6 +274,27 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
             dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dq);
             dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dk);
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dv);
+            dqGmBaseAddr = (uint64_t)(dqWorkSpaceGm.GetPhyAddr());
+            dkGmBaseAddr = (uint64_t)(dkWorkSpaceGm.GetPhyAddr());
+            dvGmBaseAddr = (uint64_t)(dvWorkSpaceGm.GetPhyAddr());
+            uint64_t qSize = 0;
+            uint64_t kSize = 0;
+            uint64_t vSize = 0;
+            if constexpr (IS_TND) {
+                qSize = ((__gm__ int64_t *)constInfo.seqS1_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2GD;
+                kSize = ((__gm__ int64_t *)constInfo.seqS2_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2D;
+                vSize = ((__gm__ int64_t *)constInfo.seqS2_addr)[constInfo.bSize - 1] * constInfo.commonConstInfo.n2Dv;
+            } else {
+                qSize = constInfo.bSize * constInfo.commonConstInfo.n2GS1D;
+                kSize = constInfo.bSize * constInfo.commonConstInfo.n2S2D;
+                vSize = constInfo.bSize * constInfo.commonConstInfo.n2S2Dv;
+            }
+            uint64_t dqSizeByte = qSize * sizeof(CALC_TYPE);
+            uint64_t dkSizeByte = kSize * sizeof(CALC_TYPE);
+            uint64_t dvSizeByte = vSize * sizeof(CALC_TYPE);
+            dqGmLimitOffset = dqGmBaseAddr + dqSizeByte;
+            dkGmLimitOffset = dkGmBaseAddr + dkSizeByte;
+            dvGmLimitOffset = dvGmBaseAddr + dvSizeByte;
         }
     }
 }
@@ -1222,7 +1256,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDq(FagConstInfo &
                 uint64_t totalCopySizeBytes = dataCopyPadParams.blockCount <= 0 ? 0 :
                     ((dataCopyPadParams.blockCount * dataCopyPadParams.blockLen) +
                     ((dataCopyPadParams.blockCount - 1) * dataCopyPadParams.dstStride));
-                uint64_t writeStartAddr = constInfo.deterConstInfo.dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddr = dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddr = writeStartAddr + totalCopySizeBytes;
                 uint16_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
                     dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
@@ -1303,8 +1337,8 @@ __aicore__ inline uint16_t FAGBlockVec<TEMPLATE_ARGS>::FindAvailableRows(FagCons
     uint64_t writeStartAddr, uint64_t writeLastAddr,
     uint16_t blockCount, uint32_t blockLen, uint32_t dstStride)
 {
-    uint64_t gmLimitOffset = RES_IDX == DQ_IDX ? constInfo.deterConstInfo.dqGmLimitOffset :
-        (RES_IDX == DK_IDX ? constInfo.deterConstInfo.dkGmLimitOffset : constInfo.deterConstInfo.dvGmLimitOffset);
+    uint64_t gmLimitOffset = RES_IDX == DQ_IDX ? dqGmLimitOffset :
+        (RES_IDX == DK_IDX ? dkGmLimitOffset : dvGmLimitOffset);
     if (writeLastAddr > gmLimitOffset) {
         uint64_t remainBytes = writeStartAddr > gmLimitOffset ? 0 : gmLimitOffset - writeStartAddr;
         if (remainBytes == 0 || blockCount == 0) {
@@ -1402,7 +1436,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDqkv(LocalTensor<
                 uint64_t totalCopySizeBytes = dataCopyPadParams.blockCount <= 0 ? 0 :
                     ((dataCopyPadParams.blockCount * dataCopyPadParams.blockLen) +
                     ((dataCopyPadParams.blockCount - 1) * dataCopyPadParams.dstStride));
-                uint64_t writeStartAddr = constInfo.deterConstInfo.dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddr = dqGmBaseAddr + dqOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddr = writeStartAddr + totalCopySizeBytes;
                 uint16_t avaliableRows = FindAvailableRows<DQ_IDX>(constInfo, writeStartAddr, writeLastAddr,
                     dataCopyPadParams.blockCount, dataCopyPadParams.blockLen, dataCopyPadParams.dstStride);
@@ -1498,8 +1532,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::WriteDataToDkv(LocalTensor<CA
                 uint64_t totalCopySizeBytesDv = dataCopyDvPadParams.blockCount <= 0 ? 0 :
                     ((dataCopyDvPadParams.blockCount * dataCopyDvPadParams.blockLen) +
                     ((dataCopyDvPadParams.blockCount - 1) * dataCopyDvPadParams.dstStride));
-                uint64_t writeStartAddrDk = constInfo.deterConstInfo.dkGmBaseAddr + dkOffset[cIx] * sizeof(CALC_TYPE);
-                uint64_t writeStartAddrDv = constInfo.deterConstInfo.dvGmBaseAddr + dvOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddrDk = dkGmBaseAddr + dkOffset[cIx] * sizeof(CALC_TYPE);
+                uint64_t writeStartAddrDv = dvGmBaseAddr + dvOffset[cIx] * sizeof(CALC_TYPE);
                 uint64_t writeLastAddrDk = writeStartAddrDk + totalCopySizeBytesDk;
                 uint64_t writeLastAddrDv = writeStartAddrDv + totalCopySizeBytesDv;
                 uint16_t avaliableRowsDk = FindAvailableRows<DK_IDX>(constInfo, writeStartAddrDk, writeLastAddrDk,
@@ -1575,7 +1609,7 @@ public:
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
                                             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
-                                            GM_ADDR workspace){};
+                                            GM_ADDR workspace, FagConstInfo &constInfo){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, AttenMaskInfo &attenMaskInfo,
                                              PseInfo &pseInfo, DropMaskInfo &dropInfo){};
