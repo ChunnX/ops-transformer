@@ -108,11 +108,14 @@ public:
     bool enableS1OutSplit = false;
 
     // ── 标量指令优化：缓存逐 batch 不变的除法结果 ────────────────────────────
-    uint32_t cachedS2LoopTimes  = 0;    // (actSeqLensKv + s2BaseSize-1) / s2BaseSize
-    uint32_t cachedGS1LoopTimes = 0;    // (actSeqLensQ*gSize + mBaseSize-1) / mBaseSize
-    uint32_t cachedBIdxForCalc  = 0;    // bN2Cur / n2Size，换 bN2 才更新
-    uint32_t cachedN2IdxForCalc = 0;    // bN2Cur % n2Size
-    uint32_t cachedBN2ForCalc   = ~0U;  // 上一次 CalcParams 的 bN2Cur
+    uint32_t cachedS2LoopTimes   = 0;    // (actSeqLensKv + s2BaseSize-1) / s2BaseSize
+    uint32_t cachedGS1LoopTimes  = 0;    // (actSeqLensQ*gSize + mBaseSize-1) / mBaseSize
+    uint32_t cachedBIdxForCalc   = 0;    // bN2Cur / n2Size，换 bN2 才更新
+    uint32_t cachedN2IdxForCalc  = 0;    // bN2Cur % n2Size
+    uint32_t cachedBN2ForCalc    = ~0U;  // 上一次 CalcParams 的 bN2Cur
+    uint32_t nextBatchBN2Start_  = 0;    // 下一个 batch 的起始 bN2（避免每次 GetTaskDealMode 做除法）
+    int64_t  cachedPreTokensLeftUp_  = 0; // GetPreNextTokenLeftUp 结果缓存（每 batch 算一次）
+    int64_t  cachedNextTokensLeftUp_ = 0;
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -404,6 +407,8 @@ public:
         accGS1Loops = 0;
         headS2Split = false;
         tailS2Split = false;
+        nextBatchBN2Start_ = 0;    // 重置，保证新 section 第一次调用触发 batch 更新
+        cachedBN2ForCalc   = ~0U;  // 重置 CalcParams 缓存
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
@@ -450,20 +455,20 @@ public:
 
     __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
-            if (taskRunInfo[i].isValid) {
-                return true;
-            }
-        }
-        return false;
+        (void)taskRunInfo;
+        // 需要 createdTaskCount + PRELOAD_N 次调用才能将最后 PRELOAD_N 个任务的 Mm2/Vec2 排空
+        // （isValid 仅在 Mm2/Vec2 完成后清零，drain 阶段前 PRELOAD_N 次只执行 Mm2/Vec2 跳过 Mm1/Vec1）
+        return executedTaskCount < createdTaskCount + PRELOAD_N;
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
-        uint32_t bIdx = bN2Cur / constInfo.n2Size;
-        if (isFirstTask || prevBIdx != bIdx) {
+        // 用 nextBatchBN2Start_ 代替每次 bN2Cur/n2Size 除法：仅比较一次整数
+        if (isFirstTask || bN2Cur >= nextBatchBN2Start_) {
+            uint32_t bIdx = bN2Cur / constInfo.n2Size;   // 仅换 batch 时执行一次除法
             prevBIdx = bIdx;
+            nextBatchBN2Start_ = (bIdx + 1) * constInfo.n2Size;
             if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
@@ -478,11 +483,14 @@ public:
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
+            // 换 batch 时才重算（正确位置）
+            cachedS2LoopTimes  = static_cast<uint32_t>((actSeqLensKv + s2BaseSize - 1) / s2BaseSize);
+            uint64_t gS1Size_  = actSeqLensQ * constInfo.gSize;
+            cachedGS1LoopTimes = static_cast<uint32_t>((gS1Size_ + mBaseSize - 1) / mBaseSize);
+            GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv,
+                                  cachedPreTokensLeftUp_, cachedNextTokensLeftUp_);
         }
-        // 换 batch 时才重新计算（缓存消除热路径除法）
-        cachedS2LoopTimes  = static_cast<uint32_t>((actSeqLensKv + s2BaseSize - 1) / s2BaseSize);
-        uint64_t gS1Size   = actSeqLensQ * constInfo.gSize;
-        cachedGS1LoopTimes = static_cast<uint32_t>((gS1Size + mBaseSize - 1) / mBaseSize);
+        // 仅在换 batch 时重新计算（已移入 if 块，消除热路径每次调用的除法）
         uint32_t s2LoopTimes  = cachedS2LoopTimes;
         uint32_t gS1LoopTimes = cachedGS1LoopTimes;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
@@ -539,7 +547,7 @@ public:
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         curS2Start = 0U;
-        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
+        curS2End = cachedS2LoopTimes;  // 复用缓存，避免重复除法
 
         if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
             headS2Split = s2OStart_ != 0U;
@@ -719,7 +727,8 @@ public:
             }
         }
 
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+        info.preTokensLeftUp  = cachedPreTokensLeftUp_;   // 已在 GetTaskDealMode 换 batch 时算好
+        info.nextTokensLeftUp = cachedNextTokensLeftUp_;
 
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
