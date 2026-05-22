@@ -63,6 +63,8 @@ enum class NnopbaseHcclServerType : uint32_t {
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 // check nullptr
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
@@ -426,6 +428,30 @@ static bool checkInputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
     return false;
 }
 
+static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum) {
+    // 获取卡数
+    uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
+#endif
+
+    // 获取通信引擎参数
+    if (std::strcmp(commMode, "aicpu") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+    } else if (std::strcmp(commMode, "ccu") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_CCU;
+    } else if (std::strcmp(commMode, "default") == 0) {
+        // default: rankSize 小于等于8走CCU，否则走AICPU
+        commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "comm_mode only support 'default', 'ccu' or 'aicpu', current comm_mode is %s", commMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
                                                      const aclTensor* x1Scale, const aclTensor* x2Scale,
                                                      const aclTensor* quantScale, int64_t blockSize, const char* group,
@@ -475,11 +501,20 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const 
     if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
         transX2Scale = TransX2Tensor(x2Scale);
     }
+
+    uint8_t commModeEnum = 0; 
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+
     aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, transX2, bias, x1Scale, transX2Scale,
                     quantScale, const_cast<char *>(group), transposeX1, transposeX2, gatherIndex, commTurn,
                     rankSize, blockSize, groupSize, isGatherOut, isAMaxOut, outDtype, const_cast<char *>(commMode),
                     output, gatherOut, amaxOut, workspaceSize, executor);
     OP_LOGD("AllGatherMatmulV2, aclnnInnerGetWorkspaceSize ret = %d.", ret);
+    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+        NnopbaseSetUserHandle(*executor, arg);
+    }
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ret;
@@ -535,7 +570,6 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
                                                    aclOpExecutor** executor)
 {
     aclnnStatus ret = ACLNN_SUCCESS;
-    OP_LOGD("==========before aclnnAllGatherMatmulV2GetWorkspaceSize end==============");
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                        gatherIndex, commTurn, streamMode, groupSize, commMode, output,
@@ -548,43 +582,32 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    OP_LOGD("==========after NnopbaseSetHcclServerType==============");
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (commMode != nullptr) {
-                OP_LOGD("[ALLGATHERMATMULV2_COMMMODE] Execute commMode=%s", commMode);
-                if (strcmp(commMode, "aicpu") == 0) {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-                } else if (strcmp(commMode, "default") == 0) {
-                    uint32_t rankSize = 0;
-                    auto hcclRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-                    if (hcclRet != ACLNN_SUCCESS) {
-                        OP_LOGE(ACLNN_ERR_INNER, "Get mc2 ranksize failed, group: %s", group);
-                        return ACLNN_ERR_INNER;
-                    }
-                    OP_LOGD("[ALLGATHERMATMULV2_COMMMODE] Execute rank size=%u", rankSize);
-                    if (rankSize <= 8) {
-                        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-                    } else {
-                        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-                    }
-                } else {
-                    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-                }
-            }
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        }
-    }
-    OP_LOGD("==========after NnopbaseSetHcclServerType==============");
     return ret;
 }
 
-aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                   aclrtStream stream)
 {
     if ((workspace == nullptr) || (workspaceSize == 0UL)) {
         OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
         return ACLNN_SUCCESS;
+    }
+
+    if (NnopbaseSetHcclServerType) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("aclnnAllGatherMatmulV2: NnopbaseHcclServerType, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                OP_LOGD("aclnnAllGatherMatmulV2: NnopbaseHcclServerType, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
+        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        }
     }
 
     return aclnnInnerAllGatherMatmulV2(workspace, workspaceSize, executor, stream);
