@@ -153,7 +153,7 @@ private:
     bool returnValueFlag = false;
 
     struct LIV2Common::ConstInfo constInfo_;
-    liV2topk::LIV2Topk<SCORE_T> topkOp_;
+    liV2Topk::LIV2Topk<SCORE_T> topkOp_;
 };
 
 template <typename LIT>

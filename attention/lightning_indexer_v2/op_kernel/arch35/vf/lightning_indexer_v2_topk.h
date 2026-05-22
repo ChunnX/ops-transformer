@@ -70,18 +70,18 @@ public:
                                       LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag, uint32_t outputIdxOffset)
     {
         if (s2LoopNum == 1) {
-            liV2topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+            liV2Topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, topK);
         } else {
             if (loopIdx == 0) {
-                liV2topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, topK);
             } else {
-                liV2topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                liV2topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2], 
+                liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2], 
                                             topK, loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();

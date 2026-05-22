@@ -277,15 +277,15 @@ __aicore__ inline void LIV2Preload<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint
 template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  GlobalTensor<uint32_t> &metadataGm)
 {
-    uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_CORE_ENABLE_INDEX);    
-    uint32_t bN2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_BN2_START_INDEX);
-    uint32_t mStartIndex = GetAttrAbsIndex(curCoreIdx, LI_M_START_INDEX);
-    uint32_t s2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_S2_START_INDEX);
-    uint32_t bN2EndIndex = GetAttrAbsIndex(curCoreIdx, LI_BN2_END_INDEX);
-    uint32_t mEndIndex = GetAttrAbsIndex(curCoreIdx, LI_M_END_INDEX);
-    uint32_t s2EndIndex = GetAttrAbsIndex(curCoreIdx, LI_S2_END_INDEX);
+    uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_CORE_ENABLE_INDEX);    
+    uint32_t bN2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_BN2_START_INDEX);
+    uint32_t mStartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_M_START_INDEX);
+    uint32_t s2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_S2_START_INDEX);
+    uint32_t bN2EndIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_BN2_END_INDEX);
+    uint32_t mEndIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_M_END_INDEX);
+    uint32_t s2EndIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_S2_END_INDEX);
 
-    uint32_t liZeroCoreEnableIndex = GetAttrAbsIndex(0, LI_CORE_ENABLE_INDEX);
+    uint32_t liZeroCoreEnableIndex = GetAttrAbsIndex(0, LI_V2_CORE_ENABLE_INDEX);
     if (metadataGm.GetValue(liZeroCoreEnableIndex) == 0) {
         isUsedCoreEqZero = true; 
     }
