@@ -343,23 +343,34 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
             NotifyVectorToCopyIn();
         }
     } else {
-        BlockPrologue blockPrologue;
-        for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
-            auto blockCoord = scheduler.GetBlockCoord(loopIdx);
-            auto actualShape = scheduler.GetBlockShape(blockCoord);
+        if (subBlockIdx == 0) {
+            BlockPrologue blockPrologue;
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+                auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+                auto actualShape = scheduler.GetBlockShape(blockCoord);
 
-            uint32_t mLoc = Get<M_VALUE>(blockCoord);
-            uint32_t nLoc = Get<N_VALUE>(blockCoord);
-            uint32_t kLoc = Get<K_VALUE>(blockCoord);
-
-            for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
-                auto nOffset = nLoc + weightBlock * outputN;
-                auto mL1Size = Get<M_VALUE>(actualShape);
-                auto nL1Size = Get<N_VALUE>(actualShape);
-                blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n);
+                uint32_t mLoc = Get<M_VALUE>(blockCoord);
+                uint32_t nLoc = Get<N_VALUE>(blockCoord);
+                uint32_t kLoc = Get<K_VALUE>(blockCoord);
+                for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
+                    auto nOffset = nLoc + weightBlock * outputN;
+                    auto mL1Size = Get<M_VALUE>(actualShape);
+                    auto nL1Size = Get<N_VALUE>(actualShape);
+                    blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n);
+                }
+                WaitForCubeFinishCopyout();
             }
-            WaitForCubeFinishCopyout();
-            if (subBlockIdx == 0) {
+        } else {
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+                auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+                auto actualShape = scheduler.GetBlockShape(blockCoord);
+
+                uint32_t mLoc = Get<M_VALUE>(blockCoord);
+                uint32_t nLoc = Get<N_VALUE>(blockCoord);
+                uint32_t kLoc = Get<K_VALUE>(blockCoord);
+
+                WaitForCubeFinishCopyout();
+                AscendC::PipeBarrier<PIPE_ALL>();
                 auto tensorBlockGmFirst = l0cOutGm.Slice(
                     Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 auto tensorBlockGmSecond =
@@ -387,8 +398,8 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
                 
                 AscendC::SetCtrlSpr<60, 60>(0);
                 epilogueOp(epilogueShape, epilogueOffset);
+                AscendC::PipeBarrier<PIPE_ALL>();
             }
-            AscendC::PipeBarrier<PIPE_ALL>();
         }
     }
 
@@ -629,18 +640,6 @@ __aicore__ inline void GroupMatmul2A8W4(
         DispatchPolicy, AscendC::Std::tuple<ElementA, ElementMxScaleA>, AscendC::Std::tuple<MakeLayoutA, MakeLayoutScaleA>,
         AscendC::Std::tuple<ElementB, ElementMxScaleB>, AscendC::Std::tuple<MakeLayoutB, MakeLayoutScaleB>, ElementC, MakeLayoutC,
         void, void>;
-    
-    
-
-    // bool enableL0CPingPong = false;
-
-    // int64_t ubOffset = 0;
-    // LocalTensor<ElementC> l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-    // auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-
-    // ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-    // LocalTensor<ElementC> l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-    // auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
     auto l0cOutGm = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
@@ -671,9 +670,6 @@ __aicore__ inline void GroupMatmul2A8W4(
             uint32_t nLoc = Get<N_VALUE>(blockCoord);
             uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
-            // auto tensorUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
-            // auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
-
             if (loopIdx == startLoopIdx) {
                 BlockScheduler gmmBlockScheduler(
                     {m, k, n},
@@ -703,24 +699,32 @@ __aicore__ inline void GroupMatmul2A8W4(
             NotifyVectorToCopyIn();
         }
     } else {
+        if (subBlockIdx == 0) {
         BlockPrologue blockPrologue;
-        for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
-            auto blockCoord = scheduler.GetBlockCoord(loopIdx);
-            auto actualShape = scheduler.GetBlockShape(blockCoord);
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+                auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+                auto actualShape = scheduler.GetBlockShape(blockCoord);
 
-            uint32_t mLoc = Get<M_VALUE>(blockCoord);
-            uint32_t nLoc = Get<N_VALUE>(blockCoord);
-            uint32_t kLoc = Get<K_VALUE>(blockCoord);
+                uint32_t mLoc = Get<M_VALUE>(blockCoord);
+                uint32_t nLoc = Get<N_VALUE>(blockCoord);
+                uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
-            // auto tensorUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
-            // auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
+                auto nOffset = nLoc;
+                auto mL1Size = Get<M_VALUE>(actualShape);
+                auto nL1Size = Get<N_VALUE>(actualShape);
+                blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n);
+                WaitForCubeFinishCopyout();
+            }
+        } else {
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+                auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+                auto actualShape = scheduler.GetBlockShape(blockCoord);
 
-            auto nOffset = nLoc;
-            auto mL1Size = Get<M_VALUE>(actualShape);
-            auto nL1Size = Get<N_VALUE>(actualShape);
-            blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n);
-            WaitForCubeFinishCopyout();
-            if (subBlockIdx == 0) {
+                uint32_t mLoc = Get<M_VALUE>(blockCoord);
+                uint32_t nLoc = Get<N_VALUE>(blockCoord);
+                uint32_t kLoc = Get<K_VALUE>(blockCoord);
+
+                WaitForCubeFinishCopyout();
                 auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                                     Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
@@ -741,9 +745,9 @@ __aicore__ inline void GroupMatmul2A8W4(
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+                
+                AscendC::PipeBarrier<PIPE_ALL>();
             }
-            AscendC::PipeBarrier<PIPE_ALL>();
-            
         }
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;

@@ -101,7 +101,6 @@
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
-using AscendC::GetSubBlockIdx;
 using AscendC::HardEvent;
 using AscendC::SetFlag;
 using AscendC::TEventID;
@@ -115,6 +114,7 @@ namespace Gemm {
 namespace Prologue {
 
 static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
+static constexpr uint64_t SERIAL_HALF_K_PARTS = 2;
 
 struct PrologueMxCastWOffsetParam {
     uint64_t kSize;
@@ -279,36 +279,37 @@ template <typename GMWeightTensorType>
 __aicore__ inline void WQBMM_PROLOGUE_CLASS::ComputeBasicBlockAivNdKnNzNk(
     const PrologueMxCastWOffsetParam& param, const GMWeightTensorType& gmWeightTensor)
 {
-    // Setup loop constants
+    // A single V core preserves the original half-K granularity for UB fit,
+    // but processes the two halves serially before notifying the cube core.
     const uint64_t kMte2BaseSize = param.kbL1Size >> 1;
-    const uint64_t l1SplitOffset = GetSubBlockIdx() * kMte2BaseSize;
 
-    // Main processing loop
     for (uint64_t kOffset = 0; kOffset < param.kSize; kOffset += param.kbL1Size, cvLoopIdx_++) {
-        // Calculate K block sizes
         uint64_t l1RealLen = (kOffset + param.kbL1Size) > param.kSize ? param.kSize - kOffset : param.kbL1Size;
-        uint64_t mte2RealK = GetSubBlockIdx() == 0     ? min(kMte2BaseSize, l1RealLen) :
-                             l1RealLen > kMte2BaseSize ? l1RealLen - kMte2BaseSize :
-                                                         0;
 
-        // Create tensors using helper functions
-        auto weight4BitTensor = MakeWeight4BitTensor(mte2RealK, param.nL1Size);
-        auto weight8BitTensor = MakeWeight8BitTensor(mte2RealK, param.nL1Size);
-        auto l1Tensor = MakeL1WeightTensor(mte2RealK, param.nL1Size, l1SplitOffset);
+        for (uint64_t halfIdx = 0; halfIdx < SERIAL_HALF_K_PARTS; ++halfIdx) {
+            uint64_t l1SplitOffset = halfIdx * kMte2BaseSize;
+            uint64_t mte2RealK =
+                halfIdx == 0 ? min(kMte2BaseSize, l1RealLen)
+                             : (l1RealLen > kMte2BaseSize ? l1RealLen - kMte2BaseSize : 0);
 
-        // Pipeline: Stage 1 - Wait and Load from GM
-        WaitVectorToMTE2();
+            auto weight4BitTensor = MakeWeight4BitTensor(mte2RealK, param.nL1Size);
+            auto weight8BitTensor = MakeWeight8BitTensor(mte2RealK, param.nL1Size);
+            auto l1Tensor = MakeL1WeightTensor(mte2RealK, param.nL1Size, l1SplitOffset);
 
-        CopyGmToUb(kOffset + GetSubBlockIdx() * kMte2BaseSize, mte2RealK, param, gmWeightTensor, weight4BitTensor);
+            WaitVectorToMTE2();
+            CopyGmToUb(kOffset + l1SplitOffset, mte2RealK, param, gmWeightTensor, weight4BitTensor);
 
-        // Pipeline: Stage 2 - Wait for AIC and Compute
-        WaitAicToAiv();
-        WeightAntiQuantComputeNzNk(weight4BitTensor, weight8BitTensor);
-        SetVectorToMTE2();
-        ubMte2LoopIdx_++;
+            if (halfIdx == 0) {
+                WaitAicToAiv();
+            }
 
-        // Pipeline: Stage 3 - Copy to L1 and Signal
-        CopyWeightToL1(mte2RealK, weight8BitTensor, l1Tensor);
+            WeightAntiQuantComputeNzNk(weight4BitTensor, weight8BitTensor);
+            SetVectorToMTE2();
+            ubMte2LoopIdx_++;
+
+            CopyWeightToL1(mte2RealK, weight8BitTensor, l1Tensor);
+        }
+
         SetAivToAic();
     }
 }
