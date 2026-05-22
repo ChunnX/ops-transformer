@@ -30,12 +30,6 @@ class MoeTokenUnpermuteGrad : public OpDef
 public:
     explicit MoeTokenUnpermuteGrad(const char* name) : OpDef(name)
     {
-        this->Input("permuted_tokens")
-            .ParamType(REQUIRED)
-            .DataType(tokenTypes)
-            .Format(formats)
-            .UnknownShapeFormat(formats)
-            .AutoContiguous();
         this->Input("unpermuted_tokens_grad")
             .ParamType(REQUIRED)
             .DataType(tokenTypes)
@@ -47,6 +41,12 @@ public:
             .DataType(
                 {ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
                  ge::DT_INT32, ge::DT_INT32})
+            .Format(formats)
+            .UnknownShapeFormat(formats)
+            .AutoContiguous();
+        this->Input("permuted_tokens")
+            .ParamType(OPTIONAL)
+            .DataType(tokenTypes)
             .Format(formats)
             .UnknownShapeFormat(formats)
             .AutoContiguous();
