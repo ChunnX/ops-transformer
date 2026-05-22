@@ -38,7 +38,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     elseif("${CONDITION_UNIT}" STREQUAL "ascend950")  # 适配多版本兼容dump功能
         add_definitions(-DMC2_EXCEPTION_HANDLER)
         add_ops_compile_options(
-            OP_NAME MoeDistributeCombineV2
+            OP_NAME MoeDistributeCombineV3
             OPTIONS 
                 -I${SHMEM_PATH}/shmem/include
                 -I${SHMEM_PATH}/shmem/src/device/
