@@ -40,8 +40,8 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MoeDistributeCombineV3
             OPTIONS 
-                -I${SHMEM_PATH}/shmem/include
-                -I${SHMEM_PATH}/shmem/src/device/
+                -I${SHMEM_PATH}/include
+                -I${SHMEM_PATH}/src/device/
     )      
     endif()
 else() # 回黄host
