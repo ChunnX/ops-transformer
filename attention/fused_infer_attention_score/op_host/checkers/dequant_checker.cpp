@@ -1224,13 +1224,20 @@ ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fi
                     return ge::GRAPH_FAILED);
 
         // rope
-        // OP_CHECK_IF(!(fiaInfo.inputQRopeType == ge::DT_BF16 && fiaInfo.inputKRopeType == ge::DT_BF16),
-        //             OP_LOGE(fiaInfo.opName,
-        //                     "In MXFP8 fullquant scenario, queryRope datatype(%s), "
-        //                     "keyRope datatype(%s) should be BF16.",
-        //                     DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(),
-        //                     DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
-        //             return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!(fiaInfo.inputQRopeType == ge::DT_BF16 && fiaInfo.inputKRopeType == ge::DT_BF16),
+                    OP_LOGE(fiaInfo.opName,
+                            "In MXFP8 fullquant scenario, queryRope datatype(%s), "
+                            "keyRope datatype(%s) should be BF16.",
+                            DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(),
+                            DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
+                    return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF((fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.outputType != ge::DT_BF16),
+                    OP_LOGE(fiaInfo.opName,
+                            "In MXFP8 fullquant scenario, output datatype(%s), "
+                            "should be BF16 when has rope.",
+                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
