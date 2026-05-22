@@ -371,7 +371,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, `, hAlignSize_);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
         hcomm_.Wait(handle);
     }
 }
