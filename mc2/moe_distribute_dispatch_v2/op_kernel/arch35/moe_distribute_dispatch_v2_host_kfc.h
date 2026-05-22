@@ -217,26 +217,22 @@ private:
     // __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
     //                                                        const int32_t curRankId);
 
-    __aicore__ inline GM_ADDR GetSendAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
+    __aicore__ inline GM_ADDR GetSendAddrBetweenServer(const int32_t serverId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        //return GetBaseWindOutAddrByServer(winContext_[ctxIdx], serverId, curRankId);
         return gmTemp + 20 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
     }
 
-    __aicore__ inline GM_ADDR GetReceiveAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
+    __aicore__ inline GM_ADDR GetReceiveAddrBetweenServer(const int32_t serverId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        //return GetBaseWindInAddrByServer(winContext_[ctxIdx], serverId, curRankId);
         return gmTemp + 20 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
     }
 
-    __aicore__ inline GM_ADDR GetSendStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
+    __aicore__ inline GM_ADDR GetSendStatusAddrBetweenServer(const int32_t serverId)
     {
         return gmTemp;
     }
 
-    __aicore__ inline GM_ADDR GetReceiveStatusAddrBetweenServer(uint8_t ctxIdx, const int32_t serverId)
+    __aicore__ inline GM_ADDR GetReceiveStatusAddrBetweenServer(const int32_t serverId)
     {
         // retrun baseaddr + serverId * 1 * 1024 * 1024;
         return gmTemp;
@@ -585,9 +581,9 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitSetWindows(cons
 {
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
-        OOMCheckAddrRange<XOutType>(reinterpret_cast<__gm__ XOutType *>(GetWindAddrByRankId(COMM_EP_IDX, tempepRankId)),
+        OOMCheckAddrRange<XOutType>(reinterpret_cast<__gm__ XOutType *>(GetWindAddrByRankId(tempepRankId)),
                                           totalWinSizeEp_);
-        OOMCheckAddrRange<float>(reinterpret_cast<__gm__ float *>(GetWindStateAddrByRankId(COMM_EP_IDX, tempepRankId)), STATE_SIZE);
+        OOMCheckAddrRange<float>(reinterpret_cast<__gm__ float *>(GetWindStateAddrByRankId(tempepRankId)), STATE_SIZE);
     }
 #endif
 
@@ -599,7 +595,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitSetWindows(cons
         axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine; // 就是分成两块，去掉combine前面的
     winDataSizeOffsetTp_ =
         dataState_ * (totalWinSizeTp_ / 2) + tilingData->moeDistributeDispatchV2Info.a * hSizeAlignCombine;
-    windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
+    windowGM_ = GetWindAddrByRankId(epRankIdOriginal_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     GlobalTensor<XOutType> winDouble;
     winDouble.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
@@ -749,7 +745,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epRankIdOriginal_, epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);
-    statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
+    statusSpaceGm_ = GetWindStateAddrByRankId(epRankIdOriginal_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -993,7 +989,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     FillQuadruple(sendTokenTensor, startTokenIndex, tokenIndex);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     PipeBarrier<PIPE_V>();
-    GM_ADDR rankGM = (GetSendAddrBetweenServer(COMM_EP_IDX, dstServerId) +
+    GM_ADDR rankGM = (GetSendAddrBetweenServer(dstServerId) +
                                                                  SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
     WriteDataToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
 }
@@ -1160,7 +1156,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     outTensor(flagOffset) = 1;
     SyncFunc<AscendC::HardEvent::V_S>();
     for (uint32_t index = startServerNum; index < endServerNum; index++) {
-        dstStateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetSendAddrBetweenServer(COMM_EP_IDX, index)));
+        dstStateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetSendAddrBetweenServer(index)));
         outTensor(0) = serverCountTensor_(index);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         LOG_INFO("SetServerFlag outTensor",outTensor,{16,8});
@@ -1341,7 +1337,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             uint32_t expertCntIndex = (tokenIndex - startTokenId) * moeCntRowAlign_ + topKIndex;
             uint32_t curExpertCnt = expertOffsetCntTensor_(expertCntIndex);
             expertScale = expertScalesTensor_(topKIndex);
-            GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(COMM_EP_IDX, dstRankId) +
+            GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(dstRankId) +
                                             (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
                                             dstExpertId % moeExpertNumPerRank_)) + hCommuSize_ * curExpertCnt); // 计算地址偏移
             ProcessToken(rankGM, tokenIndex, topKIndex, dstExpertId + sharedExpertNum_, epRankId_, expertScale);
@@ -1354,7 +1350,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             if (!IsInSameServer(dstRankId)) { // 不同server
                 continue; 
             }
-            GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(COMM_EP_IDX, dstRankId) +
+            GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(dstRankId) +
                                                 expertPerSizeOnWin_ * epRankId_ + hCommuSize_ * curExpertCnt);
             ProcessToken(rankGM, tokenIndex, axisK_ + shareIndex, shareIndex, epRankId_, expertScale);
         }
@@ -1507,8 +1503,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     uint32_t cleanUpNum = blockCntPerToken_ * cleanTokenNum;
     //GlobalTensor<uint32_t> statusCntGlobal;
-    GM_ADDR dataCleanAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverId) + SERVER_STATE_ALIGN + startTokenId * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE;
-    GM_ADDR flagCleanAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverId);
+    GM_ADDR dataCleanAddr = GetReceiveAddrBetweenServer(serverId) + SERVER_STATE_ALIGN + startTokenId * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE;
+    GM_ADDR flagCleanAddr = GetReceiveAddrBetweenServer(serverId);
     //statusCntGlobal.SetGlobalBuffer((__gm__ uint32_t *)flagCleanAddr);
     GlobalTensor<float32_t> cleanGlobal;
     cleanGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(dataCleanAddr));
@@ -1574,7 +1570,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     LocalTensor<uint32_t> statusFlagTensor, tokenCntTensor;
     GlobalTensor<uint32_t> statusCntGlobal;
-    GM_ADDR wAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx); // 对应server接收区地址
+    GM_ADDR wAddr = GetReceiveAddrBetweenServer(serverIdx); // 对应server接收区地址
     statusCntGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(wAddr));
     statusFlagTensor = serverFlagBuf.Get<uint32_t>();
     tokenCntTensor = serverFlagBuf.Get<uint32_t>();
@@ -1604,7 +1600,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                                                                 uint32_t dstPosition,
                                                                                                 uint32_t processTokenNum)
 {
-    GM_ADDR dataAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN + dstPosition * sendTokenLengthAlign_;
+    GM_ADDR dataAddr = GetReceiveAddrBetweenServer(serverIdx) + SERVER_STATE_ALIGN + dstPosition * sendTokenLengthAlign_;
 
     GlobalTensor<XInType> dataFlagGlobal;
     dataFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ XInType *>(dataAddr));
@@ -1640,13 +1636,13 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
             continue;
         }
         //LOG_INFO("[BATCHWRITE][WaitToken] rcvStatusIndex",rcvStatusIndex);
-        GM_ADDR flagAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) + SERVER_STATE_ALIGN +
+        GM_ADDR flagAddr = GetReceiveAddrBetweenServer(serverIdx) + SERVER_STATE_ALIGN +
                             (rcvStatusIndex + startTokenIdx) * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE; // 第一个flag起始地址
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntPerToken_);
         if (isArrived) { // 处理到达的情况
             uint32_t dstPosition = rcvStatusIndex + startTokenIdx;
             uint32_t processTokenBlock = blockCntPerToken_ * processTokenNumPerBatch;
-            GM_ADDR dataAddr = GetReceiveAddrBetweenServer(COMM_EP_IDX, serverIdx) +
+            GM_ADDR dataAddr = GetReceiveAddrBetweenServer(serverIdx) +
                                                            SERVER_STATE_ALIGN + dstPosition * sendTokenLengthAlign_;
             recvTmpTensor_ = tokenInQueue_.DeQue<XInType>();                                            
             ReadDataFromWindows<XInType>(dataAddr, processTokenBlock, recvTmpTensor_);
@@ -1761,7 +1757,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (dstExpertId >= moeExpertNum_ || !IsInSameServer(dstRankId)) { // 无效数据或者不在本server
             continue;
         }
-        GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(COMM_EP_IDX, dstRankId) +
+        GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(dstRankId) +
                                             (expertPerSizeOnWin_ * (srcRankIndex * moeExpertNumPerRank_ +
                                             dstExpertId % moeExpertNumPerRank_)) + hCommuSize_ * curExpertCnt); // 计算地址偏移
         ProcessToken(rankGM, tokenIndex, topKIndex, dstExpertId + sharedExpertNum_, srcRankIndex, expertScale);
@@ -1776,7 +1772,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (!IsInSameServer(dstRankId)) { // 不同server
             continue; 
         }
-        GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(COMM_EP_IDX, dstRankId) +
+        GM_ADDR rankGM = reinterpret_cast<GM_ADDR>(GetWindAddrByRankId(dstRankId) +
                                             expertPerSizeOnWin_ * srcRankIndex + hCommuSize_ * curExpertCnt);
         ProcessToken(rankGM, tokenIndex, axisK_ + shareIndex, shareIndex, srcRankIndex, expertScale);
     }
@@ -1831,7 +1827,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitStatusTensor();
     
     for(int serverIdx = startServerId; serverIdx < endServerId; serverIdx++) {
-        GM_ADDR serverRcvAddr = reinterpret_cast<GM_ADDR>(GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, serverId_) +
+        GM_ADDR serverRcvAddr = reinterpret_cast<GM_ADDR>(GetReceiveStatusAddrBetweenServer(serverIdx) +
                                                           blockCntExpertPerServer_ * SERVER_STATE_ALIGN * serverIdx);
         GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(serverRcvAddr + SPLIT_BLOCK_DATA_SIZE);
         
@@ -1859,7 +1855,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
             }
             GM_ADDR rankGM =
-               reinterpret_cast<GM_ADDR>(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset); // 计算地址偏移
+               reinterpret_cast<GM_ADDR>(GetWindStateAddrByRankId(dstRankId) + offset); // 计算地址偏移
             rankGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rankGM));
             DataCopy<int32_t>(rankGMTensor, statusTensor_[expertIndex * 8], 8UL);
             // //LOG_INFO("[rankGM]", rankGM);
@@ -2155,7 +2151,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
 
         uint32_t dstOffset = serverIndex * blockCntExpertPerServer_ *  SERVER_STATE_ALIGN;
-        GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset);
+        GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(serverIndex) + dstOffset);
         WriteDataToWinOut(sendTokenNumToexpert, rankGM, blockCntExpertPerServer_);
         //PipeBarrier<PIPE_MTE3>();
         // todo: HCCL接口
