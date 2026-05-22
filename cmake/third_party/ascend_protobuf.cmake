@@ -71,15 +71,15 @@ else()
                             -DCMAKE_INSTALL_PREFIX=${ASCEND_PROTOBUF_DIR}
                             -Dprotobuf_BUILD_PROTOC_BINARIES=ON
                             -Dprotobuf_ABSL_PROVIDER=module
-                            -DABSL_ROOT_DIR=${ABSL_SOURCE_DIR}
+                            -DABSL_ROOT_DIR=${ABSL_INSTALL_PATH}
                             <SOURCE_DIR>
                         SOURCE_DIR ${ASCEND_PROTOBUF_SOURCE_DIR}
                         BUILD_COMMAND $(MAKE)
                         INSTALL_COMMAND ""
                         EXCLUDE_FROM_ALL TRUE
     )
-    if(TARGET abseil_build_transformer)
-        add_dependencies(ascend_protobuf_build_transformer abseil_build_transformer)
+    if(TARGET abseil_build)
+        add_dependencies(ascend_protobuf_build_transformer abseil_build)
     endif()
 
     ExternalProject_Get_Property(ascend_protobuf_build_transformer SOURCE_DIR)
