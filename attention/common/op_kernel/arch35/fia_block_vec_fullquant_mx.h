@@ -621,11 +621,11 @@ public:
 
         // ===================DataCopy to L1 ====================
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
+        LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
+        mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
             this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
             this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-            LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
-            mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
             uint64_t copyBlockCount = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE / blockBytes;
             uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
             uint64_t subLoopOffset = runInfo.actVecMSizeAlign16 * s2BaseSizeCur / blockBytes * 2;
