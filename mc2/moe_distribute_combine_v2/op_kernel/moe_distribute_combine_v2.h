@@ -1240,7 +1240,7 @@ template <CombineMC2TypeClass>
 __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::WaitDispatch(uint32_t tokenIndex,
     uint64_t performanceTimeStart, uint32_t copyCount, uint32_t beginIndex)
 {
-    uint32_t targetCount = copyCount;
+    uint32_t targetCount = copyCount / FLOAT_PER_UB_ALIGN;
     if (isInputExpertMaskFlag_ || ((zeroExpertNum_ + copyExpertNum_ + constExpertNum_) > 0U)) {
         int32_t tokenTarget = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIndex)) + sharedExpertNum_;
         // targetCount = tokenTarget * FLOAT_PER_UB_ALIGN;
@@ -1674,8 +1674,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
             if (isInputExpertMaskFlag_) {
                 tokenIndex = validBsIndexTensor_.GetValue(curIdx);
             }
-            // uint32_t copyCount = flagRcvCount_ * FLOAT_PER_UB_ALIGN;
-            uint32_t copyCount = flagRcvCount_;
+            uint32_t copyCount = flagRcvCount_ * FLOAT_PER_UB_ALIGN;
             if (!WaitDispatch(tokenIndex, performanceTimeStart, copyCount, beginIndex)) {
                 continue;
             }
