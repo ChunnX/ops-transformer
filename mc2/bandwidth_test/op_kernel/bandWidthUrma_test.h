@@ -196,6 +196,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
+    totalWinSizeEp_ = 800UL * 1024 * 1024;
     PRINTF("totalWinSizeEp_ is %u\n", totalWinSizeEp_);
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ =  context_->epRankId;
