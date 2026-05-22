@@ -356,7 +356,7 @@ def write_soc_json(data: List[Dict], soc_name: str, output_dir: str, logger: log
     try:
         op_names = sorted([op_info["op_name"] for op_info in data])
         
-        output_path = str(Path(output_dir) / f"{soc_name}.json")
+        output_path = str(Path(output_dir) / "matched_keywords.txt")
         output_path_obj = Path(output_path)
         parent_dir = output_path_obj.parent
         if parent_dir and not parent_dir.exists():
