@@ -176,7 +176,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ori_
         dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->baseParams.dSinkWorkSpaceOffset / sizeof(float)); //todo offset
     }
     int64_t firstHalfGSize = (constInfo.commonConstInfo.gSize + 1) >> 1;
-    int64_t softmaxL1WSOffset = tilingData->baseParams.softmaxL1WorkspaceOffset / sizeof(float) + this->cBlockIdx * constInfo.selectedBlockCount * constInfo.commonConstInfo.gSize + this->vSubBlockIdx * firstHalfGSize * constInfo.selectedBlockCount;
+    int64_t selectedBlockCount = Max(constInfo.selectedBlockCount, VECTOR_BASEN);
+    int64_t softmaxL1WSOffset = tilingData->baseParams.softmaxL1WorkspaceOffset / sizeof(float) + this->cBlockIdx * selectedBlockCount * constInfo.commonConstInfo.gSize + this->vSubBlockIdx * firstHalfGSize * selectedBlockCount;
     softmaxL1WorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + softmaxL1WSOffset);
 }
  
