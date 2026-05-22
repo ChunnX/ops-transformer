@@ -1,2 +1,7 @@
 tests/
 mc2/*/tests/
+mc2/moe_distribute_dispatch_setup
+mc2/moe_distribute_dispatch_teardown
+mc2/moe_distribute_combine_setup
+mc2/moe_distribute_combine_teardown
+mc2/mega_moe
