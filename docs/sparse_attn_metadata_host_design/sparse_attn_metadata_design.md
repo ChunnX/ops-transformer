@@ -1,50 +1,379 @@
-# SparseAttnSharedkvMetadata 算子 Host 端重设计方案文档
+# SparseAttnSharedkvMetadata 算子 Python+TileLang 方案设计文档
 
 ## 1. 项目背景
 
-当前 `SparseAttnSharedkvMetadata` 算子是昇腾NPU平台上 `SparseAttnSharedkv` 算子的前序算子，其主要功能是生成任务分核列表，为后续Attention计算提供每个AI Core的计算任务索引。该算子目前运行在昇腾AICPU上（NPU的辅助CPU单元），通过AscendC语言实现。
+当前 `SparseAttnSharedkvMetadata` 算子是昇腾NPU平台上 `SparseAttnSharedkv` 算子的前序算子，其主要功能是生成任务分核列表，为后续Attention计算提供每个AI Core的计算任务索引。该算子目前运行在昇腾AICPU上（NPU的辅助CPU单元），通过C++实现。
 
-本项目要求将该算子迁移到Host端CPU执行，使用TileLang语言重写，实现相同的数据切分优化功能，不依赖AICPU硬件特性。
+本项目采用**Python+TileLang融合方案**：
+- **Metadata计算**：在Python端完成（数据在CPU上，避免D2H传输）
+- **Attn算子**：用TileLang实现，与Metadata计算放在同一个.py文件
+- **整体流程**：无需单独的AICPU kernel，融合调用
 
-### 1.1 迁移方案概述
+### 1.1 方案架构
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Python+TileLang 融合方案                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  sparse_attn_sharedkv.py (一个文件，融合实现)                     │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  Part 1: Python Metadata计算                                ││
+│  │  ─────────────────────────                                  ││
+│  │  • compute_metadata_python()                                ││
+│  │  • 在CPU端计算切分信息、负载均衡                               ││
+│  │  • 数据本来在CPU，无需D2H传输                                 ││
+│  │  • 输出metadata[1024]                                        ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                          │                                      │
+│                          │ H2D(metadata) ~10-30μs               │
+│                          ▼                                      │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  Part 2: TileLang Attn Kernel                               ││
+│  │  ─────────────────────────                                  ││
+│  │  • @tilelang.jit() 定义kernel                               ││
+│  │  • 读取metadata[1024]，执行Attention计算                     ││
+│  │  • 运行在NPU AICore                                          ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                          │                                      │
+│                          ▼                                      │
+│                    输出结果 (NPU)                                │
+│                                                                 │
+│  优势: 无需单独的AICPU kernel，融合调用更简洁                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 三种方案对比
+
+| 方案 | 数据流 | 时延 | 端口占用 |
+|------|--------|------|---------|
+| **原始AICPU** | CPU → H2D(输入) → NPU → AICPU → NPU | ~50-100μs | ~30-50μs |
+| **Host Operator** | CPU → H2D → NPU → D2H → CPU → H2D → NPU | ~110-250μs | ~90-180μs ❌ |
+| **Python方案** | CPU → Python计算 → H2D(输出) → NPU | ~40-120μs | ~10-30μs ✅ |
+
+#### 端口占用分析
+
+**PCIe通信端口是共享资源**，被占用时其他任务需排队等待：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     方案1：原始AICPU                          │
+├─────────────────────────────────────────────────────────────┤
+│  CPU tensor → H2D(输入) → NPU → AICPU计算 → NPU              │
+│  端口占用: ~30-50μs (必需的输入传输)                          │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                  方案2：Host Operator ❌                     │
+├─────────────────────────────────────────────────────────────┤
+│  CPU → H2D → NPU → D2H → CPU → H2D → NPU                    │
+│  端口占用: ~90-180μs (严重阻塞其他任务!)                      │
+│  问题: 多了一次D2H和一次H2D，端口长时间被独占                  │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                   方案3：Python方案 ✅                        │
+├─────────────────────────────────────────────────────────────┤
+│  CPU tensor → Python计算 → H2D(metadata) → NPU              │
+│  端口占用: ~10-30μs (最小!)                                  │
+│  优势: CPU计算期间端口空闲，其他任务可并发使用PCIe              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 为什么Metadata计算不用TileLang？
+
+**TileLang-Ascend是NPU Kernel DSL**，设计目标是：
+- 矩阵运算、FlashAttention等计算密集型任务
+- 运行在AICore/AIVCore（NPU硬件）
+
+**Metadata计算的特点**：
+- 整数运算、条件分支、负载均衡算法
+- 控制密集型，不适合NPU并行计算
+- 适合CPU串行执行
+
+| 特性 | TileLang设计目标 | Metadata计算需求 |
+|------|------------------|------------------|
+| 计算类型 | 矩阵乘法、并行向量 | 整数运算、串行逻辑 |
+| 硬件 | AICore/AIVCore | CPU |
+| 并行性 | 高度并行 | 负载均衡是贪心算法（串行） |
+
+**设计决策**：
+- Metadata计算用**Python**（CPU端）
+- Attn算子用**TileLang**（NPU端）
+- 两者融合在同一个.py文件中
+
+### 1.2 Python方案概述
 
 **数据流路径**：
 
 ```
-输入张量(NPU) → D2H传输 → Host CPU计算 → H2D传输 → metadata(NPU) → SparseAttnSharedkv
+CPU tensor → Python计算(无端口占用) → H2D(metadata) → NPU → SparseAttnSharedkv
 ```
 
-**关键设计要点**：
+**关键优势**：
 
-| 设计项        | 说明                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------------------ |
-| **张量输入获取** | Host CPU无法直接访问NPU内存，必须通过`aclrtMemcpy(ACL_MEMCPY_DEVICE_TO_HOST)`将`cu_seqlens_q`和`seqused_kv`从NPU传至Host |
-| **核心算法执行** | Metadata生成在Host端执行，使用TileLang实现切分、负载均衡、分配算法                                                            |
-| **输出传输**   | 生成的`metadata[1024]`通过`aclrtMemcpy(ACL_MEMCPY_HOST_TO_DEVICE)`传回NPU的metadata tensor                     |
-| **数据量估算**  | 输入\~36 bytes (B=4)，输出4KB，PCIe传输延迟约10-50μs                                                              |
-
-**Host端 vs AICPU的关键区别**：
-
-| 对比项      | AICPU                        | Host CPU             |
-| -------- | ---------------------------- | -------------------- |
-| 运行位置     | NPU设备上                       | 主机CPU                |
-| Tensor类型 | `aicpu::Tensor`              | `aclTensor`          |
-| 数据访问     | `tensor->GetData()`直接读取NPU内存 | **必须D2H传输后才能读取数据内容** |
-| 输出写入     | 直接写入NPU内存                    | 需H2D传输写入             |
-
-> **重要说明**：Host端`aclTensor`只包含元信息（shape、dtype、format等），其数据指针指向NPU设备内存。Host CPU无法直接通过该指针读取数据内容，必须使用Ascend API进行D2H传输。
+| 优势 | 说明 |
+|------|------|
+| **避免D2H传输** | 数据本来在CPU上创建，直接访问无需传输 |
+| **端口占用最小** | 只有H2D输出传输(~10-30μs)，其他任务可并发 |
+| **实现简单** | 纯Python+NumPy，无需AICPU开发 |
+| **调试方便** | 可直接打印中间结果，便于验证 |
 
 ***
 
-## 2. 函数原型与流程
+## 2. 基本块大小与架构
 
-### 2.1 函数原型
+### 2.1 基本块定义（A5标准）
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| M_BASE_SIZE | 64 | M轴基本块，每次处理64个Q token（一个头组） |
+| S2_BASE_SIZE | 128 | S2轴基本块，每次处理128个KV token |
+
+**含义**：一次迭代计算的基本块大小为 `(64, 128)`。
+
+### 2.2 Block数量计算
+
+```
+S2轴block数量 = ceil(s2_size / 128)
+
+典型场景 B=4, S1=128, S2=4096:
+  每batch: ceil(4096/128) = 32 blocks
+  总block数: 4 × 128 × 32 = 16384 blocks
+```
+
+***
+
+## 3. 开销计算模型
+
+### 3.1 开销计算函数
+
+```cpp
+int64_t WinCalcCost(uint32_t basicM, uint32_t basicS2) {
+    winAlignCoefM = 16U;      // M轴对齐系数
+    winAlignCoefS2 = 64U;     // S2轴对齐系数
+    
+    // 位运算实现向上取整除法
+    winAlignBasicM = (basicM + 15) >> 4;   // ceil(basicM / 16)
+    winAlignBasicS2 = (basicS2 + 63) >> 6; // ceil(basicS2 / 64)
+    
+    return 6 * winAlignBasicM + 10 * winAlignBasicS2;
+}
+```
+
+### 3.2 位运算解释
+
+**向上取整的位运算技巧**：
+
+```
+ceil(a / b) = (a + b - 1) >> log2(b)
+
+对于 b = 16 = 2^4:
+  ceil(a / 16) = (a + 15) >> 4
+
+对于 b = 64 = 2^6:
+  ceil(a / 64) = (a + 63) >> 6
+```
+
+**位运算 vs 除法**：
+
+| 方式 | 代码 | 性能 |
+|------|------|------|
+| 普通除法 | `(a + 15) / 16` | 需要除法指令，较慢 |
+| 位运算 | `(a + 15) >> 4` | 移位指令，更快 |
+
+### 3.3 系数6和10的含义
+
+**这些是实测得到的性能经验系数**：
+
+| 系数 | 含义 | 来源 |
+|------|------|------|
+| **6** | M轴每个对齐单元的相对开销 | 实测经验值，反映Q向量加载、部分累加等操作耗时 |
+| **10** | S2轴每个对齐单元的相对开销 | 实测经验值，反映KV加载、矩阵乘法、累加等操作耗时 |
+
+**为什么S2轴系数更大（10 > 6）？**
+
+- S2轴迭代涉及更多操作：
+  - 加载KV向量
+  - 执行矩阵乘法（Q × K^T）
+  - 计算注意力分数
+  - 累加到输出
+- M轴迭代相对简单：
+  - 加载Q向量
+  - 部分累加操作
+
+### 3.4 开销计算示例
+
+| 场景 | basicM | basicS2 | ceil(M/16) | ceil(S2/64) | Cost |
+|------|--------|---------|-----------|------------|------|
+| 正常Block(A5) | 64 | 128 | 4 | 2 | 6×4 + 10×2 = 44 |
+| M尾Block | 32 | 128 | 2 | 2 | 6×2 + 10×2 = 32 |
+| S2尾Block | 64 | 64 | 4 | 1 | 6×4 + 10×1 = 34 |
+| 双尾Block | 32 | 64 | 2 | 1 | 6×2 + 10×1 = 22 |
+
+***
+
+## 4. 三级负载均衡分配策略
+
+### 4.1 costLimit的计算
+
+```cpp
+costLimit = max(avgCost, maxS1GCost)
+```
+
+**为什么取max？**
+
+| 情况 | avgCost | maxS1GCost | 问题 |
+|------|---------|-----------|------|
+| 正常 | 1000 | 200 | avgCost够用，每行都能塞进去 |
+| 异常 | 1000 | **1500** | 有行太大！如果不取max，必须切分 |
+
+**核心原因**：**保证每一行至少能完整分配给一个Core**
+
+如果 `costLimit < maxS1GCost`：
+- 最大行必须切分成多个Block
+- 跨Core处理，增加同步开销
+- 三级策略降级到Block级别
+
+如果 `costLimit >= maxS1GCost`：
+- 任何一行都能完整塞入一个Core
+- 优先按Row分配
+- 减少切分，减少同步开销
+
+### 4.2 三级分配策略
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              三级分配策略: Batch → Row → Block                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  原则: 能不切分就不切分，尽量按大粒度往里塞                      │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │ Level 1: AssignByBatch                                 │ │
+│  │ ────────────────────────                               │ │
+│  │ 策略: 尽可能将完整Batch*N2分配给单个Core                  │ │
+│  │ 条件: core_cost + batch_cost <= costLimit * 2           │ │
+│  │ 优点: 减少跨batch边界，简化数据访问                        │ │
+│  │ 适用: 所有模式                                          │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                    │ (失败)                                 │
+│                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │ Level 2: AssignByRow                                   │ │
+│  │ ────────────────────────                               │ │
+│  │ 策略: 将完整的M轴行(s1GIdx)分配给单个Core                 │ │
+│  │ 条件: core_cost + row_cost <= costLimit * 2             │ │
+│  │ 优点: 保持S2循环连续性，减少workspace切换                  │ │
+│  │ 适用: 所有模式                                          │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                    │ (失败)                                 │
+│                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │ Level 3: AssignByBlock ⚠️ 仅FlashDecode模式生效          │ │
+│  │ ────────────────────────                               │ │
+│  │ 策略: 将单个S2 Block分配给Core                           │ │
+│  │ 条件: core_cost + blk_cost <= costLimit * 2             │ │
+│  │ 优点: 精细控制，支持跨Core归约                            │ │
+│  │ ⚠️ 重要: Block切分只在FlashDecode模式下启用!              │ │
+│  │          普通模式下不使用Block切分，避免不必要的复杂度      │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4.3 FlashDecode模式说明
+
+**什么时候启用Block切分？**
+
+| 模式 | 是否启用Block切分 | 原因 |
+|------|------------------|------|
+| **普通Attention** | ❌ 不启用 | 无需跨Core归约，按Row分配足够 |
+| **FlashDecode(FD)** | ✅ 启用 | 需要跨Core归约，Block切分支持细粒度分配 |
+
+**FlashDecode是什么？**
+- 当M轴行数较多（>某个阈值）时，启用FlashDecode优化
+- 多个AIVCore并行计算，需要跨Core归约
+- Block切分使得跨Core分配更灵活
+
+**判断条件**：
+```python
+if num_of_fd_head > 0:  # 需要FlashDecode归约
+    # 启用Level 3: AssignByBlock
+    split_fd(split_result, aiv_core_num)
+else:
+    # 普通模式，只使用Level 1和Level 2
+    # 不进行Block切分
+```
+
+### 4.4 AssignByBlock详细流程（仅FD模式）（仅FD模式）
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                AssignByBlock 按块切分分配                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  输入: cur_b, cur_row, cur_blk (当前分配位置)                 │
+│        block_costs[(b, row)] = [blk0, blk1, blk2...]        │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  while cur_b < batch_size:                             │ │
+│  │                                                         │ │
+│  │    while cur_row < s1GBaseNum[cur_b]:                  │ │
+│  │                                                         │ │
+│  │      while cur_blk < len(block_costs[cur_row]):        │ │
+│  │        ┌─────────────────────────────────────────────┐ │ │
+│  │        │ blk_cost = block_costs[cur_row][cur_blk]    │ │ │
+│  │        │                                             │ │ │
+│  │        │ if core_cost + blk_cost > costLimit * 2:    │ │ │
+│  │        │   break  ← 当前Core满了                     │ │ │
+│  │        │                                             │ │ │
+│  │        │ assign_block(core, b, row, blk)             │ │ │
+│  │        │ core_cost += blk_cost                       │ │ │
+│  │        │ cur_blk++                                   │ │ │
+│  │        └─────────────────────────────────────────────┘ │ │
+│  │                                                         │ │
+│  │      cur_row++  ← 当前行所有Block分配完                  │ │
+│  │      cur_blk = 0                                        │ │
+│  │                                                         │ │
+│  │    cur_b++  ← 当前Batch所有Row分配完                     │ │
+│  │    cur_row = 0                                          │ │
+│  │                                                         │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                                                             │
+│  输出: 记录Core的 (bN2Start, mStart, s2Start)               │
+│        记录Core的 (bN2End, mEnd, s2End)                     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4.4 Metadata字段含义
+
+| 字段 | offset | 含义 | AssignByBlock时的值 |
+|------|--------|------|---------------------|
+| CORE_ENABLE | 0 | Core是否启用 | 1 |
+| BN2_START | 1 | Batch起始索引 | batch索引 |
+| M_START | 2 | Row起始索引 | row索引 |
+| **S2_START** | 3 | **Block起始索引** | blk索引（关键！） |
+| BN2_END | 4 | Batch结束索引 | batch索引 |
+| M_END | 5 | Row结束索引 | row索引 |
+| **S2_END** | 6 | **Block结束索引** | blk索引（关键！） |
+
+**S2_START/S2_END是AssignByBlock特有的字段**，记录Block级别的切分位置。
+
+***
+
+## 5. 函数原型与参数
+
+### 5.1 函数原型
 
 ```
 输入参数:
 ├── 必需输入
-│   ├── cu_seqlens_q (可选): Q序列前缀和数组，维度[B+1]
-│   └── seqused_kv: KV实际有效序列长度数组，维度[B]
+│   ├── cu_seqlens_q: Q序列前缀和数组，维度[B+1]，CPU tensor
+│   └── seqused_kv: KV实际有效序列长度数组，维度[B]，CPU tensor
 ├── 属性参数
 │   ├── num_heads_q: Q头数，固定值64
 │   ├── num_heads_kv: KV头数，固定值1
@@ -52,451 +381,318 @@
 │   ├── batch_size: 批次大小
 │   ├── max_seqlen_q: Q最大序列长度
 │   ├── max_seqlen_kv: KV最大序列长度
-│   ├── cmp_topk: 压缩KV稀疏token数，支持512或1024
-│   ├── cmp_ratio: 压缩率，支持4或128
+│   ├── cmp_topk: 压缩KV稀疏token数（SWA/CFA: None, SCFA: 512/1024）
+│   ├── cmp_ratio: 压缩率（SWA: None, CFA/SCFA: 4/128）
 │   ├── ori_mask_mode: 原始KV mask模式，固定值4(BAND)
-│   ├── cmp_mask_mode: 压缩KV mask模式，固定值3(RIGHT_DOWN_CAUSAL)
 │   ├── ori_win_left: 滑动窗口左边界，固定值127
 │   ├── ori_win_right: 滑动窗口右边界，固定值0
 │   ├── layout_q: Q数据排布格式，支持BSND/TND
 │   └── layout_kv: KV数据排布格式，固定PA_ND
+├── 输出参数
+│   └── device: 返回tensor的设备（"npu"或"cpu"）
 └── 输出
     └── metadata: 分核结果数组，维度[1024]，类型INT32
 ```
 
-### 2.2 完整数据流图
+### 5.2 三种模式
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Host端SparseAttnSharedkvMetadata                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Step 1: 参数获取 (D2H传输)                        │    │
-│  │                                                                     │    │
-│  │  ┌──────────────────┐                                               │    │
-│  │  │ NPU设备内存       │   aclrtMemcpy(D2H)    ┌──────────────────┐    │    │
-│  │  │ cu_seqlens_q[B+1]│ ──────────────────▶   │ Host内存         │    │    │
-│  │  │ seqused_kv[B]    │    ~10-50μs           │ host_cu_seqlens  │    │   │
-│  │  │ (aclTensor指针)  │                       │ host_seqused_kv  │     │   │
-│  │  └──────────────────┘                       └──────────────────┘    │   │
-│  │                                                                     │   │
-│  │  属性参数(num_heads_q, batch_size等): 直接传递，无需传输               │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                              │                                             │
-│                              ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Step 2-6: 核心计算 (Host CPU)                     │   │
-│  │                                                                     │   │
-│  │  ┌──────────┐   ┌──────────────┐   ┌─────────────┐                  │   │
-│  │  │ 参数校验  │──▶│ 切分信息计算  │──▶│ 开销估算     │                  │   │
-│  │  └──────────┘   └──────────────┘   └─────────────┘                  │   │
-│  │       │              │                   │                          │   │
-│  │       ▼              ▼                   ▼                          │   │
-│  │  ┌──────────────────────────────────────────────────┐               │   │
-│  │  │              负载均衡分配(三层策略)                │               │   │
-│  │  │  ┌─────────────┐  ┌───────────┐  ┌───────────┐   │               │   │
-│  │  │  │AssignByBatch│─▶│AssignByRow│─▶│AssignByBlock│ │               │   │
-│  │  │  └─────────────┘  └───────────┘  └───────────┘   │               │   │
-│  │  └──────────────────────────────────────────────────┘               │   │
-│  │       │                                                             │   │
-│  │       ▼                                                             │   │
-│  │  ┌─────────────────────┐                                            │   │
-│  │  │   Metadata生成      │                                            │   │
-│  │  │   ├─ FA Metadata    │                                            │   │
-│  │  │   └─ FD Metadata    │                                            │   │
-│  │  └─────────────────────┘                                            │   │
-│  │       │                                                             │   │
-│  │       ▼                                                             │   │
-│  │  host_metadata[1024] (Host内存)                                     │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                              │                                             │
-│                              ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Step 7: 输出传输 (H2D传输)                        │   │
-│  │                                                                     │   │
-│  │  ┌──────────────────┐                                               │   │
-│  │  │ Host内存         │   aclrtMemcpy(H2D)   ┌──────────────────┐      │   │
-│  │  │ host_metadata    │ ──────────────────▶  │ NPU设备内存       │     │   │
-│  │  │ [1024] INT32     │    ~10-50μs          │ metadata tensor  │     │   │
-│  │  │ (4KB)            │                      │ (算子输出)        │     │   │
-│  │  └──────────────────┘                      └──────────────────┘     │   │
-│  │                                                                     │   │
-│  │  aclrtSynchronizeStream(stream) 确保传输完成                         │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                              │                                             │
-│                              ▼                                             │
-│                    SparseAttnSharedkv (NPU AICore)                         │
-│                    ┌─────────────────────────────────────────────────────┐ │
-│                    │ 读取metadata[1024]，执行Attention计算                │  │
-│                    └─────────────────────────────────────────────────────┘ │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 2.3 数据传输详细说明
-
-| 传输阶段     | 数据               | 方向       | API                                      | 数据量           | 延迟估算      |
-| -------- | ---------------- | -------- | ---------------------------------------- | ------------- | --------- |
-| D2H (输入) | `cu_seqlens_q`   | NPU→Host | `aclrtMemcpy(ACL_MEMCPY_DEVICE_TO_HOST)` | (B+1)×4 bytes | \~10-50μs |
-| D2H (输入) | `seqused_kv`     | NPU→Host | `aclrtMemcpy(ACL_MEMCPY_DEVICE_TO_HOST)` | B×4 bytes     | \~10-50μs |
-| H2D (输出) | `metadata[1024]` | Host→NPU | `aclrtMemcpy(ACL_MEMCPY_HOST_TO_DEVICE)` | 4KB           | \~10-50μs |
-
-> **总传输开销**：约20-100μs（两次传输 + 同步）
+| 模式 | cmp_ratio | cmp_topk | 说明 |
+|------|-----------|----------|------|
+| **SWA** | None | None | Sliding Window Attention |
+| **CFA** | 有值(4/128) | None | Compressed Flash Attention |
+| **SCFA** | 有值(4/128) | 有值(512/1024) | Sparse Compressed Flash Attention |
 
 ***
 
-## 3. 具体设计
+## 6. 数据流与时延分析
 
-### 3.1 核心数据结构定义
+### 6.1 Python方案数据流
 
-#### 3.1.1 Metadata输出结构
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Python方案数据流                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   CPU                                                       │
+│   ┌─────────────┐   ┌─────────────┐                         │
+│   │ cu_seqlens_q│──▶│  Python     │                         │
+│   │ seqused_kv  │   │  Compute    │                         │
+│   └─────────────┘   │  Metadata   │                         │
+│                     │             │                         │
+│                     │ ~30-90μs    │                         │
+│                     │             │                         │
+│                     │ ░░░░░░░░░░░░│ 端口不占用！              │
+│                     │ 其他任务可   │                         │
+│                     │ 并发使用PCIe│                         │
+│                     └─────────────┘                         │
+│                           │                                 │
+│                           │ H2D (~10-30μs) ████████ 端口占用 │
+│                           ▼                                 │
+│   NPU                     ┌─────────────┐                   │
+│                     ┌─────│  metadata   │                   │
+│                     │     └─────────────┘                   │
+│   ┌─────────────┐   │                                       │
+│   │     q       │───┼───┐                                   │
+│   └─────────────┘   │   │                                   │
+│                     │   │ SparseAttnSharedkv                 │
+│                     │   │ Kernel                              │
+│                                                             │
+│   总时延: ~40-120μs  端口占用: ~10-30μs                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 时延对比总结
+
+| 方案 | 数据拷贝耗时 | 端口占用耗时 | CPU计算 | **总耗时** |
+|------|-------------|-------------|---------|-----------|
+| **原始AICPU** | ~30-50μs | ~30-50μs | ~20-50μs | **~50-100μs** |
+| **Host Operator** | ~90-130μs | ~90-180μs | ~20-50μs | **~110-250μs** ❌ |
+| **Python方案** | ~10-30μs | ~10-30μs | ~30-90μs | **~40-120μs** ✅ |
+
+***
+
+## 7. 核心数据结构
+
+### 7.1 Metadata输出结构
 
 ```
 Metadata数组布局 (总大小1024 INT32):
-┌─────────────────────────────────────────────────────────────────┐
-│ FA Metadata部分 (36核 × 8字段 = 288 INT32)                       │
-│ [0-287]: 每个AI Core的任务索引                                   │
-│ ├─ faMetadata[coreIdx][0]: FA_CORE_ENABLE (核启用标志)           │
-│ ├─ faMetadata[coreIdx][1]: FA_BN2_START (Batch*N2起始索引)       │
-│ ├─ faMetadata[coreIdx][2]: FA_M_START (M轴起始索引)              │
-│ ├─ faMetadata[coreIdx][3]: FA_S2_START (S2轴起始索引)            │
-│ ├─ faMetadata[coreIdx][4]: FA_BN2_END (Batch*N2结束索引)         │
-│ ├─ faMetadata[coreIdx][5]: FA_M_END (M轴结束索引)                │
-│ ├─ faMetadata[coreIdx][6]: FA_S2_END (S2轴结束索引)              │
-│ └─ faMetadata[coreIdx][7]: FA_FIRST_FD_DATA_WORKSPACE_IDX       │
-├─────────────────────────────────────────────────────────────────┤
-│ FD Metadata部分 (72核 × 8字段 = 576 INT32)                       │
-│ [288-863]: FlashDecode归约任务索引                               │
-│ ├─ fdMetadata[vecIdx][0]: FD_CORE_ENABLE                        │
-│ ├─ fdMetadata[vecIdx][1]: FD_BN2_IDX                            │
-│ ├─ fdMetadata[vecIdx][2]: FD_M_IDX                              │
-│ ├─ fdMetadata[vecIdx][3]: FD_WORKSPACE_IDX                      │
-│ ├─ fdMetadata[vecIdx][4]: FD_WORKSPACE_NUM                      │
-│ ├─ fdMetadata[vecIdx][5]: FD_M_START                            │
-│ └─ fdMetadata[vecIdx][6]: FD_M_NUM                              │
-├─────────────────────────────────────────────────────────────────┤
-│ 剩余空间 [864-1023]: 预留扩展                                     │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ FA Metadata部分 (36核 × 8字段 = 288 INT32)                   │
+│ [0-287]: 每个AI Core的任务索引                                │
+│ ├─ faMetadata[coreIdx][0]: FA_CORE_ENABLE (核启用标志)        │
+│ ├─ faMetadata[coreIdx][1]: FA_BN2_START (Batch起始索引)       │
+│ ├─ faMetadata[coreIdx][2]: FA_M_START (Row起始索引)           │
+│ ├─ faMetadata[coreIdx][3]: FA_S2_START (Block起始索引)        │
+│ ├─ faMetadata[coreIdx][4]: FA_BN2_END (Batch结束索引)         │
+│ ├─ faMetadata[coreIdx][5]: FA_M_END (Row结束索引)             │
+│ ├─ faMetadata[coreIdx][6]: FA_S2_END (Block结束索引)          │
+│ └─ faMetadata[coreIdx][7]: FA_FIRST_FD_DATA_WORKSPACE_IDX    │
+├─────────────────────────────────────────────────────────────┤
+│ FD Metadata部分 (72核 × 8字段 = 576 INT32)                   │
+│ [288-863]: FlashDecode归约任务索引                            │
+├─────────────────────────────────────────────────────────────┤
+│ 剩余空间 [864-1023]: 预留扩展                                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-#### 3.1.2 切分信息结构
-
-```cpp
-struct SplitInfo {
-    vector<uint32_t> s1GBaseNum;      // 每个Batch的M轴基本块数量
-    vector<uint32_t> s2BaseNum;       // 每个Batch的S2轴基本块数量
-    vector<uint32_t> s1GTailSize;     // M轴尾块大小
-    vector<uint32_t> s2TailSize;      // S2轴尾块大小
-    bool isKvSeqAllZero;              // 是否全空batch
-};
-
-struct CostInfo {
-    vector<int64_t> bN2CostOfEachBatch;        // 每个Batch*N2的总开销
-    vector<uint32_t> bN2BlockOfEachBatch;      // 每个Batch*N2的总块数
-    vector<int64_t> bN2LastBlockCostOfEachBatch; // 最后一块开销
-    int64_t totalCost;                         // 全局总开销
-    uint32_t totalBlockNum;                    // 全局总块数
-    int64_t maxS1GCost;                        // 最大单行开销
-};
-
-struct SplitResult {
-    uint32_t usedCoreNum;             // 实际使用核数
-    vector<uint32_t> bN2End;          // 每个核的BN2结束索引
-    vector<uint32_t> gS1End;          // 每个核的GS1结束索引
-    vector<uint32_t> s2End;           // 每个核的S2结束索引
-    int64_t maxCost;                  // 慢核开销
-    FlashDecodeResult fdRes;          // FlashDecode归约信息
-};
-```
-
-### 3.2 核心计算公式及依据
-
-#### 3.2.1 基本块切分
-
-| 计算项      | 公式                                                        | 依据说明                            |
-| -------- | --------------------------------------------------------- | ------------------------------- |
-| M轴基本块大小  | `mBaseSize = groupSize = N1/N2 = 64`                      | 与Q头数对应，便于后续kernel按头组切分          |
-| S2轴基本块大小 | `s2BaseSize = 512`                                        | 与kernel内部循环的sInnerSize一致，减少尾块开销 |
-| M轴块数     | `s1GBaseNum[b] = ceil(s1Size[b] * groupSize / mBaseSize)` | 将Q序列按头组切分                       |
-| S2轴块数    | `s2BaseNum[b] = ceil(s2Size[b] / s2BaseSize)`             | 将KV序列按512切分                     |
-
-#### 3.2.2 滑窗注意力负载计算
-
-```
-Sliding Window Attention 计算公式:
-
-┌─────────────────────────────────────────────────────────────────┐
-│                    KV Token有效范围计算                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  输入: s1GIdx (M轴块索引), batchCache (batch信息)                 │
-│                                                                 │
-│  Step 1: 计算Q Token范围                                         │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ s1GFirstToken = s1GIdx * mBaseSize                     │     │
-│  │ s1GLastToken = min(s1GFirstToken + mBaseSize,          │     │
-│  │                   s1Size * groupSize) - 1              │     │
-│  │                                                        │     │
-│  │ 若 isS1G_ == true:                                     │     │
-│  │     s1FirstToken = s1GFirstToken / groupSize           │     │
-│  │     s1LastToken = s1GLastToken / groupSize             │     │
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-│  Step 2: 计算KV Token范围 (BAND模式)                             │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ preTokenLeftUp = s1Size - s2Size + winLeft (127)       │     │
-│  │ nextTokenLeftUp = s2Size - s1Size + winRight (0)       │     │
-│  │                                                        │     │
-│  │ s2FirstToken = s1FirstToken - preTokenLeftUp           │     │
-│  │ s2LastToken = s1LastToken + nextTokenLeftUp            │     │
-│  │                                                        │     │
-│  │ 边界裁剪:                                               │     │
-│  │ s2FirstToken = Clip(s2FirstToken, 0, s2Size-1)         │     │
-│  │ s2LastToken = Clip(s2LastToken, 0, s2Size-1)           │     │
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-│  Step 3: 计算实际Block范围                                       │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ winS2Start = 0                                         │     │
-│  │ winS2End = ceil((s2LastToken - s2FirstToken) / s2BaseSize)│  │
-│  │ winS2TailSize = (s2LastToken - s2FirstToken + 1) % s2BaseSize│
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-公式依据: 该范围直接决定了后续SparseAttnSharedkv算子在S2轴的循环起止点，
-         kernel会根据metadata中的s2Start/s2End确定KV数据加载范围。
-```
-
-#### 3.2.3 压缩注意力负载计算（CFA/SCFA模式）
-
-```
-Compressed Attention 计算公式:
-
-┌─────────────────────────────────────────────────────────────────┐
-│                  Cmp KV Token范围计算                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  cmpS2Start = winS2End (接续在Ori KV之后)                        │
-│                                                                 │
-│  cmpS2LastTokenSize 计算:                                       │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ CFA模式 (cmpTopK == 0):                                │     │
-│  │     cmpS2LastTokenSize = floor((s2LastToken+1) / cmpRatio)│  │
-│  │                                                        │     │
-│  │ SCFA模式 (cmpTopK > 0):                                │     │
-│  │     cmpS2LastTokenSize = min(floor((s2LastToken+1)/cmpRatio),│ │
-│  │                              cmpTopK)                  │     │
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-│  cmpS2End = cmpS2Start + ceil(cmpS2LastTokenSize / s2BaseSize)  │
-│  cmpS2TailSize = cmpS2LastTokenSize % s2BaseSize                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-公式依据: cmp_ratio为压缩率，后续kernel会按此比例读取压缩后的KV cache，
-         cmpTopK为稀疏选取的token数上限，影响SCFA模式的有效计算范围。
-```
-
-#### 3.2.4 开销估算模型
-
-```
-开销计算公式 (用于负载均衡):
-
-┌─────────────────────────────────────────────────────────────────┐
-│                     Block Cost Model                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  开销计算函数:                                                   │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ CalcCost(basicM, basicS2):                             │     │
-│  │     alignM = ceil(basicM / 16)      // M轴16对齐        │     │
-│  │     alignS2 = ceil(basicS2 / 64)    // S2轴64对齐       │     │
-│  │     cost = 6 * alignM + 10 * alignS2                   │     │
-│  │     return cost                                        │     │
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-│  Cost Table 四种Block类型:                                       │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ WIN_NORMAL_BLOCK:  CalcCost(mBaseSize, s2BaseSize)     │     │
-│  │ WIN_TAIL_BLOCK:    CalcCost(s1GTailSize, s2BaseSize)   │     │
-│  │ WIN_TAIL_S2_BLOCK: CalcCost(mBaseSize, winS2TailSize)  │     │
-│  │ WIN_TAIL_BOTH:     CalcCost(s1GTailSize, winS2TailSize)│     │
-│  │                                                        │     │
-│  │ CMP_NORMAL_BLOCK, CMP_TAIL_BLOCK 等同理                 │     │
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-│  单行总开销:                                                     │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │ s1GCost = winS1GCost + cmpS1GCost                      │     │
-│  │ 其中:                                                   │     │
-│  │ winS1GCost = WIN_NORMAL_COST * normalBlockNum          │     │
-│  │            + WIN_TAIL_COST * tailBlockNum              │     │
-│  └────────────────────────────────────────────────────────┘     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-系数依据:
-- 系数6和10来源于实际kernel执行时的Matmul操作复杂度
-- 16对齐: Cube单元处理的基本单元大小
-- 64对齐: S2方向数据搬运的对齐要求
-
-开销模型作用: 确保各核负载均衡，避免慢核影响整体性能
-```
-
-### 3.3 负载均衡分配策略
-
-#### 3.3.1 三层分配策略详解
-
-```
-负载均衡分配策略 (三层递进):
-
-┌─────────────────────────────────────────────────────────────────┐
-│ Level 1: AssignByBatch (按整Batch分配)                           │
-├─────────────────────────────────────────────────────────────────┤
-│ 策略: 尽可能将完整Batch*N2分配给单个核                             │
-│ 条件: costLimit + tolerance >= currentCost + batchCost             │
-│ 优点: 减少跨batch边界，简化数据访问                                │
-│ 适用: 大batch场景                                                │
-├─────────────────────────────────────────────────────────────────┤
-│ Level 2: AssignByRow (按M轴行分配)                               │
-├─────────────────────────────────────────────────────────────────┤
-│ 策略: 将完整的M轴行(s1GIdx)分配给单个核                            │
-│ 条件: costLimit + tolerance >= currentCost + rowCost            │
-│ 优点: 保持S2循环连续性，减少workspace切换                          │
-│ 适用: 中等batch场景                                              │
-├─────────────────────────────────────────────────────────────────┤
-│ Level 3: AssignByBlock (按Block分配)                             │
-├─────────────────────────────────────────────────────────────────┤
-│ 策略: 将单个S2 Block分配给核                                      │
-│ 条件: costLimit + tolerance >= currentCost + blockCost           │
-│ 优点: 精细控制，实现最佳均衡                                       │
-│ 适用: 小batch或需要FlashDecode归约的场景                           │
-│ 注意: 需记录跨核行的FD归约信息                                     │
-└─────────────────────────────────────────────────────────────────┘
-
-容差因子: FA_TOLERANCE_RATIO = 2
-作用: 允许一定程度的负载不均衡，避免过度切分
-```
-
-#### 3.3.2 分配算法伪代码
+### 7.2 切分信息结构
 
 ```python
-def balance_schedule(cost_info, aic_core_num):
-    split_result = SplitResult()
-    
-    # 计算平均负载
-    avg_cost = cost_info.totalCost / aic_core_num
-    cost_limit = max(avg_cost, cost_info.maxS1GCost)
-    
-    # 初始化游标
-    cur_b_idx = 0
-    cur_s1g_idx = 0
-    cur_s2_idx = 0
-    unassigned_cost = cost_info.totalCost
-    
-    for core_idx in range(aic_core_num):
-        core_cache = CoreCache(costLimit=cost_limit, cost=0, block=0)
-        
-        # Level 1: 按Batch分配
-        assign_by_batch(core_cache, cur_b_idx, cost_info)
-        
-        # Level 2: 按Row分配
-        assign_by_row(core_cache, cur_s1g_idx, cost_info)
-        
-        # Level 3: Block分配
-        assign_by_block(core_cache, cur_s2_idx, cost_info)
-        
-        # 强制分配至少一个Block
-        if core_cache.block == 0:
-            force_assign(core_cache, cur_s2_idx)
-        
-        # 记录分配结果
-        split_result.bN2End[core_idx] = cur_bn2_idx
-        split_result.gS1End[core_idx] = cur_s1g_idx
-        split_result.s2End[core_idx] = cur_s2_idx
-        
-        unassigned_cost -= core_cache.cost
-    
-    return split_result
+split_info = {
+    's1GBaseNum': np.ndarray,  # 每个Batch的M轴行数: ceil(s1*groupSize / 64)
+    's2BaseNum': np.ndarray,   # 每个Batch的S2轴block数: ceil(s2 / 128)
+    's1GTailSize': np.ndarray, # M轴尾块大小
+    's2TailSize': np.ndarray,  # S2轴尾块大小
+    'isKvSeqAllZero': bool,    # 是否全空batch
+    's2BaseSize': int,         # S2基本块大小: 128
+}
+
+cost_info = {
+    'bN2CostOfEachBatch': np.ndarray,     # 每个Batch的总开销
+    'bN2BlockOfEachBatch': np.ndarray,    # 每个Batch的总block数
+    'totalCost': int,                      # 全局总开销
+    'totalBlockNum': int,                  # 全局总block数
+    'maxS1GCost': int,                     # 最大单行开销 ← 用于costLimit计算
+    's1GCostList': np.ndarray,            # 每行的开销列表
+    'block_costs': dict,                   # 每行每个block的开销: {(b,row): [(type,blk,cost),...]}
+}
 ```
 
 ***
 
-## 4. 实现逻辑
+## 8. 核心计算流程
 
-### 4.1 参数获取与数据传输
+### 8.1 基本块切分
 
-由于Host CPU无法直接访问NPU设备内存，张量输入参数必须通过D2H传输获取。
+| 计算项 | 公式 | 说明 |
+|--------|------|------|
+| M轴基本块大小 | `M_BASE_SIZE = 64` | 固定64，与Q头组对应 |
+| S2轴基本块大小 | `S2_BASE_SIZE = 128` | A5标准，每次处理128个KV token |
+| M轴行数 | `ceil(s1 * groupSize / 64)` | 将Q序列按头组切分 |
+| S2轴block数 | `ceil(s2 / 128)` | 将KV序列按128切分 |
 
-#### 4.1.1 张量输入参数获取
+### 8.2 开销计算流程
 
-```cpp
-// Host端参数获取实现
-class SparseAttnSharedkvMetadataHost {
-private:
-    int32_t* host_cu_seqlens_q_;  // Host侧cu_seqlens_q数据缓存
-    int32_t* host_seqused_kv_;    // Host侧seqused_kv数据缓存
+```python
+# Step 1: 预分配开销数组
+block_costs = {}   # 块开销: {(batch, row): [('win', blk_idx, cost), ('cmp', blk_idx, cost), ...]}
+row_costs = {}     # 行开销: {(batch, row): total_cost}
+batch_costs = []   # batch开销: [batch_0_cost, batch_1_cost, ...]
+
+# Step 2: 计算每行开销
+for b in range(batch_size):
+    batch_cost = 0
+    for row in range(s1GBaseNum[b]):
+        row_cost = 0
+        block_costs[(b, row)] = []
+        
+        # 2.1 计算滑动窗口范围
+        s2_first = max(0, row * 64 - win_left)
+        s2_last = min(s2_size - 1, row * 64 + win_right)
+        
+        # 2.2 Win blocks开销
+        for blk in range(0, (s2_last - s2_first) // 128 + 1):
+            blk_size = min(128, s2_last - s2_first - blk*128 + 1)
+            blk_cost = 6 * ceil(64/16) + 10 * ceil(blk_size/64)
+            block_costs[(b, row)].append(('win', blk, blk_cost))
+            row_cost += blk_cost
+        
+        # 2.3 Cmp blocks开销 (如果有)
+        if has_cmp_kv:
+            cmp_s2_size = min((s2_last+1)//cmp_ratio, cmp_topk)
+            for blk in range(0, ceil(cmp_s2_size/128)):
+                blk_cost = 6 * ceil(64/16) + 10 * ceil(blk_size/64)
+                block_costs[(b, row)].append(('cmp', blk, blk_cost))
+                row_cost += blk_cost
+        
+        row_costs[(b, row)] = row_cost
+        batch_cost += row_cost
     
-public:
-    // 获取张量输入数据的D2H传输
-    void GetTensorInputs(
-        aclrtStream stream,
-        const aclTensor* cu_seqlens_q,    // NPU侧aclTensor
-        const aclTensor* seqused_kv,      // NPU侧aclTensor
-        int64_t batch_size
-    ) {
-        // Step 1: 获取NPU设备指针
-        void* device_cu_seqlens_ptr = nullptr;
-        void* device_seqused_kv_ptr = nullptr;
-        
-        if (cu_seqlens_q != nullptr) {
-            // 通过aclTensor API获取设备数据指针
-            device_cu_seqlens_ptr = aclGetTensorDataPtr(cu_seqlens_q);
-        }
-        
-        if (seqused_kv != nullptr) {
-            device_seqused_kv_ptr = aclGetTensorDataPtr(seqused_kv);
-        }
-        
-        // Step 2: D2H传输cu_seqlens_q
-        if (device_cu_seqlens_ptr != nullptr) {
-            size_t cu_q_size = (batch_size + 1) * sizeof(int32_t);
-            aclrtMemcpy(
-                host_cu_seqlens_q_,              // Host destination
-                cu_q_size,
-                device_cu_seqlens_ptr,           // NPU source
-                cu_q_size,
-                ACL_MEMCPY_DEVICE_TO_HOST,
-                stream
-            );
-        }
-        
-        // Step 3: D2H传输seqused_kv
-        if (device_seqused_kv_ptr != nullptr) {
-            size_t seq_kv_size = batch_size * sizeof(int32_t);
-            aclrtMemcpy(
-                host_seqused_kv_,
-                seq_kv_size,
-                device_seqused_kv_ptr,
-                seq_kv_size,
-                ACL_MEMCPY_DEVICE_TO_HOST,
-                stream
-            );
-        }
-        
-        // Step 4: 同步等待传输完成
-        aclrtSynchronizeStream(stream);
-    }
-};
+    batch_costs.append(batch_cost)
 ```
 
-**数据量估算**：
+### 8.3 负载均衡分配
 
-| 参数             | 维度     | 数据量 (B=4)          | 数据量 (B=128)           |
-| -------------- | ------ | ------------------ | --------------------- |
-| cu\_seqlens\_q | \[B+1] | (4+1)×4 = 20 bytes | (128+1)×4 = 516 bytes |
+```python
+# Step 1: 计算costLimit
+avg_cost = total_cost / 36
+cost_limit = max(avg_cost, max_row_cost)  # 保证最大行能完整塞入
+
+# Step 2: 三级分配
+cur_b = 0; cur_row = 0; cur_blk = 0
+
+for core in range(36):
+    core_cost = 0
+    
+    # Level 1: AssignByBatch (尽量塞整batch)
+    while cur_b < batch_size:
+        if core_cost + batch_costs[cur_b] <= cost_limit * 2:
+            assign_whole_batch(core, cur_b)
+            core_cost += batch_costs[cur_b]
+            cur_b += 1
+            cur_row = 0
+            cur_blk = 0
+        else:
+            break
+    
+    # Level 2: AssignByRow (尽量塞整行)
+    while cur_b < batch_size and cur_row < s1GBaseNum[cur_b]:
+        if core_cost + row_costs[(cur_b, cur_row)] <= cost_limit * 2:
+            assign_whole_row(core, cur_b, cur_row)
+            core_cost += row_costs[(cur_b, cur_row)]
+            cur_row += 1
+            cur_blk = 0
+        else:
+            break
+    
+    # Level 3: AssignByBlock (按block切分)
+    while ...:
+        blk_cost = block_costs[(cur_b, cur_row)][cur_blk][2]
+        if core_cost + blk_cost <= cost_limit * 2:
+            assign_single_block(core, cur_b, cur_row, cur_blk)
+            core_cost += blk_cost
+            cur_blk += 1
+        else:
+            break
+    
+    record_assignment(core)
+```
+
+***
+
+## 9. Python+TileLang融合实现架构
+
+### 9.1 整体架构
+
+**设计目标**：将Metadata计算和Attn算子融合在同一个.py文件中，无需单独的AICPU kernel。
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              sparse_attn_sharedkv.py (融合实现)                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  Part 1: Python Metadata计算                                ││
+│  │                                                             ││
+│  │  def compute_metadata_python(...):                          ││
+│  │      """在CPU端计算切分信息、负载均衡"""                        ││
+│  │      # 数据本来在CPU，无需D2H传输                             ││
+│  │      metadata = np.zeros(1024, dtype=np.int32)              ││
+│  │      # 计算切分信息、开销、负载均衡...                          ││
+│  │      return torch.from_numpy(metadata).to("npu")             ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                          │                                      │
+│                          │ metadata传给TileLang kernel          │
+│                          ▼                                      │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  Part 2: TileLang Attn Kernel                               ││
+│  │                                                             ││
+│  │  @tilelang.jit(out_idx=[-1])                                ││
+│  │  def sparse_attn_kernel(q, kv, metadata, ...):              ││
+│  │      """运行在NPU AICore"""                                  ││
+│  │      @T.prim_func                                           ││
+│  │      def main(...):                                         ││
+│  │          with T.Kernel(36, is_npu=True) as (cid):           ││
+│  │              # 读取metadata[1024]                            ││
+│  │              # 执行Attention计算                              ││
+│  │              ...                                            ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                          │                                      │
+│                          ▼                                      │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  Part 3: 统一调用接口                                        ││
+│  │                                                             ││
+│  │  def sparse_attn_sharedkv(q, kv, ...):                      ││
+│  │      # Step 1: Python计算metadata                            ││
+│  │      metadata = compute_metadata_python(...)                 ││
+│  │                                                             ││
+│  │      # Step 2: TileLang执行Attn                              ││
+│  │      output = sparse_attn_kernel(q, kv, metadata, ...)       ││
+│  │                                                             ││
+│  │      return output                                          ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                 │
+│  优势:                                                          ││
+│  1. 无需单独的AICPU kernel                                      ││
+│  2. Metadata计算和Attn算子融合调用                               ││
+│  3. 代码结构清晰，便于维护                                       ││
+│  4. 端口占用最小（只有H2D输出）                                   ││
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 文件结构
+
+```
+sparse_attn_sharedkv/
+├── sparse_attn_sharedkv.py        # 融合实现（Metadata + Attn）
+│   ├── compute_metadata_python()  # Python Metadata计算
+│   ├── sparse_attn_kernel()       # TileLang Attn kernel
+│   └── sparse_attn_sharedkv()     # 统一调用接口
+├── fakecode.py                    # 伪代码参考
+└── latency_analysis.md            # 时延分析
+```
+
+### 9.3 与原方案对比
+
+| 对比项 | 原方案（AICPU） | 新方案（Python+TileLang融合） |
+|--------|----------------|------------------------------|
+| Metadata算子 | AICPU kernel | Python函数 |
+| Attn算子 | AICore kernel | TileLang kernel |
+| 文件数量 | 2个独立算子 | 1个融合文件 |
+| 端口占用 | ~30-50μs | ~10-30μs |
+| 维护复杂度 | 需要AICPU开发 | 纯Python+TileLang |
+
+***
+
+## 10. Python实现参考
+
+详见：
+- `sparse_attn_metadata_compute.py` - Metadata计算完整实现
+- `fakecode.py` - 简化伪代码
+- `latency_analysis.md` - 时延分析
 | seqused\_kv    | \[B]   | 4×4 = 16 bytes     | 128×4 = 512 bytes     |
 | **总计**         | <br /> | \~36 bytes         | \~1KB                 |
 
