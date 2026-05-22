@@ -26,6 +26,14 @@
 #include "aclnnInner_all_gather_matmul_v2.h"
 #include "mc2_comm_utils.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
+
 using namespace op;
 using namespace Ops::Transformer;
 
@@ -55,6 +63,8 @@ enum class NnopbaseHcclServerType : uint32_t {
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 // check nullptr
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
@@ -427,13 +437,13 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 #endif
 
     // 获取通信引擎参数
-    if (std::strcmp(commMode, "aicpu" == 0)) {
-        commModeEnum == Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strcmp(commMode, "ccu" == 0)) {
-        commModeEnum == Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strcmp(commMode, "default" == 0)) {
+    if (std::strcmp(commMode, "aicpu") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+    } else if (std::strcmp(commMode, "ccu") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_CCU;
+    } else if (std::strcmp(commMode, "default") == 0) {
         // default: rankSize 小于等于8走CCU，否则走AICPU
-        commModeEnum == (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+        commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "comm_mode only support 'default', 'ccu' or 'aicpu'.");
         return ACLNN_ERR_PARAM_INVALID;
