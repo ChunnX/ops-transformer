@@ -118,8 +118,8 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
 
     char hcomEpName[128] = {0};
-    // ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
-    // CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
+    ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
     char hcomTpName[128] = {0};
     LOG_PRINT(
         "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
@@ -341,7 +341,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     );
 
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
-    
+
     std::vector<int64_t> time_vec(4, 0);
  	ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
  	printf("[HOST TIME] pe=%d, total wqe: %lld, total wqe+pollcq: %lld, \n", pe_id, time_vec[0], time_vec[1]);
@@ -392,13 +392,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     FreeDeviceAddr(epRecvCountsDeviceAddr);
     FreeDeviceAddr(expandScalesDeviceAddr);
     FreeDeviceAddr(tpRecvCountsDeviceAddr);
-
-    // HcclCommDestroy(args.hcclEpComm);
-    // HcclCommDestroy(args.hcclTpComm);
-    // aclrtDestroyStream(args.dispatchV2Stream);
-    // aclrtDestroyStream(args.combineV2Stream);
-    // aclrtDestroyContext(args.context);
-    // aclrtResetDevice(args.rankId);
     
     return 0;
 }
