@@ -220,7 +220,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
     sharedParams.totalSize = multiCoreParamsRegbase.totalSize;
 
     if ASCEND_IS_AIV {
-        if constexpr (!isMlaNoQuant) {
+        if constexpr (!isMlaNoQuant) { // mla模板c侧会拷贝tiling data,无需使用 sharedParams
             if (subBlockIdx == 0) {
                 auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
                 auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
