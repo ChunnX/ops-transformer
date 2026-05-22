@@ -611,8 +611,8 @@ function build_example()
      echo "===========================" 
  
  
-     n_pes=8 
-     g_npus=8 
+     n_pes=2
+     g_npus=2 
      pids=()
 
     # Compile and Execute

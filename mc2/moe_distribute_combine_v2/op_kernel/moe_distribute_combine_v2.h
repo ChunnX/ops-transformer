@@ -1669,7 +1669,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
             if (isInputExpertMaskFlag_) {
                 tokenIndex = validBsIndexTensor_.GetValue(curIdx);
             }
-            uint32_t copyCount = flagRcvCount_ * FLOAT_PER_UB_ALIGN;
+            // uint32_t copyCount = flagRcvCount_ * FLOAT_PER_UB_ALIGN;
+            uint32_t copyCount = flagRcvCount_;
             if (!WaitDispatch(tokenIndex, performanceTimeStart, copyCount, beginIndex)) {
                 continue;
             }
