@@ -574,10 +574,10 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
                     bSize_, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.cu_seqlens_q.tensor != nullptr) &&
-                   (opParamInfo_.cu_seqlens_q.tensor->GetShapeSize() != bSize_),
+    OP_CHECK_IF((opParamInfo_.cuSeqlensQ.tensor != nullptr) &&
+                   (opParamInfo_.cuSeqlensQ.tensor->GetShapeSize() != bSize_),
                 OP_LOGE(opName_, "BSND case input query, cu_seqlens_q dim 0 are %u, %ld respectively, they must be same",
-                    bSize_, opParamInfo_.cu_seqlens_q.tensor->GetShapeSize()),
+                    bSize_, opParamInfo_.cuSeqlensQ.tensor->GetShapeSize()),
                 return ge::GRAPH_FAILED);
     // -----------------------check S1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
