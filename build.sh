@@ -1783,6 +1783,18 @@ build_ut() {
   fi
 }
 
+echo "hbltest"
+echo "ls /home/phisik3/jenkins/workspace/work_code/open_source"
+ls /home/phisik3/jenkins/workspace/work_code/open_source
+echo "ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase"
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase
+echo "/home/phisik3/jenkins/workspace/work_code/open_source/opbase/include"
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include
+echo "ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common"
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common
+echo "ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common/log"
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common/log
+
 function build_pkg_for_single_soc() {
     local single_soc_option="$1"
     local original_option="${CUSTOM_OPTION}"
