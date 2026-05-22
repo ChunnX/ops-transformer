@@ -227,7 +227,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     int n_pes = aclshmem_n_pes();
 
     // DEBUG: n_pes * trans_size * sizeof(int32_t)
-    uint32_t trans_size = 16;
+    uint32_t trans_size = 1024 * 1024 * 1024;
     uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t)));
     uint64_t custom_ptr_addr = (uint64_t)custom_ptr;
     std::cout << "[HOST custom_ptr_addr] " << custom_ptr_addr << std::endl;
