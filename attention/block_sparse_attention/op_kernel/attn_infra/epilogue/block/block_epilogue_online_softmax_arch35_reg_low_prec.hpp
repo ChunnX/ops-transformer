@@ -55,8 +55,9 @@ public:
     static constexpr uint32_t VECTOR_SIZE = 128;
     static constexpr uint32_t MAX_UB_S_ELEM_NUM = 16384;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
-    static constexpr uint32_t ELE_NUM_PER_C0 = 16;
-    static constexpr uint32_t ELE_NUM_PER_C0_FLOAT8 = 32;
+    // static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+    // static constexpr uint32_t ELE_NUM_PER_C0_FLOAT8 = 32;
+    static constexpr uint32_t ELE_NUM_PER_C0 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value ? 32 : 16;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -168,9 +169,7 @@ public:
         }
         uint32_t n = actualBlockShape.n();
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
-        // uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
-        uint16_t nRound = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value ? RoundUp(n, ELE_NUM_PER_C0_FLOAT8) :
-                                                                                    RoundUp(n, ELE_NUM_PER_C0);
+        uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
         uint32_t blockStride = mRound;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
         int16_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
@@ -189,6 +188,7 @@ public:
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
+        AscendC::printf("tkd ELE_NUM_PER_C0: %u\n", ELE_NUM_PER_C0);
         AscendC::printf("tkd S matrix after dequantScale\n");
         AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
@@ -519,7 +519,7 @@ private:
                 Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3,
                    pRegUint8All);
 
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,
+                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, pVreg0,
                                                                          blockStride, pRegUint8All);
             } else {
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg,
@@ -670,10 +670,10 @@ private:
                 Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg7,
                    pRegUint8All);
 
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,
+                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, pVreg0,
                                                                          blockStride, pRegUint8All);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0_FLOAT8 + blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
+                    expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
                     pVreg4, blockStride, pRegUint8All);
             } else {
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg0,
