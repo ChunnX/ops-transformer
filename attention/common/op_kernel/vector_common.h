@@ -1141,7 +1141,7 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
                                            LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     if (info.layout == S1_EQUAL1) {
-        AttentionmaskDataCopy<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, 0, 1, isPre);
+        AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, 0, 1, isPre);
 
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
