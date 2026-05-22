@@ -47,6 +47,7 @@ struct CopyL0CToDstQuantMode<
 };
 
 // CopyL0CToGm fp32 to fp32
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3101) || (__NPU_ARCH__ == 3510))
 template <>
 struct CopyL0CToDstQuantMode<
     NpuArch::Arch::AtlasA5,
@@ -55,7 +56,7 @@ struct CopyL0CToDstQuantMode<
 > {
     static constexpr auto VALUE = QuantMode_t::VQF322F32_PRE;
 };
-
+#endif
 
 
 // CopyL0CToGm cast fp32 to fp16

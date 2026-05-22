@@ -18,6 +18,7 @@
 #endif
 #if (__CCE_AICORE__ == 310)
 #include "arch35/block_sparse_attention_kernel_arch35_regular.h"
+#include "arch35/block_sparse_attention_kernel_arch35_qmode1.h"
 #endif
 
 using namespace NpuArch;
@@ -37,9 +38,6 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
     GM_ADDR blockSparseMask,
     GM_ADDR mask,
     GM_ADDR blockTables,
-    GM_ADDR query_scale,
-    GM_ADDR key_scale,
-    GM_ADDR value_scale,
     GM_ADDR o,
     GM_ADDR actualQseqlen,
     GM_ADDR actualKvseqlen,

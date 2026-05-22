@@ -8,6 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#ifndef BSA_ARCH35_KERNEL_REGULAR
+#define BSA_ARCH35_KERNEL_REGULAR
+
 #include "../arch35/kernel_utils.hpp"
 
 
@@ -54,16 +57,40 @@ public:
     static constexpr uint32_t PRE_LAUNCH = 2;
     static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
-    static constexpr uint32_t QUANT_BLOCK_SIZE = 64;
-
     // Methods
     __aicore__ inline
     BsaRegularKernelArch35() {}
+
+    __aicore__ inline
+    int GetQkStaticLoopNum()
+    {
+        return ((qBaseTile_ == BlockMmadQK::L0_TILE_M) &&
+                (embed_ == BlockMmadQK::L0_TILE_K) &&
+                ((kvBaseTile_ == BlockMmadQK::L0_TILE_N) ||
+                 (kvBaseTile_ == BlockMmadQK::L0_TILE_N * 2U))) ?
+            1 : Gemm::Block::Arch35MmadOpt::DYNAMIC_LOOP;
+    }
+
+    __aicore__ inline
+    int GetPvStaticNLoopNum()
+    {
+        if (qBaseTile_ != BlockMmadPV::L0_TILE_M) {
+            return Gemm::Block::Arch35MmadOpt::DYNAMIC_LOOP;
+        }
+        if (embed_ == BlockMmadPV::L0_TILE_N) {
+            return 1;
+        }
+        if (embed_ == BlockMmadPV::L0_TILE_N * 2U) {
+            return 2;
+        }
+        return Gemm::Block::Arch35MmadOpt::DYNAMIC_LOOP;
+    }
 
     template<int quant_mode=0>
     __aicore__ inline
     void operator()(BsaKernelParamsArch35 const &params)
     {
+        static_assert(quant_mode == 0);
         __gm__ BlockSparseAttentionTilingData *bsaTilingData =
             reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
         FetchBaseShapeInfo(bsaTilingData);
@@ -87,13 +114,7 @@ public:
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
-        AscendC::GlobalTensor<float> queryScale;
-        queryScale.SetGlobalBuffer((__gm__ float *)(params.query_scale));
-        AscendC::GlobalTensor<float> keyScale;
-        keyScale.SetGlobalBuffer((__gm__ float *)(params.key_scale));
-        AscendC::GlobalTensor<uint64_t> valueScale;
-        valueScale.SetGlobalBuffer((__gm__ uint64_t *)(params.value_scale));
-        
+
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
@@ -150,6 +171,8 @@ public:
         }
         uint32_t embedRound = RoundUp(embed_, 16);
         uint32_t groupSize = qHeads_ / kvHeads_;
+        int qkStaticLoopNum = GetQkStaticLoopNum();
+        int pvStaticNLoopNum = GetPvStaticNLoopNum();
         int64_t qBOffset = 0;
         int64_t kBOffset = 0;
         int64_t vBOffset = 0;
@@ -298,13 +321,23 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    blockMmadQK.template operator()<quant_mode>(
-                        gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
-                        actualBlockShapeQK,
-                        gatheredKvSTileIdx, kvSeqlen,
-                        kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                        prefixSumL0AStages, prefixSumL0BStages,
-                        mm1ToSmFlag, 1.0f);
+                    if (qkStaticLoopNum == 1) {
+                        blockMmadQK.template operator()<0, 1, 1>(
+                            gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                            actualBlockShapeQK,
+                            gatheredKvSTileIdx, kvSeqlen,
+                            kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                            prefixSumL0AStages, prefixSumL0BStages,
+                            mm1ToSmFlag, 1.0f);
+                    } else {
+                        blockMmadQK.template operator()<0, -1, -1>(
+                            gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                            actualBlockShapeQK,
+                            gatheredKvSTileIdx, kvSeqlen,
+                            kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                            prefixSumL0AStages, prefixSumL0BStages,
+                            mm1ToSmFlag, 1.0f);
+                    }
                     if (gatheredKvSTileIdx == kvSLoopNum - 1)
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
@@ -316,47 +349,7 @@ public:
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId],
                     l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
-                    if constexpr (quant_mode == 1){
-                        uint32_t qsOffset = 0;
-                        uint32_t ksOffset = 0;
-                        if constexpr (qFormat == Format::BNSD) {
-                            uint32_t qScaleSeqNum = CeilDiv(qSeqlenAligned_,QUANT_BLOCK_SIZE);
-                            qsOffset = curBatch * qHeads_ * qScaleSeqNum + qHeadIdx * qScaleSeqNum + CeilDiv(qSOffset,QUANT_BLOCK_SIZE);
-                        } else if constexpr (qFormat == Format::TND) {
-                            qsOffset = CeilDiv((qBOffset / embed_), QUANT_BLOCK_SIZE) + CeilDiv(qSOffset, QUANT_BLOCK_SIZE) * qHeads_ + qHeadIdx;
-                        }
-                        if constexpr (kvFormat == Format::BNSD) {
-                            uint32_t kScaleSeqNum = CeilDiv(kvSeqlenAligned_, QUANT_BLOCK_SIZE);
-                            ksOffset = curBatch * kvHeads_ * kScaleSeqNum + kvHeadIdx * kScaleSeqNum;
-                        } else if constexpr (kvFormat == Format::TND) {
-                            ksOffset = CeilDiv(kBOffset / embed_, QUANT_BLOCK_SIZE) + kvHeadIdx;
-                        }
-                        uint32_t qScaleStride = (qFormat == Format::BNSD) ? 1 : qHeads_;
-                        uint32_t kScaleStride = (kvFormat == Format::BNSD) ? 1 : kvHeads_;
-                        auto gmQSLayoutTla = tla::MakeLayout<float, layout::RowMajor>(
-                            RoundUp(rowNum, QUANT_BLOCK_SIZE) / QUANT_BLOCK_SIZE, qScaleStride);
-                        auto gmQSTensorTla = tla::MakeTensor(queryScale[qsOffset],
-                            gmQSLayoutTla, Arch::PositionGM{});
-                        auto gmKSLayoutTla = tla::MakeLayout<float, layout::RowMajor>(
-                            RoundUp(kvSeqlen, QUANT_BLOCK_SIZE) / QUANT_BLOCK_SIZE, kScaleStride);
-                        auto gmKSTensorTla = tla::MakeTensor(keyScale[ksOffset],
-                            gmKSLayoutTla, Arch::PositionGM{});
-                        int32_t sparseTableStartOffset = gmOffsetSparseIdx + (gatheredKvSTileIdx) * (kvBaseTile_/blockShapeY_);
-                        epilogueOnlineSoftmax.template operator()<quant_mode>(
-                        l1PTensorTla,
-                        gmQSTensorTla,
-                        gmKSTensorTla,
-                        actualBlockShapeQK,
-                        (gatheredKvSTileIdx == 0),
-                        ubSBufId,
-                        l1PBufId,
-                        mm1ToSmFlag,
-                        smToMm2Flag,
-                        gSparseIdx[sparseTableStartOffset],
-                        CeilDiv(kvSTileSizeAct, blockShapeY_)
-                        );
-                    } else {
-                        epilogueOnlineSoftmax(
+                    epilogueOnlineSoftmax(
                         l1PTensorTla,
                         actualBlockShapeQK,
                         (gatheredKvSTileIdx == 0),
@@ -364,7 +357,6 @@ public:
                         l1PBufId,
                         mm1ToSmFlag,
                         smToMm2Flag);
-                    }
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
@@ -392,29 +384,30 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
-                    if constexpr (quant_mode == 1){
-                        uint32_t vsOffset = 0;
-                        vsOffset = curBatch * kvHeads_ * embed_;
-                        uint32_t vScaleStride = embed_;
-                        auto gmVSLayoutTla = tla::MakeLayout<float, layout::RowMajor>(
-                            1, embed_);
-                        auto gmVSTensorTla = tla::MakeTensor(valueScale[vsOffset],
-                            gmVSLayoutTla, Arch::PositionGM{});
-                        blockMmadPV.template operator()<quant_mode>(
-                            gmVTensorTla, ubOTmpTensorTla, gmVSTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                    if (pvStaticNLoopNum == 1) {
+                        blockMmadPV.template operator()<1, 1>(
+                            gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                            actualBlockShapePV,
+                            gatheredKvSTileIdxDe, kvSeqlen,
+                            kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                            prefixSumL0AStages, prefixSumL0BStages,
+                            smToMm2Flag, mm2ToReFlag);
+                    } else if (pvStaticNLoopNum == 2) {
+                        blockMmadPV.template operator()<1, 2>(
+                            gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
                             actualBlockShapePV,
                             gatheredKvSTileIdxDe, kvSeqlen,
                             kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                             prefixSumL0AStages, prefixSumL0BStages,
                             smToMm2Flag, mm2ToReFlag);
                     } else {
-                        blockMmadPV(
-                        gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
-                        actualBlockShapePV,
-                        gatheredKvSTileIdxDe, kvSeqlen,
-                        kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                        prefixSumL0AStages, prefixSumL0BStages,
-                        smToMm2Flag, mm2ToReFlag);
+                        blockMmadPV.template operator()<-1, -1>(
+                            gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                            actualBlockShapePV,
+                            gatheredKvSTileIdxDe, kvSeqlen,
+                            kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                            prefixSumL0AStages, prefixSumL0BStages,
+                            smToMm2Flag, mm2ToReFlag);
                     }
 #endif
 #ifdef __DAV_VEC__
@@ -708,3 +701,5 @@ private:
 };
 
 }
+
+#endif

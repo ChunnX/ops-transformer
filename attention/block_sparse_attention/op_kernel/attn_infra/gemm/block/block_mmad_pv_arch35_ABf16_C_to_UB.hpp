@@ -25,6 +25,7 @@
 #include "../../../attn_infra/gemm/dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/helper.hpp"
 #include "../../../attn_infra/gemm_coord.hpp"
+#include "../../../attn_infra/gemm/block/block_mmad_arch35_opt.hpp"
 #include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
 #include "../../../tla/layout.hpp"
@@ -249,7 +250,11 @@ public:
 
     
 
-    template <class TensorB, class TensorC>
+    template <
+        int staticML0LoopNum = Arch35MmadOpt::DYNAMIC_LOOP,
+        int staticNL0LoopNum = Arch35MmadOpt::DYNAMIC_LOOP,
+        class TensorB,
+        class TensorC>
     __aicore__ inline
     void operator()(TensorB &gBTensor, TensorC &ubCTensor,
                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
@@ -262,14 +267,21 @@ public:
     {
         struct EmptyTensor {};
         EmptyTensor dummyVS;
-        this->operator()<0>(gBTensor, ubCTensor, dummyVS, gSparseBlockIdx,
+        this->operator()<0, staticML0LoopNum, staticNL0LoopNum>(
+                            gBTensor, ubCTensor, dummyVS, gSparseBlockIdx,
                             actualOriShape, gatheredKvSTileIdx, kvSeqlen,
                             kvSBaseTile, blockShapeY, yBlockNumAval, 
                             yBlockNumRsvd, prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag);
     }
 
 
-    template <int quant_mode, class TensorB, class TensorC, class TensorVS>
+    template <
+        int quant_mode,
+        int staticML0LoopNum = Arch35MmadOpt::DYNAMIC_LOOP,
+        int staticNL0LoopNum = Arch35MmadOpt::DYNAMIC_LOOP,
+        class TensorB,
+        class TensorC,
+        class TensorVS>
     __aicore__ inline
     void operator()(TensorB &gBTensor, TensorC &ubCTensor, TensorVS &gVSTensor,
                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
@@ -305,44 +317,50 @@ public:
         // fwd crossCoreSync from online sm to mm2
         WaitCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
         // P full base tile already on L1
-        uint32_t mL0LoopNum = CeilDiv(rowNum, L0_TILE_M);
-        uint32_t nL0LoopNum = CeilDiv(embed, L0_TILE_N);
-        uint32_t kL0LoopNum = CeilDiv(curBaseTileSize, L0_TILE_K);
+        uint32_t mL0LoopNum = Arch35MmadOpt::LoopNum(rowNum, L0_TILE_M);
+        uint32_t nL0LoopNum = Arch35MmadOpt::LoopNum(embed, L0_TILE_N);
+        uint32_t kL0LoopNum = Arch35MmadOpt::LoopNum(curBaseTileSize, L0_TILE_K);
+        uint32_t mFixPAligned8 = Arch35MmadOpt::AlignUpPow2<8>(rowNum);
         // while splitting the base tile OTmp to 2 AIVs,
         // the order of the elements in each column is expected to be preserved,
         // which means a column in l0C cannot be chunked and processed by dualMode FixPipe seperately.
         // therefore, FixPipe won't launch until each portion(chunked only by columns, based on nbuffer strategy)
         // of the base tile is ready on l0C
-        for (uint32_t nL0Itr = 0; nL0Itr < nL0LoopNum; nL0Itr++) {
-            uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (embed - nL0Itr * L0_TILE_N) : L0_TILE_N;
-            uint32_t nLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, nL0LoopNum, nL0Itr);
+        uint32_t nLoopCounter = Arch35MmadOpt::GetCurLoopCounter(gatheredKvSTileIdx, nL0LoopNum);
+        uint32_t nOffset = 0;
+        for (uint32_t nL0Itr = 0; nL0Itr < Arch35MmadOpt::LoopBound<staticNL0LoopNum>(nL0LoopNum); nL0Itr++) {
+            uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (embed - nOffset) : L0_TILE_N;
             // l0C nbuffer chunked only in n loop
             uint32_t l0CLoopCounter = nLoopCounter;
-            uint32_t l0CBufId = l0CLoopCounter % L0_STAGES;
+            uint32_t l0CBufId = Arch35MmadOpt::StageId<L0_STAGES>(l0CLoopCounter);
             // uint32_t l0CEventId = l0CBufId;
             uint32_t l0CEventId = l0CBufId + 2;
             auto l0CLayoutTla = tla::MakeLayoutL0C(rowNum, l0TileNAct);
             auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CBufId], l0CLayoutTla, Arch::PositionL0C{});
-            for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
-                uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (rowNum - mL0Itr * L0_TILE_M) : L0_TILE_M;
+            uint32_t mOffset = 0;
+            uint32_t l0ALoopBase = static_cast<uint32_t>(prefixSumL0AStages);
+            uint32_t l0BLoopBase = static_cast<uint32_t>(prefixSumL0BStages) + nL0Itr * kL0LoopNum;
+            for (uint32_t mL0Itr = 0; mL0Itr < Arch35MmadOpt::LoopBound<staticML0LoopNum>(mL0LoopNum); mL0Itr++) {
+                uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (rowNum - mOffset) : L0_TILE_M;
                 // uint32_t mLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNum, mL0Itr);
                 // different m chunks will be concated in the same piece of l0C buffer
                 auto l0CTensorTlaTile = GetTile(l0CTensorTla,
-                    tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
+                    tla::MakeCoord(mOffset, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
+                uint32_t l0ALoopCounter = l0ALoopBase;
+                uint32_t l0BLoopCounter = l0BLoopBase;
+                uint32_t kOffset = 0;
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
-                    uint32_t l0ALoopCounter = prefixSumL0AStages + GetCurLoopCounter(mL0Itr, kL0LoopNum, kL0Itr);
-                    uint32_t l0BLoopCounter = prefixSumL0BStages + GetCurLoopCounter(nL0Itr, kL0LoopNum, kL0Itr);
                     uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ?
-                        (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
-                    uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
+                        (curBaseTileSize - kOffset) : L0_TILE_K;
+                    uint32_t l0ABufId = Arch35MmadOpt::StageId<L0_STAGES>(l0ALoopCounter);
                     // l0ABufId = (mLoopCounter % 2 == 0) ? (1 - l0ABufId) : l0ABufId;
-                    uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
+                    uint32_t l0BBufId = Arch35MmadOpt::StageId<L0_STAGES>(l0BLoopCounter);
                     uint32_t l0AEventId = l0ABufId;
                     uint32_t l0BEventId = l0BBufId + 2;
                     // when L0B buffers wouldn't be reused across the k loop
                     // redundant L0B load caused by m loop can be avoided
                     auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                        tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
+                        tla::MakeCoord(kOffset, nOffset), tla::MakeShape(l0TileKAct, l0TileNAct));
                     auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, l0TileNAct);
                     auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
                     
@@ -355,7 +373,7 @@ public:
                     }
 
                     auto l1ATensorTlaTile = GetTile(l1ATensorTla,
-                        tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
+                        tla::MakeCoord(mOffset, kOffset), tla::MakeShape(l0TileMAct, l0TileKAct));
                     auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 
@@ -368,7 +386,7 @@ public:
                     }
 
                     bool initMmad = (kL0Itr == 0);
-                    uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
+                    uint32_t l0TileMAligned = Arch35MmadOpt::AlignUpPow2<16>(l0TileMAct);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                     
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
@@ -380,7 +398,7 @@ public:
                     if constexpr (quant_mode == 1 && enFixpipeDequant == true) {
                         if (mL0Itr == 0 && kL0Itr == kL0LoopNum - 1){
                             AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE2>(0);
-                            DataCopy(l1VSDBTensor[l1VSdbSel], gVSTensor.data()[nL0Itr * L0_TILE_N], l0TileNAct);
+                            DataCopy(l1VSDBTensor[l1VSdbSel], gVSTensor.data()[nOffset], l0TileNAct);
                             AscendC::SetFlag<AscendC::HardEvent::MTE2_FIX>(0);
                             AscendC::WaitFlag<AscendC::HardEvent::MTE2_FIX>(0);
                         }
@@ -395,7 +413,12 @@ public:
                         initMmad);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    l0ALoopCounter++;
+                    l0BLoopCounter++;
+                    kOffset += L0_TILE_K;
                 }
+                mOffset += L0_TILE_M;
+                l0ALoopBase += kL0LoopNum;
             }
             // fixpipe
             if (nL0Itr == 0) {
@@ -408,18 +431,19 @@ public:
             // rounded up by 8 and splited in half to each AIV
             // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
             // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
-            uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
-            uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
+            uint32_t nFixPAligned8 = Arch35MmadOpt::AlignUpPow2<8>(l0TileNAct);
             auto ubCTensorTlaTile = GetTile(ubCTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
-            if constexpr (quant_mode == 0){
-                copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
-            } else if constexpr (quant_mode == 1 && enFixpipeDequant == true){
+                tla::MakeCoord(0, nOffset), tla::MakeShape(mFixPAligned8, nFixPAligned8));
+            if constexpr (quant_mode == 1 && enFixpipeDequant == true){
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla, l1VSDBTensor[l1VSdbSel]);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
-                l1VSdbSel = (l1VSdbSel + 1) % VSDB_BUF_NUM;
+                l1VSdbSel = Arch35MmadOpt::StageId<VSDB_BUF_NUM>(l1VSdbSel + 1U);
+            } else {
+                copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+            nLoopCounter++;
+            nOffset += L0_TILE_N;
         }
         // crossCoreSync after all fixPipe move
         SetCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
