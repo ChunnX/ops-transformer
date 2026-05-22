@@ -63,12 +63,6 @@ extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-static aclTensor* CreateWinTensor(const int64_t* dims, uint64_t dimNum, aclDataType dataType, aclFormat format,
-                                  void* dataAddr) 
-{
-    return aclCreateTensor(dims, dimNum, dataType, nullptr, 0, format, dims, dimNum, dataAddr);
-}
-
 static inline bool IsAscend950(void)
 {
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;

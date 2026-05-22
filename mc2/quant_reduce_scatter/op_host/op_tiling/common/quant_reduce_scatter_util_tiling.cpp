@@ -167,6 +167,7 @@ static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInf
  */
 static bool CheckXDimValid(const gert::TilingContext *context, const OpType opType)
 {
+    (void)opType; // Reserved for future extension
     const char *nodeName = context->GetNodeName();
     // context->GetInputShape在函数CheckInputTensorDim中已经校验
     size_t xDimNum = context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum();
@@ -188,6 +189,7 @@ static bool CheckXDimValid(const gert::TilingContext *context, const OpType opTy
  */
 static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType)
 {
+    (void)opType; // Reserved for future extension
     const char *nodeName = context->GetNodeName();
     // context->GetInputShape在函数CheckInputTensorDim中已经校验
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
@@ -384,9 +386,10 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, TilingRunInf
 /**
  * @brief 检查输出维度大小的合法性
  */
-static bool CheckOutputDimSize(const gert::TilingContext *context, size_t outputDim, size_t xDimNum, 
+static bool CheckOutputDimSize(const gert::TilingContext *context, size_t outputDim, size_t xDimNum,
                                OpType opType, const char *nodeName)
 {
+    (void)context; // Reserved for future extension
     bool invalidOutputDim = false;
     if (opType == OpType::OP_QUANT_ALL_REDUCE) {
         // 对于quant_all_reduce，输出维度必须与与输入维度一致, 必须是2维或3维
@@ -411,6 +414,7 @@ static bool CheckOutputDimSize(const gert::TilingContext *context, size_t output
 static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const gert::StorageShape *outputShape,
                                       size_t outputDim, size_t xDimNum, TilingRunInfo &runInfo, const char *nodeName)
 {
+    (void)xDimNum; // Reserved for future extension
     uint64_t outputValueOne = outputShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t outputValueTwo = outputShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t xValueOne = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
@@ -490,6 +494,7 @@ static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputVa
 static bool CheckReduceScatterOutputShape(const gert::TilingContext *context, const gert::StorageShape *outputShape,
                                           size_t outputDim, size_t xDimNum, TilingRunInfo &runInfo, const char *nodeName)
 {
+    (void)outputDim; // Reserved for future extension
     uint64_t outputValueOne = outputShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t outputValueTwo = outputShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t xValueOne = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
