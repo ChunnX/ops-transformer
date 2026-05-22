@@ -11,7 +11,7 @@
  #ifndef CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
  #define CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
 
- #include "../../../gmm_infra/gemm/helper.hpp"
+ #include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
  namespace Catlass::Epilogue::Tile{
  template<

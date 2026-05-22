@@ -25,6 +25,6 @@ class BlockEpilogue {
 
 }  // namespace Catlass::Epilogue::Block
 
-#include "../../../gmm_infra/epilogue/block/block_epilogue_per_token_dequant.hpp"
+#include "../../../gmm_infra/epilogue/block/gmm_block_epilogue_per_token_dequant.hpp"
 #include "../../../gmm_infra/epilogue/block/block_epilogue_per_token_dequant_add.hpp"
 #endif  // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP

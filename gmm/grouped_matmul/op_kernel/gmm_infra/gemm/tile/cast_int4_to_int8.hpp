@@ -12,11 +12,11 @@
 #define CATLASS_GEMM_TILE_CAST_INT4_TO_INT8_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/resource.hpp"
-#include "../../../gmm_infra/coord.hpp"
-#include "../../../gmm_infra/gemm_coord.hpp"
-#include "../../../gmm_infra/gemm/dispatch_policy.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/arch/gmm_resource.hpp"
+#include "../../../gmm_infra/gmm_coord.hpp"
+#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
 namespace Catlass::Gemm::Tile {
 

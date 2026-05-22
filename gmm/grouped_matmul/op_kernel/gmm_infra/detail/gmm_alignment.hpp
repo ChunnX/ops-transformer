@@ -11,7 +11,7 @@
 #ifndef CATLASS_ALIGNMENT_HPP
 #define CATLASS_ALIGNMENT_HPP
 
-#include "../../gmm_infra/detail/macros.hpp"
+#include "../../gmm_infra/detail/gmm_macros.hpp"
 
 namespace Catlass {
 template <uint32_t ALIGN, typename T>

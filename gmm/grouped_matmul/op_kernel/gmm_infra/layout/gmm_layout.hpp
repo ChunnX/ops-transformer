@@ -12,8 +12,8 @@
 #define CATLASS_LAYOUT_LAYOUT_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
-#include "../../gmm_infra/layout/matrix.hpp"
-#include "../../gmm_infra/layout/vector.hpp"
+#include "../../gmm_infra/layout/gmm_matrix.hpp"
+#include "../../gmm_infra/layout/gmm_vector.hpp"
 #include "../../gmm_infra/layout/tensor.hpp"
 
 #endif  // CATLASS_LAYOUT_LAYOUT_HPP

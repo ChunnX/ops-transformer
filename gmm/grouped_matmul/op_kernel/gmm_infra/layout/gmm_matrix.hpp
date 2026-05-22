@@ -12,11 +12,11 @@
 #define CATLASS_LAYOUT_MATRIX_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
-#include "../../gmm_infra/coord.hpp"
-#include "../../gmm_infra/numeric_size.hpp"
-#include "../../gmm_infra/detail/alignment.hpp"
-#include "../../gmm_infra/matrix_coord.hpp"
-#include "../../gmm_infra/conv_coord.hpp"
+#include "../../gmm_infra/gmm_coord.hpp"
+#include "../../gmm_infra/gmm_numeric_size.hpp"
+#include "../../gmm_infra/detail/gmm_alignment.hpp"
+#include "../../gmm_infra/matrix_gmm_coord.hpp"
+#include "../../gmm_infra/conv_gmm_coord.hpp"
 
 namespace Catlass::layout {
 

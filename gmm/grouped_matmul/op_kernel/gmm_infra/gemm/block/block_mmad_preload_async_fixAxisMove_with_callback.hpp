@@ -12,12 +12,12 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/resource.hpp"
-#include "../../../gmm_infra/coord.hpp"
-#include "../../../gmm_infra/detail/callback.hpp"
-#include "../../../gmm_infra/gemm_coord.hpp"
-#include "../../../gmm_infra/gemm/dispatch_policy.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/arch/gmm_resource.hpp"
+#include "../../../gmm_infra/gmm_coord.hpp"
+#include "../../../gmm_infra/detail/gmm_callback.hpp"
+#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
 namespace Catlass::Gemm::Block {
 

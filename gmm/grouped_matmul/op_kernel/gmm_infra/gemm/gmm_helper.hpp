@@ -12,9 +12,9 @@
 #define CATLASS_GEMM_HELPER_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
-#include "../../gmm_infra/numeric_size.hpp"
-#include "../../gmm_infra/layout/layout.hpp"
-#include "../../gmm_infra/gemm/gemm_type.hpp"
+#include "../../gmm_infra/gmm_numeric_size.hpp"
+#include "../../gmm_infra/layout/gmm_layout.hpp"
+#include "../../gmm_infra/gemm/gmm_gemm_type.hpp"
 
 namespace Catlass::Gemm::helper {
 

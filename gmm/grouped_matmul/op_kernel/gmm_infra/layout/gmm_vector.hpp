@@ -12,8 +12,8 @@
 #define CATLASS_LAYOUT_VECTOR_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
-#include "../../gmm_infra/coord.hpp"
-#include "../../gmm_infra/numeric_size.hpp"
+#include "../../gmm_infra/gmm_coord.hpp"
+#include "../../gmm_infra/gmm_numeric_size.hpp"
 
 namespace Catlass::layout {
 

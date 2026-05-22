@@ -13,7 +13,7 @@
 #define CATLASS_GEMM_TILE_TILE_MULS_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 namespace Catlass::Gemm::Tile {
 
 ///////////////////////////////////////////////////////
