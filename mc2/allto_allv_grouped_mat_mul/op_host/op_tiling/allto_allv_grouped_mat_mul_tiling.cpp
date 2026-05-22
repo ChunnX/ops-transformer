@@ -19,15 +19,8 @@
 #include "mc2_comm_utils.h"
 
 namespace optiling {
-// Constants for SetTilingParams (copied from quant tiling_common.h)
-constexpr uint32_t DATA_SIZE_L0C = 4;
-constexpr uint64_t CUBE_REDUCE_BLOCK = 32;
-constexpr uint32_t BASIC_BLOCK_SIZE_512 = 512;
-constexpr uint32_t BASIC_BLOCK_SIZE_256 = 256;
-constexpr uint32_t BASIC_BLOCK_SIZE_128 = 128;
 constexpr uint32_t SINGLE_GROUP_NUM = 1;
 constexpr uint32_t GMM_ACT_TYPE_NONE = 0;
-constexpr uint64_t DB_SIZE = 2UL;
 }  // namespace optiling
 
 using namespace ge;
@@ -465,7 +458,7 @@ ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context)
 {
     // Call GetCommonPlatformInfo() from base class to initialize ALL platform info member variables:
     // aicCoreNum_, aivCoreNum_, ubSize_, l1Size_, l0aSize_, l0bSize_, l0cSize_, libApiWorkSpaceSize_
-    // These are used in SetTilingParams() and must be properly initialized.
+    // These are used in Mc2GroupedQbmmTiling and must be properly initialized.
     if (GetCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
         OP_LOGE(A_INNER_DEBUG, "GetCommonPlatformInfo failed.");
         return ge::GRAPH_FAILED;
@@ -621,107 +614,8 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData) const
-{
-    gmmQuantTilingData.gmmQuantParams.groupNum = SINGLE_GROUP_NUM;
-    gmmQuantTilingData.gmmQuantParams.activeType = GMM_ACT_TYPE_NONE;
-    // Non-quant: no scale input, use DEFAULT(0) to skip scale processing in kernel
-    gmmQuantTilingData.gmmQuantParams.aQuantMode = 0;  // DEFAULT, not PERTENSOR
-    gmmQuantTilingData.gmmQuantParams.bQuantMode = 0;  // DEFAULT, not PERTENSOR
-    gmmQuantTilingData.gmmQuantParams.singleX = 0;
-    gmmQuantTilingData.gmmQuantParams.singleW = 0;
-    gmmQuantTilingData.gmmQuantParams.singleY = 0;
-    gmmQuantTilingData.gmmQuantParams.groupType = 0;
-    gmmQuantTilingData.gmmQuantParams.groupListType = 1;
-    gmmQuantTilingData.gmmQuantParams.hasBias = 0;
-    gmmQuantTilingData.gmmQuantParams.reserved = 0;
-}
-
-void AlltoAllvGmmTiling::SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K) const
-{
-    gmmQuantTilingData.gmmArray.mList[0] = static_cast<int32_t>(M);
-    gmmQuantTilingData.gmmArray.kList[0] = static_cast<int32_t>(K);
-    gmmQuantTilingData.gmmArray.nList[0] = static_cast<int32_t>(N);
-}
-
-void AlltoAllvGmmTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, bool transB) const
-{
-    auto &mm = gmmQuantTilingData.mmTilingData;
-
-    mm.M = M;
-    mm.N = N;
-    mm.Ka = K;
-    mm.Kb = K;
-    mm.usedCoreNum = aicCoreNum_;
-    mm.isBias = 0;
-    mm.dbL0A = DOUBLE_BUFFER;
-    mm.dbL0B = DOUBLE_BUFFER;
-
-    mm.baseM = std::min(static_cast<int32_t>(M), static_cast<int32_t>(BASIC_BLOCK_SIZE_256));
-    mm.baseM = Ops::Base::CeilAlign(mm.baseM, static_cast<int32_t>(CUBE_BLOCK));
-    mm.baseN = std::min(static_cast<int32_t>(N), static_cast<int32_t>(BASIC_BLOCK_SIZE_256));
-    mm.baseN = Ops::Base::CeilAlign(mm.baseN, transB ? static_cast<int32_t>(CUBE_BLOCK) : static_cast<int32_t>(L1_ALIGN_SIZE));
-    
-    mm.baseK = std::min(static_cast<int32_t>(K), static_cast<int32_t>(BASIC_BLOCK_SIZE_128));
-    mm.baseK = Ops::Base::CeilAlign(mm.baseK, static_cast<int32_t>(CUBE_REDUCE_BLOCK));
-
-    mm.singleCoreM = std::min(static_cast<int32_t>(M), mm.baseM);
-    mm.singleCoreN = std::min(static_cast<int32_t>(N), mm.baseN);
-    mm.singleCoreK = K;
-
-    uint64_t l0cRequired = static_cast<uint64_t>(mm.baseM) * mm.baseN * DATA_SIZE_L0C * DB_SIZE;
-    mm.dbL0C = (l0cRequired <= l0cSize_) ? DB_SIZE : 1;
-
-    mm.iterateOrder = 0U;
-
-    uint64_t baseASize = static_cast<uint64_t>(mm.baseM) * mm.baseK;
-    uint64_t baseBSize = static_cast<uint64_t>(mm.baseN) * mm.baseK;
-    uint64_t baseL1Size = baseASize + baseBSize;
-
-    OP_TILING_CHECK(baseL1Size == 0, OP_LOGW(context_->GetNodeName(), "baseL1Size cannot be zero."), return );
-
-    uint64_t leftL1Size = l1Size_;
-
-    uint64_t depthInit = leftL1Size / baseL1Size;
-    depthInit = std::max(depthInit, static_cast<uint64_t>(1));
-
-    uint64_t depthScale = depthInit;
-    while (depthScale * mm.baseK % BASIC_BLOCK_SIZE_512 != 0 && depthScale > 1) {
-        depthScale--;
-    }
-    depthScale = std::max(depthScale, static_cast<uint64_t>(1));
-
-    mm.depthA1 = depthScale;
-    mm.depthB1 = depthScale;
-
-    mm.stepKa = (mm.depthA1 > 1) ? (mm.depthA1 / DB_SIZE) : 1;
-    mm.stepKb = (mm.depthB1 > 1) ? (mm.depthB1 / DB_SIZE) : 1;
-
-    OP_TILING_CHECK(mm.baseK == 0, OP_LOGW(context_->GetNodeName(), "baseK cannot be zero."), return );
-
-    if (mm.stepKa * mm.baseK > mm.Ka) {
-        mm.stepKa = Ops::Base::CeilDiv(mm.Ka, mm.baseK);
-    }
-    if (mm.stepKb * mm.baseK > mm.Kb) {
-        mm.stepKb = Ops::Base::CeilDiv(mm.Kb, mm.baseK);
-    }
-
-    mm.depthA1 = mm.stepKa * DB_SIZE;
-    mm.depthB1 = mm.stepKb * DB_SIZE;
-
-    mm.stepM = 1;
-    mm.stepN = 1;
-}
-
 ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* context)
 {
-    auto dTypeForMM = matmul_tiling::DataType::DT_FLOAT16;
-    if (mmXDataType_ == ge::DT_BF16) {
-        dTypeForMM = matmul_tiling::DataType::DT_BF16;
-    }
-    OP_LOGD(
-        A_INNER_DEBUG, "mmXDataType_ is %d, dTypeForMM is %d.", static_cast<int>(mmXDataType_), static_cast<int>(dTypeForMM));
-
     auto attrs = context->GetAttrs();
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
     OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE(A_INNER_DEBUG, "recvCountsPtr is null."), return ge::GRAPH_FAILED);
@@ -736,20 +630,71 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
         maxMSize = std::max(mSize, maxMSize);
     }
 
+    // Delegate GMM/MM tiling to 3rd-party Mc2GroupedQbmmTiling (fixes BF16 depth calculation)
     if (maxMSize != 0) {
-        auto &gmmQuantTilingData = tilingData->gmmQuantTilingData;
-        SetGMMQuantParams(gmmQuantTilingData);
-        SetTilingArray(gmmQuantTilingData, maxMSize, n1_, h1_);
-        SetTilingParams(gmmQuantTilingData, maxMSize, n1_, h1_, transGmmWeight_);
+        AlltoAllvGmmTilingHelper gmmHelper(*this);
+        GE_ASSERT_GRAPH_SUCCESS(gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
+            gmmXDataType_, gmmWeightDataType_, gmmXDataType_));
+        GE_ASSERT_GRAPH_SUCCESS(gmmHelper.Process());
+        tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
     }
 
     if (bs_ != 0) {
-        auto &mmQuantTilingData = tilingData->mmQuantTilingData;
-        SetGMMQuantParams(mmQuantTilingData);
-        SetTilingArray(mmQuantTilingData, bs_, n2_, h2_);
-        SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
+        AlltoAllvGmmTilingHelper mmHelper(*this);
+        GE_ASSERT_GRAPH_SUCCESS(mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_,
+            mmXDataType_, mmWeightDataType_, mmXDataType_));
+        GE_ASSERT_GRAPH_SUCCESS(mmHelper.Process());
+        tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
+                                                          ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype)
+{
+    GetPlatformInfo();
+    inputParams_.opName = context_->GetNodeName();
+    inputParams_.kernelType = 0UL;
+    inputParams_.splitItem = 0;
+    inputParams_.actType = GMM_ACT_TYPE_NONE;
+    inputParams_.aFormat = ge::FORMAT_ND;
+    inputParams_.bFormat = ge::FORMAT_ND;
+    inputParams_.cFormat = ge::FORMAT_ND;
+    inputParams_.transA = false;
+    inputParams_.transB = transB;
+    inputParams_.hasBias = false;
+    inputParams_.isSingleX = false;
+    inputParams_.isSingleW = false;
+    inputParams_.isSingleY = false;
+
+    inputParams_.mSize = M;
+    inputParams_.kSize = K;
+    inputParams_.nSize = N;
+    inputParams_.groupNum = SINGLE_GROUP_NUM;
+    inputParams_.aQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
+    inputParams_.bQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
+    inputParams_.groupType = Mc2GroupedMatmul::SPLIT_M;
+    inputParams_.groupListType = 1;
+
+    inputParams_.aDtype = aDtype;
+    inputParams_.bDtype = bDtype;
+    inputParams_.cDtype = cDtype;
+    inputParams_.biasDtype = ge::DT_INT32;
+    inputParams_.scaleDtype = ge::DT_FLOAT;
+    inputParams_.perTokenScaleDtype = ge::DT_FLOAT;
+
+    mList_[0] = static_cast<int32_t>(M);
+    kList_[0] = static_cast<int32_t>(K);
+    nList_[0] = static_cast<int32_t>(N);
+    SetKernelType();
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AlltoAllvGmmTilingHelper::Process()
+{
+    GE_ASSERT_GRAPH_SUCCESS(DoOpTiling());
+    GE_ASSERT_GRAPH_SUCCESS(DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
 }
 
