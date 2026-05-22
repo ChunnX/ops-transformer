@@ -28,9 +28,9 @@
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
 #include "mega_moe.h"
-#include "../../op_kernel/mega_moe_tiling.h"
-#include "../../op_kernel/mega_moe_tiling_key.h"
-#include "../../op_kernel/mega_moe_workspace_info.h"
+#include "../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../op_kernel/arch35/mega_moe_tiling_key.h"
+#include "../../op_kernel/arch35/mega_moe_workspace_info.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -795,7 +795,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    auto globalBs = attrs->GetAttrPointer<int64_t>((config.attrGlobalBsIndex));
+    auto numMaxTokenPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokenPerRankIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE(nodeName, "moeExpertNumPtr is nullptr."), return ge::GRAPH_FAILED);
@@ -813,8 +813,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE(nodeName, "combineQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commAlgPtr == nullptr,
         OP_LOGE(nodeName, "commAlgPtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(globalBs == nullptr,
-        OP_LOGE(nodeName, "globalBs is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numMaxTokenPerRankPtr == nullptr,
+        OP_LOGE(nodeName, "numMaxTokenPerRankPtr is nullptr."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -926,12 +926,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName, "Invalid commAlg(%s), expecting default value("").", commAlgPtr),
         return ge::GRAPH_FAILED);
 
-    auto globalBsPtr = attrs->GetAttrPointer<int64_t>((config.attrGlobalBsIndex));
-    int64_t globalBs = static_cast<int64_t>(*globalBsPtr);
-    if (globalBs != 0) {
-        OP_TILING_CHECK(globalBs < 0 || bs * epWorldSize > globalBs || globalBs % epWorldSize != 0,
-            OP_LOGE(nodeName, "globalBs(%ld) either be 0 or (maxBs * EP and mod(globalBs, EP(%ld)) == 0).",
-                globalBs, epWorldSize),
+    auto numMaxTokenPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokenPerRankIndex));
+    int64_t numMaxTokenPerRank = static_cast<int64_t>(*numMaxTokenPerRankPtr);
+    if (numMaxTokenPerRank != 0) {
+        OP_TILING_CHECK(numMaxTokenPerRank < 0 || bs < numMaxTokenPerRank || numMaxTokenPerRank >= MAX_BS,
+            OP_LOGE(nodeName, "numMaxTokenPerRank(%ld) either be 0 or between bs(%ld) and MAX_BS(%ld).",
+                numMaxTokenPerRank, bs, MAX_BS),
             return ge::GRAPH_FAILED);
     }
 

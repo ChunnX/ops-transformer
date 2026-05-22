@@ -68,7 +68,7 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H4096_BS128)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -117,7 +117,7 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H5120_BS256)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -166,7 +166,7 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H7168_BS512)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -215,7 +215,7 @@ TEST_F(MegaMoeInferShapeTest, InferShape_InvalidEpWorldSize)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -249,7 +249,7 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E4M3FN)
                     {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
                     {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                     {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                    {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+                    {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
         .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
         .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
         .NodeInputTd(2, topkIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
@@ -300,7 +300,7 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E5M2)
                     {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
                     {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                     {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                    {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+                    {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
         .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
         .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
         .NodeInputTd(2, topkIdsType, ge::FORMAT_ND, ge::FORMAT_ND)

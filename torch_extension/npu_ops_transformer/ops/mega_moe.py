@@ -28,18 +28,20 @@ class _MegaMoeOpBuilder(OpBuilder):
     def schema(self) -> str:
         return "npu_mega_moe(Tensor context, Tensor x, Tensor topk_ids, Tensor topk_weights, " \
             "Tensor[] weight1, Tensor[] weight2, int moe_expert_num, int ep_world_size, int ccl_buffer_size, *, " \
-            "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, Tensor? x_active_mask=None, " \
-            "Tensor? scales=None, int? max_recv_token_num=0, int? dispatch_quant_mode=0, " \
-            "int? combine_quant_mode=0, str? comm_alg=\"\", int? global_bs=0, " \
+            "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, " \
+            "Tensor[]? bias1=None, Tensor[]? bias2=None, " \
+            "Tensor? x_active_mask=None, Tensor? scales=None, int? max_recv_token_num=0, int? dispatch_quant_mode=0, " \
+            "int? combine_quant_mode=0, str? comm_alg=\"\", int? num_max_token_per_rank=0, " \
             "int? dispatch_quant_out_type=28, int? weight1_type=28, int? weight2_type=28) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_mega_moe_meta(context, x, topk_ids, topk_weights, weight1, weight2,
                               moe_expert_num, ep_world_size, ccl_buffer_size,
-                              weight_scales1=None, weight_scales2=None, x_active_mask=None,
-                              scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                              combine_quant_mode=0, comm_alg="", global_bs=0,
+                              weight_scales1=None, weight_scales2=None,
+                              bias1=None, bias2=None,
+                              x_active_mask=None, scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
+                              combine_quant_mode=0, comm_alg="", num_max_token_per_rank=0,
                               dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
             torch._check(
                 ep_world_size != 0,
@@ -64,14 +66,15 @@ _op_module = _mega_moe_op_builder.load()
 def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   moe_expert_num, ep_world_size, ccl_buffer_size,
                   weight_scales1=None, weight_scales2=None,
+                  bias1=None, bias2=None,
                   x_active_mask=None, scales=None, max_recv_token_num=0,
                   dispatch_quant_mode=0, combine_quant_mode=0,
-                  comm_alg="", global_bs=0,
+                  comm_alg="", num_max_token_per_rank=0,
                   dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
-        ccl_buffer_size, weight_scales1, weight_scales2, x_active_mask, scales, max_recv_token_num,
-        dispatch_quant_mode, combine_quant_mode, comm_alg, global_bs,
+        ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask, scales, max_recv_token_num,
+        dispatch_quant_mode, combine_quant_mode, comm_alg, num_max_token_per_rank,
         dispatch_quant_out_type, weight1_type, weight2_type)
 
 
@@ -189,6 +192,8 @@ def mega_moe(
     scales: Optional[torch.Tensor] = None,
     l1_weights_sf: Optional[List[torch.Tensor]] = None,
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
+    bias1: Optional[List[torch.Tensor]] = None,
+    bias2: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
     weight1_type: int = 28,
     weight2_type: int = 28
@@ -206,13 +211,15 @@ def mega_moe(
         sym_buffer.ccl_buffer_size.value,
         weight_scales1=l1_weights_sf,
         weight_scales2=l2_weights_sf,
+        bias1=bias1,
+        bias2=bias2,
         x_active_mask=x_active_mask,
         scales=scales,
         max_recv_token_num=sym_buffer.max_recv_token_num,
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
-        global_bs=sym_buffer.num_max_tokens_per_rank,
+        num_max_token_per_rank=sym_buffer.num_max_tokens_per_rank,
         dispatch_quant_out_type=sym_buffer.dispatch_quant_out_type,
         weight1_type=weight1_type,
         weight2_type=weight2_type

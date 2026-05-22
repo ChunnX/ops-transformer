@@ -23,11 +23,13 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t ccl_buffer_size,
     const c10::optional<std::vector<at::Tensor>> &weight_scales1,
     const c10::optional<std::vector<at::Tensor>> &weight_scales2,
+    const c10::optional<std::vector<at::Tensor>> &bias1,
+    const c10::optional<std::vector<at::Tensor>> &bias2,
     const c10::optional<at::Tensor> &x_active_mask,
     const c10::optional<at::Tensor> &scales,
     int64_t max_recv_token_num,
     int64_t dispatch_quant_mode,
-    int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
+    int64_t combine_quant_mode, std::string comm_alg, int64_t num_max_token_per_rank,
     c10::optional<int64_t> dispatch_quant_out_type,
     c10::optional<int64_t> weight1_type,
     c10::optional<int64_t> weight2_type)
@@ -108,11 +110,27 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     TensorListWrapper weight2_wrapper = {weight2_ref, weight2_ref_dtype};
     TensorListWrapper weight_scales1_wrapper = {weight_scales1_ref, weight_scales1_dtype};
     TensorListWrapper weight_scales2_wrapper = {weight_scales2_ref, weight_scales2_dtype};
+
+    at::TensorList bias1_ref;
+    if (bias1.has_value()) {
+        bias1_ref = at::TensorList(bias1.value());
+    } else {
+        bias1_ref = at::TensorList();
+    }
+    at::TensorList bias2_ref;
+    if (bias2.has_value()) {
+        bias2_ref = at::TensorList(bias2.value());
+    } else {
+        bias2_ref = at::TensorList();
+    }
+    TensorListWrapper bias1_wrapper = {bias1_ref, aclDataType::ACL_FLOAT};
+    TensorListWrapper bias2_wrapper = {bias2_ref, aclDataType::ACL_FLOAT};
+
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
-        weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, x_active_mask, scales,
-        moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
+        weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
+        x_active_mask, scales, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
-        comm_alg_ptr, global_bs, y, expert_token_nums);
+        comm_alg_ptr, num_max_token_per_rank, y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);
 }

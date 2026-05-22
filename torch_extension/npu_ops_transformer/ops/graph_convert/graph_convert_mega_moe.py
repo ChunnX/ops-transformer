@@ -34,16 +34,17 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
-        [False, False, False, False, True, True, True, True, False, False],
-        [False, False, False, False, False, False, False, False, True, True])
-    def MegaMoe(context: Tensor, x: Tensor, topk_ids: Tensor, topk_weights: Tensor,
+        [False, False, False, False, True, True, True, True, True, True, False, False],
+        [False, False, False, False, False, False, False, False, False, False, True, True])
+def MegaMoe(context: Tensor, x: Tensor, topk_ids: Tensor, topk_weights: Tensor,
                 weight1: List[Tensor], weight2: List[Tensor],
                 weight_scales1: List[Tensor], weight_scales2: List[Tensor],
+                bias1: List[Tensor], bias2: List[Tensor],
                 x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
                 moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
                 max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
                 dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
-                global_bs: int = 0, dependencies=[], node_name=None):
+                num_max_token_per_rank: int = 0, dependencies=[], node_name=None):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,\n
@@ -68,7 +69,7 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(dispatch_quant_out_type, Int, 28)\n
         .ATTR(combine_quant_mode, Int, 0)\n
         .ATTR(comm_alg, String, "")\n
-        .ATTR(global_bs, Int, 0)\n
+        .ATTR(num_max_token_per_rank, Int, 0)\n
         """
         # process inputs
         inputs = {
@@ -80,6 +81,8 @@ if _TORCHAIR_AVAILABLE:
             "weight2": weight2,
             "weight_scales1": weight_scales1,
             "weight_scales2": weight_scales2,
+            "bias1": bias1,
+            "bias2": bias2,
             "x_active_mask": x_active_mask,
             "scales": scales,
         }
@@ -94,7 +97,7 @@ if _TORCHAIR_AVAILABLE:
             "dispatch_quant_out_type": attr.Int(dispatch_quant_out_type),
             "combine_quant_mode": attr.Int(combine_quant_mode),
             "comm_alg": attr.Str(comm_alg),
-            "global_bs": attr.Int(global_bs),
+            "num_max_token_per_rank": attr.Int(num_max_token_per_rank),
         }
 
         # process outputs
@@ -121,6 +124,8 @@ if _TORCHAIR_AVAILABLE:
                 "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .dynamic_input("weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .dynamic_input("weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0") \
+            .dynamic_input("bias1", "DT_FLOAT") \
+            .dynamic_input("bias2", "DT_FLOAT") \
             .optional_input("x_active_mask", "DT_INT8") \
             .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .required_attr("moe_expert_num", attr.Int) \
@@ -131,7 +136,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("dispatch_quant_out_type", attr.Int(28)) \
             .attr("combine_quant_mode", attr.Int(0)) \
             .attr("comm_alg", attr.Str("")) \
-            .attr("global_bs", attr.Int(0)) \
+            .attr("num_max_token_per_rank", attr.Int(0)) \
             .output("y", "DT_BF16, DT_FLOAT16") \
             .output("expert_token_nums", "DT_INT32")
         )
@@ -150,13 +155,15 @@ if _TORCHAIR_AVAILABLE:
         *,
         weight_scales1: Optional[List[Tensor]] = None,
         weight_scales2: Optional[List[Tensor]] = None,
+        bias1: Optional[List[Tensor]] = None,
+        bias2: Optional[List[Tensor]] = None,
         x_active_mask: Optional[Tensor] = None,
         scales: Optional[Tensor] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
-        global_bs: int = 0,
+        num_max_token_per_rank: int = 0,
         dispatch_quant_out_type: int = 28,
         weight1_type: int = 28,
         weight2_type: int = 28,
@@ -170,6 +177,8 @@ if _TORCHAIR_AVAILABLE:
                        weight2=weight2,
                        weight_scales1=weight_scales1,
                        weight_scales2=weight_scales2,
+                       bias1=bias1,
+                       bias2=bias2,
                        x_active_mask=x_active_mask,
                        scales=scales,
                        moe_expert_num=moe_expert_num,
@@ -179,5 +188,5 @@ if _TORCHAIR_AVAILABLE:
                        dispatch_quant_mode=dispatch_quant_mode,
                        combine_quant_mode=combine_quant_mode,
                        comm_alg=comm_alg,
-                       global_bs=global_bs,
+                       num_max_token_per_rank=num_max_token_per_rank,
                        dispatch_quant_out_type=dispatch_quant_out_type)

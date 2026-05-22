@@ -18,7 +18,7 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_init_routing_v3/arch35/moe_init_routing_v3_arch35_tiling_def.h"
+#include "moe_init_routing_v3/moe_init_routing_v3_arch35_tiling_def.h"
 
 using namespace AscendC;
 

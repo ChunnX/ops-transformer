@@ -58,7 +58,7 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(36)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo
     );
@@ -97,7 +97,7 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(35)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo
     );
@@ -136,7 +136,7 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(36)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo
     );
@@ -175,7 +175,7 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(35)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"num_max_token_per_rank_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo
     );
