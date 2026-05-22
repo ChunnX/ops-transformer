@@ -245,6 +245,11 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::SetHcclTiling()
     auto group = context_->GetAttrs()->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     OP_TILING_CHECK(group == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_GROUP_INDEX failed"),
                     return ge::GRAPH_FAILED);
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_COMM_MODE_INDEX failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(commMode, "default") != 0, OP_LOGE(context_->GetNodeName(), "The input attr comm_mode only support 'default'."),
+                    return ge::GRAPH_FAILED);
     uint32_t optype = HcclCMDType::HCCL_CMD_ALLTOALL;
     std::string algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
     OP_LOGD(context_->GetNodeName(), "AllToAllFpMatmulTilingBaseA3, SetHcclTiling algConfig is: %s", algConfig.c_str());
