@@ -23,27 +23,54 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 
   execute_process(
-    COMMAND git -c pull.ff=only pull origin ${OPTENSOR_TAG_ID} --depth=1
+    COMMAND git fetch origin ${OPTENSOR_TAG_ID} --depth=1
     WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
-    TIMEOUT 10
-    RESULT_VARIABLE EXEC_RESULT
-    OUTPUT_VARIABLE EXEC_INFO
-    ERROR_VARIABLE EXEC_ERROR
+    TIMEOUT 20
+    RESULT_VARIABLE FETCH_RESULT
+    ERROR_VARIABLE FETCH_ERROR
+    OUTPUT_QUIET
   )
-  if("${EXEC_RESULT}" STREQUAL "0")
-    message(STATUS "ops-tensor updated")
+
+  if(FETCH_RESULT EQUAL 0)
+    set(CHECKOUT_REF "FETCH_HEAD")
+    message(STATUS "ops-tensor fetched ${OPTENSOR_TAG_ID}")
   else()
-    message(WARNING "Git pull failed (network unavailable?), using cached ops-tensor code. ${EXEC_ERROR}")
+    set(CHECKOUT_REF "${OPTENSOR_TAG_ID}")
+    message(WARNING "Git fetch failed (network unavailable?), checkout to cached ${OPTENSOR_TAG_ID}")
+  endif()
+
+  execute_process(
+    COMMAND git checkout ${CHECKOUT_REF}
+    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+    RESULT_VARIABLE CHECKOUT_RESULT
+    ERROR_VARIABLE CHECKOUT_ERROR
+    OUTPUT_QUIET
+  )
+  if(NOT CHECKOUT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Git checkout failed: ${CHECKOUT_ERROR}")
   endif()
 else()
-  if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild")
-    file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild)
+  execute_process(
+    COMMAND git remote get-url origin
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_REMOTE_URL
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
+    string(REPLACE "https://gitcode.com/" "git@gitcode.com:" OPTENSOR_GIT_URL_SSH "${OPTENSOR_GIT_URL}")
+    string(REPLACE ".git" ".git" OPTENSOR_GIT_URL_SSH "${OPTENSOR_GIT_URL_SSH}")
+    set(OPTENSOR_FETCH_URL "${OPTENSOR_GIT_URL_SSH}")
+    message(STATUS "[ThirdPartyLib][ops-tensor] using SSH protocol: ${OPTENSOR_FETCH_URL}")
+  else()
+    set(OPTENSOR_FETCH_URL "${OPTENSOR_GIT_URL}")
+    message(STATUS "[ThirdPartyLib][ops-tensor] using HTTPS protocol: ${OPTENSOR_FETCH_URL}")
   endif()
 
   include(FetchContent)
   FetchContent_Declare(
     ops-tensor
-    GIT_REPOSITORY ${OPTENSOR_GIT_URL}
+    GIT_REPOSITORY ${OPTENSOR_FETCH_URL}
     GIT_TAG ${OPTENSOR_TAG_ID}
     GIT_PROGRESS TRUE
     SOURCE_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
