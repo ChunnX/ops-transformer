@@ -35,13 +35,11 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-
 enum class TaskDealMode : uint8_t {
     CREATE_TASK = 0,
     DEAL_SYNC = 1,
     SKIP = 2,
 };
-
 template <typename CubeBlockType, typename VecBlockType>
 class KvQuantSparseAttnSharedkvScfa {
 public:
@@ -115,6 +113,12 @@ private:
     /* 模板库Block */
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+    int64_t createdTaskCount = 0;
+    int64_t executedTaskCount = 0;
+    int64_t multiCoreInnerIdx = 1;
+    int64_t s2LoopEndIdx = 0;
+    int64_t gS1LoopEndForBN = 0;
+    int64_t s2Cur = 0;
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -310,6 +314,16 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Process()
+{
+    // SyncAll Cube和Vector都需要调用
+    if (this->constInfo.needInit) {
+        SyncAll<false>();
+    }
+    ProcessMainLoop();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
