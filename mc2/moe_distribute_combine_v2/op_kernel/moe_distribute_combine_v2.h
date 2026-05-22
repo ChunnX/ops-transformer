@@ -1093,6 +1093,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         xOutQueue_.FreeTensor<ExpandXType>(outTensor_);
     } else {
         if constexpr (QuantMode > UNQUANT) {
+            AscendC::printf("lll\n");
             gmTpSendCountTensor_ = gmTpSendCountQueue_.AllocTensor<ExpandXType>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             LocalTensor<uint8_t> singleByteTok = gmTpSendCountTensor_.template ReinterpretCast<uint8_t>();
