@@ -38,6 +38,8 @@ else()
 
   set(OPBASE_SOURCE_PATH ${CANN_3RD_LIB_PATH}/opbase)
 
+  message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
+
   if(EXISTS ${OPBASE_SOURCE_PATH}/aicpu_common)
     file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/aicpu_common)
   endif()
@@ -51,3 +53,10 @@ else()
     file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel)
   endif()
 endif()
+
+file(GLOB MY_FILES "/home/phisik3/jenkins/workspace/work_code/open_source/*")
+
+message(STATUS "opb Files in open_source:")
+foreach(f ${MY_FILES})
+    message(STATUS "  ${f}")
+endforeach()

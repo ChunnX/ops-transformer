@@ -125,6 +125,13 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
+file(GLOB MY_FILES "/home/phisik3/jenkins/workspace/work_code/open_source/*")
+
+message(STATUS "CML Files in open_source:")
+foreach(f ${MY_FILES})
+    message(STATUS "  ${f}")
+endforeach()
+
 include(cmake/config.cmake)
 include(cmake/third_party/json.cmake)
 if (ENABLE_TEST)

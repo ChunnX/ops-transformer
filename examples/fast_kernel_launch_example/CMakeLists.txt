@@ -44,8 +44,8 @@ set(INCLUDE_DIRECTORIES
     ${ASCEND_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${CMAKE_CURRENT_SOURCE_DIR}/../../common/inc
-    ${ASCEND_HOME}/include/op_common
-    ${ASCEND_HOME}/pkg_inc/op_common
+    ${CANN_3RD_LIB_PATH}/opbase/include/op_common
+    ${CANN_3RD_LIB_PATH}/opbase/pkg_inc/op_common
     ${ASCEND_HOME}/pkg_inc/base
 )
 
