@@ -1,0 +1,367 @@
+# SparseAttnSharedkv ATK 用例设计（输入与 op_host/sparse_attn_sharedkv_def.cpp 对齐，不含输出）
+# 生成: atk case -f aclnn_sparse_attn_sharedkv.yaml -p . -s 1234
+api: pytorch
+api_type: ascend_function_sparse_attn_sharedkv
+aclnn_api_type: AclnnBaseApi_aclnn_sparse_attn_sharedkv
+version: v2.1
+name: aclnnSparseAttnSharedkv
+aclnn_name: SparseAttnSharedkv
+generate: ascend_generate_sparse_attn_sharedkv
+dtype_numbers: 6
+extra_numbers: 0
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 5
+      avg_re_ratio: 1.5
+      root_mean_squared_ratio: 1.5
+  perf: [0.95, 0.95]
+inputs:
+  # --- Tensor inputs (顺序与 def.cpp Input 定义一致) ---
+  - name: q
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16, fp16]
+    ranges:
+      valid:
+        values: [[-10, 10]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [3]
+      dim_values:
+        values: [[1, 8192], [64, 64], [512, 512]]
+
+  - name: ori_kv
+    type: tensor
+    required: false
+    dtypes:
+      values: [bf16, fp16]
+    ranges:
+      valid:
+        values: [[-10, 10]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [4]
+      dim_values:
+        values: [[65, 65], [128, 128], [1, 1], [512, 512]]
+
+  - name: cmp_kv
+    type: tensor
+    required: false
+    dtypes:
+      values: [bf16, fp16]
+    ranges:
+      valid:
+        values: [[-10, 10]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [4]
+      dim_values:
+        values: [[17, 17], [128, 128], [1, 1], [512, 512]]
+
+  - name: ori_sparse_indices
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 512]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [0]
+      dim_values:
+        values: [0]
+
+  - name: cmp_sparse_indices
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 512]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [3]
+      dim_values:
+        values: [[1, 8192], [1, 1], [512, 512]]
+
+  - name: ori_block_table
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 128]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        values: [[1, 4], [1, 128]]
+
+  - name: cmp_block_table
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 128]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        values: [[1, 4], [1, 128]]
+
+  - name: cu_seqlens_q
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 8192]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[2, 5]]
+
+  - name: cu_seqlens_ori_kv
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 8192]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [0]
+      dim_values:
+        values: [0]
+
+  - name: cu_seqlens_cmp_kv
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 8192]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [0]
+      dim_values:
+        values: [0]
+
+  - name: seqused_q
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 8192]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [0]
+      dim_values:
+        values: [0]
+
+  - name: seqused_kv
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        # decode(8193) 优先，与 paramset scfa_decode 一致
+        values: [[8193, 8193], [8192, 8192]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[1, 4]]
+
+  - name: sinks
+    type: tensor
+    required: false
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[-1, 1]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[64, 64]]
+
+  - name: metadata
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 1]]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[1024, 1024]]
+
+  # --- Attr (顺序与 def.cpp Attr 定义一致) ---
+  - name: softmax_scale
+    type: attr
+    required: true
+    dtypes:
+      values: [double]
+    ranges:
+      valid:
+        values: [[0.04419417, 0.04419417]]
+      invalid:
+        values: []
+
+  - name: cmp_ratio
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        # scfa_decode（paramset 第一个用例）优先：cmp_ratio=4 排在首位
+        values: [4, 1, 128]
+      invalid:
+        values: []
+
+  - name: ori_mask_mode
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[4, 4]]
+      invalid:
+        values: []
+
+  - name: cmp_mask_mode
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[3, 3]]
+      invalid:
+        values: []
+
+  - name: ori_kv_stride
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[0, 0]]
+      invalid:
+        values: []
+
+  - name: cmp_kv_stride
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[0, 0]]
+      invalid:
+        values: []
+
+  - name: ori_win_left
+    type: attr
+    required: false
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[127, 127]]
+      invalid:
+        values: []
+
+  - name: ori_win_right
+    type: attr
+    required: false
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [[0, 0]]
+      invalid:
+        values: []
+
+  - name: layout_q
+    type: attr
+    required: false
+    dtypes:
+      values: [string]
+    ranges:
+      valid:
+        values: ["TND"]
+      invalid:
+        values: []
+
+  - name: layout_kv
+    type: attr
+    required: false
+    dtypes:
+      values: [string]
+    ranges:
+      valid:
+        values: ["PA_ND"]
+      invalid:
+        values: []
+
+  - name: return_softmax_lse
+    type: attr
+    required: false
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+      invalid:
+        values: []
