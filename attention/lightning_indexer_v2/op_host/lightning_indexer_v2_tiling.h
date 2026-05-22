@@ -64,7 +64,7 @@ constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 1;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 3;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 4;
-constexpr uint32_t ATTR_RETURN_VALUES_INDEX = 5;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 5;
 constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 6;
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
