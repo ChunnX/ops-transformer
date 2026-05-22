@@ -61,9 +61,9 @@ struct Args {
 const uint32_t MACHINE_NUM = 1;
 // const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-const uint32_t EP_WORLD_SIZE = 2;
-const uint32_t TP_WORLD_SIZE = 1;
-const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+uint32_t EP_WORLD_SIZE = 2;
+uint32_t TP_WORLD_SIZE = 1;
+uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
 const bool IS_TEST_A2 = false;
 const bool IS_TEST_A3A5 = true;
@@ -808,6 +808,8 @@ int run_example_on_A3A5()
     MPI_Status status;
     MPI_Comm_rank(MPI_COMM_WORLD, &pe_id);
     MPI_Comm_size(MPI_COMM_WORLD, &pe_size);
+
+    EP_WORLD_SIZE = pe_size;
 
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
