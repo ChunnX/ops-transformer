@@ -183,6 +183,10 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
     wGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<wType>(0, weightTensorPtr_) +
         block_.params_.bGroupAddrOffset);
     yGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<yType>(0, yTensorPtr_) + block_.params_.cGroupAddrOffset);
+    AscendC::printf("[LBH] UpdateAddr x=%llu w=%llu y=%llu aOff=%llu bOff=%llu cOff=%llu\n",
+        reinterpret_cast<uint64_t>(xGlobal_.GetPhyAddr()), reinterpret_cast<uint64_t>(wGlobal_.GetPhyAddr()),
+        reinterpret_cast<uint64_t>(yGlobal_.GetPhyAddr()),
+        block_.params_.aGroupAddrOffset, block_.params_.bGroupAddrOffset, block_.params_.cGroupAddrOffset);
     if (gmmQuantParams_->hasBias) {
         biasGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<biasType>(0, biasTensorPtr_) +
             block_.params_.biasGroupAddrOffset);
