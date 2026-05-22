@@ -220,19 +220,25 @@ public:
         uint64_t singleCoreLastLoopNBurstNum = normalCoreLastLoopNBurstNum; // 普通单核最后一次loop处理多少个D
 
         uint64_t nBurst = singleLoopNBurstNum; // single loop nums
-        uint64_t curS = s1; // tnd 格式需修改
+        uint64_t curS = s1; // tnd场景会在InitIndex中重新赋值
         uint32_t ping = 0;
 
+        uint64_t layoutFlag = 1;
+        if constexpr (INPUT_LAYOUT == TND) {
+            layoutFlag = n1;
+        }
         for (uint64_t i = 0; i < singleCoreLoop; i++) {
             if (i == singleCoreLoop - 1) {
                 nBurst = singleCoreLastLoopNBurstNum;
             }
-
             auto eventId = ping ? EVENT_ID3 : EVENT_ID2;
+
+            set_flag(PIPE_MTE3, PIPE_MTE2, eventId);
+            wait_flag(PIPE_MTE3, PIPE_MTE2, eventId);
 
             // copyIn
             if (i == 0) {
-                InitIndex((startIdx + i * singleLoopNBurstNum) * d,
+                InitIndex((startIdx + i * singleLoopNBurstNum * layoutFlag) * d,
                         curS, actualSeqQlenAddr);
                 CopyInSfmg(nBurst, curS, actualSeqQlenAddr, ping);
             }
@@ -255,7 +261,7 @@ public:
                 wait_flag(PIPE_V, PIPE_MTE2, eventId);
 
                 uint64_t nextNBurst = i == singleCoreLoop - 2 ? singleCoreLastLoopNBurstNum : nBurst;
-                InitIndex((startIdx + (i + 1) * singleLoopNBurstNum) * d,
+                InitIndex((startIdx + (i + 1) * singleLoopNBurstNum * layoutFlag) * d,
                         curS, actualSeqQlenAddr);
                 CopyInSfmg(nextNBurst, curS, actualSeqQlenAddr, ping);
             }
@@ -287,8 +293,14 @@ public:
             wait_flag(PIPE_V, PIPE_MTE3, eventId);
 
             // copyOut
-            uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum) * BLOCK_SIZE;
-            DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);
+            uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum * layoutFlag) * BLOCK_SIZE;
+            if constexpr (INPUT_LAYOUT == TND) {
+                DataCopyPad(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping],
+                            {static_cast<uint16_t>(nBurst), static_cast<uint32_t>(BLOCK_SIZE * sizeof(float)), 0,
+                             static_cast<uint32_t>((n1 - 1) * 8 * 4), 0});
+            } else {
+                DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);
+            }
 
             if (STAGES == DOUBLE_BUFFER) {
                 ping = 1 - ping;
@@ -307,19 +319,22 @@ public:
     void InitIndex(uint64_t startIdx, uint64_t& curS, GM_ADDR seqS)
     {
         if constexpr (INPUT_LAYOUT == TND) {
-            int64_t totalLen = 0;
-            for (int64_t bDimIdx = bIdx; bDimIdx < b; bDimIdx++) {
-                totalLen = n1 * ((__gm__ int64_t *)seqS)[bDimIdx] * d;
-                if (totalLen > startIdx) {
+            uint64_t prefixSum = 0;
+            for (int64_t bDimIdx = 0; bDimIdx < b; bDimIdx++) {
+                uint64_t curBatchLen = ((__gm__ int64_t *)seqS)[bDimIdx];
+                uint64_t curBatchElements = curBatchLen * n1 * d;
+
+                if (startIdx < prefixSum + curBatchElements) {
                     bIdx = bDimIdx;
-                    curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                        (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
-                    int64_t bTail = startIdx - (totalLen - n1 * curS * d);
-                    nIdx = bTail / (curS * d);
-                    int64_t nTail = bTail % (curS * d);
-                    sIdx = nTail / d;
+                    curS = curBatchLen;
+
+                    uint64_t bTail = startIdx - prefixSum;
+                    sIdx = bTail / (n1 * d);
+                    uint64_t sTail = bTail % (n1 * d);
+                    nIdx = sTail / d;
                     break;
                 }
+                prefixSum += curBatchElements;
             }
         } else {
             bIdx = startIdx / (n1 * s1 * d);
@@ -371,14 +386,17 @@ public:
     {
         uint64_t srcOffset = 0;
         if constexpr (INPUT_LAYOUT == TND) {
-            uint64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ uint64_t *)seqS)[bIdx - 1] * d;
+            uint64_t prefixSum = 0;
+            for (uint64_t b = 0; b < bIdx; b++) {
+                prefixSum += ((__gm__ uint64_t *)seqS)[b];
+            }
+            uint64_t bOffset = prefixSum * n1 * d;
             srcOffset = bOffset + (sIdx * n1 + nIdx) * d;
         } else {
             if constexpr (INPUT_LAYOUT == BNSD) {
                 srcOffset = bIdx * ( n1 * s1 * d) + nIdx * (s1 * d) + sIdx * d;
             }
         }
-
         DataCopyPad(doutTensor[ping][dstOffset], dyGm[srcOffset],
                     {static_cast<uint16_t>(curNBurst), static_cast<uint32_t>(d * sizeof(InputDType)),
                     static_cast<uint32_t>(transpseStride), 0, 0},

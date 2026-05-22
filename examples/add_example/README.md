@@ -74,7 +74,15 @@ $$
   <tr>
     <td>aclnn调用</td>
     <td><a href="./examples/test_aclnn_add_example.cpp">test_aclnn_add_example</a></td>
-    <td rowspan="2">参见<a href="../../docs/zh/invocation/quick_op_invocation.md">算子调用</a>完成算子编译和验证。</td>
+    <td rowspan="2">快速调用示例如下文所示，仅供参考，详细算子编译运行方法参见<a href="../../docs/zh/invocation/quick_op_invocation.md">算子调用</a>。</td>
   </tr>
 </tbody>
 </table>
+
+```bash
+## 快速启动
+cd example/add_example
+# 假设已准备好环境变量
+bash build.sh --soc=${soc_version} --ops=add_example
+bash build.sh --run_example add_example eager cus
+```

@@ -17,64 +17,17 @@
 extern "C" {
 #endif
 
-/* funtion: aclnnQuantLightningIndexerMetadataGetWorkspaceSize
- * parameters :
- * actualSeqLengthsQuery : optional
- * actualSeqLengthsKey : optional
- * numHeadsQ : required
- * numHeadsK : required
- * headDim : required
- * queryQuantMode : required
- * keyQuantMode : required
- * int64_t batchSize : optional
- * int64_t maxSeqlenQ : optional
- * int64_t maxSeqlenK : optional
- * char* layoutQuery : optional
- * char* layoutKey : optional
- * int64_t sparseCount : optional
- * int64_t sparseMode : optional
- * int64_t preTokens : optional
- * int64_t nextTokens : optional
- * cmpRatio : optional
- * out : required
- * workspaceSize : size of workspace(output).
- * executor : executor context(output).
- */
 __attribute__((visibility("default"))) aclnnStatus
 aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
-    const aclTensor* actualSeqLengthsQueryOptional,
-    const aclTensor* actualSeqLengthsKeyOptional,
-    int64_t numHeadsQ,
-    int64_t numHeadsK,
-    int64_t headDim,
-    int64_t queryQuantMode,
-    int64_t keyQuantMode,
-    int64_t batchSizeOptional,
-    int64_t maxSeqlenQOptional,
-    int64_t maxSeqlenKOptional,
-    char* layoutQueryOptional,
-    char* layoutKeyOptional,
-    int64_t sparseCountOptional,
-    int64_t sparseModeOptional,
-    int64_t preTokensOptional,
-    int64_t nextTokensOptional,
-    int64_t cmpRatioOptional,
-    const aclTensor* metaData,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t numHeadsQ,
+    int64_t numHeadsK, int64_t headDim, int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSize,
+    int64_t maxSeqlenQ, int64_t maxSeqlenK, char* layoutQueryOptional, char* layoutKeyOptional,
+    int64_t sparseCount, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t cmpRatio,
+    const aclTensor* metadata, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-/* funtion: aclnnQuantLightningIndexerMetadata
- * parameters :
- * workspace : workspace memory addr(input).
- * workspaceSize : size of workspace(input).
- * executor : executor context(input).
- * stream : acl stream.
- */
 __attribute__((visibility("default"))) aclnnStatus
-aclnnQuantLightningIndexerMetadata(void* workspace,
-                              uint64_t workspaceSize,
-                              aclOpExecutor* executor,
-                              aclrtStream stream);
+aclnnQuantLightningIndexerMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                   aclrtStream stream);
 
 #ifdef __cplusplus
 }

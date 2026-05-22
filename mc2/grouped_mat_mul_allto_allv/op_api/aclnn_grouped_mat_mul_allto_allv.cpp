@@ -141,10 +141,10 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize,
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("GroupedMatMulAlltoAllv", "Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                OP_LOGD("Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
-                OP_LOGD("GroupedMatMulAlltoAllv", "Arch35 platform, use CCU mode");
+                OP_LOGD("Arch35 platform, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }

@@ -75,7 +75,6 @@ protected:
     ge::graphStatus SetBlockDim(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus GetWorkspace(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetTilingData(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
-    ge::graphStatus SetFullQuantTilingData(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyConfig(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyLayout(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyPseMode(const FiaTilingInfo &fiaInfo);
@@ -88,10 +87,6 @@ protected:
 
     bool EnableMTE2BmmPipe(const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm,
                            TCubeTiling &bmmTilingData);
-    void GetMatMulType(const FiaTilingInfo &fiaInfo, matmul_tiling::DataType &mmInputType,
-                       matmul_tiling::DataType &mmOutputType);
-    ge::graphStatus SetMM1TilingData(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
-    ge::graphStatus SetMM2TilingData(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetFATilingData(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus AdjustSinnerAndSouter(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
@@ -134,9 +129,6 @@ protected:
     int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums);
     void SplitDequant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetDequantMMTilingData(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
-    bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType);
-    void AdjustPABmm1Tiling(const FiaTilingInfo &fiaInfo, uint32_t &bmm1BaseN);
-    void AdjustPABmm2Tiling(const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo);
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
 

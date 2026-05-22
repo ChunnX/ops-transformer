@@ -744,11 +744,7 @@ int64_t DenseLightningIndexerGradKLLossTilingBase::GetEndS1Etx(int32_t bIdx, int
     }
 
     if (layout == LayoutType::LAYOUT_TND) {
-        if (bIdx == 0) {
-            return actualSeqLenData[0];
-        } else {
-            return (actualSeqLenData[bIdx] - actualSeqLenData[bIdx- 1]);
-        }
+        return actualSeqLenData[bIdx];
     } else {
         return 0;
     }
@@ -756,23 +752,15 @@ int64_t DenseLightningIndexerGradKLLossTilingBase::GetEndS1Etx(int32_t bIdx, int
 
 int32_t DenseLightningIndexerGradKLLossTilingBase::GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
                                                             std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
-                                                            LayoutType layout, int64_t &accumLen)
+                                                                    LayoutType layout)
 {
     if (bSize <= 0 || bIdx >= bSize) {
-        accumLen = bIdx * defaultLens;
         return defaultLens;
     }
 
     if (layout == LayoutType::LAYOUT_TND) {
-        if (bIdx == 0) {
-            accumLen = 0;
-            return actualSeqLenData[0];
-        } else {
-            accumLen = actualSeqLenData[bIdx - 1];
-            return (actualSeqLenData[bIdx] - accumLen);
-        }
+        return actualSeqLenData[bIdx];
     } else {
-        accumLen = bIdx * defaultLens;
         return defaultLens;
     }
 }
@@ -843,11 +831,8 @@ void DenseLightningIndexerGradKLLossTilingBase::CalcMaxLoop()
 
             for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch; s1Idx += S1_BASE_STEP) {
                 bool lastS1 = ((s1Idx + S1_BASE_STEP) >= s1EndIdxThisBatch);
-                int64_t accumS1Idx, accumS2Idx;
-                uint32_t actualSeqLensQ = GetActualSeqLens(bIdx, s1Size, actualSeqLenData, tilingKeyLayout,
-                                                            accumS1Idx);
-                uint32_t actualSeqLensK = GetActualSeqLens(bIdx, s2Size, actualSeqLenKData, tilingKeyLayout,
-                                                            accumS2Idx);
+                uint32_t actualSeqLensQ = GetActualSeqLens(bIdx, s1Size, actualSeqLenData, tilingKeyLayout);
+                uint32_t actualSeqLensK = GetActualSeqLens(bIdx, s2Size, actualSeqLenKData, tilingKeyLayout);
                 int64_t s1EndIdxThisLoop = lastS1 ? s1EndIdxThisBatch : (s1Idx + S1_BASE_STEP);
                 int32_t s2EndIdx = GetS2SparseLen(s1EndIdxThisLoop, actualSeqLensQ, actualSeqLensK, sparseMode) - 1;
                 if (lastB && lastS1) {

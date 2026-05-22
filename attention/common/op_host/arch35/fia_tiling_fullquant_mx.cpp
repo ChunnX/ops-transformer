@@ -51,10 +51,6 @@ bool FiaTilingFullQuantMxArch35::IsCapable()
         return false;
     }
 
-    if (fiaInfo_->gSize * fiaInfo_->s1Size > 80) { // G*S1<=80 ->decode
-        return false;
-    }
-
     return true;
 }
 
@@ -488,7 +484,8 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         sInnerFactor_ = SINNER_256;
     }
 
-    decodeS1GMerge_ = (fiaInfo_->gSize * fiaInfo_->s1Size <= 80); // 80: G*S1<=80 ->decode，MTE2 bound threshold
+    // decode场景qscale shape为[N2, T, G, D//64, 2]；prefill qscale shape为[T, N, D//64, 2]
+    decodeS1GMerge_ = (fiaInfo_->opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() == 5);
 
     split_core_v2::BaseInfo baseInfo{};
     split_core_v2::SplitParam splitParam{};

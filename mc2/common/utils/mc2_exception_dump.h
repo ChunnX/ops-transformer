@@ -30,6 +30,8 @@
 #include "version/metadef_version.h"
 #include <dlfcn.h>
 #include <cstring>
+#include <mutex>
+#include "./mc2_hcom_topo_info.h"
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
 // 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
@@ -43,6 +45,35 @@ const uint32_t WIN_SIZE = 1024U * 1024U;
 const uint32_t MS_WIDTH = 3U;
 const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
+
+class MC2GroupNameManager {
+public:
+    static MC2GroupNameManager& GetInstance()
+    {
+        static MC2GroupNameManager instance;
+        return instance;
+    }
+    void SetGroupName(const char* groupName)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
+            strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
+            OP_LOGE(OP_NAME, "groupName is invalid.");
+            return;
+        }
+        groupName_ = std::string(groupName);
+    }
+    const char* GetGroupName()
+    {
+        return groupName_.empty() ? nullptr : groupName_.c_str();
+    }
+
+private:
+    MC2GroupNameManager() = default;
+    std::string groupName_;
+    std::mutex mutex_;
+};
 
 // 函数指针类型定义
 typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
@@ -223,10 +254,34 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
     return 0;
 }
 
+inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
+{
+    if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
+        strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
+        OP_LOGE(OP_NAME, "groupName is invalid.");
+        return -1;
+    }
+    uint64_t size;
+    void* winAddr = nullptr;
+    Mc2Hcom::MC2HcomTopology::CommGetHcclBufferByGroup(groupName, &winAddr, &size);
+    if (winAddr == nullptr) {
+        OP_LOGE(OP_NAME, "Get win addr failed.");
+        return -1;
+    }
+    OP_LOGE(OP_NAME, "HCCL BUFFER SIZE=%luMB. WindowInAddr=%p.", size / (1 * 1024 * 1024) / 2, winAddr);
+    auto ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, winAddr, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+        return -1;
+    }
+    return 0;
+}
+
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
-    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)) {
+    if ((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr) &&
+        (std::strstr(socName, "Ascend910B") == nullptr)) {
         OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
         return;
     }
@@ -278,6 +333,12 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         }
     } else if (std::strstr(socName, "Ascend950") != nullptr) {
         if (ProcessArgsForA5(argsAddr, winContent) != 0) {
+            OP_LOGE(OP_NAME, "Failed to get win content.");
+            return;
+        }
+    } else if (std::strstr(socName, "Ascend910B") != nullptr) {
+        const char *groupName = MC2GroupNameManager::GetInstance().GetGroupName();
+        if (ProcessArgsForA2(groupName, winContent) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }

@@ -41,6 +41,9 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm2TilingData)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(MhcPreSinkhornBackward, MhcPreSinkhornBackwardTilingData)
+
+struct MhcPreSinkhornBackwardCompileInfo {
+};
 } // namespace optiling
 
 #endif // OP_HOST_OP_TILING_ARCH32_MHC_PRE_SINKHORN_BACKWARD_TILING_H
