@@ -671,8 +671,10 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
 
     // 批量搬出模板要求 cols 32字节对齐，否则 GM 行地址不对齐无法批量写出
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
+    // SortOneCore (needCoreNum==1) 的数据布局是连续的，与 BatchRow 多核并行读取不兼容
+    bool isSortOneCore = (moeInitRoutingTilingData.vbsComputeParamsOp.get_needCoreNum() == 1);
     bool useGatherMode = colsAligned && (cols * inuptXDtypeSize_ < ubRowsThreshold) && (ubRows >= NUM_TWO) &&
-                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
+                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6) && (!isSortOneCore);
 
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
@@ -692,23 +694,23 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
         int64_t actualPerCorePerLoopRows = std::min(perCoreRows, maxRowsPerLoop);
         int64_t actualLastCorePerLoopRows = std::min(lastCoreRows, maxRowsPerLoop);
         constexpr int64_t MIN_ALIGN_ROWS = ONE_BLOCK_BYTE / sizeof(int32_t);
- 	    if (actualPerCorePerLoopRows > 0 && actualPerCorePerLoopRows < MIN_ALIGN_ROWS) {
- 	        actualPerCorePerLoopRows = MIN_ALIGN_ROWS;
- 	    }
- 	    if (actualLastCorePerLoopRows > 0 && actualLastCorePerLoopRows < MIN_ALIGN_ROWS) {
- 	        actualLastCorePerLoopRows = MIN_ALIGN_ROWS;
- 	    }
+        if (actualPerCorePerLoopRows > 0 && actualPerCorePerLoopRows < MIN_ALIGN_ROWS) {
+            actualPerCorePerLoopRows = MIN_ALIGN_ROWS;
+        }
+        if (actualLastCorePerLoopRows > 0 && actualLastCorePerLoopRows < MIN_ALIGN_ROWS) {
+            actualLastCorePerLoopRows = MIN_ALIGN_ROWS;
+        }
         tilingData->set_perCorePerLoopRows(actualPerCorePerLoopRows);
         int64_t perCoreLastLoopRows = GetPerOrLastValue(perCoreRows, maxRowsPerLoop);
         if (perCoreLastLoopRows > 0 && perCoreLastLoopRows < MIN_ALIGN_ROWS) {
- 	        perCoreLastLoopRows = MIN_ALIGN_ROWS;
- 	    }
+            perCoreLastLoopRows = MIN_ALIGN_ROWS;
+        }
         tilingData->set_perCoreLastLoopRows(perCoreLastLoopRows == 0 ? maxRowsPerLoop : perCoreLastLoopRows);
         tilingData->set_lastCorePerLoopRows(actualLastCorePerLoopRows);
         int64_t lastCoreLastLoopRows = GetPerOrLastValue(lastCoreRows, maxRowsPerLoop);
         if (lastCoreLastLoopRows > 0 && lastCoreLastLoopRows < MIN_ALIGN_ROWS) {
- 	        lastCoreLastLoopRows = MIN_ALIGN_ROWS;
- 	    }
+            lastCoreLastLoopRows = MIN_ALIGN_ROWS;
+        }
         tilingData->set_lastCoreLastLoopRows(lastCoreLastLoopRows == 0 ? maxRowsPerLoop : lastCoreLastLoopRows);
         tilingData->set_perCoreLoops(CeilDiv(perCoreRows, actualPerCorePerLoopRows));
         tilingData->set_lastCoreLoops(CeilDiv(lastCoreRows, actualLastCorePerLoopRows));
