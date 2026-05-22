@@ -162,7 +162,6 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
-    constInfo.setL2DisableFlag = tilingData->setL2DisableFlag;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -181,6 +180,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
         constInfo.mBaseSize /= 2;
         constInfo.s1BaseSize /= 2;
     }
+
+    constInfo.setL2DisableFlag = constInfo.tSize / constInfo.batchSize <= constInfo.s1BaseSize;
 }
 
 template <typename QLIT>

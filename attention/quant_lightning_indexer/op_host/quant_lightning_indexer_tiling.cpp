@@ -890,12 +890,9 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
 
     bool setL2DisableFlag = false;
-    bool inferLayout = tilingInfo->inputKLayout == DataLayout::PA_BSND;
-    if (inferLayout) {
-        uint32_t s1BaseSize = tilingInfo->tSize <= 64 ? 2 : 4;
-        uint32_t s1SizeperBatch = tilingInfo->tSize / tilingInfo->bSize / tilingInfo->bSize;
-        setL2DisableFlag = (s1SizeperBatch <= s1BaseSize);
-    }
+    uint32_t s1BaseSize = tilingInfo->tSize <= 64 ? 2 : 4;
+    uint32_t s1SizeperBatch = tilingInfo->tSize / tilingInfo->bSize / tilingInfo->bSize;
+    setL2DisableFlag = (s1SizeperBatch <= s1BaseSize);
     tilingData_.set_setL2DisableFlag(setL2DisableFlag);
 
     tilingData_.set_usedCoreNum(blockDim);
