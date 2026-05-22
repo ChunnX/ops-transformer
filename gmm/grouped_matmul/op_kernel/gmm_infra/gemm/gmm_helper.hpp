@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_HELPER_HPP
-#define CATLASS_GEMM_HELPER_HPP
+#ifndef GMM_GEMM_HELPER_HPP
+#define GMM_GEMM_HELPER_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 #include "../../gmm_infra/gmm_numeric_size.hpp"
@@ -300,4 +300,4 @@ struct L1AndL0TypeSelectorGemm<Gemm::GemmType<int8_t, layout::ColumnMajor>, Gemm
 ///////////////////////////////////////
 } // namespace Catlass::Gemm::helper
 
-#endif // CATLASS_GEMM_HELPER_HPP
+#endif // GMM_GEMM_HELPER_HPP

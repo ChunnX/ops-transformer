@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_LAYOUT_VECTOR_HPP
-#define CATLASS_LAYOUT_VECTOR_HPP
+#ifndef GMM_LAYOUT_VECTOR_HPP
+#define GMM_LAYOUT_VECTOR_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 #include "../../gmm_infra/gmm_coord.hpp"
@@ -131,4 +131,4 @@ private:
 
 } // namespace Catlass::layout
 
-#endif  // CATLASS_LAYOUT_VECTOR_HPP
+#endif  // GMM_LAYOUT_VECTOR_HPP

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_CAST_INT4_TO_INT8_HPP
-#define CATLASS_GEMM_TILE_CAST_INT4_TO_INT8_HPP
+#ifndef GMM_GEMM_TILE_CAST_INT4_TO_INT8_HPP
+#define GMM_GEMM_TILE_CAST_INT4_TO_INT8_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
@@ -54,7 +54,7 @@ struct TileCastInt4ToInt8 {
     struct Params {};
 
     /// Construct
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileCastInt4ToInt8(Arch::Resource<ArchTag> const &resource, Params const &params) {
         if constexpr (g_coreType == AscendC::AIV) {
             uint32_t ubOffset = 0;
@@ -78,7 +78,7 @@ struct TileCastInt4ToInt8 {
     }
 
     /// Destructor
-    CATLASS_DEVICE
+    GMM_DEVICE
     ~TileCastInt4ToInt8() {
         if constexpr (g_coreType == AscendC::AIV) {
             for (uint32_t i = 0; i < STAGES; i++) {
@@ -88,7 +88,7 @@ struct TileCastInt4ToInt8 {
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementDst> const &gmDst, LayoutDst const &layoutDst,
         AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc
@@ -184,4 +184,4 @@ protected:
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_CAST_INT4_TO_INT8_HPP
+#endif // GMM_GEMM_TILE_CAST_INT4_TO_INT8_HPP

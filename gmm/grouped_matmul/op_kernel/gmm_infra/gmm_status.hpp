@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_STATUS_HPP
-#define CATLASS_STATUS_HPP
+#ifndef GMM_STATUS_HPP
+#define GMM_STATUS_HPP
 
 namespace Catlass{
 
@@ -17,4 +17,4 @@ enum class Status{ kSuccess, kInvalid };
 
 } // namespace Catlass
 
-#endif // CATLASS_STATUS_HPP
+#endif // GMM_STATUS_HPP

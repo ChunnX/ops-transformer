@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
  
-#ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_WITH_CALLBACK_PERGROUP_HPP
-#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_WITH_CALLBACK_PERGROUP_HPP
+#ifndef GMM_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_WITH_CALLBACK_PERGROUP_HPP
+#define GMM_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_WITH_CALLBACK_PERGROUP_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
@@ -157,7 +157,7 @@ public:
     static constexpr auto L1A_LAYOUT = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
     static constexpr auto L1B_LAYOUT = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0, uint32_t FPBufAddrStart = 0)
     {
         InitL1(resource, l1BufAddrStart);
@@ -167,7 +167,7 @@ public:
         InitFP(resource, FPBufAddrStart);
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     ~BlockMmad()
     {
         SynchronizeBlock();
@@ -187,7 +187,7 @@ public:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementA> const &gmBlockA, LayoutA const &layoutA,
         AscendC::GlobalTensor<ElementB> const &gmBlockB, LayoutB const &layoutB,
@@ -279,7 +279,7 @@ public:
         l1ScaleListId = (l1ScaleListId + 1 < L1_STAGES) ? (l1ScaleListId + 1) : 0;
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void SynchronizeBlock()
     {
         while (preloadCount > 0) {
@@ -308,11 +308,11 @@ private:
         Callback callbackBeforeFixpipe;
         Callback callbackAfterFixpipe;
 
-        CATLASS_DEVICE
+        GMM_DEVICE
         L1TileMmadParams() = default;
     };
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void InitL1(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart)
     {
         uint32_t l1AOffset = l1BufAddrStart;
@@ -331,7 +331,7 @@ private:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void InitL0A(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0A_STAGES; ++i) {
@@ -341,7 +341,7 @@ private:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void InitL0B(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0B_STAGES; ++i) {
@@ -351,7 +351,7 @@ private:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void InitL0C(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0C_STAGES; ++i) {
@@ -361,14 +361,14 @@ private:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void InitFP(Arch::Resource<ArchTag> &resource, uint32_t FpAddrStart)
     {
         uint32_t FpOffset = FpAddrStart;
         FPScaleTensor = resource.fpBuf.template GetBufferByByte<ElementScale>(FpOffset);
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void L1TileMmad(L1TileMmadParams const &params)
     {
         // Load matrix sacle tile from GM to L1
@@ -541,4 +541,4 @@ private:
 
 }  // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_WITH_CALLBACK_HPP
+#endif  // GMM_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_WITH_CALLBACK_HPP

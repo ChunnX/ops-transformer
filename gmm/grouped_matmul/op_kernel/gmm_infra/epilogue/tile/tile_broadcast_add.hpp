@@ -9,8 +9,8 @@
  */
 
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
+#define GMM_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/matrix_gmm_coord.hpp"
@@ -36,10 +36,10 @@ struct TileRowBroadcastAdd {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileRowBroadcastAdd() {}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,

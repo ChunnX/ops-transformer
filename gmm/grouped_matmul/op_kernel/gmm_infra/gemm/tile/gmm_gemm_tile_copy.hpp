@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_TILE_COPY_HPP
-#define CATLASS_GEMM_TILE_TILE_COPY_HPP
+#ifndef GMM_GEMM_TILE_TILE_COPY_HPP
+#define GMM_GEMM_TILE_TILE_COPY_HPP
 
 #include <type_traits>
 #include "../../../gmm_infra/base_defs.hpp"
@@ -271,4 +271,4 @@ struct QuantTileCopy : public TileCopy<ArchTag, AType, BType, CType, BiasType> {
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_TILE_COPY_HPP
+#endif // GMM_GEMM_TILE_TILE_COPY_HPP

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_COPY_HPP
+#define GMM_EPILOGUE_TILE_TILE_COPY_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
@@ -135,4 +135,4 @@ struct TileCopyW4A4Gemm {
 };
 } // namespace Catlass::Epilogue::Tile
 
-#endif  // CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
+#endif  // GMM_EPILOGUE_TILE_TILE_COPY_HPP

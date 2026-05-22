@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_CAST_FP8_TO_FP16_HPP
-#define CATLASS_GEMM_TILE_CAST_FP8_TO_FP16_HPP
+#ifndef GMM_GEMM_TILE_CAST_FP8_TO_FP16_HPP
+#define GMM_GEMM_TILE_CAST_FP8_TO_FP16_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
@@ -43,10 +43,10 @@ struct TileCastFp8ToFp16Dequant {
         half scalar;
         half zeroPoint;
 
-        CATLASS_HOST_DEVICE
+        GMM_HOST_DEVICE
         Params() = default;
 
-        CATLASS_HOST_DEVICE
+        GMM_HOST_DEVICE
         Params(half scalar_, half zeroPoint_)
         {
             scalar = scalar_;
@@ -54,11 +54,11 @@ struct TileCastFp8ToFp16Dequant {
         }
     };
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileCastFp8ToFp16Dequant()
     {}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_) : params(params_)
     {
         int64_t bufferOffset = 0;
@@ -79,7 +79,7 @@ struct TileCastFp8ToFp16Dequant {
         InitLocalMaskVec(resource, bufferOffset);
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator() (
         AscendC::GlobalTensor<ElementDst> gmDst, LayoutDst const &layoutDst,
         AscendC::GlobalTensor<ElementSrc> gmSrc, LayoutSrc const &layoutSrc,
@@ -197,7 +197,7 @@ struct TileCastFp8ToFp16Dequant {
     /*
      * DATAFLOW: gmSrc<float> -> ubInTensor -> ubOutTensor -> gmDst
     */
-    CATLASS_DEVICE
+    GMM_DEVICE
     void EpCastFp32ToFp16 (
         AscendC::GlobalTensor<half> gmDst, LayoutRowMajor layoutDst,
         AscendC::GlobalTensor<float> gmSrc, LayoutRowMajor layoutSrc
@@ -316,7 +316,7 @@ struct TileCastFp8ToFp16Dequant {
         }
     }
 private:
-    CATLASS_DEVICE
+    GMM_DEVICE
     void InitLocalMaskVec(Arch::Resource<ArchTag> &resource, int64_t &bufferOffset)
     {
         int16_t value_uint = 0x4000;
@@ -334,7 +334,7 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void Dequant(AscendC::LocalTensor<int8_t> &src, AscendC::LocalTensor<half> &dst,
         AscendC::LocalTensor<int16_t> &value_vector1, AscendC::LocalTensor<int16_t> &value_vector2,
         AscendC::LocalTensor<half> &workspace)
@@ -408,4 +408,4 @@ private:
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_CAST_FP8_TO_FP16_HPP
+#endif // GMM_GEMM_TILE_CAST_FP8_TO_FP16_HPP

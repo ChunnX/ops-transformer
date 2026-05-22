@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- #ifndef CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
- #define CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
+ #ifndef GMM_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
+ #define GMM_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
 
  #include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
@@ -25,10 +25,10 @@
 
      static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-     CATLASS_DEVICE
+     GMM_DEVICE
      TileElemWiseMuls(){}
 
-     CATLASS_DEVICE
+     GMM_DEVICE
      void operator()(
          AscendC::LocalTensor<ElementCompute> dstLocal,
          AscendC::LocalTensor<ElementCompute> srcTensor,
@@ -39,4 +39,4 @@
  };
  }
 
- #endif // CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
+ #endif // GMM_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP

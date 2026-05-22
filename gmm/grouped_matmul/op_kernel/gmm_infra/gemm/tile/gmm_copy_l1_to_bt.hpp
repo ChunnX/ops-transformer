@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_COPY_L1_TO_BT_HPP
-#define CATLASS_GEMM_TILE_COPY_L1_TO_BT_HPP
+#ifndef GMM_GEMM_TILE_COPY_L1_TO_BT_HPP
+#define GMM_GEMM_TILE_COPY_L1_TO_BT_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
@@ -35,10 +35,10 @@ struct CopyL1ToBT<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLay
 
     static constexpr uint32_t ELE_NUM_PER_C2 =  BYTE_PER_C2 / sizeof(ElementSrc);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToBT(){}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementDst> dstTensor,
         AscendC::LocalTensor<ElementSrc> srcTensor,
@@ -58,4 +58,4 @@ struct CopyL1ToBT<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLay
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_COPY_L1_TO_BT_HPP
+#endif // GMM_GEMM_TILE_COPY_L1_TO_BT_HPP

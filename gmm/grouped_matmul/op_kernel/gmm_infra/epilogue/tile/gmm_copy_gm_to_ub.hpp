@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
+#define GMM_EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
@@ -33,10 +33,10 @@ struct CopyGm2Ub<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
     static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGm2Ub() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -63,10 +63,10 @@ struct CopyGm2Ub<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>> {
 
     static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGm2Ub() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -104,10 +104,10 @@ struct CopyPerTokenScale2Ub {
 
     static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyPerTokenScale2Ub() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -148,10 +148,10 @@ struct CopyGm2UbAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
     static constexpr uint32_t MAX_REPEAT = 4095;
     static constexpr uint32_t STRIDE_LIMIT = 65536;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGm2UbAligned() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,

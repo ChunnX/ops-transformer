@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_SWIZZLE_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_SWIZZLE_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP
+#define GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/detail/gmm_alignment.hpp"
@@ -22,10 +22,10 @@ struct EpilogueIdentityTileSwizzle {
     MatrixCoord tileShape;
     MatrixCoord loopsMN;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     EpilogueIdentityTileSwizzle() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     EpilogueIdentityTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape) :
         blockShape(blockShape),
         tileShape(tileShape)
@@ -33,19 +33,19 @@ struct EpilogueIdentityTileSwizzle {
         loopsMN = CeilDiv(blockShape, tileShape);
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     uint32_t GetLoops() const
     {
         return loopsMN.row() * loopsMN.column();
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     MatrixCoord GetTileCoord(uint32_t loopIdx) const
     {
         return MatrixCoord{ loopIdx / loopsMN.column(), loopIdx % loopsMN.column() };
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     MatrixCoord GetActualTileShape(MatrixCoord const &tileCoord) const
     {
         return MatrixCoord::Min(tileShape, blockShape - tileCoord * tileShape);
@@ -57,10 +57,10 @@ struct EpilogueHorizontalTileSwizzle {
     MatrixCoord tileShape;
     MatrixCoord loopsMN;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     EpilogueHorizontalTileSwizzle() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     EpilogueHorizontalTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape) :
         blockShape(blockShape),
         tileShape(tileShape)
@@ -68,19 +68,19 @@ struct EpilogueHorizontalTileSwizzle {
         loopsMN = CeilDiv(blockShape, tileShape);
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     uint32_t GetLoops() const
     {
         return loopsMN.row() * loopsMN.column();
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     MatrixCoord GetTileCoord(uint32_t loopIdx) const
     {
         return MatrixCoord{ loopIdx % loopsMN.row(), loopIdx / loopsMN.row() };
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     MatrixCoord GetActualTileShape(MatrixCoord const &tileCoord) const
     {
         return MatrixCoord::Min(tileShape, blockShape - tileCoord * tileShape);
@@ -89,4 +89,4 @@ struct EpilogueHorizontalTileSwizzle {
 
 }
 
-#endif  // CATLASS_EPILOGUE_TILE_TILE_SWIZZLE_HPP
+#endif  // GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP

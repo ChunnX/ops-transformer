@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_HPP
-#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HPP
+#ifndef GMM_GEMM_BLOCK_BLOCK_MMAD_HPP
+#define GMM_GEMM_BLOCK_BLOCK_MMAD_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/gemm/tile/gmm_gemm_tile_copy.hpp"
@@ -36,4 +36,4 @@ struct BlockMmad {
 
 #include "../../../gmm_infra/gemm/block/block_mmad_preload_async_fixAxisMove_with_callback.hpp"
 #include "../../../gmm_infra/gemm/block/block_mmad_preload_async_with_callback_pergroup.hpp"
-#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_HPP
+#endif // GMM_GEMM_BLOCK_BLOCK_MMAD_HPP

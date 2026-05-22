@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ONE_BLK_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ONE_BLK_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_BROADCAST_ONE_BLK_HPP
+#define GMM_EPILOGUE_TILE_TILE_BROADCAST_ONE_BLK_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 
@@ -25,10 +25,10 @@ struct TileBroadcastOneBlk {
     using ElementCompute = typename ComputeType_::Element;
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileBroadcastOneBlk() {}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn

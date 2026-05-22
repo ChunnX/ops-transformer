@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_ROW_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_ROW_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_ROW_HPP
+#define GMM_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_ROW_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 
@@ -28,10 +28,10 @@ struct TileBroadcastInplaceByRow {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileBroadcastInplaceByRow() {}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubInOut
     )

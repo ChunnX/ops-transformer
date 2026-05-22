@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_CAST_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_CAST_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_CAST_HPP
+#define GMM_EPILOGUE_TILE_TILE_CAST_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 
@@ -30,10 +30,10 @@ struct TileCast {
     using ElementSrc = typename SrcType_::Element;
     using TileShape = TileShape_;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileCast() {}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementDst> const &ubOut,
         AscendC::LocalTensor<ElementSrc> const &ubIn

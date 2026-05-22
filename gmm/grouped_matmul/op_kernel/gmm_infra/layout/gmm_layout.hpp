@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_LAYOUT_LAYOUT_HPP
-#define CATLASS_LAYOUT_LAYOUT_HPP
+#ifndef GMM_LAYOUT_LAYOUT_HPP
+#define GMM_LAYOUT_LAYOUT_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 #include "../../gmm_infra/layout/gmm_matrix.hpp"
 #include "../../gmm_infra/layout/gmm_vector.hpp"
 #include "../../gmm_infra/layout/tensor.hpp"
 
-#endif  // CATLASS_LAYOUT_LAYOUT_HPP
+#endif  // GMM_LAYOUT_LAYOUT_HPP

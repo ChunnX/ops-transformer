@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
+#ifndef GMM_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
+#define GMM_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
@@ -111,10 +111,10 @@ public:
         __gm__ ElementD *ptrD{nullptr};
         LayoutD layoutD{};
 
-        CATLASS_DEVICE
+        GMM_DEVICE
         Params() {};
 
-        CATLASS_DEVICE
+        GMM_DEVICE
         Params(
             __gm__ ElementScale *ptrScale_, LayoutScale const &layoutScale_,
             __gm__ ElementPerTokenScale *ptrPerTokenScale_, LayoutPerTokenScale const &layoutPerTokenScale_,
@@ -124,7 +124,7 @@ public:
             ptrD(ptrD_), layoutD(layoutD_) {}
     };
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
     {
         size_t ubOffset = 0;
@@ -169,7 +169,7 @@ public:
         ubPerTokenMul = ubMul;
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     ~BlockEpilogue()
     {
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
@@ -180,13 +180,13 @@ public:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void UpdateParams(Params const &params_)
     {
         params = params_;
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator() (
         GemmCoord const &blockShapeMNK,
         GemmCoord const &blockCoordMNK,
@@ -424,10 +424,10 @@ public:
         __gm__ ElementD *ptrD{nullptr};
         LayoutD layoutD{};
 
-        CATLASS_DEVICE
+        GMM_DEVICE
         Params() {};
 
-        CATLASS_DEVICE
+        GMM_DEVICE
         Params(
             __gm__ ElementScale *ptrScale_, LayoutScale const &layoutScale_,
             __gm__ ElementPerTokenScale *ptrPerTokenScale_, LayoutPerTokenScale const &layoutPerTokenScale_,
@@ -437,7 +437,7 @@ public:
             ptrD(ptrD_), layoutD(layoutD_) {}
     };
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
     {
         size_t ubOffset = 0;
@@ -478,7 +478,7 @@ public:
         ubPerTokenMul = ubCFp32;
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     ~BlockEpilogue()
     {
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
@@ -489,13 +489,13 @@ public:
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void UpdateParams(Params const &params_)
     {
         params = params_;
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator() (
         GemmCoord const &blockShapeMNK,
         GemmCoord const &blockCoordMNK,
@@ -642,4 +642,4 @@ private:
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
+#endif  // GMM_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
