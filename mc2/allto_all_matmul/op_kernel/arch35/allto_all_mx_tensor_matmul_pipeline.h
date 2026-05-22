@@ -41,6 +41,9 @@ public:
 private:
     CommunicationType *commStage_;
     ComputationType *computeStage_;
+
+    __aicore__ inline void VecNotifyCube();
+    __aicore__ inline void CubeWaitVec();
 };
 
 template <typename CommunicationType, typename ComputationType, typename ContextType>
@@ -58,12 +61,30 @@ __aicore__ inline void AlltoAllMXTensorMatmulPipeLine<CommunicationType, Computa
 }
 
 template <typename CommunicationType, typename ComputationType, typename ContextType>
+__aicore__ inline void AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, ContextType>::VecNotifyCube()
+{
+    AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
+    AscendC::CrossCoreWaitFlag(8);
+    AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
+}
+
+template <typename CommunicationType, typename ComputationType, typename ContextType>
+__aicore__ inline void AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, ContextType>::CubeWaitVec()
+{
+    AscendC::CrossCoreWaitFlag(9);
+}
+
+template <typename CommunicationType, typename ComputationType, typename ContextType>
 __aicore__ inline void AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, ContextType>::Process(uint32_t taskCnt)
 {
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
-        if ASCEND_IS_AIC {
+        if ASCEND_IS_AIV {
             commStage_->Process(index);
+            VecNotifyCube();
+        }
+        if ASCEND_IS_AIC {
+            CubeWaitVec();
             computeStage_->Process(index);
         }
     }
@@ -72,9 +93,13 @@ __aicore__ inline void AlltoAllMXTensorMatmulPipeLine<CommunicationType, Computa
 template <typename CommunicationType, typename ComputationType, typename ContextType>
 __aicore__ inline void AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, ContextType>::ProcessScale()
 {
-    if ASCEND_IS_AIC {
+    if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
         commStage_->Process(0);
+        VecNotifyCube();
+    }
+    if ASCEND_IS_AIC {
+        CubeWaitVec();
     }
 }
 

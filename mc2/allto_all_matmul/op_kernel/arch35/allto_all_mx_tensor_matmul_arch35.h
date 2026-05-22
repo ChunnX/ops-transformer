@@ -58,15 +58,13 @@ AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmul
 {
     pipeLine_->Init();
 
-    if ASCEND_IS_AIV { return; }
-
     tilingData_ = tilingData;
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     tPipe_ = tPipe;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
-    bias_ = bias_;
+    bias_ = bias;
     x1Scale_ = x1_scale;
     x2Scale_ = x2_scale;
     workspaceGM_ = workspaceGM;
@@ -86,8 +84,6 @@ template <typename SchedulerType, typename SchedulerContextType, typename AlltoA
 __aicore__ inline void
 AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Process()
 {
-    if ASCEND_IS_AIV { return; }
-
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
 
     ProcessScale();

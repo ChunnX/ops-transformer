@@ -111,7 +111,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef ALLTO_ALL_MX_TENSOR_MATMUL_IMPL
 #define ALLTO_ALL_MX_TENSOR_MATMUL_IMPL(tilingData, pipe, commDataTypeX1)                                              \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(true, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
                                            AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
                                            CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
@@ -136,7 +136,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 {
     #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #endif

@@ -411,15 +411,15 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, MxTens
     uint64_t aicNum = contextInfo.args_.aicCoreNum;
     if (aicNum == 0) aicNum = 1;
 
-    // printf("[FillMxTensorTiling] input: blockM=%u fullN=%lu fullK=%lu aicNum=%lu rankK=%lu rankDim=%lu\n",
-    //        blockM, fullN, fullK, aicNum, contextInfo.args_.orgKValue, contextInfo.args_.rankDim);
+printf("[FillMxTensorTiling] input: blockM=%lu fullN=%lu fullK=%lu aicNum=%lu rankK=%lu rankDim=%lu\n",
+            blockM, fullN, fullK, aicNum, contextInfo.args_.orgKValue, contextInfo.args_.rankDim);
 
     Mc2MxTiling tiling(blockM, fullN, fullK, 512 * 1024, 256 * 1024, aicNum, 1, 1);
     auto r = tiling.Compute();
     if (!r.valid) return;
 
-    // printf("[FillMxTensorTiling] Compute result: kL1=%lu scaleKL1=%lu baseM=%lu baseN=%lu baseK=%lu dbL0c=%lu\n",
-    //        r.kL1, r.scaleKL1, r.baseM, r.baseN, r.baseK, (uint64_t)r.dbL0c);
+printf("[FillMxTensorTiling] Compute result: kL1=%lu scaleKL1=%lu baseM=%lu baseN=%lu baseK=%lu dbL0c=%lu\n",
+            r.kL1, r.scaleKL1, r.baseM, r.baseN, r.baseK, (uint64_t)r.dbL0c);
 
     uint64_t rankK = contextInfo.args_.orgKValue;
     uint64_t kL1Before = r.kL1;
@@ -450,8 +450,8 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, MxTens
     if (2 * actualScalePerSlot > scaleAvail) {
         r.scaleKL1 = r.kL1;
     }
-    // printf("[FillMxTensorTiling] scaleKL1: %lu -> %lu (L1_max=%lu, rankK=%lu, scalePerSlot=%lu, scaleAvail=%lu)\n",
-    //        scaleKL1Before, r.scaleKL1, maxScaleKL1ByL1, rankK, actualScalePerSlot, scaleAvail);
+printf("[FillMxTensorTiling] scaleKL1: %lu -> %lu (L1_max=%lu, rankK=%lu, scalePerSlot=%lu, scaleAvail=%lu)\n",
+            scaleKL1Before, r.scaleKL1, maxScaleKL1ByL1, rankK, actualScalePerSlot, scaleAvail);
 
     uint64_t scaleAL1PerSlot = r.baseM * ((r.scaleKL1 + 63) / 64) * 2;
     uint64_t scaleBL1PerSlot = r.baseN * ((r.scaleKL1 + 63) / 64) * 2;
@@ -476,11 +476,9 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, MxTens
     out->scaleKL1          = r.scaleKL1;
     out->dbL0c             = r.dbL0c;
 
-    // printf("[FillMxTensorTiling] final MxTensorTilingData:\n"
-    //        "  tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u\n"
-    //        "  baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
-    //        out->tileM, out->fullK, out->fullN, out->rankK, out->rankDim, out->rankKScaleGrp,
-    //        out->baseM, out->baseN, out->baseK, out->kL1, out->scaleKL1, out->dbL0c);
+printf("[FillMxTensorTiling] final MxTensorTilingData: tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+            out->tileM, out->fullK, out->fullN, out->rankK, out->rankDim, out->rankKScaleGrp,
+            out->baseM, out->baseN, out->baseK, out->kL1, out->scaleKL1, out->dbL0c);
 }
 
 /**
@@ -711,12 +709,12 @@ void AllToAllMxQuantMatmulTilingBase::PrintExtendMatmulTiling(const std::string 
 void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName,
                                                                             AlltoAllMatmulTilingInfo &tilingInfo)
 {
-    // printf("[AlltoAllMatmulTilingInfo] rankDim=%u tileM=%u tileCnt=%u tailM=%u tailCnt=%u"
-    //        " rankM=%u rankN=%u rankK=%u rankKScaleGrp=%u aicCoreNum=%u"
-    //        " commLen=%lu permuteLen=%lu hcclDataType=%lu\n",
-    //        tilingInfo.rankDim, tilingInfo.tileM, tilingInfo.tileCnt, tilingInfo.tailM, tilingInfo.tailCnt,
-    //        tilingInfo.rankM, tilingInfo.rankN, tilingInfo.rankK, tilingInfo.rankKScaleGrp, tilingInfo.aicCoreNum,
-    //        tilingInfo.commLen, tilingInfo.permuteLen, tilingInfo.hcclDataType);
+    printf("[AlltoAllMatmulTilingInfo] rankDim=%u tileM=%u tileCnt=%u tailM=%u tailCnt=%u"
+           " rankM=%u rankN=%u rankK=%u rankKScaleGrp=%u aicCoreNum=%u"
+           " commLen=%lu permuteLen=%lu hcclDataType=%lu\n",
+           tilingInfo.rankDim, tilingInfo.tileM, tilingInfo.tileCnt, tilingInfo.tailM, tilingInfo.tailCnt,
+           tilingInfo.rankM, tilingInfo.rankN, tilingInfo.rankK, tilingInfo.rankKScaleGrp, tilingInfo.aicCoreNum,
+           tilingInfo.commLen, tilingInfo.permuteLen, tilingInfo.hcclDataType);
 }
 
 /**
@@ -728,27 +726,27 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(
     AlltoAllQuantMatmulTilingData &outTilingData)
 {
     PrintAlltoAllMxQuantMatmulTilingInfo(opName_, outTilingData.alltoAllQuantMatmulTilingInfo);
-    // printf("[mxTensorTileTilingData] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
-    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
-    //        outTilingData.mxTensorTileTilingData.tileM, outTilingData.mxTensorTileTilingData.fullK,
-    //        outTilingData.mxTensorTileTilingData.fullN, outTilingData.mxTensorTileTilingData.rankK,
-    //        outTilingData.mxTensorTileTilingData.rankDim, outTilingData.mxTensorTileTilingData.rankKScaleGrp,
-    //        outTilingData.mxTensorTileTilingData.baseM, outTilingData.mxTensorTileTilingData.baseN,
-    //        outTilingData.mxTensorTileTilingData.baseK, outTilingData.mxTensorTileTilingData.kL1,
-    //        outTilingData.mxTensorTileTilingData.scaleKL1, outTilingData.mxTensorTileTilingData.dbL0c);
+    printf("[mxTensorTileTilingData] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+           " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+           outTilingData.mxTensorTileTilingData.tileM, outTilingData.mxTensorTileTilingData.fullK,
+           outTilingData.mxTensorTileTilingData.fullN, outTilingData.mxTensorTileTilingData.rankK,
+           outTilingData.mxTensorTileTilingData.rankDim, outTilingData.mxTensorTileTilingData.rankKScaleGrp,
+           outTilingData.mxTensorTileTilingData.baseM, outTilingData.mxTensorTileTilingData.baseN,
+           outTilingData.mxTensorTileTilingData.baseK, outTilingData.mxTensorTileTilingData.kL1,
+           outTilingData.mxTensorTileTilingData.scaleKL1, outTilingData.mxTensorTileTilingData.dbL0c);
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTileTilingData);
     if (outTilingData.alltoAllQuantMatmulTilingInfo.tailCnt == 0) {
         return;
     }
     OP_LOGD(opName_, "AlltoallMxQuantMatmul has tail");
-    // printf("[mxTensorTailTilingData] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
-    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
-    //        outTilingData.mxTensorTailTilingData.tileM, outTilingData.mxTensorTailTilingData.fullK,
-    //        outTilingData.mxTensorTailTilingData.fullN, outTilingData.mxTensorTailTilingData.rankK,
-    //        outTilingData.mxTensorTailTilingData.rankDim, outTilingData.mxTensorTailTilingData.rankKScaleGrp,
-    //        outTilingData.mxTensorTailTilingData.baseM, outTilingData.mxTensorTailTilingData.baseN,
-    //        outTilingData.mxTensorTailTilingData.baseK, outTilingData.mxTensorTailTilingData.kL1,
-    //        outTilingData.mxTensorTailTilingData.scaleKL1, outTilingData.mxTensorTailTilingData.dbL0c);
+    printf("[mxTensorTailTilingData] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+           " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+           outTilingData.mxTensorTailTilingData.tileM, outTilingData.mxTensorTailTilingData.fullK,
+           outTilingData.mxTensorTailTilingData.fullN, outTilingData.mxTensorTailTilingData.rankK,
+           outTilingData.mxTensorTailTilingData.rankDim, outTilingData.mxTensorTailTilingData.rankKScaleGrp,
+           outTilingData.mxTensorTailTilingData.baseM, outTilingData.mxTensorTailTilingData.baseN,
+           outTilingData.mxTensorTailTilingData.baseK, outTilingData.mxTensorTailTilingData.kL1,
+           outTilingData.mxTensorTailTilingData.scaleKL1, outTilingData.mxTensorTailTilingData.dbL0c);
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTailTilingData);
 }
 
@@ -778,47 +776,47 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
             sizeof(AlltoAllQuantMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
     context_->SetBlockDim(contextInfo.args_.aicCoreNum);
-    // printf("=== MXFP8 TENSOR TILING FINAL ===\n");
-    // printf("[AlltoAllMatmulTilingInfo] rankDim=%u tileM=%u tileCnt=%u tailM=%u tailCnt=%u"
-    //        " rankM=%u rankN=%u rankK=%u rankKScaleGrp=%u aicCoreNum=%u\n",
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankDim,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.tileM,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.tileCnt,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.tailM,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.tailCnt,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankM,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankN,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankK,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.rankKScaleGrp,
-    //        outTilingData->alltoAllQuantMatmulTilingInfo.aicCoreNum);
-    // printf("[mxTensorTile] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
-    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
-    //        outTilingData->mxTensorTileTilingData.tileM,
-    //        outTilingData->mxTensorTileTilingData.fullK,
-    //        outTilingData->mxTensorTileTilingData.fullN,
-    //        outTilingData->mxTensorTileTilingData.rankK,
-    //        outTilingData->mxTensorTileTilingData.rankDim,
-    //        outTilingData->mxTensorTileTilingData.rankKScaleGrp,
-    //        outTilingData->mxTensorTileTilingData.baseM,
-    //        outTilingData->mxTensorTileTilingData.baseN,
-    //        outTilingData->mxTensorTileTilingData.baseK,
-    //        outTilingData->mxTensorTileTilingData.kL1,
-    //        outTilingData->mxTensorTileTilingData.scaleKL1,
-    //        outTilingData->mxTensorTileTilingData.dbL0c);
-    // printf("[mxTensorTail] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
-    //        " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
-    //        outTilingData->mxTensorTailTilingData.tileM,
-    //        outTilingData->mxTensorTailTilingData.fullK,
-    //        outTilingData->mxTensorTailTilingData.fullN,
-    //        outTilingData->mxTensorTailTilingData.rankK,
-    //        outTilingData->mxTensorTailTilingData.rankDim,
-    //        outTilingData->mxTensorTailTilingData.rankKScaleGrp,
-    //        outTilingData->mxTensorTailTilingData.baseM,
-    //        outTilingData->mxTensorTailTilingData.baseN,
-    //        outTilingData->mxTensorTailTilingData.baseK,
-    //        outTilingData->mxTensorTailTilingData.kL1,
-    //        outTilingData->mxTensorTailTilingData.scaleKL1,
-    //        outTilingData->mxTensorTailTilingData.dbL0c);
+    printf("=== MXFP8 TENSOR TILING FINAL ===\n");
+    printf("[AlltoAllMatmulTilingInfo] rankDim=%u tileM=%u tileCnt=%u tailM=%u tailCnt=%u"
+           " rankM=%u rankN=%u rankK=%u rankKScaleGrp=%u aicCoreNum=%u\n",
+           outTilingData->alltoAllQuantMatmulTilingInfo.rankDim,
+           outTilingData->alltoAllQuantMatmulTilingInfo.tileM,
+           outTilingData->alltoAllQuantMatmulTilingInfo.tileCnt,
+           outTilingData->alltoAllQuantMatmulTilingInfo.tailM,
+           outTilingData->alltoAllQuantMatmulTilingInfo.tailCnt,
+           outTilingData->alltoAllQuantMatmulTilingInfo.rankM,
+           outTilingData->alltoAllQuantMatmulTilingInfo.rankN,
+           outTilingData->alltoAllQuantMatmulTilingInfo.rankK,
+           outTilingData->alltoAllQuantMatmulTilingInfo.rankKScaleGrp,
+           outTilingData->alltoAllQuantMatmulTilingInfo.aicCoreNum);
+    printf("[mxTensorTile] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+           " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+           outTilingData->mxTensorTileTilingData.tileM,
+           outTilingData->mxTensorTileTilingData.fullK,
+           outTilingData->mxTensorTileTilingData.fullN,
+           outTilingData->mxTensorTileTilingData.rankK,
+           outTilingData->mxTensorTileTilingData.rankDim,
+           outTilingData->mxTensorTileTilingData.rankKScaleGrp,
+           outTilingData->mxTensorTileTilingData.baseM,
+           outTilingData->mxTensorTileTilingData.baseN,
+           outTilingData->mxTensorTileTilingData.baseK,
+           outTilingData->mxTensorTileTilingData.kL1,
+           outTilingData->mxTensorTileTilingData.scaleKL1,
+           outTilingData->mxTensorTileTilingData.dbL0c);
+    printf("[mxTensorTail] tileM=%u fullK=%u fullN=%u rankK=%u rankDim=%u rankKScaleGrp=%u"
+           " baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+           outTilingData->mxTensorTailTilingData.tileM,
+           outTilingData->mxTensorTailTilingData.fullK,
+           outTilingData->mxTensorTailTilingData.fullN,
+           outTilingData->mxTensorTailTilingData.rankK,
+           outTilingData->mxTensorTailTilingData.rankDim,
+           outTilingData->mxTensorTailTilingData.rankKScaleGrp,
+           outTilingData->mxTensorTailTilingData.baseM,
+           outTilingData->mxTensorTailTilingData.baseN,
+           outTilingData->mxTensorTailTilingData.baseK,
+           outTilingData->mxTensorTailTilingData.kL1,
+           outTilingData->mxTensorTailTilingData.scaleKL1,
+           outTilingData->mxTensorTailTilingData.dbL0c);
     // fflush(stdout);
     // PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
     return ge::GRAPH_SUCCESS;
