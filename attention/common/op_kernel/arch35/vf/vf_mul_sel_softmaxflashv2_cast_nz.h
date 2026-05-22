@@ -567,7 +567,7 @@ __aicore__ inline void ProcessVec1VfMxfp8(const LocalTensor<T2>& dstTensor, TBuf
         ProcessVec1NoUpdateMxfp8<T, T2, pseShiftType, s1BaseSize, s2BaseSize, oriNRange, hasAtten, pseMode,
             hasDrop, isMlaSgd, isMlaFullQuant, useNz, hasSink>(
             dstTensor, vselrIndexesBuf, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
-            inMaxTensor, maskTensor, pseTensor, dropTensor, pScaleSubLoop0Tensor, sharedTmpBuffer, preLoopMaxTensor, subLoop,
+            inMaxTensor, maskTensor, pseTensor, dropTensor, pScaleSubLoop0Tensor, sharedTmpBuffer, subLoop,
             m, originN, pseStride, slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb,
             deSCaleKValue, pScale, sinkValue);
     } else {

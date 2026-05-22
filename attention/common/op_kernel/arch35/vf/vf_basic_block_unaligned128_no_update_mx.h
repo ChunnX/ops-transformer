@@ -84,7 +84,6 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     MaskReg preg_tail_n = UpdateMask<float>(pltTailN);
     MaskReg preg_ori_tail_n = UpdateMask<float>(pltOriTailN);
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
-    MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
     uint32_t maskLen = 128;
     MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
     MaskReg preg_compare;
@@ -691,7 +690,7 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb,
     const float deSCaleKValue, const float sinkValue, const float pScale, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -734,7 +733,7 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
     if (subLoop == 0) {
         ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                                                                   pseMode, hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
-            expUb, x_expUb, pseUb, maxUb, maxUbStart, srcUb, expSumUb, indexesUb, maskUb, maskUbUnroll, dropMaskUb, pScaleSubLoop0Ub
+            expUb, x_expUb, pseUb, maxUb, maxUbStart, srcUb, expSumUb, indexesUb, maskUb, maskUbUnroll, dropMaskUb, pScaleSubLoop0Ub,
             nPadding, blockStride, repeatStride, oriTailN, tailN, dScale, pltOriTailN, pltTailN, divValue, m, pseStride,
             slopes, posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
     } else {
