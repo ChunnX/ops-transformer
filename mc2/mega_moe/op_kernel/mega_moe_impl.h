@@ -64,10 +64,16 @@ constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 constexpr int32_t DBG_BK_A = 0;
 constexpr int32_t DBG_BK_B = 25;  // 之前是 30, 改成 25 因为日志显示 bk=25 出现 -2 over-clear, 重点观察
 
+// 超时检测开关: 性能测量时设为 0, 编译期裁掉所有 timeout spin 计时 / PRINTF / break,
+// 保证性能 kernel 中无任何 GetSystemCycle / PRINTF 残留。debug 时设为 1。
+#define MEGA_MOE_TIMEOUT_DECT 1
+
 // spin 超时阈值 (单位: cycle); 超过这个时间没等到就打日志 + break, 不再死等。
 // 1GHz 时钟下 5_000_000 cycle ≈ 5ms — 远超正常 spin (~几 us), 比 50ms 触发快 10x, 更快暴露问题。
 // 真正卡死的话 5ms 也足够远超正常进度差。
+#if MEGA_MOE_TIMEOUT_DECT
 constexpr int64_t SPIN_TIMEOUT_CYCLES = 5000000LL;
+#endif
 
 // ============================================================================
 // DYN_SCHED_DESIGN — 单写者协议 (Single-Writer Protocol)
@@ -280,8 +286,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             if (loopIdx == coreInGroup) {
                 uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
+                #if MEGA_MOE_TIMEOUT_DECT
                 int64_t _spinStart = AscendC::GetSystemCycle();
+                #endif
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                    #if MEGA_MOE_TIMEOUT_DECT
                     if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
                         int dbgBk = (int)(GetBlockIdx() / GetTaskRation());
                         int32_t dbgCur = AscendC::ReadGmByPassDCache(flagValueAddr);
@@ -289,6 +298,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                         dbgBk, targetValue, dbgCur);
                         break;
                     }
+                    #endif
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
@@ -585,8 +595,11 @@ __aicore__ inline void GroupMatmul2(
                         static_cast<int64_t>(L1_TILE_N))});
                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
+                #if MEGA_MOE_TIMEOUT_DECT
                 int64_t _spinStart = AscendC::GetSystemCycle();
+                #endif
                 while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                    #if MEGA_MOE_TIMEOUT_DECT
                     if (AscendC::GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
                         int dbgBk = (int)(GetBlockIdx() / GetTaskRation());
                         int32_t dbgCur = AscendC::ReadGmByPassDCache(flagValueAddr);
@@ -594,6 +607,7 @@ __aicore__ inline void GroupMatmul2(
                                         dbgBk, targetLoops, dbgCur);
                         break;
                     }
+                    #endif
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
@@ -646,9 +660,12 @@ __aicore__ inline void GroupMatmul2(
             //   被错误减成 -1, 同 bk 后续所有 G2 task 永远 spin 不到 >=1 → 级联崩盘 (print8.log 现象)。
             //   只打一次 warning 然后继续 spin, 直到 AIC 确实 +1。
             {
+                #if MEGA_MOE_TIMEOUT_DECT
                 int64_t _spinStart = GetSystemCycle();
                 bool _warned = false;
+                #endif
                 while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
+                    #if MEGA_MOE_TIMEOUT_DECT
                     if (!_warned && GetSystemCycle() - _spinStart > SPIN_TIMEOUT_CYCLES) {
                         int dbgBk = (int)blockIdx;
                         unsigned dbgLoop = (unsigned)loopIdx;
@@ -657,6 +674,7 @@ __aicore__ inline void GroupMatmul2(
                                         dbgBk, dbgLoop, dbgCur);
                         _warned = true;
                     }
+                    #endif
                     int64_t st = GetSystemCycle();
                     while (GetSystemCycle() - st < 100) {}
                 }
@@ -730,14 +748,18 @@ __aicore__ inline void SchedulerLoop(
     __gm__ int32_t* dispatchFlagAddr = (__gm__ int32_t*)params.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
     int32_t targetValue = static_cast<int32_t>(params.tilingData->epWorldSize * params.tilingData->blockNumPerEP);
     {
+        #if MEGA_MOE_TIMEOUT_DECT
         int64_t st = AscendC::GetSystemCycle();
+        #endif
         while (AscendC::ReadGmByPassDCache(dispatchFlagAddr) != targetValue) {
+            #if MEGA_MOE_TIMEOUT_DECT
             if (AscendC::GetSystemCycle() - st > SPIN_TIMEOUT_CYCLES) {
                 int32_t dbgCur = AscendC::ReadGmByPassDCache(dispatchFlagAddr);
                 AscendC::PRINTF("[rank=%d SCHED] TIMEOUT dispatch flag exp=%u tgt=%d cur=%d\n",
                                 rankId, expertIdx, targetValue, dbgCur);
                 break;
             }
+            #endif
             int64_t ss = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - ss < 500) {}  // 拉长 spin 间隔 减小 HBM 争用
         }
@@ -779,7 +801,9 @@ __aicore__ inline void SchedulerLoop(
     gmAck.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrTaskAck);
 
     // --- 4. 主循环 ---
+    #if MEGA_MOE_TIMEOUT_DECT
     int64_t loopStart = AscendC::GetSystemCycle();
+    #endif
     while (true) {
         // 4-pre. 一次性刷新所有还没解锁的 wave 的 swiglu flag(每轮最多 waveCnt 次 HBM 读,
         //        解锁完后 0 次)。原版每个 (bk, G2) 迭代都重读 → 单轮可到 124 次。
@@ -891,6 +915,7 @@ __aicore__ inline void SchedulerLoop(
         }
 
         // 超时诊断
+        #if MEGA_MOE_TIMEOUT_DECT
         if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
             AscendC::PRINTF("[rank=%d SCHED] TIMEOUT exp=%u\n", rankId, expertIdx);
             for (uint64_t w = 0; w < waveCnt; ++w) {
@@ -915,6 +940,7 @@ __aicore__ inline void SchedulerLoop(
             }
             break;
         }
+        #endif
     }
 
     #if MEGA_MOE_DYN_DEBUG
@@ -975,7 +1001,9 @@ __aicore__ inline void DynamicAicLoop(
     bool g1End = false, g2End = false;
     int g1Seq = 0, g2Seq = 0;
 
+    #if MEGA_MOE_TIMEOUT_DECT
     int64_t loopStart = AscendC::GetSystemCycle();
+    #endif
     while (!g1End || !g2End) {
         // -- G2 channel(优先): AIV1 combine 是瓶颈,要让它尽早开始 + 持续有活。
         //    顺便: G1 mmad 之间的 WaitForVector(0) 间隙正好用 G2 mmad 填满。
@@ -1117,6 +1145,7 @@ __aicore__ inline void DynamicAicLoop(
         }
 
         // 两个 channel 都没新 task: 等一下
+        #if MEGA_MOE_TIMEOUT_DECT
         if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
             int32_t dbgSeqG1 = AscendC::ReadGmByPassDCache(seqG1);
             int32_t dbgSeqG2 = AscendC::ReadGmByPassDCache(seqG2);
@@ -1130,6 +1159,7 @@ __aicore__ inline void DynamicAicLoop(
                             dbgG1End, dbgG2End, dbgG1Pending);
             break;
         }
+        #endif
         int64_t ss = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - ss < 500) {}  // 拉长 spin 间隔 减小 HBM 争用
     }
@@ -1182,7 +1212,9 @@ __aicore__ inline void DynamicAiv0Loop(
     __gm__ int32_t* ackPtr  = GetTaskAckPtr(params, blockIdx, 0, OWNER_AIV);
 
     int taskCnt = 0;
+    #if MEGA_MOE_TIMEOUT_DECT
     int64_t loopStart = AscendC::GetSystemCycle();
+    #endif
     while (true) {
         int32_t cur = AscendC::ReadGmByPassDCache(seqPtr);
         if (cur > last_seen[0]) {
@@ -1243,10 +1275,13 @@ __aicore__ inline void DynamicAiv0Loop(
             AscendC::WriteGmByPassDCache(ackPtr, cur);
             // PipeBarrier<PIPE_ALL>();  // 跨核可见性
             last_seen[0] = cur;
+            #if MEGA_MOE_TIMEOUT_DECT
             loopStart = AscendC::GetSystemCycle();  // reset timeout
+            #endif
             continue;
         }
 
+        #if MEGA_MOE_TIMEOUT_DECT
         if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
             int32_t dbgSeq = cur;
             int32_t dbgLast = last_seen[0];
@@ -1254,6 +1289,7 @@ __aicore__ inline void DynamicAiv0Loop(
                             rankId, blockIdx, expertIdx, dbgSeq, dbgLast);
             break;
         }
+        #endif
         int64_t ss = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - ss < 500) {}  // 拉长 spin 间隔 减小 HBM 争用
     }
@@ -1297,7 +1333,9 @@ __aicore__ inline void DynamicAiv1Loop(
     __gm__ int32_t* ackPtr  = GetTaskAckPtr(params, blockIdx, 1, OWNER_AIV);
 
     int taskCnt = 0;
+    #if MEGA_MOE_TIMEOUT_DECT
     int64_t loopStart = AscendC::GetSystemCycle();
+    #endif
     while (true) {
         int32_t cur = AscendC::ReadGmByPassDCache(seqPtr);
         if (cur > last_seen[0]) {
@@ -1352,10 +1390,13 @@ __aicore__ inline void DynamicAiv1Loop(
             AscendC::WriteGmByPassDCache(ackPtr, cur);
             // PipeBarrier<PIPE_ALL>();  // 跨核可见性
             last_seen[0] = cur;
+            #if MEGA_MOE_TIMEOUT_DECT
             loopStart = AscendC::GetSystemCycle();
+            #endif
             continue;
         }
 
+        #if MEGA_MOE_TIMEOUT_DECT
         if (AscendC::GetSystemCycle() - loopStart > SPIN_TIMEOUT_CYCLES * 40) {
             int32_t dbgSeq = cur;
             int32_t dbgLast = last_seen[0];
@@ -1363,6 +1404,7 @@ __aicore__ inline void DynamicAiv1Loop(
                             rankId, blockIdx, expertIdx, dbgSeq, dbgLast);
             break;
         }
+        #endif
         int64_t ss = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - ss < 500) {}  // 拉长 spin 间隔 减小 HBM 争用
     }
