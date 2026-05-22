@@ -1,6 +1,2 @@
-mc2/common/op_kernel/allto_all_matmul_apt.cpp
 tests/
 mc2/*/tests/
-mc2/allto_all_matmul/op_kernel/allto_all_matmul_apt.cpp
-mc2/allto_all_matmul/op_kernel/arch35/allto_all_mx_quant_matmul_arch35.h
-attention/block_sparse_attention/op_kernel/arch35/block_sparse_attention_kernel_arch35_regular.h
