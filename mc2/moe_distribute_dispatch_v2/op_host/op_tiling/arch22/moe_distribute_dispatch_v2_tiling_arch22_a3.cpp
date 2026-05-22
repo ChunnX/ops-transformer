@@ -171,7 +171,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchV2Ti
     config.attrCopyExpertNumIndex = 15;
     config.attrConstExpertNumIndex = 16;
     config.isMc2Context = false;
-    return MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
+    return MoeDistributeDispatchA3TilingFuncImplPublicV2(context, config);
 }
 
 struct MoeDistributeDispatchCompileInfo {};

@@ -29,7 +29,7 @@ ge::graphStatus CheckTensorRules(
         const TensorCheckRule& rule = rules[i];
 
         // 获取 tensor desc
-        const ge::TensorDesc* desc = nullptr;
+        const gert::CompileTimeTensorDesc* desc = nullptr;
         const gert::StorageShape* shape = nullptr;
 
         if (rule.type == moe_dispatch_defs::TensorType::INPUT ||
@@ -120,7 +120,7 @@ ge::graphStatus CheckTensorFormatRules(
         const TensorFormatRule& rule = rules[i];
 
         // 获取 tensor desc
-        const ge::TensorDesc* desc = nullptr;
+        const gert::CompileTimeTensorDesc* desc = nullptr;
         if (rule.type == moe_dispatch_defs::TensorType::INPUT ||
             rule.type == moe_dispatch_defs::TensorType::OPTIONAL_INPUT) {
             desc = ctx->GetInputDesc(rule.index);
