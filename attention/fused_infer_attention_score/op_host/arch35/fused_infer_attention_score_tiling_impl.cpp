@@ -518,11 +518,12 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
     std::vector<uint32_t> bnStartIdx(maxCoreNums, 0U);
     std::vector<int64_t> gS1StartIdx(maxCoreNums, 0L);
 
-    int64_t curWeight = 0;
+    double curWeight = 0;
     curCore = 0;
     uint32_t tmpCoreNidEnd = 0;
     uint32_t tmpCoreSidEnd = 0;
     uint32_t tmpCoreSposEnd = 0;
+    int64_t innerBlockNumsPrefix = (fiaInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
     for (uint32_t bIdx = 0; bIdx < fiaInfo.bSize; bIdx++) {
         for (uint32_t nIdx = 0; nIdx < nLoopTimes_; nIdx++) {
             int64_t preTokensLeftUp = 0;
@@ -536,23 +537,37 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
                                    nextTokensLeftUp);
 
             int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
-            int64_t innerBlockNums = (actualSeqLengthKV + sInnerSize - 1) / sInnerSize +
-                                     (fiaInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
+            int64_t innerBlockNums = (actualSeqLengthKV + sInnerSize - 1) / sInnerSize;
             for (uint32_t sOuterIndex = 0; sOuterIndex < outerBlockNums; sOuterIndex++) {
-                int64_t dif = static_cast<int64_t>(coreWeightTarget * double(curCore + 1)) - curWeight;
-                int64_t sInnerIndexStart =
-                    -(preTokensLeftUp > 0 ?
-                          (preTokensLeftUp + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize) :
-                          preTokensLeftUp / static_cast<int64_t>(sInnerSize));
-                int64_t sInnerIndexEnd =
-                    nextTokensLeftUp > 0 ?
-                        (nextTokensLeftUp + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize) :
-                        nextTokensLeftUp / static_cast<int64_t>(sInnerSize);
+                double dif = coreWeightTarget * double(curCore + 1) - curWeight;
+                // 非prefix部分计算，去除prefix影响
+                int64_t preTokensNoPrefix = preTokensLeftUp + fiaInfo.systemPrefixLen;
+                int64_t nextTokensNoPrefix = nextTokensLeftUp - fiaInfo.systemPrefixLen;
+                int64_t sInnerIndexStart = -(preTokensNoPrefix > 0 ?
+                                                 (preTokensNoPrefix + static_cast<int64_t>(sInnerSize) - 1) /
+                                                     static_cast<int64_t>(sInnerSize) :
+                                                 preTokensNoPrefix / static_cast<int64_t>(sInnerSize));
+                int64_t sInnerIndexEnd = nextTokensNoPrefix > 0 ?
+                                             (nextTokensNoPrefix + static_cast<int64_t>(sInnerSize) - 1) /
+                                                 static_cast<int64_t>(sInnerSize) :
+                                             nextTokensNoPrefix / static_cast<int64_t>(sInnerSize);
+
+                // prefix部分单独计算
+                int64_t sInnerIndexStartPrefix = -(preTokensLeftUp > 0 ?
+                                                       (preTokensLeftUp + static_cast<int64_t>(sInnerSize) - 1) /
+                                                           static_cast<int64_t>(sInnerSize) :
+                                                       preTokensLeftUp / static_cast<int64_t>(sInnerSize));
+                int64_t sInnerIndexEndPrefix = nextTokensLeftUp > 0 ?
+                                                   (nextTokensLeftUp + static_cast<int64_t>(sInnerSize) - 1) /
+                                                       static_cast<int64_t>(sInnerSize) :
+                                                   nextTokensLeftUp / static_cast<int64_t>(sInnerSize);
 
                 // The number of innerBlock blocks in each outBlock row represents the calculation amount of each outBlock row.
-                int64_t sInnerBlockNums = GetSInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums);
-
-                if (sInnerBlockNums - dif > dif && !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
+                int64_t actualInnerBlockNums =
+                    GetActualInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums) +
+                    GetActualInnerBlockNums(sInnerIndexStartPrefix, sInnerIndexEndPrefix, innerBlockNumsPrefix);
+                if (double(actualInnerBlockNums) - dif > dif &&
+                    !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
                     coreNidEnd[curCore] = tmpCoreNidEnd;
                     coreSidEnd[curCore] = tmpCoreSidEnd;
                     coreSposEnd[curCore] = tmpCoreSposEnd;
@@ -568,7 +583,7 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
                 tmpCoreSidEnd = bIdx + 1;
                 tmpCoreSposEnd = sOuterIndex + 1;
 
-                curWeight += sInnerBlockNums;
+                curWeight += actualInnerBlockNums;
                 preTokensLeftUp -= sOuterSize;
                 nextTokensLeftUp += sOuterSize;
             }
