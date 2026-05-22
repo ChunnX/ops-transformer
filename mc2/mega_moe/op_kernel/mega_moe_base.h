@@ -56,14 +56,21 @@ struct GMMAddrInfo {
 // 详细设计见 mega_moe_impl.h 顶部 DYN_SCHED_DESIGN 注释块。
 // ============================================================================
 // 任务编码:
-//   opType : 0=GMM1, 1=GMM2, 2=END (终止哨兵)
-//   waveIdx: 任务属于的 wave (0..waveCnt-1)
-//   nTileIdx: 任务在 wave 内的 N-tile 编号 (0..tileNumGmm1-1 或 tileNumGmm2-1)
-//   waveM  : 该 wave 的实际 M (=L1_TILE_M 或末尾 partial M)
+//   opType        : 0=GMM1, 1=GMM2, 2=END (终止哨兵)
+//   waveIdx       : 任务属于的 wave (0..waveCnt-1)
+//   coreInGroup   : 任务在 wave 内本核负责的 tile slice 起点 (0..coresPerWaveOp-1);
+//                   worker 进 engine 后跑 for(loopIdx=coreInGroup; loopIdx<tileNum;
+//                   loopIdx+=coresPerWaveOp), 一个 task 内串 tileNum/coresPerWaveOp 个 tile,
+//                   engine setup(BlockMmad::Init / BlockScheduler ctor 等) 因此 per-task
+//                   而非 per-tile, AIC/AIV scalar 摊销倍数 = tileNum/coresPerWaveOp
+//   coresPerWaveOp: 本 op 在每个 wave 内的核数, scheduler 按 op 类型分开取
+//                   (G1/G2 用不同的 cpw 解决非对称下闲置核问题)
+//   waveM         : 该 wave 的实际 M (=L1_TILE_M 或末尾 partial M)
 struct DynamicTask {
     int32_t opType;
     int32_t waveIdx;
-    int32_t nTileIdx;
+    int32_t coreInGroup;
+    int32_t coresPerWaveOp;
     int32_t waveM;
 };
 
@@ -81,27 +88,30 @@ constexpr int32_t DYN_CHANNEL_GMM2 = 1;  // AIC → AIV1 channel
 // 读会读到旧值。AtomicAdd 是绕 DCache 直达 HBM 的原子操作（静态代码 rowReadyFlags
 // 就用这个模式），配 ReadGmByPassDCache 读，跨核可靠。所以把 4 个字段塞进 1 个 int32。
 //
-// 位域布局:
-//   opType   : bit [0:2)    0=GMM1 / 1=GMM2 / 2=END
-//   waveIdx  : bit [2:10)   8 bit, 上限 256 waves  (m_i < 256*256 = 64K token/expert)
-//   nTileIdx : bit [10:21)  11 bit, 上限 2048 tiles
-//   waveM    : bit [21:32)  11 bit, 上限 2048 (实际 ≤ L1_TILE_M=256)
+// 位域布局 (32 bit 全用满):
+//   opType         : bit [0:2)    0=GMM1 / 1=GMM2 / 2=END
+//   waveIdx        : bit [2:10)   8 bit, 上限 256 waves
+//   coreInGroup    : bit [10:16)  6 bit, 上限 64 (SCHED_MAX_WORKERS)
+//   coresPerWaveOp : bit [16:22)  6 bit, 上限 64
+//   waveM          : bit [22:32)  10 bit, 上限 1024 (实际 ≤ L1_TILE_M=256)
 // real task 的 waveM ≥ 1 → packed > 0; END task opType=2 → packed ≥ 2 > 0。
 // 因此 slot == 0 唯一表示"空槽"，非 0 表示有 task。
 __aicore__ inline int32_t PackDynamicTask(const DynamicTask& t)
 {
     return (t.opType & 0x3)
          | ((t.waveIdx & 0xFF) << 2)
-         | ((t.nTileIdx & 0x7FF) << 10)
-         | ((t.waveM & 0x7FF) << 21);
+         | ((t.coreInGroup & 0x3F) << 10)
+         | ((t.coresPerWaveOp & 0x3F) << 16)
+         | ((t.waveM & 0x3FF) << 22);
 }
 
 __aicore__ inline void UnpackDynamicTask(int32_t packed, DynamicTask& t)
 {
-    t.opType   = packed & 0x3;
-    t.waveIdx  = (packed >> 2) & 0xFF;
-    t.nTileIdx = (packed >> 10) & 0x7FF;
-    t.waveM    = (packed >> 21) & 0x7FF;
+    t.opType         = packed & 0x3;
+    t.waveIdx        = (packed >> 2) & 0xFF;
+    t.coreInGroup    = (packed >> 10) & 0x3F;
+    t.coresPerWaveOp = (packed >> 16) & 0x3F;
+    t.waveM          = (packed >> 22) & 0x3FF;
 }
 
 struct PeermemInfo {
