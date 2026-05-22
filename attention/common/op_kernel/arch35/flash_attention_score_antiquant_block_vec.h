@@ -631,7 +631,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            if (this->tilingData->inputParamsRegbase.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL) &&
+            if (this->tilingData->inputParamsRegbase.sparseType ==
+                    static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL) &&
                 runInfo.boIdx != 0) {
                 pseInfo.qStartIdx = 0;
                 pseInfo.kvStartIdx = 0;
@@ -751,9 +752,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
 
     if (likely(runInfo.halfS1RealSize != 0)) {
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1ScmBlockTrue], stage1CastTensor,
-                {s2BaseSize / 16, (uint16_t)runInfo.halfS1RealSize,
-                (uint16_t)(vec1Srcstride - runInfo.halfS1RealSize),
-                (uint16_t)(s1BaseSize - runInfo.halfS1RealSize)});
+                 {s2BaseSize / 16, (uint16_t)runInfo.halfS1RealSize, (uint16_t)(vec1Srcstride - runInfo.halfS1RealSize),
+                  (uint16_t)(s1BaseSize - runInfo.halfS1RealSize)});
     }
     this->stage1OutQue[0].template FreeTensor(stage1CastTensor);
     // =======================================================
