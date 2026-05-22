@@ -314,7 +314,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     //     ret == ACL_SUCCESS,
     //     LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     // );
-
+    std::cout << "6" << std::endl;
     // 调用combineV2算子第一阶段接口
     ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
         expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
@@ -326,6 +326,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
     );
+    std::cout << "7" << std::endl;
     // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
     if (combineV2WorkspaceSize > 0) {
         ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -334,13 +335,14 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     // 调用combineV2算子第二阶段接口
     ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
+    std::cout << "8" << std::endl;
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
     CHECK_RET(
         ret == ACL_SUCCESS, 
         LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     );
-
+std::cout << "9" << std::endl;
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
 
     std::vector<int64_t> time_vec(4, 0);
@@ -351,7 +353,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     size_t input_size = n_pes * trans_size * sizeof(int32_t);
     aclrtMallocHost(reinterpret_cast<void**>(&y_host), input_size);
     aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
-
+std::cout << "10" << std::endl;
     std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
     std::cout << "[Output] pe=" << pe_id << ": "
                                 << y_host[trans_size * 0] << " "
