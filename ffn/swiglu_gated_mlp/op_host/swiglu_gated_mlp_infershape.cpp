@@ -20,8 +20,8 @@
  */
 
 #include "log/log.h"
+#include "mc2_log.h"
 #include "register/op_impl_registry.h"
-#include "error_util.h"
 
 using namespace ge;
 

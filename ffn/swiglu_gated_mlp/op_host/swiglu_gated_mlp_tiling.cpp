@@ -24,7 +24,7 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "error_util.h"
+#include "mc2_log.h"
 #include "register/op_impl_registry.h"
 
 namespace optiling {
