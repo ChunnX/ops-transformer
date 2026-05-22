@@ -138,7 +138,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     int64_t globalBS = BS * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 0;
     int64_t outDtype = 0;
-    int64_t commQuantMode = 0;
+    int64_t commQuantMode = 4; // TODO 量化把这里配置成4
     int64_t groupListType = 0;
     int64_t localExpertNum;
     int64_t A;
@@ -227,7 +227,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     int n_pes = aclshmem_n_pes();
 
     // DEBUG: n_pes * trans_size * sizeof(int32_t)
-    uint32_t trans_size = 1024 * 1024 * 1024;
+    uint32_t trans_size = 16; // TODO 这里其实没有分配这么多，实际是外面分配的
     uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t)));
     uint64_t custom_ptr_addr = (uint64_t)custom_ptr;
     std::cout << "[HOST custom_ptr_addr] " << custom_ptr_addr << std::endl;
