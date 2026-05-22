@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_MX_MTE1_H_
-#define FIA_KERNEL_FULLQUANT_MX_MTE1_H_
+#ifndef FIA_KERNEL_FULLQUANT_MX_MMAD_H_
+#define FIA_KERNEL_FULLQUANT_MX_MMAD_H_
 
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
@@ -58,8 +58,10 @@ public:
     int ipid{-1};
     __ca__ void * l0a[2];
     __cb__ void * l0b[2];
+    __cc__ void * l0c[2];
     int l0a_id{-1};
     int l0b_id{-1};
+    int l0c_id{-1};
     uint64_t inner_loop_limit;
     uint64_t outer_loop_limit;
     __aicore__ inline FlashAttentionFullQuantMxKernel(){};
@@ -93,6 +95,10 @@ public:
         l0a[1] = (__ca__ void *)get_imm(32 * 1024);
         l0b[0] = (__cb__ void *)get_imm(0);
         l0b[1] = (__cb__ void *)get_imm(32 * 1024);
+        l0b[0] = (__cb__ void *)get_imm(0);
+        l0b[1] = (__cb__ void *)get_imm(32 * 1024);
+        l0c[0] = (__cc__ void *)get_imm(0);
+        l0c[1] = (__cc__ void *)get_imm(128 * 256 * 4);//sizeof(fp32)
     }
 
     __aicore__ inline void InitConstInfo()
@@ -204,6 +210,11 @@ public:
         wait_flag(PIPE_MTE1, PIPE_MTE2, (event_t)7);
     }
 
+    __aicore__ inline void prefree_l0c(){
+        set_flag(PIPE_FIX, PIPE_M, (event_t)0);
+        set_flag(PIPE_FIX, PIPE_M, (event_t)1);
+    }
+
     __aicore__ inline void prefree_l0ab(){
         set_flag(PIPE_M, PIPE_MTE1, (event_t)0);
         set_flag(PIPE_M, PIPE_MTE1, (event_t)1);
@@ -218,7 +229,10 @@ public:
         wait_flag(PIPE_M, PIPE_MTE1, (event_t)3);
     }
 
-
+    __aicore__ inline void postalloc_l0c(){
+        wait_flag(PIPE_FIX, PIPE_M, (event_t)0);
+        wait_flag(PIPE_FIX, PIPE_M, (event_t)1);
+    }
 
     __aicore__ inline void gm_l1_q(uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
@@ -375,7 +389,7 @@ public:
         // loadData2DMxParamsB.yStep = 2
         // loadData2DMxParamsB.srcStride =2
         // loadData2DMxParamsB.dstStride = 2
-        load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>(l0b[l0b_iduse]),
+        load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>(l0b[l0b_iduse % 2]),
                     (__cbuf__ float8_e4m3_t *)k1[ivkuse],
                     0,
                     0,
@@ -385,7 +399,7 @@ public:
                     16,
                     0);
         uint32_t kScaleOffset = 256 * 128;
-        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__cb__ float8_e4m3_t *)l0b[l0b_iduse])) / 16;
+        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__cb__ float8_e4m3_t *)l0b[l0b_iduse % 2])) / 16;
         load_cbuf_to_cb_mx(mxDstAddr,
             static_cast<__cbuf__ void *>((__cbuf__ float8_e8m0_t *)k1[ivkuse] + kScaleOffset),
             0,
@@ -394,6 +408,20 @@ public:
             2,
             2,
             2);
+    }
+
+    __aicore__ inline void compute_mm1(int l0c_iduse, int l0a_iduse, int l0b_iduse)
+    {
+        // MmadParams mmadParams;
+        // mmadParams.m = 32;
+        // mmadParams.n = 256;
+        // mmadParams.k = 128;
+        // mmadParams.cmatrixInitVal =1;
+        // mmadParams.cmatrixSource = 0;
+        // mmadParams.unitFlag = 0;
+
+        mad_mx((__cc__ float *)l0c[l0c_iduse], (__ca__ fp8_e4m3fn_t*)l0a[l0a_iduse], (__cb__ fp8_e4m3fn_t*)l0b[l0b_iduse % 2],
+                32, 128, 256, 0, false, false, true);
     }
 
     __aicore__ inline void mm1(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop)
@@ -420,6 +448,10 @@ public:
         wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
         
         //mte1 start
+        l0c_id ++ ;
+        int l0c_iduse = l0c_id % 2;
+        wait_flag(PIPE_FIX, PIPE_M, l0c_iduse);
+
         l0a_id ++ ;
         int l0a_iduse = l0a_id % 2;
         wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
@@ -434,14 +466,20 @@ public:
 
 
         wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
-        set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
         wait_flag(PIPE_MTE1, PIPE_M, l0b_iduse);
+
+        compute_mm1(l0c_iduse, l0a_iduse, l0b_iduse);
+        set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
         set_flag(PIPE_M, PIPE_MTE1, l0b_iduse);
 
         if (inner == 19 && (subLoop % 2 == 1)) {
             set_flag(PIPE_MTE1, PIPE_MTE2, iquse);
         }
         set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+
+        set_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        wait_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        set_flag(PIPE_FIX, PIPE_M, l0c_iduse);
 
     }
 
@@ -536,7 +574,7 @@ public:
         // loadData2DMxParamsB.yStep = 4
         // loadData2DMxParamsB.srcStride =4
         // loadData2DMxParamsB.dstStride = 4
-        load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>(l0b[l0b_iduse]),
+        load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>(l0b[l0b_iduse % 2]),
                     (__cbuf__ float8_e4m3_t *)v1[ivkuse],
                     0,
                     0,
@@ -546,7 +584,7 @@ public:
                     8,
                     0);
         uint32_t vScaleOffset = 256 * 128;
-        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__cb__ float8_e4m3_t *)l0b[l0b_iduse])) / 16;
+        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__cb__ float8_e4m3_t *)l0b[l0b_iduse % 2])) / 16;
         load_cbuf_to_cb_mx(mxDstAddr,
             static_cast<__cbuf__ void *>((__cbuf__ float8_e8m0_t *)v1[ivkuse] + vScaleOffset),
             0,
@@ -556,6 +594,20 @@ public:
             4,
             4);
     }
+
+    __aicore__ inline void compute_mm2(int l0c_iduse, int l0a_iduse, int l0b_iduse, uint32_t k)
+    {
+        // MmadParams mmadParams;
+        // mmadParams.m = 32;
+        // mmadParams.n = 128;
+        // mmadParams.k = 256;
+        // mmadParams.cmatrixInitVal =1,0;
+        // mmadParams.cmatrixSource = 0;
+        // mmadParams.unitFlag = 0;
+        mad_mx((__cc__ float *)l0c[l0c_iduse], (__ca__ fp8_e4m3fn_t*)l0a[l0a_iduse], (__cb__ fp8_e4m3fn_t*)l0b[l0b_iduse % 2],
+                32, 256, 128, 0, false, false, k == 0);
+    }
+
     __aicore__ inline void mm2(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
         ipid ++;
@@ -570,6 +622,11 @@ public:
         } else {
             set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
         }
+
+        l0c_id ++ ;
+        int l0c_iduse = l0c_id % 2;
+        wait_flag(PIPE_FIX, PIPE_M, l0c_iduse);
+
         wait_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
         for (uint32_t k = 0; k < 2; k++) {
             ikv++;
@@ -596,8 +653,11 @@ public:
             
 
             wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
-            set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
             wait_flag(PIPE_MTE1, PIPE_M, l0b_iduse);
+
+            // compute_mm2(l0c_iduse, l0a_iduse, l0b_l0b_iduseid, k);
+
+            set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
             set_flag(PIPE_M, PIPE_MTE1, l0b_iduse);
 
             set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
@@ -605,6 +665,10 @@ public:
         if (inner == 19) {
             set_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
         }
+        set_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        wait_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        set_flag(PIPE_FIX, PIPE_M, l0c_iduse);
+        
     }
 
     __aicore__ inline void Process()
@@ -612,6 +676,7 @@ public:
         if ASCEND_IS_AIC {
             prefree_kv_l1();  // 4buffer
             prefree_l0ab();
+            prefree_l0c();
             uint64_t id = 0;
             uint64_t outerp[4], innerp[4];
             uint64_t total = outer_loop_limit * inner_loop_limit;
@@ -653,6 +718,7 @@ public:
 
             postalloc_kv_l1();
             postalloc_l0ab();
+            postalloc_l0c();
         }
     }
 };  // FlashAttentionFullQuantMxKernel
