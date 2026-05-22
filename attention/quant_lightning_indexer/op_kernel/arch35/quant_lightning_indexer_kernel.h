@@ -162,6 +162,7 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
+    constInfo.setL2DisableFlag = tilingData->setL2DisableFlag;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -426,6 +427,9 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
+        if (constInfo.setL2DisableFlag) {
+            kScaleGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        }
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
         vectorService.InitVecWorkspaceTensor(scoreGm);
@@ -436,6 +440,9 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
         keyGm.SetGlobalBuffer((__gm__ K_T *)key);
+        if (constInfo.setL2DisableFlag) {
+            keyGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        }
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
     InitBuffers();
