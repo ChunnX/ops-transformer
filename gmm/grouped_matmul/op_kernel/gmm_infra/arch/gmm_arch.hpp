@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_ARCH_ARCH_HPP
-#define CATLASS_ARCH_ARCH_HPP
+#ifndef GMM_ARCH_ARCH_HPP
+#define GMM_ARCH_ARCH_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 
@@ -51,4 +51,4 @@ struct PositionUB {
 
 } // namespace Catlass::Arch
 
-#endif // CATLASS_ARCH_ARCH_HPP
+#endif // GMM_ARCH_ARCH_HPP

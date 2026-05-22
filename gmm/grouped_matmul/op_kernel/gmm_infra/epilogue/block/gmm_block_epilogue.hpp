@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
-#define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#ifndef GMM_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#define GMM_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 
@@ -27,4 +27,4 @@ class BlockEpilogue {
 
 #include "../../../gmm_infra/epilogue/block/gmm_block_epilogue_per_token_dequant.hpp"
 #include "../../../gmm_infra/epilogue/block/block_epilogue_per_token_dequant_add.hpp"
-#endif  // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#endif  // GMM_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP

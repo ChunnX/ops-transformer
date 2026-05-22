@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_PROLOGUE_TRATIS_HPP
-#define CATLASS_GEMM_PROLOGUE_TRATIS_HPP
+#ifndef GMM_GEMM_PROLOGUE_TRATIS_HPP
+#define GMM_GEMM_PROLOGUE_TRATIS_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 
@@ -38,7 +38,7 @@ struct PrologueTraits<void> {
     using Params = EmptyType;
 
     template <class... Args>
-    CATLASS_DEVICE
+    GMM_DEVICE
     PrologueTraits(Args...) {}
 };
 

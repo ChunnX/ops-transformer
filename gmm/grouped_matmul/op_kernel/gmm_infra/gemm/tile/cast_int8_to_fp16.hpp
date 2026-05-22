@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_CAST_INT8_TO_FP16_HPP
-#define CATLASS_GEMM_TILE_CAST_INT8_TO_FP16_HPP
+#ifndef GMM_GEMM_TILE_CAST_INT8_TO_FP16_HPP
+#define GMM_GEMM_TILE_CAST_INT8_TO_FP16_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
@@ -49,10 +49,10 @@ struct TileCastInt8ToFp16Dequant {
         half deqScalar;
         half deqZeroPoint;
 
-        CATLASS_HOST_DEVICE
+        GMM_HOST_DEVICE
         Params() = default;
 
-        CATLASS_HOST_DEVICE
+        GMM_HOST_DEVICE
         Params(half deqScalar_, half deqZeroPoint_)
         {
             deqScalar = deqScalar_;
@@ -61,7 +61,7 @@ struct TileCastInt8ToFp16Dequant {
     };
 
     /// Construct
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileCastInt8ToFp16Dequant(Arch::Resource<ArchTag> const &resource, Params const &params_) : params(params_)
     {
         if constexpr (g_coreType == AscendC::AIV) {
@@ -83,7 +83,7 @@ struct TileCastInt8ToFp16Dequant {
     }
 
     /// Destructor
-    CATLASS_DEVICE
+    GMM_DEVICE
     ~TileCastInt8ToFp16Dequant() {
         if constexpr (g_coreType == AscendC::AIV) {
             for (uint32_t i = 0; i < STAGES; i++) {
@@ -93,7 +93,7 @@ struct TileCastInt8ToFp16Dequant {
         }
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementDst> const &gmDst, LayoutDst const &layoutDst,
         AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc
@@ -187,4 +187,4 @@ protected:
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_CAST_INT8_TO_FP16_HPP
+#endif // GMM_GEMM_TILE_CAST_INT8_TO_FP16_HPP

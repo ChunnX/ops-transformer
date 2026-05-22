@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_COPY_L1_TO_L0B_HPP
-#define CATLASS_GEMM_TILE_COPY_L1_TO_L0B_HPP
+#ifndef GMM_GEMM_TILE_COPY_L1_TO_L0B_HPP
+#define GMM_GEMM_TILE_COPY_L1_TO_L0B_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/gmm_numeric_size.hpp"
@@ -38,10 +38,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<Element, layout::zZ, AscendC
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B(){}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -69,10 +69,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<float, layout::zZ, AscendC::
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B(){}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -100,10 +100,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<int8_t, layout::zN, AscendC:
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = BytesToBits(BYTE_PER_FRACTAL) / SizeOfBits<Element>::value;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B(){}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -135,10 +135,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<Element, layout::nZ, AscendC
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -173,10 +173,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<Element, layout::zN, AscendC
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -210,10 +210,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<Element, layout::nN, AscendC
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -243,10 +243,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<float, layout::nN, AscendC::
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -281,10 +281,10 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<int8_t, layout::nZ, AscendC:
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -321,10 +321,10 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<int8_t, layout::zN, AscendC::TPositio
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -358,10 +358,10 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<float, layout::zN, AscendC::TPosition
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -400,10 +400,10 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -436,10 +436,10 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<AscendC::int4b_t, layout::zN, AscendC
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -472,10 +472,10 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToL0B() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -513,4 +513,4 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_COPY_L1_TO_L0B_HPP
+#endif // GMM_GEMM_TILE_COPY_L1_TO_L0B_HPP

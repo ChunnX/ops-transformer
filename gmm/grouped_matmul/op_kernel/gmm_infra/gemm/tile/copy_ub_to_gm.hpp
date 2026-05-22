@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_COPY_UB_TO_GM_HPP
-#define CATLASS_GEMM_TILE_COPY_UB_TO_GM_HPP
+#ifndef GMM_GEMM_TILE_COPY_UB_TO_GM_HPP
+#define GMM_GEMM_TILE_COPY_UB_TO_GM_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
@@ -33,10 +33,10 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyUb2Gm() = default;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -57,4 +57,4 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
 }  // Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_COPY_UB_TO_GM_HPP
+#endif // GMM_GEMM_TILE_COPY_UB_TO_GM_HPP

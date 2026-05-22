@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
-#define CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
+#ifndef GMM_EPILOGUE_DISPATCH_POLICY_HPP
+#define GMM_EPILOGUE_DISPATCH_POLICY_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 #include "../../gmm_infra/arch/gmm_arch.hpp"
@@ -112,4 +112,4 @@ struct EpilogueAtlasA2Gemv {
 ///////////////////////////
 }  // namespace Catlass::Epilogue
 
-#endif  // CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
+#endif  // GMM_EPILOGUE_DISPATCH_POLICY_HPP

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_COPY_L1_TO_FP_HPP
-#define CATLASS_GEMM_TILE_COPY_L1_TO_FP_HPP
+#ifndef GMM_GEMM_TILE_COPY_L1_TO_FP_HPP
+#define GMM_GEMM_TILE_COPY_L1_TO_FP_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
@@ -35,10 +35,10 @@ struct CopyL1ToFP<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLay
 
     static constexpr uint32_t ELE_NUM_PER_FP =  BYTE_PER_BLK_FP / sizeof(ElementSrc);
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyL1ToFP(){}
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementDst> dstTensor,
         AscendC::LocalTensor<ElementSrc> srcTensor,
@@ -58,4 +58,4 @@ struct CopyL1ToFP<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLay
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_COPY_L1_TO_FP_HPP
+#endif // GMM_GEMM_TILE_COPY_L1_TO_FP_HPP

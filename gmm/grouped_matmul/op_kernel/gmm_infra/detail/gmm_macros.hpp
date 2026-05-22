@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_DETAIL_MACROS_HPP
-#define CATLASS_DETAIL_MACROS_HPP
+#ifndef GMM_DETAIL_MACROS_HPP
+#define GMM_DETAIL_MACROS_HPP
 
 #if defined(__CCE__)
 #include <kernel_operator.h>
@@ -22,4 +22,4 @@
 #endif
 #define CATLASS_GLOBAL __global__ [aicore]
 
-#endif  // CATLASS_DETAIL_MACROS_HPP
+#endif  // GMM_DETAIL_MACROS_HPP

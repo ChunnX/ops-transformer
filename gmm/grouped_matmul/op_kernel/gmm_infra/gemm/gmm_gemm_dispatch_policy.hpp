@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_DISPATCH_POLICY_HPP
-#define CATLASS_GEMM_DISPATCH_POLICY_HPP
+#ifndef GMM_GEMM_DISPATCH_POLICY_HPP
+#define GMM_GEMM_DISPATCH_POLICY_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 #include "../../gmm_infra/arch/gmm_arch.hpp"
@@ -267,4 +267,4 @@ struct MmadPingpong : public MmadBase<ArchTag_, false> {
 
 }  // namespace Catlass::Gemm
 
-#endif  // CATLASS_GEMM_DISPATCH_POLICY_HPP
+#endif  // GMM_GEMM_DISPATCH_POLICY_HPP

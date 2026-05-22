@@ -9,8 +9,8 @@
  */
 
 
-#ifndef CATLASS_GEMM_TILE_TILE_MULS_HPP
-#define CATLASS_GEMM_TILE_TILE_MULS_HPP
+#ifndef GMM_GEMM_TILE_TILE_MULS_HPP
+#define GMM_GEMM_TILE_TILE_MULS_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/gemm/gmm_helper.hpp"
@@ -24,12 +24,12 @@ struct TileMuls {
 
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     TileMuls()
     {
     }
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -49,4 +49,4 @@ struct TileMuls {
 ///////////////////////////////////////////////////////
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_TILE_MULS_HPP
+#endif // GMM_GEMM_TILE_TILE_MULS_HPP

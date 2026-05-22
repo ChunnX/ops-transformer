@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_DETAIL_CALLBACK_HPP
-#define CATLASS_DETAIL_CALLBACK_HPP
+#ifndef GMM_DETAIL_CALLBACK_HPP
+#define GMM_DETAIL_CALLBACK_HPP
 
 #include "../../gmm_infra/detail/gmm_macros.hpp"
 
@@ -60,4 +60,4 @@ Callback MakeCallback(Func *func)
     return callback;
 }
 }
-#endif // CATLASS_DETAIL_CALLBACK_HPP
+#endif // GMM_DETAIL_CALLBACK_HPP
