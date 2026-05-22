@@ -87,7 +87,7 @@ def find_dependent_ops(
     
     expansion_log: List[str] = []
     
-    for current_op in changed_ops:
+    for current_op in sorted(changed_ops):
         if current_op not in reverse_graph:
             logger.warning(f"算子 {current_op} 不在依赖关系中，跳过")
             continue
@@ -95,10 +95,15 @@ def find_dependent_ops(
         dependents = reverse_graph.get(current_op, set())
         new_dependents = dependents - visited
         
+        logger.info(f"算子 {current_op} 的反向依赖: {sorted(dependents)}")
         if new_dependents:
-            expansion_log.append(
-                f"从 {current_op} 扩展到: {sorted(new_dependents)}"
-            )
+            logger.info(f"算子 {current_op} 新增反向依赖(去重后): {sorted(new_dependents)}")
+        else:
+            logger.info(f"算子 {current_op} 的反向依赖已全部包含在前序算子的扩展中")
+        
+        expansion_log.append(
+            f"从 {current_op} 扩展到: {sorted(new_dependents)}"
+        )
         
         for dep_op in new_dependents:
             visited.add(dep_op)
