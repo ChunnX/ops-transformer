@@ -10,7 +10,7 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../../op_kernel/mega_moe_tiling.h"
+#include "../../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace MegaMoeUT {
