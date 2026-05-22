@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_topk.h
@@ -21,8 +21,7 @@
 
 namespace liV2Topk {
 template<typename T>
-class LIV2Topk
-{
+class LIV2Topk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
                                       LocalTensor<T>& inputLocal,
@@ -67,35 +66,42 @@ public:
     }
 
     __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
-                                      LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag, uint32_t outputIdxOffset)
+                                      LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
+                                      uint32_t s2LoopNum, bool returnValueFlag, uint32_t outputIdxOffset)
     {
         if (s2LoopNum == 1) {
-            liV2Topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+            liV2Topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                               idx0Local, idx1Local, idx2Local, idx3Local,
+                                               nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, topK);
         } else {
             if (loopIdx == 0) {
-                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                  idx0Local, idx1Local, idx2Local, idx3Local,
+                                                  nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, topK);
             } else {
-                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                  idx0Local, idx1Local, idx2Local, idx3Local,
+                                                  nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2], 
-                                            topK, loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256), s2SeqLen);
+                liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal,
+                                                  mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+                                                  topK, loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256),
+                                                  s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
-                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], LIV2Common::Align(topK, (uint32_t)256));
+                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+                                      LIV2Common::Align(topK, (uint32_t)256));
                 }
             }
         }
-
         //indices加偏移
         if (outputIdxOffset != 0) {
             liV2Topkb32gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
         }
-
-        
     }
 private:
     LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引

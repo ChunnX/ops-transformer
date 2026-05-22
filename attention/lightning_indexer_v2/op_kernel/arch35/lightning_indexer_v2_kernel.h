@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_kernel.h
@@ -60,7 +60,7 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
                                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset, 
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
                                 __gm__ uint8_t *workspace, const LIV2TilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -74,7 +74,7 @@ public:
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
-    using W_T = typename LightningIndexerV2TypeTraits<Q_T, 
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T,
                 typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     LIV2Matmul<LIT> matmulService;
@@ -286,7 +286,7 @@ __aicore__ inline void LIV2Preload<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx,
 template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  GlobalTensor<uint32_t> &metadataGm)
 {
-    uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_CORE_ENABLE_INDEX);  
+    uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_CORE_ENABLE_INDEX);
     uint32_t bN2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_BN2_START_INDEX);
     uint32_t mStartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_M_START_INDEX);
     uint32_t s2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_S2_START_INDEX);
@@ -379,7 +379,7 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1
 
 template <typename LIT>
 __aicore__ inline uint32_t LIV2Preload<LIT>::GetTotalBaseBlockNum()
-{ 
+{
     uint32_t totalBlockNum = 0;
     uint32_t actS1Size, actS2Size, actS2SizeOrig;
     uint32_t s1GBaseNum, s2BaseNum;
@@ -403,7 +403,7 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetTotalBaseBlockNum()
 // 多核版本，双闭区间。基本原则：计算每个核最少处理的块数, 剩余的部分前面的核每个核多处理一块
 template <typename LIT>
 __aicore__ void inline LIV2Preload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum,
-                                                LIV2Common::SplitCoreInfo &info) 
+                                                   LIV2Common::SplitCoreInfo &info)
 {
     uint32_t totalBlockNum = GetTotalBaseBlockNum();
     uint32_t minBlockPerCore = totalBlockNum / coreNum;
@@ -459,7 +459,7 @@ __aicore__ void inline LIV2Preload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t
                 if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
                     info.bN2End = bN2Idx;
                     info.gS1End = gS1Idx;
-                    info.s2End = constInfo.isLDOpen ? s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1 
+                    info.s2End = constInfo.isLDOpen ? s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1
                                                     : s2BaseNum - 1;
                     if (coreIdx == curCoreIdx) {
                         // S2被切N核，那么只有第一个核需要处理LD，其他核不用
@@ -521,9 +521,9 @@ template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                               __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
-                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset, 
+                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
                                               __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
-                                              __gm__ uint8_t *workspace,  const LIV2TilingData *__restrict tiling, 
+                                              __gm__ uint8_t *workspace,  const LIV2TilingData *__restrict tiling,
                                               TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
@@ -804,11 +804,11 @@ __aicore__ inline void LIV2Preload<LIT>::ProcessBaseBlock(uint32_t loop, uint64_
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            vectorService.ProcessTopK(runInfo);   
+        if (runInfo.isLastS2InnerLoop) {   // 本核s2last
+            vectorService.ProcessTopK(runInfo);
         }
     }
 }
 
 }  // namespace LIKernel
-#endif  // LIGHTNING_INDEXER_KERNEL_H
+#endif  // LIGHTNING_INDEXER_V2_KERNEL_H

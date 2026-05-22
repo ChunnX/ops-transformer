@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_service_vector.h
@@ -30,14 +30,12 @@ constexpr uint32_t TRUNK_LEN_16K = 16384;
 constexpr uint32_t TRUNK_LEN_8K = 8192;
 
 template<typename Q_T, typename W_T = void>
-struct LightningIndexerV2TypeTraits
-{
+struct LightningIndexerV2TypeTraits {
     using weightsType = Q_T;   // 默认：weightsType绑定Q_T
 };
 
 template<typename Q_T>
-struct LightningIndexerV2TypeTraits<Q_T, float>
-{
+struct LightningIndexerV2TypeTraits<Q_T, float> {
     using weightsType = float;  // W_T=float时，强制weightsType为float
 };
 template <typename LIT>
@@ -52,7 +50,8 @@ public:
     using K_T = typename LIT::keyType;
     using QK_T = typename LIT::queryKeyType;
     using SCORE_T = typename LIT::scoreType;
-    using W_T = typename LightningIndexerV2TypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T, 
+                typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     __aicore__ inline LIV2Vector(){};
     __aicore__ inline void ProcessVec1(const LIV2Common::RunInfo &info);
@@ -165,7 +164,7 @@ __aicore__ inline void LIV2Vector<LIT>::InitBuffers(TPipe *pipe)
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
     // out
-    vec1OutUB_ = outBuf_.Get<SCORE_T>(); 
+    vec1OutUB_ = outBuf_.Get<SCORE_T>();
     // returnvalue
     // 大小：topK * sizeof(bfloat16_t)
     pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));
@@ -177,13 +176,13 @@ __aicore__ inline void LIV2Vector<LIT>::InitBuffers(TPipe *pipe)
     valueOutLocal_ = valueOutBuf_.Get<K_T>();
     // Topk
     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
-    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));   
+    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
-    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));      
+    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
     // 大小：topkCountAlign256_ * sizeof(SCORE_T)
-    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T));            
+    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T)); 
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
@@ -359,16 +358,16 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessVec1(const LIV2Common::RunInfo &i
         copyOutParams.blockCount = curAivS1ProcNum;
         copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
         copyOutParams.srcStride = 0;
-        copyOutParams.dstStride = (LIV2Common::Align((uint64_t)constInfo_.kSeqSize, 
+        copyOutParams.dstStride = (LIV2Common::Align((uint64_t)constInfo_.kSeqSize,
                                                      (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
 
-        DataCopyPad(scoreGm[vec1OutGmOffset], 
+        DataCopyPad(scoreGm[vec1OutGmOffset],
                     vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_], copyOutParams);
         SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
         // V核处理完，通知C核可以把mm1Res搬运到UB
         CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
-            LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2); 
-    } 
+            LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);
+    }
 }
 
 template <typename LIT>
@@ -377,11 +376,11 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
     SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
     WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
 
-    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
-    int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
-    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
+    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+    int64_t curS2Idx = info.s2Idx * s2BaseSize_;
+    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
     int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
+    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
 
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
@@ -398,7 +397,7 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
     int32_t cuRealAcSeq = info.actS2Size;
     if (constInfo_.attenMaskFlag) {
         cuRealAcSeq = info.actS2SizeOrig - info.actS1Size + curAivS1Idx + 1;
-    } 
+    }
 
     int32_t validS2Len = cuRealAcSeq;
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
@@ -463,10 +462,14 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
                 WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                 copyInParams.blockLen = validS2Len * sizeof(SCORE_T); // byte
                 AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, 0, 0};
-                AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)], copyInParams, padParams);
+                AscendC::DataCopyPad(mrgValueLocal_,
+                                     scoreGm[vecOffset * LIV2Common::Align(
+                                        (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
+                                     copyInParams, padParams);
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, 0, 1, returnValueFlag, outputIdxOffset);
+                topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign,
+                        0, 1, returnValueFlag, outputIdxOffset);
             } else {
                 uint32_t outputIdxOffsetTmp = 0;
                 for (uint32_t loopIdx = 0; loopIdx < s2LoopNum; loopIdx++) {
@@ -475,16 +478,22 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
                     }
                     if (loopIdx == 0) {
                         copyInParams.blockLen = trunkLen_ * sizeof(SCORE_T); // byte
-                        AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)], copyInParams, padParams);
+                        AscendC::DataCopyPad(mrgValueLocal_,
+                                             scoreGm[vecOffset * LIV2Common::Align(
+                                                (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)], 
+                                            copyInParams, padParams);
                         SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                         WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                        topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_, loopIdx, s2LoopNum, returnValueFlag, outputIdxOffsetTmp);
+                        topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_,
+                                loopIdx, s2LoopNum, returnValueFlag, outputIdxOffsetTmp);
                         continue;
                     }
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
-                    uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ? validS2Len % trunkLen_ : trunkLen_;
-                    uint32_t offset = vecOffset * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + loopIdx * trunkLen_;
+                    uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ?
+                                              validS2Len % trunkLen_ : trunkLen_;
+                    uint32_t offset = vecOffset * LIV2Common::Align(
+                            (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + loopIdx * trunkLen_;
                     AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, topkCountAlign256_);
                     // topk如果没有对齐到256，则把topkCountAlign256_ - topkCount_部分刷0
                     if (topkCountAlign256_ != topkCount_) {
@@ -496,31 +505,38 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
                         Duplicate(mrgValueLocal_[topkCount_ / 64 * 64], zero, mask, 1, 1, 0);
                         PipeBarrier<PIPE_V>();
                         // 把topk剩余对齐到256的部分刷0
-                        Duplicate(mrgValueLocal_[topkCount_ / 64 * 64 + 64], zero, topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
+                        Duplicate(mrgValueLocal_[topkCount_ / 64 * 64 + 64], zero,
+                                  topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
                         SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                         WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                     }
                     copyInParams.blockLen = validTrunkLen * sizeof(SCORE_T); // byte
                     // TOPK 直方图一次必须计算256，输入处理数据需要和256对齐
                     if ((topkCountAlign256_ + validTrunkLen) % 256 != 0) {
-                        Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256], zero, LIV2Common::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
+                        Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256],
+                                  zero, LIV2Common::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
                         SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                         WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                     }
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
-                    AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset], copyInParams, padParams);
+                    AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset],
+                                         copyInParams, padParams);
                     SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                    topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, LIV2Common::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum, returnValueFlag, outputIdxOffsetTmp);
+                    topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, LIV2Common::Align(
+                            topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx,
+                            s2LoopNum, returnValueFlag, outputIdxOffsetTmp);
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 }
             }
         } else {
-            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)(zero + outputIdxOffset), validS2Len);
+            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
+                                    (int32_t)(zero + outputIdxOffset), validS2Len);
             if (returnValueFlag) {
                 copyInParams.blockLen = LIV2Common::Align(validS2Len, (int32_t)32) * sizeof(uint16_t);
                 AscendC::DataCopyPad(scoreOutLocal_,
-                            scoreGm[vecOffset * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
+                            scoreGm[vecOffset * LIV2Common::Align(
+                                (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
                             copyInParams, padParams);
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
@@ -537,13 +553,15 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
         
         if (validS2Len / 8 * 8 + 64 < topkCount_) {
             PipeBarrier<PIPE_V>();
-            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64], neg, topkCount_ - (validS2Len / 8 * 8 + 64));
+            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64], 
+                      neg, topkCount_ - (validS2Len / 8 * 8 + 64));
         }
 
         SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-        AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+        AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                             indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         
         // 是否返回Value值
@@ -564,7 +582,8 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
         
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_[validS2Len / 16 * 16 + 64], zeroK_T, topkCount_ - (validS2Len / 16 * 16 + 64));
+                Duplicate(valueOutLocal_[validS2Len / 16 * 16 + 64], zeroK_T,
+                          topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             AscendC::DataCopyParams copyOutValueParams;
             copyOutValueParams.blockCount = 1;
@@ -572,7 +591,8 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
             copyOutValueParams.srcStride = 0;
             copyOutValueParams.dstStride = 0;
             // 搬运到GM
-            AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_], valueOutLocal_, copyOutValueParams);
+            AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
+            valueOutLocal_, copyOutValueParams);
         }        
     }
 }

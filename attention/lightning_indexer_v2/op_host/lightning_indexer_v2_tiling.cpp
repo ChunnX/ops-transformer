@@ -794,7 +794,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint32_t weightTypeFlag = 0;
     uint32_t topkScorePrecision = 1;
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
-                            inputQLayout, inputKLayout, weightTypeFlag, topkScorePrecision);
+                                            inputQLayout, inputKLayout, weightTypeFlag, topkScorePrecision);
     context_->SetTilingKey(tilingKey);
 
     return ge::GRAPH_SUCCESS;
