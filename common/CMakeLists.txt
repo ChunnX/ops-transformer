@@ -25,7 +25,7 @@ if (BUILD_OPEN_PROJECT)
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
-            $<$<BOOL:OFF${BUILD_OPS_RTY_KERNEL}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/op_common>>
+            $<$<BOOL:OFF${BUILD_OPS_RTY_KERNEL}>:$<BUILD_INTERFACE:${CANN_3RD_LIB_PATH}/opbase/include/op_common>>
             $<INSTALL_INTERFACE:include/ops_adv/utils>
     )
 
@@ -40,7 +40,7 @@ if (BUILD_OPEN_PROJECT)
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn/opdev>>
-            $<$<BOOL:OFF${BUILD_OPS_RTY_KERNEL}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/op_common>>
+            $<$<BOOL:OFF${BUILD_OPS_RTY_KERNEL}>:$<BUILD_INTERFACE:${CANN_3RD_LIB_PATH}/opbase/include/op_common>>
             $<INSTALL_INTERFACE:include/ops_adv/utils>
     )
 
@@ -65,14 +65,12 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include
-      ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
+      ${CANN_3RD_LIB_PATH}/opbase/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-      ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
+      ${CANN_3RD_LIB_PATH}/opbase/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
     )
 
@@ -98,9 +96,8 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
+      ${CANN_3RD_LIB_PATH}/opbase/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
     )
 
@@ -152,6 +149,7 @@ if (ENABLE_TILING_SINK)
                 -DOPS_ADV_CMAKE_DIR=${OPS_ADV_CMAKE_DIR}
                 -DPRODUCT_SIDE=device
                 -DENABLE_BUILT_IN=${ENABLE_BUILT_IN}
+                -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}
                 <SOURCE_DIR>
             INSTALL_COMMAND ""
             BUILD_ALWAYS TRUE
