@@ -12,7 +12,6 @@
  * \file norm_rope_concat_grad_base.h
  * \brief
  */
-
 #ifndef NORM_ROPE_CONCAT_GRAD_BASE_H
 #define NORM_ROPE_CONCAT_GRAD_BASE_H
 

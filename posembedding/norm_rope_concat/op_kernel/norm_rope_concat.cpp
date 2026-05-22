@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #include "norm_rope_concat.h"
 #include "norm_rope_concat_tiling_key.h"
 using namespace nrc;
