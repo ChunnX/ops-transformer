@@ -242,8 +242,8 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
         std::cout << "5" << std::endl;
     // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
-    if (xHostData.size() >= 4) {
-        std::memcpy(xHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
+    if (expandXHostData.size() >= 4) {
+        std::memcpy(expandXHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
     }
     std::cout << "2" << std::endl;
     // 构造device侧变量

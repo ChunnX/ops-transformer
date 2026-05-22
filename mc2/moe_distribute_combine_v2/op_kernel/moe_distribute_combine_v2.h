@@ -582,7 +582,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     token_buffer = (GM_ADDR)(curRankShmemAddr) + A5_MTE_STATE_WIN_SIZE + REMOTE_DATA_SIZE;
     // token_buffer = (GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE; // 本端新增的数据区域，用于本卡数据拷贝，占用空间大小是hExpandXAlign32Size_
     flag_gm = reinterpret_cast<__gm__ uint32_t *>((GM_ADDR)(curRankShmemAddr) + 
-        A5_MTE_STATE_WIN_SIZE + REMOTE_DATA_SIZE + selfSendCnt_ * hExpandXAlign32Size_); // 本端的新增flag区域
+       A5_MTE_STATE_WIN_SIZE + REMOTE_DATA_SIZE + selfSendCnt_ * hExpandXAlign32Size_); // 本端的新增flag区域
 }
 
 template <CombineMC2TypeClass>
@@ -1093,7 +1093,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         xOutQueue_.FreeTensor<ExpandXType>(outTensor_);
     } else {
         if constexpr (QuantMode > UNQUANT) {
-            AscendC::printf("lll\n");
             gmTpSendCountTensor_ = gmTpSendCountQueue_.AllocTensor<ExpandXType>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
             LocalTensor<uint8_t> singleByteTok = gmTpSendCountTensor_.template ReinterpretCast<uint8_t>();
@@ -1244,7 +1243,8 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::WaitDispatch(
     uint32_t targetCount = copyCount;
     if (isInputExpertMaskFlag_ || ((zeroExpertNum_ + copyExpertNum_ + constExpertNum_) > 0U)) {
         int32_t tokenTarget = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIndex)) + sharedExpertNum_;
-        targetCount = tokenTarget * FLOAT_PER_UB_ALIGN;
+        // targetCount = tokenTarget * FLOAT_PER_UB_ALIGN;
+        targetCount = tokenTarget;
     }
     float target = (float)1.0 * targetCount;
     float minTarget = target - (float)0.5;
