@@ -1,5 +1,5 @@
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_V2_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_V2_HPP
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
@@ -17,13 +17,14 @@
 #define NO_POST_PROCESS
 
 namespace Catlass::Epilogue::Block {
-template <uint32_t UB_STAGES_, class CType_, class LayoutPerTokenScale_, class DType_, class TileCopy_>
+template <uint32_t UB_STAGES_, class CType_, class LayoutPerTokenScale_, class DType_, class TileCopy_, bool IS_A2_>
 class BlockEpilogue<EpilogueAtlasA2W4A8PostPerTokenDequantV2<UB_STAGES_>, CType_,
-                    Gemm::GemmType<float, LayoutPerTokenScale_>, DType_, TileCopy_> {
+                    Gemm::GemmType<float, LayoutPerTokenScale_>, DType_, TileCopy_, IS_A2_T<IS_A2_>> {
 public:
     using DispatchPolicy = EpilogueAtlasA2W4A8PostPerTokenDequantV2<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
+    static constexpr bool IS_A2 = IS_A2_T<IS_A2_>::Value;
 
     // Data infos
     using ElementC = typename CType_::Element;
@@ -53,14 +54,14 @@ public:
         LayoutC layoutC;
         int32_t n0;
         int32_t rank;
-        HcclShmem<true> shmem;
+        HcclShmem<IS_A2> shmem;
         int32_t offsetD;
 
         CATLASS_DEVICE
         Params(){};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
-               int32_t n2_, int32_t n0_, HcclShmem<true> &shmem_, int32_t offsetD_)
+               int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int32_t offsetD_)
             : ptrTokenPerExpert(ptrTokenPerExpert_),
               EP(EP_),
               expertPerRank(expertPerRank_),

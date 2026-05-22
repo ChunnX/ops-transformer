@@ -707,7 +707,7 @@ private:
                                   gmC[gmGroupOffsetC + gmOffsetC], layoutC,
                                   gmSLocal[gmOffsetS], layoutScale,
                                   actualBlockShape);
-                    } else {
+                    } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockMmad(gmA[gmGroupOffsetA + gmOffsetA], layoutA,
                                   gmB1[gmGroupOffsetB + gmOffsetB], layoutB1,
                                   gmC[gmGroupOffsetC + gmOffsetC], layoutC,
@@ -1270,8 +1270,8 @@ private:
         AscendC::PipeBarrier<PIPE_ALL>();
 
         uint64_t totalBytes = static_cast<uint64_t>(rows) * copyInNum * sizeof(T);
-        AIVRDMAPostSend(reinterpret_cast<GM_ADDR>(src.GetPhyAddr()),
-                        reinterpret_cast<GM_ADDR>(dst.GetPhyAddr()),
+        AIVRDMAPostSend(const_cast<GM_ADDR>(reinterpret_cast<const GM_ADDR>(src.GetPhyAddr())),
+                        const_cast<GM_ADDR>(reinterpret_cast<const GM_ADDR>(dst.GetPhyAddr())),
                         static_cast<uint64_t>(dstEpIdx), totalBytes,
                         qp_info_, rdmaUbLocal, rdmaUbLocalHead);
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -1280,7 +1280,7 @@ private:
             reinterpret_cast<uintptr_t>(shmem(0, dstEpIdx)) +
             static_cast<uintptr_t>(peermemInfo.offsetFlag) +
             static_cast<uintptr_t>(params.rank) * sizeof(uint64_t));
-        AIVRDMAPostSend(reinterpret_cast<GM_ADDR>(localFlagGm.GetPhyAddr()), remoteFlagAddr,
+        AIVRDMAPostSend(const_cast<GM_ADDR>(reinterpret_cast<const GM_ADDR>(localFlagGm.GetPhyAddr())), remoteFlagAddr,
                         static_cast<uint64_t>(dstEpIdx), sizeof(int32_t),
                         qp_info_, rdmaUbLocal, rdmaUbLocalHead);
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -1631,7 +1631,7 @@ private:
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                     gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore],
                                     params.epilogueCoreNum, params.swigluLimit);
-                } else {
+                } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD],
                                     params.epilogueCoreNum, params.swigluLimit);
                 }
@@ -1654,7 +1654,7 @@ private:
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                         gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore],
                                         coreNum, params.swigluLimit);
-                    } else {
+                    } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD],
                                         coreNum, params.swigluLimit);
                     }
@@ -1776,7 +1776,7 @@ private:
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape,
                                       groupIdx, preSrcExpertSum, preSumBeforeRank);
-                    } else {
+                    } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue(gmC2, realTileCoord, realTileShape,
                                       groupIdx, preSrcExpertSum, preSumBeforeRank);
                     }

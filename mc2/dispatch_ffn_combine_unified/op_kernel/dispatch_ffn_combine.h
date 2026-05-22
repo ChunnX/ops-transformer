@@ -54,6 +54,7 @@ using namespace AscendC;
 #include "utils/const_args.hpp"
 #include "utils/dispatch_policy_custom.hpp"
 #include "utils/mc2_context.hpp"
+#include "utils/block_epilogue_pertoken_v2.hpp"
 #include "dispatch_ffn_combine_kernel.hpp"
 #include "dispatch_ffn_combine_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
@@ -323,7 +324,7 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
     using BlockEpilogue2 = std::conditional_t<
         isW4A8,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
         Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>
     >;
 

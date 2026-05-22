@@ -42,8 +42,7 @@ __global__ __aicore__ void dispatch_ffn_combine(
     REGISTER_TILING_FOR_TILINGKEY("(QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8) || (QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8)", DispatchFFNCombineTilingDataQuant);
 
     if constexpr (isA2) {
-        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
-                      TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
+        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
@@ -53,7 +52,7 @@ __global__ __aicore__ void dispatch_ffn_combine(
                     weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
                     yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
-        } else {
+        } else if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT){
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,

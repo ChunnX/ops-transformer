@@ -4,14 +4,9 @@
 namespace Catlass::Gemm::Tile {
     template <
         class ElementAccumulator_,
-        class ElementDst_,
-        bool ReluEnable_
+        class ElementDst_
     >
-    struct CopyL0CToGm<Catlass::Arch::AtlasA2,
-                    ElementAccumulator_,
-                    Gemm::GemmType<ElementDst_, layout::RowMajor>,
-                    ScaleGranularity::PER_CHANNEL,
-                    ReluEnable_>
+    struct CopyL0CToGmPerChannel
     {
         using ArchTag = Catlass::Arch::AtlasA2;
         using ElementDst = ElementDst_;
@@ -20,7 +15,7 @@ namespace Catlass::Gemm::Tile {
         using LayoutDst = Catlass::layout::RowMajor;
         static constexpr auto quantPre = CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst,
             ScaleGranularity::PER_CHANNEL>::VALUE;
-        static constexpr auto reluEn = ReluEnable_;
+        static constexpr auto reluEn = false;
 
         CATLASS_DEVICE
         void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src, AscendC::LocalTensor<uint64_t> cbufWorkspace,

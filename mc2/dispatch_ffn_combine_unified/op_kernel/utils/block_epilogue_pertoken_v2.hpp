@@ -114,6 +114,9 @@ public:
     }
 
     CATLASS_DEVICE
+    void InitFlag() {}  // V2 path不需要额外的flag初始化
+
+    CATLASS_DEVICE
     ~BlockEpilogue()
     {
     }
