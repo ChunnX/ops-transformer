@@ -260,7 +260,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     // pass params to vector block
     vecBlock.SetVecBlockParams(pipeIn, tilingData, vBlockIdx, cBlockIdx, vSubBlockIdx, constInfo, attenMaskInfo, pseInfo);
     vecBlock.InitUbBuffer(constInfo);
-    vecBlock.InitGlobalBuffer(ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, softmax_lse, sinks, dsinks, ori_softmax_l1, cmp_softmax_l1, workspace);
+    vecBlock.InitGlobalBuffer(ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, softmax_lse, sinks, dsinks, ori_softmax_l1, cmp_softmax_l1, workspace, constInfo);
  
     // pass params to cube block
     cubeBlock.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);
@@ -457,7 +457,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     runInfo.commonRunInfo.taskId = taskId;
     runInfo.commonRunInfo.taskIdMod2 = taskId & 1;
     runInfo.halfGRealSize = (constInfo.commonConstInfo.gSize + 1) >> 1;
-    runInfo.halfGRealSize = runInfo.halfGRealSize;
     runInfo.firstHalfGRealSize = runInfo.halfGRealSize;
     if (vSubBlockIdx == 1) {
         runInfo.halfGRealSize = constInfo.commonConstInfo.gSize - runInfo.halfGRealSize;

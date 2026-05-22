@@ -69,7 +69,7 @@ __aicore__ inline void
 CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, PseInfo& pseInfo, AttenMaskInfo &attenMaskInfo,
                                  TQue<QuePosition::VECIN, 1> &lseInQue, TQue<QuePosition::VECIN, 1> &attenMaskInQue,
                                  TQue<QuePosition::VECIN, 1> &pseInQue, LocalTensor<T2> &dstTensor, LocalTensor<T2> &srcTensor, 
-                                 LocalTensor<T2> &softmaxL1Tensor, __gm__ uint8_t *pseSlope, float pScalar)
+                                 LocalTensor<T2> &softmaxL1Tensor, __gm__ uint8_t *pseSlope, float pScalar, bool needCleanSoftmaxL1 = false)
 {
     if (runInfo.halfGRealSize == 0) {
         return;
@@ -84,15 +84,38 @@ CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, P
     if (runInfo.commonRunInfo.s2RealSize > 64) {
         AscendC::MulsSelSimpleSoftMax<T1, T2, 128, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD, IsSparseIndicesExist>(
         dstTensor, lseTensor, lseTensor, srcTensor, softmaxL1Tensor, pseTensor, 
-        attenMaskTensor, constInfo.scaleValue, constInfo.attenMaskMinValue, runInfo.halfGRealSize,
+        attenMaskTensor, constInfo.scaleValue, constInfo.attenMaskMinValue, needCleanSoftmaxL1, runInfo.halfGRealSize,
         runInfo.commonRunInfo.s2RealSize, pScalar);
     } else {
         AscendC::MulsSelSimpleSoftMax<T1, T2, 64, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD, IsSparseIndicesExist>(
         dstTensor, lseTensor, lseTensor, srcTensor, softmaxL1Tensor, pseTensor, 
-        attenMaskTensor, constInfo.scaleValue, constInfo.attenMaskMinValue, runInfo.halfGRealSize,
+        attenMaskTensor, constInfo.scaleValue, constInfo.attenMaskMinValue, needCleanSoftmaxL1, runInfo.halfGRealSize,
         runInfo.commonRunInfo.s2RealSize, pScalar);
     }
     lseInQue.FreeTensor(lseTensor);
+}
+
+template <typename T>
+__aicore__ inline void SoftmaxL1Reduce(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
+                                            const LocalTensor<float> &softmaxL1Tensor,
+                                            uint32_t srcM, uint32_t realN, float pScalar = 1.0)
+{
+    const uint32_t fullExeSize = 64;
+    uint16_t repeatTimes = realN > 64 ? 1 : 0;
+    uint32_t tailSize = realN % fullExeSize == 0 ? fullExeSize : realN % fullExeSize;
+    uint64_t srcLocalInt = srcTensor.GetPhyAddr();
+    uint64_t softmaxL1LocalInt = softmaxL1Tensor.GetPhyAddr();
+    uint64_t dstLocalInt = dstTensor.GetPhyAddr();
+    uint64_t srcLocalIntTail = srcTensor.GetPhyAddr() + fullExeSize * 4 * repeatTimes;
+    uint64_t dstLocalIntTail = dstTensor.GetPhyAddr() + fullExeSize * 4 * repeatTimes;
+    uint64_t softmaxL1LocalIntTail = softmaxL1Tensor.GetPhyAddr() + fullExeSize * 4 * repeatTimes;
+    if (realN > 64) {
+        SoftmaxL1ReduceVF<T, 128>(srcLocalInt, dstLocalInt, softmaxL1LocalInt, srcLocalIntTail, dstLocalIntTail, softmaxL1LocalIntTail, 
+                               tailSize, repeatTimes, srcM, pScalar);
+    } else {
+        SoftmaxL1ReduceVF<T, 64>(srcLocalInt, dstLocalInt, softmaxL1LocalInt, srcLocalIntTail, dstLocalIntTail, softmaxL1LocalIntTail, 
+                               tailSize, repeatTimes, srcM, pScalar);
+    }
 }
 
 #endif

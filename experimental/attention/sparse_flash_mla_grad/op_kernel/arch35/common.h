@@ -262,6 +262,8 @@ struct FagRunInfo {
     int64_t oriKVOffset = 0;
     int64_t cmpKVOffset = 0;
     bool isSparse;
+    bool needCleanSoftmaxL1;
+    bool needComputeSoftmaxL1;
 };
 
 struct SfagCVSharedParams {

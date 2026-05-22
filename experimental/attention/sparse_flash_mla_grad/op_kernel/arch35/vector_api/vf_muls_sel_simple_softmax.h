@@ -43,55 +43,32 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
     RegTensor<float> vregMax;
     RegTensor<float> vregSum;
     RegTensor<float> vregLse;
-    RegTensor<float> vregPse;
-    RegTensor<half> vregPseHalf;
-    RegTensor<bfloat16_t> vregPseBf;
-    RegTensor<half> vregPseHalfEven;
-    RegTensor<half> vregPseHalfOdd;
-    RegTensor<bfloat16_t> vregPseBfEven;
-    RegTensor<bfloat16_t> vregPseBfOdd;
+
     RegTensor<float> vregSub;
     RegTensor<float> vregExp;
     RegTensor<float> vregDiv;
     RegTensor<float> vregMuls;
-    RegTensor<float> vregMin;
-    RegTensor<float> vregReduceSumMuls;
     // tail
     RegTensor<float> vregSrcTail;
     RegTensor<float> vregSubTail;
     RegTensor<float> vregExpTail;
     RegTensor<float> vregDivTail;
-    RegTensor<float> vregReduceSumMulsTail;
 
-    RegTensor<float> vregSel;
-    RegTensor<float> vregSelTail;
-    RegTensor<float> vregPseTail;
-    RegTensor<half> vregPseHalfTail;
-    RegTensor<bfloat16_t> vregPseBfTail;
-    RegTensor<half> vregPseHalfTailEven;
-    RegTensor<half> vregPseHalfTailOdd;
-    RegTensor<bfloat16_t> vregPseBfTailEven;
-    RegTensor<bfloat16_t> vregPseBfTailOdd;
     RegTensor<float> vregMulsTail;
     RegTensor<float> vregSoftmaxSum;
     RegTensor<float> vregReduceSum;
+
     UnalignRegForStore uregRes;
     UnalignRegForStore uregResSrc;
     MaskReg pregFullExe = CreateMask<float, MaskPattern::ALL>();
-    MaskReg pregFullExeB16 = CreateMask<half, MaskPattern::ALL>();
     MaskReg pregAccu = CreateMask<T, MaskPattern::VL1>();
     MaskReg pregTailExe = UpdateMask<float>(tailSize);
-    MaskReg pregCompare;
-    MaskReg pregCompareTail;
-
-    Duplicate(vregMin, minValue);
-    Duplicate(vregReduceSumMuls, 0.0f);
-    Duplicate(vregReduceSumMulsTail, 0.0f);
 
     if constexpr(IsSparseIndicesExist) {
         if (needCleanSoftmaxL1) {
-            StoreAlign<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
-                    (__ubuf__ float *&)softmaxL1LocalInt, vregReduceSumMuls, vregReduceSumMulsTail, pregFullExe);
+            Duplicate(vregSoftmaxSum, 0.0f);
+            StoreAlign<float>(
+                ((__ubuf__ float *&)softmaxL1LocalInt), vregSoftmaxSum, pregFullExe);
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
         }
     }
@@ -99,7 +76,6 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
     // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         if constexpr (IsSparseIndicesExist) {
-            // Duplicate(vregSoftmaxSum, 0);
             uint64_t srcOffset = softmaxL1LocalInt + 4 * m;
             LoadUnAlignPre<float>(uregResSrc, ((__ubuf__ float *&)srcOffset));
             LoadUnAlign<float>(vregSoftmaxSum, uregResSrc, ((__ubuf__ float *&)srcOffset));
@@ -138,20 +114,7 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
         }
         StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_NORM_B32>(
             ((__ubuf__ float *&)dstLocalIntTail), vregExpTail, 128, pregFullExe);
-        if constexpr (isDeter == 1 && srcN == 64) { // 确定性计算需要将64~128的数据补零， 否则会有脏数据inf
-            Duplicate(vregExp, 0);
-            StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ float *&)dstLocalIntTailZero, vregExp, 128, pregFullExe);
-        }
     }
-    // if constexpr (IsSparseIndicesExist) {
-    //     for (uint16_t n = 0; n < repeatTimes; n++) {
-    //         Muls(vregReduceSumMuls, vregReduceSumMuls, pScalar, pregFullExe);
-    //         StoreAlign<float>(((__ubuf__ float *&)softmaxL1LocalInt), vregReduceSumMuls, pregFullExe);
-    //     }
-    //     Muls(vregReduceSumMulsTail, vregReduceSumMulsTail, pScalar, pregTailExe);
-    //     StoreAlign<float>(((__ubuf__ float *&)softmaxL1LocalIntTail), vregReduceSumMulsTail, pregFullExe);
-    // }
 }
 
 template <typename T1, typename T, uint32_t srcN, bool hasAtten = 0, bool hasPse = 0, bool isDeter = 0, bool IsSparseIndicesExist = 0>
@@ -159,9 +122,8 @@ __aicore__ inline void MulsSelSimpleSoftMax(const LocalTensor<float> &dstTensor,
                                             const LocalTensor<float> &inMaxTensor, const LocalTensor<float> &srcTensor,
                                             const LocalTensor<float> &softmaxL1Tensor, const LocalTensor<T1> &pseTensor,
                                             const LocalTensor<uint8_t> &maskTensor, const T scale, const T minValue,
-                                            uint32_t srcM, uint32_t realN = srcN, float pScalar = 1.0, 
-                                            uint32_t pseType = 1, uint32_t pse_layout_type = 1, float posShift = -1.0, 
-                                            float slopes = -1.0, bool needCleanSoftmaxL1 = false)
+                                            bool needCleanSoftmaxL1, uint32_t srcM, uint32_t realN = srcN, float pScalar = 1.0, 
+                                            uint32_t pseType = 1, uint32_t pse_layout_type = 1, float posShift = -1.0)
 {
     const uint32_t fullExeSize = 64;
     uint16_t repeatTimes = srcN / fullExeSize - 1;
@@ -207,9 +169,8 @@ __simd_vf__ inline void SoftmaxL1ReduceVF(uint64_t srcLocalInt, uint64_t dstLoca
     Duplicate(vregReduceSumMulsTail, 0.0f);
     // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-        uint64_t srcOffset = softmaxL1LocalInt + 4 * m;
-        LoadUnAlignPre<float>(uregResSrc, ((__ubuf__ float *&)srcOffset));
-        LoadUnAlign<float>(vregSoftmaxSum, uregResSrc, ((__ubuf__ float *&)srcOffset));
+        LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
+            vregSoftmaxSum, ((__ubuf__ float *&)softmaxL1LocalInt), 1);
         // 1 -> 64 【64，128】 【64，2，64】 64
         for (uint16_t n = 0; n < repeatTimes; n++) {
             LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -230,24 +191,6 @@ __simd_vf__ inline void SoftmaxL1ReduceVF(uint64_t srcLocalInt, uint64_t dstLoca
     Muls(vregReduceSumMulsTail, vregReduceSumMulsTail, pScalar, pregTailExe);
     StoreAlign<float>(((__ubuf__ float *&)dstLocalIntTail), vregReduceSumMulsTail, pregFullExe);
 }
-
-template <typename T, uint32_t srcN>
-__aicore__ inline void SoftmaxL1Reduce(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
-                                            const LocalTensor<float> &softmaxL1Tensor,
-                                            uint32_t srcM, uint32_t realN = srcN, float pScalar = 1.0)
-{
-    const uint32_t fullExeSize = 64;
-    uint16_t repeatTimes = srcN / fullExeSize - 1;
-    uint32_t tailSize = realN % fullExeSize == 0 ? fullExeSize : realN % fullExeSize;
-    uint64_t srcLocalInt = srcTensor.GetPhyAddr();
-    uint64_t softmaxL1LocalInt = softmaxL1Tensor.GetPhyAddr();
-    uint64_t dstLocalInt = dstTensor.GetPhyAddr();
-    uint64_t srcLocalIntTail = srcTensor.GetPhyAddr() + fullExeSize * 4 * repeatTimes;
-    uint64_t dstLocalIntTail = dstTensor.GetPhyAddr() + fullExeSize * 4 * repeatTimes;
-    uint64_t softmaxL1LocalIntTail = softmaxL1Tensor.GetPhyAddr() + fullExeSize * 4 * repeatTimes;
-    SoftmaxL1ReduceVF<T, srcN>(srcLocalInt, dstLocalInt, softmaxL1LocalInt, srcLocalIntTail, dstLocalIntTail, softmaxL1LocalIntTail, 
-                               tailSize, repeatTimes, srcM, pScalar);
-}
 #else
 template <typename T1, typename T, uint32_t srcN, bool hasAtten = 0, bool hasPse = 0, bool isDeter = 0, bool IsSparseIndicesExist = 0>
 __aicore__ inline void MulsSelSimpleSoftMax(const LocalTensor<float> &dstTensor, const LocalTensor<float> &inLseTensor,
@@ -255,8 +198,7 @@ __aicore__ inline void MulsSelSimpleSoftMax(const LocalTensor<float> &dstTensor,
                                             const LocalTensor<float> &softmaxL1Tensor, const LocalTensor<T1> &pseTensor,
                                             const LocalTensor<uint8_t> &maskTensor, const T scale, const T minValue,
                                             uint32_t srcM, uint32_t realN = srcN, float pScalar = 1.0, 
-                                            uint32_t pseType = 1, uint32_t pse_layout_type = 1, float posShift = -1.0, 
-                                            float slopes = -1.0, bool needCleanSoftmaxL1 = false)
+                                            uint32_t pseType = 1, uint32_t pse_layout_type = 1, float posShift = -1.0)
 {
 }
 #endif
