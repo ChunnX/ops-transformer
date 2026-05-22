@@ -54,7 +54,8 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 2; // 4 (power-of-2) for fast & mask
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
 
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -105,6 +106,13 @@ public:
     uint32_t executedTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
+
+    // ── 标量指令优化：缓存逐 batch 不变的除法结果 ────────────────────────────
+    uint32_t cachedS2LoopTimes  = 0;    // (actSeqLensKv + s2BaseSize-1) / s2BaseSize
+    uint32_t cachedGS1LoopTimes = 0;    // (actSeqLensQ*gSize + mBaseSize-1) / mBaseSize
+    uint32_t cachedBIdxForCalc  = 0;    // bN2Cur / n2Size，换 bN2 才更新
+    uint32_t cachedN2IdxForCalc = 0;    // bN2Cur % n2Size
+    uint32_t cachedBN2ForCalc   = ~0U;  // 上一次 CalcParams 的 bN2Cur
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -471,9 +479,12 @@ public:
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
         }
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        // 换 batch 时才重新计算（缓存消除热路径除法）
+        cachedS2LoopTimes  = static_cast<uint32_t>((actSeqLensKv + s2BaseSize - 1) / s2BaseSize);
+        uint64_t gS1Size   = actSeqLensQ * constInfo.gSize;
+        cachedGS1LoopTimes = static_cast<uint32_t>((gS1Size + mBaseSize - 1) / mBaseSize);
+        uint32_t s2LoopTimes  = cachedS2LoopTimes;
+        uint32_t gS1LoopTimes = cachedGS1LoopTimes;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
@@ -605,8 +616,8 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -657,7 +668,7 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -666,8 +677,13 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        if (bN2Cur != cachedBN2ForCalc) {
+            cachedBN2ForCalc   = bN2Cur;
+            cachedBIdxForCalc  = bN2Cur / constInfo.n2Size;
+            cachedN2IdxForCalc = bN2Cur % constInfo.n2Size;
+        }
+        info.bIdx  = cachedBIdxForCalc;
+        info.n2Idx = cachedN2IdxForCalc;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -744,9 +760,8 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint32_t s2LoopTimes  = cachedS2LoopTimes;   // 已在 GetTaskDealMode 换 batch 时更新
+        uint32_t gS1LoopTimes = cachedGS1LoopTimes;
 
         // 当前S2未处理完
         if (s2Cur + 1 < s2LoopTimes) {
