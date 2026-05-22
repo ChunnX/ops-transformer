@@ -8,52 +8,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(_NsaCompressAttention_TilingSourcesExt
+        ${OPS_TRANSFORMER_DIR}/attention/nsa_compress_attention/op_host/nsa_compress_attention_tiling.cpp
+        ${OPS_TRANSFORMER_DIR}/attention/nsa_compress_attention/op_host/nsa_compress_attention_tiling_general.cpp
+)
 
-# ########################################################################################################################
-# # 调用编译方法, 生成对应编译目标
-# ########################################################################################################################
-
-# file(GLOB _Src "${OPS_TRANSFORMER_DIR}/attention/nsa_compress_attention/op_host/nsa_compress_attention_tiling*.cpp")
-# set(_NSA_COMPRESS_ATTENTION_TilingSourcesExt ${_Src})
-
-# set(_NSA_COMPRESS_ATTENTION_KernelTilingDataDefH
-#         ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
-#         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_host/nsa_compress_attention_tiling.h
-# )
-
-# set(_NSA_COMPRESS_ATTENTION_KernelTilingExtInclude
-#         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_host/
-#         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_host/op_api/
-# )
-
-# set(_ncai_UTestCommonPrivateIncludeExt
-#         ${OPBASE_INC_DIRS}
-#         ${OPS_TRANSFORMER_DIR}/common/include
-# )
-
-# set(_NSA_COMPRESS_ATTENTION_TargetPrivateLinkLibrariesExt
-#         ${UTest_NamePrefix}_OpTiling
-#         error_manager
-# )
-# set(_NSA_COMPRESS_ATTENTION_CompileDefintions
-#         ORIG_DTYPE_QUERY=DT_FLOAT16
-# )
-# set(_NSA_COMPRESS_ATTENTION_OpKernelPrivateIncludesExt
-#         ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
-# )
-
-# aux_source_directory(${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_kernel _NSA_COMPRESS_ATTENTION_KernelSourcesExt)
-
-# OpsTest_Level2_AddOp(
-#         SUB_SYSTEM                              transformer
-#         BRIEF                                   NsaCompressAttention
-#         SNAKE                                   nsa_compress_attention
-#         KERNEL_TILING_DATA_DEF_H                ${_NSA_COMPRESS_ATTENTION_KernelTilingDataDefH}
-#         KERNEL_PRIVATE_INCLUDES_EXT             ${_NSA_COMPRESS_ATTENTION_OpKernelPrivateIncludesExt}
-#         KERNEL_SOURCES_EXT                      ${_NSA_COMPRESS_ATTENTION_KernelSourcesExt}
-#         TILING_SOURCES_EXT                      ${_NSA_COMPRESS_ATTENTION_TilingSourcesExt}
-#         TILING_PRIVATE_INCLUDES_EXT             ${_NSA_COMPRESS_ATTENTION_KernelTilingExtInclude}
-#         KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT  ${_NSA_COMPRESS_ATTENTION_CompileDefintions}
-#         UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_NSA_COMPRESS_ATTENTION_TargetPrivateLinkLibrariesExt}
-#         UTEST_COMMON_PRIVATE_INCLUDES_EXT       ${_ncai_UTestCommonPrivateIncludeExt}
-# )
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
