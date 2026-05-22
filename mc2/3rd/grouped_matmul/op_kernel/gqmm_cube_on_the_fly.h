@@ -103,18 +103,16 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     mmTilingData_ = mmTilingDataIn;
     gmmQuantParams_ = gmmBaseParamsIn;
     blockIdx_ = GetBlockIdx();
-    AscendC::printf("[LBH-DIAG] gmmASWKernel.Init blockIdx=%d M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d cores=%d\n",
+    mm_.SetSubBlockIdx(0);
+    AscendC::printf("[LBH-DIAG] Init blk=%d M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d cores=%d gN=%d aQ=%d bQ=%d gT=%d gLT=%d\n",
         blockIdx_, mmTilingData_->M, mmTilingData_->N, mmTilingData_->Ka,
         mmTilingData_->baseM, mmTilingData_->baseN, mmTilingData_->baseK,
-        mmTilingData_->usedCoreNum);
-    AscendC::printf("[LBH-DIAG] gmmQuantParams groupNum=%d aQuantMode=%d bQuantMode=%d groupType=%d groupListType=%d\n",
+        mmTilingData_->usedCoreNum,
         gmmQuantParams_->groupNum, gmmQuantParams_->aQuantMode, gmmQuantParams_->bQuantMode,
         gmmQuantParams_->groupType, gmmQuantParams_->groupListType);
-    mm_.SetSubBlockIdx(0);
     mm_.Init(mmTilingData_, que);
-    AscendC::printf("[LBH-DIAG] mm_.Init done blockIdx=%d\n", blockIdx_);
+    AscendC::printf("[LBH-DIAG] mm_.Init OK blk=%d\n", blockIdx_);
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
-    AscendC::printf("[LBH-DIAG] InitAddrAndParams done blockIdx=%d\n", blockIdx_);
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS

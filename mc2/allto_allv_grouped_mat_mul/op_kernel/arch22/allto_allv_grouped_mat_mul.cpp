@@ -59,7 +59,6 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    AscendC::printf("[LBH] allto_allv_grouped_mat_mul entry blockIdx=%d\n", GetBlockIdx());
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
@@ -71,15 +70,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GET_TILING_DATA(tilingData, tilingGM);
     const AlltoAllvGmmTilingData *tilingData_ = &tilingData;
 
-    AscendC::printf("[LBH-DIAG] tiling: isNeedMM=%d isPermuteOut=%d A=%llu H1=%llu H2=%llu N1=%llu N2=%llu BS=%llu e=%d\n",
-        tilingData_->isNeedMM ? 1 : 0, tilingData_->isPermuteOut ? 1 : 0,
-        tilingData_->taskTilingInfo.A, tilingData_->taskTilingInfo.H1, tilingData_->taskTilingInfo.H2,
-        tilingData_->taskTilingInfo.N1, tilingData_->taskTilingInfo.N2,
-        tilingData_->taskTilingInfo.BS, tilingData_->taskTilingInfo.e);
-
     // Compute workspace layout
-    // workspace布局：[permuteOut区域] + [groupList + ptrTable + gmmASWKernel workspace]
-    // groupList和workspace共享同一片GM区域：groupList在开头，ptrTable紧跟其后，剩余给gmmASWKernel内部缓冲
     uint64_t workspaceOffset = 0;
     if (!tilingData_->isPermuteOut) {
         uint64_t commOutLen = Align(CeilDiv(tilingData_->taskTilingInfo.A * tilingData_->taskTilingInfo.H1, PACK_FACTOR)
@@ -87,17 +78,18 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         workspaceOffset += commOutLen;
     }
     GM_ADDR computeWorkspaceGm = userWorkspace + workspaceOffset;
-    AscendC::printf("[LBH-DIAG] workspace: userWorkspace=%llu workspaceOffset=%llu computeWorkspaceGm=%llu mmx=%llu mmw=%llu mmy=%llu\n",
-        reinterpret_cast<uint64_t>(userWorkspace), workspaceOffset,
-        reinterpret_cast<uint64_t>(computeWorkspaceGm),
-        reinterpret_cast<uint64_t>(mmxOptionalGM), reinterpret_cast<uint64_t>(mmweightOptionalGM),
-        reinterpret_cast<uint64_t>(mmyOptionalGM));
-    // groupListGM和workspaceGM共享同一片区域（groupList在开头，ptrTable紧跟，剩余给gmmASWKernel）
-    GM_ADDR gmmGroupListGm = computeWorkspaceGm;
-    GM_ADDR gmmWorkspaceGm = computeWorkspaceGm;
-    // localComputeOp和computeOp串行执行，共享同一份groupList/workspace区域
     GM_ADDR mmGroupListGm = computeWorkspaceGm;
     GM_ADDR mmWorkspaceGm = computeWorkspaceGm;
+
+    AscendC::printf("[LBH] entry blk=%d needMM=%d A=%llu H1=%llu N2=%llu BS=%llu e=%d ws=%llu mmx=%llu mmw=%llu mmy=%llu\n",
+        GetBlockIdx(), tilingData_->isNeedMM ? 1 : 0,
+        tilingData_->taskTilingInfo.A, tilingData_->taskTilingInfo.H1,
+        tilingData_->taskTilingInfo.N2, tilingData_->taskTilingInfo.BS,
+        tilingData_->taskTilingInfo.e,
+        reinterpret_cast<uint64_t>(computeWorkspaceGm),
+        reinterpret_cast<uint64_t>(mmxOptionalGM),
+        reinterpret_cast<uint64_t>(mmweightOptionalGM),
+        reinterpret_cast<uint64_t>(mmyOptionalGM));
 
     // === Shared Expert (local MM) ===
     using SharedGmmExpertOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
@@ -116,20 +108,6 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
 
     // === Routed Expert (GMM compute + communication) ===
     // TODO: 启用通信和路由专家计算时，使用GmmA2avScheduler编排通信+计算流水线
-    // using HcclOpType = HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE>;
-    // using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-    //     DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE, false, true>;
-    // using GmmA2avSchedulerType = GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType,
-    //     TILINGKEY_COMPUTE_MATMUL>;
-    // HcclOpType hcclOp;
-    // hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, gmmxGM, commOutGm);
-    // ComputeOpType computeOp;
-    // GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
-    //     gmmArray, gmmArrayAddr_, tilingGM);
-    // computeOp.Init(commOutGm, gmmweightGM, scalePlaceholderGM, scalePlaceholderGM, gmmyGM,
-    //     gmmGroupListGm, gmmWorkspaceGm, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddr_, &pipe, false);
-    // GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
-    // gmmA2avScheduler.Process();
 
     if (tilingData_->isNeedMM != 0) {
         shareComputeOp.End();

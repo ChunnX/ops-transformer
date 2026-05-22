@@ -93,9 +93,12 @@ public:
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
-        AscendC::printf("[LBH] isLocal=%d expertIdx=%d xAddr=%llu wAddr=%llu yAddr=%llu M=%d N=%d K=%d\n",
+        AscendC::printf("[LBH] isLocal=%d expertIdx=%d xAddr=%llu wAddr=%llu yAddr=%llu grpToken=%llu grpListGm=%llu ptrTbl=%llu ws=%llu M=%d N=%d K=%d\n",
             isLocal ? 1 : 0, expertIdx, reinterpret_cast<uint64_t>(xAddr),
             reinterpret_cast<uint64_t>(wAddr), reinterpret_cast<uint64_t>(yAddr),
+            (isLocal ? bs_ : expertTokenNum_[expertIdx]),
+            reinterpret_cast<uint64_t>(groupListGm_), reinterpret_cast<uint64_t>(ptrTableBase_),
+            reinterpret_cast<uint64_t>(workspaceGM_),
             gmmTilingData_->mmTilingData.M, gmmTilingData_->mmTilingData.N, gmmTilingData_->mmTilingData.Ka);
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
@@ -105,9 +108,6 @@ public:
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
-        AscendC::printf("[LBH-DIAG] groupListToken=%llu groupListGm=%llu ptrTableBase=%llu workspaceGM=%llu\n",
-            groupListToken, reinterpret_cast<uint64_t>(groupListGm_),
-            reinterpret_cast<uint64_t>(ptrTableBase_), reinterpret_cast<uint64_t>(workspaceGM_));
         // flush groupList到GM确保Cube引擎读到最新数据（不能用SyncAll，AIV不会执行SyncAll会死锁）
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
