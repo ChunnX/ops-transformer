@@ -856,17 +856,13 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
         return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
     uint64_t groupListSize = sizeof(int64_t) * e_;
-    uint64_t ptrTableSize = 5 * 16; // 5 slots * 16 bytes per slot (2 * uint64_t)
-    uint64_t perOpInternalWorkspace = groupListSize + ptrTableSize; // 每个computeOp内部需要的workspace
     uint64_t xDataTypeSize = GetSizeByDataType(gmmXDataType_);
     uint64_t permuteOutSize = permuteOutFlag_ ? 0 : Ops::Base::CeilAlign(a_ * h1_ * xDataTypeSize, tensorListSize);
     uint64_t permuteScaleOutSize = 0; // 非量化无scale通信
-    // localComputeOp 和 computeOp 需要各自独立的 internalWorkspace，所以分配 2 份
-    // CeilAlign: 向上对齐到 tensorListSize (512) 字节
-    uint64_t computeInternalWorkspace = 2 * ((perOpInternalWorkspace + tensorListSize - 1) / tensorListSize * tensorListSize);
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize + computeInternalWorkspace;
-    OP_LOGI(context_->GetNodeName(), "AGENT workspace size=%lu, permuteOut=%lu, computeInternal=%lu, perOp=%lu.",
-        workspaces[0], permuteOutSize, computeInternalWorkspace, perOpInternalWorkspace);
+    // localComputeOp 和 computeOp 串行执行，共享同一份 internalWorkspace
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize + groupListSize + tensorListSize;
+    OP_LOGI(context_->GetNodeName(), "AGENT workspace size=%lu, permuteOut=%lu, groupList=%lu, tensorList=%lu.",
+        workspaces[0], permuteOutSize, groupListSize, tensorListSize);
     return ge::GRAPH_SUCCESS;
 }
 

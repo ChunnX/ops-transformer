@@ -68,8 +68,6 @@ public:
         // permuteXScaleSize 对齐到512字节
         permuteXScaleSize = Mc2QuantUtils::Align(permuteXScaleSize, TENSOR_LIST_SIZE);
         uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_; // GMM计算所需的groupList GM空间大小
-        constexpr uint64_t ptrTableSize = 5 * 16; // 5 slots * 16 bytes per slot (2 * uint64_t)
-        internalWorkspaceSize_ = groupListSize + ptrTableSize;
         groupListGm_ = workspaceGM_;
 
         ptrTableBase_ = groupListGm_ + groupListSize;
@@ -129,13 +127,9 @@ public:
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
-        // AGENT debug: 验证 groupList SetValue/GetValue 一致性
-        AscendC::printf("[AGENT] groupList write=%llu read=%llu\n",
-            groupListToken, groupListGlobalBuffer_.GetValue(GROUP_LIST_INDEX));
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();
-        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, perTokenScalePtr, yPtr,
-            workspaceGM_ + internalWorkspaceSize_,
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, perTokenScalePtr, yPtr, workspaceGM_,
             &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
@@ -194,7 +188,6 @@ private:
     GM_ADDR groupListGm_;
     GM_ADDR workspaceGM_;
     GM_ADDR ptrTableBase_ = nullptr;
-    uint64_t internalWorkspaceSize_ = 0;
     GlobalTensor<xType> xGlobalBuffer_;
     GlobalTensor<wType> wGlobalBuffer_;
     GlobalTensor<scaleType> xScaleGlobalBuffer_;

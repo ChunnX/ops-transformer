@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+  */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -80,18 +80,14 @@ public:
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
         // 计算类使用的workspace起始地址（偏移后的workspace）
-        // localComputeOp 和 computeOp 使用不同偏移的workspace，避免 groupList/ptrTable 重叠
-        // perOpInternalWorkspace = groupListSize(8*e_) + ptrTableSize(5*16=80)
-        uint64_t perOpInternalWorkspace = sizeof(int64_t) * e_ + 5 * 16;
+        // localComputeOp和computeOp串行执行，共享同一份workspace（groupList/ptrTable在各自Process内写入和消费）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
-        localComputeWorkspaceGm_ = computeWorkspaceGm_;
-        computeOpWorkspaceGm_ = computeWorkspaceGm_ + perOpInternalWorkspace;
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                localComputeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
+                                computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeOpWorkspaceGm_,
+        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
                        tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
@@ -101,6 +97,7 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
+        // Communication + compute flow (disabled for debugging)
         // if constexpr (MX_QUANT_MODE) {
         //     if (isScaleBatchMode_) {
         //         ProcessScaleCommBatchMode();
@@ -166,8 +163,6 @@ private:
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR computeWorkspaceGm_ = nullptr;
-    GM_ADDR localComputeWorkspaceGm_ = nullptr;
-    GM_ADDR computeOpWorkspaceGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
     bool isScaleBatchMode_ = false;
