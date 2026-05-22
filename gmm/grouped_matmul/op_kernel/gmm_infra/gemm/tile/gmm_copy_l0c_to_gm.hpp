@@ -12,8 +12,8 @@
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/arch.hpp"
-#include "../../../gmm_infra/gemm/gemm_type.hpp"
+#include "../../../gmm_infra/arch/gmm_arch.hpp"
+#include "../../../gmm_infra/gemm/gmm_gemm_type.hpp"
 
 namespace Catlass::Gemm::Tile {
 
