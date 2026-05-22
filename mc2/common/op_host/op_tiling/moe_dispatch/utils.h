@@ -22,6 +22,8 @@
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
 #include "platform/platform_ascendc.h"
+#include "exe_graph/runtime/tiling_context.h"
+#include "exe_graph/runtime/storage_shape.h"
 
 namespace moe_dispatch_utils {
 
@@ -104,7 +106,7 @@ inline ge::graphStatus CheckTensorDimNum(
 }
 
 inline ge::graphStatus CheckTensorDtypeIn(
-    const ge::TensorDesc* desc,
+    const gert::CompileTimeTensorDesc* desc,
     const ge::DataType* validDtypes, uint32_t dtypeCount) {
     if (desc == nullptr) {
         return ge::GRAPH_FAILED;

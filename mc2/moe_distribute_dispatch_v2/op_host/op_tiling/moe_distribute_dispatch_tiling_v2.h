@@ -35,6 +35,34 @@
 
 namespace optiling {
 
+// A3 V2 TilingCtx：阶段间中间值载体（原则2 + 原则6）
+struct DispatchV2TilingCtx {
+    std::string groupEp;
+    std::string groupTp;
+    bool isSetFullMeshV2 = false;
+    bool isLayered = false;
+    bool isScales = false;
+    bool isActiveMask = false;
+    bool hasElasticInfo = false;
+    bool isPerformance = false;
+    uint32_t quantMode = 0;
+    uint32_t bs = 0;
+    uint32_t k = 0;
+    uint32_t epWorldSize = 0;
+    uint32_t tpWorldSize = 0;
+    uint32_t sharedExpertNum = 0;
+    uint32_t sharedExpertRankNum = 0;
+    uint32_t epRankId = 0;
+    uint32_t moeExpertNum = 0;
+    uint32_t h = 0;
+    uint32_t localMoeExpertNum = 1;
+    uint32_t a = 0;
+    bool shouldHaveScales = false;
+    uint32_t aivNum = 0;
+    uint64_t ubSize = 0;
+    uint32_t blockDim = 0;
+};
+
 struct DispatchV2Config {
     uint32_t contextIndex = 0U;  // 0: 根据dispatchV3算子原型标志位初始化context索引
     uint32_t xIndex = 0U; // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
@@ -69,6 +97,8 @@ using namespace Ops::Transformer::OpTiling;
 class MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
+    ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config);
+    ge::graphStatus MoeDistributeDispatchA5TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config);
     ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
         const bool isActiveMask, const bool isScales, const bool hasElasticInfo,
         const bool isPerformance, const uint32_t quantMode,
