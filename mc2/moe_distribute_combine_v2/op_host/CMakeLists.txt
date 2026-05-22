@@ -23,6 +23,8 @@ if (BUILD_OPEN_PROJECT)  # custom
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+    message(STATUS "shmem path is: $ENV{SHMEM_PATH}")
+    set(SHMEM_PATH $ENV{SHMEM_PATH})
     if("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME MoeDistributeCombineV2
@@ -38,8 +40,8 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MoeDistributeCombineV2
             OPTIONS 
-                -I/home/c00851087/shmem/include
-                -I/home/c00851087/shmem/src/device/
+                -I${SHMEM_PATH}/shmem/include
+                -I${SHMEM_PATH}/shmem/src/device/
         )    
     endif()
 else() # 回黄host

@@ -572,10 +572,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     }
     tpipe_->InitBuffer(moeQueue_, BUFFER_NUM, hExpandXAlign32Size_);
     flagRcvCount_ = axisK_ + sharedExpertNum_;
-    // uint64_t pe_size = aclshmem_n_pes();
-    // for (uint32_t rankId = 0; rankId < pe_size; rankId++) {
-    //     base_addr[rankId] = (GM_ADDR)(aclshmem_ptr((GM_ADDR)(curRankShmemAddr), rankId));
-    // }
+    uint64_t pe_size = aclshmem_n_pes();
+    for (uint32_t rankId = 0; rankId < pe_size; rankId++) {
+        base_addr[rankId] = (GM_ADDR)(aclshmem_ptr((GM_ADDR)(curRankShmemAddr), rankId));
+    }
     curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
     epWindowGM_ = (GM_ADDR)curRankShmemAddr + A5_MTE_STATE_WIN_SIZE;
     token_buffer = (GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE; // 本端新增的数据区域，用于本卡数据拷贝，占用空间大小是hExpandXAlign32Size_
@@ -947,7 +947,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Pro
             dcci(flag_gm + i, 0);
         }
         dcci(flag_gm + 63, 0);
-        for(int cid = 0; cid < aivNum_; cid ++) {
+        for(int cid = 0; cid < aivNum_; cid ++) { 
             int flag_new = flag_gm[cid];
             if(flag_new > processed_cnt_per_core[cid]) {
                 for(int loop = processed_cnt_per_core[cid]; loop < flag_new; loop ++) {
@@ -961,9 +961,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Pro
                     uint32_t epOffset = tokenId * (axisK_ + sharedExpertNum_) + topkId;
                     __gm__ uint8_t *rmt_buff_addr = base_addr[toRankId] + A5_MTE_STATE_WIN_SIZE + static_cast<uint64_t>(epOffset) * hAlignWinSize_;
                     __gm__ uint8_t *rmt_sig_addr = base_addr[toRankId] + static_cast<uint64_t>(tokenId) * flagRcvCount_ * stateOffset_ + static_cast<uint64_t>(topkId) * stateOffset_;
-                    // aclshmemx_udma_put_signal_nbi(
-                    // rmt_buff_addr, send_buff_ptr, tokenScaleCnt_*sizeof(ExpandXType), rmt_sig_addr, (uint64_t)(*((uint32_t *)(&sig))),
-                    // static_cast<int>(toRankId));
+                    aclshmemx_udma_put_signal_nbi(
+                    rmt_buff_addr, send_buff_ptr, tokenScaleCnt_*sizeof(ExpandXType), rmt_sig_addr, (uint64_t)(*((uint32_t *)(&sig))),
+                    static_cast<int>(toRankId));
                 }
                 processed_cnt += flag_new - processed_cnt_per_core[cid];
                 processed_cnt_per_core[cid] = flag_new;
@@ -971,7 +971,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Pro
         }
     }
     for(int rid = start_rank_id; rid < end_rank_id; rid ++) {
-        // aclshmemx_udma_quiet(static_cast<int>(rid));
+        aclshmemx_udma_quiet(static_cast<int>(rid));
     }
 }
 
