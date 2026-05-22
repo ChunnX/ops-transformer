@@ -89,7 +89,6 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);  //  0: 默认值
-        this->Attr("key_stride0").AttrType(OPTIONAL).Int(1);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

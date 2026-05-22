@@ -73,7 +73,7 @@ public:
     using SCORE_T = typename LIT::scoreType;
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
-    static constexpr LI_v2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
+    static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
     using W_T = typename LightningIndexerTypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     LIV2Matmul<LIT> matmulService;
@@ -193,7 +193,7 @@ __aicore__ inline void LIV2Preload<LIT>::InitTilingData(const LIV2TilingData *__
         constInfo.s1BaseSize = S1_BASE_SIZE;
     }
     constInfo.s2BaseSize = S2_BASE_SIZE;
-    constInfo.returnValueFlag = tilingData->returnValues;
+    constInfo.returnValueFlag = tilingData->returnValue;
 }
 
 template <typename LIT>
