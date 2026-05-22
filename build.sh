@@ -8,7 +8,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
+echo "hbltest"
+ls /home/phisik3/jenkins/workspace/work_code/open_source
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common
+ls /home/phisik3/jenkins/workspace/work_code/open_source/opbase/include/op_common/log
 set -e
 RELEASE_TARGETS=("ophost" "opapi" "opgraph" "onnxplugin")
 UT_TARGETS=()
