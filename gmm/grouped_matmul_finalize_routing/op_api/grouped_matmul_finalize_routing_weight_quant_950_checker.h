@@ -17,6 +17,11 @@
 #include "util/math_util.h"
 #include "log/log.h"
 
+namespace
+{
+static constexpr const char* ACLNN_NAME = "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize";
+};
+
 namespace GmmFinalizeRouting {
 
 constexpr size_t WQ_DIM_ZERO = 0UL;
@@ -67,47 +72,47 @@ public:
     aclnnStatus CheckNotNull()
     {
         if (unlikely(!(gmmParams_.x1 != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "x",
                 "nullptr", "x should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.x2 != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "weight",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "weight",
                 "nullptr", "weight should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.scale != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "scale",
                 "nullptr", "scale should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.groupList != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "groupList",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "groupList",
                 "nullptr", "groupList should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.logit != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "logit",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "logit",
                 "nullptr", "logit should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.rowIndex != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "rowIndex",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "rowIndex",
                 "nullptr", "rowIndex should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.out != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "out",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "out",
                 "nullptr", "out should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.pertokenScaleOptional != nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScaleOptional",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "pertokenScaleOptional",
                 "nullptr", "In A8W4 quant, pertokenScaleOptional should not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (unlikely(!(gmmParams_.offset == nullptr))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "offset",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "offset",
                 "not nullptr", "A8W4 quant mode does not support offset");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -117,12 +122,12 @@ public:
     aclnnStatus CheckTranspose()
     {
         if (unlikely(!(gmmParams_.transposeX1 == false))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "transposeX1",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "transposeX1",
                 "true", "In A8W4 quant, x1 must not be transposed (transposeX1 should be false)");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(gmmParams_.transposeX2 == true))) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "transposeX2",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "transposeX2",
                 "false", "In A8W4 quant, weight must be transposed (transposeX2 should be true)");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -141,54 +146,54 @@ public:
         auto rowindexDimNumber = gmmParams_.rowIndex->GetViewShape().GetDimNum();
         auto outDimNumber = gmmParams_.out->GetViewShape().GetDimNum();
         if (unlikely(!(xDimNumber == WQ_DIM_TWO))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "x",
                 std::to_string(xDimNumber).c_str(), "The dim num of x should be equal to 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(wDimNumber == WQ_DIM_THREE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "w",
                 std::to_string(wDimNumber).c_str(), "The dim num of w should be equal to 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(wStorageDimNumber == WQ_DIM_FIVE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "w(storage)",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "w(storage)",
                 std::to_string(wStorageDimNumber).c_str(), "The storage dim num of w should be equal to 5");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(wScaleDimNumber == WQ_DIM_FOUR))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "scale",
                 std::to_string(wScaleDimNumber).c_str(), "The dim num of scale should be equal to 4");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(xScaleDimNumber == WQ_DIM_THREE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenscale",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "pertokenscale",
                 std::to_string(xScaleDimNumber).c_str(), "The dim num of pertokenscale should be equal to 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(grouplistDimNumber == WQ_DIM_ONE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "grouplist",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "grouplist",
                 std::to_string(grouplistDimNumber).c_str(), "The dim num of grouplist should be equal to 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(logitDimNumber == WQ_DIM_ONE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "logit",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "logit",
                 std::to_string(logitDimNumber).c_str(), "The dim num of logit should be equal to 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(rowindexDimNumber == WQ_DIM_ONE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "rowindex",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "rowindex",
                 std::to_string(rowindexDimNumber).c_str(), "The dim num of rowindex should be equal to 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(outDimNumber == WQ_DIM_TWO))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "out",
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "out",
                 std::to_string(outDimNumber).c_str(), "The dim num of out should be equal to 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (gmmParams_.bias != nullptr) {
             auto biasDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
             if (unlikely(!(biasDimNumber == WQ_DIM_TWO))) {
-                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "bias",
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "bias",
                     std::to_string(biasDimNumber).c_str(), "The dim num of bias should be equal to 2");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -196,7 +201,7 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             auto shareInputDimNumber = gmmParams_.shareInput->GetViewShape().GetDimNum();
             if (unlikely(!(shareInputDimNumber == WQ_DIM_TWO))) {
-                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "shareinput",
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "shareinput",
                     std::to_string(shareInputDimNumber).c_str(), "The dim num of shareinput should be equal to 2");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -217,20 +222,20 @@ public:
         int64_t outputBS = gmmParams_.out->GetViewShape().GetDim(0);
         if (unlikely(k <= 0)) {
             // 保证M/N非0已校验
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "k",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "k",
                 std::to_string(k).c_str(), "K value should be positive");
             return false;
         }
         // A8W4约束: k % 32 == 0
         if (unlikely(k % K_ALIGN_SIZE != 0)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "k",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "k",
                 std::to_string(k).c_str(),
                 ("k must be a multiple of " + std::to_string(K_ALIGN_SIZE)).c_str());
             return false;
         }
         // A8W4约束: n % 32 == 0
         if (unlikely(n % N_ALIGN_SIZE != 0)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "n",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "n",
                 std::to_string(n).c_str(),
                 ("n must be a multiple of " + std::to_string(N_ALIGN_SIZE)).c_str());
             return false;
@@ -277,14 +282,14 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             int64_t bsdp = gmmParams_.shareInput->GetViewShape().GetDim(0);
             if (unlikely(bsdp > gmmParams_.out->GetViewShape().GetDim(0))) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "shareInput batch",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "shareInput batch",
                     std::to_string(bsdp).c_str(),
                     ("shareInput batch should be <= outputBS " +
                      std::to_string(gmmParams_.out->GetViewShape().GetDim(0))).c_str());
                 return false;
             }
             if (unlikely(gmmParams_.shareInputOffset > gmmParams_.out->GetViewShape().GetDim(0) - bsdp)) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME,
                     "sharedInputOffset + shareInput batch",
                     (std::to_string(gmmParams_.shareInputOffset) + " + " + std::to_string(bsdp)).c_str(),
                     ("sharedInputOffset + shareInput batch should be <= outputBS(" +
@@ -304,20 +309,20 @@ public:
         int64_t kInWeight = gmmParams_.x2->GetViewShape().GetDim(WQ_DIM_TWO);
         int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0);
         if (unlikely(kInWeight != k)) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x and weight",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "x and weight",
                 (std::to_string(k) + " vs " + std::to_string(kInWeight)).c_str(),
                 "The dimension (k) of x must be equal to the dimension (k) of weight");
             return false;
         }
         int64_t groupListLen = gmmParams_.groupList->GetViewShape().GetDim(WQ_DIM_ZERO);
         if (unlikely(groupListLen != e)) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "groupList and weight",
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_NAME, "groupList and weight",
                 (std::to_string(groupListLen) + " vs " + std::to_string(e)).c_str(),
                 "Length of groupList should be equal to the number of experts in weight");
             return false;
         }
         if (unlikely(e > WQ_MAX_NUM_EXPERTS)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "e",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "e",
                 std::to_string(e).c_str(),
                 ("In A8W4 quant, e must be less than or equal to " + std::to_string(WQ_MAX_NUM_EXPERTS)).c_str());
             return false;
@@ -358,14 +363,14 @@ public:
     bool CheckXAndWeightFormat()
     {
         if (unlikely(op::IsPrivateFormat(gmmParams_.x1->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "x",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "x",
                 op::ToString(gmmParams_.x1->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         // A8W4场景：权重为NZ格式
         if (unlikely(gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ &&
             gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ_C0_32)) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "weight",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "weight",
                 op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(), "NZ(C0_32)");
             return false;
         }
@@ -375,42 +380,42 @@ public:
     bool CheckOtherTensorFormats()
     {
         if (unlikely(op::IsPrivateFormat(gmmParams_.pertokenScaleOptional->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScaleOptional",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "pertokenScaleOptional",
                 op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (unlikely(op::IsPrivateFormat(gmmParams_.scale->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "scale",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "scale",
                 op::ToString(gmmParams_.scale->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (unlikely(op::IsPrivateFormat(gmmParams_.groupList->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "groupList",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "groupList",
                 op::ToString(gmmParams_.groupList->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (unlikely(op::IsPrivateFormat(gmmParams_.logit->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "logit",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "logit",
                 op::ToString(gmmParams_.logit->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (unlikely(op::IsPrivateFormat(gmmParams_.rowIndex->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "rowIndex",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "rowIndex",
                 op::ToString(gmmParams_.rowIndex->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (unlikely(op::IsPrivateFormat(gmmParams_.out->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "out",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "out",
                 op::ToString(gmmParams_.out->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (gmmParams_.bias != nullptr && unlikely(op::IsPrivateFormat(gmmParams_.bias->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "bias",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "bias",
                 op::ToString(gmmParams_.bias->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (gmmParams_.shareInput != nullptr && unlikely(op::IsPrivateFormat(gmmParams_.shareInput->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "shareInput",
+            OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "shareInput",
                 op::ToString(gmmParams_.shareInput->GetStorageFormat()).GetString(), "ND");
             return false;
         }
