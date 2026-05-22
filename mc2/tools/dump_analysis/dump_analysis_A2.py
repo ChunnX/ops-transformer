@@ -452,7 +452,7 @@ def _get_runpos_mapping(islayer: int, d_c: str):
         )
 
     pos_mapping = pos_common + pos_diff
-    next_pos = [1, 3, len(pos_mapping)] + list(range(4, len(pos_mapping) - 1)) + [2]
+    next_pos = [1, 3, len(pos_mapping)] + list(range(4, len(pos_mapping))) + [2]
     pos_position = _get_runpos_sort(next_pos)
     return pos_mapping, next_pos, pos_position
 
