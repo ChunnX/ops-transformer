@@ -34,7 +34,7 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
         [False, False, False, True, True, True, True, True])
-    def MoeDistributeDispatchV3(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
+    def MoeDistributeDispatch(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
                                 x_active_mask: Optional[Tensor], expert_scales: Optional[Tensor], 
                                 elastic_info: Optional[Tensor], performance_info: Optional[Tensor], *, 
                                 ep_world_size: int, ep_rank_id: int, moe_expert_num: int, ccl_buffer_size: int,
@@ -43,7 +43,7 @@ if _TORCHAIR_AVAILABLE:
                                 quant_mode: int = 0, global_bs: int = 0, expert_token_nums_type: int = 1,
                                 comm_alg: str = "", zero_expert_num: int = 0, copy_expert_num: int = 0,
                                 const_expert_num: int = 0, y_dtype: int = 28, dependencies=[], node_name=None):
-        """REG_OP(MoeDistributeDispatchV3)\n
+        """REG_OP(MoeDistributeDispatch)\n
         .INPUT(context, TensorType({DT_INT32}))\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
         .INPUT(expert_ids, TensorType({DT_INT32}))\n
@@ -122,12 +122,12 @@ if _TORCHAIR_AVAILABLE:
         ]
 
         return ge_op(
-            op_type="MoeDistributeDispatchV3",
+            op_type="MoeDistributeDispatch",
             inputs=inputs,
             attrs=attrs,
             outputs=outputs,
             dependencies=dependencies,
-            ir=IrDef("MoeDistributeDispatchV3") \
+            ir=IrDef("MoeDistributeDispatch") \
             .input("context", "DT_INT32") \
             .input("x", "DT_BF16, DT_FLOAT16") \
             .input("expert_ids", "DT_INT32") \
@@ -162,8 +162,8 @@ if _TORCHAIR_AVAILABLE:
             .output("expand_scales", "DT_FLOAT")
         )
 
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_moe_distribute_dispatch_v3.default)
-    def converter_moe_distribute_dispatch_v3(
+    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_moe_distribute_dispatch.default)
+    def converter_moe_distribute_dispatch(
         context: Tensor,
         x: Tensor,
         expert_ids: Tensor,
@@ -196,7 +196,7 @@ if _TORCHAIR_AVAILABLE:
         if quant_mode == 0:
             expand_x_dtype = x.dtype
 
-        return MoeDistributeDispatchV3(context=context,
+        return MoeDistributeDispatch(context=context,
                                         x=x,
                                         expert_ids=expert_ids,
                                         scales=scales,
