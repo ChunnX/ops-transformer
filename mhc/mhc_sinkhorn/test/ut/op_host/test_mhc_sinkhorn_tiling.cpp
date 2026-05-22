@@ -13,6 +13,7 @@
 #include "../../../op_host/mhc_sinkhorn_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include <iostream>
 
 using namespace std;
 
