@@ -406,12 +406,16 @@ function(add_ops_src_copy)
             file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
                 ${OPS_ADV_UTILS_KERNEL_INC}/* 
                 ${OPS_CGMCT}/*
+                ${BLAZE}/*
+                ${TENSOR_API}/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API} ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
