@@ -344,7 +344,7 @@ public:
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop & (PRELOAD_N + 1)].template Get<float>()[0];
 
         auto expUb = this->softmaxExpBuf[runInfo.loop & (PRELOAD_N + 1)].template Get<T>()[0];
-        int64_t stage1Offset = runInfo.loop % DB;
+        int64_t stage1Offset = runInfo.loop & (DB - 1);  // % 2 → & 1
 
         float descaleQK = 1.0;
 
@@ -499,7 +499,7 @@ public:
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
             set_mark(0x50010000); // AttenMaskCopyIn开始
-            attenMaskUb = this->attenMaskInQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
+            attenMaskUb = this->attenMaskInQue[runInfo.loop & (DB - 1)].template AllocTensor<uint8_t>();
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
             set_mark(0x500100FF); // AttenMaskCopyIn结束
         }
@@ -513,8 +513,7 @@ public:
 
         apiTmpBuffer = this->commonTBuf.template Get<uint8_t>();
 
-        int64_t stage1Offset = 0;
-        stage1Offset = runInfo.loop % DB;
+        int64_t stage1Offset = runInfo.loop & (DB - 1);  // % 2 → & 1
 
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
@@ -590,7 +589,7 @@ public:
         set_mark(0x500200FF); // Softmax VF结束
         bmm1ResBuf.SetCrossCore();
         if constexpr (hasAtten) {
-            this->attenMaskInQue[runInfo.loop % DB].template FreeTensor(attenMaskUb);
+            this->attenMaskInQue[runInfo.loop & (DB - 1)].template FreeTensor(attenMaskUb);
         }
 
         // ===================DataCopy to L1 ====================
@@ -743,11 +742,11 @@ public:
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 if constexpr (useDn) {
-                    DataCopy(vec2ResUb, this->vec2ResGm[runInfo.loop % DB][vec2SubBlockOffset + vec2ResInnerOffset],
+                    DataCopy(vec2ResUb, this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset],
                              vec2CalcSize);
                 } else {
                     DataCopy(vec2ResUb,
-                             this->vec2ResGm[runInfo.loop % DB][constInfo.subBlockIdx *
+                             this->vec2ResGm[runInfo.loop & (DB - 1)][constInfo.subBlockIdx *
                                                                     (runInfo.actMSize - runInfo.actVecMSize) *
                                                                     constInfo.dBasicBlock +
                                                                 vec2ResInnerOffset],
@@ -790,10 +789,10 @@ public:
                 SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
                 WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
                 if constexpr (useDn) {
-                    DataCopy(this->vec2ResGm[runInfo.loop % DB][vec2SubBlockOffset + vec2ResInnerOffset], vec2ResUb,
+                    DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset], vec2ResUb,
                              vec2CalcSize);
                 } else {
-                    DataCopy(this->vec2ResGm[runInfo.loop % DB][constInfo.subBlockIdx *
+                    DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][constInfo.subBlockIdx *
                                                                     (runInfo.actMSize - runInfo.actVecMSize) *
                                                                     constInfo.dBasicBlock +
                                                                 vec2ResInnerOffset],
@@ -958,8 +957,8 @@ public:
         if constexpr (splitD) {
             dSizeAligned64 = constInfo.dBasicBlock;
         }
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
 
@@ -1210,10 +1209,10 @@ public:
 
         if (!IsSkipMaskForPre) {
             LocalTensor<uint8_t> attenMaskUbPre =
-                this->attenMaskInQue[1 - runInfo.loop % DB].template AllocTensor<uint8_t>();
+                this->attenMaskInQue[1 - (runInfo.loop & (DB - 1))].template AllocTensor<uint8_t>();
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
-            this->attenMaskInQue[1 - runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
+            this->attenMaskInQue[1 - (runInfo.loop & (DB - 1))].template FreeTensor(attenMaskUbPre);
         }
     }
 

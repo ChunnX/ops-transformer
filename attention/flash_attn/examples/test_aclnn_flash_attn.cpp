@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <string>
 #include <sstream>
+#include <chrono>
 #include "acl/acl.h"
 #include "../op_api/aclnn_flash_attn.h"
 
@@ -693,6 +694,7 @@ static bool RunTndMixed02(aclrtStream stream, const char *metaBinPath,
     static const float    qMin = -10.0f, qMax = 10.0f;
     static const float    kMin = -10.0f, kMax = 10.0f;
     static const float    vMin = -10.0f, vMax = 10.0f;
+    static const int      REPEAT_TIMES = 1;    // ← 调整此处可反复调用算子
 
     static const int32_t CU_SEQLENS_Q[9]  = {0,118,236,354,472,590,708,826,944};
     static const int32_t CU_SEQLENS_KV[9] = {0,118,236,354,472,590,708,826,944};
@@ -809,9 +811,10 @@ static bool RunTndMixed02(aclrtStream stream, const char *metaBinPath,
     }
 
     // ── 调用 flash_attn（TND 布局，maxSeqlen=-1 由 cu_seqlens 决定）──────────
-    LOG_PRINT("\n  [A] Calling aclnnFlashAttn (TND, metadata from file)...\n");
+    LOG_PRINT("\n  [A] Calling aclnnFlashAttn (TND, metadata from file, x%d)...\n", REPEAT_TIMES);
     double softmaxScale = 1.0 / std::sqrt((double)D);
     {
+        // GetWorkspaceSize 只调一次（CPU 侧准备 executor）
         uint64_t wsSize = 0;
         aclOpExecutor *exec = nullptr;
         int ret = aclnnFlashAttnGetWorkspaceSize(
@@ -839,15 +842,24 @@ static bool RunTndMixed02(aclrtStream stream, const char *metaBinPath,
         }
         void *ws = nullptr;
         if (wsSize > 0) aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        ret = aclnnFlashAttn(ws, wsSize, exec, stream);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("  aclnnFlashAttn FAILED. ret=%d\n", ret);
-            if (ws) aclrtFree(ws);
-            cleanup(); return false;
+
+        // 循环调用算子，计时
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int _r = 0; _r < REPEAT_TIMES; ++_r) {
+            ret = aclnnFlashAttn(ws, wsSize, exec, stream);
+            if (ret != ACL_SUCCESS) {
+                LOG_PRINT("  aclnnFlashAttn FAILED (iter %d). ret=%d\n", _r, ret);
+                if (ws) aclrtFree(ws);
+                cleanup(); return false;
+            }
+            aclrtSynchronizeStream(stream);
         }
-        aclrtSynchronizeStream(stream);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double totalMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        LOG_PRINT("  flash_attn done. repeat=%d  total=%.3f ms  avg=%.3f ms\n",
+                  REPEAT_TIMES, totalMs, totalMs / REPEAT_TIMES);
+
         if (ws) aclrtFree(ws);
-        LOG_PRINT("  flash_attn done.\n");
     }
 
     // ── 回读 NPU 输出 ──────────────────────────────────────────────────────────
