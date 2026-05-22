@@ -97,16 +97,15 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
-        // Communication + compute flow (disabled for debugging)
-        // if constexpr (MX_QUANT_MODE) {
-        //     if (isScaleBatchMode_) {
-        //         ProcessScaleCommBatchMode();
-        //     } else {
-        //         ProcessCommRoundMode();
-        //     }
-        // } else {
-        //     ProcessCommRoundMode();
-        // }
+        if constexpr (MX_QUANT_MODE) {
+            if (isScaleBatchMode_) {
+                ProcessScaleCommBatchMode();
+            } else {
+                ProcessCommRoundMode();
+            }
+        } else {
+            ProcessCommRoundMode();
+        }
         this->End();
     }
 
