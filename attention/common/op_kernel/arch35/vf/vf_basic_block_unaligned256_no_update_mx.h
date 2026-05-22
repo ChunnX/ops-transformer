@@ -758,7 +758,8 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl256Mxfp8Fullquant(
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const float sinkValue, const float pScale, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
+    const T minValue, float keepProb, const float sinkValue, const float pScale,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (65*16*2/32)，单位block, low 16bits: repeatStride (1)
