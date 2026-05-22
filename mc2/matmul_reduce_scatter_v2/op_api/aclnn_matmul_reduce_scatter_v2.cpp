@@ -151,8 +151,8 @@ static bool CheckAivModeDtypeValid(const aclTensor* x1, const aclTensor* x2,
 static bool CheckAttr(int64_t streamMode)
 {
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be %ld, but got %ld.", NUM_ACL_STOP_ON_FAILURE,
-                streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2", "streamMode",
+            std::to_string(streamMode), std::to_string(NUM_ACL_STOP_ON_FAILURE));
         return false;
     }
     return true;
@@ -192,20 +192,21 @@ static bool CheckShape(const aclTensor* x1, const aclTensor* x2, bool isTransA)
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
     int64_t kVal1 = 0, kVal2 = 0;
     if (isTransA) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not support transpose x1 matrix.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "x1",
+            "transposed", "Does not support transpose x1 matrix.");
         return false;
     }
     kVal1 = x1->GetViewShape().GetDim(1);
     kVal2 = x2->GetViewShape().GetDim(0);
     OP_API_CHECK((kVal1 != kVal2), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The k-axis of x1 and x2 should be same, but x1's k-axis is: %ld and x2's k-axis is: %ld.", kVal1,
-                kVal2);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "k_axis",
+            "x1=" + std::to_string(kVal1) + ", x2=" + std::to_string(kVal2),
+            "The k-axis of x1 and x2 should be the same.");
         return false;
     });
     OP_API_CHECK((kVal1 < KVALUE_MIN || kVal1 >= KVALUE_MAX), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The k-axis should be in range[%ld, %ld), but it is: %ld.", KVALUE_MIN,
-                KVALUE_MAX, kVal1);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2", "k_axis",
+            std::to_string(kVal1), "[" + std::to_string(KVALUE_MIN) + ", " + std::to_string(KVALUE_MAX) + ")");
         return false;
     });
     return true;
@@ -217,7 +218,8 @@ static bool CheckEmptyTensor(const aclTensor* tensor, const char* tensorName)
         return false;
     }
     if (tensor->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Tensor %s should not be empty.\n", tensorName);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2",
+            tensorName, "empty", "Tensor should not be empty.");
         return false;
     }
     return true;
@@ -271,7 +273,8 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor
         //perblock其余判定放在tiling侧进行
         return CaseOption::LOW_ACCURACY_PER_BLOCK;
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid scene in low accuracy, please check input x1Scale.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "x1Scale",
+            "invalid", "Invalid scene in low accuracy, please check input x1Scale.");
         return CaseOption::INVALID;
     }
 }
@@ -280,7 +283,8 @@ static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const
                                  const aclTensor* amax, const aclTensor* x1Scale, const aclTensor* x2Scale)
 {
     if (amax != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not support non-nullptr amaxOutOptional.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "amaxOutOptional",
+            "non-nullptr", "Does not support non-nullptr amaxOutOptional.");
         return CaseOption::INVALID;
     }
     if (CheckType(x1->GetDataType(), INPUT_SUPPORT_TYPE_HIGH_ACCURACY) &&
@@ -291,9 +295,10 @@ static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const
         return CheckLowAccuracyCase(x1, x2, x1Scale, x2Scale);
     } 
     else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not match any available case, "
-                "x1 datatype is %s, x1 datatype is %s, please read the documents and check the input.",
-                op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "input_dtype",
+            "x1=" + std::string(op::ToString(x1->GetDataType()).GetString()) +
+                ", x2=" + std::string(op::ToString(x2->GetDataType()).GetString()),
+            "Does not match any available case. Please check the input.");
         return CaseOption::INVALID;
     }
 }
@@ -367,8 +372,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
     CaseOption caseIndex =
         CheckCase(x1, x2, bias, output, amaxOutOptional, x1Scale, x2Scale);
     if (caseIndex >= CaseOption::INVALID) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not match any available case, "
-                "please read the documents and check the input.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "input",
+            "case_invalid", "Does not match any available case. Please check the input.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     OP_LOGD("Input fit case %u.", static_cast<uint32_t>(caseIndex));
@@ -443,8 +448,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     // 【A2、A3】检查x2矩阵非连续合法性
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-                    "but it is non-contiguous.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2", "x2",
+                "non-contiguous", "The x2 without transpose in MatmulReduceScatter must be contiguous.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
