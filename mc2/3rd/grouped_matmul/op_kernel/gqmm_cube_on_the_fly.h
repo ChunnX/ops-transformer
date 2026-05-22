@@ -323,6 +323,11 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
     if ASCEND_IS_AIV {
         return;
     }
+    AscendC::printf("[LBH] A=%llu B=%llu C=%llu offA=%llu offB=%llu offC=%llu scM=%llu scN=%llu k=%llu\n",
+        reinterpret_cast<uint64_t>(xGlobal_.GetPhyAddr()), reinterpret_cast<uint64_t>(wGlobal_.GetPhyAddr()),
+        reinterpret_cast<uint64_t>(yGlobal_.GetPhyAddr()),
+        block_.offset_.offsetA, block_.offset_.offsetB, block_.offset_.offsetC,
+        block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
     mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
     if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
         mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
