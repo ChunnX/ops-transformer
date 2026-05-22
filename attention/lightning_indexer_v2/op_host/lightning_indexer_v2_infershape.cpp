@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_infershape.cpp
@@ -22,10 +22,10 @@ using namespace ge;
 namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 1;
-constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 0;
-constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 4;
+constexpr uint32_t ATTR_TOPK_INDEX = 0;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
+constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
 
 static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
 {
@@ -47,7 +47,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
     const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
+    const int64_t *seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
@@ -72,7 +72,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
             OP_LOGE(context, "Layout TND, queryDims (%zu) must be 3!", queryShape->GetDimNum()),
             return ge::GRAPH_FAILED);
         sparseIndicesShape->SetDim(0, queryShape->GetDim(0));                      // 0:Dim T
-        int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BSND") ? 2 : 1; // 2:Key Dim N
+        int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BSND") ? 2 : 1;           // 2:Key Dim N
         sparseIndicesShape->SetDim(1, keyShape->GetDim(nDimIndex));                // 1:Dim N
         sparseIndicesShape->SetDim(2, *seleced_count);                             // 2:Dim K
     }
