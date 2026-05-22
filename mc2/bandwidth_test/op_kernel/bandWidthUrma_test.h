@@ -412,9 +412,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     // ============ 计算当前核处理的token范围 ============
 
     PRINTF("start SendToMoeExpert aivid is %d\n", aivId_);
+
     uint32_t startRankId, endRankId, sendRankNum;
     SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
-
+    PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n", epWorldSize_, startRankId, endRankId, sendRankNum);
     if (startRankId >= endRankId || sendRankNum == 0) { 
         return; 
     }
