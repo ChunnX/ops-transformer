@@ -99,36 +99,24 @@ public:
             return ;
         }
         this->UpdateAddr(expertIdx);
-        // 3. 计算偏移后地址
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
-        // AGENT debug: 打印地址和MNK信息确认是否越界
-        AscendC::printf("[LBH] QuantGroupedMatmul Process: isLocal=%d expertIdx=%d\n", isLocal ? 1 : 0, expertIdx);
-        AscendC::printf("[LBH] xAddr=%llu wAddr=%llu yAddr=%llu\n",
-            reinterpret_cast<uint64_t>(xAddr), reinterpret_cast<uint64_t>(wAddr), reinterpret_cast<uint64_t>(yAddr));
-        AscendC::printf("[LBH] h1=%llu n1=%llu bs=%llu a=%llu expertTokenOffset=%llu groupListToken=%llu\n",
-            h1_, n1_, bs_, a_, expertTokenOffset_, isLocal ? bs_ : expertTokenNum_[expertIdx]);
-        AscendC::printf("[LBH] gmmQuantParams aQuantMode=%d bQuantMode=%d\n",
-            gmmTilingData_->gmmQuantParams.aQuantMode, gmmTilingData_->gmmQuantParams.bQuantMode);
-        AscendC::printf("[LBH] mmTilingData M=%d N=%d Ka=%d Kb=%d baseM=%d baseN=%d baseK=%d\n",
-            gmmTilingData_->mmTilingData.M, gmmTilingData_->mmTilingData.N,
-            gmmTilingData_->mmTilingData.Ka, gmmTilingData_->mmTilingData.Kb,
-            gmmTilingData_->mmTilingData.baseM, gmmTilingData_->mmTilingData.baseN,
-            gmmTilingData_->mmTilingData.baseK);
-        // 4. 构建 GetTensorAddr 指针表
+        AscendC::printf("[LBH] isLocal=%d expertIdx=%d xAddr=%llu wAddr=%llu yAddr=%llu M=%d N=%d K=%d\n",
+            isLocal ? 1 : 0, expertIdx, reinterpret_cast<uint64_t>(xAddr),
+            reinterpret_cast<uint64_t>(wAddr), reinterpret_cast<uint64_t>(yAddr),
+            gmmTilingData_->mmTilingData.M, gmmTilingData_->mmTilingData.N, gmmTilingData_->mmTilingData.Ka);
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
         GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
         GM_ADDR perTokenScalePtr = (xScaleGM_ != nullptr) ? BuildPtrTable(xScaleGM_, 4) : nullptr;
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
-        AscendC::printf("[LBH] Process xPtr = %p\n", xPtr);
-        AscendC::printf("[LBH] Process wPtr = %p\n", wPtr);
-        AscendC::printf("[LBH] Process yPtr = %p\n", yPtr);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
-        // 非量化算子没有通信 SyncAll 屏障，需要显式 SyncAll 确保 Cube 引擎能读到最新数据
+        // flush groupList和ptrTable到GM，再SyncAll确保Cube引擎读到最新数据
+        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
         SyncAll<false>();
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();

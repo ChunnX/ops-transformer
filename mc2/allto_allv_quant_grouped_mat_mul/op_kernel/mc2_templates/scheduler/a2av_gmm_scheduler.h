@@ -83,9 +83,6 @@ public:
         // localComputeOp和computeOp串行执行，共享同一份workspace（groupList/ptrTable在各自Process内写入和消费）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
-            AscendC::printf("[LBH] localComputeOp.Init mmxOptionalGM = %p\n", mmxOptionalGM);
-            AscendC::printf("[LBH] localComputeOp.Init mmweightOptionalGM = %p\n", mmweightOptionalGM);
-            AscendC::printf("[LBH] localComputeOp.Init mmyOptionalGM = %p\n", mmyOptionalGM);
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
@@ -96,7 +93,6 @@ public:
 
     __aicore__ inline void Process()
     {
-        AscendC::printf("[LBH] tilingData_->isNeedMM = %d\n", tilingData_->isNeedMM);
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }

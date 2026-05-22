@@ -132,7 +132,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     // mmWeight为null时强制transMmWeight_=false，否则base class GetMmWeightShapeInfo会报错
     transMmWeight_ = (mmXStorageShape != nullptr) ? *transMmWeightPtr : false;
     
-    OP_LOGI(A_INNER_DEBUG, "AGENT epGroup is %s, epWorldSize is %lu.", groupPtr_, *epWorldSizePtr_);
+    OP_LOGI(A_INNER_DEBUG, "[LBH] epGroup is %s, epWorldSize is %lu.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -549,14 +549,13 @@ uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
-    OP_LOGD(A_INNER_DEBUG, "AGENT AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
+    OP_LOGD(A_INNER_DEBUG, "[LBH] GetTilingKey: gmmTrans=%d mmTrans=%d commMode=%u tilingKey=%lu",
             tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);
     return tilingKey;
 }
 
 ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* context)
 {
-    OP_LOGD(A_INNER_DEBUG, "AGENT begin RunFusionKernelTiling.");
 
     OP_TILING_CHECK(
         SetHcclTiling(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "set hccl tiling failed!"),
@@ -619,7 +618,6 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     uint64_t tilingKey = GetTilingKey();
     context->SetTilingKey(tilingKey);
 
-    OP_LOGD(A_INNER_DEBUG, "AGENT end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -717,7 +715,6 @@ void AlltoAllvGmmTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTil
 
 ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* context)
 {
-    OP_LOGD(A_INNER_DEBUG, "AGENT begin DoAiCoreTiling.");
     auto dTypeForMM = matmul_tiling::DataType::DT_FLOAT16;
     if (mmXDataType_ == ge::DT_BF16) {
         dTypeForMM = matmul_tiling::DataType::DT_BF16;
@@ -753,14 +750,13 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
         SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
     }
 
-    OP_LOGD(A_INNER_DEBUG, "AGENT end DoAiCoreTiling.");
     return ge::GRAPH_SUCCESS;
 }
 
 uint64_t AlltoAllvGmmTilingStruct::GetTilingKey() const
 {
     const uint64_t tilingKey = context_->GetTilingKey();
-    OP_LOGD(A_INNER_DEBUG, "AGENT AlltoAllvGmmTiling get tiling key %lu", tilingKey);
+    OP_LOGD(A_INNER_DEBUG, "[LBH] AlltoAllvGmmTiling get tiling key %lu", tilingKey);
     return tilingKey;
 }
 
@@ -771,20 +767,17 @@ bool AlltoAllvGmmTilingStruct::IsCapable()
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
 {
-    OP_LOGD(context_->GetNodeName(), "AGENT start GetPlatformInfo.");
     if (GetCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(context_->GetNodeName(), "AGENT end GetPlatformInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 {
-    OP_LOGD(context_->GetNodeName(), "AGENT start GetShapeAttrsInfo.");
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned null."), return ge::GRAPH_FAILED);
     groupPtr_ = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
@@ -833,24 +826,20 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
         transMmWeight_ = false;
     }
 
-    OP_LOGD(context_->GetNodeName(), "AGENT end GetShapeAttrsInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::DoLibApiTiling()
 {
-    OP_LOGD(context_->GetNodeName(), "AGENT start DoLibApiTiling.");
     if (GetShapeInfo() != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "GetShapeInfo failed.");
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(context_->GetNodeName(), "AGENT end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
 {
-    OP_LOGD(context_->GetNodeName(), "AGENT start GetWorkspaceSize.");
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
@@ -861,14 +850,13 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     uint64_t permuteScaleOutSize = 0; // 非量化无scale通信
     // localComputeOp 和 computeOp 串行执行，共享同一份 internalWorkspace
     workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize + groupListSize + tensorListSize;
-    OP_LOGI(context_->GetNodeName(), "AGENT workspace size=%lu, permuteOut=%lu, groupList=%lu, tensorList=%lu.",
+    OP_LOGI(context_->GetNodeName(), "[LBH] workspace size=%lu, permuteOut=%lu, groupList=%lu, tensorList=%lu.",
         workspaces[0], permuteOutSize, groupListSize, tensorListSize);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
 {
-    OP_LOGD(context_->GetNodeName(), "AGENT start PostTiling.");
     auto tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
     OPS_CHECK_NULL_WITH_CONTEXT(context_, tilingData);
     
@@ -900,15 +888,14 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     tilingData->isPermuteOut = permuteOutFlag_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
 
-    OP_LOGI(context_->GetNodeName(), "AGENT Precision debug: BSK=%lu, BS=%lu, H1=%lu, A=%lu, N1=%lu, e=%lu, epWorldSize=%lu, ubSize=%lu.", 
+    OP_LOGI(context_->GetNodeName(), "[LBH] Precision debug: BSK=%lu, BS=%lu, H1=%lu, A=%lu, N1=%lu, e=%lu, epWorldSize=%lu, ubSize=%lu.", 
         bsk_, bs_, h1_, a_, n1_, e_, epWorldSize_, ubSize_);
-    OP_LOGI(context_->GetNodeName(), "AGENT Precision debug: gmmX dtype=%s, mmX dtype=%s.", 
+    OP_LOGI(context_->GetNodeName(), "[LBH] Precision debug: gmmX dtype=%s, mmX dtype=%s.", 
         ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str(), 
         ge::TypeUtils::DataTypeToSerialString(mmXDataType_).c_str());
-    OP_LOGI(context_->GetNodeName(), "AGENT Precision debug: transGmmWeight=%d, transMmWeight=%d, permuteOutFlag=%d.", 
+    OP_LOGI(context_->GetNodeName(), "[LBH] Precision debug: transGmmWeight=%d, transMmWeight=%d, permuteOutFlag=%d.", 
         transGmmWeight_, transMmWeight_, permuteOutFlag_);
     
-    OP_LOGD(context_->GetNodeName(), "AGENT end PostTiling.");
     return ge::GRAPH_SUCCESS;
 }
 

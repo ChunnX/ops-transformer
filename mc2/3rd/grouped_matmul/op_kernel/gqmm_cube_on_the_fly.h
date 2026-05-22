@@ -288,9 +288,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         int32_t kSize;
         // 更新group内的输入参数M,N,K
         SetMNK(groupIdx, mSize, nSize, kSize);
-        AscendC::printf("[LBH] mSize = %d\n", mSize);
-        AscendC::printf("[LBH] nSize = %d\n", nSize);
-        AscendC::printf("[LBH] kSize = %d\n", kSize);
+        AscendC::printf("[LBH] mSize=%d nSize=%d kSize=%d\n", mSize, nSize, kSize);
         block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
         if (mSize <= 0 || kSize <= 0 || nSize <= 0) {
             continue;
