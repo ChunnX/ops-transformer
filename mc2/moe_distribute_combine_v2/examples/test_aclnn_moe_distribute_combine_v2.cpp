@@ -392,12 +392,12 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     FreeDeviceAddr(expandScalesDeviceAddr);
     FreeDeviceAddr(tpRecvCountsDeviceAddr);
 
-    HcclCommDestroy(args.hcclEpComm);
-    HcclCommDestroy(args.hcclTpComm);
-    aclrtDestroyStream(args.dispatchV2Stream);
-    aclrtDestroyStream(args.combineV2Stream);
-    aclrtDestroyContext(args.context);
-    aclrtResetDevice(args.rankId);
+    // HcclCommDestroy(args.hcclEpComm);
+    // HcclCommDestroy(args.hcclTpComm);
+    // aclrtDestroyStream(args.dispatchV2Stream);
+    // aclrtDestroyStream(args.combineV2Stream);
+    // aclrtDestroyContext(args.context);
+    // aclrtResetDevice(args.rankId);
     
     return 0;
 }
