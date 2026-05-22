@@ -103,6 +103,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
     bool    isCmp; \
+    bool    isValid = 0; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
