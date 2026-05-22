@@ -104,14 +104,14 @@ public:
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
         // AGENT debug: 打印地址和MNK信息确认是否越界
-        AscendC::printf("[AGENT] QuantGroupedMatmul Process: isLocal=%d expertIdx=%d\n", isLocal ? 1 : 0, expertIdx);
-        AscendC::printf("[AGENT] xAddr=%llu wAddr=%llu yAddr=%llu\n",
+        AscendC::printf("[LBH] QuantGroupedMatmul Process: isLocal=%d expertIdx=%d\n", isLocal ? 1 : 0, expertIdx);
+        AscendC::printf("[LBH] xAddr=%llu wAddr=%llu yAddr=%llu\n",
             reinterpret_cast<uint64_t>(xAddr), reinterpret_cast<uint64_t>(wAddr), reinterpret_cast<uint64_t>(yAddr));
-        AscendC::printf("[AGENT] h1=%llu n1=%llu bs=%llu a=%llu expertTokenOffset=%llu groupListToken=%llu\n",
+        AscendC::printf("[LBH] h1=%llu n1=%llu bs=%llu a=%llu expertTokenOffset=%llu groupListToken=%llu\n",
             h1_, n1_, bs_, a_, expertTokenOffset_, isLocal ? bs_ : expertTokenNum_[expertIdx]);
-        AscendC::printf("[AGENT] gmmQuantParams aQuantMode=%d bQuantMode=%d\n",
+        AscendC::printf("[LBH] gmmQuantParams aQuantMode=%d bQuantMode=%d\n",
             gmmTilingData_->gmmQuantParams.aQuantMode, gmmTilingData_->gmmQuantParams.bQuantMode);
-        AscendC::printf("[AGENT] mmTilingData M=%d N=%d Ka=%d Kb=%d baseM=%d baseN=%d baseK=%d\n",
+        AscendC::printf("[LBH] mmTilingData M=%d N=%d Ka=%d Kb=%d baseM=%d baseN=%d baseK=%d\n",
             gmmTilingData_->mmTilingData.M, gmmTilingData_->mmTilingData.N,
             gmmTilingData_->mmTilingData.Ka, gmmTilingData_->mmTilingData.Kb,
             gmmTilingData_->mmTilingData.baseM, gmmTilingData_->mmTilingData.baseN,
@@ -122,6 +122,9 @@ public:
         GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
         GM_ADDR perTokenScalePtr = (xScaleGM_ != nullptr) ? BuildPtrTable(xScaleGM_, 4) : nullptr;
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
+        AscendC::printf("[LBH] Process xPtr = %p\n", xPtr);
+        AscendC::printf("[LBH] Process wPtr = %p\n", wPtr);
+        AscendC::printf("[LBH] Process yPtr = %p\n", yPtr);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);

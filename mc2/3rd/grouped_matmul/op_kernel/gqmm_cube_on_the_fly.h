@@ -288,6 +288,9 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         int32_t kSize;
         // 更新group内的输入参数M,N,K
         SetMNK(groupIdx, mSize, nSize, kSize);
+        AscendC::printf("[LBH] mSize = %d\n", mSize);
+        AscendC::printf("[LBH] nSize = %d\n", nSize);
+        AscendC::printf("[LBH] kSize = %d\n", kSize);
         block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
         if (mSize <= 0 || kSize <= 0 || nSize <= 0) {
             continue;
@@ -343,8 +346,8 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
     }
     mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
     mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
-    mm_.Iterate();
-    mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
+    // mm_.Iterate();
+    // mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
 }
 } // Mc2GroupedMatmul
 #endif // MC2_GQMM_CUBE_ON_THE_FLY_H

@@ -80,6 +80,9 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
         gmmArray, mmArrayAddr_, tilingGM);
 
+    AscendC::printf("[LBH] a2avGmmScheduler.Init mmxOptionalGM = %p\n", mmxOptionalGM);
+    AscendC::printf("[LBH] a2avGmmScheduler.Init mmweightOptionalGM = %p\n", mmweightOptionalGM);
+    AscendC::printf("[LBH] a2avGmmScheduler.Init mmyOptionalGM = %p\n", mmyOptionalGM);
     a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, nullptr, nullptr,
         gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true);
     a2avGmmScheduler.Process();
