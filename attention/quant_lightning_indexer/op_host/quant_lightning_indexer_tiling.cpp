@@ -888,13 +888,6 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_blockSize(tilingInfo->blockSize);
     tilingData_.set_maxBlockNumPerBatch(tilingInfo->maxBlockNumPerBatch);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
-
-    bool setL2DisableFlag = false;
-    uint32_t s1BaseSize = tilingInfo->tSize <= 64 ? 2 : 4;
-    uint32_t s1SizeperBatch = tilingInfo->tSize / tilingInfo->bSize / tilingInfo->bSize;
-    setL2DisableFlag = (s1SizeperBatch <= s1BaseSize);
-    tilingData_.set_setL2DisableFlag(setL2DisableFlag);
-
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
