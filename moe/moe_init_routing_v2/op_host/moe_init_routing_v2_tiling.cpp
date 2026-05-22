@@ -671,13 +671,33 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
 
     // 批量搬出模板要求 cols 32字节对齐，否则 GM 行地址不对齐无法批量写出
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
-    // SortOneCore (needCoreNum==1) 的数据布局是连续的，与 BatchRow 多核并行读取不兼容
-    bool isSortOneCore = (moeInitRoutingTilingData.vbsComputeParamsOp.get_needCoreNum() == 1);
+
     bool useGatherMode = colsAligned && (cols * inuptXDtypeSize_ < ubRowsThreshold) && (ubRows >= NUM_TWO) &&
-                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6) && (!isSortOneCore);
+                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
 
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
+
+        int64_t actualActivateRows = tilingData->get_activateRows();
+        if (actualActivateRows <= 0) {
+            tilingData->set_needCoreNum(0);
+            return;
+        }
+        int64_t gatherPerCoreRows = CeilDiv(actualActivateRows, aivNum);
+        int64_t gatherNeedCoreNum = CeilDiv(actualActivateRows, gatherPerCoreRows);
+        gatherNeedCoreNum = std::min(gatherNeedCoreNum, aivNum);
+        if (gatherNeedCoreNum <= 0) {
+            tilingData->set_needCoreNum(0);
+            return;
+        }
+        gatherPerCoreRows = CeilDiv(actualActivateRows, gatherNeedCoreNum);
+        int64_t gatherLastCoreRows = actualActivateRows - gatherPerCoreRows * (gatherNeedCoreNum - 1);
+
+        perCoreRows = gatherPerCoreRows;
+        lastCoreRows = gatherLastCoreRows;
+        tilingData->set_needCoreNum(gatherNeedCoreNum);
+        tilingData->set_perCoreRows(gatherPerCoreRows);
+        tilingData->set_lastCoreRows(gatherLastCoreRows);
 
         int64_t outputBufferSizePerBuffer =
             (ubRows * cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
