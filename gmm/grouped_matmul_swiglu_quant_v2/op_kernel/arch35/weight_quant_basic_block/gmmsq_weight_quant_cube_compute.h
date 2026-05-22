@@ -71,7 +71,7 @@ public:
 
 private:
     __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
-    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
+    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize,
                                                   uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
     using L0DataType = typename AscendC::GetL0DataType<xType, true>::Type;
 
@@ -218,21 +218,18 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     }
     uint64_t kSizeAligned = CeilAlign(param.kSize, K_ALIGNMENT64);
     uint64_t scaleKGmSize = kSizeAligned / MX_GROUPSIZE;
-    uint64_t scaleKL1StandardLen = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
-    uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > kSizeAligned ?
-                                    (kSizeAligned - kbL1Offset) / MX_GROUPSIZE :
-                                    scaleKL1StandardLen;
+    uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
+                                    CeilAlign(param.kSize - kbL1Offset, K_ALIGNMENT64) / MX_GROUPSIZE :
+                                    MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
 
     // Copy xScale
     Dn2NzParams scaleAdn2NzParams;
-    ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1StandardLen, scaleKL1RealSize, scaleAdn2NzParams);
-
+    ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1RealSize, scaleAdn2NzParams);
     int64_t scaleAGmOffset = param.mOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
     GlobalTensor<half> f16ScaleAGlobal;
     f16ScaleAGlobal.SetGlobalBuffer((__gm__ half *)xScaleGlobal_[scaleAGmOffset].GetPhyAddr(),
                                     (param.mL1Size * scaleKL1RealSize) >> 1);
     auto f16ScaleALocal = xScaleAL1_[(scaleBufIdx_ & 1) * xScaleAL1DbOffset_].template ReinterpretCast<half>();
-
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
 
     // Copy weightScale part1
@@ -241,26 +238,25 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     uint64_t kScaleOffset = kbL1Offset / MX_GROUPSIZE;
 
     Dn2NzParams scaleBdn2NzParamsSwish;
-    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1StandardLen, scaleKL1RealSize,
-                           scaleBdn2NzParamsSwish);
+    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsSwish);
     int64_t scaleBGmOffsetSwish = swishNOffset + kScaleOffset;
     GlobalTensor<half> f16ScaleBSwishGlobal;
     f16ScaleBSwishGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetSwish].GetPhyAddr(),
                                          ((param.nL1Size / 2) * scaleKL1RealSize) >> 1);
     auto f16ScaleBSwishLocal = weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_]
                                    .template ReinterpretCast<half>();
-
     DataCopy(f16ScaleBSwishLocal, f16ScaleBSwishGlobal, scaleBdn2NzParamsSwish);
 
     // Copy weightScale part2
     Dn2NzParams scaleBdn2NzParamsGate;
-    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1StandardLen, scaleKL1RealSize,
+    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1RealSize,
                            scaleBdn2NzParamsGate);
     int64_t scaleBGmOffsetGate = gateNOffset + kScaleOffset;
     GlobalTensor<half> f16ScaleBGateGlobal;
     f16ScaleBGateGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetGate].GetPhyAddr(),
                                         ((param.nL1Size / 2) * scaleKL1RealSize) >> 1);
-    auto f16ScaleBGateLocal = weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + MX_SCALE_K_L1_SIZE / 2]
+    auto f16ScaleBGateLocal = weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ +
+                                              ((param.nL1Size / 2) * scaleKL1RealSize)]
                                   .template ReinterpretCast<half>();
 
     DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
@@ -310,7 +306,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTens
     l0CopyAndCalcParams.kL1Size = param.kaL1Size;
     l0CopyAndCalcParams.nL0Size = param.nL1Size;
     l0CopyAndCalcParams.nL1Size = param.nL1Size;
-    l0CopyAndCalcParams.scaleKL1Size = MX_SCALE_K_L1_SIZE;
+    l0CopyAndCalcParams.scaleKL1Size = CeilAlign(kbL1RealSize, K_ALIGNMENT64);
     uint64_t mL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t nL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     if (kbOffset == 0) {
@@ -374,17 +370,21 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::DoMmadCompute(uint64_t loopI
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t rowNum,
                                                                             uint64_t scaleKGmSize,
-                                                                            uint64_t scaleKL1Stride,
                                                                             uint64_t scaleKL1RealSize,
                                                                             Dn2NzParams &dn2NzParams)
 {
     dn2NzParams.dnNum = 1;
+    // 矩阵行数，即要搬运数据M/N轴大小
     dn2NzParams.dValue = rowNum;
+    // 矩阵列数，K轴大小，B8按B16搬运，大小除以2
     dn2NzParams.nValue =
         CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);
     dn2NzParams.srcDnMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
+    // 原始scale一行大小
     dn2NzParams.srcDValue = CeilDivide(scaleKGmSize, SCALE_COPY_GROUP_SIZE);
-    dn2NzParams.dstNzC0Stride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUPSIZE * SCALE_COPY_GROUP_SIZE);
+    // 目标矩阵行方向两个相邻分形起始地址之间的间隔，单位32B(一个16 * 2分形)
+    dn2NzParams.dstNzC0Stride = CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);
+    // 目标矩阵列方向两个相邻分形起始地址之间的间隔，单位32B(一个16 * 2分形)
     dn2NzParams.dstNzNStride = SCALE_COPY_DEFAULT_N_STRIDE;
     dn2NzParams.dstNzMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
 }
