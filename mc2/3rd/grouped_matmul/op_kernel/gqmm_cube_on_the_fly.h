@@ -103,15 +103,14 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     mmTilingData_ = mmTilingDataIn;
     gmmQuantParams_ = gmmBaseParamsIn;
     blockIdx_ = GetBlockIdx();
-    mm_.SetSubBlockIdx(0);
     AscendC::printf("[LBH-DIAG] Init blk=%d M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d cores=%d gN=%d aQ=%d bQ=%d gT=%d gLT=%d\n",
         blockIdx_, mmTilingData_->M, mmTilingData_->N, mmTilingData_->Ka,
         mmTilingData_->baseM, mmTilingData_->baseN, mmTilingData_->baseK,
         mmTilingData_->usedCoreNum,
         gmmQuantParams_->groupNum, gmmQuantParams_->aQuantMode, gmmQuantParams_->bQuantMode,
         gmmQuantParams_->groupType, gmmQuantParams_->groupListType);
+    mm_.SetSubBlockIdx(0);
     mm_.Init(mmTilingData_, que);
-    AscendC::printf("[LBH-DIAG] mm_.Init OK blk=%d\n", blockIdx_);
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
 }
 
@@ -339,28 +338,10 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
         reinterpret_cast<uint64_t>(yGlobal_.GetPhyAddr()),
         block_.offset_.offsetA, block_.offset_.offsetB, block_.offset_.offsetC,
         block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
-        mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
-        mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
-    } else {
-        // Non-quant mode: aQuantMode == DEFAULT && bQuantMode == DEFAULT, skip quant param setting
-        if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT) &&
-            gmmQuantParams_->bQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
-            // Non-quant mode: do not set quant params
-        } else if (gmmQuantParams_->bQuantMode ==
-            static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
-            mm_.SetQuantScalar(scaleScalar_);
-        } else {
-            mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
-        }
-    }
-    if (gmmQuantParams_->hasBias) {
-        mm_.SetBias(biasGlobal_[block_.offset_.offsetBias]);
-    }
-    mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
-    mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
-    // [LBH-DEBUG] 注释Iterate和GetTensorC，二分定位crash
+    // [LBH-DEBUG] 二分定位：注释全部mm_操作，只保留Init和地址设置
+    // mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
+    // mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
+    // mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
     // mm_.Iterate();
     // mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
 }

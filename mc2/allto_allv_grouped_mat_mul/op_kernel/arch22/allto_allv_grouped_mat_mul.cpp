@@ -81,7 +81,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR mmGroupListGm = computeWorkspaceGm;
     GM_ADDR mmWorkspaceGm = computeWorkspaceGm;
 
-    AscendC::printf("[LBH] entry blk=%d needMM=%d A=%llu H1=%llu N2=%llu BS=%llu e=%d ws=%llu mmx=%llu mmw=%llu mmy=%llu\n",
+    AscendC::printf("[LBH-V3] entry blk=%d needMM=%d A=%llu H1=%llu N2=%llu BS=%llu e=%d ws=%llu mmx=%llu mmw=%llu mmy=%llu\n",
         GetBlockIdx(), tilingData_->isNeedMM ? 1 : 0,
         tilingData_->taskTilingInfo.A, tilingData_->taskTilingInfo.H1,
         tilingData_->taskTilingInfo.N2, tilingData_->taskTilingInfo.BS,
