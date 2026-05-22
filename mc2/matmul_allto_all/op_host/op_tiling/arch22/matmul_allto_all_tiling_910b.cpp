@@ -399,8 +399,8 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName_, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(std::strcmp(commMode, "default") != 0, OP_LOGE(opName_, "The input attr comm_mode only support 'default'."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(commMode, "default") != 0,
+                    OP_LOGE(opName_, "The input attr comm_mode only support 'default'."), return ge::GRAPH_FAILED);
     info.worldSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(SUPPORT_RANK_SIZE_910B.find(info.worldSize) == SUPPORT_RANK_SIZE_910B.end(),
                     OP_LOGE(opName_, "World_size should be 2 or 4 or 8, but the actual value is %u.", info.worldSize),
