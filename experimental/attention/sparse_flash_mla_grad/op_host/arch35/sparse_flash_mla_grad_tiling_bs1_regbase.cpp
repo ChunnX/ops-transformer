@@ -163,6 +163,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     mm4WorkspaceLen = AlignData(mm4WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
     mm5WorkspaceLen = AlignData(mm5WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
+    int64_t softmaxL1WorkspaceLen = selectBlockCount * tmpData.g * B32 * coreNum;
+
     int64_t dqWorkspaceLen = tmpData.dqWorkspaceLen;
     int64_t doriKVWorkspaceLen = tmpData.doriKVWorkspaceLen;
     int64_t dcmpKVWorkspaceLen = tmpData.dcmpKVWorkspaceLen;
@@ -172,6 +174,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     workspaces[0] += selectedKWorkspaceLen * coreNum;
     workspaces[0] += (mm4WorkspaceLen + mm5WorkspaceLen + dSinkWorkspaceLen) * coreNum;
     workspaces[0] += dqWorkspaceLen + doriKVWorkspaceLen + dcmpKVWorkspaceLen;
+    workspaces[0] += softmaxL1WorkspaceLen;
+
 
     baseParams_->set_selectedKWorkSpaceOffset(0);
     int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum;
@@ -187,6 +191,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     workspaceOffsets = workspaceOffsets + doriKVWorkspaceLen;
     postTilingData_->set_dCmpKVWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dcmpKVWorkspaceLen;
+    baseParams_->set_softmaxL1WorkspaceOffset(workspaceOffsets);
+    workspaceOffsets = workspaceOffsets + softmaxL1WorkspaceLen;
 
     return ge::GRAPH_SUCCESS;
 }

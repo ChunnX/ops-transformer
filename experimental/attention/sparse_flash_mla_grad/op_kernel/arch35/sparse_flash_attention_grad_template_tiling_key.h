@@ -88,7 +88,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -107,7 +107,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -126,7 +126,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -145,7 +145,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -164,7 +164,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
     #endif
@@ -185,7 +185,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -204,7 +204,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -223,7 +223,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -242,7 +242,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
         ASCENDC_TPL_ARGS_SEL(
@@ -261,7 +261,7 @@
             ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
             ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
-            ASCENDC_TPL_BOOL_SEL(Deterministic, 0),
+            ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
             ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
         ),
     #endif
