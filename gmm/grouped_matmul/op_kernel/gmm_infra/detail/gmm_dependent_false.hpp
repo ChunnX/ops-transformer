@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_DETAIL_DEPENDENT_FALSE_HPP
-#define CATLASS_DETAIL_DEPENDENT_FALSE_HPP
+#ifndef GMM_DETAIL_DEPENDENT_FALSE_HPP
+#define GMM_DETAIL_DEPENDENT_FALSE_HPP
 
 namespace Catlass {
 template <bool VALUE, class... Args>
@@ -19,4 +19,4 @@ template <class... Args>
 constexpr bool DEPENDENT_FALSE = DEPENDENT_BOOL_VALUE<false, Args...>;
 }
 
-#endif  // CATLASS_DETAIL_DEPENDENT_FALSE_HPP
+#endif  // GMM_DETAIL_DEPENDENT_FALSE_HPP

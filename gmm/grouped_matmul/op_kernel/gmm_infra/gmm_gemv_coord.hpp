@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMV_COORD_HPP
-#define CATLASS_GEMV_COORD_HPP
+#ifndef GMM_GEMV_COORD_HPP
+#define GMM_GEMV_COORD_HPP
 
 #include "../gmm_infra/gmm_coord.hpp"
 
@@ -97,4 +97,4 @@ struct GemvCoord : public Coord<2, uint32_t> {
 
 }  // namespace Catlass
 
-#endif  // CATLASS_GEMV_COORD_HPP
+#endif  // GMM_GEMV_COORD_HPP

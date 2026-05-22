@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_MATRIX_COORD_HPP
-#define CATLASS_MATRIX_COORD_HPP
+#ifndef GMM_MATRIX_COORD_HPP
+#define GMM_MATRIX_COORD_HPP
 
 #include "../gmm_infra/gmm_coord.hpp"
 

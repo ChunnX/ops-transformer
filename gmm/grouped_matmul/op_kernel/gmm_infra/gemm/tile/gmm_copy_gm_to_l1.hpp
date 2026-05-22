@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
-#define CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
+#ifndef GMM_GEMM_TILE_COPY_GM_TO_L1_HPP
+#define GMM_GEMM_TILE_COPY_GM_TO_L1_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/gmm_numeric_size.hpp"
@@ -70,10 +70,10 @@ struct CopyGmToL1DynamicOptimized<Arch::AtlasA2, Gemm::GemmType<Element, layout:
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1DynamicOptimized() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -135,10 +135,10 @@ struct CopyGmToL1DynamicOptimized<Arch::AtlasA2, Gemm::GemmType<Element, layout:
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1DynamicOptimized() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -220,10 +220,10 @@ struct CopyGmToL1GMMPTD<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1GMMPTD() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -277,7 +277,7 @@ struct CopyGmToL1GMMPTD<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
     }
 
     // layoutSrc must be the layout of one of the src matrices
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -323,10 +323,10 @@ struct CopyGmToL1IntervalDataCopy<Arch::AtlasA2, Gemm::GemmType<half, layout::Ro
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1IntervalDataCopy() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -357,10 +357,10 @@ struct CopyGmToL1IntervalDataCopy<Arch::AtlasA2, Gemm::GemmType<half, layout::Pa
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1IntervalDataCopy() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -391,10 +391,10 @@ struct CopyGmToL1IntervalDataCopy<Arch::AtlasA2, Gemm::GemmType<half, layout::Co
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1IntervalDataCopy() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -425,10 +425,10 @@ struct CopyGmToL1IntervalDataCopy<Arch::AtlasA2, Gemm::GemmType<half, layout::Pa
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1IntervalDataCopy() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -456,10 +456,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -498,10 +498,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -603,10 +603,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -708,10 +708,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -750,10 +750,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -795,10 +795,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>, Gemm::
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -825,10 +825,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::NDC1HWC0, AscendC::TP
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -898,10 +898,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::KDC1KHKWN1N0C0, Ascen
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -952,10 +952,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1057,10 +1057,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
 
     // Methods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1101,10 +1101,10 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1142,7 +1142,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
     }
 
     // layoutSrc must be the layout of one of the src matrices
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1186,10 +1186,10 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::ColumnMajor>> {
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1240,10 +1240,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::zN>> {
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1287,10 +1287,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::nZ>> {
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1331,10 +1331,10 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::PaddingRowMajor
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1367,10 +1367,10 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::PaddingColumnMa
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1404,10 +1404,10 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>,
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1448,10 +1448,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout, AscendC
 
     // Mehtods
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     CopyGmToL1() {};
 
-    CATLASS_DEVICE
+    GMM_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
@@ -1471,4 +1471,4 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout, AscendC
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
+#endif // GMM_GEMM_TILE_COPY_GM_TO_L1_HPP

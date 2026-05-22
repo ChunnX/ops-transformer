@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_GEMM_TYPE_HPP
-#define CATLASS_GEMM_GEMM_TYPE_HPP
+#ifndef GMM_GEMM_GEMM_TYPE_HPP
+#define GMM_GEMM_GEMM_TYPE_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
 
@@ -26,4 +26,4 @@ struct GemmType {
 
 } // namespace Catlass::Gemm
 
-#endif // CATLASS_GEMM_GEMM_TYPE_HPP
+#endif // GMM_GEMM_GEMM_TYPE_HPP

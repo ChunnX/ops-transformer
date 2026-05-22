@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_COORD_HPP
-#define CATLASS_COORD_HPP
+#ifndef GMM_COORD_HPP
+#define GMM_COORD_HPP
 
 #include "../gmm_infra/base_defs.hpp"
 
@@ -431,4 +431,4 @@ Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
 
 }  // namespace Catlass
 
-#endif  // CATLASS_COORD_HPP
+#endif  // GMM_COORD_HPP
