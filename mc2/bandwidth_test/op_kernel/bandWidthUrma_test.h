@@ -103,14 +103,14 @@ private:
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+        return (GM_ADDR)urmaCommHandle_[0]->remoteBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
                 UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-       return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+       return (GM_ADDR)urmaCommHandle_[0]->remoteBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
                 UB_ALIGN  * rankId;
     }
 
@@ -250,12 +250,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
     hOutAlignUbSize_ = hAlignSize_;
 
-    uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    tokenMaxSizePerRank_ = axisMaxBS * hSizeAlignCombine * epWorldSize_;
-
     // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
     uint32_t axisMaxBS = globalBS_ / epWorldSize_;
     expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
+
+    uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    tokenMaxSizePerRank_ = axisMaxBS * hSizeAlignCombine * epWorldSize_;
 
     // ============ 计算状态等待的任务分发 ============
     // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
