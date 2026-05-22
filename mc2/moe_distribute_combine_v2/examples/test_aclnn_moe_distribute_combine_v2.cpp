@@ -314,52 +314,53 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     //     LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     // );
 
+    // 调用combineV2算子第一阶段接口
+    ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
+        expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
+        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
+        commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
+    CHECK_RET(
+        ret == ACL_SUCCESS,
+        LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+    );
+    // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
+    if (combineV2WorkspaceSize > 0) {
+        ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
+    }
+    // 调用combineV2算子第二阶段接口
+    ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
+    // （固定写法）同步等待任务执行结束
+    ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
+    CHECK_RET(
+        ret == ACL_SUCCESS, 
+        LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
+    );
+
+    LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
+    
     std::vector<int64_t> time_vec(4, 0);
  	ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
  	printf("[HOST TIME] pe=%d, total wqe: %lld, total wqe+pollcq: %lld, \n", pe_id, time_vec[0], time_vec[1]);
     // shmem validate result
-        int32_t* y_host;
-        size_t input_size = n_pes * trans_size * sizeof(int32_t);
-        aclrtMallocHost(reinterpret_cast<void**>(&y_host), input_size);
-        aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
-    
-        std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
-        std::cout << "[Output] pe=" << pe_id << ": "
-                                    << y_host[trans_size * 0] << " "
-                                    << y_host[trans_size * 1] << " "
-                                    << y_host[trans_size * 2] << " "
-                                    << y_host[trans_size * 3] << " "
-                                    << y_host[trans_size * 4] << " "
-                                    << y_host[trans_size * 5] << " "
-                                    << y_host[trans_size * 6] << " "
-                                    << y_host[trans_size * 7] << " " << std::endl;
-    // 调用combineV2算子第一阶段接口
-    // ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
-    //     expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
-    //     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-    //     hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
-    //     expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
-    //     commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
-    // CHECK_RET(
-    //     ret == ACL_SUCCESS,
-    //     LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
-    // );
-    // // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
-    // if (combineV2WorkspaceSize > 0) {
-    //     ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
-    // }
-    // // 调用combineV2算子第二阶段接口
-    // ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
-    // CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
-    // // （固定写法）同步等待任务执行结束
-    // ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
-    // CHECK_RET(
-    //     ret == ACL_SUCCESS, 
-    //     LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
-    // );
+    int32_t* y_host;
+    size_t input_size = n_pes * trans_size * sizeof(int32_t);
+    aclrtMallocHost(reinterpret_cast<void**>(&y_host), input_size);
+    aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
 
-    // LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
+    std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
+    std::cout << "[Output] pe=" << pe_id << ": "
+                                << y_host[trans_size * 0] << " "
+                                << y_host[trans_size * 1] << " "
+                                << y_host[trans_size * 2] << " "
+                                << y_host[trans_size * 3] << " "
+                                << y_host[trans_size * 4] << " "
+                                << y_host[trans_size * 5] << " "
+                                << y_host[trans_size * 6] << " "
+                                << y_host[trans_size * 7] << " " << std::endl;
 
     // 释放device资源
     if (dispatchV2WorkspaceSize > 0) {
