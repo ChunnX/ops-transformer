@@ -84,7 +84,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensQOptional</td>
       <td>输入</td>
-      <td>表示不同batch中query的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse模式。</td>
-      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0 </td>
+      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -345,15 +345,15 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
   - aclnnQuantLightingIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
-    - 优先获取sequsedKOptional中的Batch信息
-    - 如果未传入sequsedKOptional，优先获取cuSeqlensQOptional中的Batch信息
-    - 如果未传入sequsedKOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
+    - 优先获取sequsedQOptional中的Batch信息
+    - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
     - 除上所述，使用batchSize
   - Sequence Length取值规则
-    - 优先获取sequsedKOptional中的Sequence Length信息
-    - 如果未传入sequsedKOptional，且layoutKOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
+    - 优先获取sequsedQOptional中的Sequence Length信息
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
     - 除上所述，使用maxSeqlenQ
-    - key与query的获取规则一致
+    - Key与Query的获取规则一致
   - layout约束
     - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值
     - 除上所述，layoutQOptional必须与layoutKOptional保持一致

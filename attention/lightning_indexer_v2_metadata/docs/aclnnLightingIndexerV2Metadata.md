@@ -286,30 +286,30 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     </colgroup>
     <thead>
         <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
+            <th>参数名</th>
+            <th>输入/输出</th>
+            <th>描述</th>
         </tr>
     </thead>
     <tbody>
         <tr>
-        <td>workspace</td>
-        <td>输入</td>
+            <td>workspace</td>
+            <td>输入</td>
             <td>在Device侧申请的workspace内存地址</td>
         </tr>
         <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnLightingIndexerV2MetadataGetWorkspaceSize获取</td>
+            <td>workspaceSize</td>
+            <td>输入</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnLightingIndexerV2MetadataGetWorkspaceSize获取</td>
         </tr>
         <tr>
-        <td>executor</td>
-        <td>输入</td>
+            <td>executor</td>
+            <td>输入</td>
             <td>op执行器，包含了算子计算流程</td>
         </tr>
         <tr>
-        <td>stream</td>
-        <td>输入</td>
+            <td>stream</td>
+            <td>输入</td>
             <td>指定执行任务的Stream</td>
         </tr>
     </tbody>
@@ -323,13 +323,13 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
   - aclnnLightingIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
-    - 优先获取sequsedKOptional中的Batch信息
-    - 如果未传入sequsedKOptional，优先获取cuSeqlensQOptional中的Batch信息
-    - 如果未传入sequsedKOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
+    - 优先获取sequsedQOptional中的Batch信息
+    - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
     - 除上所述，使用batchSize
   - Sequence Length取值规则
-    - 优先获取sequsedKOptional中的Sequence Length信息
-    - 如果未传入sequsedKOptional，且layoutKOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
+    - 优先获取sequsedQOptional中的Sequence Length信息
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
     - 除上所述，使用maxSeqlenQ
     - Key与Query的获取规则一致
   - layout约束
