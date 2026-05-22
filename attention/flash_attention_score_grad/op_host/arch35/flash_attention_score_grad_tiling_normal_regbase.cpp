@@ -1033,6 +1033,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     preTilingData_->set_dropoutIsDivisibleBy8(fBaseParams.dropoutIsDivisibleBy8);
     preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
+    preTilingData_->set_hasInvalidCol(fBaseParams.isInvalidCol);
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
@@ -1516,6 +1517,9 @@ void FlashAttentionScoreGradTilingNormalRegbase::FillBlockInfoLoadBalance(
                     leftIntersectionPoint > int64_t(actualS1Len) ? actualS1Len : leftIntersectionPoint);
                 float acturalS1End = static_cast<float>(std::min(
                     int64_t(actualS1Len), std::max(fBaseParams.cvS2Inner * j + cvBlockTail + actualCalcS1Token, 0L)));
+                if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && (acturalS1Begin >= acturalS1End)) {
+                    fBaseParams.isInvalidCol = true;
+                }
                 float acturalS1Num = acturalS1Begin > acturalS1End ? 0 : acturalS1End - acturalS1Begin;
                 float acturalS2Num = static_cast<float>(cvBlockTail);
                 acturalBlockInfo[i][j] = acturalS1Num / static_cast<float>(fBaseParams.s1CvInner) +
