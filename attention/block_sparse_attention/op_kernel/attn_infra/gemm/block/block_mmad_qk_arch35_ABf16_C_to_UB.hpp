@@ -37,6 +37,8 @@ namespace NpuArch::Gemm::Block {
 ////////////////////////////////////////////////////////////////////
 
 
+#ifndef GEMM_BLOCK_QK_ARCH35_COMMON_HELPER_HPP
+#define GEMM_BLOCK_QK_ARCH35_COMMON_HELPER_HPP
 template <class T>
 struct HasParams {
     template <class U>
@@ -72,6 +74,7 @@ struct Mm1L1TileHelper {
         qL1BufNum(pbn),
         kL1BufNum(vbn) {}
 };
+#endif
 
 template <
     class L1TileShape_,

@@ -154,15 +154,17 @@ public:
     __aicore__ inline
     void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
-         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag){
-        
+         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
+         int actualRownum=0){
+
         struct EmptyTensor {};
         EmptyTensor dummyQS;
         EmptyTensor dummyKS;
-        operator()<0>(l1PTensorTla, dummyQS, dummyKS, 
+        operator()<0>(l1PTensorTla, dummyQS, dummyKS,
                         actualBlockShape,
                         isFirstKvSTile, ubSBufId, l1PBufId,
-                        mm1ToSmFlag, smToMm2Flag, AscendC::GlobalTensor<int32_t>());
+                        mm1ToSmFlag, smToMm2Flag, AscendC::GlobalTensor<int32_t>(),
+                        0, actualRownum);
     }
     
     template <int quant_mode, class TensorP, class TensorQS, class TensorKS, typename ElementIndex>
@@ -171,9 +173,10 @@ public:
          GemmCoord actualBlockShape,
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
          Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
-        AscendC::GlobalTensor<ElementIndex> sparseIndex, int blockNum=0, int actualRownum=0){
+        AscendC::GlobalTensor<ElementIndex> sparseIndex, int blockNum=0, int actualRownum=0)
     {
-        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
+        uint32_t mCopyOffset = (actualRownum > 0) ?
+            static_cast<uint32_t>(actualRownum) / 2 : RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
         if (m == 0) {

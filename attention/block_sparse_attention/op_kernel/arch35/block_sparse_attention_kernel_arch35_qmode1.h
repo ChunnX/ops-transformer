@@ -294,7 +294,7 @@ public:
             // the rowNum of cur task
             // no qS*qN combination even in GQA/MQA senario, since each qN has a different sparse pattern
             uint32_t rowNum = qSTileSizeAct;
-            uint32_t rowNumRound = RoundUp(rowNum, 16);
+            uint32_t rowNumRound = RoundUp(rowNum, std::is_same_v<LayoutQ, layout::RowMajor> ? 16 : 64);
             uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
             uint32_t kvSTileSizeAct = kvBaseTile_;
 #ifdef __DAV_CUBE__
@@ -311,12 +311,18 @@ public:
                 kvShapeCol = strideKV;
             }
 
-            auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(qBaseTile_, qShapeCol);
-            auto gmQTensorTla = tla::MakeTensor(gQ[gmOffsetQ], gmQLayoutTla, Arch::PositionGM{});
             GemmCoord actualBlockShapeQ{rowNum, embed_, 0};
-            blockMmadQK.loadQGM(gmQTensorTla, actualBlockShapeQ);
+            if constexpr (std::is_same_v<LayoutQ, layout::RowMajor>) {
+                auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(qBaseTile_, qShapeCol);
+                auto gmQTensorTla = tla::MakeTensor(gQ[gmOffsetQ], gmQLayoutTla, Arch::PositionGM{});
+                blockMmadQK.loadQGM(gmQTensorTla, actualBlockShapeQ);
+            } else {
+                auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(qShapeCol, qBaseTile_);
+                auto gmQTensorTla = tla::MakeTensor(gQ[gmOffsetQ], gmQLayoutTla, Arch::PositionGM{});
+                blockMmadQK.loadQGM(gmQTensorTla, actualBlockShapeQ);
+            }
 
-            auto gmKLayoutTla = tla::MakeLayout<ElementK, LayoutK>(kvShapeCol, kvBaseTile_);
+            auto gmKLayoutTla = tla::MakeLayout<ElementK, LayoutK>(kvSeqlenAligned_, kvShapeCol);
             auto gmKTensorTla = tla::MakeTensor(gK[gmOffsetK], gmKLayoutTla, Arch::PositionGM{});
 
             auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(kvBaseTile_, kvShapeCol);
@@ -376,7 +382,7 @@ public:
                     uint32_t l1PBufId = gatheredKvSTileIdx % pL1BufNum_;
                     uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
-                    auto l1PLayoutTla = tla::MakeLayout<ElementP, NpuArch::layout::zN>(rowNum, kvSTileSizeAct);
+                    auto l1PLayoutTla = tla::MakeLayout<ElementP, NpuArch::layout::zN>(rowNumRound, kvSTileSizeAct);
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId],
                     l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
@@ -416,7 +422,8 @@ public:
                         mm1ToSmFlag,
                         smToMm2Flag,
                         gSparseIdx[sparseTableStartOffset],
-                        CeilDiv(kvSTileSizeAct, blockShapeY_)
+                        CeilDiv(kvSTileSizeAct, blockShapeY_),
+                        rowNumRound
                         );
 #endif
                 }
