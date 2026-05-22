@@ -138,6 +138,10 @@ int RunSingleTest(const TestConfig& cfg, aclrtStream stream) {
   aclTensor* out = nullptr;    aclTensor* smMax = nullptr;  aclTensor* smSum = nullptr;
 
   auto ret = ACL_SUCCESS;
+  uint64_t ws = 0;
+  aclOpExecutor* executor = nullptr;
+  uint64_t wsMax = 0;
+  aclOpExecutor* executorMax = nullptr;
 
   // ---- Q / K / V ----
   {
@@ -230,8 +234,6 @@ int RunSingleTest(const TestConfig& cfg, aclrtStream stream) {
   int64_t innerPrecise = 0;
 
   // ==================== 调用 GetWorkspaceSize ====================
-  uint64_t ws = 0;
-  aclOpExecutor* executor = nullptr;
   ret = aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
       q, ropeQ, k, ropeK, v, pse,
       nullptr,    // dropMask
@@ -250,8 +252,6 @@ int RunSingleTest(const TestConfig& cfg, aclrtStream stream) {
   }
 
   // ==================== 调用 GetMaxWorkspaceSize ====================
-  uint64_t wsMax = 0;
-  aclOpExecutor* executorMax = nullptr;
   ret = aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(
       q, ropeQ, k, ropeK, v, pse,
       nullptr, nullptr, mask, nullptr,
