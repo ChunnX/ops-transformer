@@ -71,13 +71,6 @@ private:
 
 bool MoeGatingTopKSoftmaxV2PerfRegbaseTiling::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-    if ((col <= MAX_COL && col % CONSTANT_EIGHT == 0 && k <= static_cast<int32_t>(CONSTANT_EIGHT)) ||
-        (col < CONSTANT_EIGHT)) {
-        return true;
-    }
     return false;
 }
 

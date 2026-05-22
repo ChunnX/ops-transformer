@@ -390,21 +390,6 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckParam()
         platformInfo == nullptr, OP_LOGE(context_, "platform info is nullptr."),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return ge::GRAPH_SUCCESS;
-    }
-    OP_CHECK_IF(
-        CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check nullptr fail."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        CheckDtypeAndAttr() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_, "check dtype and attr fail."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        CheckShape() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check shape fail."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        CheckShapeAllPositive() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_, "check shape positive fail."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

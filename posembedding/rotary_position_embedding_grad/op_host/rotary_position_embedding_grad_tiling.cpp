@@ -56,15 +56,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
 
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
-        (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
-        std::string modeStr = std::to_string(inputMode);
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mode",
-            modeStr.c_str(), "0 or 1");
-        return ge::GRAPH_FAILED;
-    }
-    inputMode_ = inputMode;
-    return ge::GRAPH_SUCCESS;
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus Tiling4RotaryPositionEmbeddingGrad(gert::TilingContext* context)

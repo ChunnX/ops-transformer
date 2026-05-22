@@ -40,10 +40,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-            return false;
-        }
-        return true;
+        return false;
     }
 
     ge::graphStatus CalcTilingKey() override;
