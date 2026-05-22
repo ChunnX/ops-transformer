@@ -960,7 +960,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Pro
                     __gm__ uint8_t *send_buff_ptr = ((__gm__ uint8_t *)token_buffer + tkIndex*tokenScaleCnt_ * sizeof(ExpandXType));
                     uint32_t epOffset = tokenId * (axisK_ + sharedExpertNum_) + topkId;
                     __gm__ uint8_t *rmt_buff_addr = base_addr[toRankId] + A5_MTE_STATE_WIN_SIZE + static_cast<uint64_t>(epOffset) * hAlignWinSize_;
-                    __gm__ uint8_t *rmt_sig_addr = base_addr[toRankId] + static_cast<uint64_t>(tokenId) * flagRcvCount_ * stateOffset_ + static_cast<uint64_t>(topkId) * stateOffset_;
+                    __gm__ uint64_t *rmt_sig_addr = (__gm__ uint64_t*)(base_addr[toRankId] + static_cast<uint64_t>(tokenId) * flagRcvCount_ * stateOffset_ + static_cast<uint64_t>(topkId) * stateOffset_);
                     aclshmemx_udma_put_signal_nbi(
                     rmt_buff_addr, send_buff_ptr, tokenScaleCnt_*sizeof(ExpandXType), rmt_sig_addr, (uint64_t)(*((uint32_t *)(&sig))),
                     static_cast<int>(toRankId));
