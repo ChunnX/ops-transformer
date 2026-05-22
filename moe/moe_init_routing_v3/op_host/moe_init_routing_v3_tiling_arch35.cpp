@@ -682,7 +682,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                                   ("in range [1, " + std::to_string(maxExpertNum) + "]")),
         return ge::GRAPH_FAILED);
     tilingDataPtr_->expertNum = expertNum_;
-    // drop_pad_mode 暂不使用，只校验
+
     OP_CHECK_IF(dropPadMode_ != DROP_PAD_MODE_DROPLESS && dropPadMode_ != DROP_PAD_MODE_DROPPAD,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode", std::to_string(dropPadMode_),
                                           std::to_string(DROP_PAD_MODE_DROPLESS) + " or " +
@@ -1207,16 +1207,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     int64_t expectedDim1{-1};
     int64_t expectedDim2{-1};
 
-    // DropPad模式：expandedScaleOut应为1D [expertNum * expertCapacity]
-    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
-        if (isInputScale_ == 1) {
-            expectedRank = RANK_ONE;
-            expectedDim0 = expertNum_ * expertCapacity_;
-        } else {
-            // DropPad模式下如果没有scale输入，expandedScale也不输出（由框架处理）
-            return ge::GRAPH_SUCCESS;
-        }
-    } else if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
+    if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
         if (isMXFPXNoQuantCase(quantMode_, xDtype_)) {
             expectedRank = RANK_THREE;
             expectedDim0 = totalLength_;
@@ -1224,7 +1215,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
             expectedDim2 = NUM_TWO;
         } else {
             expectedRank = RANK_ONE;
-            expectedDim0 = totalLength_;
+            expectedDim0 = (dropPadMode_ == DROP_PAD_MODE_DROPPAD) ? expertNum_ * expertCapacity_ : totalLength_;
         }
     } else if ((quantMode_ == QUANT_MODE_MXFP8_E5M2) || (quantMode_ == QUANT_MODE_MXFP8_E4M3FN)) {
         expectedRank = RANK_TWO;
@@ -1877,7 +1868,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     }
     tilingDataPtr_->epFullload = ep_;
 
-    if (totalLength_ > sortLoopMaxElement_ || dropPadMode_ == 1) {
+    if (totalLength_ > sortLoopMaxElement_) {
         return false;
     }
 
