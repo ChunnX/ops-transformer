@@ -9,20 +9,17 @@
  */
 
 /*!
- * \file dispatch_v2_win_size.h
- * \brief MOE Distribute Dispatch V2 win size 校验（仅 v2 特有公式）
+ * \file moe_distribute_check_win_size.h
+ * \brief
  */
 
-#ifndef DISPATCH_V2_WIN_SIZE_H
-#define DISPATCH_V2_WIN_SIZE_H
+#ifndef MOE_DISTRIBUTE_CHECK_WIN_SIZE
+#define MOE_DISTRIBUTE_CHECK_WIN_SIZE
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-// 公共层 defs.h：使用 UB_ALIGN, TP_WORLD_SIZE_TWO 等常量
-#include "moe_dispatch/defs.h"
 
 namespace {
-// 注：UB_ALIGN 和 TP_WORLD_SIZE_TWO 已在公共层 defs.h 定义
-//     这里仅保留算子特有的常量
+constexpr uint32_t TP_WORLD_SIZE_TWO = 2;
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_GROUP_TP_INDEX = 4;
 constexpr uint64_t DOUBLE_DATA_BUFFER = 2UL;
@@ -30,6 +27,7 @@ constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t FULL_MESH_DATA_ALIGN = 480UL;
+constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t SCALE_EXPAND_IDX_BUFFER = 44UL; // scale32B + 3*4expandIdx
 }
 
@@ -57,7 +55,7 @@ static ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const 
 {
     auto attrs = context->GetAttrs();
     uint64_t tpWorldSize = static_cast<uint64_t>(winSizeData.tpWorldSize);
-    if (tpWorldSize == moe_dispatch_defs::TP_WORLD_SIZE_TWO) {
+    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         uint64_t maxWindowSizeTp = 0;
         auto groupTpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
         OP_TILING_CHECK(mc2tiling::GetCclBufferSize(groupTpHccl, &maxWindowSizeTp, nodeName) != ge::GRAPH_SUCCESS,
@@ -138,7 +136,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     // combine数据区 token首地址对齐512
     uint64_t tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE  + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     // dispatch数据区 token首对齐512，有效token长度h_align_32b + scale(32b) + 三元组(3*4b)
-    uint64_t tokenActualLen = ((h * MAX_OUT_DTYPE_SIZE  + moe_dispatch_defs::UB_ALIGN - 1UL) / moe_dispatch_defs::UB_ALIGN) * moe_dispatch_defs::UB_ALIGN + SCALE_EXPAND_IDX_BUFFER;
+    uint64_t tokenActualLen = ((h * MAX_OUT_DTYPE_SIZE  + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN + SCALE_EXPAND_IDX_BUFFER;
     if (winSizeData.isSetFullMeshV2) {
         tokenNeedSizeDispatch = ((tokenActualLen + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN) * WIN_ADDR_ALIGN;
     } else {
@@ -154,4 +152,4 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     return ge::GRAPH_SUCCESS;
 }
 }
-#endif // DISPATCH_V2_WIN_SIZE_H
+#endif // MOE_DISTRIBUTE_CHECK_WIN_SIZE
