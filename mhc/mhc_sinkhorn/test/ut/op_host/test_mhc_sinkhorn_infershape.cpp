@@ -17,20 +17,20 @@
 #define private public
 #include "platform/platform_info.h"
 
-class MhcSinkhorn : public testing::Test {
+class MhcSinkhornInferShape : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MhcSinkhorn Proto Test SetUp" << std::endl;
+        std::cout << "MhcSinkhornInferShape Proto Test SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MhcSinkhorn Proto Test TearDown" << std::endl;
+        std::cout << "MhcSinkhornInferShape Proto Test TearDown" << std::endl;
     }
 };
 
-TEST_F(MhcSinkhorn, MhcSinkhorn_normal_dims4)
+TEST_F(MhcSinkhornInferShape, MhcSinkhornInferShape_normal_dims4)
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optiCompilationInfo;
@@ -55,7 +55,7 @@ TEST_F(MhcSinkhorn, MhcSinkhorn_normal_dims4)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-TEST_F(MhcSinkhorn, MhcSinkhorn_normal_dims3)
+TEST_F(MhcSinkhornInferShape, MhcSinkhornInferShape_normal_dims3)
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optiCompilationInfo;
