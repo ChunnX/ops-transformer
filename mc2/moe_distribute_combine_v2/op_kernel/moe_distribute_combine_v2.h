@@ -1721,9 +1721,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
             SetWaitTpStatusAndDisPatch();
             PipeBarrier<PIPE_ALL>(); // AlltoAllBuffInitAndMaskCal中包含reset操作，需确保前面操作完成
             AlltoAllBuffInitAndMaskCal();
-            LocalWindowCopy();
+            // LocalWindowCopy();
         } else if(coreIdx_ < aivNum_ + urma_core_num) {
-            // URMA_Core_Process(coreIdx_ - aivNum_);
+            URMA_Core_Process(coreIdx_ - aivNum_);
         }
     }
 }
