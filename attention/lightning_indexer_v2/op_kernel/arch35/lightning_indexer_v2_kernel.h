@@ -57,7 +57,7 @@ template <typename LIT>
 class LIV2Preload {
 public:
     __aicore__ inline LIV2Preload(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
+    __aicore__ inline void Init(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
                                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset, 
@@ -74,7 +74,7 @@ public:
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
-    using W_T = typename LightningIndexerTypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     LIV2Matmul<LIT> matmulService;
     LIV2Vector<LIT> vectorService;
