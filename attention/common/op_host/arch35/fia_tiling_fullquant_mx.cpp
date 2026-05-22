@@ -242,9 +242,9 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
 void FiaTilingFullQuantMxArch35::AdjustSinnerAndSouter()
 {
     // mxfp8 基本块大小为 128*512
-    sOuterFactor_ = SOUTER_64;
-    sInnerFactor_ = SINNER_512;
-    OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
+            sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_512;
+        OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 }
 
 void FiaTilingFullQuantMxArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV,
@@ -552,7 +552,7 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyConfig()
     auto sInner = sInnerFactor_;
     auto dSize = fiaInfo_->qkHeadDim;
     auto dVsize = fiaInfo_->vHeadDim;
-
+    
     if (dSize <= DSIZE_64) {
         dSize = DSIZE_64;
     } else if (dSize <= DSIZE_128) {
@@ -617,7 +617,7 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyQuantMode()
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyHasRope()
 {
     tilingKeyInfo_.hasRope = false;
-    if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D128) {
+    if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
         tilingKeyInfo_.hasRope = true;
     }
 }
