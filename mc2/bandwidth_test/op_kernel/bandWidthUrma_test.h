@@ -103,8 +103,8 @@ private:
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + winDataSizeOffset_ +
-                //UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
+        return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+                UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
@@ -371,11 +371,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
-    if (dstRankId != epRankId_) {
-        uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
-        hcomm_.Wait(handle);
-    }
+    // if (dstRankId != epRankId_) {
+    //     uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
+    //     auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
+    //     hcomm_.Wait(handle);
+    // }
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -449,7 +449,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                                             curExpertCnt * hAlignWinSize_);
             PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
             PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
-            //ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
+            ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
 }
