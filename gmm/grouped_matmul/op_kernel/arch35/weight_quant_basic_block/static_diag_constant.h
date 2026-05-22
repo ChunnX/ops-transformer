@@ -12,8 +12,7 @@
  * \file static_diag_constant.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
+#pragma once
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 // 8*16 transId lookup table for MxA8W4: value = i + j * 80
@@ -27,4 +26,3 @@ static constexpr volatile __gm__ uint16_t MX_TRANS_ID[128] = {
     167,  247,  327,  407,  487,  567,  647,  727,  807,  887,  967,  1047, 1127, 1207};
 
 } // namespace WeightQuantBatchMatmulV2::Arch35
-#endif // GROUPED_MATMUL_WEIGHT_QUANT_STATIC_DIAG_CONSTANT_H
