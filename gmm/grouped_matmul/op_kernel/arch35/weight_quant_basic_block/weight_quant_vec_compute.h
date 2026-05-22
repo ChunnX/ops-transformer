@@ -713,6 +713,9 @@ GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightMxScaleGmToUb(
     uint64_t nOffset, uint64_t nL1Size, uint64_t kOffset, uint64_t kSize, uint64_t mxGroupNum, uint64_t realGroupNum)
 {
+    if (nL1Size == 0) {
+        return;
+    }
     DataCopyPad2D(ubWeightInputLowBitTotalBuffer_[(ubMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                                                   UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
                       .template ReinterpretCast<antiQuantScaleType>(),
@@ -738,7 +741,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::TransWeig
         (__ubuf__ uint16_t *)transScaleBuffer_.GetPhyAddr((ubTransScaleLoopIdx_ & (DOUBLE_BUFFER_NUM - 1)) *
                                                           TRANS_SCALE_SINGLE_BUF_SIZE),
         (__ubuf__ uint16_t *)transIdBuffer_.GetPhyAddr(), CeilDivide<uint64_t>(nSize, BLOCK_CUBE),
-        CeilDivide<uint64_t>(CeilDivide<uint64_t>(kSize, MX_GROUPSIZE) >> 1, 8),
+        CeilDivide<uint64_t>(CeilDivide<uint64_t>(kSize, 2 * MX_GROUPSIZE), 8),
         (GROUP_NUM_DEFAULT_LEN * BLOCK_CUBE) >> 1);
 }
 
@@ -1341,8 +1344,10 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
     TEventID vecEventIdAntiQuantYVToMte2[UB_ANTI_QUANT_Y_BUFFER_NUM] = {vecEventIdAntiQuantYVToMte2_[0],
                                                                         vecEventIdAntiQuantYVToMte2_[1]};
 
-    for (uint16_t idx = 0; idx < ubTransScaleLoopIdx_ && idx < DOUBLE_BUFFER_NUM; idx++) {
-        WaitFlag<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        for (uint16_t idx = 0; idx < ubTransScaleLoopIdx_ && idx < DOUBLE_BUFFER_NUM; idx++) {
+            WaitFlag<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
+        }
     }
 
     for (uint16_t idx = 0; idx < ubComputeLoopIdx_ && idx < UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum; idx++) {
@@ -1363,8 +1368,10 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vecEventIdVToMte2[idx]);
     }
 
-    for (uint16_t idx = 0; idx < DOUBLE_BUFFER_NUM; idx++) {
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        for (uint16_t idx = 0; idx < DOUBLE_BUFFER_NUM; idx++) {
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
+        }
     }
 
     for (uint16_t idx = 0; idx < UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum; idx++) {

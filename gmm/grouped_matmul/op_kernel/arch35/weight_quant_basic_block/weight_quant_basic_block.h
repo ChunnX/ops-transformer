@@ -376,6 +376,9 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBl
     uint64_t mxScaleNSize = (GetSubBlockIdx() == 0) ? mxScaleNSize0 : (offsetParam.nL1Size - mxScaleNSize0);
     uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;
     uint64_t mxScaleL1NOffset = GetSubBlockIdx() * mxScaleNSize0;
+    if (mxScaleNSize == 0) {
+        return;
+    }
 
     uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
     uint64_t mxScaleRealGroupNum = CeilDivide(mxScaleKSize, MX_GROUPSIZE);
