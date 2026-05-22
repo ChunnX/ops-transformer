@@ -366,10 +366,10 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<floa
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     __ubuf__ float *yAddr = (__ubuf__ float *)yF32.GetPhyAddr();
-    __ubuf__ float *gateAddr = yAddr + mRealSize * nHalfSize;
+    __ubuf__ float *gateAddr = yAddr + nHalfSize;
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
 
-    uint32_t nSrcUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE / sizeof(float));
+    uint32_t nSrcUbAligned = CeilAlign(static_cast<uint32_t>(param.nL1Size), AscendC::ONE_BLK_SIZE / sizeof(float));
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     uint16_t oneRowRepeatTimes = CeilDivide(static_cast<uint64_t>(nHalfSize), static_cast<uint64_t>(sizePerRepeat));
@@ -458,7 +458,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const Bas
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
-    uint64_t yGmOffset = param.mOffset * (param.nSize / DIVISOR_FACTOR_TWO) + param.nOffset / 2;
+    uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * param.mL1Size / 2) * (param.nSize / DIVISOR_FACTOR_TWO) + param.nOffset / 2;
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
@@ -476,7 +476,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const Basi
     uint64_t nGroupCount = CeilDivide(param.nL1Size / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
     uint64_t nTotalGroupCount = CeilDivide(param.nSize / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
 
-    uint64_t scaleGmOffset = param.mOffset * nTotalGroupCount + (param.nOffset / 2) / MX_GROUPSIZE;
+    uint64_t scaleGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * param.mL1Size / 2) * nTotalGroupCount + (param.nOffset / 2) / MX_GROUPSIZE;
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
