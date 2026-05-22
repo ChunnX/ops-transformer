@@ -19,7 +19,7 @@ template <
     class DispatchPolicy,
     class... Args
 >
-class BlockEpilogue {
+class RainBlockEpilogue {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "Could not find an epilogue specialization");
 };
 

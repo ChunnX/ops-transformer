@@ -26,7 +26,7 @@ template <
     class InputType_,
     class MaskType_,
     LseMode LSE_MODE_>
-class BlockEpilogue<
+class BsagBlockEpilogue<
     EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, float>,
     OutputType_,
     InputType_,
@@ -63,7 +63,7 @@ public:
     static constexpr int64_t UB_FLOAT_LINE_SIZE = 64;
 
     __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
+    BsagBlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
     {
         // Allocate UB space
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
@@ -98,7 +98,7 @@ public:
     }
 
     __aicore__ inline
-    ~BlockEpilogue() {}
+    ~BsagBlockEpilogue() {}
 
     template <typename T>
     __aicore__ inline T Min(T a, T b)

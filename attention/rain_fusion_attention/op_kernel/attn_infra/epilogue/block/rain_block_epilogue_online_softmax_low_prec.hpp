@@ -26,7 +26,7 @@ template <
     class InputType_,
     class MaskType_,
     LseMode LSE_MODE_>
-class BlockEpilogue<
+class RainBlockEpilogue<
     EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, half>,
     OutputType_,
     InputType_,
@@ -67,7 +67,7 @@ public:
     static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
     __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
+    RainBlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
     {
         // Allocate UB space
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
@@ -102,7 +102,7 @@ public:
     }
 
     __aicore__ inline
-    ~BlockEpilogue() {}
+    ~RainBlockEpilogue() {}
 
     __aicore__ inline
     void SetVecMask(int32_t len)

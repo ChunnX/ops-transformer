@@ -26,7 +26,7 @@ template <
     class UpdateType_,
     class LseType_,
     LseMode LSE_MODE_>
-class BlockEpilogue<
+class BsaBlockEpilogue<
     EpilogueAtlasA2RescaleO<LSE_MODE_, half>,
     OutputType_,
     InputType_,
@@ -72,7 +72,7 @@ public:
     static constexpr uint32_t SIZE_OF_16BIT = 2;
 
     __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    BsaBlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 8 * UB_UINT8_BLOCK_SIZE;
@@ -99,7 +99,7 @@ public:
     }
 
     __aicore__ inline
-    ~BlockEpilogue() {}
+    ~BsaBlockEpilogue() {}
 
     __aicore__ inline
     void SetMask(int32_t len)

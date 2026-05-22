@@ -31,7 +31,7 @@ template <
     LseMode LSE_MODE_,
     SinkMode SINK_MODE_,
     MaskMode MASK_MODE_>
-class BlockEpilogue<
+class FusedBlockEpilogue<
     EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, MASK_MODE_, half>,
     OutputType_,
     InputType_,
@@ -77,7 +77,7 @@ public:
     static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
     __aicore__ inline
-    BlockEpilogue() {}
+    FusedBlockEpilogue() {}
 
     __aicore__ inline
     void init(Arch::Resource<ArchTag> &resource, float scaleValue_)
@@ -115,7 +115,7 @@ public:
     }
 
     __aicore__ inline
-    ~BlockEpilogue() {}
+    ~FusedBlockEpilogue() {}
 
     __aicore__ inline
     void SetVecMask(int32_t len)

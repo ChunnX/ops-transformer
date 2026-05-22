@@ -27,7 +27,7 @@ template <
     class UpdateType_,
     class LseType_,
     LseMode LSE_MODE_>
-class BlockEpilogue<
+class FusedBlockEpilogue<
     EpilogueAtlasA2RescaleO<LSE_MODE_, float>,
     OutputType_,
     InputType_,
@@ -80,7 +80,7 @@ public:
     };
 
     __aicore__ inline
-    BlockEpilogue() {}
+    FusedBlockEpilogue() {}
 
     __aicore__ inline
     void init(Arch::Resource<ArchTag> &resource)
@@ -108,7 +108,7 @@ public:
     }
 
     __aicore__ inline
-    ~BlockEpilogue() {}
+    ~FusedBlockEpilogue() {}
 
     __aicore__ inline
     void SetMask(int32_t len)

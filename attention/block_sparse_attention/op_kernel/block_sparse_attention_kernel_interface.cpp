@@ -89,13 +89,13 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
     // Epilogue policies for sparse attention
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, SoftmaxDtype>;
     using MaskType = Gemm::GemmType<ElementMask, LayoutMask>;
-    using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax,
+    using EpilogueOnlineSoftmax = Epilogue::Block::BsaBlockEpilogue<DispatchPolicyOnlineSoftmax,
         PType, SType, MaskType>;
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, SoftmaxDtype>;
     using OType = Gemm::GemmType<ElementO, LayoutO>;
     using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
     using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
-    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO,
+    using EpilogueRescaleO = Epilogue::Block::BsaBlockEpilogue<DispatchPolicyRescaleO,
                                                             OType, OTmpType, OUpdateType, LseType>;
 
     // Kernel instantiation
@@ -151,7 +151,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using LayoutSparseCount = layout::RowMajor;
     // block mask pre-process
     using DispatchPolicyMask2Idx = Epilogue::EpilogueBsaMask2Idx;
-    using EpilogueMask2Idx = Epilogue::Block::BlockEpilogue<
+    using EpilogueMask2Idx = Epilogue::Block::BsaBlockEpilogue<
         DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
     // 处理单个tile内Q和K的matmul
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
@@ -166,7 +166,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
-    using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
+    using EpilogueOnlineSoftmax = Epilogue::Block::BsaBlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
     // 处理单个tile内P和Value的matmul
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
@@ -180,7 +180,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
         ArchTag, ElementO, LayoutO, LayoutOTmp>;
-    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<
+    using EpilogueRescaleO = Epilogue::Block::BsaBlockEpilogue<
         DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, TileCopyRescaleO, Arch::PositionL0C>;
 
     using BsaRegularKernelArch35 = BsaRegularKernelArch35<
