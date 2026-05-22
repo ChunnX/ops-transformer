@@ -44,6 +44,8 @@ group_op_dict = {
     "ascend950": {"fused_infer_attention_score": 20,
                    "flash_attention_score": 5,
                    "flash_attention_score_grad": 5}
+    "ascend350": {"flash_attention_score": 5,
+                   "flash_attention_score_grad": 5}
 }
 
 
