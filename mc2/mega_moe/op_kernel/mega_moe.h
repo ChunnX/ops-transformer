@@ -175,19 +175,24 @@ private:
 
     __aicore__ inline void WriteTimingToOutput()
     {
+        if constexpr(g_coreType == AIC) {
+            return;
+        }
         constexpr int32_t TIMING_STRIDE = 8;
+        constexpr int32_t POINTS_PER_GROUP = 16;
+        uint64_t base = (uint64_t)blockIdx_ * POINTS_PER_GROUP * TIMING_STRIDE;
         GlobalTensor<uint64_t> output;
         output.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(params_.y2GmAddr));
         if (subBlockIdx_ == 0) {
-            output.SetValue(0 * TIMING_STRIDE, timeTopKIdsAllGather_);
-            output.SetValue(1 * TIMING_STRIDE, timeQuantProcessInRank_);
+            output.SetValue(base + 0 * TIMING_STRIDE, timeTopKIdsAllGather_);
+            output.SetValue(base + 1 * TIMING_STRIDE, timeQuantProcessInRank_);
             for (int32_t i = 0; i < 4; i++) {
-                output.SetValue((3 + i) * TIMING_STRIDE, timeSendInfoCalPerExpert_[i]);
-                output.SetValue((11 + i) * TIMING_STRIDE, params_.timeCombineTokensPerExpert[i]);
+                output.SetValue(base + (3 + i) * TIMING_STRIDE, timeSendInfoCalPerExpert_[i]);
+                output.SetValue(base + (11 + i) * TIMING_STRIDE, params_.timeCombineTokensPerExpert[i]);
             }
         } else {
             for (int32_t i = 0; i < 4; i++) {
-                output.SetValue((7 + i) * TIMING_STRIDE, timeTripleInfoCalDispatchPerExpert_[i]);
+                output.SetValue(base + (7 + i) * TIMING_STRIDE, timeTripleInfoCalDispatchPerExpert_[i]);
             }
         }
     }
@@ -525,7 +530,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendInfoCal(int32_t loc
         CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(2);
     }
     uint64_t t1 = GetSystemCycle();
-    if (blockIdx_ == 0 && subBlockIdx_ == 0 && localExpertId < 4) {
+    if (subBlockIdx_ == 0 && localExpertId < 4) {
         timeSendInfoCalPerExpert_[localExpertId] = t1 - t0;
     }
 }
@@ -605,7 +610,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0); 
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     uint64_t t1 = GetSystemCycle();
-    if (blockIdx_ == 0 && subBlockIdx_ == 1 && localExpertId < 4) {
+    if (subBlockIdx_ == 1 && localExpertId < 4) {
         timeTripleInfoCalDispatchPerExpert_[localExpertId] = t1 - t0;
     }
 }
@@ -831,9 +836,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         secondPipe.Destroy();
     }
-    if (blockIdx_ == 0) {
-        WriteTimingToOutput();
-    }
+    WriteTimingToOutput();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
