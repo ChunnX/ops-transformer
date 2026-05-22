@@ -769,7 +769,40 @@ __aicore__ inline void SchedulerLoop(
     __gm__ int32_t* swigluFlagBase =
         (__gm__ int32_t*)params.workspaceInfo.ptrFlagSwiGluToGmm2 + flagOffsetForExpert;
 
+    // --- 1.5 计算 G1 / G2 各自的 coresPerWave ---
+    //
+    // V1 设计: 每个 task 处理一个 (wave, coreInGroup) slice, worker 在 engine 内跑
+    //   for (loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWaveOp)
+    // 串 ceil(tileNum/coresPerWaveOp) 个 tile, engine setup (BlockMmad::Init / BlockScheduler ctor /
+    // MakeLayout / UpdateGlobalAddr 等) per-task 而非 per-tile, AIC/AIV scalar 摊销倍数 = 上式。
+    //
+    // 选取目标: 总 task 数 ≈ blockNum - 1 (worker 数), 每个 worker 平均接 1 个 task. 这样:
+    //   - 设置开销摊销最大: 每 task 内 tile 数 = tileNum*waveCnt / (blockNum-1)
+    //   - 仍然占满 31 个 worker: cpw_total = cpw1+cpw2 ≈ (blockNum-1)/waveCnt × 2
+    //   - per channel cpw ≈ (blockNum-1) / (2 × waveCnt)
+    // 但是必须满足: 1 <= cpw_op <= tileNum_op (不能比 tile 数还多, 否则空 task)
+    //
+    // 对称 (tnG1=16, tnG2=16, blockNum=32, waveCnt=4):
+    //   cpw_target = 31 / (2*4) = 3.875 → 4
+    //   cpw1 = min(16, 4) = 4, cpw2 = min(16, 4) = 4
+    //   每 task = 16/4 = 4 tile, setup 摊销 4x
+    //   总 task = 4(wave) × 4(cpw) × 2(ch) = 32 ≈ 31 worker, 平均每 worker 1 task
+    // 非对称 (tnG1=12, tnG2=28):
+    //   cpw_target = 4. cpw1 = min(12, 4) = 4 (3 tile/task), cpw2 = min(28, 4) = 4 (7 tile/task)
+    //   G2 task 比 G1 重, worker pool 自动消化空闲核
+    int32_t maxWorkers = static_cast<int32_t>(blockNum) - 1;  // bk=0 是 scheduler
+    int32_t cpwTarget = (maxWorkers + static_cast<int32_t>(2 * waveCnt) - 1) /
+                        static_cast<int32_t>(2 * waveCnt);   // ceil((blockNum-1) / (2*waveCnt))
+    if (cpwTarget < 1) cpwTarget = 1;
+    int32_t cpw1 = static_cast<int32_t>(tileNumGmm1);
+    int32_t cpw2 = static_cast<int32_t>(tileNumGmm2);
+    if (cpw1 > cpwTarget) cpw1 = cpwTarget;
+    if (cpw2 > cpwTarget) cpw2 = cpwTarget;
+    if (cpw1 < 1) cpw1 = 1;
+    if (cpw2 < 1) cpw2 = 1;
+
     // --- 2. 本 expert 局部状态 ---
+    // dispatched_g1[w] / dispatched_g2[w] 是已派 task 数 (0..cpw1/cpw2), 即下一个 task 的 coreInGroup
     int32_t dispatched_g1[SCHED_MAX_WAVES];
     int32_t dispatched_g2[SCHED_MAX_WAVES];
     for (int32_t i = 0; i < SCHED_MAX_WAVES; ++i) {
@@ -841,17 +874,18 @@ __aicore__ inline void SchedulerLoop(
                     continue;
                 }
 
-                // 找下一个 task
+                // 找下一个 task: dispatched_g*[w] 是已派 task 数, 也是下一个 task 的 coreInGroup
                 int32_t wDispatch = -1;
+                int32_t cpwOp = (ch == 0) ? cpw1 : cpw2;
                 if (ch == 0) {                                                  // G1
                     for (uint64_t w = 0; w < waveCnt; ++w) {
-                        if (dispatched_g1[w] < static_cast<int32_t>(tileNumGmm1)) {
+                        if (dispatched_g1[w] < cpw1) {
                             wDispatch = static_cast<int32_t>(w); break;
                         }
                     }
                 } else {                                                        // G2
                     for (uint64_t w = 0; w < waveCnt; ++w) {
-                        if (dispatched_g2[w] >= static_cast<int32_t>(tileNumGmm2)) continue;
+                        if (dispatched_g2[w] >= cpw2) continue;
                         if (!wave_unlocked[w]) continue;   // 用本地缓存, 不再 ReadGm
                         wDispatch = static_cast<int32_t>(w); break;
                     }
@@ -861,10 +895,11 @@ __aicore__ inline void SchedulerLoop(
                 bool isEnd = false;
                 if (wDispatch >= 0) {
                     DynamicTask t;
-                    t.opType  = (ch == 0) ? DYN_OP_GMM1 : DYN_OP_GMM2;
-                    t.waveIdx = wDispatch;
-                    t.nTileIdx = (ch == 0) ? dispatched_g1[wDispatch] : dispatched_g2[wDispatch];
-                    t.waveM   = (wDispatch == lastWaveIdx) ? lastWaveM : static_cast<int32_t>(L1_TILE_M);
+                    t.opType         = (ch == 0) ? DYN_OP_GMM1 : DYN_OP_GMM2;
+                    t.waveIdx        = wDispatch;
+                    t.coreInGroup    = (ch == 0) ? dispatched_g1[wDispatch] : dispatched_g2[wDispatch];
+                    t.coresPerWaveOp = cpwOp;
+                    t.waveM          = (wDispatch == lastWaveIdx) ? lastWaveM : static_cast<int32_t>(L1_TILE_M);
                     packed = PackDynamicTask(t);
                     if (ch == 0) dispatched_g1[wDispatch]++;
                     else         dispatched_g2[wDispatch]++;
@@ -873,16 +908,17 @@ __aicore__ inline void SchedulerLoop(
                     bool allDispatched = true;
                     if (ch == 0) {
                         for (uint64_t w = 0; w < waveCnt; ++w) {
-                            if (dispatched_g1[w] < static_cast<int32_t>(tileNumGmm1)) { allDispatched = false; break; }
+                            if (dispatched_g1[w] < cpw1) { allDispatched = false; break; }
                         }
                     } else {
                         for (uint64_t w = 0; w < waveCnt; ++w) {
-                            if (dispatched_g2[w] < static_cast<int32_t>(tileNumGmm2)) { allDispatched = false; break; }
+                            if (dispatched_g2[w] < cpw2) { allDispatched = false; break; }
                         }
                     }
                     if (!allDispatched) continue;                               // 等 swiglu 解锁
                     DynamicTask endT;
-                    endT.opType = DYN_OP_END; endT.waveIdx = 0; endT.nTileIdx = 0; endT.waveM = 0;
+                    endT.opType = DYN_OP_END; endT.waveIdx = 0;
+                    endT.coreInGroup = 0; endT.coresPerWaveOp = 0; endT.waveM = 0;
                     packed = PackDynamicTask(endT);
                     isEnd = true;
                 }
@@ -997,7 +1033,13 @@ __aicore__ inline void DynamicAicLoop(
     __gm__ int32_t* ackG1 = GetTaskAckPtr(params, blockIdx, 0, OWNER_AIC);
     __gm__ int32_t* ackG2 = GetTaskAckPtr(params, blockIdx, 1, OWNER_AIC);
 
-    bool g1Pending = false;  // 上次 G1 mmad 的 NotifyVector 没被 drain
+    // funcSyncG1: 跨 G1 task 持久的 cube↔vec sync 计数器, 等价静态路径的 vecSetSyncCom_。
+    //   engine 内 NotifyVector 后 vecSetSyncCom++ (pingpong) 或 = 1 (单 UB).
+    //   下一个 G1 task 进 engine 时 vecSetSyncCom 不为 0 → 走 if(vecSetSyncCom) WaitForVector()
+    //   快路径吃掉上一发 NotifyCube, 等价静态. 由于同 bk 的 AIC/AIV0 整个 kernel 都绑在
+    //   同一个 paired core 上, NotifyCube/WaitForVector 通道天然延续.
+    //   G2 走 rowReadyFlags 不用 cube/vec 通道, 不需要 funcSync.
+    int32_t funcSyncG1 = 0;
     bool g1End = false, g2End = false;
     int g1Seq = 0, g2Seq = 0;
 
@@ -1026,10 +1068,10 @@ __aicore__ inline void DynamicAicLoop(
                 #if MEGA_MOE_DYN_DEBUG
                 if (g2Seq <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
                     int32_t dbgW = task.waveIdx;
-                    int32_t dbgN = task.nTileIdx;
+                    int32_t dbgN = task.coreInGroup;
                     int32_t dbgM = task.waveM;
                     int dbgSeq = g2Seq;
-                    AscendC::PRINTF("[rank=%d AIC bk=%d] G2#%d w=%d nT=%d waveM=%d\n",
+                    AscendC::PRINTF("[rank=%d AIC bk=%d] G2#%d w=%d ci=%d waveM=%d\n",
                                     rankId, blockIdx, dbgSeq, dbgW, dbgN, dbgM);
                 }
                 #endif
@@ -1058,7 +1100,8 @@ __aicore__ inline void DynamicAicLoop(
 
                 GroupMatmul2<ElementA, ElementB, bfloat16_t, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
                     params, taskProblemShape, gmmAddrInfo,
-                    static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
+                    static_cast<uint32_t>(task.coreInGroup),
+                    static_cast<uint32_t>(task.coresPerWaveOp),
                     expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
 
                 AscendC::WriteGmByPassDCache(ackG2, cur);
@@ -1084,21 +1127,17 @@ __aicore__ inline void DynamicAicLoop(
                     continue;
                 }
 
-                // UB 屏障: 下一 G1 mmad 前等上次 AIV0 NotifyCube。如果中间做了 G2 mmad,
-                // AIV0 多半已经 epi 完发了 NotifyCube,WaitForVector 立刻返回,等的时间近似 0。
-                if (g1Pending) {
-                    WaitForVector(0);
-                    g1Pending = false;
-                }
+                // funcSyncG1 跨 task 累积 → engine 内会自己 if(vecSetSyncCom) WaitForVector,
+                // 不需要外层显式 drain 上一发 NotifyCube.
 
                 g1Seq++;
                 #if MEGA_MOE_DYN_DEBUG
                 if (g1Seq <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
                     int32_t dbgW = task.waveIdx;
-                    int32_t dbgN = task.nTileIdx;
+                    int32_t dbgN = task.coreInGroup;
                     int32_t dbgM = task.waveM;
                     int dbgSeq = g1Seq;
-                    AscendC::PRINTF("[rank=%d AIC bk=%d] G1#%d w=%d nT=%d waveM=%d\n",
+                    AscendC::PRINTF("[rank=%d AIC bk=%d] G1#%d w=%d ci=%d waveM=%d\n",
                                     rankId, blockIdx, dbgSeq, dbgW, dbgN, dbgM);
                 }
                 #endif
@@ -1130,12 +1169,11 @@ __aicore__ inline void DynamicAicLoop(
                     0L, 0L, 0L};
                 epilogueOp.UpdateGlobalAddr(vecBaseOffset);
 
-                int32_t funcSync = 0;
                 GroupMatmulSwigluQuant<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
                     epilogueOp, params, taskProblemShape, gmmAddrInfo,
-                    static_cast<uint32_t>(task.nTileIdx), tileNumGmm1,
-                    funcSync, 0);
-                g1Pending = true;
+                    static_cast<uint32_t>(task.coreInGroup),
+                    static_cast<uint32_t>(task.coresPerWaveOp),
+                    funcSyncG1, 0);
 
                 AscendC::WriteGmByPassDCache(ackG1, cur);
                 // PipeBarrier<PIPE_ALL>();  // 跨核可见性
@@ -1153,10 +1191,10 @@ __aicore__ inline void DynamicAicLoop(
             int32_t dbgLastG2 = last_seen[1];
             int dbgG1End = g1End ? 1 : 0;
             int dbgG2End = g2End ? 1 : 0;
-            int dbgG1Pending = g1Pending ? 1 : 0;
-            AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT idle exp=%u seqG1=%d seqG2=%d lastG1=%d lastG2=%d g1End=%d g2End=%d g1Pending=%d\n",
+            int dbgFuncSync = funcSyncG1;
+            AscendC::PRINTF("[rank=%d AIC bk=%d] *** TIMEOUT idle exp=%u seqG1=%d seqG2=%d lastG1=%d lastG2=%d g1End=%d g2End=%d funcSyncG1=%d\n",
                             rankId, blockIdx, expertIdx, dbgSeqG1, dbgSeqG2, dbgLastG1, dbgLastG2,
-                            dbgG1End, dbgG2End, dbgG1Pending);
+                            dbgG1End, dbgG2End, dbgFuncSync);
             break;
         }
         #endif
@@ -1164,9 +1202,24 @@ __aicore__ inline void DynamicAicLoop(
         while (AscendC::GetSystemCycle() - ss < 500) {}  // 拉长 spin 间隔 减小 HBM 争用
     }
 
-    // 最后一发 G1 NotifyCube drain
-    if (g1Pending) {
-        WaitForVector(0);
+    // expert 末尾 drain 剩余的 AIV0→AIC NotifyCube. 与静态 EndSync() 逻辑一致.
+    // 单 UB 模式(L1_TILE_M=256): funcSyncG1 维持在 1, drain 1 次.
+    // pingpong 模式(L1_TILE_M=128): funcSyncG1 累计, 硬件 FIFO 末尾留 1 (==1) 或 2 (>=2) 个 pending.
+    if (funcSyncG1 > 0) {
+        constexpr bool kGmm1Pingpong = IsInterleaved &&
+            (MAX_SINGLE_MN_ALIGN32_NUM * sizeof(float) * 2U <= UB_CAPACITY_BYTES);
+        if constexpr (kGmm1Pingpong) {
+            if (funcSyncG1 == 1) {
+                WaitForVector(0);
+            } else {
+                uint16_t firstPendingIdx = static_cast<uint16_t>(funcSyncG1 & 1U);
+                WaitForVector(firstPendingIdx);
+                WaitForVector(static_cast<uint16_t>(1U - firstPendingIdx));
+            }
+        } else {
+            WaitForVector(0);
+        }
+        funcSyncG1 = 0;
     }
 
     #if MEGA_MOE_DYN_DEBUG
@@ -1211,6 +1264,9 @@ __aicore__ inline void DynamicAiv0Loop(
     __gm__ int32_t* dataPtr = GetTaskDataPtr(params, blockIdx, 0);
     __gm__ int32_t* ackPtr  = GetTaskAckPtr(params, blockIdx, 0, OWNER_AIV);
 
+    // funcSync 跨 task 累积, 等价静态 vecSetSyncCom_, 让 engine 内 WaitForCube 走快路径.
+    // 同 bk 的 AIV0/AIC 整个 kernel 都在一个 paired core 上, cube/vec 通道天然延续.
+    int32_t funcSync = 0;
     int taskCnt = 0;
     #if MEGA_MOE_TIMEOUT_DECT
     int64_t loopStart = AscendC::GetSystemCycle();
@@ -1232,9 +1288,9 @@ __aicore__ inline void DynamicAiv0Loop(
             #if MEGA_MOE_DYN_DEBUG
             if (taskCnt <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
                 int32_t dbgW = task.waveIdx;
-                int32_t dbgN = task.nTileIdx;
+                int32_t dbgN = task.coreInGroup;
                 int dbgSeq = taskCnt;
-                AscendC::PRINTF("[rank=%d AIV0 bk=%d] #%d w=%d nT=%d\n",
+                AscendC::PRINTF("[rank=%d AIV0 bk=%d] #%d w=%d ci=%d\n",
                                 rankId, blockIdx, dbgSeq, dbgW, dbgN);
             }
             #endif
@@ -1266,10 +1322,10 @@ __aicore__ inline void DynamicAiv0Loop(
                 0L, 0L, 0L};
             epilogueOp.UpdateGlobalAddr(vecBaseOffset);
 
-            int32_t funcSync = 0;
             GroupMatmulSwigluQuant<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
                 epilogueOp, params, taskProblemShape, gmmAddrInfo,
-                static_cast<uint32_t>(task.nTileIdx), tileNumGmm1,
+                static_cast<uint32_t>(task.coreInGroup),
+                static_cast<uint32_t>(task.coresPerWaveOp),
                 funcSync, 0);
 
             AscendC::WriteGmByPassDCache(ackPtr, cur);
@@ -1353,9 +1409,9 @@ __aicore__ inline void DynamicAiv1Loop(
             #if MEGA_MOE_DYN_DEBUG
             if (taskCnt <= 3 && (blockIdx == DBG_BK_A || blockIdx == DBG_BK_B)) {
                 int32_t dbgW = task.waveIdx;
-                int32_t dbgN = task.nTileIdx;
+                int32_t dbgN = task.coreInGroup;
                 int dbgSeq = taskCnt;
-                AscendC::PRINTF("[rank=%d AIV1 bk=%d] #%d w=%d nT=%d\n",
+                AscendC::PRINTF("[rank=%d AIV1 bk=%d] #%d w=%d ci=%d\n",
                                 rankId, blockIdx, dbgSeq, dbgW, dbgN);
             }
             #endif
@@ -1384,7 +1440,8 @@ __aicore__ inline void DynamicAiv1Loop(
 
             GroupMatmul2<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsInterleaved>(
                 params, taskProblemShape, gmmAddrInfo,
-                static_cast<uint32_t>(task.nTileIdx), tileNumGmm2,
+                static_cast<uint32_t>(task.coreInGroup),
+                static_cast<uint32_t>(task.coresPerWaveOp),
                 expertIdx, rankId, static_cast<uint64_t>(waveRowOffset), 0);
 
             AscendC::WriteGmByPassDCache(ackPtr, cur);
