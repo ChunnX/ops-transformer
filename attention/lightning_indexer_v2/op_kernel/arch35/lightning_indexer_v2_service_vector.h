@@ -62,7 +62,7 @@ public:
                                       const LIV2TilingData *__restrict tilingData);
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
-                                              GlobalTensor<K_T> valueOutGm, GlobalTensor<int32_t> blockTableGm, 
+                                              GlobalTensor<K_T> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
@@ -100,10 +100,10 @@ private:
     LocalTensor<float> resMm1UB_;
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
-    LocalTensor<W_T> weightUB_; 
+    LocalTensor<W_T> weightUB_;
     // tmp buff for weight cast float
     TBuf<TPosition::VECCALC> weightFloatBuf_;
-    LocalTensor<float> weightFloatUB_;  
+    LocalTensor<float> weightFloatUB_;
 
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
@@ -115,9 +115,6 @@ private:
     // tmp buff for returnValue K_T
     TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<K_T> valueOutLocal_;
-
-    // tmp buff for LD
-
     // tmp buff for topk
     TBuf<TPosition::VECCALC> mrgValueBuf_;
     LocalTensor<SCORE_T> mrgValueLocal_;
@@ -165,31 +162,35 @@ __aicore__ inline void LIV2Vector<LIT>::InitBuffers(TPipe *pipe)
     weightUB_ = weightBuf_.Get<W_T>();
     pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightFloatUB_ = weightFloatBuf_.Get<float>();
-    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
-    vec1OutUB_ = outBuf_.Get<SCORE_T>();//out
-
+    // 大小：2(开dB) * 2 * 128 * 4 = 2KB
+    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
+    // out
+    vec1OutUB_ = outBuf_.Get<SCORE_T>(); 
     // returnvalue
-    pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));      // 大小：topK * sizeof(bfloat16_t)
-    uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>(); // returnValue bfloat16
-    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));      // 大小：topK * sizeof(float)
-    valueOutLocal_ = valueOutBuf_.Get<K_T>(); // returnValue float
-
+    // 大小：topK * sizeof(bfloat16_t)
+    pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));
+    // returnValue bfloat16
+    uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>();
+    // 大小：topK * sizeof(float)
+    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));
+    // returnValue float
+    valueOutLocal_ = valueOutBuf_.Get<K_T>();
     // Topk
-    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
+    // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
+    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));   
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
-    
-    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));      
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
-
-    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T));                   // 大小：topkCountAlign256_ * sizeof(SCORE_T)
+    // 大小：topkCountAlign256_ * sizeof(SCORE_T)
+    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T));            
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
     topkOp_.InitBuffers(topkSharedTmpLocal_);
-
-    //刷-1
+    // 刷-1
     pipe->InitBuffer(outInvalidBuf_, topkCount_ * sizeof(int32_t));
     outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
 }
@@ -219,9 +220,11 @@ __aicore__ inline void LIV2Vector<LIT>::InitParams(const struct LIV2Common::Cons
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Vector<LIT>::InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
-                                                         GlobalTensor<K_T> valueOutGm, GlobalTensor<int32_t> blockTableGm, 
-                                                         GlobalTensor<int32_t> outputIdxOffsetGm)
+__aicore__ inline void LIV2Vector<LIT>::InitVecInputTensor(GlobalTensor<W_T> weightsGm,
+                                                           GlobalTensor<int32_t> indiceOutGm,
+                                                           GlobalTensor<K_T> valueOutGm,
+                                                           GlobalTensor<int32_t> blockTableGm,
+                                                           GlobalTensor<int32_t> outputIdxOffsetGm)
 {
     this->weightsGm = weightsGm;
     this->indiceOutGm = indiceOutGm;
@@ -306,21 +309,24 @@ template <typename LIT>
 __aicore__ inline void LIV2Vector<LIT>::ProcessVec1(const LIV2Common::RunInfo &info)
 {
     if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
-        //CV同步
-        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
+        // CV同步
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
+            LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   // V核等C核计算完mm1，mm1Res已搬运到UB
         
-        int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
-        int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
-        int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
+        int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+        int64_t curS2Idx = info.s2Idx * s2BaseSize_;
+        int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
         int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-        int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
+        int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
 
         if (curAivS1ProcNum == 0) {
-            CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);   //V核处理完，通知C核可以把mm1Res搬运到UB
+            // V核处理完，通知C核可以把mm1Res搬运到UB
+            CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
+                LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);
             return;
         }
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
-        //weightsGm --> weightUB_ 
+        // weightsGm --> weightUB_
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
         DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
         DataCopyExtParams qwDataCopyExtParams;
@@ -328,34 +334,40 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessVec1(const LIV2Common::RunInfo &i
         qwDataCopyExtParams.blockLen = curAivS1ProcNum * gSize_* sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
         qwDataCopyExtParams.dstStride = 0;
-        DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_], 
+        DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
         WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
         for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
-            liV2Vector1::MulWeightAndReduceSum(vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_], 
-                                    resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ + s1IdxTmp * gSize_ * s2BaseSize_], 
-                                    weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_ + s1IdxTmp * gSize_], 
-                                    gSize_);
+            liV2Vector1::MulWeightAndReduceSum(
+                    vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
+                    resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ +
+                               s1IdxTmp * gSize_ * s2BaseSize_],
+                    weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_ + s1IdxTmp * gSize_],
+                    gSize_);
         }
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
         SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
         WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
-        //outUB_ --->  scoreGm
-        int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx : 
-                                CeilDiv(s1BaseSize_, 2) * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
+        // outUB_ --->  scoreGm
+        int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx :
+                                CeilDiv(s1BaseSize_, 2) * LIV2Common::Align(
+                                    (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
         DataCopyExtParams copyOutParams;
         copyOutParams.blockCount = curAivS1ProcNum;
         copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
         copyOutParams.srcStride = 0;
-        copyOutParams.dstStride = (LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
+        copyOutParams.dstStride = (LIV2Common::Align((uint64_t)constInfo_.kSeqSize, 
+                                                     (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
 
-        DataCopyPad(scoreGm[vec1OutGmOffset], vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_], copyOutParams);
+        DataCopyPad(scoreGm[vec1OutGmOffset], 
+                    vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_], copyOutParams);
         SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
-        
-        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);   //V核处理完，通知C核可以把mm1Res搬运到UB
+        // V核处理完，通知C核可以把mm1Res搬运到UB
+        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
+            LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2); 
     } 
 }
 
@@ -408,7 +420,8 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, topkCount_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                                 indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             if (returnValueFlag) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);

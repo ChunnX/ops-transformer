@@ -46,7 +46,7 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID2;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5;         // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;       
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -61,21 +61,26 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
 
     static constexpr uint64_t FP16_BLOCK_CUBE = 16;
-    static constexpr FixpipeConfig LI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+    // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+    static constexpr FixpipeConfig LI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   
 
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK * D_BASIC_BLOCK;
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
                                 uint64_t s2L0RealSize, const LIV2Common::RunInfo &runInfo);
-    __aicore__ inline void ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, const LIV2Common::RunInfo &runInfo);
+    __aicore__ inline void ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, 
+                                      const LIV2Common::RunInfo &runInfo);
     __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
                                         const LIV2Common::RunInfo &runInfo);
     __aicore__ inline void LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL0Offset, uint64_t s1gL1RealSize,
                                           uint64_t s1gL0RealSize, const LIV2Common::RunInfo &runInfo);
-    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, const LIV2Common::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, const LIV2Common::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset, const LIV2Common::RunInfo &runInfo);
+    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, 
+                                      const LIV2Common::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, 
+                                    const LIV2Common::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset, 
+                                         const LIV2Common::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -123,7 +128,8 @@ __aicore__ inline void LIV2Matmul<LIT>::InitParams(const ConstInfo &constInfo)
 template <typename LIT>
 __aicore__ inline void LIV2Matmul<LIT>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));  //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
+    // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));  
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * constInfo_.mBaseSize * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -152,8 +158,10 @@ LIV2Matmul<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, co
 template <typename LIT>
 __aicore__ inline void LIV2Matmul<LIT>::ComputeMm1(const LIV2Common::RunInfo &runInfo)
 {
-    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+        LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
+    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+        LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -171,8 +179,8 @@ __aicore__ inline void LIV2Matmul<LIT>::ComputeMm1(const LIV2Common::RunInfo &ru
         WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
         // s1gProcessSize当前必定不会超过2倍的s1g basic block
         for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
-            uint64_t s1gL1RealSize =
-                s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ? s1gProcessSize - s1gGmOffset : constInfo_.mBaseSize;
+            uint64_t s1gL1RealSize = s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ?
+                                     s1gProcessSize - s1gGmOffset : constInfo_.mBaseSize;
             uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
             if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                 queryL1Mte2BufIdx_++;
@@ -190,8 +198,8 @@ __aicore__ inline void LIV2Matmul<LIT>::ComputeMm1(const LIV2Common::RunInfo &ru
                     s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
                 for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += constInfo_.mBaseSize) {
                     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                    uint64_t s1gL0RealSize =
-                        s1gL1Offset + constInfo_.mBaseSize > s1gL1SizeAlign2G ? s1gL1SizeAlign2G - s1gL1Offset : constInfo_.mBaseSize;
+                    uint64_t s1gL0RealSize = s1gL1Offset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
+                                             s1gL1SizeAlign2G - s1gL1Offset : constInfo_.mBaseSize;
                     LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
                     LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
 
@@ -215,8 +223,10 @@ __aicore__ inline void LIV2Matmul<LIT>::ComputeMm1(const LIV2Common::RunInfo &ru
         SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
         keyL1BufIdx_++;
     }
-    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
-    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET); 
+    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+        LIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2);
+    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+        LIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
 }
 
 template <typename LIT>
@@ -246,8 +256,9 @@ __aicore__ inline void LIV2Matmul<LIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
     while (s2L1Offset < s2L1RealSize) {
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
-        uint64_t keyGmOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 + 
-                             s2BlkOffset * constInfo_.headDim;
+        uint64_t keyGmOffset = 
+            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 +
+                s2BlkOffset * constInfo_.headDim;
 
         uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
         s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset
@@ -288,8 +299,9 @@ __aicore__ inline void LIV2Matmul<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint6
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
-                                                     uint64_t s1gL0RealSize, const LIV2Common::RunInfo &runInfo)
+__aicore__ inline void LIV2Matmul<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uint64_t s1gL1Offset,
+                                                       uint64_t s1gL1RealSize, uint64_t s1gL0RealSize,
+                                                       const LIV2Common::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
@@ -300,9 +312,8 @@ __aicore__ inline void LIV2Matmul<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
     loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
+    LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
          queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_], loadData2DParamsV2);
-
 }
 
 template <typename LIT>

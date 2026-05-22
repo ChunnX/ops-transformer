@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_template_tiling_key.h
@@ -38,8 +38,8 @@ ASCENDC_TPL_ARGS_DECL(LightningIndexerV2, // 算子OpType
                                              LI_LAYOUT_TND),
                       ASCENDC_TPL_UINT_DECL(K_LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST,
                                             LI_LAYOUT_BSND, LI_LAYOUT_TND, LI_LAYOUT_PA_BSND),
-                      ASCENDC_TPL_BOOL_DECL(DT_W_FLAG, 0, 1), 
-                      ASCENDC_TPL_BOOL_DECL(TOPK_SCORE_PRECISION, 0, 1), );
+                      ASCENDC_TPL_BOOL_DECL(DT_W_FLAG, 0, 1),
+                      ASCENDC_TPL_BOOL_DECL(TOPK_SCORE_PRECISION, 0, 1),);
 
 // 支持的模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
@@ -49,47 +49,47 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 1),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_BSND, LI_LAYOUT_TND),
                          ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_PA_BSND),
-                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1), 
-                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1), ),
+                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1),),
 
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, LI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, LI_TPL_BF16),
                          ASCENDC_TPL_DTYPE_SEL(DT_OUT, LI_TPL_INT32),
                          ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 1),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_BSND, LI_LAYOUT_TND),
                          ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_PA_BSND),
-                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1), 
-                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1), ),
+                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1),),
 
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, LI_TPL_FP16), ASCENDC_TPL_DTYPE_SEL(DT_K, LI_TPL_FP16),
                          ASCENDC_TPL_DTYPE_SEL(DT_OUT, LI_TPL_INT32),
                          ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 0),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_BSND),
                          ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_BSND),
-                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1), 
-                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1), ),
+                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1),),
 
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, LI_TPL_FP16), ASCENDC_TPL_DTYPE_SEL(DT_K, LI_TPL_FP16),
                          ASCENDC_TPL_DTYPE_SEL(DT_OUT, LI_TPL_INT32),
                          ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 0),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_TND),
                          ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_TND),
-                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1), 
-                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1), ),
+                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1),),
 
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, LI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, LI_TPL_BF16),
                          ASCENDC_TPL_DTYPE_SEL(DT_OUT, LI_TPL_INT32),
                          ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 0),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_BSND),
                          ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_BSND),
-                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1), 
-                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1), ),
+                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1),),
 
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(DT_Q, LI_TPL_BF16), ASCENDC_TPL_DTYPE_SEL(DT_K, LI_TPL_BF16),
                          ASCENDC_TPL_DTYPE_SEL(DT_OUT, LI_TPL_INT32),
                          ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 0),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_TND),
                          ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, LI_LAYOUT_TND),
-                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1), 
-                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1), ), );
+                         ASCENDC_TPL_BOOL_SEL(DT_W_FLAG, 0, 1),
+                         ASCENDC_TPL_BOOL_SEL(TOPK_SCORE_PRECISION, 0, 1),),);
 
 #endif

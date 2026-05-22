@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_tiling.cpp
@@ -197,7 +197,8 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= SPARSE_LIMIT)) &&
  	                *opParamInfo_.topk % 1024 != 0),
- 	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192. And when topk > 2048, topk must be an interger multiple of 1024."),
+ 	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192. And when topk > 2048,"
+                    " topk must be an interger multiple of 1024."),
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
@@ -205,9 +206,10 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE(opName_, "input attr pre_tokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
                OP_LOGE(opName_, "input attr nextTokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) || 
+    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
                 ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
-                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, but now cmpRatio is %ld.",
+                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
+                        "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -362,7 +364,7 @@ ge::graphStatus LIV2InfoParser::GetN1Size()
 }
 
 ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                  const std::string &actualSeqLenName) const
+                                                    const std::string &actualSeqLenName) const
 {
     size = static_cast<uint32_t>(tensor->GetShapeSize());
     if (size <= 0) {
@@ -410,7 +412,8 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
         GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cuSeqlensK");
         if (kLayout_ == DataLayout::TND) {
             OP_CHECK_IF(bSizeQuery != bSizeKey,
-                OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, they must be same.",
+                OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
+                        "they must be same.",
                         bSizeQuery, bSizeKey),
                 return ge::GRAPH_FAILED);
             bSize_ = bSizeQuery;
@@ -419,7 +422,8 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
                 batchSupperFlag_ = true;
             }
             OP_CHECK_IF((bSizeQuery != bSizeKey) && !batchSupperFlag_,
-                OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, they must be same.",
+                OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
+                        "they must be same.",
                         bSizeQuery, bSizeKey),
                 return ge::GRAPH_FAILED);
             bSize_ = bSizeKey;
@@ -493,7 +497,7 @@ ge::graphStatus LIV2InfoParser::GetS2SizeForPageAttention()
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
     OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %d, blockSize_ is %d, s2Size_ is %d",
-              maxBlockNumPerBatch_, blockSize_, s2Size_);
+            maxBlockNumPerBatch_, blockSize_, s2Size_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -529,7 +533,8 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
                 (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_),
             OP_LOGE(
                 opName_,
-                "TND case input cu_seqlens_q, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld respectively, they must be same.",
+                "TND case input cu_seqlens_q, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld respectively, "
+                "they must be same.",
                 bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize(),
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
@@ -538,7 +543,8 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
     uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
-                OP_LOGE(opName_, "TND case input query, weights and sparse_indices dim 0 are %u, %ld, %ld respectively, they must be same.",
+                OP_LOGE(opName_, "TND case input query, weights and sparse_indices dim 0 are %u, %ld, %ld "
+                    "respectively, they must be same.",
                     qTsize, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
@@ -553,7 +559,8 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF((opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld respectively, they must be same.",
+                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld "
+                    "respectively, they must be same.",
                     bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize(),
                     opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
@@ -564,25 +571,29 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF((opParamInfo_.cuSeqlensK.tensor != nullptr) &&
                     (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k dim 0 are %u, %ld respectively, they must be same.",
+                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k dim 0 are %u, %ld "
+                    "respectively, they must be same.",
                     bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize()),
                 return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_),
-                OP_LOGE(opName_, "BSND case input query, weight and sparse_indices dim 0 are %u, %ld, %ld respectively, they must be same.",
+                OP_LOGE(opName_, "BSND case input query, weight and sparse_indices dim 0 are %u, %ld, %ld "
+                    "respectively, they must be same.",
                     bSize_, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((opParamInfo_.cuSeqlensQ.tensor != nullptr) &&
                    (opParamInfo_.cuSeqlensQ.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_q dim 0 are %u, %ld respectively, they must be same",
+                OP_LOGE(opName_, "BSND case input query, cu_seqlens_q dim 0 are %u, %ld "
+                    "respectively, they must be same",
                     bSize_, opParamInfo_.cuSeqlensQ.tensor->GetShapeSize()),
                 return ge::GRAPH_FAILED);
     // -----------------------check S1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
-                OP_LOGE(opName_, "BSND case input query, weight and sparse_indices dim 1 are %u, %ld, %ld, they must be same.",
+                OP_LOGE(opName_, "BSND case input query, weight and sparse_indices dim 1 are %u, %ld, %ld, "
+                    "they must be same.",
                     s1Size_, opParamInfo_.weights.shape->GetStorageShape().GetDim(1),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1)),
                 return ge::GRAPH_FAILED);
@@ -640,7 +651,8 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                OP_LOGE(opName_, "output sparse_indices shape last dim must be same as attr topk."),
                return ge::GRAPH_FAILED);
     // -----------------------check metadata-------------------
-    OP_CHECK_IF(((opParamInfo_.metadata.tensor != nullptr) && (opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT)),
+    OP_CHECK_IF(((opParamInfo_.metadata.tensor != nullptr) &&
+                (opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT)),
                 OP_LOGE(opName_, "input metadata dim0 must be %u.", METADATA_LIMIT),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -781,8 +793,8 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
     uint32_t weightTypeFlag = 0;
     uint32_t topkScorePrecision = 1;
-    uint64_t tilingKey =
-        GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout, weightTypeFlag, topkScorePrecision);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
+                            inputQLayout, inputKLayout, weightTypeFlag, topkScorePrecision);
     context_->SetTilingKey(tilingKey);
 
     return ge::GRAPH_SUCCESS;

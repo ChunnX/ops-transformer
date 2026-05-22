@@ -74,7 +74,8 @@ public:
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
-    using W_T = typename LightningIndexerV2TypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T, 
+                typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     LIV2Matmul<LIT> matmulService;
     LIV2Vector<LIT> vectorService;
@@ -152,8 +153,10 @@ protected:
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                            GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen, uint32_t cmpRatio);  
-    __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
+                                                  GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                  uint32_t defaultSeqLen, uint32_t cmpRatio);
+    __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
+                                               uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, LIV2Common::RunInfo &runInfo);
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
@@ -185,7 +188,7 @@ __aicore__ inline void LIV2Preload<LIT>::InitTilingData(const LIV2TilingData *__
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-    if (constInfo.gSize == 64 ) {
+    if (constInfo.gSize == 64) {
         constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
     } else {
@@ -208,9 +211,9 @@ __aicore__ inline void LIV2Preload<LIT>::InitBuffers()
 
 template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
-                                                        __gm__ uint8_t *cuSeqlensK,
-                                                        __gm__ uint8_t *sequsedQ, 
-                                                        __gm__ uint8_t *sequsedK)
+                                                          __gm__ uint8_t *cuSeqlensK,
+                                                          __gm__ uint8_t *sequsedQ,
+                                                          __gm__ uint8_t *sequsedK)
 {
     constInfo.actualLenDims = constInfo.batchSize;
     if constexpr (LAYOUT_T == LI_V2_LAYOUT::TND) {
@@ -265,19 +268,25 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetActualSeqLenKey(uint32_t bIdx, u
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig)
+__aicore__ inline void LIV2Preload<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx,
+                                                             uint32_t &actS1Size,
+                                                             uint32_t &actS2Size,
+                                                             uint32_t &actS2SizeOrig)
 {
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
+    // 压缩前的actS2Size
     actS2SizeOrig =
-        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio); // 压缩前的actS2Size
-    actS2Size = actS2SizeOrig / constInfo.cmpRatio;   // 真实使用的压缩后S2长度      
+        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2,
+                           actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio);
+    // 真实使用的压缩后S2长度
+    actS2Size = actS2SizeOrig / constInfo.cmpRatio;
 }
 
 template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  GlobalTensor<uint32_t> &metadataGm)
 {
-    uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_CORE_ENABLE_INDEX);    
+    uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_CORE_ENABLE_INDEX);  
     uint32_t bN2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_BN2_START_INDEX);
     uint32_t mStartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_M_START_INDEX);
     uint32_t s2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_S2_START_INDEX);
@@ -287,7 +296,7 @@ __aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  
 
     uint32_t liZeroCoreEnableIndex = GetAttrAbsIndex(0, LI_V2_CORE_ENABLE_INDEX);
     if (metadataGm.GetValue(liZeroCoreEnableIndex) == 0) {
-        isUsedCoreEqZero = true; 
+        isUsedCoreEqZero = true;
     }
     if (metadataGm.GetValue(liCoreEnableIndex) == 0) {
         splitCoreInfo.isCoreEnable = false;
@@ -323,7 +332,7 @@ __aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  
                 s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
             }
             splitCoreInfo.s2End = s2BaseNum - 1;
-        } else { 
+        } else {
             // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
             // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
             splitCoreInfo.bN2End = splitCoreInfo.bN2End - 1;
@@ -359,123 +368,124 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1
         return 0;
     }
     uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
-    int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);    // 压缩前的validS2LenBase
-    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize)) / static_cast<int32_t>(constInfo.cmpRatio);  
+    // 压缩前的validS2LenBase
+    int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);
+    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase +
+                          static_cast<int32_t>(constInfo.s1BaseSize)) / static_cast<int32_t>(constInfo.cmpRatio);
     validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) / constInfo.cmpRatio);
     validS2Len = Max(validS2Len, 1);
     return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 }
 
-template <typename LIT> 
-__aicore__ inline uint32_t LIV2Preload<LIT>::GetTotalBaseBlockNum() 
+template <typename LIT>
+__aicore__ inline uint32_t LIV2Preload<LIT>::GetTotalBaseBlockNum()
 { 
-    uint32_t totalBlockNum = 0; 
-    uint32_t actS1Size, actS2Size, actS2SizeOrig; 
-    uint32_t s1GBaseNum, s2BaseNum; 
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) { 
-        GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig); 
-        s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize); 
-        if (!constInfo.attenMaskFlag) { 
-            s2BaseNum = constInfo.isLDOpen ? CeilDiv(actS2Size, constInfo.s2BaseSize) : (actS2Size > 0 ? 1 : 0); 
-            totalBlockNum += s1GBaseNum * s2BaseNum * constInfo.kHeadNum; 
-            continue; 
-        } 
-        for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) { 
-            s2BaseNum = constInfo.isLDOpen ? GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2SizeOrig) : (actS2Size > 0 ? 1 : 0); 
-            totalBlockNum += s2BaseNum * constInfo.kHeadNum; 
-        } 
-    } 
-    return totalBlockNum; 
-} 
+    uint32_t totalBlockNum = 0;
+    uint32_t actS1Size, actS2Size, actS2SizeOrig;
+    uint32_t s1GBaseNum, s2BaseNum;
+    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) {
+        GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
+        s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
+        if (!constInfo.attenMaskFlag) {
+            s2BaseNum = constInfo.isLDOpen ? CeilDiv(actS2Size, constInfo.s2BaseSize) : (actS2Size > 0 ? 1 : 0);
+            totalBlockNum += s1GBaseNum * s2BaseNum * constInfo.kHeadNum;
+            continue;
+        }
+        for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) {
+            s2BaseNum = constInfo.isLDOpen ? GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2SizeOrig) :
+                                             (actS2Size > 0 ? 1 : 0);
+            totalBlockNum += s2BaseNum * constInfo.kHeadNum;
+        }
+    }
+    return totalBlockNum;
+}
  
- 
-// 多核版本，双闭区间。基本原则：计算每个核最少处理的块数, 剩余的部分前面的核每个核多处理一块 
-template <typename LIT> 
-__aicore__ void inline LIV2Preload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum, 
+// 多核版本，双闭区间。基本原则：计算每个核最少处理的块数, 剩余的部分前面的核每个核多处理一块
+template <typename LIT>
+__aicore__ void inline LIV2Preload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum,
                                                 LIV2Common::SplitCoreInfo &info) 
-{ 
-    uint32_t totalBlockNum = GetTotalBaseBlockNum(); 
-    uint32_t minBlockPerCore = totalBlockNum / coreNum; 
-    uint32_t deal1MoreBlockCoreNum = totalBlockNum % coreNum; 
-    uint32_t coreIdx = 0; 
-    uint32_t lastGS1RemainBlockCnt = 0; 
-    uint32_t coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore; 
-    coreNum = minBlockPerCore == 0 ? deal1MoreBlockCoreNum : coreNum; 
-    if(curCoreIdx < coreNum){
+{
+    uint32_t totalBlockNum = GetTotalBaseBlockNum();
+    uint32_t minBlockPerCore = totalBlockNum / coreNum;
+    uint32_t deal1MoreBlockCoreNum = totalBlockNum % coreNum;
+    uint32_t coreIdx = 0;
+    uint32_t lastGS1RemainBlockCnt = 0;
+    uint32_t coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore;
+    coreNum = minBlockPerCore == 0 ? deal1MoreBlockCoreNum : coreNum;
+    if (curCoreIdx < coreNum) {
         splitCoreInfo.isCoreEnable = true;
-    }else{
+    } else {
         splitCoreInfo.isCoreEnable = false;
         return;
     }
 
-    bool findLastCoreEnd = true; 
-    uint32_t actS1Size, actS2Size, actS2SizeOrig; 
-    uint32_t s1GBaseNum, s2BaseNum, s2Loop; 
-    for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kHeadNum; bN2Idx++) { 
-        uint32_t bIdx = bN2Idx / constInfo.kHeadNum; 
-        if (bN2Idx % constInfo.kHeadNum == 0) { 
-            GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig); 
-            s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize); 
-            s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize); 
-        } 
-        if constexpr (LAYOUT_T == LI_V2_LAYOUT::BSND) { 
-            if (findLastCoreEnd && (s1GBaseNum == 0U || s2BaseNum == 0U)) { 
-                info.bN2Start = bN2Idx; 
-                info.gS1Start = 0; 
-                info.s2Start = 0; 
-                findLastCoreEnd = false; 
-            } 
-        } 
-        for (uint32_t gS1Idx = 0; gS1Idx < s1GBaseNum; gS1Idx++) { 
-            if (constInfo.attenMaskFlag) { 
-                s2BaseNum = GetS2BaseBlockNumOnMask(gS1Idx, actS1Size, actS2SizeOrig); 
-            } 
-            if (findLastCoreEnd && s2BaseNum == 0U) { 
-                info.bN2Start = bN2Idx; 
-                info.gS1Start = gS1Idx; 
-                info.s2Start = 0; 
-                findLastCoreEnd = false; 
-            } 
-            s2Loop = constInfo.isLDOpen ? s2BaseNum : (actS2Size > 0 ? 1 : 0); 
-            for (uint32_t s2Idx = 0; s2Idx < s2Loop;) { 
-                if (findLastCoreEnd) { 
-                    info.bN2Start = bN2Idx; 
-                    info.gS1Start = gS1Idx; 
-                    info.s2Start = s2Idx; 
-                    findLastCoreEnd = false; 
-                } 
-                uint32_t s2RemainBaseNum = s2Loop - s2Idx; 
-                if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) { 
-                    info.bN2End = bN2Idx; 
-                    info.gS1End = gS1Idx; 
-                    info.s2End = constInfo.isLDOpen ? s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1 : s2BaseNum - 1; 
-
-
-                    if (coreIdx == curCoreIdx) { 
-                        // S2被切N核，那么只有第一个核需要处理LD，其他核不用 
-                        if (s2Idx == 0 && info.s2End + 1 < s2BaseNum) { 
-                            info.isLD = true; 
-                        } 
-                        // 最后一个核处理的不是最后一个Batch，表明后面的Batch为空块(S2=0), 调整终点坐标以便清理输出 
-                        if (coreIdx == coreNum - 1 && info.bN2End != constInfo.batchSize - 1) { 
-                            info.bN2End = constInfo.batchSize - 1; 
-                            info.gS1End = 0; 
-                            info.s2End = 0; 
-                        } 
-                        return; 
-                    } 
-                    coreIdx++; 
-                    findLastCoreEnd = true; 
-                    s2Idx = info.s2End + 1; 
-                    lastGS1RemainBlockCnt = 0; 
-                    coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore; 
-                } else { 
-                    lastGS1RemainBlockCnt += s2RemainBaseNum; 
-                    break; 
-                } 
-            } 
-        } 
-    } 
+    bool findLastCoreEnd = true;
+    uint32_t actS1Size, actS2Size, actS2SizeOrig;
+    uint32_t s1GBaseNum, s2BaseNum, s2Loop;
+    for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kHeadNum; bN2Idx++) {
+        uint32_t bIdx = bN2Idx / constInfo.kHeadNum;
+        if (bN2Idx % constInfo.kHeadNum == 0) {
+            GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
+            s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
+            s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
+        }
+        if constexpr (LAYOUT_T == LI_V2_LAYOUT::BSND) {
+            if (findLastCoreEnd && (s1GBaseNum == 0U || s2BaseNum == 0U)) {
+                info.bN2Start = bN2Idx;
+                info.gS1Start = 0;
+                info.s2Start = 0;
+                findLastCoreEnd = false;
+            }
+        }
+        for (uint32_t gS1Idx = 0; gS1Idx < s1GBaseNum; gS1Idx++) {
+            if (constInfo.attenMaskFlag) {
+                s2BaseNum = GetS2BaseBlockNumOnMask(gS1Idx, actS1Size, actS2SizeOrig);
+            }
+            if (findLastCoreEnd && s2BaseNum == 0U) {
+                info.bN2Start = bN2Idx;
+                info.gS1Start = gS1Idx;
+                info.s2Start = 0;
+                findLastCoreEnd = false;
+            }
+            s2Loop = constInfo.isLDOpen ? s2BaseNum : (actS2Size > 0 ? 1 : 0);
+            for (uint32_t s2Idx = 0; s2Idx < s2Loop;) {
+                if (findLastCoreEnd) {
+                    info.bN2Start = bN2Idx;
+                    info.gS1Start = gS1Idx;
+                    info.s2Start = s2Idx;
+                    findLastCoreEnd = false;
+                }
+                uint32_t s2RemainBaseNum = s2Loop - s2Idx;
+                if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
+                    info.bN2End = bN2Idx;
+                    info.gS1End = gS1Idx;
+                    info.s2End = constInfo.isLDOpen ? s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1 
+                                                    : s2BaseNum - 1;
+                    if (coreIdx == curCoreIdx) {
+                        // S2被切N核，那么只有第一个核需要处理LD，其他核不用
+                        if (s2Idx == 0 && info.s2End + 1 < s2BaseNum) {
+                            info.isLD = true;
+                        }
+                        // 最后一个核处理的不是最后一个Batch，表明后面的Batch为空块(S2=0), 调整终点坐标以便清理输出
+                        if (coreIdx == coreNum - 1 && info.bN2End != constInfo.batchSize - 1) {
+                            info.bN2End = constInfo.batchSize - 1;
+                            info.gS1End = 0;
+                            info.s2End = 0;
+                        }
+                        return;
+                    }
+                    coreIdx++;
+                    findLastCoreEnd = true;
+                    s2Idx = info.s2End + 1;
+                    lastGS1RemainBlockCnt = 0;
+                    coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore;
+                } else {
+                    lastGS1RemainBlockCnt += s2RemainBaseNum;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 template <typename LIT>
