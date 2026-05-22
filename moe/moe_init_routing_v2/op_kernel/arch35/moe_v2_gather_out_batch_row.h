@@ -93,7 +93,10 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
     int64_t validOutPosRows = Min(outPosRows, activateRows - outPosStart);
     if (validOutPosRows > 0 && outPosStart < activateRows) {
         Duplicate(outRowsLocal, static_cast<T>(0), validOutPosRows * cols);
+        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
     }
+
+    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(cols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
