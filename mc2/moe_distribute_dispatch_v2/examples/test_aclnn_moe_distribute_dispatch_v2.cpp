@@ -20,9 +20,19 @@
 #include <vector>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
+#include <hccl/hccl_types.h>
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
 #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
+
+#include "mpi.h"
+
+#include "acl/acl.h"
+#include "shmem.h"
+#include <iterator>
+
+int g_npus  = 8;
+const char*ipport;
 
 
 #define CHECK_RET(cond, return_expr) \
@@ -53,9 +63,9 @@ const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
 const char* first_rank_id = std::getenv("FIRST_RANK_ID");
 const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-const uint32_t EP_WORLD_SIZE = (!first_rank_id) ? 2 : 16;
-const uint32_t TP_WORLD_SIZE = (!first_rank_id) ? 1 : 0;
-const uint32_t DEV_NUM = (!first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
+const uint32_t EP_WORLD_SIZE = 8;
+const uint32_t TP_WORLD_SIZE = 1;
+const uint32_t DEV_NUM = 8;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -95,10 +105,10 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
     char hcomTpName[128] = {0};
-    if (!rank_table_file && !first_rank_id) {
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
-    }
+    // if (!rank_table_file && !first_rank_id) {
+    //     ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
+    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
+    // }
     LOG_PRINT(
         "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
         args.rankId, hcomEpName, hcomTpName, args.dispatchV2Stream, args.combineV2Stream, args.context
@@ -107,15 +117,15 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     // 设置场景
     int64_t BS = 8;
     int64_t H = 7168;
-    int64_t K = 1;
+    int64_t K = 8;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
-    if (!rank_table_file && !first_rank_id) {
-        sharedExpertNum = 1;
-        sharedExpertRankNum = 1;
-    } 
-    int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
+    // if (!rank_table_file && !first_rank_id) {
+    //     sharedExpertNum = 1;
+    //     sharedExpertRankNum = 1;
+    // } 
+    int64_t moeExpertNum = EP_WORLD_SIZE * 8;
     int64_t quantMode = 0;
     int64_t globalBS = BS * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 0;
@@ -205,6 +215,32 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
     std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
+
+    int pe_id = aclshmem_my_pe();
+    int n_pes = aclshmem_n_pes();
+
+    // DEBUG: n_pes * trans_size * sizeof(int32_t)
+    uint32_t trans_size = 16;
+    uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t)));
+    uint64_t custom_ptr_addr = (uint64_t)custom_ptr;
+    std::cout << "[HOST custom_ptr_addr] " << custom_ptr_addr << std::endl;
+
+    const int num10 = 10;
+    std::vector<int32_t> input(trans_size, 0);
+    for (int i = 0; i < trans_size; i++) {
+        input[i] = num10 + pe_id * 100;
+    }
+
+    aclrtMemcpy(
+        custom_ptr + aclshmem_my_pe() * trans_size * sizeof(int32_t), trans_size * sizeof(int32_t), input.data(),
+        trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+
+
+    // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
+    if (xHostData.size() >= 4) {
+        std::memcpy(xHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
+    }
+
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -274,33 +310,54 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
         LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     );
 
-    // 调用combineV2算子第一阶段接口
-    ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
-        expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
-        commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
-    CHECK_RET(
-        ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
-    );
-    // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
-    if (combineV2WorkspaceSize > 0) {
-        ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
-    }
-    // 调用combineV2算子第二阶段接口
-    ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
-    // （固定写法）同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
-    CHECK_RET(
-        ret == ACL_SUCCESS, 
-        LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
-    );
+    std::vector<int64_t> time_vec(4, 0);
+    ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
+    printf("[HOST TIME] pe=%d, total wqe: %lld, total wqe+pollcq: %lld, \n", pe_id, time_vec[0], time_vec[1]);
 
-    LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
+    // shmem validate result
+    int32_t* y_host;
+    size_t input_size = n_pes * trans_size * sizeof(int32_t);
+    aclrtMallocHost(reinterpret_cast<void**>(&y_host), input_size);
+    aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
+
+    std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
+    std::cout << "[Output] pe=" << pe_id << ": "
+                                << y_host[trans_size * 0] << " "
+                                << y_host[trans_size * 1] << " "
+                                << y_host[trans_size * 2] << " "
+                                << y_host[trans_size * 3] << " "
+                                << y_host[trans_size * 4] << " "
+                                << y_host[trans_size * 5] << " "
+                                << y_host[trans_size * 6] << " "
+                                << y_host[trans_size * 7] << " " << std::endl;
+
+    // // 调用combineV2算子第一阶段接口
+    // ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
+    //     expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
+    //     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    //     hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
+    //     expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
+    //     commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
+    // CHECK_RET(
+    //     ret == ACL_SUCCESS,
+    //     LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+    // );
+    // // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
+    // if (combineV2WorkspaceSize > 0) {
+    //     ret = aclrtMalloc(&combineV2WorkspaceAddr, combineV2WorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
+    // }
+    // // 调用combineV2算子第二阶段接口
+    // ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
+    // CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
+    // // （固定写法）同步等待任务执行结束
+    // ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
+    // CHECK_RET(
+    //     ret == ACL_SUCCESS, 
+    //     LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
+    // );
+
+    // LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
 
     // 释放device资源
     if (dispatchV2WorkspaceSize > 0) {
@@ -376,173 +433,193 @@ int launchOneThreadDispatchV2AndCombineV2(Args &args)
         aclrtFree(tpRecvCountsDeviceAddr);
     }
 
-    HcclCommDestroy(args.hcclEpComm);
-    HcclCommDestroy(args.hcclTpComm);
-    aclrtDestroyStream(args.dispatchV2Stream);
-    aclrtDestroyStream(args.combineV2Stream);
-    aclrtDestroyContext(args.context);
-    aclrtResetDevice(args.rankId);
-    
     return 0;
 }
 
-int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST_RANK_ID)
+// int run_example_on_A2(int rankId, const char* RANK_TABLE_FILE, const char* FIRST_RANK_ID)
+// {
+//     Args args;
+//     aclrtStream dispatchV2Stream;
+//     aclrtStream combineV2Stream;
+//     aclrtContext context;
+
+//     int ret = aclrtSetDevice(rankId);
+//     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d", ret));
+//     ret = aclrtCreateContext(&context, rankId);
+//     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d", ret));
+//     ret = aclrtCreateStream(&dispatchV2Stream);
+//     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
+//     ret = aclrtCreateStream(&combineV2Stream);
+//     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
+
+//     int first_rank_id = std::stoi(std::string(FIRST_RANK_ID));
+//     HcclComm hcclComm = nullptr;
+//     int rank_id = rankId + first_rank_id;
+//     ret = HcclCommInitClusterInfo(RANK_TABLE_FILE, rank_id, &hcclComm);
+//     if (ret != HCCL_SUCCESS) {
+//         std::cout << "[ERROR] HCCL CommInitClusterInfo failed. ret = " << ret << std::endl;
+//         return ret;
+//     }
+//     std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
+//             << ", hcclComm:" << hcclComm << std::endl;
+
+//     args.rankId = rankId;
+//     args.epRankId = rankId;
+//     args.tpRankId = 0;
+//     args.hcclEpComm = hcclComm;
+//     args.dispatchV2Stream = dispatchV2Stream;
+//     args.combineV2Stream = combineV2Stream;
+//     args.context = context;
+
+//     launchOneThreadDispatchV2AndCombineV2(args);
+//     return 0;
+// }
+
+int run_example_on_A3A5()
 {
-    Args args;
+    MPI_Init(nullptr, nullptr);
+
+    int pe_id;
+    int pe_size;
+
+    MPI_Request request;
+    MPI_Status status;
+    MPI_Comm_rank(MPI_COMM_WORLD, &pe_id);
+    MPI_Comm_size(MPI_COMM_WORLD, &pe_size);
+
+    int ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
+
+    int device_id = pe_id;
+    ret = aclrtSetDevice(device_id);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
+
+    HcclRootInfo rootInfo;
+    int root_rank = 0;
+    if (pe_id == 0) {
+        HcclResult result = HcclGetRootInfo(&rootInfo);
+        if (result == HCCL_SUCCESS) {
+            MPI_Ibcast(&rootInfo, HCCL_ROOT_INFO_BYTES, MPI_CHAR, root_rank, MPI_COMM_WORLD, &request);
+        } else {
+            char send_str[] = "invalid";
+            MPI_Ibcast(send_str, HCCL_ROOT_INFO_BYTES, MPI_CHAR, root_rank, MPI_COMM_WORLD, &request);
+        }
+        MPI_Wait(&request, &status);
+        if (result != HCCL_SUCCESS) {
+            printf("Process %d Failed ! \n", root_rank);
+            return result;
+        }
+    } else {
+        MPI_Ibcast(&rootInfo, HCCL_ROOT_INFO_BYTES, MPI_CHAR, root_rank, MPI_COMM_WORLD, &request);
+        MPI_Wait(&request, &status);
+    }
+
+    HcclComm hcclEpComm = nullptr;
+    HcclCommInitRootInfo(pe_size, &rootInfo, pe_id, &hcclEpComm);
+
     aclrtStream dispatchV2Stream;
     aclrtStream combineV2Stream;
     aclrtContext context;
 
-    int ret = aclrtSetDevice(rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d", ret));
-    ret = aclrtCreateContext(&context, rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d", ret));
+    ret = aclrtCreateContext(&context, device_id);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
     ret = aclrtCreateStream(&dispatchV2Stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
     ret = aclrtCreateStream(&combineV2Stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
 
-    int first_rank_id = std::stoi(std::string(FIRST_RANK_ID));
-    HcclComm hcclComm = nullptr;
-    int rank_id = rankId + first_rank_id;
-    ret = HcclCommInitClusterInfo(RANK_TABLE_FILE, rank_id, &hcclComm);
-    if (ret != HCCL_SUCCESS) {
-        std::cout << "[ERROR] HCCL CommInitClusterInfo failed. ret = " << ret << std::endl;
-        return ret;
-    }
-    std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
-            << ", hcclComm:" << hcclComm << std::endl;
+    aclshmemx_uniqueid_t default_flag_uid;
+    aclshmemx_init_attr_t attributes;
 
-    args.rankId = rankId;
-    args.epRankId = rankId;
-    args.tpRankId = 0;
-    args.hcclEpComm = hcclComm;
-    args.dispatchV2Stream = dispatchV2Stream;
-    args.combineV2Stream = combineV2Stream;
-    args.context = context;
+    attributes.my_pe = pe_id;
+    attributes.n_pes = pe_size;
+    snprintf(attributes.ip_port, ACLSHMEM_MAX_IP_PORT_LEN, "%s", "tcp://127.0.0.1:18899");
+    attributes.local_mem_size = 1024UL * 1024UL * 1024;
+    attributes.option_attr = {
+        (1 << 16) + sizeof(aclshmemx_init_attr_t),
+        ACLSHMEM_DATA_OP_MTE,
+        DEFAULT_TIMEOUT, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT};
+    attributes.comm_args = reinterpret_cast<void *>(&default_flag_uid);
 
-    launchOneThreadDispatchV2AndCombineV2(args);
-    return 0;
-}
+    int shmem_status = 0;
+    attributes.option_attr.data_op_engine_type = ACLSHMEM_DATA_OP_UDMA;
+    shmem_status = aclshmemx_init_attr(ACLSHMEMX_INIT_WITH_DEFAULT, &attributes);
+    printf("aclshmemx_init_attr success \n");
 
-int run_example_on_A3A5()
-{
-    int ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
+    Args arg;
+    std::cout << "We in rank: " << pe_id << std::endl;
+    arg.rankId = pe_id;
+    arg.epRankId = pe_id;
+    arg.tpRankId = 0;
+    arg.hcclEpComm = hcclEpComm;
+    arg.hcclTpComm = nullptr;
+    arg.dispatchV2Stream = dispatchV2Stream;
+    arg.combineV2Stream = combineV2Stream;
+    arg.context = context;
+    launchOneThreadDispatchV2AndCombineV2(arg);
 
-    aclrtStream dispatchV2Stream[DEV_NUM];
-    aclrtStream combineV2Stream[DEV_NUM];
-    aclrtContext context[DEV_NUM];
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        ret = aclrtSetDevice(rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
-        ret = aclrtCreateContext(&context[rankId], rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
-        ret = aclrtCreateStream(&dispatchV2Stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
-        ret = aclrtCreateStream(&combineV2Stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
-    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    shmem_status = aclshmem_finalize();
+    printf("aclshmem_finalize success \n");
 
-    int32_t devicesEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-            devicesEp[tpId][epId] = epId * TP_WORLD_SIZE + tpId;
-        }
-    }
-    // 初始化ep通信域，ep = 8 {0,2,4,6,8,10,12,14} {1,3,5,7,9,11,13,15}.
-    HcclComm commsEp[TP_WORLD_SIZE][EP_WORLD_SIZE];
-    for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-        ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp[tpId], commsEp[tpId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll ep world %d failed. ret = %d\n", tpId, ret); return ret
-        );
-    }
+    HcclCommDestroy(hcclEpComm);
+    HcclCommDestroy(nullptr);
+    aclrtDestroyStream(dispatchV2Stream);
+    aclrtDestroyStream(combineV2Stream);
+    aclrtDestroyContext(context);
+    aclrtResetDevice(pe_id);
 
-    int32_t devicesTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        for (int32_t tpId = 0; tpId < TP_WORLD_SIZE; tpId++) {
-            devicesTp[epId][tpId] = epId * TP_WORLD_SIZE + tpId;
-        }
-    }
-    // 初始化tp通信域，tp = 2 {0,1} {2,3} {4,5} {6,7} {8,9} {10,11} {12,13} {14,15}.
-    HcclComm commsTp[EP_WORLD_SIZE][TP_WORLD_SIZE];
-    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
-        ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] HcclCommInitAll tp world %d failed. ret = %d\n", epId, ret); return ret
-        );
-    }
-
-    Args args[DEV_NUM];
-    // 各线程调用各卡执行算子
-    std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        uint32_t epRankId = rankId / TP_WORLD_SIZE;
-        uint32_t tpRankId = rankId % TP_WORLD_SIZE;
-
-        args[rankId].rankId = rankId;
-        args[rankId].epRankId = epRankId;
-        args[rankId].tpRankId = tpRankId;
-        args[rankId].hcclEpComm = commsEp[tpRankId][epRankId];
-        args[rankId].hcclTpComm = commsTp[epRankId][tpRankId];
-        args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
-        args[rankId].combineV2Stream = combineV2Stream[rankId];
-        args[rankId].context = context[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadDispatchV2AndCombineV2, std::ref(args[rankId])));
-    }
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        threads[rankId]->join();
-    }
     aclFinalize();
     LOG_PRINT("[INFO] aclFinalize success\n");
+    MPI_Barrier(MPI_COMM_WORLD);
+ 	MPI_Finalize();
     return 0;
 }
 
 
 int main(int argc, char *argv[])
 {
-    const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
-    if (!env_dev_num) {
-        LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
-        return 0;
-    }
-    int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-    if (actual_env_dev_num < DEV_NUM) {
-        LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
-        return 0;
-    }
-    if (!rank_table_file && !first_rank_id) {
-        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
-        int ret = run_example_on_A3A5();
-    }
-    else if (rank_table_file && !first_rank_id) {
-        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
-        int ret = run_example_on_A3A5();
-    }
-    else if (rank_table_file && first_rank_id) {
-        LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
-        uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
-        std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
-        int ret = aclInit(nullptr);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
-        for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-            threads[rankId] = std::make_unique<std::thread>([rankId,&ret]()
-            {
-                int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
-            });
-        }
-        for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-            threads[rankId]->join();
-        }
-        aclFinalize();
-        LOG_PRINT("[INFO] aclFinalize success\n");
-    }
-    else {
-        LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
-    }
+    return run_example_on_A3A5();
+
+    // const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
+    // if (!env_dev_num) {
+    //     LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
+    //     return 0;
+    // }
+    // int actual_env_dev_num = std::stoi(std::string(env_dev_num));
+    // if (actual_env_dev_num < DEV_NUM) {
+    //     LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
+    //     return 0;
+    // }
+    // if (!rank_table_file && !first_rank_id) {
+    //     LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
+    //     int ret = run_example_on_A3A5();
+    // }
+    // else if (rank_table_file && !first_rank_id) {
+    //     LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
+    //     int ret = run_example_on_A3A5();
+    // }
+    // else if (rank_table_file && first_rank_id) {
+    //     LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
+    //     uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
+    //     std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
+    //     int ret = aclInit(nullptr);
+    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
+    //     for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
+    //         threads[rankId] = std::make_unique<std::thread>([rankId,&ret]()
+    //         {
+    //             int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
+    //         });
+    //     }
+    //     for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
+    //         threads[rankId]->join();
+    //     }
+    //     aclFinalize();
+    //     LOG_PRINT("[INFO] aclFinalize success\n");
+    // }
+    // else {
+    //     LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
+    // }
 
     return 0;
 }

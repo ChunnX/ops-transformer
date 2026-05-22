@@ -19,6 +19,7 @@
 using namespace Ops::Transformer;
 using namespace op;
 
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,7 +54,9 @@ aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
 
 aclnnStatus aclnnMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    OP_LOGD("aclnn_dispatch v2 start");
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
 }
 #ifdef __cplusplus

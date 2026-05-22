@@ -17,6 +17,7 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "shmem.h"
 #include "moe_distribute_dispatch_v2.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_full_mesh.h"
@@ -49,6 +50,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
+
 #if defined(__DAV_C310__)
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
 #else
