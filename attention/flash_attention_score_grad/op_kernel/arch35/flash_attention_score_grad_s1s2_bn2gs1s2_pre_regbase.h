@@ -207,8 +207,9 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNC
                 InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
                 InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);    
             } else if constexpr (SPLIT_AXIS == 5) {
-                if (tilingData->preTilingData.sValueZeroUnderTND) {
-                    // BN2S2针对TND中有S为0的场景，增加gm清零
+                if (tilingData->preTilingData.sValueZeroUnderTND ||
+                        (IS_DETER_NEW(DETER_SPARSE_TYPE) && tilingData->preTilingData.hasInvalidCol)) {
+                    // BN2S2针对TND中有S为0的场景 或 newDeter与无效列叠加场景，增加gm清零
                     InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
                     InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
                 }
