@@ -87,9 +87,10 @@ public:
                                 computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM,
-                       computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe,
-                       isA2avGmmFlag);
+        // computeOp.Init disabled for debugging: no routed expert, only shared expert
+        // computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM,
+        //                computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe,
+        //                isA2avGmmFlag);
     }
 
     __aicore__ inline void Process()
@@ -113,8 +114,8 @@ public:
 protected:
     __aicore__ inline void End()
     {
-        // commOp.End(); // disabled for debugging: no HCCL finalize
-        computeOp.End();
+        // commOp.End(); // disabled: no HCCL
+        // computeOp.End(); // disabled: computeOp never Init'd or Process'd
         localComputeOp.End();
     }
 

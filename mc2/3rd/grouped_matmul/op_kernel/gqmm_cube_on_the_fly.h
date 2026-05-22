@@ -338,11 +338,12 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
         reinterpret_cast<uint64_t>(yGlobal_.GetPhyAddr()),
         block_.offset_.offsetA, block_.offset_.offsetB, block_.offset_.offsetC,
         block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
-    mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
-    mm_.Iterate();
-    mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
+    // [LBH-V4] 注释计算逻辑验证是否卡住
+    // mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
+    // mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
+    // mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
+    // mm_.Iterate();
+    // mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
 }
 } // Mc2GroupedMatmul
 #endif // MC2_GQMM_CUBE_ON_THE_FLY_H
