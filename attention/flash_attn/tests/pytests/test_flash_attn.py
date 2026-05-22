@@ -24,7 +24,7 @@ from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bns
                          data_compare_benchmark_new, Result, gen_block_table)
 
 _DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single", 
-                        "test_case_redline_fa_TND", "test_case_redline_fa", "test_case_redline_fia"]
+                        "test_case_redline_fa_TND", "test_case_redline_fa", "test_case_redline_fia", "test_case_flash_attn_STC"]
 
 
 def load_case_modules(module_names):
