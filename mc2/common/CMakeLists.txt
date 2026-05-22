@@ -17,7 +17,6 @@ if(BUILD_OPEN_PROJECT)
         op_host/op_tiling/matmul_formulaic_tiling.cpp
         op_host/op_tiling/matmul_performance.cpp
         op_host/op_tiling/mc2_fit_based_balance_tiling.cpp
-        op_host/mc2_common_infershape.cpp
         utils/mc2_hcom_topo_info.cpp
         utils/mc2_log.cpp
         op_host/op_tiling/mc2_matmul_tiling_cfg.cpp
@@ -65,7 +64,11 @@ if(BUILD_OPEN_PROJECT)
         )
     endif()
     if(NOT ENABLE_TEST)
-        file(GLOB OPPROTO_SRCS)
+        set(OPPROTO_SRCS
+            op_host/mc2_common_infershape.cpp
+            utils/mc2_hcom_topo_info.cpp
+            utils/mc2_log.cpp
+        )
         if(OPPROTO_SRCS)
             add_infer_modules()
             target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${OPPROTO_SRCS})
