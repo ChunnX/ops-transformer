@@ -150,7 +150,7 @@ protected:
     int64_t softmaxOutWorkspaceLen;
 
     platform_ascendc::SocVersion socVersion;
-    bool deterministic;
+    bool deterministic= false;
 
     const char *opName;
     const char *inputLayout;

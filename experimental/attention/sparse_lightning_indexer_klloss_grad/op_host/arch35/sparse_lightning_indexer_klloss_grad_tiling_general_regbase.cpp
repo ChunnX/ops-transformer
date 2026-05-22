@@ -251,6 +251,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeAttrs()
     sparseMode = *sparseModePtr;
     cmpRatio = *cmpRatioPtr;
     deterministic = (context_->GetDeterministic() == 1);
+    deterministic = 0;
 
     OP_CHECK_IF(strcmp(layoutQuery, "TND") != 0 && strcmp(layoutQuery, "BSND") != 0,
                 OP_LOGE(opName, "Layout only support TND or BSND, now layout is %s.", layoutQuery),
@@ -264,9 +265,9 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeAttrs()
     OP_CHECK_IF(sparseMode != SPARSE_MODE_SIZE_3,
                 OP_LOGE(opName, " The value of sparse_mode is [%ld], but currently only supports mode [3].", sparseMode),
                 return false);
-    OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128 || (cmpRatio & (cmpRatio - 1)) != 0),
-                OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports [1/2/4/8/16/32/64/128].", cmpRatio),
-                return false);    
+    OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
+                OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports ranging from 1 to 128.", cmpRatio),
+                return false);
 
     OP_LOGD(context_, "attrs: layout_query[%s] layout_key[%s] sparse_mode[%ld] cmp_ratio[%ld].",
             layoutQuery, layoutKey, sparseMode, cmpRatio);
@@ -1040,6 +1041,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetWorkspaceSize()
     int64_t reduceSumOffset = kSizeAlign128 * sizeof(float);
     int64_t reluOffset = gSizeQueryIndex * kSizeAlign128 * sizeof(float); 
     int64_t gatherSYOffset = kSizeAlign128 * dSizeQueryIndex * 2; // 2代表输入D类型大小
+    int64_t bmm3Size = kSize * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE;
 
     int64_t scatterAddOutSize;
     if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
@@ -1049,8 +1051,12 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetWorkspaceSize()
     }
 
     int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
-    int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
-    multicoreTotalsize += (dqWorkspaceLen + dwWorkspaceLen + softmaxOutWorkspaceLen);
+    int64_t multicoreTotalsize = 0;
+    if (deterministic) {
+        multicoreTotalsize = (singlecoreTotalSize + bmm3Size) * static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum()) + scatterAddOutSize * 2;
+    } else {
+        multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
+    }
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
     return ge::GRAPH_SUCCESS;
