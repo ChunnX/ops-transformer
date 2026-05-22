@@ -48,13 +48,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-            return false;
-        }
-        this->typeSize = (this->inDtype != ge::DT_FLOAT) ? FP16_BF16_SIZE : sizeof(float);
-        // topk小于64，N小于coreNum, 并且H / 512大于N的场景，走到这个性能模版
-        return (topK <= MIN_SPLIT_H_TOPK_THRESHOLD) && (N < aivNum) &&
-               (N < (hiddenSize / MAX_CACHE_LINE_SIZE / this->typeSize));
+        return false;
     }
 
     // 3、计算数据切分TilingData
