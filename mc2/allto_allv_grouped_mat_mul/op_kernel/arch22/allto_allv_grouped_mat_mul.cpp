@@ -59,7 +59,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    AscendC::printf("[LBH] allto_allv_grouped_mat_mul entry\n");
+    AscendC::printf("[LBH] allto_allv_grouped_mat_mul entry blockIdx=%d\n", GetBlockIdx());
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
@@ -71,6 +71,12 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GET_TILING_DATA(tilingData, tilingGM);
     const AlltoAllvGmmTilingData *tilingData_ = &tilingData;
 
+    AscendC::printf("[LBH-DIAG] tiling: isNeedMM=%d isPermuteOut=%d A=%llu H1=%llu H2=%llu N1=%llu N2=%llu BS=%llu e=%d\n",
+        tilingData_->isNeedMM ? 1 : 0, tilingData_->isPermuteOut ? 1 : 0,
+        tilingData_->taskTilingInfo.A, tilingData_->taskTilingInfo.H1, tilingData_->taskTilingInfo.H2,
+        tilingData_->taskTilingInfo.N1, tilingData_->taskTilingInfo.N2,
+        tilingData_->taskTilingInfo.BS, tilingData_->taskTilingInfo.e);
+
     // Compute workspace layout
     // workspace布局：[permuteOut区域] + [groupList + ptrTable + gmmASWKernel workspace]
     // groupList和workspace共享同一片GM区域：groupList在开头，ptrTable紧跟其后，剩余给gmmASWKernel内部缓冲
@@ -81,6 +87,11 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         workspaceOffset += commOutLen;
     }
     GM_ADDR computeWorkspaceGm = userWorkspace + workspaceOffset;
+    AscendC::printf("[LBH-DIAG] workspace: userWorkspace=%llu workspaceOffset=%llu computeWorkspaceGm=%llu mmx=%llu mmw=%llu mmy=%llu\n",
+        reinterpret_cast<uint64_t>(userWorkspace), workspaceOffset,
+        reinterpret_cast<uint64_t>(computeWorkspaceGm),
+        reinterpret_cast<uint64_t>(mmxOptionalGM), reinterpret_cast<uint64_t>(mmweightOptionalGM),
+        reinterpret_cast<uint64_t>(mmyOptionalGM));
     // groupListGM和workspaceGM共享同一片区域（groupList在开头，ptrTable紧跟，剩余给gmmASWKernel）
     GM_ADDR gmmGroupListGm = computeWorkspaceGm;
     GM_ADDR gmmWorkspaceGm = computeWorkspaceGm;

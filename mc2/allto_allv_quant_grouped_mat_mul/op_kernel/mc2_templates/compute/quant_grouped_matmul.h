@@ -105,6 +105,9 @@ public:
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
+        AscendC::printf("[LBH-DIAG] groupListToken=%llu groupListGm=%llu ptrTableBase=%llu workspaceGM=%llu\n",
+            groupListToken, reinterpret_cast<uint64_t>(groupListGm_),
+            reinterpret_cast<uint64_t>(ptrTableBase_), reinterpret_cast<uint64_t>(workspaceGM_));
         // flush groupList到GM确保Cube引擎读到最新数据（不能用SyncAll，AIV不会执行SyncAll会死锁）
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
