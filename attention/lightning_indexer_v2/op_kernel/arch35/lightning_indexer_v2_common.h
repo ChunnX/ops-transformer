@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_v2_common.h
@@ -24,9 +24,9 @@ enum class LI_V2_LAYOUT {
     PA_BSND = 2
 };
 
-template <typename Q_T, typename K_T, typename OUT_T, typename QK_T, typename SCORE_T, const bool PAGE_ATTENTION = false,
-          LI_V2_LAYOUT LAYOUT_T = LI_V2_LAYOUT::BSND, LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BSND,
-          bool DT_W_FLAG = false, typename... Args>
+template <typename Q_T, typename K_T, typename OUT_T, typename QK_T, typename SCORE_T,
+          const bool PAGE_ATTENTION = false, LI_V2_LAYOUT LAYOUT_T = LI_V2_LAYOUT::BSND,
+          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BSND, bool DT_W_FLAG = false, typename... Args>
 struct LIV2Type {
     static constexpr bool weightsTypeFlag = DT_W_FLAG;   // weight的dtype是否为FP32
     using queryType = Q_T;
