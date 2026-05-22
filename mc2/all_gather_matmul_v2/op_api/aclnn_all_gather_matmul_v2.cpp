@@ -25,7 +25,14 @@
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnnInner_all_gather_matmul_v2.h"
 #include "mc2_comm_utils.h"
+
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#endif
+#endif
 
 using namespace op;
 using namespace Ops::Transformer;
