@@ -21,29 +21,40 @@
 namespace ge {
 
 /**
-* @brief Applies causal 1D convolution on token sequences and updates the state cache. \n
-
-* @par Inputs:
-* @li x: Input sequence tensor. shape [cu_seq_len, dim] or [batch, seqlen, dim]. Supports float16, bfloat16.
-* @li weight: Convolution kernel of shape [K, dim], K fixed to 3. Same type as x.
-* @li conv_states: Cache state tensor storing K-1 historical tokens per sequence, updated in-place. Same type as x.
-* @li query_start_loc: Optional. Start offset of each sequence in x. shape [batch+1]. int32.
-* @li cache_indices: Optional. Index mapping each sequence to its cache slot in conv_states. shape [batch]. int32.
-* @li initial_state_mode: Optional. Flag indicating whether each sequence uses cached data: 0=zero-padding, 1=use cache, 
-*     2=use cache but zero out the first K-1 outputs. shape [batch]. int32.
-* @li bias: Optional. Convolution bias of shape [dim]. Same type as x.
-* @li num_accepted_tokens: Optional. Number of accepted tokens per sequence in speculative decoding. shape [batch]. int32.
-
-* @par Attributes:
-* @li activation_mode: An optional int. Activation function type: 0 (None), 1 (silu), 2 (swish). Default: 0.
-* @li pad_slot_id: An optional int. Slot ID used to skip padding batches. Default: -1.
-* @li run_mode: An optional int. Execution mode: 0 (prefill), 1 (decode). Default: 0.
-* @li residual_connection: An optional int. Whether to use residual connection: 0 (no), 1 (yes). Default: 0.
-
-* @par Outputs:
-* @li y: Output sequence tensor. Same shape and type as x.
-* @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.
-*/
+ * @brief Function FusedCausalConv1d.
+ *
+ * @par Inputs:
+ * @li x: Input sequence tensor. shape [cu_seq_len, dim] or [batch, seqlen, dim]. Supports float16, bfloat16.
+ * @li weight: Convolution kernel of shape [K, dim], K fixed to 3. Same type as x.
+ * @li conv_states: Cache state tensor storing historical tokens per sequence, updated in-place. Same type as x.
+ * @li query_start_loc: Optional. Start offset of each sequence in x. shape [batch+1]. int32.
+ * @li cache_indices: Optional. Index mapping each sequence to its cache slot. 1D [batch] or 2D [batch, max_num_blocks].
+ * int32.
+ * @li initial_state_mode: Optional. Flag indicating whether each sequence uses cached data. shape [batch]. int32.
+ * @li bias: Optional. Convolution bias of shape [dim]. Same type as x.
+ * @li num_accepted_tokens: Optional. Number of accepted tokens per sequence in speculative decoding. shape [batch].
+ * int32.
+ * @li num_computed_tokens: Optional. Total computed tokens per batch for initial state detection. shape [batch]. int32.
+ * @li block_idx_first_scheduled_token: Optional. Block index of first scheduled token per batch (APC). shape [batch].
+ * int32.
+ * @li block_idx_last_scheduled_token: Optional. Block index of last scheduled token per batch (APC). shape [batch].
+ * int32.
+ * @li initial_state_idx: Optional. Initial state block index per batch (APC). shape [batch]. int32.
+ *
+ * @par Attributes:
+ * @li activation_mode: A optional int. Activation function type: 0 (None), 1 (silu), 2 (swish).
+ * @li pad_slot_id: A optional int. Slot ID used to skip padding batches.
+ * @li run_mode: A optional int. Execution mode (legacy, not supported).
+ * @li max_query_len: A optional int. Max sequence length across all batches.
+ * @li residual_connection: A optional int. Whether to use residual connection: 0 (no), 1 (yes).
+ * @li block_size: A optional int. APC block size, supports 128/256.
+ * @li conv_mode: A optional int. Convolution mode: 0 (Qwen3-Next), 1 (Pangu v2).
+ * @li inplace: A optional bool. false: non-inplace (output y), true: inplace (write back to x).
+ *
+ * @par Outputs:
+ * @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.
+ * @li y: Output sequence tensor. Same shape and type as x.
+ */
 REG_OP(FusedCausalConv1d)
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(weight, TensorType({DT_BF16, DT_FLOAT16}))
@@ -53,12 +64,19 @@ REG_OP(FusedCausalConv1d)
     .OPTIONAL_INPUT(initial_state_mode, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(bias, TensorType({DT_BF16, DT_FLOAT16}))
     .OPTIONAL_INPUT(num_accepted_tokens, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(num_computed_tokens, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(block_idx_first_scheduled_token, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(block_idx_last_scheduled_token, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(initial_state_idx, TensorType({DT_INT32}))
     .ATTR(activation_mode, Int, 0)
     .ATTR(pad_slot_id, Int, -1)
     .ATTR(run_mode, Int, 0)
-    .ATTR(residual_connection, Int, 0)
-    .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
+    .ATTR(max_query_len, Int, -1)
+    .ATTR(residual_connection, Int, 1)
+    .ATTR(block_size, Int, 128)
+    .ATTR(conv_mode, Int, 0)
     .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
+    .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
     .OP_END_FACTORY_REG(FusedCausalConv1d)
 
 } // namespace ge
