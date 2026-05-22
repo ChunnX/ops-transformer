@@ -389,12 +389,17 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    const char *commMode = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     const int64_t *x1_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX);
     const int64_t *x2_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE(opName_, "The input attr group is null pointer."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE(opName_, "The input attr group is empty string."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName_, "The input attr comm_mode is null pointer."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(commMode, "default") != 0, OP_LOGE(opName_, "The input attr comm_mode only support 'default'."),
                     return ge::GRAPH_FAILED);
     info.worldSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(SUPPORT_RANK_SIZE_910B.find(info.worldSize) == SUPPORT_RANK_SIZE_910B.end(),
