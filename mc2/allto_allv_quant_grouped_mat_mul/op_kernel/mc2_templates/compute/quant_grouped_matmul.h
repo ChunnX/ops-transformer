@@ -75,7 +75,6 @@ public:
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
         yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)this->yGM_);
         groupListGlobalBuffer_.SetGlobalBuffer((__gm__ int64_t *)groupListGm_);
-        ptrTableGlobalBuffer_.SetGlobalBuffer((__gm__ uint64_t *)ptrTableBase_);
         if (xScaleGM != nullptr) {
             xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
         }
@@ -129,11 +128,8 @@ public:
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
-        // 5. 刷新 groupList 和 ptrTable 到 GM（非量化算子没有通信 SyncAll 屏障，
-        //    需要显式 DCCI flush 确保 Cube 引擎能读到最新数据）
-        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
-        FlushPtrTable();
+        // 非量化算子没有通信 SyncAll 屏障，需要显式 SyncAll 确保 Cube 引擎能读到最新数据
+        SyncAll<false>();
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, perTokenScalePtr, yPtr, workspaceGM_,
@@ -176,27 +172,12 @@ protected:
      */
     __aicore__ inline GM_ADDR BuildPtrTable(GM_ADDR dataAddr, uint32_t slotIdx)
     {
-        // 每个 slot 占 16 bytes = 2 个 uint64_t
-        uint32_t byteOffsetIdx = slotIdx * 2;
-        uint32_t dataAddrIdx = slotIdx * 2 + 1;
-        ptrTableGlobalBuffer_.SetValue(byteOffsetIdx, static_cast<uint64_t>(sizeof(uint64_t)));
-        ptrTableGlobalBuffer_.SetValue(dataAddrIdx, reinterpret_cast<uint64_t>(dataAddr));
-        return reinterpret_cast<GM_ADDR>(ptrTableBase_ + slotIdx * 16);
-    }
-
-    __aicore__ inline void FlushPtrTable()
-    {
-        // ptrTable 共 5 个 slot (0=x,1=weight,2=scaleB,3=y,4=perTokenScale), 每个 16 bytes, 共 80 bytes
-        // DCCI flush 每个缓存行确保 Cube 引擎能读到 ptrTable 数据
-        AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(ptrTableGlobalBuffer_);
-        // ptrTable 可能跨多个缓存行，对后半部分也做 flush
-        // 总大小 80 bytes / 8 bytes per uint64_t = 10 个元素; 前 8 个元素 (64 bytes) 是第一个缓存行
-        // 如果有 slot 3/4 超过第一个缓存行，需要额外 flush
-        GlobalTensor<uint64_t> ptrTablePart2;
-        ptrTablePart2.SetGlobalBuffer((__gm__ uint64_t *)(ptrTableBase_ + 64));
-        AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(ptrTablePart2);
+        // 每个 slot 占 16 bytes (2 * uint64_t)
+        __gm__ uint64_t *slot = reinterpret_cast<__gm__ uint64_t *>(
+            reinterpret_cast<__gm__ uint8_t *>(ptrTableBase_) + slotIdx * 16);
+        slot[0] = sizeof(uint64_t);  // byteOffset
+        slot[1] = reinterpret_cast<uint64_t>(dataAddr);  // 实际数据地址
+        return reinterpret_cast<GM_ADDR>(slot);
     }
 
 private:
@@ -216,7 +197,6 @@ private:
     GlobalTensor<scaleType> wScaleGlobalBuffer_;
     GlobalTensor<yType> yGlobalBuffer_;
     GlobalTensor<int64_t> groupListGlobalBuffer_;
-    GlobalTensor<uint64_t> ptrTableGlobalBuffer_;
     const TilingDataType *tilingData_;
     TPipe *tPipe_;
     uint64_t expertTokenNum_[32] = {0};
