@@ -491,7 +491,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradHOutTile(LocalTensor
                 AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(hPostLocalReg,
                                                                                                 hPostLocalAddr + i);
                 AscendC::MicroAPI::Mul(mulResReg, gradOutF32Reg, hPostLocalReg, pMask);
-                AscendC::MicroAPI::Add(gradHOutTileReg, mulResReg, gradHOutTileReg, pMask);  
+                AscendC::MicroAPI::Add(gradHOutTileReg, mulResReg, gradHOutTileReg, pMask);
             }
             AscendC::MicroAPI::Cast<T, float, castB32ToB16>(gradHOutTileB16Reg, gradHOutTileReg, pMask);
             AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(gradHOutTileAddr + k * vfLen,
