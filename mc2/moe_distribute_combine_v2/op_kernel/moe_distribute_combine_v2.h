@@ -1265,7 +1265,8 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::WaitDispatch(
     localState = stateSumTensor(0);
     if (((minTarget < localState) && (localState < maxTarget))) {
         // 计算地址偏移，清状态
-        GM_ADDR stateGM = GetWinStateAddrByRankId(epRankIdOriginal_, EP_DOMAIN) + tokenIndex * flagRcvCount_ * stateOffset_;
+        // GM_ADDR stateGM = GetWinStateAddrByRankId(epRankIdOriginal_, EP_DOMAIN) + tokenIndex * flagRcvCount_ * stateOffset_;
+        GM_ADDR stateGM = (GM_ADDR)curRankShmemAddr + tokenIndex * flagRcvCount_ * stateOffset_;
         GlobalTensor<float> stateGMTensor;
         stateGMTensor.SetGlobalBuffer((__gm__ float*)stateGM);
         DataCopy<float>(stateGMTensor, stateResetTensor_, copyCount);
@@ -1721,7 +1722,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
             SetWaitTpStatusAndDisPatch();
             PipeBarrier<PIPE_ALL>(); // AlltoAllBuffInitAndMaskCal中包含reset操作，需确保前面操作完成
             AlltoAllBuffInitAndMaskCal();
-            // LocalWindowCopy();
+            LocalWindowCopy();
         } else if(coreIdx_ < aivNum_ + urma_core_num) {
             URMA_Core_Process(coreIdx_ - aivNum_);
         }
