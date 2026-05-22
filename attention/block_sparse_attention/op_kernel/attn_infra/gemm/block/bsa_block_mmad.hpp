@@ -12,7 +12,7 @@
 #define BSA_BLOCK_MMAD_HPP
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/bsa_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {

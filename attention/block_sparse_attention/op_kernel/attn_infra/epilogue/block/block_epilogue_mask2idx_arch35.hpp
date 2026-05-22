@@ -13,7 +13,7 @@
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/arch/bsa_resource.hpp"
-#include "../../../attn_infra/epilogue/bsa_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
 

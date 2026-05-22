@@ -27,8 +27,8 @@
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a2.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b_a2.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_copy_l1_to_bt.hpp"
-#include "../../../attn_infra/gemm/tile_common/bsa_copy_gm_to_ub.hpp"
-#include "../../../attn_infra/gemm/tile_common/bsa_copy_ub_to_gm.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_gemm_copy_gm_to_ub.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_gemm_copy_ub_to_gm.hpp"
 #endif
 #include "../../../attn_infra/gemm/bsa_helper.hpp"
 

@@ -14,10 +14,10 @@
 #include "../../../attn_infra/bsag_base_defs.hpp"
 #include "../../../attn_infra/arch/bsag_resource.hpp"
 #include "../../../attn_infra/bsag_coord.hpp"
-#include "../../../attn_infra/gemm/bsag_dispatch_policy.hpp"
+#include "../../../attn_infra/gemm/bsag_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/bsag_helper.hpp"
 #include "../../../attn_infra/bsag_gemm_coord.hpp"
-#include "../../../attn_infra/gemm/tile_common/bsag_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsag_tile_mmad.hpp"
 
 ////////////////////////////////////////////////////////////////////

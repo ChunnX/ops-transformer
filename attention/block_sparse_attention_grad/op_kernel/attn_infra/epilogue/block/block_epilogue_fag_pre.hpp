@@ -17,7 +17,7 @@
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FAG_PRE_HPP
 
 #include "../../../attn_infra/arch/bsag_resource.hpp"
-#include "../../../attn_infra/epilogue/bsag_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/bsag_epilogue_dispatch_policy.hpp"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
