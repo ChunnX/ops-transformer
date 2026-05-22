@@ -1044,7 +1044,7 @@ CompressorBlockVectorFullLoad<COMP>::SingleCalRope(const LocalTensor<X_T> &outpu
     uint32_t computeSize = curDealScSize * constInfo_.ropeHeadDim;
     uint64_t SinCosOffset = globalScStart * constInfo_.ropeHeadDim;
 
-    LocalTensor<T> ropeCosFp32Local = tmpBuff2.Get<T>();
+    LocalTensor<T> ropeCosFp32Local = tmpBuf2.Get<T>();
     LocalTensor<T> ropeSinFp32Local = ropeCosFp32Local[BUFFER_SIZE_BYTE_16K / sizeof(T)].template ReinterpretCast<T>();
     LocalTensor<T> tempLocal = normResUb[BUFFER_SIZE_BYTE_16K / sizeof(T)].template ReinterpretCast<T>();
     PipeBarrier<PIPE_V>();
