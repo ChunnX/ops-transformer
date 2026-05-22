@@ -455,6 +455,7 @@ def _get_runpos_mapping(islayer: int, d_c: str):
     pos_position = _get_runpos_sort(next_pos)
     return pos_mapping, next_pos, pos_position
 
+
 def analyze_runpos(runpos: List[int], islayer: int, d_c: str, servernum: int):
     pos_mapping, next_pos, pos_position = _get_runpos_mapping(islayer, d_c)
     core_num = len(runpos)
@@ -662,7 +663,8 @@ def check_fullmesh_com_win(com_win_state_func):
                 error_rankid_info.append(print_log)
                 logging.error(print_log)
             if target_token_num == recv_token_num and recv_flag_hex != '0xffffffff':
-                print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Combined receive token count: {recv_token_num} " \
+                print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] " \
+                            f"Combined receive token count: {recv_token_num} " \
                              "(header correct), but tail flag corrupted. " \
                              "Likely HCCL_BUFFSIZE insufficient, causing flag overwrite."
                 error_rankid_info.append(print_log)
