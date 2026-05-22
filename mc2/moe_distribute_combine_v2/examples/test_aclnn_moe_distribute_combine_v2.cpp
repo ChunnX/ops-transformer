@@ -206,13 +206,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     // 构造host侧变量
     std::vector<op::fp16_t> xHostData(xShapeSize, 1);
-    std::vector<int32_t> expertIdsHostData;
-    for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
-        // 每个token发给moe专家{0, 1, ... k - 1}
-        for (int32_t k_id = 0; k_id < expertIdsShape[1]; k_id++) {
-            expertIdsHostData.push_back(k_id);
-        }
-    }
     std::vector<float> scalesHostData(scalesShapeSize, 0);
     std::vector<float> expertScalesHostData(expertScalesShapeSize, 0);
     std::vector<op::fp16_t> expandXHostData(expandXShapeSize, 0);
@@ -245,6 +238,32 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     if (expandXHostData.size() >= 4) {
         std::memcpy(expandXHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
     }
+    int processNumPerExpert = globalBs / epRecvCountsShapeSize;
+    int remainNum = globalBS % epRecvCountsShapeSize;
+    vector<int32_t> perTokenExpertVec(globalBS * K);
+    // TODO 这里不整除场景会有问题 这里可能写的有问题
+    std::vector<int32_t> expertIdsHostData(expertIdsShapeSize);
+    int index = 0;
+    for (int i = 0; i < (globalBS * K); i++) {
+        perTokenExpertVec[i] = i % moeExpertNum; // 先确定每个token发送给哪个专家
+        epRecvCountsHostData[(perTokenExpertVec[i]) % n_pes]++;
+        int curRank = i / (BS * K);
+        if (curRank == pe_id) { // 如果是本卡
+            expertIdsHostData[i % (BS * K)] = perTokenExpertVec[i];
+        }
+        if ((perTokenExpertVec[i]) / localExpertNum == pe_id) { // 如果是本卡
+            expandIdxHostData[index * 3] = i / (BS * K);
+            expandIdxHostData[index * 3 + 1] = i % (BS * K) / K;
+            expandIdxHostData[index * 3 + 2] = i % (BS * K) % K;
+            index++;
+        }
+    }
+    // for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
+    //     // 每个token发给moe专家{0, 1, ... k - 1}
+    //     for (int32_t k_id = 0; k_id < expertIdsShape[1]; k_id++) {
+    //         expertIdsHostData.push_back(k_id);
+    //     }
+    // }
     std::cout << "2" << std::endl;
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
