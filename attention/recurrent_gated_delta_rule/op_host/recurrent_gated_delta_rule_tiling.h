@@ -85,6 +85,7 @@ protected:
     RecurrentGatedDeltaRuleCompileInfo compileInfo_;
     RecurrentGatedDeltaRuleTilingData tilingData_;
     RecurrentGatedDeltaRuleInfo inputParams_;
+    ge::DataType stateDtype_ = ge::DT_BF16;
 };
 
 } // namespace optiling

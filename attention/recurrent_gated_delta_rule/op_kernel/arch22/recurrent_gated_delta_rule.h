@@ -46,7 +46,7 @@ struct RGDRInitParams {
     GM_ADDR finalState;
 };
 
-template <typename inType, typename outType>
+template <typename inType, typename outType, typename stateType = inType>
 class RGDR {
 public:
     __aicore__ inline RGDR(const RecurrentGatedDeltaRuleTilingData *tilingData)
@@ -91,11 +91,11 @@ public:
         gamaGm_.SetGlobalBuffer((__gm__ float *)initParams.gama);
         gamaKGm_.SetGlobalBuffer((__gm__ float *)initParams.gamaK);
         betaGm_.SetGlobalBuffer((__gm__ inType *)initParams.beta);
-        initStateGm_.SetGlobalBuffer((__gm__ inType *)initParams.initState);
+        initStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.initState);
         cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.cuSeqlens);
         ssmStateIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.ssmStateIndices);
         numAcceptedTokensGm_.SetGlobalBuffer((__gm__ int32_t *)initParams.numAcceptedTokens);
-        finalStateGm_.SetGlobalBuffer((__gm__ outType *)initParams.finalState);
+        finalStateGm_.SetGlobalBuffer((__gm__ stateType *)initParams.finalState);
         attnOutGm_.SetGlobalBuffer((__gm__ outType *)initParams.attnOut);
     }
 
@@ -110,7 +110,7 @@ public:
         pipe_->InitBuffer(qInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
         pipe_->InitBuffer(kInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
         pipe_->InitBuffer(vInQueue_, BUFFER_NUM, MAX_MTP * alignV_ * sizeof(inType));
-        pipe_->InitBuffer(stateInQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(inType));
+        pipe_->InitBuffer(stateInQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(stateType));
         if (hasGama_) {
             pipe_->InitBuffer(gamaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(float));
         }
@@ -118,7 +118,7 @@ public:
             pipe_->InitBuffer(gamaKInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(float));
         }
         pipe_->InitBuffer(betaInQueue_, BUFFER_NUM, MAX_MTP * NV_ * sizeof(inType));
-        pipe_->InitBuffer(stateOutQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(outType));
+        pipe_->InitBuffer(stateOutQueue_, BUFFER_NUM, alignK_ * vStep_ * sizeof(stateType));
         pipe_->InitBuffer(attnOutQueue_, BUFFER_NUM, vStep_ * sizeof(outType));
         pipe_->InitBuffer(tmpBuff, restUbSize_);
         uint32_t buffOffset = 0;
@@ -226,14 +226,18 @@ private:
 
     __aicore__ inline void CopyInState(uint64_t stateOffest, uint32_t curSingleV)
     {
-        LocalTensor<inType> stateLocal = stateInQueue_.AllocTensor<inType>();
+        LocalTensor<stateType> stateLocal = stateInQueue_.AllocTensor<stateType>();
         DataCopyExtParams stateInParams{static_cast<uint16_t>(curSingleV),
-                                        static_cast<uint16_t>(realK_ * sizeof(inType)), 0, 0, 0};
-        DataCopyPadExtParams<inType> padParams{true, 0, static_cast<uint8_t>(alignK_ - realK_), 0};
+                                        static_cast<uint16_t>(realK_ * sizeof(stateType)), 0, 0, 0};
+        DataCopyPadExtParams<stateType> padParams{true, 0, static_cast<uint8_t>(alignK_ - realK_), 0};
         DataCopyPad(stateLocal, initStateGm_[stateOffest], stateInParams, padParams);
-        stateInQueue_.EnQue<inType>(stateLocal);
-        stateLocal = stateInQueue_.DeQue<inType>();
-        Cast(stateInUb, stateLocal, AscendC::RoundMode::CAST_NONE, alignK_ * curSingleV);
+        stateInQueue_.EnQue<stateType>(stateLocal);
+        stateLocal = stateInQueue_.DeQue<stateType>();
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateInUb, stateLocal, AscendC::RoundMode::CAST_NONE, alignK_ * curSingleV);
+        } else {
+            stateInUb = stateLocal;
+        }
         stateInQueue_.FreeTensor(stateLocal);
     }
 
@@ -284,10 +288,14 @@ private:
         MatVecMul(stateInUb, qInUb[curQKOffset], broadTmpInUb, curSingleV, false);
         AscendC::PipeBarrier<PIPE_V>();
         ReduceSum<float, Pattern::Reduce::AR, true>(attnInUb, broadTmpInUb, stateShape, true);
-        LocalTensor<outType> stateOutLocal = stateOutQueue_.AllocTensor<outType>();
+        LocalTensor<stateType> stateOutLocal = stateOutQueue_.AllocTensor<stateType>();
         LocalTensor<outType> attnOutLocal = attnOutQueue_.AllocTensor<outType>();
-        Cast(stateOutLocal, stateInUb, AscendC::RoundMode::CAST_RINT, alignK_ * curSingleV);
-        stateOutQueue_.EnQue<outType>(stateOutLocal);
+        if constexpr (!std::is_same_v<stateType, float>) {
+            Cast(stateOutLocal, stateInUb, AscendC::RoundMode::CAST_RINT, alignK_ * curSingleV);
+        } else {
+            stateOutLocal = stateInUb;
+        }
+        stateOutQueue_.EnQue<stateType>(stateOutLocal);
         AscendC::PipeBarrier<PIPE_V>();
         Cast(attnOutLocal, attnInUb, AscendC::RoundMode::CAST_RINT, curSingleV);
         attnOutQueue_.EnQue<outType>(attnOutLocal);
@@ -303,9 +311,9 @@ private:
 
     __aicore__ inline void CopyOutState(uint64_t stateOffset, uint32_t curSingleV)
     {
-        LocalTensor<outType> stateOutLocal = stateOutQueue_.DeQue<outType>();
+        LocalTensor<stateType> stateOutLocal = stateOutQueue_.DeQue<stateType>();
         DataCopyParams stateOutParams{static_cast<uint16_t>(curSingleV),
-                                      static_cast<uint16_t>(realK_ * sizeof(outType)), 0, 0};
+                                      static_cast<uint16_t>(realK_ * sizeof(stateType)), 0, 0};
         DataCopyPad(finalStateGm_[stateOffset], stateOutLocal, stateOutParams);
         stateOutQueue_.FreeTensor(stateOutLocal);
     }
@@ -379,11 +387,11 @@ private:
     GlobalTensor<inType> betaGm_;
     GlobalTensor<float> gamaGm_;
     GlobalTensor<float> gamaKGm_;
-    GlobalTensor<inType> initStateGm_;
+    GlobalTensor<stateType> initStateGm_;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> ssmStateIndicesGm_;
     GlobalTensor<int32_t> numAcceptedTokensGm_;
-    GlobalTensor<outType> finalStateGm_;
+    GlobalTensor<stateType> finalStateGm_;
     GlobalTensor<outType> attnOutGm_;
     TPipe *pipe_;
     TQue<QuePosition::VECIN, 1> qInQueue_;
