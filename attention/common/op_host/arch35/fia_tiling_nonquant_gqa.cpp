@@ -389,13 +389,13 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
         int64_t outerBlockNums = (actualSeqLengthsQ_[bIdx] * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
                                  static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
-        if (actualSeqLengthsQ_[bIdx] == 0 || actualSeqLengthsKV_[bIdx] == 0) {
-            outerBlockNums = fiaInfo_->n2Size;
+        if (actualSeqLengthsQ_[bIdx] == 0) {
+            outerBlockNums = fiaInfo_->n2Size * fiaInfo_->gSize;
         }
-        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
-               "outerBlockNums:%d\n",
-               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums);
         totalSize += outerBlockNums;
+        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
+               "outerBlockNums:%d, totalSize:%d\n",
+               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
 
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
@@ -770,7 +770,7 @@ void FiaTilingNonQuantArch35::GenTilingKey()
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
             "hasAttenMask: %llu, hasRope: %llu, kvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
-            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp: %llu.",
+            "enableKvPrefix: %llu, enableS1OutSplit: %u, isReconstructTemp: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
