@@ -65,7 +65,7 @@ inline ge::graphStatus CheckShape(
 // ========== dtype 校验 ==========
 
 inline ge::graphStatus CheckDtype(
-    const ge::TensorDesc* desc, const char* nodeName) {
+    const gert::CompileTimeTensorDesc* desc, const char* nodeName) {
     if (desc == nullptr) {
         OPS_LOG_E(nodeName, "performanceInfo desc is null.");
         return ge::GRAPH_FAILED;

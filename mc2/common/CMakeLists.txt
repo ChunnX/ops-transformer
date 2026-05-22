@@ -25,6 +25,7 @@ if(BUILD_OPEN_PROJECT)
         op_host/op_tiling/mc2_tiling_utils.cpp
         op_host/op_tiling/moe_tiling_base.cpp
         op_host/op_tiling/moe_dispatch/comm_cfg.cpp
+        op_host/op_tiling/moe_dispatch/utils.cpp
         op_host/op_tiling/one_calc_two_comm_tiling.cpp
     )
 

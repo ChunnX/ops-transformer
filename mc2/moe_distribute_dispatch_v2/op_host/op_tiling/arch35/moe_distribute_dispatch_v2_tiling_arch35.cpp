@@ -1224,8 +1224,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     config.attrCopyExpertNumIndex = 15; // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
     config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = false;
-    // MTE 调用 A3 tiling 实现
-    return MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
+    // MTE 调用 A5 V2 tiling 实现
+    return MoeDistributeDispatchA5TilingFuncImplPublicV2(context, config);
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
