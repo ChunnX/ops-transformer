@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_GM_TO_UB_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/arch.hpp"
+#include "../../../gmm_infra/arch/gmm_arch.hpp"
 #include "../../../gmm_infra/gemm/tile/tile_copy_tla.hpp"
 
 namespace Catlass::Gemm::Tile {

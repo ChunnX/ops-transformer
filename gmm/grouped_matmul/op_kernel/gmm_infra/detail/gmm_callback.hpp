@@ -11,7 +11,7 @@
 #ifndef CATLASS_DETAIL_CALLBACK_HPP
 #define CATLASS_DETAIL_CALLBACK_HPP
 
-#include "../../gmm_infra/detail/macros.hpp"
+#include "../../gmm_infra/detail/gmm_macros.hpp"
 
 namespace Catlass {
 

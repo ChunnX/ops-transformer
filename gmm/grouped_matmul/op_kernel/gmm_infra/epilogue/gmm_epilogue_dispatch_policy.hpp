@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
-#include "../../gmm_infra/arch/arch.hpp"
+#include "../../gmm_infra/arch/gmm_arch.hpp"
 
 namespace Catlass::Epilogue {
 

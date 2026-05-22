@@ -12,9 +12,9 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/detail/alignment.hpp"
-#include "../../../gmm_infra/gemm_coord.hpp"
-#include "../../../gmm_infra/matrix_coord.hpp"
+#include "../../../gmm_infra/detail/gmm_alignment.hpp"
+#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/matrix_gmm_coord.hpp"
 
 namespace Catlass::Gemm::Block {
 

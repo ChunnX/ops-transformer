@@ -12,9 +12,9 @@
 #define CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/arch.hpp"
-#include "../../../gmm_infra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../../gmm_infra/epilogue/tile/copy_ub_to_gm.hpp"
+#include "../../../gmm_infra/arch/gmm_arch.hpp"
+#include "../../../gmm_infra/epilogue/tile/gmm_copy_gm_to_ub.hpp"
+#include "../../../gmm_infra/epilogue/tile/gmm_copy_ub_to_gm.hpp"
 
 namespace Catlass::Epilogue::Tile {
 
