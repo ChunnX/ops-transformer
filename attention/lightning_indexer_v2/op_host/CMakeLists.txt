@@ -9,8 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
-set(lightning_indexer_v2_depends attention/lightning_indexer CACHE INTERNAL "Dependencies for lightning_indexer_v2")
-
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
     lightning_indexer_v2_def.cpp
