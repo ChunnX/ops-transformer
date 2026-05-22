@@ -155,10 +155,8 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     opParamInfo_.topk = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
     opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
-    opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKENS_INDEX);
-    opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
-    opParamInfo_.returnValues = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUES_INDEX);
+    opParamInfo_.returnValue = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     opParamInfo_.keyStride0 = attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE0_INDEX);
 
     if (opParamInfo_.layOut != nullptr) {
@@ -182,7 +180,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     if (opParamInfo_.cmpRatio != nullptr) {
         OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
     }
-    if (opParamInfo_.returnValues != nullptr) {
+    if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "return value is:%d", *opParamInfo_.returnValue);
     }
     OP_LOGI(context_->GetNodeName(), "GetAndCheckAttrParaInfo end");

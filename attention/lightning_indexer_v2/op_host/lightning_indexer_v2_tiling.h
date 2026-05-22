@@ -113,7 +113,7 @@ struct LiV2ParaInfo {
     TilingOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
     TilingOptionalParaInfo cuSeqlensK = {nullptr, nullptr};
     TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
-    TilingOptionalParaInfo sequsedk = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
     TilingOptionalParaInfo cmpResidualK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingOptionalParaInfo outputIdxOffset = {nullptr, nullptr};
@@ -129,7 +129,7 @@ struct LiV2ParaInfo {
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
     const int64_t *cmpRatio = nullptr;
-    const bool *returnValues = nullptr;
+    const bool *returnValue = nullptr;
     const int64_t *keyStride0 = nullptr;
 };
 
@@ -160,7 +160,7 @@ public:
     int64_t nextTokens = INT64_MAX;
     int64_t cmpRatio = 1;
     bool batchSupperFlag = false;
-    bool returnValues = false;
+    bool returnValue = false;
     int64_t keyStride0 = 1;
 
     // DType
