@@ -344,14 +344,16 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 #### groupType 支持场景
 
-| groupType | 支持场景 | 场景限制 |
-|:---:|:---|:---|
-| -1 | 多多多 | splitItem=0/1；非量化 x/out 2维，伪量化 x 2~6维；weight 2维；groupListOptional 传空；x 不转置，weight 可转置（统一）；仅非量化/伪量化；仅 ND 进 ND 出 |
-| 0 | 单单单 | splitItem=2/3；weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维；bias 2维 `(g,N)`；必须传 groupListOptional；最多 1024 组；x 不转置，weight 可转置；仅 ND 出；INT8 场景 weight 支持 NZ 格式 |
-| 0 | 单多单 | splitItem=2/3；必须传 groupListOptional（长度 ≤1024）；weight 2维，N 轴相等；x 不转置，weight 可转置（统一）；仅 ND 进 ND 出；仅非量化 |
-| 0 | 多多单 | splitItem=2；weight 2维，N 轴相等；groupListOptional 可选；x 不转置，weight 可转置（统一）；仅 ND 进 ND 出；仅非量化 |
-| 2 | 单单单 | splitItem=2/3；x 必须转置，weight 不能转置；x/weight 2维 `(K,M)`/`(K,N)`；out 3维 `(g,M,N)`；必须传 groupListOptional；bias 传空；仅 ND 进 ND 出；仅非量化/量化 |
-| 2 | 单多多 | splitItem=0/1；x/weight 2维 `(K,M)`/`(K,N)`；y 2维 `(M,N)`；groupListOptional 可选（须满足约束）；x 必须转置，weight 不能转置；仅 ND 进 ND 出；不支持 bias；仅非量化 |
+> x、weight、y 输入为 aclTensorList。"单" = 单元素 TensorList，"多" = 多元素 TensorList。
+
+| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x 不转置；weight 可转置（统一） | 非量化 x/out 2维，伪量化 x 2~6维；weight 2维；仅非量化/伪量化；仅 ND 进 ND 出 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x 不转置；weight 可转置 | weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维；bias 2维 `(g,N)`；最多 1024 组；仅 ND 出；INT8 场景 weight 支持 NZ 格式 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x 不转置；weight 可转置（统一） | x/weight/y 2维；weight N 轴相等；仅 ND 进 ND 出；仅非量化 |
+| 0 | 多 | 多 | 单 | 2 | 可选 | x 不转置；weight 可转置（统一） | x/weight/y 2维；weight N 轴相等；仅 ND 进 ND 出；仅非量化 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x 必须转置；weight 不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias 传空；仅 ND 进 ND 出；仅非量化/量化 |
+| 2 | 单 | 多 | 多 | 0/1 | 可选 | x 必须转置；weight 不转置 | x/weight/y 2维 `(M,N)`；weight 最大 128 组；不支持 bias；仅 ND 进 ND 出；仅非量化 |
 
 #### groupListOptional 配置示例
 

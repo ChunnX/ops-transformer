@@ -392,13 +392,13 @@ $$
 
 #### groupType 支持场景
 
-| groupType | 支持场景 | 场景限制 |
-|:---:|:---|:---|
-| -1 | 多多多 | splitItem=0/1；非量化 x/out 2维，伪量化 x 2~6维；weight 2维；groupListOptional 必须传空；支持 weight 转置（统一）；x 不支持转置；仅支持非量化和伪量化；仅 ND 进 ND 出 |
-| 0 | 单单单 | splitItem=2/3；weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维 `(M,K)`/`(M,N)`；bias 2维 `(g,N)`；必须传 groupListOptional；最多 1024 组；x 不转置，weight 可转置；支持 NZ 格式（x/weight 为 INT8 时）；仅 ND 出 |
-| 0 | 单多单 | splitItem=2/3；必须传 groupListOptional（长度 ≤1024）；weight 2维，N 轴必须相等；x 不转置，weight 可转置（统一）；仅 ND 进 ND 出；仅支持非量化 |
-| 0 | 多多单 | splitItem=2；weight 2维，N 轴必须相等；groupListOptional 可选；x 不转置，weight 可转置（统一）；仅 ND 进 ND 出；仅支持非量化 |
-| 2 | 单单单 | splitItem=2/3；x 必须转置；weight 不能转置；x/weight 2维 `(K,M)`/`(K,N)`；out 3维 `(g,M,N)`；必须传 groupListOptional；bias 传空；仅 ND 进 ND 出；仅支持非量化和量化 |
+| groupType | x Tensor 数 | weight Tensor 数 | y Tensor 数 | 场景限制 |
+|:---:|:---:|:---:|:---:|:---|
+| -1 | 多 | 多 | 多 | splitItem=0/1；非量化 x/out 2维，伪量化 x 2~6维；weight 2维；groupListOptional 必须传空；支持 weight 转置（统一）；x 不支持转置；仅支持非量化和伪量化；仅 ND 进 ND 出 |
+| 0 | 单 | 单 | 单 | splitItem=2/3；weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维 `(M,K)`/`(M,N)`；bias 2维 `(g,N)`；必须传 groupListOptional；最多 1024 组；x 不转置，weight 可转置；支持 NZ 格式（x/weight 为 INT8 时）；仅 ND 出 |
+| 0 | 单 | 多 | 单 | splitItem=2/3；必须传 groupListOptional（长度 ≤1024）；weight 2维，N 轴必须相等；x 不转置，weight 可转置（统一）；仅 ND 进 ND 出；仅支持非量化 |
+| 0 | 多 | 多 | 单 | splitItem=2；weight 2维，N 轴必须相等；groupListOptional 可选；x 不转置，weight 可转置（统一）；仅 ND 进 ND 出；仅支持非量化 |
+| 2 | 单 | 单 | 单 | splitItem=2/3；x 必须转置；weight 不能转置；x/weight 2维 `(K,M)`/`(K,N)`；out 3维 `(g,M,N)`；必须传 groupListOptional；bias 传空；仅 ND 进 ND 出；仅支持非量化和量化 |
 
 ### 5.3 Atlas A3/A2 训练系列产品
 
