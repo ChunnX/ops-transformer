@@ -85,35 +85,33 @@ private:
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
         if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
         }
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE; // + winDataSizeOffset_;
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
         if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
         }
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
     }
 
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + STATE_SIZE + winDataSizeOffset_;
-        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+                UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
-        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+       return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+                UB_ALIGN  * rankId;
     }
 
     TPipe *tpipe_{nullptr};
@@ -181,6 +179,8 @@ private:
     uint32_t bufferNum_{0};        // 缓冲区数量
     uint32_t totalUbSize_{0};      // 总UB大小
     uint64_t totalWinSizeEp_{0};   // 总窗口大小
+    uint64_t tokenMaxSizePerRank_{0}; // 每个rank最大token大小
+    uint64_t statusSize_{0};        // 状态大小 (32字节)
     float sumTarget_;              // 状态同步目标值 (1.0)
 };
 
@@ -222,17 +222,17 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    uint32_t epRankIdHccl{0};
-    uint32_t epWorldSizeHccl{0};
-    epRankIdHccl =  context_->epRankId;
-    statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
-    epWorldSizeHccl = epWorldSize_;
-    GlobalTensor<uint32_t> selfDataStatusGMTensor;
-    epRankId_ = epRankIdHccl;
-    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
-    dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
-                                                    epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
-    PRINTF("dataState_ is %d\n", dataState_);
+    // uint32_t epRankIdHccl{0};
+    // uint32_t epWorldSizeHccl{0};
+    epRankId_ =  context_->epRankId;
+    // statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
+    // epWorldSizeHccl = epWorldSize_;
+    // GlobalTensor<uint32_t> selfDataStatusGMTensor;
+    // epRankId_ = epRankIdHccl;
+    // selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    // dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
+    //                                                 epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
+    // PRINTF("dataState_ is %d\n", dataState_);
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -249,6 +249,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
     hOutAlignUbSize_ = hAlignSize_;
+
+    uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    tokenMaxSizePerRank_ = axisMaxBS * hSizeAlignCombine * epWorldSize_;
 
     // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
     uint32_t axisMaxBS = globalBS_ / epWorldSize_;
@@ -284,8 +287,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
 
     // ============ 计算窗口数据区偏移 ============
-    uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    winDataSizeOffset_ = 0; //dataState_ * (totalWinSizeEp_ / 2);
+    winDataSizeOffset_ = totalWinSizeEp_ / 2;
     windowGM_ = GetUrmaAddrByRankId(epRankId_);
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
 
@@ -368,11 +370,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
-        urmaLocaLAddr = (GM_ADDR)(GetUrmaAddrByRankId(epRankId_) +
-                                            epRankId_ * expertPerSizeOnWin_ +
-                                            1 * hAlignWinSize_);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, `, hAlignSize_);
         hcomm_.Wait(handle);
     }
 }
