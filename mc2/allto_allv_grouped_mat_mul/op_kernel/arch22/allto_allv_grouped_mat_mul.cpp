@@ -10,7 +10,7 @@
 
 /*!
  * \file allto_allv_grouped_mat_mul.cpp
- * \brief AlltoAllV Grouped MatMul kernel entry - reuse quant mc2_templates
+ * \brief AlltoAllV Grouped MatMul kernel entry - debug: only shared expert (localComputeOp)
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -59,34 +59,45 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    SetSysWorkspace(workspaceGM);
-    GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
         return;
     }
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+
     TPipe pipe;
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
+    GET_TILING_DATA(tilingData, tilingGM);
+    const AlltoAllvGmmTilingData *tilingData_ = &tilingData;
 
-    using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
-        false, true>;
-    using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
-        true, true>;
+    AscendC::printf("[LBH-V4] entry blk=%d needMM=%d A=%llu H1=%llu N2=%llu BS=%llu e=%d\n",
+        GetBlockIdx(), tilingData_->isNeedMM ? 1 : 0,
+        tilingData_->taskTilingInfo.A, tilingData_->taskTilingInfo.H1,
+        tilingData_->taskTilingInfo.N2, tilingData_->taskTilingInfo.BS,
+        tilingData_->taskTilingInfo.e);
 
-    A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_WEIGHT, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-        AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler;
+    // === Shared Expert (local MM) only - no HCCL, no routed expert ===
+    using SharedGmmExpertOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
+        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true, true>;
 
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
-        gmmArray, gmmArrayAddr_, tilingGM);
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
         gmmArray, mmArrayAddr_, tilingGM);
 
-    // Non-quant: no scale inputs, pass nullptr for all scale GM addresses
-    a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM,
-        nullptr, nullptr, nullptr, nullptr,
-        gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM,
-        gmmArrayAddr_, mmArrayAddr_, &pipe, true);
-    a2avGmmScheduler.Process();
+    // workspace layout: groupList + ptrTable + compute workspace (shared area)
+    uint64_t workspaceOffset = 0;
+    if (!tilingData_->isPermuteOut) {
+        uint64_t commOutLen = Align(CeilDiv(tilingData_->taskTilingInfo.A * tilingData_->taskTilingInfo.H1, PACK_FACTOR)
+            * X_TYPE_SIZE, TENSOR_LIST_SIZE);
+        workspaceOffset += commOutLen;
+    }
+    GM_ADDR computeWorkspaceGm = userWorkspace + workspaceOffset;
+
+    SharedGmmExpertOpType shareComputeOp;
+    if (tilingData_->isNeedMM != 0) {
+        shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM,
+                            computeWorkspaceGm, computeWorkspaceGm, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddr_, &pipe,
+                            false);
+        shareComputeOp.Process(0);
+        shareComputeOp.End();
+    }
 }
