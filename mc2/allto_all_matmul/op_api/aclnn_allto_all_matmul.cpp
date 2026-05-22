@@ -318,8 +318,10 @@ extern "C" aclnnStatus aclnnAlltoAllMatmul(void *workspace, uint64_t workspaceSi
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
             if (commMode == Mc2Comm::COMM_MODE_CCU) {
+                OP_LOGD("aclnnAlltoAllMatmul: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             } else {
+                OP_LOGD("aclnnAlltoAllMatmul: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
         }
