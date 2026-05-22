@@ -177,7 +177,6 @@ def flash_attn_gpu(
             softmax_scale=softmax_scale,
             causal=causal,
             window_size=(-1, -1),
-            deterministic=False,
         )  # 输出形状 (total_tokens, N, Dv)
 
         # 将 TND 输出 (total_tokens, N, Dv) 转换为统一格式
@@ -204,7 +203,6 @@ def flash_attn_gpu(
         softmax_scale=softmax_scale,
         causal=causal,
         window_size=(-1, -1),
-        deterministic=False,
     )
     out_bnsd = _bshd_to_bnsd(out_bshd)
     return out_bnsd
