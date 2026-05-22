@@ -173,7 +173,6 @@ def _get_fullmesh_info(raw_send_or_recv: list, core_num: int, ep_rankid: int,
 
     unfinish_send = [i for i, v in enumerate(has_send_ep) if v == 0]
     unfinish_recv = [i for i, v in enumerate(has_recv_ep) if v == 0]
-
     if unfinish_send:
         logging.error("[A2] 1.1 %s EP%d 未完成发送的EP:%s\n", d_c, ep_rankid, unfinish_send)
     if unfinish_recv:
@@ -456,7 +455,6 @@ def _get_runpos_mapping(islayer: int, d_c: str):
     pos_position = _get_runpos_sort(next_pos)
     return pos_mapping, next_pos, pos_position
 
-
 def analyze_runpos(runpos: List[int], islayer: int, d_c: str, servernum: int):
     pos_mapping, next_pos, pos_position = _get_runpos_mapping(islayer, d_c)
     core_num = len(runpos)
@@ -638,20 +636,45 @@ def check_fullmesh_com_win(com_win_state_func):
         for target_rankid, win_state in enumerate(com_win_state_func[ep_rankid]):
             if hex(ctypes.c_uint32(win_state[0]).value) != '0xffffffff':
                 continue
+            print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Stalled in waitDispatch; " \
+                         "communication not completed."
+            error_rankid_info.append(print_log)
+            logging.error(print_log)
             target_token_num, recv_token_num = win_state[1], win_state[2]
             target_flag, recv_flag = win_state[3], win_state[4]
             logging.info("[A2][Fullmesh] Combine EP%s win state: "
                          "target_token_num=%d, recv_token_num=%d, target_flag=%d, recv_flag=%d",
                          ep_rankid, target_token_num, recv_token_num, target_flag, recv_flag)
-
             if target_token_num != recv_token_num:
                 print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Combine recv token num mismatch: " \
                             f"target_token_num={target_token_num}, recv_token_num={recv_token_num}"
                 error_rankid_info.append(print_log)
                 logging.error(print_log)
-            if target_flag != recv_flag:
+                if recv_token_num == 0:
+                    print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] No tokens received; " \
+                                f"likely EP{target_rankid} did not send data."
+                    error_rankid_info.append(print_log)
+                    logging.error(print_log)
+            recv_flag_hex = hex(ctypes.c_uint32(recv_flag).value)
+            if recv_flag_hex != '0xffffffff':
                 print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Combine recv flag mismatch: " \
-                            f"target_flag={target_flag}, recv_flag={recv_flag}"
+                            f"target_flag=0xffffffff, recv_flag={recv_flag_hex}"
+                error_rankid_info.append(print_log)
+                logging.error(print_log)
+            if target_token_num == recv_token_num and recv_flag_hex != '0xffffffff':
+                print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Combined receive token count: {recv_token_num} " \
+                             "(header correct), but tail flag corrupted. " \
+                             "Likely HCCL_BUFFSIZE insufficient, causing flag overwrite."
+                error_rankid_info.append(print_log)
+                logging.error(print_log)
+            elif target_token_num != recv_token_num and recv_flag_hex == '0xffffffff':
+                print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Received token count: {recv_token_num} " \
+                             "(header mismatch), tail flag valid. Likely sender transmitted incorrect token count."
+                error_rankid_info.append(print_log)
+                logging.error(print_log)
+            elif target_token_num == recv_token_num and recv_flag_hex == '0xffffffff':
+                print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Received token count: {recv_token_num} " \
+                             "(header correct), tail flag valid. Why stall?"
                 error_rankid_info.append(print_log)
                 logging.error(print_log)
     return error_rankid_info
@@ -698,50 +721,51 @@ def check_single_card_dis_win(dis_win_state, dis_win_status_golden,
         logging.info("[A2][Fullmesh] Dispatch has't recv token from EP %s, according to ADump.",
                      unfinish_recv_ep)
     for target_rankid, win_state in enumerate(dis_win_state):
+        if target_rankid in unfinish_recv_ep:
+            logging.error("[A2] According to Dump, EP%s has't recv token from EP %s.",
+                            ep_rankid, target_rankid)
+            print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] " \
+                            "Dispatch According to Dump: unfinish recv token"
+            error_rankid_info.append(print_log)
         is_un_recv = hex(ctypes.c_uint32(win_state[0]).value) == '0xffffffff'
+
         if not is_un_recv:
             continue
-        logging.error("[A2][Fullmesh] EP%s has't recv token from EP %s, according to ADump.",
-                     ep_rankid, target_rankid)
+        print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Stalled in waitDispatch; " \
+                        "communication not completed."
+        error_rankid_info.append(print_log)
+        logging.error(print_log)
+        status_flag = hex(ctypes.c_uint32(win_state[-2]).value)
+        if status_flag != '0xffffffff':
+            print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Status flag({status_flag}) corrupted, " \
+                         "should be 0xffffffff"
+            error_rankid_info.append(print_log)
+            logging.error(print_log)
+            continue
+
         if dis_win_status_golden[target_rankid] is None:
             logging.info("[A2][Fullmesh] Dispatch has no EP %d expertids.", target_rankid)
-            continue
-        win_state_golden = dis_win_status_golden[target_rankid][int(ep_rankid)]
-        local_moe_expert_num = win_state_golden.shape[-1]
-        win_state_current = np.array(win_state, dtype=np.int32)[1:local_moe_expert_num + 1]
-        if not np.array_equal(win_state_current, win_state_golden):
-            error_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Dispatch recv win status mismatch: " \
-                        f"golden={win_state_golden.tolist()}, dump={win_state_current.tolist()}"
-            error_rankid_info.append(error_log)
-            logging.info("[A2][Fullmesh] Dispatch EP%s recv wrong status from EP%d",
-                         ep_rankid, target_rankid)
-            logging.info("[A2][Fullmesh] Win status golden: %s", win_state_golden.tolist())
-            logging.info("[A2][Fullmesh] Win status current: %s", win_state_current.tolist())
+            win_state_golden = dis_win_status_golden[target_rankid][int(ep_rankid)]
+            local_moe_expert_num = win_state_golden.shape[-1]
+            win_state_current = np.array(win_state, dtype=np.int32)[1:local_moe_expert_num + 1]
+            if not np.array_equal(win_state_current, win_state_golden):
+                print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Dispatch recv win status mismatch: " \
+                            f"golden={win_state_golden.tolist()}, dump={win_state_current.tolist()}"
+                error_rankid_info.append(print_log)
+                logging.error("[A2][Fullmesh] Dispatch EP%s recv wrong status from EP%d",
+                            ep_rankid, target_rankid)
+                logging.error("[A2][Fullmesh] Win status golden: %s", win_state_golden.tolist())
+                logging.error("[A2][Fullmesh] Win status current: %s", win_state_current.tolist())
+        data_flag = hex(ctypes.c_uint32(win_state[-1]).value)
+        if data_flag != '0xffffffff':
+            print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Data flag({data_flag}) corrupted, " \
+                        "should be 0xffffffff"
+            error_rankid_info.append(print_log)
+            logging.error(print_log)
         else:
-            end_flag_str = hex(ctypes.c_uint32(win_state[-1]).value)
-            first_flag_str = hex(ctypes.c_uint32(win_state[-2]).value)
-            print_template = f"[A2][Fullmesh] Current EP%s from EP%d Win status %s flag is %s: %s."
-            print_log = "right" if first_flag_str == '0xffffffff' else "wrong"
-            if first_flag_str != '0xffffffff':
-                error_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Dispatch first flag mismatch: " \
-                            f"first_flag_str={first_flag_str}, want '0xffffffff'"
-                error_rankid_info.append(error_log)
-            if end_flag_str != '0xffffffff':
-                error_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] Dispatch end flag mismatch: " \
-                            f"end_flag_str={end_flag_str}, want '0xffffffff'"
-                error_rankid_info.append(error_log)
-
-            logging.info(
-                print_template, ep_rankid, target_rankid, "first", print_log, first_flag_str)
-            print_log = "right" if end_flag_str == '0xffffffff' else "wrong"
-            logging.info(
-                print_template, ep_rankid, target_rankid, "end", print_log, end_flag_str)
-            if target_rankid in unfinish_recv_ep:
-                logging.error("[A2] According to Dump, EP%s has't recv token from EP %s.",
-                             ep_rankid, target_rankid)
-                error_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] " \
-                             "Dispatch According to Dump: unfinish recv token"
-                error_rankid_info.append(error_log)
+            print_log = f"[RecvEP:{ep_rankid}][SendEP:{target_rankid}] All checks passed, but why stall?."
+            error_rankid_info.append(print_log)
+            logging.error(print_log)
     return error_rankid_info
 
 
