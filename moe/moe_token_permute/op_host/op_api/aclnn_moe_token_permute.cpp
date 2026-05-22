@@ -69,7 +69,7 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     auto expandedXOut_ = std::get<0>(result);
     auto expandedRowIdxOut_ = std::get<1>(result);
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr);
-    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR); 
 
     // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXOut_, permuteTokensOut, uniqueExecutor.get());
