@@ -18,8 +18,6 @@
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
 
-#include "shmem.h"
-
 using namespace Ops::Transformer;
 using namespace op;
 
