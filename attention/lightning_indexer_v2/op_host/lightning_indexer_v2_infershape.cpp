@@ -22,10 +22,10 @@ using namespace ge;
 namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
+constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 1;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 0;
-constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 4;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 5;
 
 static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
 {
@@ -47,7 +47,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
     const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
+    const int64_t *seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);

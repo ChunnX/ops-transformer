@@ -86,9 +86,9 @@ public:
         this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 默认值，筛选前2048
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
-        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);      // 3: 默认值，只计算下三角
+        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
-        this->Attr("return_value").AttrType(OPTIONAL).Int(0);               //  0: 默认值
+        this->Attr("return_value").AttrType(OPTIONAL).Int(0);  //  0: 默认值
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
