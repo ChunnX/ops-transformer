@@ -46,6 +46,15 @@ struct CopyL0CToDstQuantMode<
     static constexpr auto VALUE = QuantMode_t::NoQuant;
 };
 
+template <class ArchTag>
+struct CopyL0CToDstQuantMode<
+    ArchTag,
+    float, float,
+    ScaleGranularity::PER_TENSOR
+> {
+    static constexpr auto VALUE = QuantMode_t::QF322F32_PRE;
+};
+
 // CopyL0CToGm cast fp32 to fp16
 template <class ArchTag>
 struct CopyL0CToDstQuantMode<

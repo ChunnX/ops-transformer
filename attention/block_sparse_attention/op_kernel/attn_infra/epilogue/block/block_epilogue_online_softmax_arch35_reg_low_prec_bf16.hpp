@@ -170,7 +170,9 @@ public:
         }
         uint32_t n = actualBlockShape.n();
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
-        uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
+        // uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
+        uint16_t nRound = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value ? RoundUp(n, ELE_NUM_PER_C0_FLOAT8) :
+                                                                                    RoundUp(n, ELE_NUM_PER_C0);
         uint32_t blockStride = mRound;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
         constexpr int16_t vlFloatSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(float));
