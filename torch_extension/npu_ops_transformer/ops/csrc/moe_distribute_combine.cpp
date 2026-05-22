@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_distribute_combine_v3.cpp
+ * \file moe_distribute_combine.cpp
  * \brief
  */
 
@@ -22,9 +22,9 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 
 /**
- * @brief Warpper for moe_distribute_combine_v5
+ * @brief Warpper for moe_distribute_combine
  */
-at::Tensor npu_moe_distribute_combine_v3(const at::Tensor &context, const at::Tensor &expand_x,
+at::Tensor npu_moe_distribute_combine(const at::Tensor &context, const at::Tensor &expand_x,
                                          const at::Tensor &expert_ids,
                                          const at::Tensor &assist_info_for_combine,
                                          const at::Tensor &ep_send_counts, const at::Tensor &expert_scales,
@@ -85,6 +85,6 @@ at::Tensor npu_moe_distribute_combine_v3(const at::Tensor &context, const at::Te
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_moe_distribute_combine_v3", &npu_moe_distribute_combine_v3, "moe_distribute_combine_v3");
+    m.def("npu_moe_distribute_combine", &npu_moe_distribute_combine, "moe_distribute_combine");
 }
 } // op_api
