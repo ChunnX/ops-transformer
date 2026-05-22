@@ -61,6 +61,7 @@ enum class SocVersion {
     ASCEND910B,
     ASCEND910_93,
     ASCEND950,
+    ASCEND350,
     ASCEND910E,
     ASCEND310,
     ASCEND310P,

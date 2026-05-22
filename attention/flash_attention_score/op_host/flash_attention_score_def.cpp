@@ -181,6 +181,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
 
         this->AICore().AddConfig("ascend950", aicore_config_95);
+        this->AICore().AddConfig("ascend350", aicore_config_95);
 
         OpAICoreConfig aicore_config;
         aicore_config.Input("query")
