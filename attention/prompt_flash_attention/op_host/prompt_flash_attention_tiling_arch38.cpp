@@ -13,6 +13,7 @@
  * \brief
  */
 #include "prompt_flash_attention_tiling_arch38.h"
+#include <cstdio>
 #include <queue>
 
 #include "register/op_def_registry.h"
@@ -615,8 +616,8 @@ bool PromptFlashAttentionTilingArch38::CheckInputDimAndHeadNum(ContextParamsForP
             keyShapeHeadNum = keyShape->GetStorageShape().GetDim(nIdx);
             valueShapeHeadNum = valueShape->GetStorageShape().GetDim(nIdx);
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%zu), k(%zu), v(%zu) must be 4 for BNSD or BSND format!",
-                queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%zu), k(%zu), v(%zu) must be 4 for BNSD or BSND format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%zu), k(%zu), v(%zu) must be 4 for BNSD or BSND format!");
             return false;
         }
     } else if ((inputLayout == InputLayout::TND) && (!enablePA)) {
@@ -625,8 +626,8 @@ bool PromptFlashAttentionTilingArch38::CheckInputDimAndHeadNum(ContextParamsForP
             keyShapeHeadNum = keyShape->GetStorageShape().GetDim(nIdx);
             valueShapeHeadNum = valueShape->GetStorageShape().GetDim(nIdx);
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%zu), k(%zu), v(%zu) must be 3 for TND format!",
-                queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%zu), k(%zu), v(%zu) must be 3 for TND format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%zu), k(%zu), v(%zu) must be 3 for TND format!");
             return false;
         }
     }
@@ -662,7 +663,8 @@ bool PromptFlashAttentionTilingArch38::SetAndCheckHeadNumRatio(ContextParamsForP
     const int64_t nKV = *contextKeyParams.numKeyValueHeads;
 
     if ((nQ < 0) || (nKV < 0)) {
-        OP_LOGE(contextKeyParams.opName, "numHeads(%d) or numKeyValueHeads(%d) is negative!", nQ, nKV);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads(%d) or numKeyValueHeads(%d) is negative!", nQ, nKV) > 0) ? reason : "numHeads(%d) or numKeyValueHeads(%d) is negative!");
         return false;
     }
 
@@ -685,11 +687,13 @@ bool PromptFlashAttentionTilingArch38::SetAndCheckHeadNumRatio(ContextParamsForP
     }
 
     if (nQ % nKV != 0) {
-        OP_LOGE(contextKeyParams.opName, "numHeads(%d) must be divisible by numKeyValueHeads(%d)!", nQ, nKV);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads(%d) must be divisible by numKeyValueHeads(%d)!", nQ, nKV) > 0) ? reason : "numHeads(%d) must be divisible by numKeyValueHeads(%d)!");
         return false;
     } else {
         if (nQ / nKV > 64 && (!enablePFAMLA)) { // G cannot be greater than 64.
-            OP_LOGE(contextKeyParams.opName, "numHeads / numKeyValueHeads = %d, cannot be larger than 64.", nQ / nKV);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads / numKeyValueHeads = %d, cannot be larger than 64.", nQ / nKV) > 0) ? reason : "numHeads / numKeyValueHeads = %d, cannot be larger than 64.");
             return false;
         }
         tilingData.promptAttentionBaseParams.set_headNumRatio(nQ / nKV);
@@ -1160,7 +1164,8 @@ bool PromptFlashAttentionTilingArch38::CheckMaskShape(ContextParamsForPFATiling&
         strMaskShape = std::to_string(attenMaskBatch) + ", " + std::to_string(attenMaskN) + ", " + 
             std::to_string(attenMaskS1) + ", " + std::to_string(attenMaskS2);
     } else {
-        OP_LOGE(contextKeyParams.opName, "attenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "attenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim) > 0) ? reason : "attenMask dim(%zu) must be 2 or 3 or 4!");
         return false;
     }
 
@@ -1277,9 +1282,8 @@ bool PromptFlashAttentionTilingArch38::CheckMaskShapeCrossSparse(ContextParamsFo
         }
         if ((sparseMode != nullptr) && ((*sparseMode == SPARSE_MODE_LEFT_UP) ||
             (*sparseMode == SPARSE_MODE_RIGHT_DOWN) || (*sparseMode == SPARSE_MODE_BAND)) && !checkMask) {
-            OP_LOGE(contextKeyParams.opName,
-                "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %d, but now it's (%s).",
-                    *sparseMode, strMaskShape.c_str());
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %d, but now it's (%s).", *sparseMode, strMaskShape.c_str()) > 0) ? reason : "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %d, but now it's (%s).");
             return false;
         }
     }
@@ -1824,7 +1828,8 @@ bool PromptFlashAttentionTilingArch38::CheckInnerPrecise(ContextParamsForPFATili
 {
     // 0: Invalid plural number; 4: Invalid if greater than or equal to 4; 0,1,2,3 are effective values for innerPrecise.
     if (innerPrecise >= 4 || innerPrecise < 0) {
-        OP_LOGE(contextKeyParams.opName, "innerPrecise [%d] should be 0,1,2,3, please check.", innerPrecise);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "innerPrecise [%d] should be 0,1,2,3, please check.", innerPrecise) > 0) ? reason : "innerPrecise [%d] should be 0,1,2,3, please check.");
         return false;
     }
     // Determine if the bit1 bit of innerPrecise requires invalid correction.
@@ -3456,11 +3461,11 @@ ge::graphStatus PromptFlashAttentionTilingArch38::CheckRopeInvalid(const Context
     const gert::StorageShape* queryRopeShapeParam = contextKeyParams.queryRopeInputShape;
     const gert::StorageShape* keyRopeShapeParam = contextKeyParams.keyRopeInputShape;
     if ((queryRopeShapeParam != nullptr) && (queryRopeShapeParam->GetStorageShape().GetShapeSize() == 0)) {
-        OP_LOGE(contextKeyParams.opName, "When queryRopeShape is not nullptr, queryRope should not be empty tensor.");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] missing [%s] parameter", contextKeyParams.opName, "input");
         return ge::GRAPH_FAILED; 
     }
     if ((keyRopeShapeParam != nullptr) && (keyRopeShapeParam->GetStorageShape().GetShapeSize() == 0)) {
-        OP_LOGE(contextKeyParams.opName, "When keyRopeShape is not nullptr, keyRope should not be empty tensor.");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] missing [%s] parameter", contextKeyParams.opName, "input");
         return ge::GRAPH_FAILED; 
     }
     return ge::GRAPH_SUCCESS;
@@ -3533,19 +3538,19 @@ ge::graphStatus PromptFlashAttentionTilingArch38::CheckSingleAttribute(ContextPa
     PFAShapeInfo& keyShapeInfo, PFAShapeInfo& valueShapeInfo, PFAShapeInfo& queryRopeShapeInfo, PromptFlashAttentionTilingData& tilingData) 
 {
     if (!CheckIO(contextKeyParams, queryShapeInfo, valueShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check query/ouput failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check query/ouput failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckKV(contextKeyParams, keyShapeInfo, valueShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check key/value failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check key/value failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckRope(contextKeyParams, queryShapeInfo, keyShapeInfo, queryRopeShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check queryRope/keyRope failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check queryRope/keyRope failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckQueryAndKey(contextKeyParams, queryShapeInfo, keyShapeInfo, tilingData)){
-        OP_LOGE(contextKeyParams.opName, "Check query and key consistency failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check query and key consistency failed!");
         return ge::GRAPH_FAILED;
     }
     if (enableIFAMLA && (!CheckIFAMLA(contextKeyParams, queryShapeInfo))) {
@@ -3559,26 +3564,26 @@ ge::graphStatus PromptFlashAttentionTilingArch38::CheckSingleAttribute(ContextPa
 
     // quant/dequant/antiquant
     if (!CheckQuant(contextKeyParams, queryShapeInfo, keyShapeInfo, valueShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check quant failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check quant failed!");
         return ge::GRAPH_FAILED;
     }
 
     // prefix check
     if (!CheckPrefix(contextKeyParams, queryShapeInfo, keyShapeInfo, tilingData)){
-        OP_LOGE(contextKeyParams.opName, "Check prefix failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check prefix failed!");
         return ge::GRAPH_FAILED;
     }
 
     // actSeq check
     if (!CheckActSeq(contextKeyParams, queryShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check actual sequence failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check actual sequence failed!");
         return ge::GRAPH_FAILED;
     }
 
     // actSeqLen check
     if ((contextKeyParams.fromTilingSink == static_cast<uint32_t>(0)) &&
         !CheckActSeqLen(contextKeyParams, queryShapeInfo, keyShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check actual sequence length failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check actual sequence length failed!");
         return ge::GRAPH_FAILED;
     }
 

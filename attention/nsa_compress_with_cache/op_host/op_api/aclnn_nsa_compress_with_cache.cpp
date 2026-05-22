@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_nsa_compress_with_cache.h"
+#include <cstdio>
 
 #include <dlfcn.h>
 #include <new>
@@ -102,9 +103,8 @@ static aclnnStatus InputDtypeCheck(const aclTensor *input, const aclTensor *weig
     auto weightDtype = weight->GetDataType();
     auto outputCacheDtype = outputCache->GetDataType();
     if (inputDtype != weightDtype || inputDtype != outputCacheDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of input[%s], weight[%s], outputCache[%s] are not equal.",
-                op::ToString(DataType(inputDtype)).GetString(), op::ToString(DataType(weightDtype)).GetString(),
-                op::ToString(DataType(outputCacheDtype)).GetString());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaCompressWithCache", (snprintf(reason, sizeof(reason), "The data type of input[%s], weight[%s], outputCache[%s] are not equal.", op::ToString(DataType(inputDtype)).GetString(), op::ToString(DataType(weightDtype)).GetString(), op::ToString(DataType(outputCacheDtype)).GetString()) > 0) ? reason : "The data type of input[%s], weight[%s], outputCache[%s] are not equal.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -166,13 +166,12 @@ aclnnNsaCompressWithCacheGetWorkspaceSize(const aclTensor *input, const aclTenso
               ACLNN_ERR_INNER_NULLPTR);
         // 检查空tensor
     if (CheckIsEmptyTensor(input, weight, outputCache)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[NSACompressWithCache] do not support empty input/weight/outputCache.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], [%s] is not supported, got [%s]", "NsaCompressWithCache", "feature", "[NSACompressWithCache] do not support empty input/weight/outputCache.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 检查是否支持格式
     if (!CheckNDFormat(input, weight, slotMapping, blockTableOptional, outputCache)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "[NSACompressWithCache] All input tensors must be in ND, NCL, NCHW or NCDHW format");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaCompressWithCache", "[NSACompressWithCache] All input tensors must be in ND, NCL, NCHW or NCDHW format");
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(InputDtypeCheck(input, weight, slotMapping, blockTableOptional, outputCache) == ACLNN_SUCCESS,

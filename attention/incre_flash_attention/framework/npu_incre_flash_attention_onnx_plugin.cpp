@@ -27,7 +27,7 @@ constexpr int GROUP_SIZE = 2;
 static Status ParseParamsIncreFlashAttention(const Message* op_src, ge::Operator& op_dest) {
   const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
   if (node == nullptr) {
-    OP_LOGE("IncreFlashAttention", "Dynamic cast op_src to NodeProto failed.");
+    OP_LOGE("IncreFlashAttention", "The op [%s] received bad params, the reason is: [%s]", "IncreFlashAttention", "Dynamic cast op_src to NodeProto failed.");
     return FAILED;
   }
 
@@ -38,7 +38,7 @@ static Status ParseParamsIncreFlashAttention(const Message* op_src, ge::Operator
   op_dest.DynamicOutputRegister("y", output_size);
 
   if (dynamicSize % GROUP_SIZE != 0) {
-    OP_LOGE(GetOpName(op_dest).c_str(), "dynamic size error.");
+    OP_LOGE(GetOpName(op_dest).c_str(), "The op [%s] received bad params, the reason is: [%s]", GetOpName(op_dest).c_str(), "dynamic size error.");
     return FAILED;
   }
   dynamicSize /= GROUP_SIZE;
@@ -60,7 +60,7 @@ static Status ParseParamsIncreFlashAttention(const Message* op_src, ge::Operator
   }
 
   if (required_attr_num != REQUIRED_ATTR) {
-    OP_LOGE(GetOpName(op_dest).c_str(), "attr num two is required.");
+    OP_LOGE(GetOpName(op_dest).c_str(), "The op [%s] received bad params, the reason is: [%s]", GetOpName(op_dest).c_str(), "attr num two is required.");
     return FAILED;
   }
 
@@ -76,15 +76,15 @@ static Status ParseParamsIncreFlashAttention(const Message* op_src, ge::Operator
 static Status GetNpuIncreFlashAttentionAttrByName(
   const ge::Operator& op, int& num_heads, std::string& input_layout, float& scale_value) {
   if (op.GetAttr("num_heads", num_heads) != SUCCESS) {
-    OP_LOGE(GetOpName(op).c_str(), "get num_heads from op failed");
+    OP_LOGE(GetOpName(op).c_str(), "The op [%s] received bad params, the reason is: [%s]", GetOpName(op).c_str(), "get num_heads from op failed");
     return FAILED;
   }
   if (op.GetAttr("input_layout", input_layout) != SUCCESS) {
-    OP_LOGE(GetOpName(op).c_str(), "get input_layout from op failed");
+    OP_LOGE(GetOpName(op).c_str(), "The op [%s] received bad params, the reason is: [%s]", GetOpName(op).c_str(), "get input_layout from op failed");
     return FAILED;
   }
   if (op.GetAttr("scale_value", scale_value) != SUCCESS) {
-    OP_LOGE(GetOpName(op).c_str(), "get scale_value from op failed");
+    OP_LOGE(GetOpName(op).c_str(), "The op [%s] received bad params, the reason is: [%s]", GetOpName(op).c_str(), "get scale_value from op failed");
     return FAILED;
   }
   return SUCCESS;
@@ -93,7 +93,7 @@ static Status GetNpuIncreFlashAttentionAttrByName(
 static Status ParseOpToGraphNpuIncreFlashAttention(const ge::Operator& op, ge::Graph& graph) {
   std::string ori_name;
   if (op.GetAttr("name", ori_name) != SUCCESS) {
-    OP_LOGE(GetOpName(op).c_str(), "get name from op failed.");
+    OP_LOGE(GetOpName(op).c_str(), "The op [%s] received bad params, the reason is: [%s]", GetOpName(op).c_str(), "get name from op failed.");
     return FAILED;
   }
 

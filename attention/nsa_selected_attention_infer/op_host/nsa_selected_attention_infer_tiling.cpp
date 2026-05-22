@@ -14,6 +14,7 @@
  */
 
 #include <numeric>
+#include <cstdio>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -88,7 +89,7 @@ ge::graphStatus NsaSelectTiling::PreProcess()
 ge::graphStatus NsaSelectTiling::QKVPreProcess()
 {
     OP_CHECK_IF(context_->key.desc->GetDataType() != context_->value.desc->GetDataType(),
-        OP_LOGE(context_->opName, "datatype of k tensor and value tensor is different"), return ge::GRAPH_FAILED);
+        ({ OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, "datatype of k tensor and value tensor is different"); }), return ge::GRAPH_FAILED);
     batchSizeQ_ = batchSize_ = context_->query.shape->GetStorageShape().GetDim(0);
     inputQType_ = context_->query.desc->GetDataType();
     inputKvType_ = context_->key.desc->GetDataType();
@@ -110,18 +111,16 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
     selectedBlockSize_ = *context_->selectedBlockSize;
     selectedBlockCount_ = *context_->selectedBlockCount;
     
-    OP_CHECK_IF((selectedBlockCount_ != -1) && (selectedBlockCount_ != selectedBlockCountShapeRange), OP_LOGE(context_->opName,
-        "selectedBlockCount is not -1, %ld; or the same with topkindices last dim shape %u", selectedBlockCount_, selectedBlockCountShapeRange), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numHeads_ <= 0, OP_LOGE(context_->opName, "numHeads %ld is less than 1", numHeads_), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numKvHeads_ <= 0, OP_LOGE(context_->opName, "numKvHeads %ld is less than 1", numKvHeads_), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(selectedBlockCount_ <= 0, OP_LOGE(context_->opName, "selectedBlockCount %ld is less than 1", selectedBlockCount_), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((selectedBlockCount_ != -1) && (selectedBlockCount_ != selectedBlockCountShapeRange), ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "selectedBlockCount is not -1, %ld; or the same with topkindices last dim shape %u", selectedBlockCount_, selectedBlockCountShapeRange) > 0) ? reason : "selectedBlockCount is not -1, %ld; or the same with topkindices last dim shape %u"); }), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(numHeads_ <= 0, ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "numHeads %ld is less than 1", numHeads_) > 0) ? reason : "numHeads %ld is less than 1"); }), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(numKvHeads_ <= 0, ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "numKvHeads %ld is less than 1", numKvHeads_) > 0) ? reason : "numKvHeads %ld is less than 1"); }), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(selectedBlockCount_ <= 0, ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "selectedBlockCount %ld is less than 1", selectedBlockCount_) > 0) ? reason : "selectedBlockCount %ld is less than 1"); }), return ge::GRAPH_FAILED);
     if (numKvHeads_ == 0) {
         numKvHeads_ = numHeads_;
     }
     nNumOfQInOneGroup_ = static_cast<uint32_t>(numHeads_ / numKvHeads_);
     OP_CHECK_IF(((numKvHeads_ > numHeads_) || (numHeads_ % numKvHeads_ != 0) || (nNumOfQInOneGroup_ > 16)),
-        OP_LOGE(context_->opName, "groupSize should be less than or equal to 16, Attr num_key_value_heads is invalid, n: %ld, kvHeadNum: %ld", numHeads_,
-            numKvHeads_),
+        ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "groupSize should be less than or equal to 16, Attr num_key_value_heads is invalid, n: %ld, kvHeadNum: %ld", numHeads_, numKvHeads_) > 0) ? reason : "groupSize should be less than or equal to 16, Attr num_key_value_heads is invalid, n: %ld, kvHeadNum: %ld"); }),
         return ge::GRAPH_FAILED);
     groupSplitSize_ = nNumOfQInOneGroup_;
     gOuter_ = 1U;
@@ -134,13 +133,11 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
         int64_t actKVLen = actualKVLenData[i];
         OP_CHECK_IF(
             actQLen > actKVLen,
-            OP_LOGE(context_->opName,
-                    "the value of actual_q_seq_lengths %ld must be less than or equal to the actual_kv_seq_lengths %ld", actQLen, actKVLen),
+            ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "the value of actual_q_seq_lengths %ld must be less than or equal to the actual_kv_seq_lengths %ld", actQLen, actKVLen) > 0) ? reason : "the value of actual_q_seq_lengths %ld must be less than or equal to the actual_kv_seq_lengths %ld"); }),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             actQLen < 1 || actQLen > 4, // actualQSeqLengths必须大于0，小于4
-            OP_LOGE(context_->opName,
-                    "the value of actual_q_seq_lengths[%u] must be greater than or equal to 1 and  less than 4, but it is %ld", i, actQLen),
+            ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "the value of actual_q_seq_lengths[%u] must be greater than or equal to 1 and  less than 4, but it is %ld", i, actQLen) > 0) ? reason : "the value of actual_q_seq_lengths[%u] must be greater than or equal to 1 and  less than 4, but it is %ld"); }),
             return ge::GRAPH_FAILED);
         maxactLen_ = std::max(maxactLen_, actQLen);
     }
@@ -150,7 +147,7 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
     if (layout == "BSH") {
         inputLayout_ = NsaLayout::BSH;
         OP_CHECK_IF(context_->query.shape->GetStorageShape().GetDim(dimTwo) % numHeads_ != 0,
-            OP_LOGE(context_->opName, "H should be an interger multiple of numHeads"),
+            ({ OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, "H should be an interger multiple of numHeads"); }),
             return ge::GRAPH_FAILED);
         sOfQuery = context_->query.shape->GetStorageShape().GetDim(dimOne); // 1, dim of H
         headDim_ = context_->query.shape->GetStorageShape().GetDim(dimTwo) / numHeads_; // 2, dim of H
@@ -173,14 +170,15 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
         sOfHeadnum = context_->query.shape->GetStorageShape().GetDim(dimOne); // 1, dim of N
         headDimV_ = context_->value.shape->GetStorageShape().GetDim(dimTwo) / numKvHeads_; // 2, dim of D
     } else {
-        OP_LOGE(context_->opName, "Only support input_layout(BSH, BSND, TND), actually is %s", layout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "Only support input_layout(BSH, BSND, TND), actually is %s", layout.c_str()) > 0) ? reason : "Only support input_layout(BSH, BSND, TND), actually is %s");
         return ge::GRAPH_FAILED;
     }
     if (static_cast<uint32_t>(numHeads_) != sOfHeadnum) {
-        OP_LOGE(context_->opName, "numHeads should be equal to qOfHeadnum");
+        OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, "numHeads should be equal to qOfHeadnum");
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(sOfQuery > 4 || sOfQuery < 1, OP_LOGE(context_->opName, " S of Query:%u is invalid, it should be 1~4", sOfQuery),
+    OP_CHECK_IF(sOfQuery > 4 || sOfQuery < 1, ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), " S of Query:%u is invalid, it should be 1~4", sOfQuery) > 0) ? reason : " S of Query:%u is invalid, it should be 1~4"); }),
                 return ge::GRAPH_FAILED);
 
     qSeqSize_ = sOfQuery;
@@ -191,7 +189,7 @@ ge::graphStatus NsaSelectTiling::InputAttrsPreProcess() const
 {
     OP_CHECK_IF(
         context_->blockTable.tensor->GetStorageShape().GetShapeSize() == 0,
-        OP_LOGE(context_->opName, "check blockTable shape failed, blockTable shapeSize is zero."),
+        ({ OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, "check blockTable shape failed, blockTable shapeSize is zero."); }),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -257,8 +255,8 @@ ge::graphStatus NsaSelectTiling::InitInOutMode()
     } else if (inputQType_ == ge::DT_BF16 && outputType_ == ge::DT_BF16) {
         inOutMode_ = TilingInOutMode::BF16_BF16;
     } else {
-        OP_LOGE(context_->opName, "input dtype %d with output dtype %d is not currently supported.", inputQType_,
-                outputType_);
+        char reason[512] = {0};
+        OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "input dtype %d with output dtype %d is not currently supported.", inputQType_, outputType_) > 0) ? reason : "input dtype %d with output dtype %d is not currently supported.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -278,7 +276,8 @@ ge::graphStatus NsaSelectTiling::ProcessActualSeqLen()
     actualSeqLenFlag_ = true;
     actualLenDims_ = this->isWorkspace_ ? MAX_SIZE_BATCH : context_->actualKVSeqLengths.tensor->GetShapeSize();
     if (actualLenDims_ == 0U) {
-        OP_LOGE(context_->opName, "actual_seq_lengths size[%u] can not be zero in pageAttention scene", actualLenDims_);
+        char reason[512] = {0};
+        OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "actual_seq_lengths size[%u] can not be zero in pageAttention scene", actualLenDims_) > 0) ? reason : "actual_seq_lengths size[%u] can not be zero in pageAttention scene");
         maxActualseq_ = sMax_;
         return ge::GRAPH_SUCCESS;
     }
@@ -292,13 +291,12 @@ ge::graphStatus NsaSelectTiling::ProcessActualSeqLen()
         for (int32_t i = 0; i < loop; i++) {
             int64_t actLen = (actualLenDims_ == 1) ? actualLenData[0] : actualLenData[i];
             OP_CHECK_IF(actLen < 0,
-                OP_LOGE(context_->opName,
-                        "the value of actual_seq_lengths[%d] must be greater than or equal to 0, but it is %ld", i, actLen),
+                ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "the value of actual_seq_lengths[%d] must be greater than or equal to 0, but it is %ld", i, actLen) > 0) ? reason : "the value of actual_seq_lengths[%d] must be greater than or equal to 0, but it is %ld"); }),
                 return ge::GRAPH_FAILED);
             maxActualseq_ = maxActualseq_ < static_cast<uint32_t>(actLen) ? static_cast<uint32_t>(actLen) : maxActualseq_;
         }
     } else if (!this->isWorkspace_) {
-        OP_LOGE(context_->opName, "data of actual_seq_lengths can not be nullptr in pageAttention scene");
+        OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, "data of actual_seq_lengths can not be nullptr in pageAttention scene");
     }
     const int64_t *actualQLenData = context_->actualQSeqLengths.tensor->GetData<int64_t>();
     actualLenQDims_ = context_->actualQSeqLengths.tensor->GetShapeSize();
@@ -306,9 +304,7 @@ ge::graphStatus NsaSelectTiling::ProcessActualSeqLen()
         int64_t actLen = actualQLenData[i];
         OP_CHECK_IF(
             actLen < 1 || actLen > 4, // actualQSeqLengths必须大于0，小于等于4
-            OP_LOGE(context_->opName,
-                    "the value of actual_q_seq_lengths[%u] must be greater than or equal to 1 and  less than 4, but it is %ld", i,
-                    actLen),
+            ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "the value of actual_q_seq_lengths[%u] must be greater than or equal to 1 and  less than 4, but it is %ld", i, actLen) > 0) ? reason : "the value of actual_q_seq_lengths[%u] must be greater than or equal to 1 and  less than 4, but it is %ld"); }),
             return ge::GRAPH_FAILED);
         totalQseq_ += static_cast<uint32_t>(actLen);
         if (actLen > 1) {
@@ -322,10 +318,8 @@ ge::graphStatus NsaSelectTiling::ProcessBlockTable()
 {
     // gm到l1，copynd2nz的srcDValue最大支持65535
     if (numKvHeads_ * headDim_ > COPYND2NZ_SRC_STRIDE_LIMITATION) { // 0: BSH
-        OP_LOGE(context_->opName,
-            "When input kvcache layout is BSH or BSND or TND, the N * D of kvcache is %u, "
-            "exceeds the maximum limit (%u) of the datacopy instruction.",
-            static_cast<uint32_t>(numKvHeads_) * headDim_, COPYND2NZ_SRC_STRIDE_LIMITATION);
+        char reason[512] = {0};
+        OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "When input kvcache layout is BSH or BSND or TND, the N * D of kvcache is %u, exceeds the maximum limit (%u) of the datacopy instruction.", static_cast<uint32_t>(numKvHeads_) * headDim_, COPYND2NZ_SRC_STRIDE_LIMITATION) > 0) ? reason : "When input kvcache layout is BSH or BSND or TND, the N * D of kvcache is %u, exceeds the maximum limit (%u) of the datac");
         return ge::GRAPH_FAILED;
     }
 
@@ -335,10 +329,7 @@ ge::graphStatus NsaSelectTiling::ProcessBlockTable()
 
     OP_CHECK_IF(
         maxActualseq_ > blockSize_ * maxBlockNumPerBatch_,
-        OP_LOGE(context_->opName,
-            "Invalid actual seq length for PA, max actual seq length(%u) "
-            "is larger than blocksize(%ld) * max block num per batch(%u)",
-            maxActualseq_, blockSize_, maxBlockNumPerBatch_),
+        ({ char reason[512] = {0}; OP_LOGE(context_->opName, "The op [%s] received bad params, the reason is: [%s]", context_->opName, (snprintf(reason, sizeof(reason), "Invalid actual seq length for PA, max actual seq length(%u) is larger than blocksize(%ld) * max block num per batch(%u)", maxActualseq_, blockSize_, maxBlockNumPerBatch_) > 0) ? reason : "Invalid actual seq length for PA, max actual seq length(%u) is larger than blocksize(%ld) * max block num per batch(%u)"); }),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -691,7 +682,7 @@ ge::graphStatus NsaSelectTiling::CalcBlockDim()
 ge::graphStatus NsaSelectTiling::ConvertContext(gert::TilingContext &context, NsaSelectAttentionInferContext &nsaContext)
 {
     if (context.GetNodeName() == nullptr) {
-        OP_LOGE("NsaSelectedAttentionInfer", "opName got from TilingContext is nullptr");
+        OP_LOGE("NsaSelectedAttentionInfer", "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     nsaContext.opName = context.GetNodeName();
@@ -701,7 +692,7 @@ ge::graphStatus NsaSelectTiling::ConvertContext(gert::TilingContext &context, Ns
     nsaContext.key.desc = context.GetInputDesc(KEY_INPUT_INDEX);
     nsaContext.key.shape = context.GetInputShape(KEY_INPUT_INDEX);
     OP_CHECK_IF((nsaContext.query.shape == nullptr) || (nsaContext.key.shape == nullptr),
-            OP_LOGE(context.GetNodeName(), "shape of query or shape of key is null."), return ge::GRAPH_FAILED);
+            ({ OP_LOGE(context.GetNodeName(), "The op [%s] missing [%s] parameter", context.GetNodeName(), "key"); }), return ge::GRAPH_FAILED);
 
     nsaContext.value.desc = context.GetInputDesc(VALUE_INPUT_INDEX);
     nsaContext.value.shape = context.GetInputShape(VALUE_INPUT_INDEX);
@@ -716,12 +707,12 @@ ge::graphStatus NsaSelectTiling::ConvertContext(gert::TilingContext &context, Ns
 
     nsaContext.actualQSeqLengths.desc = context.GetOptionalInputDesc(ACT_Q_SEQ_LEN_INPUT_INDEX);
     OP_CHECK_IF(nsaContext.actualQSeqLengths.desc == nullptr,
-            OP_LOGE(context.GetNodeName(), "desc of QLISE  is null."), return ge::GRAPH_FAILED);
+            ({ OP_LOGE(context.GetNodeName(), "The op [%s] missing [%s] parameter", context.GetNodeName(), "qlise"); }), return ge::GRAPH_FAILED);
     nsaContext.actualQSeqLengths.tensor = context.GetOptionalInputTensor(ACT_Q_SEQ_LEN_INPUT_INDEX);
 
     nsaContext.actualKVSeqLengths.desc = context.GetOptionalInputDesc(ACT_KV_SEQ_LEN_INPUT_INDEX);
     OP_CHECK_IF(nsaContext.actualKVSeqLengths.desc == nullptr,
-            OP_LOGE(context.GetNodeName(), "desc of KVLISE  is null."), return ge::GRAPH_FAILED);
+            ({ OP_LOGE(context.GetNodeName(), "The op [%s] missing [%s] parameter", context.GetNodeName(), "kvlise"); }), return ge::GRAPH_FAILED);
     nsaContext.actualKVSeqLengths.tensor = context.GetOptionalInputTensor(ACT_KV_SEQ_LEN_INPUT_INDEX);
 
     nsaContext.attenOut.desc = context.GetOutputDesc(OUTPUT_INDEX);
@@ -729,7 +720,7 @@ ge::graphStatus NsaSelectTiling::ConvertContext(gert::TilingContext &context, Ns
     
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from GE is nullptr"),
+    OP_CHECK_IF(attrs == nullptr, ({ OP_LOGE(context.GetNodeName(), "The op [%s] missing [%s] attribute", context.GetNodeName(), "attribute"); }),
             return ge::GRAPH_FAILED);
     nsaContext.layOut = attrs->GetStr(LAYOUT_ATTR_INDEX);
     nsaContext.numHeads = attrs->GetAttrPointer<int64_t>(NUM_HEADS_ATTR_INDEX);
@@ -831,7 +822,7 @@ Nsa_EXTERN_C ge::graphStatus TilingNsaSelectAttentionInfer(gert::TilingContext *
                                         .tilingKey = 0,
                                         .blockDim = 0};
     if (NsaSelectTiling::ConvertContext(*context, nsaContext) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to nsa select context");
+        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "Error occurred while converting tilingContext to nsa select context");
         return ge::GRAPH_FAILED;
     }
     return TilingNsaSelectAttentionInferAdapter(context, nsaContext, tilingData);

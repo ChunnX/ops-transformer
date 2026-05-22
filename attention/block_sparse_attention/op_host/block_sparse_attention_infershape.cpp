@@ -9,6 +9,7 @@
  */
 
 #include <graph/utils/type_utils.h>
+#include <cstdio>
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 #include "log/error_code.h"
@@ -52,7 +53,7 @@ static constexpr int32_t UNKNOWN_DIMS = -2;
 static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("BlockSparseAttention", "context is nullptr!");
+        OP_LOGE("BlockSparseAttention", "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", "context is nullptr!");
         return ge::GRAPH_FAILED;
     }
     
@@ -111,16 +112,19 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
     // 验证Q layout (只支持TND和BNSD)
     if (qLayout == "TND") {
         if (queryShape->GetDimNum() != DIM_TND) {
-            OP_LOGE(context->GetNodeName(), "Layout TND, queryDims(%zu) must be 3!", queryShape->GetDimNum());
+            char reason[512] = {0};
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "Layout TND, queryDims(%zu) must be 3!", queryShape->GetDimNum()) > 0) ? reason : "Layout TND, queryDims(%zu) must be 3!");
             return ge::GRAPH_FAILED;
         }
     } else if (qLayout == "BNSD") {
         if (queryShape->GetDimNum() != DIM_BNSD) {
-            OP_LOGE(context->GetNodeName(), "Layout BNSD, queryDims(%zu) must be 4!", queryShape->GetDimNum());
+            char reason[512] = {0};
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "Layout BNSD, queryDims(%zu) must be 4!", queryShape->GetDimNum()) > 0) ? reason : "Layout BNSD, queryDims(%zu) must be 4!");
             return ge::GRAPH_FAILED;
         }
     } else {
-        OP_LOGE(context->GetNodeName(), "Unsupported Q layout: %s. Only TND and BNSD are supported.", qInputLayoutPtr);
+        char reason[512] = {0};
+        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "Unsupported Q layout: %s. Only TND and BNSD are supported.", qInputLayoutPtr) > 0) ? reason : "Unsupported Q layout: %s. Only TND and BNSD are supported.");
         return ge::GRAPH_FAILED;
     }
     
@@ -129,16 +133,15 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
     bool isKvBNSD = (kvLayout == "BNSD");
     
     if (isQBNSD != isKvBNSD) {
-        OP_LOGE(context->GetNodeName(), 
-                "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
-                "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str()) > 0) ? reason : "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. Q layout: %s, KV layout: %s");
         return ge::GRAPH_FAILED;
     }
     
     // 验证KV layout
     if (kvLayout == "TND") {
         if (keyShape->GetDimNum() != DIM_TND || valueShape->GetDimNum() != DIM_TND) {
-            OP_LOGE(context->GetNodeName(), "Layout TND, KV dims must be 3!");
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "Layout TND, KV dims must be 3!");
             return ge::GRAPH_FAILED;
         }
         
@@ -147,17 +150,18 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
         int64_t kvD = keyShape->GetDim(TND_DIM_D);
         
         if (*numKvHeadsPtr != 0 && kvN != *numKvHeadsPtr) {
-            OP_LOGE(context->GetNodeName(), "KV heads mismatch in TND format: %ld != %ld", kvN, *numKvHeadsPtr);
+            char reason[512] = {0};
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "KV heads mismatch in TND format: %ld != %ld", kvN, *numKvHeadsPtr) > 0) ? reason : "KV heads mismatch in TND format: %ld != %ld");
             return ge::GRAPH_FAILED;
         }
         
         if (valueShape->GetDim(TND_DIM_D) != kvD) {
-            OP_LOGE(context->GetNodeName(), "K and V head dimension mismatch in TND format");
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "K and V head dimension mismatch in TND format");
             return ge::GRAPH_FAILED;
         }
     } else if (kvLayout == "BNSD") {
         if (keyShape->GetDimNum() != DIM_BNSD || valueShape->GetDimNum() != DIM_BNSD) {
-            OP_LOGE(context->GetNodeName(), "Layout BNSD, KV dims must be 4!");
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "Layout BNSD, KV dims must be 4!");
             return ge::GRAPH_FAILED;
         }
         
@@ -167,16 +171,18 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
         int64_t kvD = keyShape->GetDim(BNSD_DIM_D);
         
         if (*numKvHeadsPtr != 0 && kvN != *numKvHeadsPtr) {
-            OP_LOGE(context->GetNodeName(), "KV heads mismatch in BNSD format: %ld != %ld", kvN, *numKvHeadsPtr);
+            char reason[512] = {0};
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "KV heads mismatch in BNSD format: %ld != %ld", kvN, *numKvHeadsPtr) > 0) ? reason : "KV heads mismatch in BNSD format: %ld != %ld");
             return ge::GRAPH_FAILED;
         }
         
         if (valueShape->GetDim(BNSD_DIM_D) != kvD) {
-            OP_LOGE(context->GetNodeName(), "K and V head dimension mismatch in BNSD format");
+            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "K and V head dimension mismatch in BNSD format");
             return ge::GRAPH_FAILED;
         }
     } else {
-        OP_LOGE(context->GetNodeName(), "Unsupported KV layout: %s. Only TND format is supported.", kvInputLayoutPtr);
+        char reason[512] = {0};
+        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "Unsupported KV layout: %s. Only TND format is supported.", kvInputLayoutPtr) > 0) ? reason : "Unsupported KV layout: %s. Only TND format is supported.");
         return ge::GRAPH_FAILED;
     }
     
@@ -196,7 +202,8 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
         (*softmaxLseShape)[BNSD_DIM_S] = queryShape->GetDim(BNSD_DIM_S);
         (*softmaxLseShape)[BNSD_DIM_D] = LSE_DIM_D;
     } else {
-        OP_LOGE(context->GetNodeName(), "Unexpected Q layout in softmaxLse shape calculation: %s", qInputLayoutPtr);
+        char reason[512] = {0};
+        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "Unexpected Q layout in softmaxLse shape calculation: %s", qInputLayoutPtr) > 0) ? reason : "Unexpected Q layout in softmaxLse shape calculation: %s");
         return ge::GRAPH_FAILED;
     }
     
