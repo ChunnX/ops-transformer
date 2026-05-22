@@ -183,7 +183,7 @@ public:
          GemmCoord actualBlockShape,
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
          Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
-        AscendC::GlobalTensor<ElementIndex> sparseIndex, int blockNum=0)
+        AscendC::GlobalTensor<ElementIndex> sparseIndex, int blockNum=0, int actualRownum=0)
     {
         static_assert(quant_mode == 0 || quant_mode == 1);
         uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;

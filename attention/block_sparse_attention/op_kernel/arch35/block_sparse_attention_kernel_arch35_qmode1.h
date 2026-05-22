@@ -64,8 +64,9 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
 
-    using LayoutQ = layout::RowMajor;
-    using LayoutK = layout::ColumnMajor;
+    using LayoutQ = layout::ColumnMajor;
+    using LayoutK = layout::RowMajor;
+    //qmode为1的时候设置为RowMajor，原本是Q*KT，现在改成了(K * QT)T，所以LayoutS是RowMajor
     using LayoutS = layout::RowMajor;
     using LayoutP = layout::RowMajor;
     using LayoutV = layout::RowMajor;
