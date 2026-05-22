@@ -346,8 +346,8 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
     }
     mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
     mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
-    // mm_.Iterate();
-    // mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
+    mm_.Iterate();
+    mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
 }
 } // Mc2GroupedMatmul
 #endif // MC2_GQMM_CUBE_ON_THE_FLY_H
