@@ -44,6 +44,6 @@ namespace ops {
     };
 
     ge::graphStatus AllGatherMatmulCommonInferShape(gert::InferShapeContext* context, const size_t gatherIndex);
-    ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context);
+    __attribute__((visibility("default"))) ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context);
 } // namespace ops
 #endif // MC2_COMMON_INFERSHAPE_H_

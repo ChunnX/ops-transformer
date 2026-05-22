@@ -255,6 +255,7 @@ function(gen_cust_proto_symbol)
   )
   target_link_libraries(cust_proto
     PRIVATE
+    cust_opmaster
     c_sec
     -Wl,--no-as-needed
     register
