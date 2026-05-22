@@ -1712,7 +1712,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
 template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
 {
-    return ;
     if ASCEND_IS_AIV { // 全aiv处理
         if constexpr (IsNeedReduceScatter) {
             ReduceScatterTrans();
@@ -1724,7 +1723,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
             AlltoAllBuffInitAndMaskCal();
             LocalWindowCopy();
         } else if(coreIdx_ < aivNum_ + urma_core_num) {
-            URMA_Core_Process(coreIdx_ - aivNum_);
+            // URMA_Core_Process(coreIdx_ - aivNum_);
         }
     }
 }
