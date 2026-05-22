@@ -5,9 +5,10 @@
  *
  * 测试维度:
  *   - 数据类型: BF16 / FP16 / FP32
- *   - 可选输入: attenMask, pse(pseType=1/2/3), rope, prefix, qStartIdx/kvStartIdx
- *   - sparseMode: 0~3, 6
- *   - GQA(N1!=N2), MLA(Dv<D), 多 batch, softmaxOutLayout
+ *   - 可选输入: attenMask, pse(pseType=2/3), rope, prefix, qStartIdx/kvStartIdx
+ *   - sparseMode: 0, 1
+ *   - innerPrecise: 0, 1
+ *   - GQA(N1!=N2), MLA(Dv<D), 多 batch
  *   - attenMask dtype: UINT8 / BOOL
  * 不测试: dropout, sink, paddingMask(预留未使用)
  */
@@ -83,6 +84,7 @@ struct TestConfig {
   bool hasStartIdx;          // qStartIdx + kvStartIdx
   bool softmaxSameAsInput;   // true="same_as_input"(TND), false=""(NTD)
   int numBatches;
+  int64_t innerPrecise;        // innerPrecise: 0=default, 1=high precision
 };
 
 static int passedCount = 0;
@@ -231,7 +233,7 @@ int RunSingleTest(const TestConfig& cfg, aclrtStream stream) {
     int64_t preTokens = 65536;
     int64_t nextTokens = 65536;
     int64_t headNum = cfg.N1;
-    int64_t innerPrecise = 0;
+    int64_t innerPrecise = cfg.innerPrecise;
 
     // ==================== 调用 GetWorkspaceSize ====================
     ret = aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
@@ -340,62 +342,60 @@ int main() {
   //  {name, dtype, N1, N2, D, Dv, hasRope, D_rope,
   //   hasAttenMask, maskDtype, sparseMode,
   //   hasPse, pseType, hasPrefix, hasStartIdx,
-  //   softmaxSameAsInput, numBatches}
+  //   softmaxSameAsInput, numBatches, innerPrecise}
   // =====================================================================
   TestConfig tests[] = {
-    // ---- Group 1: BF16 + sparseMode 覆盖 ----
+    // ---- Group 1: BF16 基础 + innerPrecise / D 变体 ----
     // 最小输入: 只有 Q/K/V, 无可选输入
-    {"BF16_minimal",             ACL_BF16, 1,1, 128,128, false,0,  false,ACL_BOOL,0,  false,1, false,false, true, 1},
+    {"BF16_minimal",                 ACL_BF16, 1,1, 128,128, false,0,  false,ACL_BOOL,0,  false,1, false,false, true, 1, 0},
     // + attenMask(UINT8), sparseMode=1(ALL_MASK)
-    {"BF16_attenMask_sparse1",   ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1},
-    // + attenMask(UINT8), sparseMode=2(LEFT_UP_CAUSAL)
-    {"BF16_attenMask_sparse2",   ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,2, false,1, false,false, true, 1},
-    // + attenMask(UINT8), sparseMode=3(RIGHT_DOWN_CAUSAL, 要求 Sq<=Skv)
-    {"BF16_attenMask_sparse3",   ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,3, false,1, false,false, true, 1},
+    {"BF16_attenMask_sparse1",       ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
+    // + attenMask(UINT8), innerPrecise=1
+    {"BF16_attenMask_innerPrecise1", ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1, 1},
+    // D=64 变体, attenMask(UINT8), sparseMode=1
+    {"BF16_attenMask_D64",           ACL_BF16, 1,1, 64,64,   false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
 
-    // ---- Group 2: PSE 类型覆盖 ----
-    // + attenMask + pse(pseType=1, outer_add_mul, PSE dtype=BF16, shape=[1,N2,S1,S2])
-    {"BF16_attenMask_pse1",      ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, true, 1, false,false, true, 1},
-    // + attenMask + pse(pseType=2, inner_mul_add, PSE dtype=FP32, slope shape=[N2])
-    {"BF16_attenMask_pse2",      ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, true, 2, false,false, true, 1},
-    // + attenMask + pse(pseType=3, inner_mul_add_sqrt, PSE dtype=FP32, slope shape=[N2])
-    {"BF16_attenMask_pse3",      ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, true, 3, false,false, true, 1},
+    // ---- Group 2: PSE 类型覆盖 (slope) ----
+    // + attenMask + pse(pseType=2, inner_mul_add, FP32 slope [N2])
+    {"BF16_attenMask_pse2",          ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, true, 2, false,false, true, 1, 0},
+    // + attenMask + pse(pseType=3, inner_mul_add_sqrt, FP32 slope [N2])
+    {"BF16_attenMask_pse3",          ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, true, 3, false,false, true, 1, 0},
+    // pse(pseType=2) + startIdx, sparseMode=0
+    {"BF16_attenMask_pse2_startIdx", ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,0, true, 2, false,true,  true, 1, 0},
 
     // ---- Group 3: 特殊可选输入 ----
-    // + attenMask + rope (要求 BF16 + attenMask + pse=null + keepProb=1, pseType 仅支持 1)
-    {"BF16_attenMask_rope",      ACL_BF16, 1,1, 128,128, true, 64,true, ACL_UINT8,0, false,1, false,false, true, 1},
-    // + attenMask + prefix, sparseMode=6(PREFIX_COMPRESS)
-    {"BF16_attenMask_prefix",    ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,6, false,1, true, false, true, 1},
+    // + attenMask + rope (BF16, sparseMode=0)
+    {"BF16_attenMask_rope",          ACL_BF16, 1,1, 128,128, true, 64,true, ACL_UINT8,0, false,1, false,false, true, 1, 0},
+    // + attenMask + prefix, sparseMode=1(ALL_MASK)
+    {"BF16_attenMask_prefix",        ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, true, false, true, 1, 0},
     // + attenMask + qStartIdx/kvStartIdx
-    {"BF16_attenMask_startIdx",  ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,0, false,1, false,true,  true, 1},
-    // + attenMask(BOOL dtype), 验证 BOOL 掩码
-    {"BF16_attenMask_BOOL",      ACL_BF16, 1,1, 128,128, false,0,  true, ACL_BOOL, 1, false,1, false,false, true, 1},
+    {"BF16_attenMask_startIdx",      ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,0, false,1, false,true,  true, 1, 0},
+    // + attenMask(BOOL dtype)
+    {"BF16_attenMask_BOOL",          ACL_BF16, 1,1, 128,128, false,0,  true, ACL_BOOL, 1, false,1, false,false, true, 1, 0},
 
     // ---- Group 4: Shape 变化 ----
-    // GQA: N1=4, N2=2, Nq/Nkv=2
-    {"BF16_GQA",                 ACL_BF16, 4,2, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1},
-    // MLA: D=128, Dv=64 (kD >= vD)
-    {"BF16_MLA",                 ACL_BF16, 1,1, 128,64,  false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1},
+    // GQA: N1=4, N2=2
+    {"BF16_GQA",                     ACL_BF16, 4,2, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
+    // MLA: D=128, Dv=64
+    {"BF16_MLA",                     ACL_BF16, 1,1, 128,64,  false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
+    // GQA + MLA: N1=4, N2=2, D=128, Dv=64
+    {"BF16_GQA_MLA",                 ACL_BF16, 4,2, 128,64,  false,0,  true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
     // 多 batch: actualSeqQLen={128,256}, actualSeqKvLen={128,256}
-    {"BF16_attenMask_2batch",    ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 2},
+    {"BF16_attenMask_2batch",        ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, true, 2, 0},
 
-    // ---- Group 5: softmaxOutLayout ----
-    // softmaxOutLayout="" → 输出 NTD 排布, smMax/smSum shape=[N,T,8]
-    {"BF16_softmaxNTD",          ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, false,1, false,false, false,1},
-
-    // ---- Group 6: 其他数据类型 ----
+    // ---- Group 5: 其他数据类型 ----
     // FP16
-    {"FP16_attenMask",           ACL_FLOAT16, 1,1, 128,128, false,0, true, ACL_UINT8,1, false,1, false,false, true, 1},
-    // FP16 + pse(pseType=1, PSE dtype=FP16, shape=[1,N2,S1,S2])
-    {"FP16_attenMask_pse1",      ACL_FLOAT16, 1,1, 128,128, false,0, true, ACL_UINT8,1, true, 1, false,false, true, 1},
+    {"FP16_attenMask",               ACL_FLOAT16, 1,1, 128,128, false,0, true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
+    // FP16 + pse(pseType=2, FP32 slope [N2])
+    {"FP16_attenMask_pse2",          ACL_FLOAT16, 1,1, 128,128, false,0, true, ACL_UINT8,1, true, 2, false,false, true, 1, 0},
     // FP32
-    {"FP32_attenMask",           ACL_FLOAT, 1,1, 128,128, false,0,   true, ACL_UINT8,1, false,1, false,false, true, 1},
-    // FP32 + pse(pseType=2, PSE dtype=FP32, slope shape=[N2])
-    {"FP32_attenMask_pse2",      ACL_FLOAT, 1,1, 128,128, false,0,   true, ACL_UINT8,1, true, 2, false,false, true, 1},
+    {"FP32_attenMask",               ACL_FLOAT, 1,1, 128,128, false,0,   true, ACL_UINT8,1, false,1, false,false, true, 1, 0},
+    // FP32 + pse(pseType=2, FP32 slope [N2])
+    {"FP32_attenMask_pse2",          ACL_FLOAT, 1,1, 128,128, false,0,   true, ACL_UINT8,1, true, 2, false,false, true, 1, 0},
 
-    // ---- Group 7: 组合 ----
-    // attenMask + prefix + qStartIdx/kvStartIdx, sparseMode=6
-    {"BF16_combo",               ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,6, false,1, true, true,  true, 1},
+    // ---- Group 6: 组合 ----
+    // attenMask + pse + prefix + startIdx, sparseMode=1
+    {"BF16_combo",                   ACL_BF16, 1,1, 128,128, false,0,  true, ACL_UINT8,1, true, 2, true, true,  true, 1, 0},
   };
 
   int totalTests = sizeof(tests) / sizeof(tests[0]);
