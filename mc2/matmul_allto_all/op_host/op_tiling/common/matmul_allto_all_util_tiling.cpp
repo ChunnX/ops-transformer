@@ -65,11 +65,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndValidateRankSize(const gert::Til
  * @return ge::graphStatus
  */
 ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
-                                                                const TilingContextInfo &contextInfo, uint8_t &commMode)
+                                                                const TilingContextInfo &contextInfo,
+                                                                const OpAttrIndexSchema &indexSchema, uint8_t &commMode)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
-    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    const char *commModeStr = attrs->GetAttrPointer<char>(indexSchema.commMode);
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
 
@@ -128,10 +129,13 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    const char *commMode = attrs->GetAttrPointer<char>(indexSchema.commMode);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE(opName, "The input attr group is null pointer."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE(opName, "The input attr group is empty string."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
     // 判断group是否超过127
     size_t groupLen = strlen(group);
