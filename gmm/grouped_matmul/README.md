@@ -227,11 +227,6 @@ $$
 | actType | 属性 | 激活函数类型：0=NONE / 1=RELU / 2=GELU_TANH / 3=GELU_ERR_FUNC(不支持) / 4=FAST_GELU / 5=SILU | INT64 | — |
 | groupListOptional | 可选输入 | 描述分组轴方向各组大小分布的数组 | INT64 | ND |
 | tuningConfigOptional | 可选输入 | [0]=预期 token 数(优化 tiling)，[1]=是否使能 weight 亲核格式(A8W4)，[2]=允许额外内存上限 | INT64 | — |
-| activationInputOptional | 可选输入 | 激活函数反向输入，当前仅支持 nullptr | — | — |
-| activationQuantScaleOptional | 可选输入 | 当前仅支持 nullptr | — | — |
-| activationQuantOffsetOptional | 可选输入 | 当前仅支持 nullptr | — | — |
-| activationFeatureOutOptional | 输出 | 激活函数输入数据，当前仅支持 nullptr | — | — |
-| dynQuantScaleOutOptional | 输出 | 当前仅支持 nullptr | — | — |
 
 > - <sup>1</sup>：仅 Ascend 950PR/950DT 不支持的数据类型
 > - <sup>2</sup>：仅 Atlas A3/A2 不支持的数据类型
@@ -239,7 +234,7 @@ $$
 
 ### 4.2 非量化场景参数
 
-非量化场景下，以下输入参数必须置空：`scaleOptional`、`offsetOptional`、`antiquantScaleOptional`、`antiquantOffsetOptional`、`perTokenScaleOptional`、`activationInputOptional`、`activationQuantScaleOptional`、`activationQuantOffsetOptional`。
+非量化场景下，以下输入参数必须置空：`scaleOptional`、`offsetOptional`、`antiquantScaleOptional`、`antiquantOffsetOptional`、`perTokenScaleOptional`。
 
 | 参数名 | 非量化特有说明 | 数据类型 |
 |--------|------|----------|
@@ -247,7 +242,7 @@ $$
 
 ### 4.3 伪量化场景参数
 
-伪量化场景下，以下参数必须置空：`scaleOptional`、`offsetOptional`、`perTokenScaleOptional`、`activationInputOptional`、`activationQuantScaleOptional`、`activationQuantOffsetOptional`。
+伪量化场景下，以下参数必须置空：`scaleOptional`、`offsetOptional`、`perTokenScaleOptional`。
 
 | 参数名 | 伪量化特有说明 | 数据类型 |
 |--------|------|----------|
@@ -259,7 +254,7 @@ $$
 
 ### 4.4 全量化场景参数
 
-全量化场景下，以下参数必须置空：`antiquantScaleOptional`、`antiquantOffsetOptional`、`activationInputOptional`。
+全量化场景下，以下参数必须置空：`antiquantScaleOptional`、`antiquantOffsetOptional`。
 
 | 参数名 | 全量化特有说明 | 数据类型 |
 |--------|------|----------|
@@ -267,6 +262,11 @@ $$
 | offsetOptional | 量化偏移量（仅静态量化使用） | FLOAT |
 | perTokenScaleOptional | x 侧的 per-token 量化缩放因子（仅动态量化/MX/G-B 使用） | FLOAT、FLOAT8_E8M0<sup>2</sup> |
 | biasOptional | 可选偏置项，支持 INT32/BFLOAT16/FLOAT16/FLOAT32 | FLOAT、FLOAT16、INT32、BFLOAT16<sup>2</sup> |
+| activationInputOptional | 可选输入 | 激活函数反向输入，当前仅支持 nullptr | — | — |
+| activationQuantScaleOptional | 可选输入 | 当前仅支持 nullptr | — | — |
+| activationQuantOffsetOptional | 可选输入 | 当前仅支持 nullptr | — | — |
+| activationFeatureOutOptional | 输出 | 激活函数输入数据，当前仅支持 nullptr | — | — |
+| dynQuantScaleOutOptional | 输出 | 当前仅支持 nullptr | — | — |
 
 ---
 

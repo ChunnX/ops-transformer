@@ -158,11 +158,6 @@ aclnnStatus aclnnGroupedMatmulV5(
 | actType | 输入 | 激活函数类型 | `0`=NONE / `1`=RELU / `2`=GELU_TANH / `3`=GELU_ERR_FUNC(不支持) / `4`=FAST_GELU / `5`=SILU | — | — | — | — |
 | groupListOptional | 可选输入 | 分组轴方向各组大小分布 | 格式取决于 groupListType | INT64 | ND | 1~2 | √ |
 | tuningConfigOptional | 可选输入 | [0]=预期 token 数（优化 tiling）；[1]=A8W4 场景是否使能 weight NZ 格式；[2]=允许额外内存上限。兼容历史版本，不用时传 nullptr | INT64 | — | 3 | — |
-| activationInputOptional | 可选输入 | 激活函数反向输入，当前仅支持 nullptr | — | — | — | — | — |
-| activationQuantScaleOptional | 可选输入 | 当前仅支持 nullptr | — | — | — | — | — |
-| activationQuantOffsetOptional | 可选输入 | 当前仅支持 nullptr | — | — | — | — | — |
-| activationFeatureOutOptional | 输出 | 激活函数输入数据，当前仅支持 nullptr | — | — | — | — | — |
-| dynQuantScaleOutOptional | 输出 | 当前仅支持 nullptr | — | — | — | — | — |
 | workspaceSize | 输出 | 需要在 Device 侧申请的 workspace 大小（字节） | — | — | — | — | — |
 | executor | 输出 | 算子执行器，包含计算流程 | — | — | — | — | — |
 
@@ -262,6 +257,19 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 | perTokenScaleOptional | x 侧 pergroup 缩放因子 | FLOAT32 |
 
 > `biasOptional`、`offsetOptional` 必须传空。
+
+<a id="545-激活函数辅助参数"></a>
+
+#### 5.4.5 激活函数辅助参数
+
+以下参数在全量化场景下用于激活函数相关计算（当前仅支持传空）：
+
+| 参数名 | 输入/输出 | 描述 |
+|--------|:---:|------|
+| activationQuantScaleOptional | 输入 | 激活函数量化缩放因子（预留参数） |
+| activationQuantOffsetOptional | 输入 | 激活函数量化偏移量（预留参数） |
+| activationFeatureOutOptional | 输出 | 激活函数前向输入数据 |
+| dynQuantScaleOutOptional | 输出 | 动态量化缩放因子 |
 
 <a id="55-aclnngroupedmatmulv5-参数"></a>
 
