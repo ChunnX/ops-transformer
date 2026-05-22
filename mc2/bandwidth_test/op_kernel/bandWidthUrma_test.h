@@ -82,71 +82,71 @@ private:
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
     
                                        
-    // __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
-    // {
-    //     if (rankId == epRankId_) {
-    //         return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
-    //     }
-    //     uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-    //     return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE; // + winDataSizeOffset_;
-    // }
-
-    // __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
-    // {
-    //     if (rankId == epRankId_) {
-    //         return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
-    //     }
-    //     uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-    //     return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
-    // }
-
-    // // 获取指定 rank 的通信窗口数据区地址
-    // __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
-    // {
-    //     return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
-    //             UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
-    // }
-
-    // // 获取指定 rank 的通信窗口状态区地址
-    // __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
-    // {
-    //    return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
-    //             UB_ALIGN  * rankId;
-    // }
-
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
         if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
         }
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE; // + winDataSizeOffset_;
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
         if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
         }
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
     }
 
-        // 获取指定 rank 的通信窗口数据区地址
+    // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + STATE_SIZE + winDataSizeOffset_;
-        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
+        return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+                UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
-        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+       return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
+                UB_ALIGN  * rankId;
     }
+
+    // __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
+    // {
+    //     if (rankId == epRankId_) {
+    //         return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+    //     }
+    //     uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
+    //     return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+    // }
+
+    // __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
+    // {
+    //     if (rankId == epRankId_) {
+    //         return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+    //     }
+    //     uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
+    //     return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+    // }
+
+    //     // 获取指定 rank 的通信窗口数据区地址
+    // __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
+    // {
+    //     //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
+    //     return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + STATE_SIZE + winDataSizeOffset_;
+    //     //return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
+    // }
+
+    // // 获取指定 rank 的通信窗口状态区地址
+    // __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
+    // {
+    //     // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
+    //     return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
+    //     //return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+    // }
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<XType> xGMTensor_;              // 输入数据 x
