@@ -14,6 +14,7 @@
  */
 
 #include "fused_infer_attention_score_tiling_impl.h"
+#include <cstdio>
 
 #include "log/log.h"
 #include "log/error_code.h"
@@ -31,7 +32,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetPlatMemoryInfo(gert::Tili
                                                                       const FiaTilingInfo &fiaInfo)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo.opName, "The platformInfoPtr is null!"),
+    OP_CHECK_IF(platformInfoPtr == nullptr, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The platformInfoPtr is null!"); }),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -67,13 +68,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetEmptyTensor(gert::TilingC
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
     initOutputParams.set_needInit(1);
 
-    OP_CHECK_IF(GenTilingKey(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "GenTilingKey fail."),
+    OP_CHECK_IF(GenTilingKey(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "GenTilingKey fail."); }),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(SetBlockDim(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "SetBlockDim fail."),
+    OP_CHECK_IF(SetBlockDim(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "SetBlockDim fail."); }),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(GetWorkspace(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "GetWorkspace fail."),
+    OP_CHECK_IF(GetWorkspace(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "GetWorkspace fail."); }),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(SetTilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "SetTilingData fail."),
+    OP_CHECK_IF(SetTilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "SetTilingData fail."); }),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -268,9 +269,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
     sOuterFactor_ = SOUTER_64;
     sInnerFactor_ = SINNER_128;
     OP_CHECK_IF(SetMM1TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "set bmm1 tiling data fail."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "set bmm1 tiling data fail."); }), return ge::GRAPH_FAILED);
     OP_CHECK_IF(SetMM2TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "set bmm2 tiling data fail."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "set bmm2 tiling data fail."); }), return ge::GRAPH_FAILED);
 
     if (fiaInfo.vHeadDim <= DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128) {
         bool checkDtype = fiaInfo.quantMode == FiaQuantMode::NO_QUANT;
@@ -1085,7 +1086,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
         SplitDequant(fiaInfo);
     } else {
         OP_CHECK_IF(AdjustSinnerAndSouter(context, fiaInfo) != ge::GRAPH_SUCCESS,  // 确认souter/sinner
-                    OP_LOGE(fiaInfo.opName, "Get sinner and souter fail!"), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Get sinner and souter fail!"); }), return ge::GRAPH_FAILED);
 
         dnFlag_ = CheckEnableDN(fiaInfo);
         isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(fiaInfo);
@@ -1516,14 +1517,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GetWorkspace(gert::TilingCon
         workspace = platformInfo_.defaultSysWorkspaceSize;
     } else if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         OP_CHECK_IF(SetWorkspaceAntiQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Get workspace failed ."); }), return ge::GRAPH_FAILED);
 
     } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
         OP_CHECK_IF(SetWorkspacePTQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Get workspace failed ."); }), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(SetWorkspaceNormal(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Get workspace failed ."); }), return ge::GRAPH_FAILED);
     }
 
     OP_LOGI(fiaInfo.opName, "Workspaces: %ld", workspace);
@@ -1554,7 +1555,7 @@ bool FusedInferAttentionScoreTilingImpl::EnableMTE2BmmPipe(const FiaTilingInfo &
         baseN = 128;  //128
     }
     bool res = (bmm.SetFixSplit(baseM, baseN, baseK) == ge::GRAPH_SUCCESS);
-    OP_CHECK_IF(!res, OP_LOGE(fiaInfo.opName, "set fix split fail"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!res, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "set fix split fail"); }), return ge::GRAPH_FAILED);
     //check
     res = bmm.GetTiling(bmmTilingData) != -1;
     return res;
@@ -1594,7 +1595,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMM1TilingData(gert::Tilin
         qkHeadDim = fiaInfo.qkHeadDim + fiaInfo.ropeHeadDim;
     }
     int32_t ret = bmm1.SetShape(sOuterFactor_, sInnerFactor_, qkHeadDim);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Bmm1 set shape space failed"),
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Bmm1 set shape space failed"); }),
                 return ge::GRAPH_FAILED);
     if ((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
         (fiaInfo.qLayout == FiaLayout::TND)) {
@@ -1617,7 +1618,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMM1TilingData(gert::Tilin
     }
     bmm1.SetBias(false);
     ret = bmm1.SetBufferSpace(platformInfo_.l1Size, platformInfo_.l0cSize);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Bmm1 set buffer space failed"),
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Bmm1 set buffer space failed"); }),
                 return ge::GRAPH_FAILED);
     if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT && fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         ret = bmm1.SetFixSplit(sOuterFactor_, SINNER_128);
@@ -1627,7 +1628,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMM1TilingData(gert::Tilin
     TCubeTiling &bmm1TilingData = pfaTilingData_.bmm1TilingDataRect;
 
     ret = bmm1.GetTiling(bmm1TilingData);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Bmm1 get tiling failed, ret:%d", ret),
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Bmm1 get tiling failed, ret:%d", ret) > 0) ? reason : "Bmm1 get tiling failed, ret:%d"); }),
                 return ge::GRAPH_FAILED);
     uint32_t baseN = std::min(SINNER_128, sInnerFactor_);
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
@@ -1648,7 +1649,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMM1TilingData(gert::Tilin
         bmm1TilingData.set_depthB1(DOUBLE_BUFFER_NUM);
     }
 
-    OP_CHECK_IF(!EnableMTE2BmmPipe(fiaInfo, bmm1, bmm1TilingData), OP_LOGE(fiaInfo.opName, "Bmm1 mte2 bmm pipe fail"),
+    OP_CHECK_IF(!EnableMTE2BmmPipe(fiaInfo, bmm1, bmm1TilingData), ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Bmm1 mte2 bmm pipe fail"); }),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1667,7 +1668,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMM2TilingData(gert::Tilin
     bmm2.SetCType(matmul_tiling::TPosition::VECCALC, matmul_tiling::CubeFormat::ND_ALIGN, bmm2OutputType);
 
     int32_t ret = bmm2.SetShape(sOuterFactor_, fiaInfo.vHeadDim, sInnerFactor_);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Bmm2 set shape failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Bmm2 set shape failed"); }), return ge::GRAPH_FAILED);
 
     if ((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
         (fiaInfo.qLayout == FiaLayout::TND)) {
@@ -1687,7 +1688,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMM2TilingData(gert::Tilin
     bmm2.SetBias(false);
     bmm2.SetBufferSpace(platformInfo_.l1Size, platformInfo_.l0cSize);
     ret = bmm2.GetTiling(pfaTilingData_.bmm2TilingDataRect);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Bmm2 get tiling failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Bmm2 get tiling failed"); }), return ge::GRAPH_FAILED);
 
     pfaTilingData_.bmm2TilingDataRect.set_shareMode(0);
     pfaTilingData_.bmm2TilingDataRect.set_shareL1Size(platformInfo_.l1Size);
@@ -2141,13 +2142,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingCo
     OP_LOGI(fiaInfo.opName, "Tiling Data context GetCapacity: %lu.", cap);
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
         PFAFullQuantTilingData *tiling = context_->GetTilingData<PFAFullQuantTilingData>();
-        OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo.opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(tiling == nullptr, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The tiling data is nullptr"); }), return ge::GRAPH_FAILED);
         tiling->MigrateFromLegacyFormat(pfaTilingData_);
     } else {
         PrintAllTilingData(fiaInfo);
         FlashAttentionScoreSimplifiedTilingData *tiling =
             context->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
-        OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo.opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(tiling == nullptr, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The tiling data is nullptr"); }), return ge::GRAPH_FAILED);
         *tiling = faRunTilingAdapter_;
     }
     return ge::GRAPH_SUCCESS;
@@ -2258,34 +2259,34 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
                                                                const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF(SetPlatMemoryInfo(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Set plat memory info fail."); }), return ge::GRAPH_FAILED);
 
     if (fiaInfo.emptyTensorFlag) {
         OP_CHECK_IF(SetEmptyTensor(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Set emptyt ensor fail."), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Set emptyt ensor fail."); }), return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
     InitImplParam(fiaInfo);
 
     OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Excute split policy fail."); }), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Compute tilingData fail."),
+    OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Compute tilingData fail."); }),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(GenTilingKey(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(fiaInfo.opName, "Generate tilingKey fail."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Generate tilingKey fail."); }), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(SetBlockDim(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Set blockDim fail."),
+    OP_CHECK_IF(SetBlockDim(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Set blockDim fail."); }),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(GetWorkspace(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Get workspace fail."),
+    OP_CHECK_IF(GetWorkspace(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Get workspace fail."); }),
                 return ge::GRAPH_FAILED);
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    OP_CHECK_IF(SetTilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Set tiling data fail."),
+    OP_CHECK_IF(SetTilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Set tiling data fail."); }),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

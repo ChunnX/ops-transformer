@@ -30,7 +30,7 @@ namespace optiling {
 ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
+        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 

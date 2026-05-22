@@ -13,6 +13,7 @@
  * \brief
  */
 #include "prompt_flash_attention_tiling_v2.h"
+#include <cstdio>
 #include <queue>
 
 #include "register/op_def_registry.h"
@@ -805,8 +806,8 @@ bool PromptFlashAttentionTilingV2::CheckInputDimAndHeadNum(ContextParamsForPFATi
             keyShapeHeadNum = static_cast<uint64_t>(keyShape->GetStorageShape().GetDim(nIdx));
             valueShapeHeadNum = static_cast<uint64_t>(valueShape->GetStorageShape().GetDim(nIdx));
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%zu), k(%zu), v(%zu) must be 4 for BNSD or BSND format!",
-                queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%zu), k(%zu), v(%zu) must be 4 for BNSD or BSND format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%zu), k(%zu), v(%zu) must be 4 for BNSD or BSND format!");
             return false;
         }
     } else if ((inputLayout == InputLayout::TND) && (!enablePA)) {
@@ -815,8 +816,8 @@ bool PromptFlashAttentionTilingV2::CheckInputDimAndHeadNum(ContextParamsForPFATi
             keyShapeHeadNum = static_cast<uint64_t>(keyShape->GetStorageShape().GetDim(nIdx));
             valueShapeHeadNum = static_cast<uint64_t>(valueShape->GetStorageShape().GetDim(nIdx));
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%zu), k(%zu), v(%zu) must be 3 for TND format!",
-                queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%zu), k(%zu), v(%zu) must be 3 for TND format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%zu), k(%zu), v(%zu) must be 3 for TND format!");
             return false;
         }
     } else if ((inputLayout == InputLayout::NTD) && (!enablePA)) {
@@ -825,8 +826,8 @@ bool PromptFlashAttentionTilingV2::CheckInputDimAndHeadNum(ContextParamsForPFATi
             keyShapeHeadNum = static_cast<uint64_t>(keyShape->GetStorageShape().GetDim(nIdx));
             valueShapeHeadNum = static_cast<uint64_t>(valueShape->GetStorageShape().GetDim(nIdx));
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%zu), k(%zu), v(%zu) must be 3 for NTD format!",
-                queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%zu), k(%zu), v(%zu) must be 3 for NTD format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%zu), k(%zu), v(%zu) must be 3 for NTD format!");
             return false;
         }
     }
@@ -855,7 +856,8 @@ bool PromptFlashAttentionTilingV2::SetAndCheckHeadNumRatio(ContextParamsForPFATi
     const int64_t nKV = *contextKeyParams.numKeyValueHeads;
 
     if ((nQ < 0) || (nKV < 0)) {
-        OP_LOGE(contextKeyParams.opName, "numHeads(%d) or numKeyValueHeads(%d) is negative!", nQ, nKV);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads(%d) or numKeyValueHeads(%d) is negative!", nQ, nKV) > 0) ? reason : "numHeads(%d) or numKeyValueHeads(%d) is negative!");
         return false;
     }
 
@@ -870,22 +872,26 @@ bool PromptFlashAttentionTilingV2::SetAndCheckHeadNumRatio(ContextParamsForPFATi
     }
 
     if (nQ % nKV != 0) {
-        OP_LOGE(contextKeyParams.opName, "numHeads(%d) must be divisible by numKeyValueHeads(%d)!", nQ, nKV);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads(%d) must be divisible by numKeyValueHeads(%d)!", nQ, nKV) > 0) ? reason : "numHeads(%d) must be divisible by numKeyValueHeads(%d)!");
         return false;
     }
 
     if (enableKVAntiquant || enablePerblockQuant || enablePertensorQuant) {	 
         if (nQ > NLIMIT) {
-            OP_LOGE(contextKeyParams.opName, "the numheads of input query cannot be larger than 256, but numheads = %d", nQ);	 
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "the numheads of input query cannot be larger than 256, but numheads = %d", nQ) > 0) ? reason : "the numheads of input query cannot be larger than 256, but numheads = %d");	 
              return false;
         }
         if (nQ / nKV > GLIMIT_64) { // G cannot be greater than 64.	 
-            OP_LOGE(contextKeyParams.opName, "In antiquant and fullquant scenario, the G(numHeads / numKeyValueHeads) connot be larger than 64, but G = %d", nQ / nKV);	 
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "In antiquant and fullquant scenario, the G(numHeads / numKeyValueHeads) connot be larger than 64, but G = %d", nQ / nKV) > 0) ? reason : "In antiquant and fullquant scenario, the G(numHeads / numKeyValueHeads) connot be larger than 64, but G = %d");	 
             return false; 
         } 
      } else { 
         if ((enableIFAMLA || enableIFAMLAFullQuant) && (nQ / nKV > GLIMIT_128)) { // G cannot be greater than 128. 
-            OP_LOGE(contextKeyParams.opName, "In mla decode (non quant and fullquant) scenario, the G(numHeads / numKeyValueHeads) connot be larger than 128, but G = %d", nQ / nKV); 
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "In mla decode (non quant and fullquant) scenario, the G(numHeads / numKeyValueHeads) connot be larger than 128, but G = %d", nQ / nKV) > 0) ? reason : "In mla decode (non quant and fullquant) scenario, the G(numHeads / numKeyValueHeads) connot be larger than 128, but G = "); 
             return false; 
         } 
      } 
@@ -909,7 +915,7 @@ bool PromptFlashAttentionTilingV2::CheckPostQuantShape(const ContextParamsForPFA
 {
     if (quantOffset2Shape != nullptr) {
         OP_CHECK_IF(quantScale2Shape->GetStorageShape() != quantOffset2Shape->GetStorageShape(),
-                    OP_LOGE(contextKeyParams.opName, "quantScale2 and quantOffset2 should have same shape."),
+                    ({ OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "quantScale2 and quantOffset2 should have same shape."); }),
                     return false);
     }
     std::string layoutString(contextKeyParams.layout);
@@ -923,25 +929,17 @@ bool PromptFlashAttentionTilingV2::CheckPostQuantShape(const ContextParamsForPFA
             return true;
         } else {
             OP_CHECK_IF(quantScale2ShapeSize != 1,
-                    OP_LOGE(contextKeyParams.opName,
-                            "For post quant per-tensor, quantScale2 and quantOffset2 shape only support [1]."),
+                    ({ OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "For post quant per-tensor, quantScale2 and quantOffset2 shape only support [1]."); }),
                     return false);
         }
     } else {
         if (isSupportedLayout) {
             OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
-                        OP_LOGE(contextKeyParams.opName,
-                                "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply "
-                                "result only support qN * vD(%u * %u = %lu), now is (%ld).",
-                                layoutString.c_str(), queryShapeInfo.n, valueShapeInfo.d,
-                                quantScale2ShapeSizePerChannel, quantScale2ShapeSize),
+                        ({ char reason[512] = {0}; OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply result only support qN * vD(%u * %u = %lu), now is (%ld).", layoutString.c_str(), queryShapeInfo.n, valueShapeInfo.d, quantScale2ShapeSizePerChannel, quantScale2ShapeSize) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply result only support qN * vD(%u * %u"); }),
                         return false);
         } else {
             OP_CHECK_IF(quantScale2Shape->GetStorageShape() != gert::Shape({queryShapeInfo.n, valueShapeInfo.d}),
-                        OP_LOGE(contextKeyParams.opName,
-                                "For post quant per-channel, when layout is %s, "
-                                "quantScale2/quantOffset2 expect shape is [%u, %u].",
-                                layoutString.c_str(), queryShapeInfo.n, valueShapeInfo.d),
+                        ({ char reason[512] = {0}; OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u].", layoutString.c_str(), queryShapeInfo.n, valueShapeInfo.d) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u]."); }),
                         return false);
         }
     }
@@ -1559,9 +1557,7 @@ bool PromptFlashAttentionTilingV2::CheckMaskShape(ContextParamsForPFATiling& con
     size_t attenMaskDim = attenMaskShape->GetStorageShape().GetDimNum();
     if (attenMaskDim == MASKDIM_SS) {
         if (isDefaultSparseMode || (sparseMode != nullptr && *sparseMode == SPARSE_MODE_ALL_MASK)) { // sparse 0、1时不支持二维mask
-            OP_LOGE(contextKeyParams.opName, "The current dimension of the mask is 2. "
-                "When sparseMode is 0 or 1, the mask dimension only supports 3 and 4. "
-                "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "The current dimension of the mask is 2. When sparseMode is 0 or 1, the mask dimension only supports 3 and 4. Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
             return false;
         } else {
             attenMaskS1 = attenMaskShape->GetStorageShape().GetDim(0);
@@ -1582,7 +1578,8 @@ bool PromptFlashAttentionTilingV2::CheckMaskShape(ContextParamsForPFATiling& con
         strMaskShape = std::to_string(attenMaskBatch) + ", " + std::to_string(attenMaskN) + ", " + 
             std::to_string(attenMaskS1) + ", " + std::to_string(attenMaskS2);
     } else {
-        OP_LOGE(contextKeyParams.opName, "attenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "attenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim) > 0) ? reason : "attenMask dim(%zu) must be 2 or 3 or 4!");
         return false;
     }
 
@@ -1590,8 +1587,8 @@ bool PromptFlashAttentionTilingV2::CheckMaskShape(ContextParamsForPFATiling& con
         checkMask = (attenMaskS1 >= sQ) && (attenMaskS2 >= sK) &&
             (attenMaskBatch == 1 || attenMaskBatch == batchSize) && (attenMaskN == 1);
         if (attenMaskN != 1) {
-            OP_LOGE(contextKeyParams.opName, "The second dimension of the 4D mask must be 1, "
-                "but now it is %lld!", attenMaskN);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "The second dimension of the 4D mask must be 1, but now it is %lld!", attenMaskN) > 0) ? reason : "The second dimension of the 4D mask must be 1, but now it is %lld!");
         }
     } else if ((sparseMode != nullptr) && ((*sparseMode == SPARSE_MODE_LEFT_UP) ||
         (*sparseMode == SPARSE_MODE_RIGHT_DOWN) || (*sparseMode == SPARSE_MODE_BAND))) {
@@ -1682,9 +1679,8 @@ bool PromptFlashAttentionTilingV2::CheckMaskShapeCrossSparse(ContextParamsForPFA
     }
     if ((sparseMode != nullptr) && ((*sparseMode == SPARSE_MODE_LEFT_UP) ||
         (*sparseMode == SPARSE_MODE_RIGHT_DOWN) || (*sparseMode == SPARSE_MODE_BAND)) && !checkMask) {
-        OP_LOGE(contextKeyParams.opName,
-            "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %d, but now it's (%s).",
-                *sparseMode, strMaskShape.c_str());
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %d, but now it's (%s).", *sparseMode, strMaskShape.c_str()) > 0) ? reason : "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %d, but now it's (%s).");
         return false;
     }
     tilingData.promptAttentionSingleCoreParams.set_attenMaskBatch(attenMaskBatch);
@@ -1946,13 +1942,11 @@ bool PromptFlashAttentionTilingV2::CheckLayout(ContextParamsForPFATiling& contex
     const std::vector<std::string> unsupportedLayoutList2 = {"BNSD_NBSD", "BSH_NBSD", "BSND_NBSD", "TND_NTD"};
     if (enableIFAMLA) {
         OP_CHECK_IF(std::find(unsupportedLayoutList.begin(), unsupportedLayoutList.end(), layoutStr) != unsupportedLayoutList.end(),
-            OP_LOGE(contextKeyParams.opName, "When decode mla scenario is applied, layout does not support NTD, BSND_BNSD, BSH_BNSD, "
-            "BNSD_BSND, NTD_TND, but got %s", layoutStr.c_str()),
+            ({ char reason[512] = {0}; OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "When decode mla scenario is applied, layout does not support NTD, BSND_BNSD, BSH_BNSD, BNSD_BSND, NTD_TND, but got %s", layoutStr.c_str()) > 0) ? reason : "When decode mla scenario is applied, layout does not support NTD, BSND_BNSD, BSH_BNSD, BNSD_BSND, NTD_TND, but got %s"); }),
             return false);
     } else if (!enablePertensorQuant && !enablePerblockQuant) {
         OP_CHECK_IF(std::find(unsupportedLayoutList2.begin(), unsupportedLayoutList2.end(), layoutStr) != unsupportedLayoutList2.end(),
-            OP_LOGE(contextKeyParams.opName, "When prefill mla or gqa scenario is applied, layout does not support BNSD_NBSD, BSH_NBSD, "
-            "BSND_NBSD, TND_NTD, but got %s", layoutStr.c_str()),
+            ({ char reason[512] = {0}; OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "When prefill mla or gqa scenario is applied, layout does not support BNSD_NBSD, BSH_NBSD, BSND_NBSD, TND_NTD, but got %s", layoutStr.c_str()) > 0) ? reason : "When prefill mla or gqa scenario is applied, layout does not support BNSD_NBSD, BSH_NBSD, BSND_NBSD, TND_NTD, but got %s"); }),
             return false);
     }
     return true;
@@ -2244,19 +2238,11 @@ bool PromptFlashAttentionTilingV2::CheckActSeq(const ContextParamsForPFATiling& 
     auto batchOfQuery = actSeqLen->GetShapeSize();
     auto batchOfKey = actSeqLenKV->GetShapeSize();
     OP_CHECK_IF(!enablePA && (batchOfQuery != batchOfKey),
-                OP_LOGE(contextKeyParams.opName,
-                        "When layout is TND/NTD and page attention is not enable, "
-                        "the batch size of actualSequenceLengthQ and actualSequenceLengthKV must be equal, "
-                        "batch size of actualSequenceLengthQ = %ld, batch size of actualSequenceLengthKV = %ld",
-                        batchOfQuery, batchOfKey),
+                ({ char reason[512] = {0}; OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "When layout is TND/NTD and page attention is not enable, the batch size of actualSequenceLengthQ and actualSequenceLengthKV must be equal, batch size of actualSequenceLengthQ = %ld, batch size of actualSequenceLengthKV = %ld", batchOfQuery, batchOfKey) > 0) ? reason : "When layout is TND/NTD and page attention is not enable, the batch size of actualSequenceLengthQ and actualSequenceLengt"); }),
                 return false);
     // layout为TND, kv PA管理场景 actualSequenceLengthKV size可以为1或者>=B
     OP_CHECK_IF(enablePA && (batchOfKey != 1 && batchOfKey < batchOfQuery),
-                OP_LOGE(contextKeyParams.opName,
-                        "When layout is TND/NTD and page attention is enable, "
-                        "the size of actualSequenceLengthKV (%ld) should be greater than or equal to "
-                        "the size of actualSequenceLengthQ(%ld) or equal to 1 ",
-                        batchOfKey, batchOfQuery),
+                ({ char reason[512] = {0}; OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "When layout is TND/NTD and page attention is enable, the size of actualSequenceLengthKV (%ld) should be greater than or equal to the size of actualSequenceLengthQ(%ld) or equal to 1 ", batchOfKey, batchOfQuery) > 0) ? reason : "When layout is TND/NTD and page attention is enable, the size of actualSequenceLengthKV (%ld) should be greater than or "); }),
                 return false);
 
     int64_t lastActSeq = 0;
@@ -2582,7 +2568,8 @@ bool PromptFlashAttentionTilingV2::CheckInnerPrecise(ContextParamsForPFATiling& 
 {
     // 0: Invalid plural number; 4: Invalid if greater than or equal to 4; 0,1,2,3 are effective values for innerPrecise.
     if (innerPrecise >= 4 || innerPrecise < 0) {
-        OP_LOGE(contextKeyParams.opName, "innerPrecise [%d] should be 0,1,2,3, please check.", innerPrecise);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "innerPrecise [%d] should be 0,1,2,3, please check.", innerPrecise) > 0) ? reason : "innerPrecise [%d] should be 0,1,2,3, please check.");
         return false;
     }
     // Determine if the bit1 bit of innerPrecise requires invalid correction.
@@ -4061,7 +4048,7 @@ void PromptFlashAttentionTilingV2::UpdateTilingKeyConfig(ContextParamsForPFATili
     } else if (sOuter == 128 && sInner == 512 && dSize == 128 && dVsize == 128) {
         config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     } else {
-        OP_LOGE(contextKeyParams.opName, "The combination of parameters S1, S2, D, DV is not supported!");
+        OP_LOGE(contextKeyParams.opName, "In op [%s], [%s] is not supported, got [%s]", contextKeyParams.opName, "feature", "The combination of parameters S1, S2, D, DV is not supported!");
     }
     OP_LOGI(contextKeyParams.opName, "sInner is %d, sOuter is %d, dSize is %d, dVsize is %d, config is %d.", sInner, sOuter, dSize, dVsize, config);
 }
@@ -4534,23 +4521,23 @@ ge::graphStatus PromptFlashAttentionTilingV2::CheckSingleAttribute(ContextParams
     PFAShapeInfo& keyShapeInfo, PFAShapeInfo& valueShapeInfo, PFAShapeInfo& queryRopeShapeInfo, PromptFlashAttentionTilingDataV2& tilingData) 
 {
     if (!CheckIO(contextKeyParams, queryShapeInfo, valueShapeInfo)) {
-        OP_LOGE(contextKeyParams.opName, "Check query/ouput failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check query/ouput failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckKV(contextKeyParams, keyShapeInfo, valueShapeInfo)) {
-        OP_LOGE(contextKeyParams.opName, "Check key/value failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check key/value failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckRope(contextKeyParams, queryShapeInfo, keyShapeInfo, queryRopeShapeInfo)) {
-        OP_LOGE(contextKeyParams.opName, "Check queryRope/keyRope failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check queryRope/keyRope failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckLayout(contextKeyParams)) {
-        OP_LOGE(contextKeyParams.opName, "Check layout failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check layout failed!");
         return ge::GRAPH_FAILED;
     }
     if (!CheckQueryAndKey(contextKeyParams, queryShapeInfo, keyShapeInfo, tilingData)) {
-        OP_LOGE(contextKeyParams.opName, "Check query and key consistency failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check query and key consistency failed!");
         return ge::GRAPH_FAILED;
     }
     if (!isMaxWorkspace && enableIFAMLA && (!CheckIFAMLA(contextKeyParams, queryShapeInfo))) {
@@ -4567,26 +4554,26 @@ ge::graphStatus PromptFlashAttentionTilingV2::CheckSingleAttribute(ContextParams
 
     // quant/dequant/antiquant
     if (!CheckQuant(contextKeyParams, queryShapeInfo, keyShapeInfo, valueShapeInfo)) {
-        OP_LOGE(contextKeyParams.opName, "Check quant failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check quant failed!");
         return ge::GRAPH_FAILED;
     }
 
     // prefix check
     if (!CheckPrefix(contextKeyParams, queryShapeInfo, keyShapeInfo, tilingData)) {
-        OP_LOGE(contextKeyParams.opName, "Check prefix failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check prefix failed!");
         return ge::GRAPH_FAILED;
     }
 
     // actSeq check
     if (!isMaxWorkspace && !CheckActSeq(contextKeyParams, queryShapeInfo)) {
-        OP_LOGE(contextKeyParams.opName, "Check actual sequence failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check actual sequence failed!");
         return ge::GRAPH_FAILED;
     }
 
     // actSeqLen check
     if (!isMaxWorkspace &&
         !CheckActSeqLen(contextKeyParams, queryShapeInfo, keyShapeInfo)){
-        OP_LOGE(contextKeyParams.opName, "Check actual sequence length failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check actual sequence length failed!");
         return ge::GRAPH_FAILED;
     }
 
@@ -4643,7 +4630,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::CheckSingleAttribute(ContextParams
 
     // attention sink check
     if (!CheckLearnSink(contextKeyParams, queryShapeInfo)) {
-        OP_LOGE(contextKeyParams.opName, "Check sink failed!");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "Check sink failed!");
         return ge::GRAPH_FAILED;
     }
     
@@ -5255,7 +5242,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttention
         OP_LOGI(contextParamsForPFATiling.opName, "Tiling Data context GetCapacity: %lu.", cap);
         FlashAttentionScoreSimplifiedTilingData* tiling = context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
         if (tiling == nullptr) {
-            OP_LOGE(contextParamsForPFATiling.opName, "tiling get is nullptr");
+            OP_LOGE(contextParamsForPFATiling.opName, "The op [%s] received bad params, the reason is: [%s]", contextParamsForPFATiling.opName, "tiling get is nullptr");
             return ge::GRAPH_FAILED;
         }
         *tiling = faTilingAdapter;
