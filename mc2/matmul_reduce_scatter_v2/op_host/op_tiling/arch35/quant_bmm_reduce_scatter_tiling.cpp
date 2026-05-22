@@ -156,7 +156,8 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
                 groupSizeM, groupSizeN, groupSizeK),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(opName_, "Quant mode should be pertensor or perblock or mxfp!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", "invalid",
+            "Quant mode should be pertensor, perblock, or mxfp.");
         return ge::GRAPH_FAILED;
     }
 
@@ -512,7 +513,8 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     OP_LOGI(opName_, "set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
-        OP_LOGE(opName_, "WorkspaceSizes is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "workspace_sizes", "nullptr",
+            "GetWorkspaceSizes returned nullptr.");
         return ge::GRAPH_FAILED;
     }
     workspaces[0] = myWorkSpaceSize_;
@@ -737,7 +739,8 @@ const gert::Shape &QuantBmmReduceScatterHelper::GetScaleShape(const size_t index
 {
     (void)index;
     if (context_->GetOptionalInputShape(static_cast<size_t>(X2SCALE_INDEX)) == nullptr) {
-        OP_LOGE(inputParams_.opName, "has dequant, but has no x2scale shape");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x2scale", "nullptr",
+            "Has dequant but x2scale shape is null.");
         return defaultShape;
     }
     return context_->GetOptionalInputShape(static_cast<size_t>(X2SCALE_INDEX))->GetStorageShape();
