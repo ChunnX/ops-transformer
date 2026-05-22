@@ -677,7 +677,6 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     liInfo.returnValue = *opParamInfo_.returnValue;
     liInfo.keyStride0 = *opParamInfo_.keyStride0;
-    liInfo.topkScorePrecision = *opParamInfo_.topkScorePrecision;
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 }
@@ -767,7 +766,6 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_returnValue(tilingInfo->returnValue);
     tilingData_.set_keyStride0(tilingInfo->keyStride0);
-    tilingData_.set_topkScorePrecision(tilingInfo->topkScorePrecision);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -782,7 +780,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint32_t inputQLayout = static_cast<uint32_t>(tilingInfo->inputQLayout);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
     uint32_t weightTypeFlag = 0;
-    uint32_t topkScorePrecision = static_cast<uint32_t>(tilingInfo->topkScorePrecision - 1);
+    uint32_t topkScorePrecision = 1;
     uint64_t tilingKey =
         GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputQLayout, inputKLayout, weightTypeFlag, topkScorePrecision);
     context_->SetTilingKey(tilingKey);
