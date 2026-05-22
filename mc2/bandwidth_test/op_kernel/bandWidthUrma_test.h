@@ -197,6 +197,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     context_ = (__gm__ Mc2MoeContext *)context;
+    epRankId_ =  context_->epRankId;
     // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
@@ -224,7 +225,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     // uint32_t epRankIdHccl{0};
     // uint32_t epWorldSizeHccl{0};
-    epRankId_ =  context_->epRankId;
     // statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
     // epWorldSizeHccl = epWorldSize_;
     // GlobalTensor<uint32_t> selfDataStatusGMTensor;
