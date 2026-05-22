@@ -674,7 +674,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl128Mxfp8Fullquant(
     const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
     const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f,
+    const float deSCaleKValue, const float sinkValue, const float pScale,
     const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     float divValue = 1.0f / keepProb;

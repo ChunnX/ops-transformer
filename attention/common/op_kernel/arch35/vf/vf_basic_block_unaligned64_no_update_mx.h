@@ -264,8 +264,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0(
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
     // todo pscale
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
-    Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
-    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
+    Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_src_n_b8);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_src_n_b8);
 }
 
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
@@ -539,7 +539,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64Mxfp8Fullquant(
     const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
     const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f,
+    const float deSCaleKValue, const float sinkValue, const float pScale,
     const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
