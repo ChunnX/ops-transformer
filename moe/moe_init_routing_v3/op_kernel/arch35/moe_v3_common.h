@@ -50,6 +50,7 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 
 constexpr int64_t GATHER = 0;
 constexpr int64_t SCATTER = 1;
+constexpr int64_t DROP_PAD_MODE = 1;
 
 constexpr uint16_t FLOAT_REG_TENSOR_LENGTH = VECTOR_REG_WIDTH / sizeof(float);
 constexpr float HIFLOAT8_MAX_VALUE = 32768.0f;
