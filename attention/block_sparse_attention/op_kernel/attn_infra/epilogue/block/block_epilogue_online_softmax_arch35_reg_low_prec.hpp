@@ -55,9 +55,9 @@ public:
     static constexpr uint32_t VECTOR_SIZE = 128;
     static constexpr uint32_t MAX_UB_S_ELEM_NUM = 16384;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
-    // static constexpr uint32_t ELE_NUM_PER_C0 = 16;
-    // static constexpr uint32_t ELE_NUM_PER_C0_FLOAT8 = 32;
-    static constexpr uint32_t ELE_NUM_PER_C0 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value ? 32 : 16;
+    static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+    static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
+    // static constexpr uint32_t ELE_NUM_PER_C0 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value ? 32 : 16;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -79,6 +79,8 @@ public:
     static constexpr uint32_t SM_ROW_MAX_ELEM_NUM = 64;
     static constexpr uint32_t SM_COL_MAX_ELEM_NUM = 256;
     static constexpr uint32_t SM_VREG_SIZE = 256 / sizeof(ElementInput);
+
+    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
 
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
@@ -120,10 +122,16 @@ public:
 
         AscendC::DataCopyParams repeatParams;
 
+        uint32_t elementNumPerC0;
+        if constexpr (FULL_QUANT_FP8) {
+            elementNumPerC0 = ELE_NUM_PER_C0_FP8;
+        } else {
+            elementNumPerC0 = ELE_NUM_PER_C0;
+        }
         repeatParams.blockCount = blockCount;
         repeatParams.blockLen = m;
-        repeatParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / ELE_NUM_PER_C0 - m;
-        repeatParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / ELE_NUM_PER_C0 - m;
+        repeatParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / elementNumPerC0 - m;
+        repeatParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / elementNumPerC0 - m;
 
         auto dstOffset = dstTensor.layout()(dstTensor.coord());
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
@@ -430,6 +438,32 @@ private:
     {
         using namespace AscendC::MicroAPI;
 
+        RegTensor<ElementInput> expVreg;
+        RegTensor<ElementInput> expSumVreg;
+        RegTensor<ElementInput> maxVreg;
+
+        RegTensor<ElementInput> expDstVreg;
+        RegTensor<ElementInput> expDstVregResult;
+
+        UnalignReg expSumUreg;
+
+        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
+
+        // fp8
+        constexpr static CastTrait castTraitZeroUNKNOWN = {
+            RegLayout::ZERO,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
+        };
+
+        constexpr static CastTrait castTraitOneUNKNOWN = {
+            RegLayout::ONE,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
+        };
+
         constexpr static CastTrait castTraitZeroRINT = {
             RegLayout::ZERO,
             SatMode::SAT,
@@ -458,32 +492,6 @@ private:
             AscendC::RoundMode::CAST_RINT,
         };
 
-        constexpr static CastTrait castTraitZeroUNKNOWN = {
-            RegLayout::ZERO,
-            SatMode::UNKNOWN,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN,
-        };
-
-        constexpr static CastTrait castTraitOneUNKNOWN = {
-            RegLayout::ONE,
-            SatMode::UNKNOWN,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN,
-        };
-
-        RegTensor<ElementInput> expVreg;
-        RegTensor<ElementInput> expSumVreg;
-        RegTensor<ElementInput> maxVreg;
-
-        RegTensor<ElementInput> expDstVreg;
-        RegTensor<ElementInput> expDstVregResult;
-
-        UnalignReg expSumUreg;
-
-        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
-
-        // fp8
         RegTensor<float> floatVreg0;
         RegTensor<float> floatVreg1;
         RegTensor<float> deInterleaveVreg0;
@@ -498,15 +506,17 @@ private:
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg pRegFp16All = CreateMask<ElementInput, MaskPattern::ALL>();
         MaskReg pRegFp32All = CreateMask<float, MaskPattern::ALL>();
+
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
             LoadAlign(expVreg, srcUb + i * S2BaseSize);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
             Exp(expDstVregResult, expDstVreg, pregTailN);
             Exp(expDstVreg, expDstVreg, pregTailN);
-            if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                constexpr half staticScale = static_cast<half>(448.0f);
-                Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
+
+            if constexpr (FULL_QUANT_FP8) {
+                constexpr half maxValueFP8 = static_cast<half>(448.0f);
+                Muls(expDstVreg, expDstVreg, maxValueFP8, pregTailN);
 
                 Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg, pRegFp16All);
                 Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg, pRegFp16All);
@@ -526,12 +536,13 @@ private:
                 Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3,
                    pRegUint8All);
 
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, pVreg0,
+                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
                                                                          blockStride, pRegUint8All);
             } else {
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg,
                                                                          blockStride, pregTailN);
             }
+
             ReduceSum(expSumVreg, expDstVregResult, pregTailN);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
@@ -545,6 +556,35 @@ private:
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
         using namespace AscendC::MicroAPI;
+
+        RegTensor<ElementInput> expVreg0;
+        RegTensor<ElementInput> expVreg1;
+        RegTensor<ElementInput> expSumVreg;
+        RegTensor<ElementInput> maxVreg;
+
+        RegTensor<ElementInput> expDstVreg0;
+        RegTensor<ElementInput> expDstVreg1;
+        RegTensor<ElementInput> expDstVregResult;
+
+        UnalignReg expSumUreg;
+
+        MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
+
+        // fp8
+        constexpr static CastTrait castTraitZeroUNKNOWN = {
+            RegLayout::ZERO,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
+        };
+
+        constexpr static CastTrait castTraitOneUNKNOWN = {
+            RegLayout::ONE,
+            SatMode::UNKNOWN,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN,
+        };
 
         constexpr static CastTrait castTraitZeroRINT = {
             RegLayout::ZERO,
@@ -574,35 +614,6 @@ private:
             AscendC::RoundMode::CAST_RINT,
         };
 
-        constexpr static CastTrait castTraitZeroUNKNOWN = {
-            RegLayout::ZERO,
-            SatMode::UNKNOWN,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN,
-        };
-
-        constexpr static CastTrait castTraitOneUNKNOWN = {
-            RegLayout::ONE,
-            SatMode::UNKNOWN,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN,
-        };
-
-        RegTensor<ElementInput> expVreg0;
-        RegTensor<ElementInput> expVreg1;
-        RegTensor<ElementInput> expSumVreg;
-        RegTensor<ElementInput> maxVreg;
-
-        RegTensor<ElementInput> expDstVreg0;
-        RegTensor<ElementInput> expDstVreg1;
-        RegTensor<ElementInput> expDstVregResult;
-
-        UnalignReg expSumUreg;
-
-        MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
-        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
-
-        // fp8
         RegTensor<float> floatVreg0;
         RegTensor<float> floatVreg1;
         RegTensor<float> floatVreg2;
@@ -639,10 +650,11 @@ private:
             Exp(expDstVreg1, expDstVreg1, pregTailN);
             Duplicate(expDstVregResult, 0);
             Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVreg0, expDstVreg1, pregTailN);
-            if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                constexpr half staticScale = static_cast<half>(448.0f);
-                Muls(expDstVreg0, expDstVreg0, staticScale, pregFull);
-                Muls(expDstVreg1, expDstVreg1, staticScale, pregTailN);
+
+            if constexpr (FULL_QUANT_FP8) {
+                constexpr half maxValueFP8 = static_cast<half>(448.0f);
+                Muls(expDstVreg0, expDstVreg0, maxValueFP8, pregFull);
+                Muls(expDstVreg1, expDstVreg1, maxValueFP8, pregTailN);
 
                 Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg0, pRegFp16All);
                 Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg0, pRegFp16All);
@@ -669,7 +681,6 @@ private:
                    pRegUint8All);
                 Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3,
                    pRegUint8All);
-
                 Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg5,
                    pRegUint8All);
                 Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg6,
@@ -677,11 +688,11 @@ private:
                 Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg7,
                    pRegUint8All);
 
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, pVreg0,
+                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
                                                                          blockStride, pRegUint8All);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                    pVreg4, blockStride, pRegUint8All);
+                    expUb + i * ELE_NUM_PER_C0_FP8 + blockStride * ELE_NUM_PER_C0_FP8 * BLOCK_REP_SIZE, pVreg4,
+                    blockStride, pRegUint8All);
             } else {
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg0,
                                                                          blockStride, pregFull);
