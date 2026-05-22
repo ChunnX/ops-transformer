@@ -31,8 +31,7 @@ namespace Gemm {
 namespace Block {
 template <class L1TileShape_, class L0TileShape_, class AType_, class BType_, class CType_, class BiasType_,
           class TileCopy_>
-class BlockMmad<BatchMatmulToMul<>, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_> {
-public:
+struct BlockMmad<BatchMatmulToMul<>, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_> {
     using AType = AType_;
     using BType = BType_;
     using CType = CType_;
@@ -164,10 +163,12 @@ public:
             AscendC::MicroAPI::LoadAlign<A_T, AscendC::MicroAPI::LoadDist::DIST_BLK>(vSrcReg0, srcPtr, addrRegSrc);
             for (uint16_t mIdx = 0; mIdx < repeatTimes; ++mIdx) {
                 auto addrRegScalar = AscendC::MicroAPI::CreateAddrReg<C_T>(batchIdx, alignM_, mIdx, countMPerVL);
-                if constexpr (sizeof(A_T)==sizeof(float)) {
-                    AscendC::MicroAPI::LoadAlign<A_T, AscendC::MicroAPI::LoadDist::DIST_E2B_B32>(scalarReg, aubPtr, addrRegScalar);
+                if constexpr (sizeof(A_T) == sizeof(float)) {
+                    AscendC::MicroAPI::LoadAlign<A_T, AscendC::MicroAPI::LoadDist::DIST_E2B_B32>(
+                        scalarReg, aubPtr, addrRegScalar);
                 } else {
-                    AscendC::MicroAPI::LoadAlign<A_T, AscendC::MicroAPI::LoadDist::DIST_E2B_B16>(scalarReg, aubPtr, addrRegScalar);
+                    AscendC::MicroAPI::LoadAlign<A_T, AscendC::MicroAPI::LoadDist::DIST_E2B_B16>(
+                        scalarReg, aubPtr, addrRegScalar);
                 }
                 AscendC::MicroAPI::Mul(vDstReg0, vSrcReg0, scalarReg, maskReg);
                 auto addrRegDst =
@@ -189,10 +190,12 @@ public:
         for (uint16_t batchIdx = 0; static_cast<uint16_t>(batchIdx) < batchNum; ++batchIdx) {
             for (uint16_t mIdx = 0; static_cast<uint16_t>(mIdx) < mAub; ++mIdx) {
                 auto addrRegScalar = AscendC::MicroAPI::CreateAddrReg<C_T>(batchIdx, mAub, mIdx, 1);
-                if constexpr (sizeof(A_T)==sizeof(float)) {
-                    AscendC::MicroAPI::LoadAlign<B_T, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(scalarReg, aubPtr, addrRegScalar);
+                if constexpr (sizeof(A_T) == sizeof(float)) {
+                    AscendC::MicroAPI::LoadAlign<B_T, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                        scalarReg, aubPtr, addrRegScalar);
                 } else {
-                    AscendC::MicroAPI::LoadAlign<B_T, AscendC::MicroAPI::LoadDist::DIST_BRC_B16>(scalarReg, aubPtr, addrRegScalar);
+                    AscendC::MicroAPI::LoadAlign<B_T, AscendC::MicroAPI::LoadDist::DIST_BRC_B16>(
+                        scalarReg, aubPtr, addrRegScalar);
                 }
                 tmpCount = count;
                 for (uint16_t i = 0; i < repeatTimes; ++i) {

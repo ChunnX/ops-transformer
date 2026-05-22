@@ -20,10 +20,10 @@
 namespace swiglu_gated_mlp_kernel {
 
 template <typename T>
-class SwigluGatedMlpScalarMatmulStage {
+class SwigluGatedMlpScalarMatmul {
 public:
-    __aicore__ SwigluGatedMlpScalarMatmulStage() = default;
-    __aicore__ ~SwigluGatedMlpScalarMatmulStage() = default;
+    __aicore__ SwigluGatedMlpScalarMatmul() = default;
+    __aicore__ ~SwigluGatedMlpScalarMatmul() = default;
 
     __aicore__ void Init(GM_ADDR xGm, GM_ADDR weightGm, GM_ADDR yGm,
         const SwigluGatedMlpTilingData &tilingData)

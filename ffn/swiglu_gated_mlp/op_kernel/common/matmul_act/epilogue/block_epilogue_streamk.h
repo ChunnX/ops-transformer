@@ -218,7 +218,7 @@ public:
     __aicore__ inline void UpdateAivParams(uint64_t index)
     {
         mBurstBase_ = CeilAlign(CeilDiv(aivParams_.curML1InAiv, kCnt_ * AscendC::GetTaskRation()),
-                      CeilDiv(UB2GM_SRCGAP_UNIT, aivParams_.curAlignedNInAiv));
+                                CeilDiv(UB2GM_SRCGAP_UNIT, aivParams_.curAlignedNInAiv));
         uint64_t mBurstCnt = CeilDiv(aivParams_.curML1InAiv, mBurstBase_);
         uint64_t mBurstTail = aivParams_.curML1InAiv - (mBurstCnt - 1) * mBurstBase_;
         if (aivParams_.kCntIndex >= mBurstCnt) {

@@ -56,8 +56,8 @@ public:
     static constexpr int64_t l0K = GetIntegralConstant<MNK_K, L0TileShape_>();
 
 public:
-    __aicore__ inline BlockSchedulerIterateK(ProblemShape shape, int64_t blockIdx, int64_t blockNum) :
-        blockIdx_(blockIdx), blockNum_(blockNum)
+    __aicore__ inline BlockSchedulerIterateK(ProblemShape shape, int64_t blockIdx, int64_t blockNum)
+        : blockIdx_(blockIdx), blockNum_(blockNum)
     {
         m_ = shape.m;
         n_ = shape.n;

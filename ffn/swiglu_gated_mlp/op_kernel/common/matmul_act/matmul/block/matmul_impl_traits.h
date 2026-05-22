@@ -154,7 +154,6 @@ struct MatmulImplTraits<DispatchPolicy, L1Shape, L0Shape, AType, BType, CType, B
     */
     template <const auto& MM_CFG, typename Impl, typename AT, typename BT, typename CT, typename BiasT>
     struct MatmulPolicyCustom : public MatmulPolicyClass<MM_CFG, Impl, AT, BT, CT, BiasT> {
-    private:
         using Base = MatmulPolicyClass<MM_CFG, Impl, AT, BT, CT, BiasT>;
         struct AdaptedCopyInA {
             using CopyInAType = AscendC::Impl::Detail::CopyCubeIn<Impl, AscendC::MatmulInputAType<AT, typename AT::T>,
@@ -175,7 +174,6 @@ struct MatmulImplTraits<DispatchPolicy, L1Shape, L0Shape, AType, BType, CType, B
             using CopyOutType = typename Base::CopyCubeOut;
         };
 
-    public:
         using CopyCubeInA = typename AscendC::Std::conditional_t<
             Tile::HasCopyGmToA1V<TileCopy>,
             AdaptedCopyInA,

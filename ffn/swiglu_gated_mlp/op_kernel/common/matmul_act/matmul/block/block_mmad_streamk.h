@@ -343,7 +343,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BufId);
 
             uint64_t BiasBufId = abL1LoopCnt_ & 0x1;
-            if(isBias_ && iter0 == 0 && kCntIndex == 0) {
+            if (isBias_ && iter0 == 0 && kCntIndex == 0) {
                 CopyInC1(biasGlobal, BiasL1Local[nL1_ * l1BufId], curNL1);
             }
 

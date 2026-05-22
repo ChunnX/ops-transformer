@@ -64,7 +64,7 @@ public:
         static constexpr int64_t stageNum = (approxiMate == GeluApproxiMate::ERF) ? 2 : 1;
         int64_t lastUBSize = AscendC::TOTAL_UB_SIZE - ubOffset * sizeof(DataTypeIn);
         ASCENDC_ASSERT((lastUBSize > ubCalcN * sizeof(DataTypeIn)), {
-            KERNEL_LOG(KERNEL_ERROR, , "ub size limit %ld, %ld!", lastUBSize, ubCalcN * sizeof(DataTypeIn));
+            KERNEL_LOG(KERNEL_ERROR, "ub size limit %ld, %ld!", lastUBSize, ubCalcN * sizeof(DataTypeIn));
         });
         stageSize_ = AscendC::Std::min(
             static_cast<int64_t>(lastUBSize / stageNum / sizeof(DataTypeIn) / ubCalcN * ubCalcN), ubCalcM * ubCalcN);

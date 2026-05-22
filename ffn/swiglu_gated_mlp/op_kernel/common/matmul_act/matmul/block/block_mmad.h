@@ -93,6 +93,9 @@ public:
     using BiasType = BiasType_;
     using TileCopy = TileCopy_;
 
+    // Common static assertion
+    static_assert(IsTileShapeValid<AType, BType, L1Shape, L0Shape>(), "L1Shape or L0Shape is invalid");
+
 protected:
     /**
     * @brief Obtain a reference to the derived class
@@ -101,10 +104,6 @@ protected:
     {
         return static_cast<Derived&>(*this);
     }
-
-public:
-    // Common static assertion
-    static_assert(IsTileShapeValid<AType, BType, L1Shape, L0Shape>(), "L1Shape or L0Shape is invalid");
 };
 } // namespace Block
 } // namespace Gemm

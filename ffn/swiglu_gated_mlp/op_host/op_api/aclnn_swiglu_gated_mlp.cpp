@@ -141,10 +141,10 @@ static bool CheckPositiveDims(const aclTensor* x, const aclTensor* gateUpWeight,
     const int64_t gateUpSize = gateUpShape.GetDim(1);
     const int64_t downIn = downShape.GetDim(0);
     const int64_t outSize = downShape.GetDim(1);
-
     if (hiddenSize <= 0 || gateUpIn <= 0 || gateUpSize <= 0 || downIn <= 0 || outSize <= 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "All reduced shape dims must be positive, but got hidden:%ld gateIn:%ld gateSize:%ld downIn:%ld out:%ld.",
+                "All reduced shape dims must be positive, but got hidden:%ld gateIn:%ld gateSize:%ld "
+                "downIn:%ld out:%ld.",
                 hiddenSize, gateUpIn, gateUpSize, downIn, outSize);
         return false;
     }

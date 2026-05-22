@@ -29,11 +29,11 @@ namespace Act {
 namespace Gemm {
 namespace Block {
 template <typename DataTypeOut_, typename DataTypeIn_>
-class DefaultFusion {
+class DefaultFusionOp {
 public:
     using DataTypeOut = DataTypeOut_;
     using DataTypeIn = DataTypeIn_;
-    __aicore__ inline DefaultFusion(){};
+    __aicore__ inline DefaultFusionOp(){};
 
     struct Arguments {};
 

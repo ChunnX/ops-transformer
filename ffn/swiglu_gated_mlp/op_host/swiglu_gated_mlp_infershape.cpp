@@ -220,7 +220,6 @@ static ge::graphStatus InferDataTypeForSwigluGatedMlp(gert::InferDataTypeContext
     const ge::DataType x_dtype = context->GetInputDataType(SWIGLU_GATED_MLP_IN_X);
     const ge::DataType gate_up_weight_dtype = context->GetInputDataType(SWIGLU_GATED_MLP_IN_GATE_UP_WEIGHT);
     const ge::DataType down_weight_dtype = context->GetInputDataType(SWIGLU_GATED_MLP_IN_DOWN_WEIGHT);
-
     if (x_dtype != gate_up_weight_dtype || x_dtype != down_weight_dtype) {
         OP_LOGE("SwigluGatedMlp",
                 "The data types of x, gate_up_weight and down_weight must be the same, but got [%d, %d, %d].",

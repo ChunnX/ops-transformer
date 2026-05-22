@@ -85,7 +85,8 @@ public:
 
         SetOrgShape(c, a, b);
 
-        this->AsDerived().matmul_.SetSingleShape(Get<MNK_M>(actualShape), Get<MNK_N>(actualShape), Get<MNK_K>(actualShape));
+        this->AsDerived().matmul_.SetSingleShape(
+            Get<MNK_M>(actualShape), Get<MNK_N>(actualShape), Get<MNK_K>(actualShape));
         this->AsDerived().matmul_.IterateAll(cTensor);
 
         if constexpr (AscendC::is_global_tensor_v<CTensor>) {

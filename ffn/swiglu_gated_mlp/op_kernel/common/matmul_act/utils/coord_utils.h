@@ -166,10 +166,10 @@ GetOffsetIterBatch(BlockCoord blockCoord, ProblemShape problemShape, ATensorType
 }
 
 template <bool isTransA_, bool isTransB_, CubeFormat layoutA_, CubeFormat layoutB_, CubeFormat layoutC_>
-class Coordinate {
+class CoordUtils {
 public:
-    __aicore__ inline Coordinate(int64_t m, int64_t n, int64_t k, int64_t l1M, int64_t l1N, int64_t l1K) :
-        m(m), n(n), k(k), l1M(l1M), l1N(l1N), l1K(l1K)
+    __aicore__ inline CoordUtils(int64_t m, int64_t n, int64_t k, int64_t l1M, int64_t l1N, int64_t l1K)
+        : m(m), n(n), k(k), l1M(l1M), l1N(l1N), l1K(l1K)
     {}
 
     static constexpr bool isTransA = isTransA_;

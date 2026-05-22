@@ -39,7 +39,8 @@ template <typename T, typename = void>
 struct IsMatmulLayoutType : AscendC::Std::false_type {};
 
 template <typename T>
-struct IsMatmulLayoutType<T, std::void_t<typename T::layout, typename T::T, decltype(T::pos)>> : AscendC::Std::true_type {};
+struct IsMatmulLayoutType<T, std::void_t<typename T::layout, typename T::T, decltype(T::pos)>>
+    : AscendC::Std::true_type {};
 
 template <typename T>
 constexpr bool IsMatmulLayoutTypeV = IsMatmulLayoutType<T>::value;

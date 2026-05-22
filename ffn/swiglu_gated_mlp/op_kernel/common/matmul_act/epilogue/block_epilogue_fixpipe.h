@@ -30,7 +30,7 @@ namespace Gemm {
 namespace Block {
 
 template <typename L0TileShape_, typename DataTypeOut_, typename DataTypeIn_,
-    typename FusionOp_ = DefaultFusion<DataTypeOut_, DataTypeIn_>>
+    typename FusionOp_ = DefaultFusionOp<DataTypeOut_, DataTypeIn_>>
 class BlockEpilogueFixpipe {
 public:
     __aicore__ inline BlockEpilogueFixpipe()

@@ -58,7 +58,7 @@ public:
         inputGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeIn*>(params.inputGmAddr));
         int64_t lastUBSize = AscendC::TOTAL_UB_SIZE - ubOffset * sizeof(DataTypeIn);
         ASCENDC_ASSERT((lastUBSize > ubCalcN * sizeof(DataTypeIn)), {
-            KERNEL_LOG(KERNEL_ERROR, , "ub size limit %ld, %ld!", lastUBSize, ubCalcN * sizeof(DataTypeIn));
+            KERNEL_LOG(KERNEL_ERROR, "ub size limit %ld, %ld!", lastUBSize, ubCalcN * sizeof(DataTypeIn));
         });
         stageSize_ = AscendC::Std::min(
             static_cast<int64_t>(lastUBSize / stageNum / sizeof(DataTypeIn_) / ubCalcN * ubCalcN), ubCalcM * ubCalcN);

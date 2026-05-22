@@ -208,7 +208,8 @@ struct MatmulMultiBlockOnKAxisWithLayout {
 
 /**
  * @struct SparseMatmulMultiBlockOnKAxisWithLayout
- * @brief Sparse matrix multiplication multi-block structure, with K-axis caching, no quant, no bias, implemented based on Layout
+ * @brief Sparse matrix multiplication multi-block structure, with K-axis caching, no quant, no bias, implemented
+ *        based on Layout
  * @param [in] SingleCoreShape: the shape of a single core, default is AscendC::Shape<_0, _0, _0, _0>
  */
 template <class SingleCoreShape = AscendC::Shape<_0, _0, _0, _0>>

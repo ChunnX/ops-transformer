@@ -449,7 +449,7 @@ public:
         }
         for (uint64_t iter0 = 0; iter0 < curKL1Iter; ++iter0) {
             curKL1 = (iter0 + 1 == curKL1Iter) ? (k_ - kL1OffsetLength) : kL1_;
-            //前两轮将搬运量减半，提前mmad计算
+            // 前两轮将搬运量减半，提前mmad计算
             if (isFirstLoopKL1Half) {
                 if (iter0 == 0) {
                     curKL1 = CeilAlign(kL1_ / NUM_TWO, AscendC::BLOCK_CUBE);

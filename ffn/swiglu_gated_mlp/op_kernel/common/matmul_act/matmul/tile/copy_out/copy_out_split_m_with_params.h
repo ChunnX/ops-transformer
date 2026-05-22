@@ -31,7 +31,8 @@ namespace Tile {
  * @struct Copy
  * @brief Structure for copying data from local tensor to UB with split M dimension
  *
- * This struct implements data copy operations in the Arch::Ascend910_95 architecture using the CopyOutSplitMWithParams mode
+ * This struct implements data copy operations in the Arch::Ascend910_95 architecture using the
+ * CopyOutSplitMWithParams mode
  *
  * @param [in] OutputType: the type of the output tensor
  * @param [in] InputType: the type of the input tensor
