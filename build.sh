@@ -588,7 +588,7 @@ function build_example()
     export LD_LIBRARY_PATH="${SHMEM_LIB_DIR}:${LD_LIBRARY_PATH}"
 
     # SHMEM运行时日志开启
-    export SHMEM_LOG_LEVEL=INFO
+    export SHMEM_LOG_LEVEL=ERROR
     export SHMEM_LOG_TO_STDOUT=1
 
     # 节点ID + SHMEM Master IP
