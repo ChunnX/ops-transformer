@@ -13,6 +13,7 @@
 #include "infer_shape_context_faker.h"
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
+#include <iostream>
 
 #define private public
 #include "platform/platform_info.h"
