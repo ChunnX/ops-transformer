@@ -656,7 +656,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
             // DataCopy(xOutTensor[curOffset], tokenTensor_, n_);
             // DumpTensor(xOutTensor[curOffset], 888, n_);
             tokenQueue_.FreeTensor<bfloat16_t>(tokenTensor_);
-            PipeBarrier<PIPE_V>();
+            // PipeBarrier<PIPE_V>();
         }
         
         rowTmpFloatLocal_ = rowTmpFloatBuf_.Get<float>();

@@ -209,6 +209,16 @@ public:
             AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, float>(l0cOffset), layoutL0C);
         uint64_t scaleWindowIter = 0;
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
+            // Drain MTE1→L0 DMA from the previous K iteration before
+            // GM→L1 copies of this iteration can reuse the L1 buffers.
+            // Waiting on the last M_MTE1 flag set by the inner loop acts
+            // as a fence for all pending L1→L0 writes (WaitFlag fence is
+            // global, so one flag is enough).
+            if (abL1LoopCnt_ > 0) {
+                uint64_t lastL0BufId = (l0PingPong_ - 1) & 0x1;
+                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(lastL0BufId);
+                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(lastL0BufId);
+            }
             uint64_t l1BufId = abL1LoopCnt_ & L1_BUFFER_MASK;
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
             uint64_t kL1Offset = iter0 * kL1_;
