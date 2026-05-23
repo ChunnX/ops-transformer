@@ -77,7 +77,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
                         gmmFinalizeRoutingQuantParams_.hasBias,
                         gmmFinalizeRoutingQuantParams_.deterministicFlag,
                         gmmFinalizeRoutingQuantParams_.deterWorkspaceSize,
-                        matmulTiling_.usedCoreNum};
+                        static_cast<uint32_t>(matmulTiling_.usedCoreNum)};
 
     gmmParams.matmulTiling = &matmulTiling_;
     Params params = {
