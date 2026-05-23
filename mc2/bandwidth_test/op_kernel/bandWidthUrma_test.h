@@ -305,7 +305,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     if (epRankId_ == 0) {
         GlobalTensor<int32_t> rankGMTensor;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + 300));
+        GM_ADDR rankGMTensorAddr = GetUrmaStateAddrByRankId(epRankId_) + 300;
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(rankGMTensorAddr));
         for (uint32_t i = 0; i < 8; i++) {
             rankGMTensor(i) = i + 1;
         }
@@ -313,7 +314,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         for (uint32_t i = 0; i < 8; i++) {
             PRINTF("write rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
         }
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[0], GetUrmaStateAddrByRankId(1), GetWindStateAddrByRankId(epRankId_), UB_ALIGN);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[0], GetUrmaStateAddrByRankId(1), rankGMTensorAddr, UB_ALIGN);
         hcomm_.Wait(handle);
     }
     if (epRankId_ == 1) {
