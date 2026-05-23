@@ -110,10 +110,12 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAttr()
     inputParams_.transB = transposeWeight != nullptr && *transposeWeight;
 
     OP_TILING_CHECK(inputParams_.transA,
-                    OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transA"),
+                    OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transA",
+                        inputParams_.transA ? "1" : "0", "1"),
                     return false);
     OP_TILING_CHECK(inputParams_.transB,
-                    OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transB"),
+                    OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transB",
+                        inputParams_.transB ? "1" : "0", "1"),
                     return false);
 
     if (groupSizePtr != nullptr) {
@@ -332,7 +334,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::Check()
                     return ge::GRAPH_FAILED);
     // check attrs: transA, transB, group_size, dtype, innerPrecise
     OP_TILING_CHECK(!CheckAttr(),
-                    OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "all attrs"),
+                    OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "all attrs", "invalid", "valid"),
                     return ge::GRAPH_FAILED);
     // check the input and output shape: all
     OP_TILING_CHECK(!CheckShape(),

@@ -32,7 +32,7 @@ namespace Mc2Tiling {
 bool TTQuantGroupedMatmulAllToAllvTiling::IsCapable()
 {
     QuantModePair mode = GetQuantMode(context_, opName_);
-    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR, OP_LOGE(opName_, "Fail to get attr quant mode."), return false);
+    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR, OP_LOGE_WITH_INVALID_ATTR(opName_, "quant mode", std::to_string(static_cast<int>(mode)).c_str(), "valid quant mode"), return false);
     if (mode == QUANT_PAIR_TT) {
         OP_LOGI(opName_, "TTQuantGroupedMatmulAllToAllvTiling TT mode capable.");
         return true;
