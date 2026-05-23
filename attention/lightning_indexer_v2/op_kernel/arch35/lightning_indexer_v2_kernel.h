@@ -520,9 +520,10 @@ __aicore__ inline void LIV2Preload<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint
 template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                               __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
-                                              __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
-                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset,
-                                              __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                              __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                              __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
+                                              __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
+                                               __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
                                               __gm__ uint8_t *workspace,  const LIV2TilingData *__restrict tiling,
                                               TPipe *tPipe)
 {
@@ -548,9 +549,11 @@ __aicore__ inline void LIV2Preload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint
     pipe = tPipe;
 
     uint64_t offset = 0;
-    //vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
-    GlobalTensor<SCORE_T> scoreGm; //存放vec核写出的score
-    uint64_t singleCoreScoreSize = constInfo.s1BaseSize * LIV2Common::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize)  * sizeof(SCORE_T);
+    // vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
+    GlobalTensor<SCORE_T> scoreGm; // 存放vec核写出的score
+    uint64_t singleCoreScoreSize = constInfo.s1BaseSize * LIV2Common::Align((uint64_t)constInfo.kSeqSize,
+                                                                            (uint64_t)constInfo.s2BaseSize)
+                                                                            * sizeof(SCORE_T);
     scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
 
@@ -643,7 +646,7 @@ __aicore__ inline void LIV2Preload<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.isValid = s2LoopIdx <= tempLoopInfo.s2LoopEnd;
 
     if (!runInfo.isValid) {
-        return; 
+        return;
     }
 
     runInfo.actS1Size = tempLoopInfo.actS1Size;
@@ -683,7 +686,8 @@ __aicore__ inline void LIV2Preload<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
         // B,S1,N2,k/T,N2,k
         valueOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.topk + runInfo.n2Idx * constInfo.topk;
-        outputIdxCoreOffset = (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
+        outputIdxCoreOffset = 
+            (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_V2_LAYOUT::TND) { // T N2 D
@@ -753,7 +757,7 @@ __aicore__ inline void LIV2Preload<LIT>::ProcessInvalid()
 template <typename LIT>
 __aicore__ inline void LIV2Preload<LIT>::ProcessMain()
 {
-    if(!splitCoreInfo.isCoreEnable){
+    if (!splitCoreInfo.isCoreEnable) {
         return;
     }
 
@@ -791,13 +795,14 @@ __aicore__ inline void LIV2Preload<LIT>::ProcessMain()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0); 
-        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1); 
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
     }
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, LIV2Common::RunInfo runInfo)
+__aicore__ inline void LIV2Preload<LIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
+                                                          LIV2Common::RunInfo runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {

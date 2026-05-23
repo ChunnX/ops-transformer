@@ -468,7 +468,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__
 }
 
 __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
-                               __ubuf__ uint32_t* idx0Buf,__ubuf__ uint32_t* idx1Buf,
+                               __ubuf__ uint32_t* idx0Buf, __ubuf__ uint32_t* idx1Buf,
                                __ubuf__ uint32_t* idx2Buf, __ubuf__ uint32_t* idx3Buf)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
