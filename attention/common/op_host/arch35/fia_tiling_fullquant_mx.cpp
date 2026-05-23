@@ -333,7 +333,6 @@ int64_t FiaTilingFullQuantMxArch35::CalcRequiredL2Size()
 
 bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
 {
-    return false;
     if (fiaInfo_->isOutQuantEnable) {
         return false;
     }
