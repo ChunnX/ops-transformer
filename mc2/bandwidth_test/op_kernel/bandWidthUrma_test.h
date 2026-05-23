@@ -261,8 +261,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     sumTarget_ = static_cast<float>(1.0);
     uint64_t mask[2] = { 0x101010101010101, 0 };
     PipeBarrier<PIPE_V>();
-    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
+    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, Ceil(statusBufCntAlign_, 8), 1, 8);
 
+    PRINTF("epRankId_ is %d, statusTensor_ is %p\n", epRankId_, statusTensor_);
+    
     // ============ 计算窗口数据区偏移 ============
     windowGM_ = GetUrmaAddrByRankId(epRankId_);
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
@@ -370,10 +372,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalToke
     ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
     SyncFunc<AscendC::HardEvent::V_S>();
     int32_t curOtherExpertCnt = dstExpIdTensor_(0);
-    if (calCnt >= curOtherExpertCnt) {
-        curExpertCnt = calCnt - curOtherExpertCnt;
-    } else {
-        curExpertCnt = 0;
+    if (calCnt > curOtherExpertCnt) {
+        curExpertCnt = calCnt - curOtherExpertCnt; 
     }
 }
 
@@ -441,9 +441,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         int32_t curExpertCnt = 0;
         int32_t cntPosIndex = (curExpertId - startExpertId_) * 8 + 1;
         SyncFunc<AscendC::HardEvent::S_V>();
-        
         CalTokenSendExpertCnt(curExpertId, axisBS_, curExpertCnt);
-        PRINTF("curExpertId is %d, curExpertCnt is %d\n", curExpertId, curExpertCnt);
+        PRINTF("epRankId_ is %d, curExpertId is %d, curExpertCnt is %d, axisBS_ is %d\n", epRankId_, curExpertId, curExpertCnt, axisBS_);
         statusTensor_(cntPosIndex) = curExpertCnt;
     }
 
