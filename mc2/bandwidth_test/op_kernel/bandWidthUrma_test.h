@@ -462,6 +462,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
+        PipeBarrier<PIPE_ALL>();
+        PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
     }
     PipeBarrier<PIPE_ALL>();
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
@@ -474,7 +476,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
             PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
             continue;
         }
-        PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
+        //PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
         // GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         // GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
