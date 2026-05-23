@@ -1036,6 +1036,13 @@ set_ut_mode() {
   if [[ "$UT_TEST_ALL" == "TRUE" ]] || [[ "$OP_KERNEL_UT" == "TRUE" ]]; then
     UT_TARGETS+=("${REPOSITORY_NAME}_op_kernel_ut")
   fi
+  if [[ "$UT_TEST_ALL" == "TRUE" ]] && [[ "$ENABLE_BUILT_CUSTOM" != "TRUE" ]]; then
+    OP_HOST_UT=TRUE
+    OP_API_UT=TRUE
+    OP_GRAPH_UT=TRUE
+    UT_TEST_ALL=FALSE
+    OP_KERNEL_UT=FALSE
+  fi
 }
 parse_changed_files() {
     if [[ -z "$PR_CHANGED_FILES" ]]; then
