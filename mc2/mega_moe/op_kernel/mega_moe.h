@@ -24,19 +24,21 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
-#include "mega_moe_combine_send.h"
 
 
 using namespace AscendC;
 
 namespace MegaMoeImpl {
+// SyncFuncStatic event IDs — avoid 0/1 which may collide with AscendC EVENT_ID0/EVENT_ID1
+constexpr int32_t SYNC_ID2 = 2;
+
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t>;
 
-#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
+#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode, int32_t CombineQuantMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
 
 template<int32_t QuantMode>
 struct QuantTraits {
@@ -69,8 +71,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void FirstBuffInit(TPipe *tPipe);
-    __aicore__ inline void SecondBuffInit(TPipe *tPipe);
+    __aicore__ inline void FirstBuffInit();
+    __aicore__ inline void SecondBuffInit();
     __aicore__ inline void ResetWorkSpaceFlagList();
     __aicore__ inline void ResetRowGroupCompleteFlags();
     __aicore__ inline void GetCumsumForMMAIV();
@@ -85,6 +87,7 @@ private:
     __aicore__ inline void EndSync();
     __aicore__ inline void EndGMM2Sync();
     __aicore__ inline void CrossRankSyncInWorldSize();
+    __aicore__ inline void ProcessCombine(GMMAddrInfo &gmmAddrInfo);
     __aicore__ inline void CopyGMToGMPerToken(GlobalTensor<ActivationType> dst,
                 GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<ActivationType> src,
                 int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
@@ -129,17 +132,15 @@ private:
         } while (true);
     }
 
-    TBuf<> CrossRankSyncBuf_;
-    TBuf<> PrevSumBuf_;
-    TBuf<> CopyTempBuf_;
-    TBuf<> CumsumBuf_;
-    TBuf<> ResetFlagBuf_;
-    TBuf<> DataResBuf_;
-    TBuf<> DataResFp32Buf_;
-    TBuf<> ResetTokenBuf_;
-    TBuf<> topKWeightsBuf_;
-    TBuf<> tempBuf_;
-    TBuf<> quantDataBuf_;
+    uint32_t crossRankSyncAddr_ = 0;
+    uint32_t crossRankSyncSize_ = 0;
+    LocalTensor<int32_t> prevSumBuf_;
+    LocalTensor<int32_t> cumsumTmpTensor_;
+    LocalTensor<ActivationType> copyTempTensor_;
+    LocalTensor<int32_t> resetFlagTensor_;
+    LocalTensor<bfloat16_t> dataResBf16_;
+    LocalTensor<int32_t> resetTokenTensor_;
+    LocalTensor<float> dataResFp32_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -158,6 +159,8 @@ private:
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
     LocalTensor<bfloat16_t> combineUbTensor_;
+    LocalTensor<float> fp32ScaleTensor_;
+    LocalTensor<bfloat16_t> bf16ScaleTensor_;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -173,6 +176,9 @@ private:
     uint32_t startBlockIdx_ = 0;
     uint32_t dispatchBlockNumPerEP_ = 2;
     int32_t perRankStridesInTokenPerExpert_ = 0;
+    // Per-expert stride into ptrFlagDispatchToGmm1 (in int32 slots); one slot per wave (L1_TILE_M rows).
+    int32_t dispatchFlagSlotsPerExpert_ = 0;
+    int32_t maxWavesPerExpert_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
@@ -182,7 +188,8 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
+        QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
 
@@ -201,6 +208,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchRows_ = tilingData->dispatchRows;
     groupListType_ = tilingData->groupListType;
     maxOutputSize_ = tilingData->maxOutputSize;
+    // Same allocation as the workspace constructor (see WorkspaceInfo::WorkspaceInfo).
+    maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
+    dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
     Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
     Get<K_VALUE>(problemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
@@ -228,7 +240,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     groupList_ = cumsumInWorkSpace_[(worldSize_ - 1) * expertPerRank_];
     groupFlagListWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
     epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
-        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
     perRankStridesInTokenPerExpert_ = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ = params_.peermemInfo.ptrTokenPerExpert +
@@ -236,47 +248,99 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tPipe)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
 {
-    // 对CrossRankSync、Dispatch、GetCumSum过程涉及到的LocalTensor初始化管理
     uint32_t syncBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) * sizeof(int32_t);
     uint32_t prevSumBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128))
         * sizeof(int32_t) * expertPerRank_;
-    tPipe->InitBuffer(CrossRankSyncBuf_, syncBufAlign);
-    tPipe->InitBuffer(PrevSumBuf_, prevSumBufAlign);
     uint32_t getCumsumBufAlign = (AlignUp(worldSize_ * expertPerRank_, ALIGN_128)) * worldSize_ * sizeof(int32_t);
-    tPipe->InitBuffer(CumsumBuf_, getCumsumBufAlign);
-    tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(ActivationType));
-    uint32_t maxTokensStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_);
-    uint32_t resetLen = Max(expertPerRank_ * INT_CACHELINE * 2, expertPerRank_ * maxTokensStride);
-    uint32_t maxResetBuf = Ops::Base::CeilDiv(resetLen, blockAivNum_);
+    uint32_t copyTempBufAlign = BUFFER_ALIGN * sizeof(ActivationType);
+    // Total int32 flag entries to reset: SwiGluToGmm2 region (expertPerRank * INT_CACHELINE)
+    // + DispatchToGmm1 region (expertPerRank * dispatchFlagSlotsPerExpert_).
+    int32_t totalFlagInt32 = static_cast<int32_t>(expertPerRank_) *
+        (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_);
+    uint32_t resetLen = totalFlagInt32;
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t maxTokensStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_, blockAivNum_, expertPerRank_);
+        resetLen = Max(resetLen, uint32_t(expertPerRank_ * maxTokensStride));
+    }
+    uint32_t maxResetBuf = Ops::Base::CeilDiv(resetLen, uint32_t(blockAivNum_)) * sizeof(int32_t);
     uint32_t maxResetBufAlign = Ops::Base::CeilAlign(maxResetBuf, static_cast<uint32_t>(ALIGN_32));
-    tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign * sizeof(int32_t));
-    tPipe->InitBuffer(tempBuf_, ALIGN_32);
-    combineUbTensor_ = CopyTempBuf_.Get<bfloat16_t>();
 
+    uint32_t addr = 0;
+    // [0] crossRankSync: 跨rank同步临时buffer，存放tokenPerExpert拷贝及加偏移值
+    // 大小 = CeilAlign(worldSize * expertPerRank, 128) * sizeof(int32_t)，按128对齐
+    crossRankSyncAddr_ = addr;
+    crossRankSyncSize_ = syncBufAlign / sizeof(int32_t);
+    addr += syncBufAlign;
+
+    // [1] prevSumBuf: 每个expert在本rank之前的累加token数前缀和
+    // 大小 = CeilAlign(worldSize * expertPerRank, 128) * sizeof(int32_t) * expertPerRank
+    // 每个dstRank需要expertPerRank个int32，共worldSize组，128列对齐后乘expertPerRank
+    prevSumBuf_ = LocalTensor<int32_t>(TPosition::VECCALC, addr, prevSumBufAlign / sizeof(int32_t));
+    addr += prevSumBufAlign;
+    // [2] cumsumTmpTensor: cumsum计算临时buffer， 存放各rank的tokenPerExpert并做前缀累加
+    // 大小 = CeilAlign(worldSize * expertPerRank, 128) * worldSize * sizeof(int32_t)
+    // 每个rank一行expertPerRank列，worldSize行，128列对齐
+    cumsumTmpTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, addr, getCumsumBufAlign / sizeof(int32_t));
+    addr += getCumsumBufAlign;
+    // [3] copyTempTensor: Dispatch阶段GM→GM中转buffer， pingpong双缓冲用
+    // 大小 = BUFFER_ALIGN * sizeof(ActivationType)，固定BUFFER_ALIGN大小
+    copyTempTensor_ = LocalTensor<ActivationType>(TPosition::VECCALC, addr, copyTempBufAlign / sizeof(ActivationType));
+    addr += copyTempBufAlign;
+    // [4] resetFlagTensor: groupFlagList清零临时buffer
+    // 大小 = CeilAlign(expertPerRank * (INT_CACHELINE + dispatchFlagSlots) * sizeof(int32_t), 32)
+    // SwiGluToGmm2 + DispatchToGmm1 两个区域的总flag条目数，32对齐
+    resetFlagTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, addr, maxResetBufAlign / sizeof(int32_t));
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *tPipe)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit()
 {
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
-    tPipe->InitBuffer(DataResBuf_, dataResBufAlign);
     int32_t num = worldSize_ * Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) * sizeof(int32_t);
-    tPipe->InitBuffer(ResetTokenBuf_, num);
-    tPipe->InitBuffer(DataResFp32Buf_, dataResBufAlign * 2);
-    tPipe->InitBuffer(topKWeightsBuf_, Ops::Base::CeilAlign(
-        static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32)));
-    
-    uint32_t nScale = Ops::Base::CeilDiv(k_, MXFP_SCALE_GROUP_NUM) * MXFP_MULTI_BASE_SIZE;
-    uint32_t quantRowSize = k_ + nScale;
-    tPipe->InitBuffer(quantDataBuf_, Ops::Base::CeilAlign(quantRowSize, ALIGN_32) * 2);
-    
-    topKWeightsTensor_ = topKWeightsBuf_.Get<float>();
+    uint32_t dataResFp32BufAlign = dataResBufAlign * 2;
+    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    uint32_t tempBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+
+    uint32_t addr = 0;
+    // [0] dataResBf16: Unpermute阶段bf16结果buffer，存放加权和后的输出行
+    // size = CeilAlign(UNPERMUTE_LIST_NUM * k * sizeof(bfloat16_t), 32)
+    // UNPERMUTE_LIST_NUM行每行k个bf16，32对齐
+    dataResBf16_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, addr, dataResBufAlign / sizeof(bfloat16_t));
+    addr += dataResBufAlign;
+    // [1] resetTokenTensor: ResetTokenPerExpert清零tokenPerExpert win区用的临时buffer
+    // size = worldSize * CeilAlign(worldSize * expertPerRank, 128) * sizeof(int32_t)
+    // 需清零的总int32条目数（跨所有rank的所有expert），128列对齐
+    resetTokenTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, addr, num / sizeof(int32_t));
+    addr += num;
+    // [2] dataResFp32: Unpermute阶段fp32累加buffer，bf16→fp32计算加权和
+    // size = dataResBufAlign * 2（bf16大小的2倍，因fp32占2字节宽度）
+    dataResFp32_ = LocalTensor<float>(TPosition::VECCALC, addr, dataResFp32BufAlign / sizeof(float));
+    addr += dataResFp32BufAlign;
+    // [3] topKWeightsTensor: topK权重buffer，存放m*topK个权重值用于Unpermute加权
+    // size = CeilAlign(m * topK * sizeof(float), 32)
+    topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, addr, topKWeightsBufAlign / sizeof(float));
+    addr += topKWeightsBufAlign;
+
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
+        uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(
+            static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * 4), static_cast<uint32_t>(ALIGN_32));
+        uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(
+            static_cast<uint32_t>(scaleNum * sizeof(float) * 4), static_cast<uint32_t>(ALIGN_32));
+        bf16ScaleTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, addr, bf16ScaleBufAlign / sizeof(bfloat16_t));
+        addr += bf16ScaleBufAlign;
+        fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, addr, fp32ScaleBufAlign / sizeof(float));
+        addr += fp32ScaleBufAlign;
+    }
+
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
         topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
@@ -285,16 +349,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
         DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_, copyParams, copyPadParams);
     }
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        TBuf<> tempBuf;
-        tPipe->InitBuffer(tempBuf, Ops::Base::CeilAlign(
-            static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32)));
-        LocalTensor<bfloat16_t> tempLocal = tempBuf.Get<bfloat16_t>();
+        LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, addr, tempBufAlign / sizeof(bfloat16_t));
         GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
         topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
         DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(tempLocal, topkWeightsGlobalTensor, copyParams, copyPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_ID2>();
         Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, m_ * topK_);
     }
 }
@@ -302,17 +363,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList()
 {
-    // workSpace groupFlagList清零
+    // workSpace groupFlagList清零（含 dispatch->gmm1 wave-grain 槽位区）
     groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
     if constexpr(g_coreType == AIV) {
-        int32_t flagNum = expertPerRank_ * INT_CACHELINE * 2;
+        int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
+            (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_);
         int32_t coreLen, coreOffset;
         TilingByCore(flagNum, coreLen, coreOffset);
-        LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
         if (coreLen != 0) {
-            Duplicate(initTensor, 0, coreLen);
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopy(groupFlagListGm_[coreOffset], initTensor, coreLen);
+            Duplicate(resetFlagTensor_, 0, coreLen);
+            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
+            DataCopy(groupFlagListGm_[coreOffset], resetFlagTensor_, coreLen);
         }
     }
 }
@@ -321,17 +382,16 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetRowGroupCompleteFlags()
 {
     if constexpr(g_coreType == AIV) {
-        int64_t maxTokensStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_);
+        int64_t maxTokensStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_, blockAivNum_, expertPerRank_);
         int32_t totalCounters = static_cast<int32_t>(expertPerRank_ * maxTokensStride);
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
         GlobalTensor<int32_t> rowGroupCompleteGm;
         rowGroupCompleteGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrRowGroupComplete);
-        LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
         if (coreLen > 0) {
-            Duplicate(initTensor, 0, coreLen);
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopy(rowGroupCompleteGm[coreOffset], initTensor, coreLen);
+            Duplicate(resetFlagTensor_, 0, coreLen);
+            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
+            DataCopy(rowGroupCompleteGm[coreOffset], resetFlagTensor_, coreLen);
         }
     }
 }
@@ -340,44 +400,31 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
 {
     uint32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
-    LocalTensor<int32_t> tmpTensor = CumsumBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmpTensor = cumsumTmpTensor_;
     DataCopyPad(tmpTensor, tokenPerExpertWin_[rankId_ * expertPerRank_],
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)),
          static_cast<uint16_t>((AlignUp(worldSize_ * expertPerRank_, ALIGN_128)
              - expertPerRank_) * sizeof(int32_t)), 0},
         {});
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_ID2>();
 
     for (uint32_t i = 1; i < worldSize_; ++i) {
         Add(tmpTensor[i * expertPerRankAligned], tmpTensor[i * expertPerRankAligned],
             tmpTensor[(i - 1) * expertPerRankAligned], expertPerRank_);
         PipeBarrier<PIPE_V>();
     }
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
     DataCopyPad(cumsumInWorkSpace_, tmpTensor,
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
-
-    LocalTensor<float> sumOutTensor = tempBuf_.Get<float>();
-    LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
-    SumParams sumParams{1, expertPerRankAligned, expertPerRank_};
-    Sum(sumOutTensor, tmpFloatTensor[(worldSize_ - 1) * expertPerRankAligned], sumParams);
-
-    SyncFunc<AscendC::HardEvent::V_S>();
-
-    LocalTensor<int64_t> resTensor = sumOutTensor.template ReinterpretCast<int64_t>();
-    int64_t totalCnt = resTensor.GetValue(0);
-
-    SyncFunc<AscendC::HardEvent::S_V>();
-    assert(totalCnt <= static_cast<int64_t>(maxOutputSize_));
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 {
     int32_t copyNum = Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_), static_cast<uint32_t>(ALIGN_32));
-    LocalTensor<int32_t> tmpCopyBuffer = CrossRankSyncBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmpCopyBuffer(TPosition::VECCALC, crossRankSyncAddr_, crossRankSyncSize_);
     DataCopy(tmpCopyBuffer, groupList_, copyNum);
-    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_ID2>();
     DataCopy(expertTokenNumsOut_, tmpCopyBuffer, copyNum);
 }
 
@@ -416,8 +463,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
     }
     uint32_t numPerCore = Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * expertPerRank_),
             static_cast<uint32_t>(ALIGN_128));
-    LocalTensor<int32_t> tmpBuffer = CrossRankSyncBuf_.Get<int32_t>();
-    LocalTensor<int32_t> prevSumBuf = PrevSumBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmpBuffer(TPosition::VECCALC, crossRankSyncAddr_, crossRankSyncSize_);
+    LocalTensor<int32_t> prevSumBuf = prevSumBuf_;
     // 给对端发送
     uint64_t offsetInDstWinAddr = perRankStridesInTokenPerExpert_ * sizeof(int32_t) * rankId_ + PEERMEM_DATA_OFFSET;
     for (int32_t dstRankIdx = aivCoreIdx_; dstRankIdx < worldSize_; dstRankIdx += blockAivNum_) {
@@ -429,13 +476,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
         GlobalTensor<int32_t> dstAddress;
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstRankIdx, offsetInDstWinAddr);
         dstAddress.SetGlobalBuffer((__gm__ int32_t*)dstPeermemPtr);
-        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_ID2>();
         DataCopy(tmpBuffer, srcAddress, numPerCore);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_ID2>();
         Adds(tmpBuffer, tmpBuffer, 0x800000, numPerCore);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
         DataCopy(dstAddress, tmpBuffer, numPerCore);
-        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_ID2>();
     }
     // 本端接收
     int32_t intPer512 = ALIGN_512 / sizeof(int);
@@ -447,14 +494,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
                 GmSignalWait(syncCheck, 0);
             }
             DataCopy(tmpBuffer, tokenPerExpertWin_[TokenPerExpertLayout(dstRankIdx, 0, 0)], numPerCore);
-            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_ID2>();
             Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
             PipeBarrier<PIPE_V>();
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
+            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
             DataCopy(tokenPerExpertWin_[TokenPerExpertLayout(dstRankIdx, 0, 0)], tmpBuffer, numPerCore);
         } else {
             DataCopy(tmpBuffer, tokenPerExpertWin_[TokenPerExpertLayout(dstRankIdx, 0, 0)], numPerCore);
-            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_ID2>();
         }
         PipeBarrier<PIPE_ALL>();
         int32_t tmpSum = 0;
@@ -466,7 +513,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
             }
             tmpSum += tmpBuffer(i);
         }
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_ID2>();
         DataCopyPad(preSumBeforeRankWorkSpace_[dstRankIdx * expertPerRank_], prevSumBuf,
                     DataCopyParams{1, static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)), 0, 0});
     }
@@ -485,7 +532,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
     int32_t rows, int32_t hiddenSize, int32_t& pingpongId)
 {
     constexpr int32_t BufferNum = 2;
-    LocalTensor<ActivationType> tmpTensor1 = CopyTempBuf_.Get<ActivationType>();
+    LocalTensor<ActivationType> tmpTensor1 = copyTempTensor_;
     LocalTensor<ActivationType> tmpTensor2 = tmpTensor1[96 * 1024];
     uint32_t scaleLen = Ops::Base::CeilDiv(static_cast<int32_t>(k_),
         static_cast<int32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
@@ -533,11 +580,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
     int32_t pingpongId = 0;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    // wave-grain dispatch flag: 每个 expert 拥有 maxWavesPerExpert_ 个槽位，
+    // 每个槽位累计该 wave (L1_TILE_M rows) 实际收到的行数。
+    // 当槽位值达到 min(L1_TILE_M, m - waveIdx * L1_TILE_M) 时，gmm1 可以早启动该 wave。
+    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M);
     for (uint32_t idx = blockIdx_; idx < worldSize_ * dispatchBlockNumPerEP_; idx += blockNum_) {
         uint32_t dstRankIdx = idx / dispatchBlockNumPerEP_;
         uint32_t aivIdxInGroup = idx % dispatchBlockNumPerEP_;
         uint32_t rowStartInDst = (dstRankIdx == 0 ? 0 :
             cumsumInWorkSpace_((dstRankIdx - 1) * expertPerRank_ + expertIdx));
+        int32_t rowsThisCore = 0;
+        int32_t rowDstOffsetPerCore = 0;
         if (rowStartInDst < maxOutputSize_) {
             int32_t rowsCopyCnt = tokenPerExpertWin_(TokenPerExpertLayout(dstRankIdx, rankId_, expertIdx));
             if (rowStartInDst + rowsCopyCnt > maxOutputSize_) {
@@ -546,7 +599,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             int32_t rowSrcOffset = prevSum_;
             prevSum_ += rowsCopyCnt;
             int32_t rowsPerCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(dispatchBlockNumPerEP_));
-            int32_t rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
+            rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
             int32_t rowSrcOffsetPerCore = rowSrcOffset + aivIdxInGroup * rowsPerCore;
             if (rowDstOffsetPerCore + rowsPerCore > rowStartInDst + rowsCopyCnt) {
                 rowsPerCore = rowStartInDst + rowsCopyCnt - rowDstOffsetPerCore;
@@ -564,10 +617,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                     gmmAddrInfo.aScaleGlobal));
                 CopyGMToGMPerToken(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
                     gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
+                rowsThisCore = rowsPerCore;
             }
         }
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1));
+        if (rowsThisCore > 0) {
+            // drain MTE3 后再按 wave 边界做 AtomicAdd
+            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_ID2>();
+            int32_t rowEnd = rowDstOffsetPerCore + rowsThisCore;
+            int32_t waveLo = rowDstOffsetPerCore / L1_TILE_M_I32;
+            int32_t waveHi = (rowEnd - 1) / L1_TILE_M_I32;
+            __gm__ int32_t* flagBase = (__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr());
+            for (int32_t w = waveLo; w <= waveHi; ++w) {
+                int32_t waveStartRow = w * L1_TILE_M_I32;
+                int32_t waveEndRow = waveStartRow + L1_TILE_M_I32;
+                int32_t lo = rowDstOffsetPerCore > waveStartRow ? rowDstOffsetPerCore : waveStartRow;
+                int32_t hi = rowEnd < waveEndRow ? rowEnd : waveEndRow;
+                AtomicAdd(flagBase + w, int32_t(hi - lo));
+            }
+        }
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -650,8 +717,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     }
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2 +
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
+    // wave-grain: per-expert stride is dispatchFlagSlotsPerExpert_ (one slot per L1_TILE_M wave).
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
-                                Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
+                                Get<IDX_FLAG_OFFSET>(baseOffset_) * dispatchFlagSlotsPerExpert_;
     if (gmmIndex == 1) {
         gmmAddrInfo.gmm2OutGlobal = params_.workspaceInfo.ptrGmmOut +
                                     Get<IDX_Y2_OFFSET>(baseOffset_) * sizeof(bfloat16_t);
@@ -683,8 +751,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenPerExpert()
     }
     int32_t num = worldSize_ * Ops::Base::CeilAlign(
             static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
-    SyncFunc<AscendC::HardEvent::MTE3_V>();
-    LocalTensor<int32_t> tmp = ResetTokenBuf_.Get<int32_t>();
+    SyncFuncStatic<AscendC::HardEvent::MTE3_V, SYNC_ID2>();
+    LocalTensor<int32_t> tmp = resetTokenTensor_;
     Duplicate(tmp, 0, num);
     PipeBarrier<PIPE_ALL>(); // 保证前侧combine做完了再清理
     DataCopy(tokenPerExpertWin_, tmp, num);
@@ -697,45 +765,50 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     TilingByCore(m_, coreLen, coreOffset, 1);
     GlobalTensor<int32_t> expandedRowIdx;
     expandedRowIdx.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdxGather);
-    GlobalTensor<fp8_e5m2_t> expandedQuantRow;
-    expandedQuantRow.SetGlobalBuffer(reinterpret_cast<__gm__ fp8_e5m2_t*>(params_.peermemInfo.ptrD));
+    GlobalTensor<bfloat16_t> expandedX;
+    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.ptrD);
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
-    uint32_t nScale = Ops::Base::CeilDiv(k_, MXFP_SCALE_GROUP_NUM) * MXFP_MULTI_BASE_SIZE;
-    uint32_t quantRowSize = k_ + nScale;
-    uint32_t rowStride = Ops::Base::CeilAlign(quantRowSize, 32U);
-
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
-        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-        LocalTensor<bfloat16_t> dataResBf16 = DataResBuf_.Get<bfloat16_t>();
+        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_ID2>();
+        LocalTensor<bfloat16_t> dataResBf16 = dataResBf16_;
         LocalTensor<bfloat16_t> dataIn0Bf16 = dataResBf16[k_];
         LocalTensor<bfloat16_t> dataIn1Bf16 = dataResBf16[k_ * 2];
-        LocalTensor<float> dataResFp32 = DataResFp32Buf_.Get<float>();
+        LocalTensor<float> dataResFp32 = dataResFp32_;
         LocalTensor<float> dataIn0Fp32 = dataResFp32[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32[k_ * 2];
-        LocalTensor<fp8_e5m2_t> quantRow0 = quantDataBuf_.Get<fp8_e5m2_t>();
-        LocalTensor<fp8_e5m2_t> quantRow1 = quantRow0[rowStride];
-        LocalTensor<fp8_e8m0_t> quantScale0 = quantRow0[k_].ReinterpretCast<fp8_e8m0_t>();
-        LocalTensor<fp8_e8m0_t> quantScale1 = quantRow1[k_].ReinterpretCast<fp8_e8m0_t>();
         for (int32_t expId = 0; expId < topK_; ++expId) {
             int32_t rowIdx = expandedRowIdx(tokenIdx * topK_ + expId);
             float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
             auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % 2 == 0) ? dataIn0Fp32 : dataIn1Fp32;
-            auto quantDataLocal = (expId % 2 == 0) ? quantRow0 : quantRow1;
-            auto quantScaleLocal = (expId % 2 == 0) ? quantScale0 : quantScale1;
-            WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(quantDataLocal, expandedQuantRow[rowIdx * quantRowSize], rowStride);
-            SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            MegaMoeCombineImpl::DequantizeMxToBf16(quantDataLocal, quantScaleLocal, dataInBf16, k_, nScale);
-            PipeBarrier<PIPE_V>();
-            SetFlag<AscendC::HardEvent::S_V>(event);
-            WaitFlag<AscendC::HardEvent::S_V>(event);
-            Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                DataCopy(dataInBf16, expandedX[rowIdx * k_], k_);
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                SetFlag<AscendC::HardEvent::S_V>(event);
+                WaitFlag<AscendC::HardEvent::S_V>(event);
+                Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+            } else {
+                uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+                uint32_t quantTokenSize = k_ + nScale;
+                uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
+                WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                DataCopy(dataInBf16, expandedX[rowIdx * quantEleNum], quantEleNum);
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                if constexpr (CombineQuantMode == MXFP8_E5M2_COMM_QUANT) {
+                    MegaMoeCombineImpl::DeQuantMxFp8<fp8_e5m2_t, bfloat16_t>(dataInBf16, dataInFp32,
+                        bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
+                } else if constexpr (CombineQuantMode == MXFP8_E4M3_COMM_QUANT) {
+                    MegaMoeCombineImpl::DeQuantMxFp8<fp8_e4m3fn_t, bfloat16_t>(dataInBf16, dataInFp32,
+                        bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
+                }
+            }
             PipeBarrier<PIPE_V>();
             if (expId == 0) {
                 Muls(dataResFp32, dataInFp32, expScale, k_);
@@ -747,12 +820,78 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(event);
         }
+        // fp32 -> bf16
         Cast(dataResBf16, dataResFp32, AscendC::RoundMode::CAST_RINT, k_);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
         DataCopy(output[tokenIdx * k_], dataResBf16, k_);
     }
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(GMMAddrInfo &gmmAddrInfo)
+{
+    int64_t maxRowGroupsStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_, blockAivNum_, expertPerRank_);
+    uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
+
+    GlobalTensor<int32_t> rowGroupComplete;
+    rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrRowGroupComplete);
+    int64_t ubOffset = 0;
+
+    uint32_t nAlign32 = Ops::Base::CeilAlign(k_, 32U);
+    uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t quantRowSize = k_ + nScale;
+    uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(quantRowSize, 32U);
+    uint32_t singleTokenBytes = nAlign32 * sizeof(bfloat16_t) + quantRowSizeBytes;
+    int64_t ubTensorSize = (singleTokenBytes * 2 + 2048) / sizeof(bfloat16_t);
+    combineUbTensor_ = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, ubTensorSize);
+    ubOffset += ubTensorSize * sizeof(bfloat16_t);
+    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+        if (!UpdateGroupParams(expertIdx)) {
+            continue;
+        }
+        UpdateGlobalBuffer(gmmAddrInfo, 1);
+        uint32_t m_expert = Get<M_VALUE>(problemShape_);
+        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M);
+
+        uint32_t myGroup, myIdxInGrp, myGrpSize;
+        MegaMoeImpl::ComputeCoreGrouping(aivCoreIdx_, rowGroupsThisExpert, blockAivNum_,
+            myGroup, myIdxInGrp, myGrpSize);
+
+        uint32_t rgIdx = myGroup;
+        if (rgIdx >= rowGroupsThisExpert) {
+            continue;
+        }
+
+        __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)rowGroupComplete.GetPhyAddr()
+            + expertIdx * maxRowGroupsStride + rgIdx * INT_CACHELINE * blockAivNum_
+            + aivCoreIdx_ * INT_CACHELINE;
+        while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup)
+        {
+            AscendC::Nop<200>();
+        }
+        uint32_t rowStart = rgIdx * L1_TILE_M;
+        uint32_t rowCount = Min(L1_TILE_M, m_expert - rowStart);
+        uint32_t rowsPerCore = Ops::Base::CeilDiv(rowCount, myGrpSize);
+        int32_t myRowOffset = myIdxInGrp * rowsPerCore;
+        uint32_t myRowCount = 0;
+        if (myRowOffset < (int32_t)rowCount) {
+            myRowCount = Min(rowsPerCore, rowCount - myRowOffset);
+        }
+        if (myRowCount > 0) {
+            AscendC::SetCtrlSpr<60, 60>(0);
+            if constexpr (CombineQuantMode == MXFP8_E5M2_COMM_QUANT) {
+                MegaMoeCombineImpl::CombineRowGroup<MXFP8_E5M2_COMM_QUANT, bfloat16_t>(
+                    rowStart + myRowOffset, myRowCount, k_, expertIdx, rankId_,
+                    gmmAddrInfo.gmm2OutGlobal, params_, combineUbTensor_, ubOffset, quantRowSizeBytes);
+            } else if constexpr (CombineQuantMode == MXFP8_E4M3_COMM_QUANT) {
+                MegaMoeCombineImpl::CombineRowGroup<MXFP8_E4M3_COMM_QUANT, bfloat16_t>(
+                    rowStart + myRowOffset, myRowCount, k_, expertIdx, rankId_,
+                    gmmAddrInfo.gmm2OutGlobal, params_, combineUbTensor_, ubOffset, quantRowSizeBytes);
+            }
+        }
+    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -785,16 +924,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SyncAll<true>();
 
     // 2. buffer申请 & workspace Init
-    TPipe firstPipe;
-    FirstBuffInit(&firstPipe);
+    FirstBuffInit();
     ResetWorkSpaceFlagList();
-    ResetRowGroupCompleteFlags();
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        ResetRowGroupCompleteFlags();
+    }
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
     if (subBlockIdx_ == 0) {
         PipeBarrier<PIPE_ALL>();
-        firstPipe.Destroy();
     }
     SyncAll<false>();
 
@@ -813,7 +952,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
@@ -824,7 +963,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         if (subBlockIdx_ == 1) {
             PipeBarrier<PIPE_ALL>();
-            firstPipe.Destroy();
         }
     }
 
@@ -832,68 +970,45 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    if constexpr(g_coreType == AscendC::AIC) {
-        // AIC: compute all GMM2 tiles + increment row-group counters
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
             if (!UpdateGroupParams(expertIdx)) {
                 continue;
             }
             UpdateGlobalBuffer(gmmAddrInfo, 1);
-            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, problemShape_, gmmAddrInfo, startBlockIdx_, expertIdx);
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    expertIdx, gmm2PingPongIdx_, rankId_);
+            }
         }
+        EndGMM2Sync();
     } else {
-        // AIV: expert-sequential Combine - all cores share each row-group
-        int64_t maxRowGroupsStride = MegaMoeImpl::ComputeMaxRowGroupsStride(params_.tilingData);
-        uint32_t n = k_; // token长度
-        uint32_t nTilesPerGroup = Ops::Base::CeilDiv(n, L1_TILE_N); // token被分为了多少块
-
-        baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        preOffset_ = 0;
-
-        GlobalTensor<int32_t> rowGroupComplete;
-        rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrRowGroupComplete);// 计数地址
-        for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-            if (!UpdateGroupParams(expertIdx)) {
-                continue;
-            }
-            UpdateGlobalBuffer(gmmAddrInfo, 1);
-            uint32_t m_expert = Get<M_VALUE>(problemShape_);// m轴大小 
-            uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M);// m轴分为几个group
-            for (uint32_t rgIdx = 0; rgIdx < rowGroupsThisExpert; rgIdx++) { // 按group循环
-                uint32_t globalIdx = expertIdx * maxRowGroupsStride + rgIdx; //当前group的计数位置
-                __gm__ int32_t* counterAddr = (__gm__ int32_t*)rowGroupComplete.GetPhyAddr() + globalIdx;
-                GmSignalWaitBarrier(counterAddr, (int32_t)nTilesPerGroup); //是否已经收齐
-
-                uint32_t rowStart = rgIdx * L1_TILE_M; // 当前要处理的token的起始行数
-                uint32_t rowCount = Min(L1_TILE_M, m_expert - rowStart); // 实际要处理的行数，对尾块的情况做了处理
-                uint32_t rowsPerCore = Ops::Base::CeilDiv(rowCount, blockAivNum_); // 均分核，得到每个核要处理的行数
-                int32_t myRowOffset = aivCoreIdx_ * rowsPerCore; // 核数导致的偏移，或者说已经处理过的token
-                uint32_t myRowCount = 0;
-                if (myRowOffset < (int32_t)rowCount) { //尚未发送完成时进入这个分支
-                    myRowCount = Min(rowsPerCore, rowCount - myRowOffset); // myRowCount当前核实际需要处理的行数，防止多处理数据
+        if constexpr(g_coreType == AscendC::AIC) {
+            for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+                if (!UpdateGroupParams(expertIdx)) {
+                    continue;
                 }
-                if (myRowCount > 0) {
-                    MegaMoeCombineImpl::CombineRowGroup<QuantOutType, QuantScaleOutType>(
-                        rowStart + myRowOffset, myRowCount, n, expertIdx, rankId_,
-                        gmmAddrInfo.gmm2OutGlobal, params_, combineUbTensor_);
-                }
+                UpdateGlobalBuffer(gmmAddrInfo, 1);
+                MegaMoeImpl::GroupMatmul2Quant<QuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, expertIdx);
             }
+        } else {
+            ProcessCombine(gmmAddrInfo);
         }
     }
-    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
         ArgSortExpandedRowIdx();
-        TPipe secondPipe;
-        SecondBuffInit(&secondPipe);
+        SecondBuffInit();
         ResetTokenPerExpert();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
         PipeBarrier<PIPE_ALL>();
-        secondPipe.Destroy();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

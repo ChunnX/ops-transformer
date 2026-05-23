@@ -414,7 +414,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxDataCopyOut
         return;
     }
     if (constInfo.learnableSinkFlag) {
-        if (constInfo.isGqa) {
+        if (constInfo.isGqa && constInfo.gSize > 1) {
             this->Vec1SinkComputeGSFused(runInfo, constInfo, sumUb, maxUb);
         } else {
             this->Vec1SinkCompute(runInfo, constInfo, sumUb, maxUb);
@@ -450,15 +450,53 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CopySinkIn(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
     LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
-    int64_t sinkOffset = runInfo.n2oIdx * constInfo.gSize + constInfo.subBlockIdx * runInfo.halfS1RealSize;
     DataCopyExtParams sinkCopyParams;
-    sinkCopyParams.blockCount = 1; // 进行一次连续拷贝
-    sinkCopyParams.blockLen = runInfo.halfS1RealSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
-    sinkCopyParams.srcStride = 0; // 源地址连续
-    sinkCopyParams.dstStride = 0; // 目的地址连续
-
     DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
-    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
+    uint32_t copyOffset = 0;
+    uint32_t dealCount = runInfo.halfS1RealSize;
+    int64_t sinkBaseOffset = runInfo.n2oIdx * constInfo.gSize;
+
+    sinkCopyParams.blockCount = 1;
+    sinkCopyParams.srcStride = 0;
+    sinkCopyParams.dstStride = 0;
+
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH ||
+                  layout == LayOutTypeEnum::LAYOUT_SBH) {
+        uint32_t gOffset = static_cast<uint32_t>(runInfo.sOuterOffset % constInfo.gSize);
+        while (copyOffset < dealCount) {
+            uint32_t copyLen = dealCount - copyOffset;
+            uint32_t gRemain = constInfo.gSize - gOffset;
+            copyLen = copyLen < gRemain ? copyLen : gRemain;
+            sinkCopyParams.blockLen = copyLen * sizeof(INPUT_T);
+            DataCopyPad(sinkUbBf16[copyOffset], this->sinkGm[sinkBaseOffset + gOffset], sinkCopyParams,
+                        sinkCopyPadParams);
+            copyOffset += copyLen;
+            gOffset = 0;
+        }
+    } else if (runInfo.actualS1Size == 1) {
+        uint32_t gOffset = static_cast<uint32_t>(runInfo.sOuterOffset % constInfo.gSize);
+        while (copyOffset < dealCount) {
+            uint32_t copyLen = dealCount - copyOffset;
+            uint32_t gRemain = constInfo.gSize - gOffset;
+            copyLen = copyLen < gRemain ? copyLen : gRemain;
+            sinkCopyParams.blockLen = copyLen * sizeof(INPUT_T);
+            DataCopyPad(sinkUbBf16[copyOffset], this->sinkGm[sinkBaseOffset + gOffset], sinkCopyParams,
+                        sinkCopyPadParams);
+            copyOffset += copyLen;
+            gOffset = 0;
+        }
+    } else {
+        while (copyOffset < dealCount) {
+            int64_t gs1Offset = runInfo.sOuterOffset + copyOffset;
+            uint32_t gOffset = static_cast<uint32_t>((gs1Offset / runInfo.actualS1Size) % constInfo.gSize);
+            uint32_t s1Remain = static_cast<uint32_t>(runInfo.actualS1Size - gs1Offset % runInfo.actualS1Size);
+            uint32_t copyLen = dealCount - copyOffset;
+            copyLen = copyLen < s1Remain ? copyLen : s1Remain;
+            auto sinkRaw = this->sinkGm.GetValue(sinkBaseOffset + gOffset);
+            Duplicate(sinkUbBf16[copyOffset], sinkRaw, copyLen);
+            copyOffset += copyLen;
+        }
+    }
     sinkQue.EnQue(sinkUbBf16);
 }
 

@@ -723,8 +723,8 @@ static void SetTilingKey(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     bool tp = false;
-    uint32_t quantMode = TILINGKEY_NO_QUANT;  // A2 & A3
-    uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    uint32_t layeredMode = TILINGKEY_TPL_CCU;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);

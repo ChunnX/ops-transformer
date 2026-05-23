@@ -460,6 +460,16 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
     uint32_t hFloatSize = axisH_ * static_cast<uint32_t>(sizeof(float));
     hFloatAlign32Size_ = Ceil(hFloatSize, UB_ALIGN) * UB_ALIGN;
     hFloatAlign256Size_ = Ceil(hFloatSize, ALIGNED_LEN) * ALIGNED_LEN;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // A5 INT8/MXFP8 融合反量化每轮固定访问 128 floats，工作区按 512B 对齐避免尾段越界
+    if constexpr ((QuantMode == INT8_COMM_QUANT) || (QuantMode == MXFP8_E5M2_COMM_QUANT) ||
+        (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+        constexpr uint32_t kA5FusedQuantAlign = ALIGNED_LEN * INT8_DIVIVE;
+        uint32_t hFloatA5FusedQuantSize = Ceil(hFloatSize, kA5FusedQuantAlign) * kA5FusedQuantAlign;
+        hFloatAlign32Size_ = hFloatA5FusedQuantSize;
+        hFloatAlign256Size_ = hFloatA5FusedQuantSize;
+    }
+#endif
     hExpandXTypeSize_ = axisH_ * sizeof(ExpandXType);
     hExpandXAlign32Size_ = Ceil(hExpandXTypeSize_, UB_ALIGN) * UB_ALIGN;
     hAlignWinSize_ = Ceil(hExpandXTypeSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
@@ -1289,18 +1299,24 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
     tmpUb = moeSumQueue_.DeQue<XType>();
     LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
     if constexpr (QuantMode > UNQUANT) {
-        quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_);
+        quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
+        // 非 A5 在外层完成 INT8 加权求和
         if constexpr (QuantMode == INT8_COMM_QUANT) {
             Cast(rowTmpFloatLocal_, outLocalTensor, AscendC::RoundMode::CAST_NONE, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
         }
+#endif
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
+        PipeBarrier<PIPE_V>();
+        AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+        PipeBarrier<PIPE_V>();
+        AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
     }
-
-    PipeBarrier<PIPE_V>();
-    AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
-    PipeBarrier<PIPE_V>();
-    AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
     moeSumQueue_.FreeTensor<XType>(tmpUb);
 }
 
@@ -1396,16 +1412,22 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessExpert
         tmpUb = moeSumQueue_.DeQue<XType>();
         LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
         if constexpr (QuantMode > UNQUANT) {
-            quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_);
+            quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, 1.0f);
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
+            // 非 A5 在外层完成 INT8 求和累加
             if constexpr (QuantMode == INT8_COMM_QUANT) {
                 Cast(rowTmpFloatLocal_, outLocalTensor, AscendC::RoundMode::CAST_NONE, processLen);
+                PipeBarrier<PIPE_V>();
+                AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
+                PipeBarrier<PIPE_V>();
             }
+#endif
         } else {
             Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-        AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
-        PipeBarrier<PIPE_V>();
         moeSumQueue_.FreeTensor<XType>(tmpUb);
     }
 

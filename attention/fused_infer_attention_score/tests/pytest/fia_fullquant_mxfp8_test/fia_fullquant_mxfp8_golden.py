@@ -845,6 +845,10 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
 
     p_scale_npu = p_scale.npu()
 
+    out_dtype = torch.float16
+    if ENABLE_ROPE:
+        out_dtype = torch.bfloat16
+
     if ENABLE_PA:
         k_pa = mxfp8_pa_preprocessing(k_fp8, actual_seq_kv, BLOCK_SIZE, block_table_torch,
                                        is_scale=False, kv_layout=KV_CACHE_LAYOUT)
@@ -923,6 +927,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
             quant_scale_p=p_scale_npu,
+            out_dtype=out_dtype,
         )
     else:
         k_npu = convert_kv_bnsd_to_layout(k_fp8, actual_seq_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
@@ -979,6 +984,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
             quant_scale_p=p_scale_npu,
+            out_dtype=out_dtype,
         )
 
     npu_output = npu_out[0]

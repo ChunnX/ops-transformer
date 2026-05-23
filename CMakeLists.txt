@@ -126,11 +126,13 @@ set_directory_properties(PROPERTIES
 
 include(cmake/third_party/opbase.cmake)
 include(cmake/config.cmake)
-include(cmake/third_party/json.cmake)
+add_cann_third_party(json)
+
 if (ENABLE_TEST)
     set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
-    include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+    add_cann_third_party(gtest)
+
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
 
@@ -146,9 +148,10 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/dependencies.cmake)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
-        include(cmake/third_party/eigen.cmake)
+        add_cann_third_party(eigen)
         include(cmake/third_party/abseil-cpp.cmake)
         include(cmake/third_party/ascend_protobuf.cmake)
+
 
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")

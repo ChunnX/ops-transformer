@@ -744,14 +744,19 @@ build_static_lib() {
     echo $dotted_line
     echo "Start to build static lib."
 
+    local option=""
+    if [ "${VERBOSE}" == "true" ]; then
+        option="--verbose"
+    fi
+
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
     local all_targets=$(cmake --build . --target help)
     rm -fr ${BUILD_PATH}/bin_tmp
     mkdir -p ${BUILD_PATH}/bin_tmp
     if echo "${all_targets}" | grep -wq "ophost_transformer_static"; then
-        cmake --build . --target ophost_transformer_static ${JOB_NUM}
+        cmake --build . --target ophost_transformer_static ${JOB_NUM} ${option}
     fi
-    cmake --build . --target opapi_transformer_static ${JOB_NUM}
+    cmake --build . --target opapi_transformer_static ${JOB_NUM} ${option}
     local jit_command=""
     if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
         jit_command="-j"
@@ -762,7 +767,7 @@ build_static_lib() {
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" StaticCompile -s ${unit} -b ${BUILD_PATH} -n=0 -a=${ARCH_INFO} ${jit_command}
 
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
-    cmake --build . --target cann_transformer_static ${JOB_NUM}
+    cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
     echo "Build static lib success!"
 }
 

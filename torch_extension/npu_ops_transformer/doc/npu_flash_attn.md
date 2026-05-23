@@ -70,7 +70,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=0, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
+npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=0, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -308,15 +308,6 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>-</td>
         <td>-</td>
     </tr>
-    <tr>
-        <td>deterministic</td>
-        <td>可选输入</td>
-        <td>是否开启确定性计算</td>
-        <td>INT</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
 </tbody>
 </table>
 
@@ -396,7 +387,6 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_out      | ATTR(OPTIONAL) |   string   |
-|                      |     deterministic     | ATTR(OPTIONAL) |   int   |
 |                      |     attn_out     |     OUTPUT     |   Tensor   |
 |      Mask参数组      |       mask_mode       | ATTR(OPTIONAL) |   int   |
 |                      |       win_left       | ATTR(OPTIONAL) |   int   |
@@ -431,8 +421,6 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 ### 参数组约束
 
 #### 公共参数组
-- 确定性计算：
-  - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，暂不支持确定性计算，仅支持传入0。
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
