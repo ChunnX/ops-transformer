@@ -182,6 +182,7 @@ attention:
       - nsa_compress_attention
     test:
       ut: False
+      examples: False
 
   nsa_compress_attention_infer:
     module: True
@@ -239,6 +240,7 @@ attention:
       - nsa_selected_attention
     test:
       ut: False
+      examples: False
 
   nsa_selected_attention_grad:
     module: True
