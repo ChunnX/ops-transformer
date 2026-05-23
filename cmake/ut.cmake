@@ -505,6 +505,9 @@ endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
   add_cann_third_party(gtest)
+  if (TARGET GTest::gtest)
+    add_library(gtest ALIAS GTest::gtest)
+  endif()
 
   function(AddAicpuOpTestCase opName)
     get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
