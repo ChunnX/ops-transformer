@@ -301,7 +301,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
-    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -397,22 +398,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startRankId >= endRankId || sendRankNum == 0) { 
         return; 
     }
-    //PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n",aivId_, epWorldSize_, startRankId, endRankId, sendRankNum);
-    //PRINTF("start SendToMoeExpert inter aivid is %d\n", aivId_);
     // ============ 读取expert_id数组到UB ============
-    // SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
-        PRINTF("start aiv %d, eprank %d token tokenIndex is %d, expertId is %d\n", aivId_, epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
-    }
-    //PRINTF("\n\n\n\n");
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
-        //PRINTF("eprank %d aiv %d, rankId is %d\n", epRankId_, aivId_, rankId);
         for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
             uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
             int32_t curExpertCnt = 0;
-            //PRINTF("epRankId %d, aiv %d, tokenIndex %d, dstRankId is %d, rankId is %d\n\n", epRankId_, aivId_, tokenIndex, dstRankId, rankId);
             if (dstRankId != rankId) { // 只处理当前rank负责的token
-                //PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
                 continue;
             }
             SyncFunc<AscendC::HardEvent::S_V>();
@@ -427,8 +418,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                             epRankId_ * expertPerSizeOnWin_ +
                                             curExpertCnt * hAlignWinSize_);
-            //PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
-            // //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
             ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
@@ -445,15 +434,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         SyncAll<true>(); // 等待所有核完成统计
         return; 
     }
-    for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
-        PRINTF("aivid is %d, eprank %d token tokenIndex is %d, expertId is %d\n", aivId_, epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
-    }
     // ============ 统计发送到各rank的token数量 ============
     for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
         int32_t curExpertCnt = 0;
         int32_t cntPosIndex = (curExpertId - startExpertId_) * 8 + 1;
         CalTokenSendExpertCnt(curExpertId, axisBS_, curExpertCnt);
-        PRINTF("epRankId_ is %d, curExpertId is %d, curExpertCnt is %d, axisBS_ is %d\n", epRankId_, curExpertId, curExpertCnt, axisBS_);
         statusTensor_(cntPosIndex) = curExpertCnt;
     }
 
@@ -473,23 +458,15 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
-        PipeBarrier<PIPE_ALL>();
-        PRINTF("statusTensor_ flag is %d, count is %d\n", statusTensor_(0), statusTensor_(1));
     }
     PipeBarrier<PIPE_ALL>();
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
-        GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
-        GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)dstRankGM);
         if (dstRankId == epRankId_) { 
-            rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-            PRINTF("rankGMTensor flag is %d, count is %d\n", rankGMTensor(0), rankGMTensor(1));
             continue;
         }
-        PRINTF("flag is %d, count is %d\n", rankGMTensor(0), rankGMTensor(1));
-        // GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
-        // GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
+        GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
+        GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
         hcomm_.Wait(handle);
@@ -519,7 +496,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
 {
     // 等待所有rank完成数据发送
     // 通过轮询状态区，等待所有rank的状态flag变为1.0f
-    
+    PRINTF("WaitDispatch start\n");
     BufferInit();
     startExpertId_ = startStatusIndex_;
     endExpertId_ = startExpertId_ + recStatusNumPerCore_;
@@ -668,7 +645,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
-            // WaitDispatch();      // 步骤3: 等待所有rank完成发送
+            WaitDispatch();      // 步骤3: 等待所有rank完成发送
             // LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
