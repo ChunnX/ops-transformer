@@ -60,9 +60,9 @@ public:
     __aicore__ inline void Init(uint64_t totalSize, uint64_t weightL1Space, uint64_t aPrefetchSize,
                                 const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe,
                                 uint64_t mxBiasL1DbOffset);
-    __aicore__ inline void MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize, uint64_t l1StartSize,
-                                      uint64_t mxBiasL1DbOffset, const TCubeTiling *__restrict matmulTiling,
-                                      const LocalTensor<biasType> &biasL1, uint64_t mxScaleBL1DbOffset,
+    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+                                      const TCubeTiling *__restrict matmulTiling, const LocalTensor<biasType> &biasL1,
+                                      uint64_t mxScaleBL1DbOffset,
                                       const LocalTensor<fp8_e8m0_t> &mxScaleBL1);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
@@ -84,12 +84,11 @@ private:
     __aicore__ inline uint64_t CheckMaxSpace(const BasicBlockOffsetParam &param);
     __aicore__ inline void CopyAGmToL1SingleBuffer(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
                                                    int64_t kbL1RealSize, int64_t biasRealN, int64_t aGmOffset);
-    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
-                                                  uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
+    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1RealSize,
+                                                  Dn2NzParams &dn2NzParams);
 
     int8_t aL1DbNum_;
     bool isBias_;
-    uint64_t quantScaleValue_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
     static constexpr uint64_t MX_SCALE_L1_SIZE =
         MX_SCALE_L1_SIZE_KB * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
@@ -107,8 +106,6 @@ private:
     GlobalTensor<xType> xGlobal_;
     GlobalTensor<biasType> biasGlobal_;
     GlobalTensor<fp8_e8m0_t> mxScaleAGlobal_;
-    GlobalTensor<fp8_e8m0_t> mxScaleBGlobal_;
-    GlobalTensor<uint64_t> quantScaleGlobal_;
     GlobalTensor<yType> yGlobal_;
 
     LocalTensor<xType> aL1_;
@@ -334,7 +331,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
 
     // copy mxScaleA
     Dn2NzParams scaleAdn2NzParams;
-    ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1RealSize, scaleKL1RealSize, scaleAdn2NzParams);
+    ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1RealSize, scaleAdn2NzParams);
 
     int64_t scaleAGmOffset = param.mOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
     GlobalTensor<half> f16ScaleAGlobal;
@@ -347,7 +344,6 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize,
-                                                                        uint64_t scaleKL1Stride,
                                                                         uint64_t scaleKL1RealSize,
                                                                         Dn2NzParams &dn2NzParams)
 {
@@ -418,7 +414,6 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         mxScaleAGlobal_.SetGlobalBuffer(perTokenScale);
-        mxScaleBGlobal_.SetGlobalBuffer(antiquantScale);
     }
 }
 
@@ -463,8 +458,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize,
-                                                            uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize,
+                                                            uint64_t mxBiasL1DbOffset,
                                                             const TCubeTiling *__restrict matmulTiling,
                                                             const LocalTensor<biasType> &biasL1,
                                                             uint64_t mxScaleBL1DbOffset,

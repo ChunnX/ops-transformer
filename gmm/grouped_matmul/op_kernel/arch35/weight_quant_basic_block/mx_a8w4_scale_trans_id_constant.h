@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file static_diag_constant.h
+ * \file mx_a8w4_scale_trans_id_constant.h
  * \brief
  */
 #pragma once

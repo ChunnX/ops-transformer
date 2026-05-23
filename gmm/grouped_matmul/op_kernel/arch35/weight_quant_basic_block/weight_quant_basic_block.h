@@ -141,8 +141,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
         mxScaleBL1DbOffset_ = (l1RemainSize - MX_SCALE_L1_SIZE) / sizeof(fp8_e8m0_t);
 
         if ASCEND_IS_AIC {
-            cubeCompute_.MxA8W4Init(aPrefetchSize, mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1DbOffset_,
-                                    matmulTiling, biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
+            cubeCompute_.MxA8W4Init(mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1DbOffset_, matmulTiling,
+                                    biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
         } else {
             vectorCompute_.Init(tPipe, hasBias_);
         }
@@ -385,11 +385,11 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBl
 
     vectorCompute_.WaitVToMTE2();
     vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam.nOffset + mxScaleNOffset, mxScaleNSize, kMte2Offset,
-                                           mxScaleKSize, mxScaleMxGroupNum, mxScaleRealGroupNum);
+                                           mxScaleMxGroupNum, mxScaleRealGroupNum);
     vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
     auto mxScaleBL1Current = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_];
     auto mxScaleBL1CurrentU16 = mxScaleBL1Current.template ReinterpretCast<uint16_t>();
-    vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16, mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
+    vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16, mxScaleL1NOffset, mxScaleNSize);
     vectorCompute_.SetVToMTE2();
     mxScaleBufIdx_++;
 }
