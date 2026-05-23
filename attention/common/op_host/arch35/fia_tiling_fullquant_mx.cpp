@@ -305,7 +305,7 @@ bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
         return false;
     }
 
-    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag ||
+    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag || dnFlag_ ||
         fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse) {
         return false;
     }
@@ -315,13 +315,26 @@ bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
         return false;
     }
 
-    // 仅支持非量化，占用2B
-    const int64_t dataTypeSize = 2U;
-    int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
+    if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
 
-    // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
-           platformInfo_.l2Size;
+    // S1外切分核优化主要针对prefill阶段，需要Q序列长度足够大才能有效复用L2 cache
+    // sOuterSize = sOuterFactor_ * CV_RATIO，是S1外切分的最小块大小
+    int64_t maxActualSeqLenQ = 0;
+    for (size_t i = 0; i < actualSeqLengthsQ_.size(); i++) {
+        maxActualSeqLenQ = std::max(maxActualSeqLenQ, actualSeqLengthsQ_[i]);
+    }
+    uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
+    if (maxActualSeqLenQ < static_cast<int64_t>(sOuterSize)) {
+        return false;
+    }
+
+    int64_t requiredL2Size = CalcRequiredL2Size();
+
+    // 当同时参与计算所需的L2Size超过系统配置一半时，开启S1外切分核优化L2cache复用率
+    // *2表示超过一半就开启，后续可根据实际情况调整此比例
+    return requiredL2Size * 2 >= platformInfo_.l2Size;
 }
 
 void FiaTilingFullQuantMxArch35::SplitOutSeq()
@@ -354,9 +367,8 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    printf("actualUsedCoreNum:%d\n", actualUsedCoreNum);
-    printf("totalSize:%d\n", totalSize);
-    printf("zzyzzy gqa enableS1OutSplit\n");
+    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%d", actualUsedCoreNum);
+    OP_LOGD(fiaInfo_->opName, "totalSize:%d", totalSize);
 }
 
 bool FiaTilingFullQuantMxArch35::CheckQKVActualSeqLengthsRight()
@@ -671,8 +683,8 @@ void FiaTilingFullQuantMxArch35::GenTilingKey()
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, kvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
-            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp: %llu.",
+            "hasAttenMask: %d, hasRope: %d, kvLayoutType: %llu, isFd: %d, emptyTensor: %d, "
+            "enableKvPrefix: %d, enableS1OutSplit: %d, isReconstructTemp: %d.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
