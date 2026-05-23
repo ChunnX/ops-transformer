@@ -415,7 +415,6 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         layout_kv     = layout_kv,
         layout_out    = layout_out,
         return_softmax_lse = lse_flag,
-        deterministic = 0,
     )
     torch.npu.synchronize()
     return out.cpu(), lse_out.cpu()

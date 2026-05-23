@@ -45,17 +45,17 @@ constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
-int64_t CeilDivInt(int64_t a, int64_t b)
+__aicore__ inline int64_t CeilDivInt(int64_t a, int64_t b)
 {
     return (a + b - 1) / b;
 }
 
-int64_t CeilAlignInt(int64_t a, int64_t b)
+__aicore__ inline int64_t CeilAlignInt(int64_t a, int64_t b)
 {
     return ((a + b - 1) / b) * b;
 }
 
-int64_t ComputeMaxTokensStride(uint64_t maxOutputSize)
+__aicore__ inline int64_t ComputeMaxTokensStride(uint64_t maxOutputSize)
 {
     int64_t maxRowGroupsPerExpert = CeilDivInt(maxOutputSize, L1_TILE_M);
     return CeilAlignInt(maxRowGroupsPerExpert, ALIGN_128);
@@ -243,7 +243,7 @@ __aicore__ inline void GroupMatmul2(
     GlobalTensor<int32_t> rowGroupComplete;
     rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrRowGroupComplete); // 128个token完成的计数位置
 
-    int64_t maxRowGroupsStride = ComputeMaxRowGroupsStride(params.tilingData);
+    int64_t maxRowGroupsStride = ComputeMaxTokensStride(params.tilingData->maxOutputSize);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 

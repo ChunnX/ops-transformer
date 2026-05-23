@@ -139,7 +139,8 @@ private:
     TBuf<> ResetTokenBuf_;
     TBuf<> topKWeightsBuf_;
     TBuf<> tempBuf_;
-    TBuf<> quantDataBuf_;
+    TBuf<> bf16ScaleBuf_;
+    TBuf<> fp32ScaleBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -158,6 +159,8 @@ private:
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
     LocalTensor<bfloat16_t> combineUbTensor_;
+    LocalTensor<float> fp32ScaleTensor_;
+    LocalTensor<bfloat16_t> bf16ScaleTensor_;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -255,13 +258,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     uint32_t maxResetBufAlign = Ops::Base::CeilAlign(maxResetBuf, static_cast<uint32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign * sizeof(int32_t));
     tPipe->InitBuffer(tempBuf_, ALIGN_32);
-    combineUbTensor_ = CopyTempBuf_.Get<bfloat16_t>();
-
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *tPipe)
 {
+    uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
     tPipe->InitBuffer(DataResBuf_, dataResBufAlign);
@@ -271,11 +273,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
     tPipe->InitBuffer(DataResFp32Buf_, dataResBufAlign * 2);
     tPipe->InitBuffer(topKWeightsBuf_, Ops::Base::CeilAlign(
         static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32)));
-    
-    uint32_t nScale = Ops::Base::CeilDiv(k_, MXFP_SCALE_GROUP_NUM) * MXFP_MULTI_BASE_SIZE;
-    uint32_t quantRowSize = k_ + nScale;
-    tPipe->InitBuffer(quantDataBuf_, Ops::Base::CeilAlign(quantRowSize, ALIGN_32) * 2);
-    
+    tPipe->InitBuffer(bf16ScaleBuf_, Ops::Base::CeilAlign(
+        static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * 4), static_cast<uint32_t>(ALIGN_32)));
+    tPipe->InitBuffer(fp32ScaleBuf_, Ops::Base::CeilAlign(
+        static_cast<uint32_t>(scaleNum * sizeof(float) * 4), static_cast<uint32_t>(ALIGN_32)));
     topKWeightsTensor_ = topKWeightsBuf_.Get<float>();
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
@@ -697,16 +698,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     TilingByCore(m_, coreLen, coreOffset, 1);
     GlobalTensor<int32_t> expandedRowIdx;
     expandedRowIdx.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdxGather);
-    GlobalTensor<fp8_e5m2_t> expandedQuantRow;
-    expandedQuantRow.SetGlobalBuffer(reinterpret_cast<__gm__ fp8_e5m2_t*>(params_.peermemInfo.ptrD));
+    GlobalTensor<bfloat16_t> expandedX;
+    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.ptrD);
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
-    uint32_t nScale = Ops::Base::CeilDiv(k_, MXFP_SCALE_GROUP_NUM) * MXFP_MULTI_BASE_SIZE;
-    uint32_t quantRowSize = k_ + nScale;
-    uint32_t rowStride = Ops::Base::CeilAlign(quantRowSize, 32U);
-
+    uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t quantTokenSize = k_ + nScale;
+    uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+    bf16ScaleTensor_ = bf16ScaleBuf_.Get<bfloat16_t>();
+    fp32ScaleTensor_ = fp32ScaleBuf_.Get<float>();
     for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         LocalTensor<bfloat16_t> dataResBf16 = DataResBuf_.Get<bfloat16_t>();
@@ -715,28 +717,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         LocalTensor<float> dataResFp32 = DataResFp32Buf_.Get<float>();
         LocalTensor<float> dataIn0Fp32 = dataResFp32[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32[k_ * 2];
-        LocalTensor<fp8_e5m2_t> quantRow0 = quantDataBuf_.Get<fp8_e5m2_t>();
-        LocalTensor<fp8_e5m2_t> quantRow1 = quantRow0[rowStride];
-        LocalTensor<fp8_e8m0_t> quantScale0 = quantRow0[k_].ReinterpretCast<fp8_e8m0_t>();
-        LocalTensor<fp8_e8m0_t> quantScale1 = quantRow1[k_].ReinterpretCast<fp8_e8m0_t>();
         for (int32_t expId = 0; expId < topK_; ++expId) {
             int32_t rowIdx = expandedRowIdx(tokenIdx * topK_ + expId);
             float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
             auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % 2 == 0) ? dataIn0Fp32 : dataIn1Fp32;
-            auto quantDataLocal = (expId % 2 == 0) ? quantRow0 : quantRow1;
-            auto quantScaleLocal = (expId % 2 == 0) ? quantScale0 : quantScale1;
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(quantDataLocal, expandedQuantRow[rowIdx * quantRowSize], rowStride);
+            DataCopy(dataInBf16, expandedX[rowIdx * quantEleNum], quantEleNum);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            MegaMoeCombineImpl::DequantizeMxToBf16(quantDataLocal, quantScaleLocal, dataInBf16, k_, nScale);
+            MegaMoeCombineImpl::DeQuantMxFp8<fp8_e5m2_t, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_, 
+                fp32ScaleTensor_, nScale, k_);
             PipeBarrier<PIPE_V>();
             SetFlag<AscendC::HardEvent::S_V>(event);
             WaitFlag<AscendC::HardEvent::S_V>(event);
-            Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-            PipeBarrier<PIPE_V>();
+            // Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+            // PipeBarrier<PIPE_V>();
             if (expId == 0) {
                 Muls(dataResFp32, dataInFp32, expScale, k_);
             } else {
@@ -844,15 +841,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     } else {
         // AIV: expert-sequential Combine - all cores share each row-group
-        int64_t maxRowGroupsStride = MegaMoeImpl::ComputeMaxRowGroupsStride(params_.tilingData);
+        int64_t maxRowGroupsStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_);
         uint32_t n = k_; // token长度
         uint32_t nTilesPerGroup = Ops::Base::CeilDiv(n, L1_TILE_N); // token被分为了多少块
 
-        baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        preOffset_ = 0;
-
         GlobalTensor<int32_t> rowGroupComplete;
         rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrRowGroupComplete);// 计数地址
+        int64_t ubOffset = 0;
+        int64_t ubTensorSize = n * UNPERMUTE_LIST_NUM;
+        combineUbTensor_ = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, ubTensorSize);
+        ubOffset += ubTensorSize * sizeof(bfloat16_t);
         for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
             if (!UpdateGroupParams(expertIdx)) {
                 continue;
@@ -863,8 +861,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             for (uint32_t rgIdx = 0; rgIdx < rowGroupsThisExpert; rgIdx++) { // 按group循环
                 uint32_t globalIdx = expertIdx * maxRowGroupsStride + rgIdx; //当前group的计数位置
                 __gm__ int32_t* counterAddr = (__gm__ int32_t*)rowGroupComplete.GetPhyAddr() + globalIdx;
-                GmSignalWaitBarrier(counterAddr, (int32_t)nTilesPerGroup); //是否已经收齐
-
+                while (nTilesPerGroup != AscendC::ReadGmByPassDCache(counterAddr)) {
+                    int64_t st = AscendC::GetSystemCycle();
+                    while (AscendC::GetSystemCycle() - st < 100) {
+                    }
+                } //是否已经收齐
                 uint32_t rowStart = rgIdx * L1_TILE_M; // 当前要处理的token的起始行数
                 uint32_t rowCount = Min(L1_TILE_M, m_expert - rowStart); // 实际要处理的行数，对尾块的情况做了处理
                 uint32_t rowsPerCore = Ops::Base::CeilDiv(rowCount, blockAivNum_); // 均分核，得到每个核要处理的行数
@@ -874,9 +875,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                     myRowCount = Min(rowsPerCore, rowCount - myRowOffset); // myRowCount当前核实际需要处理的行数，防止多处理数据
                 }
                 if (myRowCount > 0) {
-                    MegaMoeCombineImpl::CombineRowGroup<QuantOutType, QuantScaleOutType>(
+                    AscendC::SetCtrlSpr<60, 60>(0);
+                    MegaMoeCombineImpl::CombineRowGroup<MXFP8_E5M2_COMM_QUANT, bfloat16_t>(
                         rowStart + myRowOffset, myRowCount, n, expertIdx, rankId_,
-                        gmmAddrInfo.gmm2OutGlobal, params_, combineUbTensor_);
+                        gmmAddrInfo.gmm2OutGlobal, params_, combineUbTensor_, ubOffset);
                 }
             }
         }
