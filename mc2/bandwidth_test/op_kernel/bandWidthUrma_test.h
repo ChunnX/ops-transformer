@@ -484,10 +484,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)dstRankGM);
         if (dstRankId == epRankId_) { 
             rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-            PRINTF("rankGMTensor flag is %d, count is %d\n", rankGMTensor_(0), rankGMTensor_(1));
+            PRINTF("rankGMTensor flag is %d, count is %d\n", rankGMTensor(0), rankGMTensor(1));
             continue;
         }
-        PRINTF("flag is %d, count is %d\n", rankGMTensor_(0), rankGMTensor_(1));
+        PRINTF("flag is %d, count is %d\n", rankGMTensor(0), rankGMTensor(1));
         // GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         // GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
