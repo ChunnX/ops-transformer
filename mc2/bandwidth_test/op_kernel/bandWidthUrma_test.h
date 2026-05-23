@@ -191,6 +191,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     // epRankId_ = tilingData->rank_id; // 获取当前rank ID
     localUrmaWorkspace_ = workspaceGM;
 
+    TBuf<> tempBuffer_;
+    tpipe_->InitBuffer(tempBuffer_, 1024);
+    LocalTensor<int32_t> tempTensor = tempBuffer_.Get<int32_t>();
+
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     totalWinSizeEp_ = 800UL * 1024 * 1024; //TODO:
