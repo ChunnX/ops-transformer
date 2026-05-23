@@ -86,7 +86,7 @@ constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;
 constexpr int64_t MAX_EP_WORLD_SIZE_SETUP_TD = 384;
 constexpr int64_t MAX_TP_WORLD_SIZE = 2;              // TP 世界大小上界
 constexpr int64_t MAX_TP_WORLD_SIZE_LAYERED = 2;
-constexpr int64_t MAX_GROUP_NAME_LENGTH = 128;
+constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 constexpr int64_t MAX_MOE_EXPERT_NUM = 512;
 constexpr int64_t MAX_MOE_EXPERT_NUM_V2 = 1024;
 constexpr int64_t MAX_MOE_EXPERT_NUM_LAYERED = 512;
@@ -107,8 +107,8 @@ constexpr int64_t K_MAX = MAX_K_DEFAULT;         // k 最大值
 constexpr uint32_t SIZE_OF_HALF = 2U;            // sizeof(float16)
 
 // ========== 其他公共常量 ==========
-constexpr uint32_t MX_BLOCK_SIZE = 32U;
-constexpr uint32_t PERGROUP_BLOCK_SIZE = 128U;
+constexpr uint64_t MX_BLOCK_SIZE = 32U;
+constexpr uint64_t PERGROUP_BLOCK_SIZE = 128U;
 constexpr uint32_t QUANT_HS_OFFSET = 4U;
 constexpr uint32_t ELASTIC_INFO_OFFSET = 4U;
 constexpr uint32_t RANK_LIST_NUM = 2U;
