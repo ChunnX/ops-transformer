@@ -241,7 +241,7 @@ public:
 
         // Key Value D不等长情况不能处理
         OP_CHECK_IF(((context_->GetInputShape(VALUE) == nullptr) || (context_->GetInputShape(KEY) == nullptr)),
-            OP_LOGE(context_, "InputShape of value or key is nullptr."),
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [InputShape of value or key is null]"),
             return ge::GRAPH_FAILED);
         const gert::StorageShape *valueShape = context_->GetInputShape(VALUE);
         const gert::StorageShape *keyShape = context_->GetInputShape(KEY);
@@ -267,7 +267,7 @@ public:
         if (platformInfoPtr == nullptr) {
             auto compileInfoPtr =
                 reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context_->GetCompileInfo());
-            OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile_info is null"),
+            OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                        return ge::GRAPH_FAILED);
 
             aicoreParams_.numBlocks = compileInfoPtr->aivNum;
@@ -289,12 +289,12 @@ public:
         }
 
         OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
-                    OP_LOGE(context_, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                    OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [num of coreNum(aivNum) is %lu, num of aicNum is %lu.]",
                     aicoreParams_.numBlocks, aicoreParams_.aicNum),
                     return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(aicoreParams_.ubSize <= 0,
-                   OP_LOGE(context_, "ubSize is invalid."),
+                   OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [ubSize is invalid.]"),
                    return ge::GRAPH_FAILED);
 
         return ge::GRAPH_SUCCESS;
@@ -422,7 +422,7 @@ public:
     {
         /* 2. 获取shape和轴信息 */
         OP_CHECK_IF(((context_->GetInputShape(QUERY) == nullptr) || (context_->GetInputShape(KEY) == nullptr)),
-                    OP_LOGE(context_, "InputShape of query or key is nullptr."),
+                    OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [InputShape of query or key is null]"),
                     return ge::GRAPH_FAILED);
         const gert::Shape &queryShape = context_->GetInputShape(QUERY)->GetStorageShape();
         const gert::Shape &keyShape = context_->GetInputShape(KEY)->GetStorageShape();
@@ -480,10 +480,10 @@ public:
     ge::graphStatus GetShapeAttrsInfo() override
     {
         OP_CHECK_IF(context_ == nullptr,
-                OP_LOGE(context_, "context is nullptr."),
+                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [context is null]"),
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->GetAttrs() == nullptr,
-                OP_LOGE(context_, "GetAttrs is nullptr."),
+                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [GetAttrs is null]"),
                 return ge::GRAPH_FAILED);
         /* 1. 获取属性信息 */
         auto ret = SetBaseAttrsInfo();
