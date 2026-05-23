@@ -507,6 +507,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
         SyncAll<true>();
         return;
     }
+    PRINTF("AIVID %d epRankID %d, startExpertId_ = %d, endExpertId_ = %d, sendExpertNum_ = %d\n", aivId_, epRankId_, startExpertId_, endExpertId_, sendExpertNum_);
 
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
@@ -517,6 +518,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
 
     // ============ 轮询等待状态 ============
     SyncFunc<AscendC::HardEvent::S_V>();
+    uint32_t waitCount = 0;
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
         SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -530,6 +532,14 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
                   1, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
+        waitCount++;
+        if (waitCount % 10000 == 0) {
+            PRINTF("AIVID %d epRankID %d, sumOfFlag = %f\n", aivId_, epRankId_, sumOfFlag);
+        }
+        if (waitCount > 1000000) {
+            PRINTF("AIVID %d epRankID %d, sumOfFlag = %f, WaitDispatch timeout\n", aivId_, epRankId_, sumOfFlag);
+            break;
+        }
     }
 
     // ============ 清零状态区，为下一次通信做准备 ============
