@@ -194,7 +194,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     totalWinSizeEp_ = 800UL * 1024 * 1024;
-    PRINTF("totalWinSizeEp_ is %u\n", totalWinSizeEp_);
+    //PRINTF("totalWinSizeEp_ is %u\n", totalWinSizeEp_);
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ =  context_->epRankId;
 
@@ -421,8 +421,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                             epRankId_ * expertPerSizeOnWin_ +
                                             curExpertCnt * hAlignWinSize_);
-            PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
-            PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
+            //PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
+            //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
             ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
@@ -463,7 +463,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
         PipeBarrier<PIPE_ALL>();
-        PRINTF("statusTensor_ flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
+        PRINTF("statusTensor_ flag is %d, count is %d\n", statusTensor_[0], statusTensor_[1]);
     }
     PipeBarrier<PIPE_ALL>();
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
