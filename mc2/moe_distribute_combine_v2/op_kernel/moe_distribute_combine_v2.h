@@ -573,10 +573,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     tpipe_->InitBuffer(moeQueue_, BUFFER_NUM, hExpandXAlign32Size_);
     flagRcvCount_ = axisK_ + sharedExpertNum_;
     uint64_t pe_size = aclshmem_n_pes();
+    curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
     for (uint32_t rankId = 0; rankId < pe_size; rankId++) {
         base_addr[rankId] = (GM_ADDR)(aclshmem_ptr((GM_ADDR)(curRankShmemAddr), rankId));
     }
-    curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
     REMOTE_DATA_SIZE = hExpandXAlign32Size_ * flagRcvCount_ * axisBS_;
     epWindowGM_ = (GM_ADDR)curRankShmemAddr + A5_MTE_STATE_WIN_SIZE;
     token_buffer = (GM_ADDR)(curRankShmemAddr) + A5_MTE_STATE_WIN_SIZE + REMOTE_DATA_SIZE;
@@ -928,7 +928,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::SetWaitTpStat
     }
 
     // Copy win gm->ub add ->alltoall send
-    ExpertAlltoAllDispatchCopyAdd();
+    ExpertAlltoAllDispatchCopyAdd_urma();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -936,26 +936,58 @@ template <CombineMC2TypeClass>
 
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Process(int id)
 {
-    int rank_num_per_core = (epWorldSize_ - 1)/urma_core_num + 1;
-    int start_rank_id = rank_num_per_core * id;
-    int end_rank_id = rank_num_per_core * (id + 1) - 1;
-    if(end_rank_id >= epWorldSize_) end_rank_id = epWorldSize_ - 1;
+    // int rank_num_per_core = (epWorldSize_ - 1)/urma_core_num + 1;
+    // int start_rank_id = rank_num_per_core * id;
+    // int end_rank_id = rank_num_per_core * (id + 1) - 1;
+    // if(end_rank_id >= epWorldSize_) end_rank_id = epWorldSize_ - 1;
+    int end_rank_id;
+    int rank_num_per_core = epWorldSize_ / urma_core_num;
+    int start_rank_id = (coreIdx_ - aivNum_) * rank_num_per_core;
+    int remain_num = epWorldSize_ % urma_core_num;
+    if ((coreIdx_ - aivNum_) < remain_num) {
+        rank_num_per_core++;
+        start_rank_id += (coreIdx_ - aivNum_);
+    } else {
+        start_rank_id += remain_num;
+    }
+    end_rank_id = start_rank_id + rank_num_per_core;
+    if (rank_num_per_core <= 0) {
+        return ;
+    }
     // selfSendCnt_
     float sig = 1.0;
     int processed_cnt = 0;
     int processed_cnt_per_core[64] = {0};
     SplitCoreCal_urma();
+    tpipe_->InitBuffer(expertScalesBuf_, UB_ALIGN * aivNum_);
+    GlobalTensor<uint32_t> flagGmTensor;
+    flagGmTensor.SetGlobalBuffer((__gm__ uint32_t*)flag_gm, aivNum_);
+    LocalTensor<uint32_t> flagUbTensor;
+    flagUbTensor = expertScalesBuf_.Get<uint32_t>();
+    tpipe_->InitBuffer(indexCountsBuf_, selfSendCnt_ * EXPAND_IDX_INFO * sizeof(int32_t));
+    expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+    uint32_t flag = 0;
+    const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(selfSendCnt_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
+                                      0U, 0U};
+    const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(expandIdxLocal, expandIdxGM_, bskParams, copyPadParams);
     while(processed_cnt < selfSendCnt_){
         // for(int i = 0; i < 64; i += 16){
         //     dcci(flag_gm + i, 0);
         // }
         // dcci(flag_gm + 63, 0);
+        DataCopyPadExtParams<uint32_t> copyPadExtParams{false, 0U, 0U, 0U};
+        DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(UB_ALIGN * aivNum_), 0U, 0U, 0U};
+        DataCopyPad(flagUbTensor, flagGmTensor, expandXCopyParams, copyPadExtParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         for(int cid = 0; cid < aivNum_; cid ++) { 
-            int flag_new = flag_gm[cid];
+            int flag_new = flagUbTensor.GetValue(cid * UB_ALIGN / sizeof(uint32_t));
+            // int flag_new = flag_gm[cid];
             if(flag_new > processed_cnt_per_core[cid]) {
                 for(int loop = processed_cnt_per_core[cid]; loop < flag_new; loop ++) {
                     uint32_t tkIndex = start_tk_id[cid] + ((loop + epRankId_) % send_cnt_num[cid]); // 错位发送
-                    uint32_t baseOffset = (tkIndex - start_tk_id[cid]) * EXPAND_IDX_INFO;
+                    // uint32_t baseOffset = (tkIndex - start_tk_id[cid]) * EXPAND_IDX_INFO;
+                    uint32_t baseOffset = tkIndex * EXPAND_IDX_INFO;
                     uint32_t toRankId = static_cast<uint32_t>(expandIdxLocal(baseOffset));     // 位置0是rank_id
                     uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));  // 位置1是token_id
                     uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));   // 位置2是topk_id                                                                                                                                                                                                                   
@@ -985,7 +1017,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         return;
     }
     GlobalTensor<uint32_t> flagGmTensor;
-    flagGmTensor.SetGlobalBuffer((__gm__ uint32_t*)flag_gm, aivNum_);
+    flagGmTensor.SetGlobalBuffer((__gm__ uint32_t*)flag_gm, aivNum_ * UB_ALIGN);
     expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     uint32_t flag = 0;
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
@@ -1017,15 +1049,16 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         if (loop >= 4) {
             flag++;
             WaitFlag<HardEvent::MTE3_S>((loop - 4) % 4);
-            flagGmTensor.SetValue(coreIdx_, flag);
+            flagGmTensor.SetValue(coreIdx_ * UB_ALIGN / sizeof(uint32_t), flag);
             AscendC::DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGmTensor[coreIdx_]);
             // st_dev(flag, flag_gm + coreIdx_, 0);
         }
     }
+    flag++;
     for(; flag <= sendCntNum_; flag++) {
         WaitFlag<HardEvent::MTE3_S>((flag - 1) % 4);
         // st_dev(flag, flag_gm + coreIdx_, 0);
-        flagGmTensor.SetValue(coreIdx_, flag);
+        flagGmTensor.SetValue(coreIdx_ * UB_ALIGN / sizeof(uint32_t), flag);
         AscendC::DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGmTensor[coreIdx_]);
     }
 }
