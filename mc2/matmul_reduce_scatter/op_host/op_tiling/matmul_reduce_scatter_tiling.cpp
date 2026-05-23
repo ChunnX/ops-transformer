@@ -525,7 +525,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
     // 为通信而进行调整搬运
     if (args.cmdType == mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER) {
         if (args.rankDim <= 0 || static_cast<bool>(args.orgMValue % args.rankDim)) {
-            OP_LOGE(context->GetNodeName(), "rankDim error : %u, mValue=%lu", args.rankDim, args.orgMValue);
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "rankDim", std::to_string(args.rankDim).c_str(), "> 0 and divisible by orgMValue");
             return ge::GRAPH_FAILED;
         }
         args.mValue /= args.rankDim; // 必须能够整数切分, 并且不能切K

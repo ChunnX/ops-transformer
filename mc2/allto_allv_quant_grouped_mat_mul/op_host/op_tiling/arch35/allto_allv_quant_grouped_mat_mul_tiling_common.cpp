@@ -70,7 +70,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoOpTiling()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     context_->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivCoreNum_, aicCoreNum_, aivCoreNum_));
     context_->SetTilingKey(GetTilingKey());
-    OP_TILING_CHECK(SetHcclTiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "set hccl tiling failed!"),
+    OP_TILING_CHECK(SetHcclTiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "set hccl tiling failed"),
         return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end DoOpTiling.");
     return ge::GRAPH_SUCCESS;
@@ -97,7 +97,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
 {
     OP_LOGD(context_->GetNodeName(), "start GetWorkspaceSize.");
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace"),
         return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
     uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
@@ -112,31 +112,31 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::CheckInputNotNull() const
     OP_LOGD(context_->GetNodeName(), "start CheckInputNotNull.");
     // gmmX gmmWeight
     OP_TILING_CHECK((context_->GetInputDesc(GMM_X_INDEX) == nullptr),
-        OP_LOGE(context_->GetNodeName(), "input gmmX can not be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmX"), return ge::GRAPH_FAILED);
     // gmmWeight
     OP_TILING_CHECK(context_->GetInputDesc(GMM_WEIGHT_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "input gmmWeight can not be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeight"), return ge::GRAPH_FAILED);
     // gmmY
     OP_TILING_CHECK(context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "output gmmy can not be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmY"), return ge::GRAPH_FAILED);
     // permuteOut
     if (permuteOutFlag_) {
         tilingData->isPermuteOut = true;
         OP_TILING_CHECK(context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When permuteOutFlag is true, output permuteOut returned null."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "permuteOut"), return ge::GRAPH_FAILED);
     }
     if (hasSharedExpertFlag_) {
         // mmX mmWeight
         OP_TILING_CHECK((context_->GetOptionalInputDesc(MM_X_INDEX) == nullptr),
-            OP_LOGE(context_->GetNodeName(), "When hasSharedExpertFlag is true, input mmX can not be null."),
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmX"),
             return ge::GRAPH_FAILED);
         // gmmWeight
         OP_TILING_CHECK(context_->GetInputDesc(MM_WEIGHT_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When hasSharedExpertFlag is true, input mmWeight can not be null."),
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeight"),
             return ge::GRAPH_FAILED);
         // mmY
         OP_TILING_CHECK(context_->GetOutputDesc(OUTPUT_MM_Y_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When hasSharedExpertFlag is true, output mmy can not be null."),
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmY"),
                     return ge::GRAPH_FAILED);
     }
     OP_LOGD(context_->GetNodeName(), "end CheckInputNotNull.");

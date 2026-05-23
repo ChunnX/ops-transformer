@@ -151,42 +151,40 @@ static bool CheckDimNum(
 {
     OP_TILING_CHECK(
         gmmX->GetStorageShape().GetDimNum() != DIM_TWO,
-        OP_LOGE(C_INNER_DEBUG, "GmmX's dim is %lu but should be 2!", gmmX->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "GmmX", (std::to_string(gmmX->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
         return false);
     OP_TILING_CHECK(
         gmmWeight->GetStorageShape().GetDimNum() != DIM_THREE,
-        OP_LOGE(C_INNER_DEBUG, "GmmWeight's dim is %lu but should be 3!", gmmWeight->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "GmmWeight", (std::to_string(gmmWeight->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
         return false);
     OP_TILING_CHECK(
         y->GetStorageShape().GetDimNum() != DIM_TWO,
-        OP_LOGE(C_INNER_DEBUG, "Y's dim is %lu but should be 2!", y->GetStorageShape().GetDimNum()), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "Y", (std::to_string(y->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"), return false);
 
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         OP_TILING_CHECK(
             mmX->GetStorageShape().GetDimNum() != DIM_TWO,
-            OP_LOGE(C_INNER_DEBUG, "mmX's dim is %lu but should be 2!", mmX->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "mmX", (std::to_string(mmX->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
             return false);
         OP_TILING_CHECK(
             mmWeight->GetStorageShape().GetDimNum() != DIM_TWO,
-            OP_LOGE(C_INNER_DEBUG, "mmWeight's dim is %lu but should be 2!", mmWeight->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "mmWeight", (std::to_string(mmWeight->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
             return false);
         OP_TILING_CHECK(
             mmY->GetStorageShape().GetDimNum() != DIM_TWO,
-            OP_LOGE(C_INNER_DEBUG, "mmY's dim is %lu but should be 2!", mmY->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "mmY", (std::to_string(mmY->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
             return false);
     }
     if (tilingData->commonTilingInfo.isOptionalSendRecvCountTensors) {
         OP_TILING_CHECK(
             sendCountsTensorStorageShape->GetStorageShape().GetDimNum() != 1,
-            OP_LOGE(
-                C_INNER_DEBUG, "sendCountsTensor's dim is %lu but should be 1!",
-                sendCountsTensorStorageShape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "sendCountsTensor",
+                (std::to_string(sendCountsTensorStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
             return false);
         OP_TILING_CHECK(
             recvCountsTensorStorageShape->GetStorageShape().GetDimNum() != 1,
-            OP_LOGE(
-                C_INNER_DEBUG, "recvCountsTensor's dim is %lu but should be 1!",
-                recvCountsTensorStorageShape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(C_INNER_DEBUG, "recvCountsTensor",
+                (std::to_string(recvCountsTensorStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
             return false);
     }
 
@@ -207,13 +205,13 @@ static bool CheckDimRelationship(
     OP_TILING_CHECK(
         gmmX->GetStorageShape().GetDim(1) != gmmWeightH,
         OP_LOGE(
-            C_INNER_DEBUG, "The H1 of gmmX %ld is not equal to H1 of gmmWeight %ld!", gmmX->GetStorageShape().GetDim(1),
+            C_INNER_DEBUG, "H1 mismatch: gmmX %ld, gmmWeight %ld", gmmX->GetStorageShape().GetDim(1),
             gmmWeightH),
         return false);
     OP_TILING_CHECK(
         gmmWeightN != y->GetStorageShape().GetDim(1),
         OP_LOGE(
-            C_INNER_DEBUG, "The N1 of gmmWeight %ld is not equal to N1 of gmmY %ld!", gmmWeightN,
+            C_INNER_DEBUG, "N1 mismatch: gmmWeight %ld, gmmY %ld", gmmWeightN,
             y->GetStorageShape().GetDim(1)),
         return false);
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
@@ -264,7 +262,7 @@ bool GmmAlltoAllvTilingStruct::CheckRecvCnt(
         recvSum += recvArray[i];
     }
     OP_TILING_CHECK(
-        BsK != recvSum, OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be equal to the sum of recvCounts[%ld]!", BsK, recvSum),
+        BsK != recvSum, OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "BsK", std::to_string(BsK).c_str(), std::to_string(recvSum).c_str()),
         return false);
 
     auto platformInfo = context->GetPlatformInfo();
@@ -306,7 +304,7 @@ bool GmmAlltoAllvTilingStruct::CheckSendCnt(
         sendSum += sendArray[i];
     }
     OP_TILING_CHECK(
-        A != sendSum, OP_LOGE(C_INNER_DEBUG, "A[%ld] should be equal to the sum of sendCounts[%ld]!", A, sendSum),
+        A != sendSum, OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "A", std::to_string(A).c_str(), std::to_string(sendSum).c_str()),
         return false);
 
     auto platformInfo = context->GetPlatformInfo();
@@ -317,7 +315,7 @@ bool GmmAlltoAllvTilingStruct::CheckSendCnt(
             for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
                 OP_TILING_CHECK(
                     (sendArray[j] < NUM_ZERO) || (sendArray[j] > A),
-                    OP_LOGE(C_INNER_DEBUG, "sendCounts[%ld] should be in [0, a[%ld]], but get %ld", j, A, sendArray[j]),
+                    OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "sendCounts", std::to_string(sendArray[j]).c_str(), (std::string("[0, ") + std::to_string(A) + "]").c_str()),
                     return false);
                 sendSum += sendArray[j] * H;
             }
@@ -347,10 +345,10 @@ static bool CheckCommunicationConfig(
     size_t sendSize = sendCountsPtr->GetSize();
     OP_TILING_CHECK(
         recvSize <= 0 || recvSize > MAX_EXPERT_NUM,
-        OP_LOGE(C_INNER_DEBUG, "The length of recvCnts[%lu] should be in (0, 256]", recvSize), return false);
+        OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "recvCnts", std::to_string(recvSize).c_str(), "(0, 256]"), return false);
     OP_TILING_CHECK(
         sendSize <= 0 || sendSize > MAX_EXPERT_NUM,
-        OP_LOGE(C_INNER_DEBUG, "The length of sendCnts[%lu] should be in (0, 256]", sendSize), return false);
+        OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "sendCnts", std::to_string(sendSize).c_str(), "(0, 256]"), return false);
     return true;
 }
 
@@ -370,18 +368,18 @@ bool GmmAlltoAllvTilingStruct::CheckCoreDimensionsAndCommunication(
     int64_t epWorldSize = static_cast<int64_t>(tilingData->commonTilingInfo.epWorldSize);
 
     OP_TILING_CHECK(
-        (bsk <= NUM_ZERO || bsk >= MAX_BSK_VALUE), OP_LOGE(C_INNER_DEBUG, "BsK[%ld] should be in (0, 52428800)!", bsk),
+        (bsk <= NUM_ZERO || bsk >= MAX_BSK_VALUE), OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "BsK", std::to_string(bsk).c_str(), "(0, 52428800)"),
         return false);
     OP_TILING_CHECK(
-        (h <= NUM_ZERO || h >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "H1[%ld] should be in (0, 65536)!", h),
+        (h <= NUM_ZERO || h >= MAX_DIM_VALUE), OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "H1", std::to_string(h).c_str(), "(0, 65536)"),
         return false);
     OP_TILING_CHECK(
-        (n1 <= NUM_ZERO || n1 >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "N1[%ld] should be in (0, 65536)!", n1),
+        (n1 <= NUM_ZERO || n1 >= MAX_DIM_VALUE), OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "N1", std::to_string(n1).c_str(), "(0, 65536)"),
         return false);
 
     OP_TILING_CHECK(
         (eEp <= NUM_ZERO || eEp > MAX_EXPERT_NUM_PER_RANK),
-        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 32]!", eEp), return false);
+        OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "E_ep", std::to_string(eEp).c_str(), "(0, 32]"), return false);
 
     OP_TILING_CHECK(
         !CheckSendCntAndRecvCnt(attrs, bsk, a, h, eEp, epWorldSize, context),
@@ -403,7 +401,7 @@ bool GmmAlltoAllvTilingStruct::CheckEpWorldSizeConstraints(
     }
     OP_TILING_CHECK(
         std::find(epWorldSizeOptional.begin(), epWorldSizeOptional.end(), epWorldSize) == epWorldSizeOptional.end(),
-        OP_LOGE(C_INNER_DEBUG, "epWorldSize[%ld] should be %s!", epWorldSize, epWorldSizeNum.c_str()), return false);
+        OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "epWorldSize", std::to_string(epWorldSize).c_str(), epWorldSizeNum.c_str()), return false);
     return true;
 }
 
@@ -431,16 +429,16 @@ static bool SetupTilingDataFromValidatedDims(
                                                                     mmWeight->GetStorageShape().GetDim(1);
         int64_t k = (bs != 0) ? bsk / bs : 0;
         OP_TILING_CHECK(
-            (bs <= NUM_ZERO), OP_LOGE(C_INNER_DEBUG, "bs[%ld] should be larger than 0!", bs),
+            (bs <= NUM_ZERO), OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "bs", std::to_string(bs).c_str(), "> 0"),
             return false);
         OP_TILING_CHECK(
             (sharedH <= NUM_ZERO || sharedH > MAX_SHARED_H_SHAPE_SIZE),
-            OP_LOGE(C_INNER_DEBUG, "H2[%ld] should be in (0, 12288]!", sharedH), return false);
+            OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "H2", std::to_string(sharedH).c_str(), "(0, 12288]"), return false);
         OP_TILING_CHECK(
-            (n2 <= NUM_ZERO || n2 >= MAX_DIM_VALUE), OP_LOGE(C_INNER_DEBUG, "N2[%ld] should be in (0, 65536)!", n2),
+            (n2 <= NUM_ZERO || n2 >= MAX_DIM_VALUE), OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "N2", std::to_string(n2).c_str(), "(0, 65536)"),
             return false);
         OP_TILING_CHECK(
-            (k < NUM_TWO || k > NUM_EIGHT), OP_LOGE(C_INNER_DEBUG, "K[%ld] should be in [2, 8]!", k), return false);
+            (k < NUM_TWO || k > NUM_EIGHT), OP_LOGE_FOR_INVALID_VALUE(C_INNER_DEBUG, "K", std::to_string(k).c_str(), "[2, 8]"), return false);
         tilingData->commonTilingInfo.Bs = static_cast<uint64_t>(bs);
         tilingData->commonTilingInfo.sharedMatmulH = static_cast<uint64_t>(sharedH);
         tilingData->commonTilingInfo.N2 = static_cast<uint64_t>(n2);
@@ -496,24 +494,24 @@ static bool CheckMmDtype(const gert::TilingContext* context)
     OP_TILING_CHECK(
         (mmXDtype != ge::DT_FLOAT16) &&
             (mmXDtype != ge::DT_BF16),
-        OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bfloat16!"), return false);
+        OP_LOGE_FOR_INVALID_DTYPE(C_INNER_DEBUG, "mmX", "not float16/bf16", "float16 or bfloat16"), return false);
     OP_TILING_CHECK(
         (mmXDtype !=
             mmWeightDtype) ||
             (mmXDtype != mmYDesc->GetDataType()),
-        OP_LOGE(C_INNER_DEBUG, "The dataType of mmWeight and mmY should be the same with mmX."), return false);
+        OP_LOGE_FOR_INVALID_DTYPE(C_INNER_DEBUG, "mmWeight/mmY", "mismatched", "must match mmX"), return false);
 
     // 校验mmdataType和gmmdataType一致
 
     OP_TILING_CHECK(mmXDtype != gmmXDtype,
             OP_LOGE(context->GetNodeName(),
-                "mmX data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
+                "mmX data type (%s) must match gmmX data type (%s)",
                 ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str()),
             return false);
     OP_TILING_CHECK(mmWeightDtype != gmmXDtype,
         OP_LOGE(context->GetNodeName(),
-            "mmWeight data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
+            "mmWeight data type (%s) must match gmmX data type (%s)",
             ge::TypeUtils::DataTypeToSerialString(mmWeightDtype).c_str(),
             ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str()),
         return false);
@@ -531,12 +529,12 @@ static bool CheckDtype(const gert::TilingContext* context, const GroupedMatMulAl
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
             (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_BF16),
-        OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, gmmx only support float16 and bfloat16!"), return false);
+        OP_LOGE_FOR_INVALID_DTYPE(C_INNER_DEBUG, "gmmX", "not float16/bf16", "float16 or bfloat16"), return false);
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType()) ||
             (context->GetInputDesc(GMM_X_INDEX)->GetDataType() !=
              context->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType()),
-        OP_LOGE(C_INNER_DEBUG, "The dataType of gmmWeight and gmmY should be the same with gmmX."), return false);
+        OP_LOGE_FOR_INVALID_DTYPE(C_INNER_DEBUG, "gmmWeight/gmmY", "mismatched", "must match gmmX"), return false);
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         OP_TILING_CHECK(!CheckMmDtype(context), OP_LOGE(C_INNER_DEBUG, "CheckMmDtype failed!"), return false);
     }
@@ -550,11 +548,11 @@ static bool CheckDtype(const gert::TilingContext* context, const GroupedMatMulAl
         OP_TILING_CHECK(
             (context->GetOptionalInputDesc(SEND_COUNTS_TENSOR_OPTIONAL_INDEX)->GetDataType() != ge::DT_INT64) &&
                 (context->GetOptionalInputDesc(SEND_COUNTS_TENSOR_OPTIONAL_INDEX)->GetDataType() != ge::DT_INT32),
-            OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, sendCounts only support int64 and int32."), return false);
+            OP_LOGE_FOR_INVALID_DTYPE(C_INNER_DEBUG, "sendCounts", "unsupported", "int64 or int32"), return false);
         OP_TILING_CHECK(
             (context->GetOptionalInputDesc(RECV_COUNTS_TENSOR_OPTIONAL_INDEX)->GetDataType() != ge::DT_INT64) &&
                 (context->GetOptionalInputDesc(RECV_COUNTS_TENSOR_OPTIONAL_INDEX)->GetDataType() != ge::DT_INT32),
-            OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, recvCounts only support int64 and int32."), return false);
+            OP_LOGE_FOR_INVALID_DTYPE(C_INNER_DEBUG, "recvCounts", "unsupported", "int64 or int32"), return false);
     }
 
     return true;
