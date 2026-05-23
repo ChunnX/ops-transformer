@@ -43,19 +43,19 @@ constexpr uint32_t DETER_UB_SIZED = 12 * 1024U;
 
 static constexpr AscendC::MicroAPI::CastTrait ctInt322Fp32ESD = {
     AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::MicroAPI::RoundMode::CAST_RINT};
+    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::MicroAPI::CastTrait ctInt642Fp32SD = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::MicroAPI::RoundMode::CAST_RINT};
+    AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32ZeroESD = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::MicroAPI::RoundMode::UNKNOWN};
+    AscendC::RoundMode::UNKNOWN};
 
 static constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32OneESD = {
     AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::MicroAPI::RoundMode::UNKNOWN};
+    AscendC::RoundMode::UNKNOWN};
 
 using namespace AscendC;
 
