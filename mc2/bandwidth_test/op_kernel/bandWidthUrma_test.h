@@ -462,7 +462,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
     }
     PipeBarrier<PIPE_ALL>();
-    rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetWindStateAddrByRankId(epRankId_) + offset));
+    rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
     PRINTF("AIVID end  %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", aivId_, epRankId_, epRankId_, rankGMTensor(0), rankGMTensor(1));
 
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
