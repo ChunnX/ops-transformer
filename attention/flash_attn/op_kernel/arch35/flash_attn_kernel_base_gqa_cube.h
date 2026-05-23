@@ -63,7 +63,7 @@ private:
         }
 
         cubeData.ctx->GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[CubeData::PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoXCube taskRunInfoCube[CubeData::PRELOAD_TASK_CACHE_SIZE] = {};
 
         cubeData.ctx->createdTaskCount = 0;
         cubeData.ctx->executedTaskCount = 0;
@@ -85,7 +85,7 @@ private:
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealModeCube(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    CreateTaskCube(cubeData.ctx->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTaskCube(cubeData.ctx->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoCube);
                     cubeData.ctx->createdTaskCount++;
                     UpdateAxisInfoCube(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
@@ -96,9 +96,9 @@ private:
                     continue;
                 }
             }
-            shouldExecuteTask = ShouldExecuteTaskCube(taskRunInfo);
+            shouldExecuteTask = ShouldExecuteTaskCube(taskRunInfoCube);
             if (shouldExecuteTask) {
-                ExecuteTaskCube(cubeData.ctx->executedTaskCount, taskRunInfo);
+                ExecuteTaskCube(cubeData.ctx->executedTaskCount, taskRunInfoCube);
                 cubeData.ctx->executedTaskCount++;
             }
         }
@@ -109,10 +109,10 @@ private:
         return ((bN2Cur != cubeData.ctx->bN2End_) || (gS1Cur != cubeData.ctx->gS1OEnd_) || (s2Cur != cubeData.ctx->s2OEnd_));
     }
 
-    __aicore__ inline bool ShouldExecuteTaskCube(RunInfoX taskRunInfo[CubeData::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTaskCube(RunInfoXCube taskRunInfoCube[CubeData::PRELOAD_TASK_CACHE_SIZE])
     {
         for (uint32_t i = 0; i < CubeData::PRELOAD_TASK_CACHE_SIZE; i++) {
-            if (taskRunInfo[i].isValid) {
+            if (taskRunInfoCube[i].isValid) {
                 return true;
             }
         }
@@ -267,10 +267,10 @@ private:
         return;
     }
 
-    __aicore__ inline void ExecuteTaskCube(uint64_t loop, RunInfoX taskRunInfo[CubeData::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTaskCube(uint64_t loop, RunInfoXCube taskRunInfoCube[CubeData::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % CubeData::PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - CubeData::PRELOAD_N) % CubeData::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXCube &runInfo0 = taskRunInfoCube[loop % CubeData::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXCube &runInfoNegN = taskRunInfoCube[(loop - CubeData::PRELOAD_N) % CubeData::PRELOAD_TASK_CACHE_SIZE];
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1Cube(runInfo0);
@@ -286,57 +286,48 @@ private:
         }
     }
 
-    __aicore__ inline void ComputeMm1Cube(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1Cube(RunInfoXCube &runInfoCube)
     {
-        cubeData.cubeBlock.IterateBmm1(cubeData.ctx->bmm1Buffers.Get(), runInfo);
+        cubeData.cubeBlock.IterateBmm1(cubeData.ctx->bmm1Buffers.Get(), runInfoCube);
     }
 
-    __aicore__ inline void ComputeMm2Cube(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm2Cube(RunInfoXCube &runInfoCube)
     {
         if constexpr (CubeData::BMM2_TOUB) {
-            cubeData.cubeBlock.IterateBmm2(cubeData.ctx->bmm2Buffers.Get(), cubeData.ctx->l1PBuffers, runInfo);
+            cubeData.cubeBlock.IterateBmm2(cubeData.ctx->bmm2Buffers.Get(), cubeData.ctx->l1PBuffers, runInfoCube);
         } else {
-            cubeData.cubeBlock.IterateBmm2(cubeData.ctx->bmm2ResGmBuffers.Get(), cubeData.ctx->l1PBuffers, runInfo);
+            cubeData.cubeBlock.IterateBmm2(cubeData.ctx->bmm2ResGmBuffers.Get(), cubeData.ctx->l1PBuffers, runInfoCube);
         }
     }
 
     __aicore__ inline void CreateTaskCube(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                          RunInfoX taskRunInfo[CubeData::PRELOAD_TASK_CACHE_SIZE])
+                                          RunInfoXCube taskRunInfoCube[CubeData::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % CubeData::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXCube &runInfo = taskRunInfoCube[loop % CubeData::PRELOAD_TASK_CACHE_SIZE];
         CalcParamsCube(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParamsCube(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParamsCube(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoXCube &info)
     {
-        info.loop = loop;
-        info.mloop = cubeData.ctx->mloop;
         info.bIdx = bN2Cur / cubeData.ctx->constInfo.n2Size;
         info.n2Idx = bN2Cur % cubeData.ctx->constInfo.n2Size;
         info.gS1Idx = gS1Cur * CubeData::mBaseSize;
-        if constexpr (CubeData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
-                      CubeData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      CubeData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            info.s1Idx = info.gS1Idx / cubeData.ctx->constInfo.gSize;
-        } else {
-            info.s1Idx = info.gS1Idx % cubeData.ctx->actSeqLensQ;
-        }
         info.s2Idx = s2Cur * CubeData::s2BaseSize;
-        info.actS1Size = cubeData.ctx->actSeqLensQ;
-        info.actS2Size = cubeData.ctx->actSeqLensKv;
+
+        uint64_t actS1Size = cubeData.ctx->actSeqLensQ;
+        uint64_t actS2Size = cubeData.ctx->actSeqLensKv;
 
         info.actMSize = CubeData::mBaseSize;
-        uint64_t gS1Size = info.actS1Size * cubeData.ctx->constInfo.gSize;
+        uint64_t gS1Size = actS1Size * cubeData.ctx->constInfo.gSize;
         if (((gS1Cur + 1) * CubeData::mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * CubeData::mBaseSize;
         }
         info.actSingleLoopS2Size = CubeData::s2BaseSize;
-        if (((s2Cur + 1) * CubeData::s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * CubeData::s2BaseSize;
+        if (((s2Cur + 1) * CubeData::s2BaseSize) > actS2Size) {
+            info.actSingleLoopS2Size = actS2Size - s2Cur * CubeData::s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename CubeData::INPUT_T)));
+
         if (cubeData.ctx->constInfo.isKvContinuous) {
             info.isChangeBatch = false;
         } else {
@@ -347,35 +338,8 @@ private:
             }
         }
 
-        GetPreNextTokenLeftUpCube(cubeData.ctx->actSeqLensQ, cubeData.ctx->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
-
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == cubeData.ctx->curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = cubeData.ctx->coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == cubeData.ctx->curS2End);
-
-        if constexpr (CubeData::USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (cubeData.ctx->constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (cubeData.ctx->bN2Start_ == cubeData.ctx->bN2End_ && cubeData.ctx->gS1OStart_ == cubeData.ctx->gS1OEnd_) {
-            info.isS2SplitCore = true;
-        } else {
-            if (cubeData.ctx->headS2Split && (bN2Cur == cubeData.ctx->bN2Start_) && (gS1Cur == cubeData.ctx->gS1OStart_)) {
-                info.isS2SplitCore = true;
-            } else if (cubeData.ctx->tailS2Split && (bN2Cur == cubeData.ctx->bN2End_) && (gS1Cur == cubeData.ctx->gS1OEnd_)) {
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = cubeData.ctx->headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
     }
 
     __aicore__ inline void UpdateAxisInfoCube(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,

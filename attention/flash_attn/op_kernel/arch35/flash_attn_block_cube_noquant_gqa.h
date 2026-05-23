@@ -446,7 +446,7 @@ public:
 
     // copy query with full s1g and split D
     __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+                                          RunInfoXCube &runInfo)
     {
         uint32_t nopeDealSize = dRealSize;
 
@@ -464,7 +464,7 @@ public:
         }
     }
 
-    __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoX &runInfo)
+    __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoXCube &runInfo)
     {
         uint32_t dSize = constInfo.dSize;
         CopyQuerySlice(dstTensor, 0, dSize, runInfo);
@@ -472,7 +472,7 @@ public:
 
     // copy key with full s2 and split D
     __aicore__ inline void CopyKeySlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                        RunInfoX &runInfo)
+                                        RunInfoXCube &runInfo)
     {
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4;
 
@@ -494,7 +494,7 @@ public:
 
     // copy key with full s2 and split D
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                          RunInfoX &runInfo)
+                                          RunInfoXCube &runInfo)
     {
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
                                                 .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
@@ -509,13 +509,13 @@ public:
     }
 
     // 全量拷贝
-    __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
+    __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoXCube &runInfo)
     {
         uint32_t dSize = constInfo.dSize;
         CopyKeySlice(dstTensor, 0, dSize, runInfo);
     }
 
-    __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
+    __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoXCube &runInfo)
     {
         CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
     }
@@ -539,7 +539,7 @@ public:
         valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
     }
 
-    __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
     {
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             if (runInfo.isChangeBatch) {
@@ -569,7 +569,7 @@ public:
         IterateBmm1NdL0Split(outputBuf, runInfo);
     }
 
-    __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
+    __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoXCube &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -589,7 +589,7 @@ public:
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
-    __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
     {
         Buffer<BufferType::L1> mm1A;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -648,7 +648,7 @@ public:
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
-    __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
     {
         constexpr uint32_t baseK = l1BaseD;
         uint32_t kLoops = (constInfo.dSize + baseK - 1) / baseK;
@@ -711,7 +711,7 @@ public:
     }
 
     /* 针对useDn=true, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
-    __aicore__ inline void IterateBmm1DnSplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1DnSplitK(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
     {
         Buffer<BufferType::L1> mm1B;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -760,7 +760,7 @@ public:
         outputBuf.SetCrossCore();
     }
 
-    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
+    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoXCube &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5; // 双目标模式, 按照N方向切分，N必须为32的倍数
@@ -774,7 +774,7 @@ public:
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams); // 将matmul结果从L0C搬运到UB
     }
 
-    __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
     {
         Buffer<BufferType::L1> mm1B;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -820,7 +820,7 @@ public:
         outputBuf.SetCrossCore();
     }
 
-    __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoXCube &runInfo)
     {
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             if (runInfo.isChangeBatch) {
@@ -845,7 +845,7 @@ public:
         }
     }
 
-    __aicore__ inline void IterateBmm2L1SplitN(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2L1SplitN(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoXCube &runInfo)
     {
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
@@ -892,7 +892,7 @@ public:
 
     template <typename DST_TENSOR_T>
     __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, uint32_t realN,
-                                              RunInfoX &runInfo)
+                                              RunInfoXCube &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
         if constexpr (bmm2Write2Ub) {
@@ -921,7 +921,7 @@ public:
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
+    __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoXCube &runInfo)
     {
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
