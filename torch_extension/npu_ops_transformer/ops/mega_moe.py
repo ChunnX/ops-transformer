@@ -31,8 +31,9 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, " \
             "Tensor[]? bias1=None, Tensor[]? bias2=None, " \
             "Tensor? x_active_mask=None, Tensor? scales=None, int? max_recv_token_num=0, int? dispatch_quant_mode=0, " \
-            "int? combine_quant_mode=0, str? comm_alg=\"\", int? num_max_token_per_rank=0, " \
-            "int? dispatch_quant_out_type=28, int? weight1_type=28, int? weight2_type=28) -> (Tensor, Tensor)"
+            "int? dispatch_quant_out_type=28, int? combine_quant_mode=0, str? comm_alg=\"\", int? num_max_token_per_rank=0, " \
+            "str? activation=\"swiglu\", float? activation_clamp=3.4028234663852886e+38, " \
+            "int? weight1_type=28, int? weight2_type=28) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -41,8 +42,9 @@ class _MegaMoeOpBuilder(OpBuilder):
                               weight_scales1=None, weight_scales2=None,
                               bias1=None, bias2=None,
                               x_active_mask=None, scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                              combine_quant_mode=0, comm_alg="", num_max_token_per_rank=0,
-                              dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                              dispatch_quant_out_type=28, combine_quant_mode=0, comm_alg="", num_max_token_per_rank=0,
+                              activation="swiglu", activation_clamp=3.4028234663852886e+38,
+                              weight1_type=28, weight2_type=28):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -68,14 +70,15 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   weight_scales1=None, weight_scales2=None,
                   bias1=None, bias2=None,
                   x_active_mask=None, scales=None, max_recv_token_num=0,
-                  dispatch_quant_mode=0, combine_quant_mode=0,
-                  comm_alg="", num_max_token_per_rank=0,
-                  dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                  dispatch_quant_mode=0, dispatch_quant_out_type=28,
+                  combine_quant_mode=0, comm_alg="", num_max_token_per_rank=0,
+                  activation="swiglu", activation_clamp=3.4028234663852886e+38,
+                  weight1_type=28, weight2_type=28):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask, scales, max_recv_token_num,
-        dispatch_quant_mode, combine_quant_mode, comm_alg, num_max_token_per_rank,
-        dispatch_quant_out_type, weight1_type, weight2_type)
+        dispatch_quant_mode, dispatch_quant_out_type, combine_quant_mode, comm_alg, num_max_token_per_rank,
+        activation, activation_clamp, weight1_type, weight2_type)
 
 
 class IntWrapper:
@@ -196,7 +199,9 @@ def mega_moe(
     bias2: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
     weight1_type: int = 28,
-    weight2_type: int = 28
+    weight2_type: int = 28,
+    activation: str = "swiglu",
+    activation_clamp: float = 3.4028234663852886e+38
 ):
 
     return torch.ops.npu_ops_transformer.npu_mega_moe(
@@ -217,10 +222,12 @@ def mega_moe(
         scales=scales,
         max_recv_token_num=sym_buffer.max_recv_token_num,
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
+        dispatch_quant_out_type=sym_buffer.dispatch_quant_out_type,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
         num_max_token_per_rank=sym_buffer.num_max_tokens_per_rank,
-        dispatch_quant_out_type=sym_buffer.dispatch_quant_out_type,
+        activation=activation,
+        activation_clamp=activation_clamp,
         weight1_type=weight1_type,
         weight2_type=weight2_type
     )

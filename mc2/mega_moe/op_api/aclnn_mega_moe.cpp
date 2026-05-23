@@ -33,7 +33,7 @@ extern aclnnStatus aclnnInnerMegaMoeGetWorkspaceSize(
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
     const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
-    int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
+    int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
     aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor);
 
@@ -49,7 +49,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
     const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
-    int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
+    int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
     aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
@@ -70,7 +70,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         xActiveMaskOptional, scalesOptional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutType,
         combineQuantMode, commAlg, numMaxTokenPerRank, activation, activationClamp,
-        gmm2XDtype, transposeWeight1, transposeWeight2, weight1Interleave,
+        activationOutDtype, transposeWeight1, transposeWeight2, weight1Interleave,
         yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;

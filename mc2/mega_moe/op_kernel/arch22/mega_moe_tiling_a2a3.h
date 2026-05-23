@@ -53,7 +53,7 @@ struct MegaMoeA2A3TilingData {
 
     uint32_t isQuantRouting;
 
-    int32_t  gmm2XDtype;
+    int32_t  activationOutDtype;
     uint32_t weight1Interleave;
 
     uint64_t initRoutingQuantTilingKey;
