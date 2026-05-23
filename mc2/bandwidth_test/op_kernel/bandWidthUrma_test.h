@@ -193,8 +193,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
-    totalWinSizeEp_ = 800UL * 1024 * 1024;
-    //PRINTF("totalWinSizeEp_ is %u\n", totalWinSizeEp_);
+    totalWinSizeEp_ = 800UL * 1024 * 1024; //TODO:
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ =  context_->epRankId;
 
@@ -262,9 +261,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     uint64_t mask[2] = { 0x101010101010101, 0 };
     PipeBarrier<PIPE_V>();
     Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, Ceil(statusBufCntAlign, 8), 1, 8);
-
-    //PRINTF("epRankId_ is %d, statusTensor_ is %d, statusBufCntAlign is %d\n", epRankId_, statusTensor_(0), statusBufCntAlign);
-    
     // ============ 计算窗口数据区偏移 ============
     windowGM_ = GetUrmaAddrByRankId(epRankId_);
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
@@ -361,30 +357,17 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalToke
     SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
     PipeBarrier<PIPE_V>();
-    // for (int32_t i = 0; i < calCnt; i++) {
-    //    PRINTF("dstExpIdTensor_(%d) is %d\n", i, dstExpIdTensor_(i));
-    // }
     Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
     PipeBarrier<PIPE_V>();
-    // for (int32_t i = 0; i < calCnt; i++) {
-    //    PRINTF("subExpIdTensor_(%d) is %d\n", i, subExpIdTensor_(i));
-    // }
     LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
     LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
     Abs(tmpoutFp32, tmpFp32, calCnt);
     PipeBarrier<PIPE_V>();
-    // for (int32_t i = 0; i < calCnt; i++) {
-    //    PRINTF("tmpoutFp32_(%d) is %f\n", i, tmpoutFp32(i));
-    // }
     Mins(subExpIdTensor_, dstExpIdTensor_, 1, calCnt);
     PipeBarrier<PIPE_V>();
-    // for (int32_t i = 0; i < calCnt; i++) {
-    //    PRINTF("subExpIdTensor_(%d) is %d\n", i, subExpIdTensor_(i));
-    // }
     ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
     SyncFunc<AscendC::HardEvent::V_S>();
     int32_t curOtherExpertCnt = dstExpIdTensor_(0);
-    //PRINTF("curOtherExpertCnt is %d\n", curOtherExpertCnt);
     if (calCnt > curOtherExpertCnt) {
         curExpertCnt = calCnt - curOtherExpertCnt; 
     }
@@ -427,9 +410,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 //PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
                 continue;
             }
-            // SyncFunc<AscendC::HardEvent::S_V>();
-            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
-            // SyncFunc<AscendC::HardEvent::S_V>();
+            SyncFunc<AscendC::HardEvent::S_V>();
+            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
@@ -441,7 +424,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                                             curExpertCnt * hAlignWinSize_);
             //PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
             // //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
-            //ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
+            ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
 }
