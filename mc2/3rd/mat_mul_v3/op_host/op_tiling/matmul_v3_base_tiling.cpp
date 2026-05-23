@@ -291,7 +291,10 @@ static ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const
         };
         if (!isMatrix(context.GetInputShape(0)->GetOriginShape()) ||
             !isMatrix(context.GetInputShape(1)->GetOriginShape())) {
-            OP_LOGE(args.opName, "invalid input dim num");
+            int64_t aOriDimNum = static_cast<int64_t>(context.GetInputShape(0)->GetOriginShape().GetDimNum());
+            int64_t bOriDimNum = static_cast<int64_t>(context.GetInputShape(1)->GetOriginShape().GetDimNum());
+            std::string dimStr = std::to_string(aOriDimNum) + "D and " + std::to_string(bOriDimNum) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(args.opName, "x1 and x2", dimStr.c_str(), "at least 2D");
             return ge::GRAPH_FAILED;
         }
     }
@@ -301,7 +304,8 @@ static ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const
         const gert::Shape &biasShape = context.GetInputShape(BIAS_IDX)->GetOriginShape();
         const int64_t biasValue = biasShape[biasShape.GetDimNum() - 1];
         if (args.nOriValue != static_cast<uint64_t>(biasValue)) {
-            OP_LOGE(args.opName, "illegal value: bias[%ld], n[%lu]", biasValue, args.nOriValue);
+            std::string valStr = "bias=" + std::to_string(biasValue) + ", n=" + std::to_string(args.nOriValue);
+            OP_LOGE_FOR_INVALID_VALUE(args.opName, "bias", valStr.c_str(), "bias should equal n");
             return ge::GRAPH_FAILED;
         }
     }
@@ -322,8 +326,12 @@ static ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const
                 return ge::GRAPH_SUCCESS;
             }
         }
-        OP_LOGE(args.opName, "Unsupported data type: x1[%d], x2[%d], y[%d], bias[%d], hasBias[%d]",
-                args.aType, args.bType, args.cType, args.biasType, args.hasBias);
+        std::string dtypeStr = "x1=" + std::to_string(static_cast<int32_t>(args.aType)) +
+            ", x2=" + std::to_string(static_cast<int32_t>(args.bType)) +
+            ", y=" + std::to_string(static_cast<int32_t>(args.cType)) +
+            ", bias=" + std::to_string(static_cast<int32_t>(args.biasType));
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(args.opName, "x1, x2, y and bias", dtypeStr.c_str(),
+            "The data types of inputs are not supported for this configuration");
         return ge::GRAPH_FAILED;
     };
     return isValidDtype(dtype);
@@ -340,7 +348,10 @@ static ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatmulV3A
     int64_t knDims[TWO_BATCH_DIM];
     if ((GetInputDims(context.GetInputShape(0)->GetStorageShape(), args.aFormat, mkDims) != ge::GRAPH_SUCCESS) ||
         (GetInputDims(context.GetInputShape(1)->GetStorageShape(), args.bFormat, knDims) != ge::GRAPH_SUCCESS)) {
-        OP_LOGE(args.opName, "invalid input dim num");
+        int64_t aOriDimNum = static_cast<int64_t>(context.GetInputShape(0)->GetStorageShape().GetDimNum());
+        int64_t bOriDimNum = static_cast<int64_t>(context.GetInputShape(1)->GetStorageShape().GetDimNum());
+        std::string dimStr = std::to_string(aOriDimNum) + "D and " + std::to_string(bOriDimNum) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(args.opName, "x1 and x2(storage)", dimStr.c_str(), "at least 2D");
         return ge::GRAPH_FAILED;
     }
     int64_t kDimsIndex = args.isATrans ? 0 : 1;
@@ -355,7 +366,9 @@ static ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatmulV3A
         kRight = knDims[dimIndex];
     }
     if (k != kRight) {
-        OP_LOGE(args.opName, "unequal input kDim values: k_left[%ld], k_right[%ld]", k, kRight);
+        std::string valStr = std::to_string(k) + " and " + std::to_string(kRight);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "x1 and x2",
+            valStr.c_str(), "k dims of x1 and x2 should be equal");
         return ge::GRAPH_FAILED;
     }
     int64_t mDimsIndex = args.isATrans ? 1 : 0;
@@ -366,7 +379,9 @@ static ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatmulV3A
         return (dim > 0) && (dim <= INT32_MAX);
     };
     if (!isValidDimValue(m) || !isValidDimValue(k) || !isValidDimValue(n)) {
-        OP_LOGE(args.opName, "illegal value: m[%ld], k[%ld], n[%ld]", m, k, n);
+        std::string valStr = "m=" + std::to_string(m) + ", k=" + std::to_string(k) + ", n=" + std::to_string(n);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "m, k and n", valStr.c_str(),
+            "m, k and n must be positive");
         return ge::GRAPH_FAILED;
     }
     args.mValue = static_cast<uint64_t>(m);
@@ -377,7 +392,8 @@ static ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatmulV3A
     const gert::Shape &cShape = context.GetOutputShape(0)->GetOriginShape();
     const size_t cDimNum = cShape.GetDimNum();
     if (cDimNum < TWO_BATCH_DIM) {
-        OP_LOGE(args.opName, "illegal value: output dim num (%zu)", cDimNum);
+        std::string dimStr = std::to_string(cDimNum) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(args.opName, "output", dimStr.c_str(), "at least 2D");
         return ge::GRAPH_FAILED;
     }
     args.nOriValue = cShape[cDimNum - LAST_DIM];
@@ -718,13 +734,17 @@ ge::graphStatus Mc2MatmulV3BaseTiling::CheckDimsAligned310P()
     }
     if (args_.outFormat == ge::FORMAT_ND) {
         if (args_.nOriValue * bDtypeSize_ % BLOCK_BYTE_SIZE != 0) {
-            OP_LOGE(args_.opName, "shape of n should be 32-byte aligned");
+            std::string shapeStr = std::to_string(args_.nOriValue);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(args_.opName, "x(weight)", shapeStr.c_str(),
+                "n dimension should be 32-byte aligned");
             return ge::GRAPH_FAILED;
         }
     }
     if (args_.aFormat == ge::FORMAT_ND) {
         if (args_.mOriValue * aDtypeSize_ % BLOCK_BYTE_SIZE != 0) {
-            OP_LOGE(args_.opName, "shape of m should be 32-byte aligned");
+            std::string shapeStr = std::to_string(args_.mOriValue);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(args_.opName, "x(input)", shapeStr.c_str(),
+                "m dimension should be 32-byte aligned");
             return ge::GRAPH_FAILED;
         }
     }
@@ -1318,7 +1338,7 @@ void Mc2MatmulV3BaseTiling::FormulateBasicBlockDavid()
         runInfo_.baseM = ops::CeilAlign(MathUtil::CeilDivision(args_.mValue, mCore), BASIC_BLOCK_SIZE_16);
         mCore = MathUtil::CeilDivision(args_.mValue, runInfo_.baseM);
         if (mCore == 0) {
-            OP_LOGE(args_.opName, "mCore is zero.");
+            OP_LOGE_FOR_INVALID_VALUE(args_.opName, "mCore", std::to_string(mCore).c_str(), "> 0");
             return;
         }
         nCore = runInfo_.usedCoreNum / mCore;
@@ -1327,7 +1347,7 @@ void Mc2MatmulV3BaseTiling::FormulateBasicBlockDavid()
         runInfo_.baseN = ops::CeilAlign(MathUtil::CeilDivision(args_.nValue, nCore), BASIC_BLOCK_SIZE_16);
         nCore = MathUtil::CeilDivision(args_.nValue, runInfo_.baseN);
         if (nCore == 0) {
-            OP_LOGE(args_.opName, "nCore is zero.");
+            OP_LOGE_FOR_INVALID_VALUE(args_.opName, "nCore", std::to_string(nCore).c_str(), "> 0");
             return;
         }
         mCore = runInfo_.usedCoreNum / nCore;

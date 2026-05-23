@@ -116,8 +116,8 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::GetPlatformInfo()
 {
     OP_LOGE_IF(!SetPlatformInfoForTiling(), ge::GRAPH_FAILED, inputParams_.opName, "SetPlatformInfo fail");
     if (aicoreParams_.aicNum == 0UL || aicoreParams_.l1Size == 0UL || aicoreParams_.l0cSize == 0UL) {
-        OP_LOGE(inputParams_.opName, "coreNum/L1Size/L0cSize should not be 0. coreNum: %lu, L1Size: %lu, L0cSize: %lu",
-                aicoreParams_.aicNum, aicoreParams_.l1Size, aicoreParams_.l0cSize);
+        std::string valStr = "coreNum=" + std::to_string(aicoreParams_.aicNum) + ", L1Size=" + std::to_string(aicoreParams_.l1Size) + ", L0cSize=" + std::to_string(aicoreParams_.l0cSize);
+        OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "coreNum/L1Size/L0cSize", valStr.c_str(), "non-zero");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

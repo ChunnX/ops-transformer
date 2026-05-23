@@ -82,8 +82,10 @@ ge::graphStatus GetInputDims(const gert::Shape& storageShape, const gert::Shape&
         int64_t storageShape1 = storageShape[dimNum - FOUR_BATCH_DIM] * storageShape[dimNum - ONE_BATCH_DIM];
         if (ops::CeilAlign(dims[0], static_cast<int64_t>(BASIC_BLOCK_SIZE_16)) != storageShape0 ||
             ops::CeilAlign(dims[1], static_cast<int64_t>(BLOCK_BYTE_SIZE / dtypeSize)) != storageShape1) {
-            OP_LOGE("Mc2MatMulV3", "NZ aligned oriShape (%ld, %ld) is not equal to storageShape (%ld, %ld))", dims[0],
-                    dims[1], storageShape0, storageShape1);
+            std::string shapeStr = "ori(" + std::to_string(dims[0]) + "," + std::to_string(dims[1]) +
+                "), storage(" + std::to_string(storageShape0) + "," + std::to_string(storageShape1) + ")";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("Mc2MatMulV3", "x", shapeStr.c_str(),
+                "NZ format requires original shape dims equal to storage shape dims in last 2 dims");
             return ge::GRAPH_FAILED;
         }
     }
@@ -111,19 +113,19 @@ ge::graphStatus IsValidDtype(const Mc2MatMulV3Args &args)
     }
 
     if (args.hasBias) {
-        OP_LOGE(args.opName,
-            "Unsupported data type: x1[%s], x2[%s], y[%s], bias[%s], input dtype of x1 and x2 and output dtype "
-            "must be same, only support[DT_FLOAT16, DT_FLOAT, DT_BF16], and bias dtype must be same to input type "
-            "or equals DT_FLOAT when input dtype is DT_FLOAT16 | DT_BF16",
-            Ops::Base::ToString(args.aType).c_str(), Ops::Base::ToString(args.bType).c_str(),
-            Ops::Base::ToString(args.cType).c_str(), Ops::Base::ToString(args.biasType).c_str());
+        std::string dtypeStr = "x1=" + std::string(Ops::Base::ToString(args.aType).c_str()) +
+            ", x2=" + std::string(Ops::Base::ToString(args.bType).c_str()) +
+            ", y=" + std::string(Ops::Base::ToString(args.cType).c_str()) +
+            ", bias=" + std::string(Ops::Base::ToString(args.biasType).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(args.opName, "x1, x2, y and bias", dtypeStr.c_str(),
+            "The data types of inputs are not supported for this configuration");
         return ge::GRAPH_FAILED;
     } else {
-        OP_LOGE(args.opName,
-            "Unsupported data type: x1[%s], x2[%s], y[%s], input dtype of x1 and x2 and output dtype must be same, "
-            "only support[DT_FLOAT16, DT_FLOAT, DT_BF16]",
-            Ops::Base::ToString(args.aType).c_str(), Ops::Base::ToString(args.bType).c_str(),
-            Ops::Base::ToString(args.cType).c_str());
+        std::string dtypeStr = "x1=" + std::string(Ops::Base::ToString(args.aType).c_str()) +
+            ", x2=" + std::string(Ops::Base::ToString(args.bType).c_str()) +
+            ", y=" + std::string(Ops::Base::ToString(args.cType).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(args.opName, "x1, x2 and y", dtypeStr.c_str(),
+            "The data types of inputs are not supported for this configuration");
         return ge::GRAPH_FAILED;
     }
 }
@@ -142,7 +144,10 @@ ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const Mc2Mat
         auto isMatrix = [](const gert::Shape &oriShape) { return oriShape.GetDimNum() == TWO_BATCH_DIM; };
         if (!isMatrix(context.GetInputShape(0)->GetOriginShape()) ||
             !isMatrix(context.GetInputShape(1)->GetOriginShape())) {
-            OP_LOGE(args.opName, "invalid input dim num");
+            int64_t aOriDimNum = static_cast<int64_t>(context.GetInputShape(0)->GetOriginShape().GetDimNum());
+            int64_t bOriDimNum = static_cast<int64_t>(context.GetInputShape(1)->GetOriginShape().GetDimNum());
+            std::string dimStr = std::to_string(aOriDimNum) + "D and " + std::to_string(bOriDimNum) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(args.opName, "x1 and x2", dimStr.c_str(), "at least 2D");
             return ge::GRAPH_FAILED;
         }
     }
@@ -154,7 +159,8 @@ ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const Mc2Mat
         const int64_t biasValue = biasShape[biasShape.GetDimNum() - 1];
         const int64_t nOriValue = cShape[cShape.GetDimNum() - 1];
         if (biasValue != nOriValue) {
-            OP_LOGE(args.opName, "illegal value: bias[%ld], n[%ld]", biasValue, nOriValue);
+            std::string valStr = "bias=" + std::to_string(biasValue) + ", n=" + std::to_string(nOriValue);
+            OP_LOGE_FOR_INVALID_VALUE(args.opName, "bias", valStr.c_str(), "bias should equal n");
             return ge::GRAPH_FAILED;
         }
     }
@@ -176,14 +182,19 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
                       args.aDtypeSize, args.aFormat, mkDims) != ge::GRAPH_SUCCESS) ||
         (GetInputDims(context.GetInputShape(1)->GetStorageShape(), context.GetInputShape(1)->GetOriginShape(),
                       args.bDtypeSize, args.bFormat, knDims) != ge::GRAPH_SUCCESS)) {
-        OP_LOGE(args.opName, "invalid input dim num");
+        int64_t aOriDimNum = static_cast<int64_t>(context.GetInputShape(0)->GetStorageShape().GetDimNum());
+        int64_t bOriDimNum = static_cast<int64_t>(context.GetInputShape(1)->GetStorageShape().GetDimNum());
+        std::string dimStr = std::to_string(aOriDimNum) + "D and " + std::to_string(bOriDimNum) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(args.opName, "x1 and x2(storage)", dimStr.c_str(), "at least 2D");
         return ge::GRAPH_FAILED;
     }
     uint64_t kIdxA = args.isATrans ? 0ULL : 1ULL;
     uint64_t kIdxB = args.isBTrans ? 1ULL : 0ULL;
     int64_t k = mkDims[kIdxA];
     if (k != knDims[kIdxB]) {
-      OP_LOGE(args.opName, "unequal input kDim values: k_left[%ld], k_right[%ld]", k, knDims[kIdxB]);
+      std::string valStr = std::to_string(k) + " and " + std::to_string(knDims[kIdxB]);
+      OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "x1 and x2",
+          valStr.c_str(), "k dims of x1 and x2 should be equal");
       return ge::GRAPH_FAILED;
     }
     uint64_t mIdx = args.isATrans ? 1ULL : 0ULL;
@@ -197,14 +208,17 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
         return (dim > 0) && (dim <= INT32_MAX);
     };
     if (!isValidDimValue(args.mValue) || !isValidDimValue(args.kValue) || !isValidDimValue(args.nValue)) {
-        OP_LOGE(args.opName, "illegal value: m[%lu], k[%lu], n[%lu]", args.mValue, args.kValue, args.nValue);
+        std::string valStr = "m=" + std::to_string(args.mValue) + ", k=" + std::to_string(args.kValue) + ", n=" + std::to_string(args.nValue);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "m, k and n", valStr.c_str(),
+            "m, k and n must be positive");
         return ge::GRAPH_FAILED;
     }
     // check output dim num
     const gert::Shape &cShape = context.GetOutputShape(0)->GetOriginShape();
     const size_t cDimNum = cShape.GetDimNum();
     if (cDimNum < TWO_BATCH_DIM) {
-        OP_LOGE(args.opName, "illegal value: output dim num (%zu)", cDimNum);
+        std::string dimStr = std::to_string(cDimNum) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(args.opName, "output", dimStr.c_str(), "at least 2D");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

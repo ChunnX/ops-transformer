@@ -436,9 +436,8 @@ bool InitializeRange(
     }
     for (size_t i = 0; i < range.size(); ++i) {
         if (range.at(i).first < 0) {
-            OP_LOGE(
-                "MatMulCommon", "[InferShapeRange] range[%ld, %ld] is incorrect.", range.at(i).first,
-                range.at(i).second);
+            std::string valStr = "[" + std::to_string(range.at(i).first) + "," + std::to_string(range.at(i).second) + "]";
+            OP_LOGE_FOR_INVALID_VALUE("MatMulCommon", "range", valStr.c_str(), "first value >= 0");
             return false;
         }
         if (range.at(i).second == INFINITE_RANGE) {
@@ -478,9 +477,8 @@ bool GetBatchIntersection(
     out.second = std::min(a.second, b.second);
     // 交集不存在
     if (out.first > out.second || out.first == NORMALIZE_INFINITE_RANGE) {
-        OP_LOGE(
-            op_name, "[GetBatchIntersection] range[%ld, %ld] and range[%ld, %ld] don't have intersection.", a.first,
-            a.second, b.first, b.second);
+        std::string valStr = "[" + std::to_string(a.first) + "," + std::to_string(a.second) + "] and [" + std::to_string(b.first) + "," + std::to_string(b.second) + "]";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "batch dims range", valStr.c_str(), "batch dims ranges of x1 and x2 must have intersection");
         return false;
     }
     return true;
@@ -495,9 +493,8 @@ bool GetKNIntersection(
     out.second = std::min(a.second, b.second);
     // 交集不存在
     if (out.first > out.second || out.first == NORMALIZE_INFINITE_RANGE) {
-        OP_LOGE(
-            op_name, "[GetKNIntersection] range[%ld, %ld] and range[%ld, %ld] don't have intersection.", a.first,
-            a.second, b.first, b.second);
+        std::string valStr = "[" + std::to_string(a.first) + "," + std::to_string(a.second) + "] and [" + std::to_string(b.first) + "," + std::to_string(b.second) + "]";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "K/N dims range", valStr.c_str(), "K/N dims ranges of x1 and x2 must have intersection");
         return false;
     }
     return true;

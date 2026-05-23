@@ -48,7 +48,9 @@ protected:
             return (dim > 0) && (dim <= INT32_MAX);
         };
         if (!isValidDimValue(args_.mValue) || !isValidDimValue(args_.kValue) || !isValidDimValue(args_.nValue)) {
-            OP_LOGE(args_.opName, "illegal value: m[%lu], k[%lu], n[%lu]", args_.mValue, args_.kValue, args_.nValue);
+            std::string valStr = "m=" + std::to_string(args_.mValue) + ", k=" + std::to_string(args_.kValue) + ", n=" + std::to_string(args_.nValue);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args_.opName, "m, k and n", valStr.c_str(),
+                "m, k and n must be positive");
             return ge::GRAPH_FAILED;
         }
         if (compileInfo_.aicNum == 0UL) {
@@ -190,17 +192,20 @@ protected:
                                dtypeMap_.at(args_.biasType));
             }
         } catch (const std::out_of_range &e) {
-            OP_LOGE(args_.opName, "Mc2MatMulV3 Set Type Failed! %d, %d, %d, %d",
-                    static_cast<int32_t>(args_.aType),
-                    static_cast<int32_t>(args_.bType),
-                    static_cast<int32_t>(args_.cType),
-                    static_cast<int32_t>(args_.biasType));
+            std::string dtypeStr = "aType=" + std::to_string(static_cast<int32_t>(args_.aType)) +
+                ", bType=" + std::to_string(static_cast<int32_t>(args_.bType)) +
+                ", cType=" + std::to_string(static_cast<int32_t>(args_.cType)) +
+                ", biasType=" + std::to_string(static_cast<int32_t>(args_.biasType));
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(args_.opName, "a, b, c and bias", dtypeStr.c_str(),
+                "Failed to set data type in matmul tiling config");
             return ge::GRAPH_FAILED;
         }
 
         mm.SetBufferSpace(compileInfo_.l1Size, compileInfo_.l0CSize, compileInfo_.ubSize);
         if (mm.GetTiling(tCubeTiling) == -1) {
-            OP_LOGE(args_.opName, "Mc2MatMulV3 Get Tiling Failed!");
+            std::string valStr = "m=" + std::to_string(args_.mValue) + ", n=" + std::to_string(args_.nValue) + ", k=" + std::to_string(args_.kValue);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args_.opName, "m, n, k", valStr.c_str(),
+                "Failed to get tiling data from matmul tiling config");
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
