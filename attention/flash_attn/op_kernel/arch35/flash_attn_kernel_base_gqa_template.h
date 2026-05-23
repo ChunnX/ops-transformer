@@ -55,16 +55,16 @@ public:
         this->valuePtr = value;
 
         if constexpr (Base::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            this->cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, this->constInfo.cuSeqLensQSize + 1);
-            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->constInfo.seqUsedQSize);
+            this->cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, this->tilingData->flashAttnBaseParams.cuSeqLensQSize + 1);
+            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->tilingData->flashAttnBaseParams.seqUsedQSize);
         } else {
-            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->constInfo.seqUsedQSize);
+            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->tilingData->flashAttnBaseParams.seqUsedQSize);
         }
         if constexpr (Base::LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            this->cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, this->constInfo.cuSeqLensKVSize + 1);
-            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->constInfo.seqUsedKvSize);
+            this->cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, this->tilingData->flashAttnBaseParams.cuSeqLensKVSize + 1);
+            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->tilingData->flashAttnBaseParams.seqUsedKvSize);
         } else {
-            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->constInfo.seqUsedKvSize);
+            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->tilingData->flashAttnBaseParams.seqUsedKvSize);
         }
 
         this->InitQCuSeqLensParser();
@@ -83,7 +83,7 @@ public:
     __aicore__ inline void Process()
     {
         if ASCEND_IS_AIV {
-            if (this->constInfo.aicIdx < this->constInfo.coreNum) {
+            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 this->CrossCoreBufferInit();
             }
         }
@@ -97,7 +97,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            if (this->constInfo.aicIdx < this->constInfo.coreNum) {
+            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 this->CrossCoreBufferUnInit();
             }
         }
