@@ -73,7 +73,8 @@ template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_,
           class BlockEpilogueDequantFinalizeRouting_, class BlockScheduler_>
 class KernelGmmFinalizeRoutingPertokenDequant<
     ProblemShape_, BlockMmadBuilder_, BlockPrologue_, BlockEpilogueDequantFinalizeRouting_, BlockScheduler_,
-    AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
+    AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler> ||
+                              AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitProScheduler>>> {
 public:
     __aicore__ inline KernelGmmFinalizeRoutingPertokenDequant()
     {

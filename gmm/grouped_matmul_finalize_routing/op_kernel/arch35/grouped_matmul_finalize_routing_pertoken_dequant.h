@@ -18,7 +18,7 @@
 
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h"
 #include "cgmct/block/block_mmad_builder.h"
-#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split_pro.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
 
 using namespace Cgmct::Gemm;
@@ -52,7 +52,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using xscaleType = float;
     using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
     using ProblemShape = Cgmct::Gemm::MatmulShape;
-    using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitScheduler;
+    using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitProScheduler;
     using BlockMmadBuilder =
         Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutBias, L1TileShape,
                                 L0TileShape, BlockScheduler, MatmulMultiBlock<>,
