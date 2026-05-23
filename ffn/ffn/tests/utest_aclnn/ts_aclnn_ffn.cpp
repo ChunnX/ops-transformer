@@ -19,7 +19,7 @@ namespace {
 TEST_P(Ts_Aclnn_FFN_WithParam_Ascend910B3, Tc_Aclnn_FFN)
 {
     ASSERT_TRUE(case_->Init());
-    ASSERT_TRUE(case_->Run());
+    ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
 }
 
 const auto Tc_FFN_Aclnn_Case = ::testing::Values(

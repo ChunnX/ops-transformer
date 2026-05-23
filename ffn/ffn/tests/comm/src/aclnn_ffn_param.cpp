@@ -83,8 +83,8 @@ bool AclnnFFNParam::Init()
     if (mFunctionType == FunctionType::QUANT) {
         aclnnScale = ops::adv::tests::utils::AclnnTensor(mTensors["scale"]);
         aclnnOffset = ops::adv::tests::utils::AclnnTensor(mTensors["offset"]);
-        aclnnDeqScale1 = ops::adv::tests::utils::AclnnTensor(mTensors["deqScale1"]);
-        aclnnDeqScale2 = ops::adv::tests::utils::AclnnTensor(mTensors["deqScale2"]);
+        aclnnDeqScale1 = ops::adv::tests::utils::AclnnTensor(mTensors["deq_scale1"]);
+        aclnnDeqScale2 = ops::adv::tests::utils::AclnnTensor(mTensors["deq_scale2"]);
     } else if (mFunctionType == FunctionType::ANTIQUANT) {
         aclnnAntiquantScale1 = ops::adv::tests::utils::AclnnTensor(mTensors["antiquant_scale1"]);
         aclnnAntiquantScale2 = ops::adv::tests::utils::AclnnTensor(mTensors["antiquant_scale2"]);
@@ -121,7 +121,7 @@ bool AclnnFFNParam::Init()
 
 bool AclnnFFNParam::InitExpertTokens()
 {
-    auto iter = mTensors.find("expertTokens");
+    auto iter = mTensors.find("expert_tokens");
     if (iter == mTensors.end()) {
         return true;
     }
@@ -135,7 +135,7 @@ bool AclnnFFNParam::InitExpertTokens()
                 return false;
             }
         }
-        aclnnExpertTokens = ops::adv::tests::utils::AclnnTensor(mTensors["expertTokens"]);
+        aclnnExpertTokens = ops::adv::tests::utils::AclnnTensor(mTensors["expert_tokens"]);
     } else if (!InitAclIntArray(&aclnnExpertTokensIntAry, mExpertTokensData)) {
         return false;
     }
