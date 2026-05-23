@@ -340,7 +340,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
         WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
         for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
-            LightningIndexerV2ServiceVector1::MulWeightAndReduceSum(
+            liV2Vector1::MulWeightAndReduceSum(
                     vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
                     resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ +
                                s1IdxTmp * gSize_ * s2BaseSize_],
