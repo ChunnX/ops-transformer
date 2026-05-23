@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_attn_kernel_base_gqa_common.h
- * \brief Flash Attention GQA common definitions and shared methods
+ * \brief Flash Attention GQA common definitions (shared by both AIC and AIV)
  */
 
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_COMMON_H_
@@ -150,15 +150,8 @@ public:
     __aicore__ inline FlashAttentionNoQuantGqaKernelBase()
         : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
 
-    __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfoCommon()
     {
-        if ASCEND_IS_AIC {
-            constInfo.aicIdx = GetBlockIdx();
-        } else {
-            constInfo.aivIdx = GetBlockIdx();
-            constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
-            constInfo.subBlockIdx = GetSubBlockIdx();
-        }
         constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
         constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
         constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;
@@ -217,8 +210,7 @@ public:
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
 
         if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock;
+            int64_t mm2ResultSize = mBaseSize * constInfo.dBasicBlock;
             int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize;
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
             bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
@@ -254,34 +246,6 @@ public:
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIV {
-                bmm2Buffers.Get().SetCrossCore();
-                bmm2Buffers.Get().SetCrossCore();
-            }
-        }
-        if ASCEND_IS_AIV {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-        }
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIC {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
-            }
-        }
-    }
-
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
         bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
@@ -292,23 +256,6 @@ public:
         s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
         coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
             GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
-    }
-
-    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
-    {
-        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
-        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
-        if (!fdParams_.fdCoreEnable) {
-            return;
-        }
-        fdParams_.fdBN2Idx =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
-        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
-        fdParams_.fdWorkspaceIdx =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
-        fdParams_.fdS2SplitNum =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 };
 

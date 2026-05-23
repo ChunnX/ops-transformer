@@ -49,7 +49,9 @@ public:
                                 FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * this->sectionNum_ * sizeof(uint32_t)),
             FA_AIV_CORE_NUM * 16U * this->sectionNum_);
 
-        this->InitConstInfo();
+        this->InitConstInfoCommon();
+        this->InitConstInfoCube();
+        this->InitConstInfoVector();
 
         this->keyPtr = key;
         this->valuePtr = value;
@@ -80,20 +82,12 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (this->constInfo.aicIdx < this->constInfo.coreNum) {
-            this->CrossCoreBufferInit();
-        }
-
         for (uint32_t sectionIdx = 0; sectionIdx < this->sectionNum_; sectionIdx++) {
             if ASCEND_IS_AIC {
                 this->ProcessCube(sectionIdx);
             } else {
                 this->ProcessVector(sectionIdx);
             }
-        }
-
-        if (this->constInfo.aicIdx < this->constInfo.coreNum) {
-            this->CrossCoreBufferUnInit();
         }
     }
 };

@@ -25,6 +25,31 @@ class FlashAttentionCubeProcessor : public KernelBase {
 public:
     using KernelBase::KernelBase;
 
+    __aicore__ inline void InitConstInfoCube()
+    {
+        if ASCEND_IS_AIC {
+            this->constInfo.aicIdx = GetBlockIdx();
+        }
+    }
+
+    __aicore__ inline void CrossCoreBufferInitCube()
+    {
+    }
+
+    __aicore__ inline void CrossCoreBufferUnInitCube()
+    {
+        if ASCEND_IS_AIC {
+            this->bmm1Buffers.Get().WaitCrossCore();
+            this->bmm1Buffers.Get().WaitCrossCore();
+        }
+        if constexpr (KernelBase::BMM2_TOUB) {
+            if ASCEND_IS_AIC {
+                this->bmm2Buffers.Get().WaitCrossCore();
+                this->bmm2Buffers.Get().WaitCrossCore();
+            }
+        }
+    }
+
     __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                     __gm__ uint8_t *blockTable)
     {
@@ -52,6 +77,7 @@ public:
 
         if ASCEND_IS_AIC {
             this->cubeBlock.FreeEventID();
+            this->CrossCoreBufferUnInitCube();
         }
     }
 

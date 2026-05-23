@@ -25,6 +25,50 @@ class FlashAttentionVectorProcessor : public KernelBase {
 public:
     using KernelBase::KernelBase;
 
+    __aicore__ inline void InitConstInfoVector()
+    {
+        if ASCEND_IS_AIV {
+            this->constInfo.aivIdx = GetBlockIdx();
+            this->constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
+            this->constInfo.subBlockIdx = GetSubBlockIdx();
+        }
+    }
+
+    __aicore__ inline void CrossCoreBufferInitVector()
+    {
+        if constexpr (KernelBase::BMM2_TOUB) {
+            if ASCEND_IS_AIV {
+                this->bmm2Buffers.Get().SetCrossCore();
+                this->bmm2Buffers.Get().SetCrossCore();
+            }
+        }
+        if ASCEND_IS_AIV {
+            this->bmm1Buffers.Get().SetCrossCore();
+            this->bmm1Buffers.Get().SetCrossCore();
+        }
+    }
+
+    __aicore__ inline void CrossCoreBufferUnInitVector()
+    {
+    }
+
+    __aicore__ inline void GetFDSectionInfoVector(uint32_t sectionIdx)
+    {
+        this->fdParams_.mLen = this->fdMetaDataGm.GetValue(this->GetFDMetaDataIndex(this->constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        this->fdParams_.fdCoreEnable = this->fdParams_.mLen > 0 ? 1U : 0U;
+        if (!this->fdParams_.fdCoreEnable) {
+            return;
+        }
+        this->fdParams_.fdBN2Idx =
+            this->fdMetaDataGm.GetValue(this->GetFDMetaDataIndex(this->constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        this->fdParams_.fdMIdx = this->fdMetaDataGm.GetValue(this->GetFDMetaDataIndex(this->constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
+        this->fdParams_.fdWorkspaceIdx =
+            this->fdMetaDataGm.GetValue(this->GetFDMetaDataIndex(this->constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
+        this->fdParams_.fdS2SplitNum =
+            this->fdMetaDataGm.GetValue(this->GetFDMetaDataIndex(this->constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
+        this->fdParams_.mStart = this->fdMetaDataGm.GetValue(this->GetFDMetaDataIndex(this->constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+    }
+
     __aicore__ inline void InitVector(__gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                       __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                       __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
@@ -73,6 +117,7 @@ public:
         if ASCEND_IS_AIV {
             this->vecFaBlock.InitBuffers(this->SharedBuffer1, this->SharedBuffer2, this->SharedBuffer3);
             this->vecFaBlock.AllocEventID();
+            this->CrossCoreBufferInitVector();
         }
 
         if (this->constInfo.aicIdx < this->constInfo.coreNum) {
@@ -85,6 +130,7 @@ public:
 
         if ASCEND_IS_AIV {
             this->vecFaBlock.FreeEventID();
+            this->CrossCoreBufferUnInitVector();
         }
     }
 
@@ -451,7 +497,7 @@ private:
         if (!this->isFd) {
             return;
         }
-        this->GetFDSectionInfo(sectionIdx);
+        this->GetFDSectionInfoVector(sectionIdx);
         this->vecFdBlock.InitBuffers(this->pipe, this->SharedBuffer1, this->SharedBuffer2, this->SharedBuffer3);
         AscendC::ICachePreLoad(2);
         this->vecFdBlock.AllocEventID();
