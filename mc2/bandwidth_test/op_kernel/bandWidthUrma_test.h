@@ -506,7 +506,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
     PipeBarrier<PIPE_ALL>();
     rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
     uint32_t index = epRankId_ * stateOffset_ / sizeof(float);
-    PRINTF("WaitDispatch end  %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", aivId_, epRankId_, epRankId_, windowInStatusFp32Tensor_(index), windowInStatusFp32Tensor_(index + 1));
+    PRINTF("WaitDispatch  end index %d, aivid %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", index, aivId_, epRankId_, epRankId_, windowInStatusFp32Tensor_(index), windowInStatusFp32Tensor_(index + 1));
     
     
     
