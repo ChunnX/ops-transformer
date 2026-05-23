@@ -326,7 +326,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
             }
         }
         GlobalTensor<int32_t> rankGMTensor;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_)));
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(0)));
         for (uint32_t i = 0; i < 8; i++) {
             PRINTF("read rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
         }
