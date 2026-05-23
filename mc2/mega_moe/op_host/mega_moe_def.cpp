@@ -162,12 +162,12 @@ public:
         .IgnoreContiguous();
     aicore_config_910b.Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_INT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_910b.Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_INT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_910b.Input("bias1")
