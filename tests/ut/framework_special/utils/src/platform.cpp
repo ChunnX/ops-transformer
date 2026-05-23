@@ -127,6 +127,7 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                     {
                         {"SoC_version", std::string("Ascend910B1")},
                         {"Short_SoC_version", std::string("Ascend910B")},
+                        {"NpuArch", std::string("2201")},
                     },
                 },
                 {
@@ -136,12 +137,17 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                         {"ai_core_cnt", std::uint32_t(24)},
                         {"cube_core_cnt", std::uint32_t(24)},
                         {"vector_core_cnt", std::uint32_t(48)},
+                        {"normal_stream_num", std::uint32_t(1024)},
+                        {"normal_stream_depth", std::uint32_t(1024)},
+                        {"huge_stream_num", std::uint32_t(64)},
+                        {"huge_stream_depth", std::uint32_t(64)},
                     },
                 },
                 {
                     "AICoreSpec",
                     {
                         {"ubblock_size", std::uint32_t(32)},
+                        {"support_fixpipe", std::string("true")},
                     },
                 },
                 {
@@ -178,6 +184,7 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                     {
                         {"SoC_version", std::string("Ascend910B2")},
                         {"Short_SoC_version", std::string("Ascend910B")},
+                        {"NpuArch", std::string("2201")},
                     },
                 },
                 {
@@ -187,12 +194,17 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                         {"ai_core_cnt", std::uint32_t(24)},
                         {"cube_core_cnt", std::uint32_t(24)},
                         {"vector_core_cnt", std::uint32_t(48)},
+                        {"normal_stream_num", std::uint32_t(1024)},
+                        {"normal_stream_depth", std::uint32_t(1024)},
+                        {"huge_stream_num", std::uint32_t(64)},
+                        {"huge_stream_depth", std::uint32_t(64)},
                     },
                 },
                 {
                     "AICoreSpec",
                     {
                         {"ubblock_size", std::uint32_t(32)},
+                        {"support_fixpipe", std::string("true")},
                     },
                 },
                 {
@@ -229,6 +241,7 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                     {
                         {"SoC_version", std::string("Ascend910B3")},
                         {"Short_SoC_version", std::string("Ascend910B")},
+                        {"NpuArch", std::string("2201")},
                     },
                 },
                 {
@@ -238,12 +251,17 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                         {"ai_core_cnt", std::uint32_t(20)},
                         {"cube_core_cnt", std::uint32_t(20)},
                         {"vector_core_cnt", std::uint32_t(40)},
+                        {"normal_stream_num", std::uint32_t(1024)},
+                        {"normal_stream_depth", std::uint32_t(1024)},
+                        {"huge_stream_num", std::uint32_t(64)},
+                        {"huge_stream_depth", std::uint32_t(64)},
                     },
                 },
                 {
                     "AICoreSpec",
                     {
                         {"ubblock_size", std::uint32_t(32)},
+                        {"support_fixpipe", std::string("true")},
                     },
                 },
                 {
@@ -280,6 +298,7 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                     {
                         {"Short_SoC_version", std::string("Ascend310P")},
                         {"SoC_version", std::string("Ascend310P3")},
+                        {"NpuArch", std::string("2002")},
                     },
                 },
                 {
@@ -289,6 +308,17 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                         {"ai_core_cnt", std::uint32_t(8)},
                         {"cube_core_cnt", std::uint32_t(8)},
                         {"vector_core_cnt", std::uint32_t(7)},
+                        {"normal_stream_num", std::uint32_t(1024)},
+                        {"normal_stream_depth", std::uint32_t(1024)},
+                        {"huge_stream_num", std::uint32_t(64)},
+                        {"huge_stream_depth", std::uint32_t(64)},
+                    },
+                },
+                {
+                    "AICoreSpec",
+                    {
+                        {"ubblock_size", std::uint32_t(32)},
+                        {"support_fixpipe", std::string("true")},
                     },
                 },
                 {
@@ -319,6 +349,7 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                     {
                         {"SoC_version", std::string("Ascend910_9591")},
                         {"Short_SoC_version", std::string("Ascend950")},
+                        {"NpuArch", std::string("3510")},
                     },
                 },
                 {
@@ -328,12 +359,17 @@ Platform &Platform::SetSocVersion(const SocVersion &socVersion)
                         {"ai_core_cnt", std::uint32_t(32)},
                         {"cube_core_cnt", std::uint32_t(32)},
                         {"vector_core_cnt", std::uint32_t(64)},
+                        {"normal_stream_num", std::uint32_t(1024)},
+                        {"normal_stream_depth", std::uint32_t(1024)},
+                        {"huge_stream_num", std::uint32_t(64)},
+                        {"huge_stream_depth", std::uint32_t(64)},
                     },
                 },
                 {
                     "AICoreSpec",
                     {
                         {"ubblock_size", std::uint32_t(32)},
+                        {"support_fixpipe", std::string("true")},
                     },
                 },
                 {

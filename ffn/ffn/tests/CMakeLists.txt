@@ -51,6 +51,22 @@ set(_FFN_TargetPrivateIncludeExt
         ${OPBASE_INC_DIRS}
 )
 
+set(_FFN_UTestSourcesExt
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut/op_host/test_ffn_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut/op_kernel/test_ffn_kernel.cpp
+)
+
+set(_FFN_UTestAclnnSourcesExt
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut/op_host/op_api/test_aclnn_ffn.cpp
+)
+
+set(_FFN_UTestPrivateIncludeExt
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut/op_host
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut/op_host/op_api
+        ${CMAKE_CURRENT_SOURCE_DIR}/ut/op_kernel
+)
+
 set(_FFN_TillingPrivateLinkLibrariesExt
 )
 
@@ -68,4 +84,18 @@ OpsTest_Level2_AddOp(
         KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT  ${_FFN_KernelPrivateCompileDefinitionsExt}
         UTEST_COMMON_PRIVATE_INCLUDES_EXT       ${_FFN_TargetPrivateIncludeExt}
         UTEST_COMMON_PRIVATE_LINK_LIBRARIES_EXT ${_FFN_TargetPrivateLinkLibrariesExt}
+        UTEST_SOURCES_EXT                       ${_FFN_UTestSourcesExt}
+        UTEST_SOURCES_EXT_FORCE                 TRUE
+        UTEST_PRIVATE_INCLUDES_EXT              ${_FFN_UTestPrivateIncludeExt}
+        UTEST_ACLNN_SOURCES_EXT                 ${_FFN_UTestAclnnSourcesExt}
+        UTEST_ACLNN_SOURCES_EXT_FORCE           TRUE
+        UTEST_ACLNN_PRIVATE_INCLUDES_EXT        ${_FFN_UTestPrivateIncludeExt}
 )
+
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+message(STATUS "=== Debug: CURRENT_DIRS =${CURRENT_DIRS} ")
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

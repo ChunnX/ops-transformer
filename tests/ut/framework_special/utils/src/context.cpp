@@ -116,7 +116,8 @@ bool Context::RunTiling(std::string &caseName, bool withSocversion)
                                         outputsJson_.c_str(), attrsJson_.c_str(), tilingResult_.data(),
                                         tilingResult_.size(), nullptr, extraInfoJson_.c_str());
     if (tilingDataNum_ != 1) {
-        LOG_DBG("[%s:%s] TilingDataNum = %d != 1", opName_.c_str(), caseName.c_str(), tilingDataNum_);
+        LOG_ERR("[%s:%s] TilingDataNum = %d != 1, TilingResult = %s", opName_.c_str(), caseName.c_str(), tilingDataNum_,
+                tilingResult_.c_str());
         return false;
     }
     /* Tiling 结果解析 */
@@ -254,7 +255,7 @@ bool Context::InitTilingJsonStr()
     }
     attrsJson_ += "\n]";
 
-    extraInfoJson_ = "{\"deterministic\": " + std::to_string(deterministic_) + "}";
+    extraInfoJson_ = std::string("{\"deterministic\": ") + (deterministic_ == 0 ? "false" : "true") + "}";
 
     LOG_DBG("%s Inputs: %s", opName_.c_str(), inputsJson_.c_str());
     LOG_DBG("%s Outputs: %s", opName_.c_str(), outputsJson_.c_str());

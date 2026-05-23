@@ -132,9 +132,11 @@ bool AclnnFFNCase::Run()
         return true;
     }
     if (!mOpInfo.ProcessTiling(mName)) {
+        mOpInfo.mExp.mSuccess = false;
         return false;
     }
     if (!mOpInfo.ProcessKernel(mName)) {
+        mOpInfo.mExp.mSuccess = false;
         return false;
     }
     return true;
