@@ -577,7 +577,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
         base_addr[rankId] = (GM_ADDR)(aclshmem_ptr((GM_ADDR)(curRankShmemAddr), rankId));
     }
     curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
-    REMOTE_DATA_SIZE = hExpandXAlign32Size_ * flagRcvCount_ * axisBS;
+    REMOTE_DATA_SIZE = hExpandXAlign32Size_ * flagRcvCount_ * axisBS_;
     epWindowGM_ = (GM_ADDR)curRankShmemAddr + A5_MTE_STATE_WIN_SIZE;
     token_buffer = (GM_ADDR)(curRankShmemAddr) + A5_MTE_STATE_WIN_SIZE + REMOTE_DATA_SIZE;
     // token_buffer = (GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE; // 本端新增的数据区域，用于本卡数据拷贝，占用空间大小是hExpandXAlign32Size_
