@@ -453,9 +453,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
     GlobalTensor<int32_t> rankGMTensor;
+    uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
-        uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
         GM_ADDR rankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         if (dstRankId == epRankId_) { 
            rankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
@@ -475,7 +475,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
             continue;
         }
         PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
-        uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
         // GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         // GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
