@@ -610,18 +610,14 @@ static bool ActTypeCheck(const char *nodeName, const int64_t actType, const bool
 {
     if (std::find(ops::ACT_TYPE_SUPPORT_VEC.begin(), ops::ACT_TYPE_SUPPORT_VEC.end(), actType) ==
         ops::ACT_TYPE_SUPPORT_VEC.end()) {
-        OP_LOGE(nodeName, "actType [%ld] is unsupported, support range is [%ld, %ld]", actType,
-                static_cast<int64_t>(
-                    ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE),
-                static_cast<int64_t>(
-                    ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU));
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "actType", std::to_string(actType).c_str(), "supported activation type");
         return false;
     }
 
     if (y3Flag &&
         (actType == static_cast<int64_t>(
                         ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE))) {
-        OP_LOGE(nodeName, "actType should be non-none when need_activation_feature is true, but got actType = none.");
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "actType", std::to_string(actType).c_str(), "non-NONE when y3Flag is true");
         return false;
     }
 
@@ -633,13 +629,14 @@ static bool CommonCheckTensorShape(const char *nodeName, const gert::Shape *xSha
 {
     // 检查每个维度: x dim C >= 1，dim E H M 会在后面限制, 这里不再做校验
     if (xShape->GetDim(X_DIM_C) < VALUE_C_MIN) {
-        OP_LOGE(nodeName, "The second dim of x should not < %ld, but got x[1] = %ld.", VALUE_C_MIN,
-                xShape->GetDim(X_DIM_C));
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x",
+            std::to_string(xShape->GetDim(X_DIM_C)).c_str(),
+            std::string("not < " + std::to_string(VALUE_C_MIN)).c_str());
         return false;
     }
     // x[2]、w[wDimH] 是 H 轴 (reduce 轴)，不能为 0
     if ((xShape->GetDim(X_DIM_H) == 0) || (weightShape->GetDim(wDimH) == 0)) {
-        OP_LOGE(nodeName, "The second dim of weight or the last dim of x = 0 is unsupported.");
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x or weight", "0", "> 0");
         return false;
     }
 
@@ -654,53 +651,54 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
     // 检查 shape 维度的范围
     // x[DIM_E] = E, value E should = [2, 512]
     if (((xShape->GetDim(DIM_E) < VALUE_E_MIN) || (xShape->GetDim(DIM_E) > VALUE_E_MAX))) {
-        OP_LOGE(nodeName, "Value E should in [%ld, %ld], but got %ld.", VALUE_E_MIN, VALUE_E_MAX,
-                xShape->GetDim(DIM_E));
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x",
+            std::to_string(xShape->GetDim(DIM_E)).c_str(),
+            (std::string("[") + std::to_string(VALUE_E_MIN) + ", " + std::to_string(VALUE_E_MAX) + "]").c_str());
         return false;
     }
     // w[wDimM] = M / Tp, its range should same with H, so it meets M / Tp * H <= 65535 * 65535
     if ((weightShape->GetDim(wDimM) < VALUE_H_MIN) || (weightShape->GetDim(wDimM) > VALUE_H_MAX)) {
-        OP_LOGE(nodeName, "Value M / Tp should in [%ld, %ld], but got %ld.", VALUE_H_MIN, VALUE_H_MAX,
-                weightShape->GetDim(wDimM));
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "weight",
+            std::to_string(weightShape->GetDim(wDimM)).c_str(),
+            (std::string("[") + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]").c_str());
         return false;
     }
     // x[DIM_E] = E, w[DIM_E] = E / Ep, 所以需要满足 x[DIM_E] = w[DIM_E] * Ep
     if (weightShape->GetDim(DIM_E) * epSize != xShape->GetDim(DIM_E)) {
-        OP_LOGE(nodeName,
-                "The first dim of weight multi epSize should equal the first dim of x,"
-                "but got x[0] = %ld, w[0] = %ld, epSize = %ld",
-                xShape->GetDim(DIM_E), weightShape->GetDim(DIM_E), epSize);
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x or weight dim-E",
+            (std::to_string(xShape->GetDim(DIM_E)) + " vs " + std::to_string(weightShape->GetDim(DIM_E))).c_str(),
+            (std::to_string(weightShape->GetDim(DIM_E) * epSize)).c_str());
         return false;
     }
 
     if (xShard == 0) {
         // x[X_DIM_H] = H / tp, value H should = [1, 65535]
         if ((xShape->GetDim(X_DIM_H) * tpSize < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) * tpSize > VALUE_H_MAX)) {
-            OP_LOGE(nodeName, "Value H should in [%ld, %ld], but got %ld.", VALUE_H_MIN, VALUE_H_MAX,
-                    xShape->GetDim(X_DIM_H) * tpSize);
+            OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x",
+                std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
+                (std::string("[") + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]").c_str());
             return false;
         }
         // x[X_DIM_H] = H / tp, w[wDimH] = H, 所以 x[X_DIM_H] * tp 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) {
-            OP_LOGE(nodeName,
-                    "The last dim of x (H / tp) multi tp should equal the corresponding dim of weight, "
-                    "but got x[2] * tp = %ld, w[%lu] = %ld.",
-                    xShape->GetDim(X_DIM_H), wDimH, weightShape->GetDim(wDimH));
+            OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x or weight dim-H",
+                (std::to_string(xShape->GetDim(X_DIM_H) * tpSize) + " vs " + std::to_string(weightShape->GetDim(wDimH))).c_str(),
+                "should be equal");
             return false;
         }
     } else if (xShard == 1) {
         // x[X_DIM_H] = H, value H should = [1, 65535]
         if ((xShape->GetDim(X_DIM_H) < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) > VALUE_H_MAX)) {
-            OP_LOGE(nodeName, "Value H should in [%ld, %ld], but got %ld.", VALUE_H_MIN, VALUE_H_MAX,
-                    xShape->GetDim(X_DIM_H));
+            OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x",
+                std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
+                (std::string("[") + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]").c_str());
             return false;
         }
         // x[X_DIM_H] = H, w[wDimH] = H, 所以 x[X_DIM_H] 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) != weightShape->GetDim(wDimH)) {
-            OP_LOGE(nodeName,
-                    "The last dim of x should equal the corresponding dim of weight, "
-                    "but got x[2] = %ld, w[%lu] = %ld.",
-                    xShape->GetDim(X_DIM_H), wDimH, weightShape->GetDim(wDimH));
+            OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x or weight dim-H",
+                (std::to_string(xShape->GetDim(X_DIM_H)) + " vs " + std::to_string(weightShape->GetDim(wDimH))).c_str(),
+                "should be equal");
             return false;
         }
     }
@@ -713,33 +711,32 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
 {
     // 检查 dimNum
     if ((biasShape->GetDimNum() != SUPPORT_DIM_NUM) && (biasShape->GetDimNum() != BIAS_SUPPORT_DIM_NUM)) {
-        OP_LOGE(nodeName, "Dim of input bias must be the 2 or 3.");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "bias", std::to_string(biasShape->GetDimNum()).c_str(), "2 or 3");
         return false;
     }
 
     // 检查 shape
     if (biasShape->GetDim(0) != weightShape->GetDim(0)) {
-        OP_LOGE(nodeName,
-                "The first dim of bias must be equal the first dim of weight, "
-                "but got bias[0] = %ld, w[0] = %ld.",
-                biasShape->GetDim(0), weightShape->GetDim(0));
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "bias",
+            (std::to_string(biasShape->GetDim(0)) + " vs " + std::to_string(weightShape->GetDim(0))).c_str(),
+            "should equal weight dim-0");
         return false;
     }
 
     size_t biasLastDimIdx = 1U; // 默认 bias 是二维，所以最后一维的 index 是 1
     if (biasShape->GetDimNum() == SUPPORT_DIM_NUM) {
         if (biasShape->GetDim(1) != 1) { // 三维时候，中间维度为 1
-            OP_LOGE(nodeName, "The second dim of bias must be 1 when dim num is 3.");
+            OP_LOGE_FOR_INVALID_SHAPE(nodeName, "bias",
+                std::to_string(biasShape->GetDim(1)).c_str(), "1");
             return false;
         }
         biasLastDimIdx = 2; // 三维时候，bias 的最后一维是 2
     }
 
     if (biasShape->GetDim(biasLastDimIdx) != weightShape->GetDim(wDimM)) {
-        OP_LOGE(nodeName,
-                "The last dim of bias must equal the corresponding dim of weight, "
-                "but got bias[2] = %ld, w[%lu] = %ld.",
-                biasShape->GetDim(biasLastDimIdx), wDimM, weightShape->GetDim(wDimM));
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "bias",
+            (std::to_string(biasShape->GetDim(biasLastDimIdx)) + " vs " + std::to_string(weightShape->GetDim(wDimM))).c_str(),
+            "should equal weight dim-M");
         return false;
     }
 
@@ -835,12 +832,12 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
         return false;
     }
     if (!EpTpSizeCheck(epSize, tpSize)) {
-        OP_LOGE(nodeName, "rank size error, tpSize=[%ld], valid=[2/4/8/16/32], epSize=[%ld], valid=[2/4/8/16/32].",
-                tpSize, epSize);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpSize or epSize",
+            (std::to_string(tpSize) + "/" + std::to_string(epSize)).c_str(), "2/4/8/16/32");
         return false;
     }
     if (xShard != 0 && xShard != 1) { // 当前支持 0, 1
-        OP_LOGE(nodeName, "x shard type [%ld] is invalid.", xShard);
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "xShardType", std::to_string(xShard).c_str(), "0 or 1");
         return false;
     }
     if (!ActTypeCheck(nodeName, actType, y3Flag)) {
