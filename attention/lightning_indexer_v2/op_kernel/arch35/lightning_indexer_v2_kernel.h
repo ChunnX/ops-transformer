@@ -9,7 +9,7 @@
   */
 
 /*!
- * \file lightning_indexer_kernel.h
+ * \file lightning_indexer_v2_kernel.h
  * \brief
  */
 
@@ -54,7 +54,7 @@ struct TempLoopInfo {
 };
 
 template <typename LIT>
-class LIV2Preload {
+class LIV2Kernel {
 public:
     __aicore__ inline LIV2Preload(){};
     __aicore__ inline void Init(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
@@ -77,7 +77,7 @@ public:
     using W_T = typename LightningIndexerV2TypeTraits<Q_T,
                 typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
-    LIV2Matmul<LIT> matmulService;
+    LightningIndexerV2ServiceCube<LIT> matmulService;
     LIV2Vector<LIT> vectorService;
 
     // =================================常量区=================================
