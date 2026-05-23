@@ -62,15 +62,15 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     OP_CHECK_IF(context->GetDynamicInputTensor(INDEX_WEIGHT, 1) != nullptr ||
                     context->GetDynamicInputTensor(INDEX_X, 1) != nullptr,
                 OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(context->GetNodeName(), "x, weight",
-                    FormatString("%s", "multi-tensor").c_str(),
-                    FormatString("The tensor nums in %s must be the same", "[x, weight]").c_str()),
+                    "",
+                    FormatString("The tensor nums of %s must be %s", "x, weight", "1").c_str()),
                 return false);
     if (groupType_ == SPLIT_K) {
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "group_type",
         FormatString("%d", groupType_).c_str(),
-        FormatString("The value of %s must be %s", "group_type", "2").c_str());
+        FormatString("The value of %s cannot be %d", "group_type", groupType_).c_str());
     return false;
 }
 
@@ -91,7 +91,7 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
         groupType_ != SPLIT_K || !transposeX_ || transposeWeight_,
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, transposeX, transposeWeight",
             FormatString("%d, %s, %s", groupType_, transposeX_ ? "TRUE" : "FALSE", transposeWeight_ ? "TRUE" : "FALSE").c_str(),
-            FormatString("The values of %s must be %s", "group_type, transposeX, transposeWeight", "(2, TRUE, FALSE)").c_str()),
+            FormatString("When %s is %d, the values of %s must be %s", "group_type", 2, "transposeX, transposeWeight", "TRUE, FALSE").c_str()),
         return false);
 
     auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
