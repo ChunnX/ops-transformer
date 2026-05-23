@@ -10,7 +10,7 @@
 
 /* !
  * \file fused_infer_attention_score.cpp
- * \brief
+ * \brief check ut
  */
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
