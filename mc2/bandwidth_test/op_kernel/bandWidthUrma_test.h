@@ -438,7 +438,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     // ============ 计算当前核负责的rank范围 ============
     SplitToCore(epWorldSize_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
     for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
-        PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
+        PRINTF("aivid is %d, eprank %d token tokenIndex is %d, expertId is %d\n", aivId_, epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
     // ============ 统计发送到各rank的token数量 ============
     for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
