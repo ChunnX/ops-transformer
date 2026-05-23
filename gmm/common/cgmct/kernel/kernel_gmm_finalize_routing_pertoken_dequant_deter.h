@@ -134,6 +134,7 @@ public:
     bool isVecSetSyncCom_ = false;
     DeterSyncConfig deterSync_;
     bool isDeter_ = false;
+    uint64_t cumulativeGroupM_ = 0;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -322,37 +323,19 @@ public:
         }
     }
 
-    __aicore__ inline void VectorSync(const Params &params)
-    {
-        uint64_t groupM = Get<MNK_M>(problemShape_);
-        deterSync_.curGroupM += groupM;
-
-        while (deterSync_.curGroupM > deterSync_.lowBoundM) {
-            deterSync_.curM += (deterSync_.lowBoundM - deterSync_.curM) /
-                params.gmmParams.baseM * params.gmmParams.baseM;
-            FRDeterministic(params);
-            deterSync_.lowBoundM = deterSync_.curM + deterSync_.windowSize;
-        }
-    }
-
-    __aicore__ inline void FRDeterministic(const Params &params)
+    __aicore__ inline void FinalFlush(const Params &params)
     {
         if ASCEND_IS_AIC return;
 
-        SyncAll<false>();
-
-        uint64_t totalM = deterSync_.curM - (deterSync_.lowBoundM - deterSync_.windowSize);
+        uint64_t totalM = deterSync_.curGroupM;
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
-        uint64_t windowStart = deterSync_.lowBoundM - deterSync_.windowSize;
 
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-            auto outRow = epilogueDequantOp_.GetRowIndex(windowStart + mOffset);
+            auto outRow = epilogueDequantOp_.GetRowIndex(mOffset);
             if (outRow % coreNumVec != GetBlockIdx()) continue;
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
         }
-
-        SyncAll<false>();
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -391,20 +374,20 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            ProcessSingleGroup(params, bs, groupIdx);
-
             if ASCEND_IS_AIV {
-                if (isDeter_) {
-                    VectorSync(params);
-                }
+                epilogueDequantOp_.SetWorkspaceGroupOffset(cumulativeGroupM_);
             }
+            ProcessSingleGroup(params, bs, groupIdx);
+            cumulativeGroupM_ += Get<MNK_M>(problemShape_);
+            deterSync_.curGroupM = cumulativeGroupM_;
         }
 
-        if ASCEND_IS_AIV {
-            if (isDeter_) {
-                deterSync_.curM = deterSync_.curGroupM;
-                FRDeterministic(params);
+        if (isDeter_) {
+            SyncAll<false>();
+            if ASCEND_IS_AIV {
+                FinalFlush(params);
             }
+            SyncAll<false>();
         }
 
         End();

@@ -104,6 +104,7 @@ public:
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void DeterministicFlushRow(uint64_t mOffset, uint64_t outRow, uint64_t nSize);
     __aicore__ inline uint64_t GetRowIndex(uint64_t globalOffset);
+    __aicore__ inline void SetWorkspaceGroupOffset(uint64_t groupAccumM);
 
 private:
     __aicore__ inline void CopyInLogit(uint32_t curBaseM, uint64_t offsetM, LocalTensor<float> &logitUb);
@@ -163,6 +164,7 @@ private:
     uint16_t logitPingPongID_ = 0;
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
     bool isDeter_ = false;
+    uint64_t groupAccumM_ = 0;
 };
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
@@ -281,7 +283,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 {
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        DataCopyPad(mmQuantOutGm_[yOffset + i * n_], yLocal[i * alignN_], paramsOut);
+        DataCopyPad(mmQuantOutGm_[(groupAccumM_ + offsetM + i) * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 }
 
@@ -508,6 +510,14 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     uint64_t globalOffset)
 {
     return static_cast<uint64_t>(rowIndexGlobal_.GetValue(globalOffset));
+}
+
+GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
+__aicore__ inline void
+BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::SetWorkspaceGroupOffset(
+    uint64_t groupAccumM)
+{
+    groupAccumM_ = groupAccumM;
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
