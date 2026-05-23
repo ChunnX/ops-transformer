@@ -279,7 +279,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - x1、x2：commMode为aiv时，数据类型支持FLOAT16、BFLOAT16、INT8，x1数据格式仅支持ND，x2数据格式支持ND、FRACTAL_NZ。
-        - bias：在commMode为aiv时，当前版本仅支持输入nullptr。
+        - bias：在commMode为aiv时，数据类型支持FLOAT16、BFLOAT16、FLOAT。
         - x1Scale：在commMode为aiv时，数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
         - x2Scale：在commMode为aiv时，数据类型支持FLOAT、INT64，数据格式支持ND。INT64数据类型仅在output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
         - groupSize：当前版本仅支持输入为0。
@@ -524,7 +524,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
         std::vector<int8_t> x1HostData(x1ShapeSize, 0);
         std::vector<int8_t> x2HostData(x2ShapeSize, 0);
-        std::vector<int32_t> biasHostData(biasShapeSize, 0);
+        std::vector<float> biasHostData(biasShapeSize, 0);
         std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 0);
         std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 0);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
@@ -532,6 +532,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
+        CHECK_RET(ret == ACL_SUCCESS, return ret);
+        ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_FLOAT, &bias);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x1Scale);
         CHECK_RET(ret == ACL_SUCCESS, return ret);

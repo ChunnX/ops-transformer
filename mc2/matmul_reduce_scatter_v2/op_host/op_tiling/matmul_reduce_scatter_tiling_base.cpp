@@ -121,14 +121,15 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
+ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(
+    Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode)
 {
     if (tileMValue_ * args_.nValue * ge::GetSizeByDataType(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;
     }
     OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
      " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld].",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
+        tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
     
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
         OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
@@ -136,18 +137,18 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTil
     
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
     tileMValue_ = Ops::Base::CeilDiv(args_.mValue, minSplitPart);
-    rcfCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
-    rcfCfg.tailM = args_.mValue - rcfCfg.tileCnt * tileMValue_;
-    tailMValue_ = rcfCfg.tailM;
+    rcsCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
+    rcsCfg.tailM = args_.mValue - rcsCfg.tileCnt * tileMValue_;
+    tailMValue_ = rcsCfg.tailM;
     if (tailMValue_ == 0) {
-        rcfCfg.tailCnt = 0;
+        rcsCfg.tailCnt = 0;
     } else {
-        rcfCfg.tailCnt = 1;
+        rcsCfg.tailCnt = 1;
     }
     longTileLen_ = tileMValue_;
     OPS_LOG_I(opName_, "Because the result of formulaic tiling result does not meet the hccl restriction,"
      " the re-splitM result: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. end re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
+        tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -270,6 +271,10 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     isA2APath_ = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_); // 判断是否走 All2All + Vec Reduce 通路（4P 或 8P）
+    // AICPU时不走All2All + Vec Reduce通路
+    if (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) {
+        isA2APath_ = false;
+    }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 };
