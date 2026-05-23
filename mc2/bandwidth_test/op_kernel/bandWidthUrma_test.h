@@ -263,7 +263,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     PipeBarrier<PIPE_V>();
     Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, Ceil(statusBufCntAlign, 8), 1, 8);
 
-    PRINTF("epRankId_ is %d, statusTensor_ is %p\n", epRankId_, statusTensor_);
+    PRINTF("epRankId_ is %d, statusTensor_ is %d, statusBufCntAlign is %d\n", epRankId_, statusTensor_(0), statusBufCntAlign);
     
     // ============ 计算窗口数据区偏移 ============
     windowGM_ = GetUrmaAddrByRankId(epRankId_);
