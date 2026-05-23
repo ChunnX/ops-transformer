@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -60,9 +60,10 @@ public:
     __aicore__ inline void Init(uint64_t totalSize, uint64_t weightL1Space, uint64_t aPrefetchSize,
                                 const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe,
                                 uint64_t mxBiasL1DbOffset);
-    __aicore__ inline void MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize, uint64_t l1StartSize,
-                                      uint64_t mxBiasL1DbOffset, const TCubeTiling *__restrict matmulTiling,
-                                      const LocalTensor<biasType> &biasL1);
+    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+                                      const TCubeTiling *__restrict matmulTiling, const LocalTensor<biasType> &biasL1,
+                                      uint64_t mxScaleBL1DbOffset,
+                                      const LocalTensor<fp8_e8m0_t> &mxScaleBL1);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
@@ -77,21 +78,20 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void ClearAFullLoadFlag();
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
-
 private:
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t aGmSize, const LocalTensor<xType> &perloadBuffer);
     __aicore__ inline void InitSync();
     __aicore__ inline uint64_t CheckMaxSpace(const BasicBlockOffsetParam &param);
     __aicore__ inline void CopyAGmToL1SingleBuffer(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
                                                    int64_t kbL1RealSize, int64_t biasRealN, int64_t aGmOffset);
-    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
-                                                  uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
+    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1RealSize,
+                                                  Dn2NzParams &dn2NzParams);
 
     int8_t aL1DbNum_;
     bool isBias_;
-    uint64_t quantScaleValue_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
-    static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
+    static constexpr uint64_t MX_SCALE_L1_SIZE =
+        MX_SCALE_L1_SIZE_KB * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
 
     MatmulImplType mmObj_;
 
@@ -106,8 +106,6 @@ private:
     GlobalTensor<xType> xGlobal_;
     GlobalTensor<biasType> biasGlobal_;
     GlobalTensor<fp8_e8m0_t> mxScaleAGlobal_;
-    GlobalTensor<fp8_e8m0_t> mxScaleBGlobal_;
-    GlobalTensor<uint64_t> quantScaleGlobal_;
     GlobalTensor<yType> yGlobal_;
 
     LocalTensor<xType> aL1_;
@@ -333,7 +331,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
 
     // copy mxScaleA
     Dn2NzParams scaleAdn2NzParams;
-    ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1RealSize, scaleKL1RealSize, scaleAdn2NzParams);
+    ConfigScaleDn2NzParams(param.mL1Size, scaleKGmSize, scaleKL1RealSize, scaleAdn2NzParams);
 
     int64_t scaleAGmOffset = param.mOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
     GlobalTensor<half> f16ScaleAGlobal;
@@ -342,23 +340,10 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
     auto f16ScaleALocal = mxScaleAL1_[(mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_].template ReinterpretCast<half>();
 
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
-
-    // copy mxScaleB
-    Dn2NzParams scaleBdn2NzParams;
-    ConfigScaleDn2NzParams(param.nL1Size, scaleKGmSize, scaleKL1RealSize, scaleKL1RealSize, scaleBdn2NzParams);
-
-    int64_t scaleBGmOffset = param.nOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
-    GlobalTensor<half> f16ScaleBGlobal;
-    f16ScaleBGlobal.SetGlobalBuffer((__gm__ half *)mxScaleBGlobal_[scaleBGmOffset].GetPhyAddr(),
-                                    (param.nL1Size * scaleKL1RealSize) >> 1);
-    auto f16ScaleBLocal = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_].template ReinterpretCast<half>();
-
-    DataCopy(f16ScaleBLocal, f16ScaleBGlobal, scaleBdn2NzParams);
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize,
-                                                                        uint64_t scaleKL1Stride,
                                                                         uint64_t scaleKL1RealSize,
                                                                         Dn2NzParams &dn2NzParams)
 {
@@ -429,7 +414,6 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         mxScaleAGlobal_.SetGlobalBuffer(perTokenScale);
-        mxScaleBGlobal_.SetGlobalBuffer(antiquantScale);
     }
 }
 
@@ -463,36 +447,27 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
     param.blockLen = (xOffset + aPrefetchSize > xSizeLimit ? xSizeLimit - xOffset : aPrefetchSize) * sizeof(xType);
     param.srcStride = 0;
     param.dstStride = 0;
+
     event_t eventIdMTE1ToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE1_MTE2>());
     SetFlag<HardEvent::MTE1_MTE2>(eventIdMTE1ToMTE2);
     WaitFlag<HardEvent::MTE1_MTE2>(eventIdMTE1ToMTE2);
 
-    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        // 不支持直接搬运fp8，转成uint8搬
-        DataCopyPadExtParams<uint8_t> extParams;
-        GlobalTensor<uint8_t> uint8XGlobal;
-        uint8XGlobal.SetGlobalBuffer((__gm__ uint8_t *)xGlobal_[xOffset].GetPhyAddr(), aPrefetchSize);
-        DataCopyPad(aL1_.template ReinterpretCast<uint8_t>(), uint8XGlobal, param, extParams);
-    } else {
-        DataCopyPadExtParams<xType> extParams;
-        DataCopyPad(aL1_, xGlobal_[xOffset], param, extParams);
-    }
+    DataCopyPadExtParams<xType> extParams;
+    DataCopyPad(aL1_, xGlobal_[xOffset], param, extParams);
     PipeBarrier<PIPE_MTE2>();
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize,
-                                                            uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize,
+                                                            uint64_t mxBiasL1DbOffset,
                                                             const TCubeTiling *__restrict matmulTiling,
-                                                            const LocalTensor<biasType> &biasL1)
+                                                            const LocalTensor<biasType> &biasL1,
+                                                            uint64_t mxScaleBL1DbOffset,
+                                                            const LocalTensor<fp8_e8m0_t> &mxScaleBL1)
 {
     //  MxA8W4场景空间分配: 其中 weight\Bias为全局分配，此处不感知
-    //  (1) 有bias场景
-    //  L1 (0~512KB): WeightL1_P0(64KB) |    Bias_P0(4KB)   | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(124KB) |
-    //              | AL1_P1(124KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | Bias_P1(4KB)      | WeightL1_P1(64KB)
-    //  (2) 无bias场景
-    //  L1 (0~512KB): WeightL1_P0(64KB) | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(128KB) |
-    //              | AL1_P1(128KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | WeightL1_P1(64KB)
+    //  L1 (0~512KB): WeightL1_P0(64KB) |    Bias_P0(4KB)   | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(80KB) |
+    //              | AL1_P1(80KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | Bias_P1(4KB)      | WeightL1_P1(64KB)
     biasL1_ = biasL1; // 预计大小4Kb
     biasL1DbOffset_ = mxBiasL1DbOffset;
     aL1Count_ = 0;        // GMM 动态场景暂时关闭A分段全载策略
@@ -504,15 +479,14 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 
-    mxScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
-    mxScaleBL1DbOffset_ = l1RemainSize - MX_SCALE_L1_SIZE;
+    mxScaleBL1_ = mxScaleBL1;
+    mxScaleBL1DbOffset_ = mxScaleBL1DbOffset;
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 
-    aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
-    aL1DbOffset_ = l1RemainSize >> 1;                                      // 最后剩余空间全部给AL1开DB
+    aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(xType));
+    aL1DbOffset_ = l1RemainSize - MX_A8W4_A_L1_RESERVED_KB * 1024;
 
-    PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
     mmObj_.Init();
     InitSync();
 }
@@ -550,8 +524,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(uint64_t totalSize, uint64
     aL1_ = LocalTensor<xType>(TPosition::TSCM, aL1Offset * sizeof(xType), totalSize / sizeof(xType) - aL1Offset);
     aL1Count_ = matmulTiling->Ka / (matmulTiling->baseK * matmulTiling->stepKb);
     aL1MaxHalfCount_ = CeilDivide(aL1Count_, static_cast<uint64_t>(DOUBLE_BUFFER_NUM));
-
     PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
+
     // 当前tiling策略的细分场景：
     // 1. stepKa <= stepKb 当前限制baseM的最大值，因此该场景下在L1上A矩阵大小<=128k。可以固定走db分支，保证a矩阵的db载入
     // 2. stepKa > stepKb 当前在m小k大的情况下才会出现该场景，走全载分支
