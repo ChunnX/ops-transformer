@@ -10,6 +10,7 @@
 
 #include "flash_attention_score_tiling_regbase.h"
 #include "../flash_attention_score_tiling_common.h"
+#include "op_common/log/log.h"
 
 namespace optiling {
 namespace FA {
@@ -242,7 +243,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     auto keyRope = context_->GetOptionalInputShape(KEY_ROPE_INDEX);
     bool hasKeyRope = keyRope != nullptr && keyRope->GetStorageShape().GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
-        OP_LOGE(opName, "query_rope and key_rope should be present or absent at the same time, check this.");
+        OP_LOGE_WITH_INVALID_INPUT(opName, "queryRope and keyRope", 
+            "The value of queryRope and keyRope must be present or absent at the same time");
         return false;
     }
     dSizeRope = 0; // init dSizeRope
@@ -260,8 +262,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
                    "The value of input layout should be in BSH, SBH, BSND, BNSD or TND"), return false);
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
-        OP_LOGE(context_, "s1Size[%ld] and s2Size[%ld] config error, both should not greater than max int value.",
-            s1Size, s2Size);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " + std::to_string(s2Size), 
+            "The value of s1Size and s2Size cannot be greater than max int value");
         return false;
     }
     OP_CHECK_IF(gSize == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSize is zero"), return false);
@@ -326,11 +328,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
     std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen)) {
-        OP_LOGE(opName, "Get actual_seq_qlen failed.");
+        OP_LOGE_WITH_INVALID_INPUT(opName, "actual_seq_qlen", "The value of actual_seq_qlen cannot be bullptr");
         return false;
     }
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen)) {
-        OP_LOGE(opName, "Get actual_seq_kvlen failed.");
+        OP_LOGE_WITH_INVALID_INPUT(opName, "actual_seq_kvlen", "The value of actual_seq_kvlen cannot be bullptr");
         return false;
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
@@ -799,7 +801,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
     auto dropMaskInput = context_->GetOptionalInputDesc(DROP_MASK_INPUT_INDEX);
     if (dropMaskInput != nullptr && dropMaskShape != nullptr && dropMaskShape->GetStorageShape().GetDimNum() != 0) {
         if (!hasDropOut) {
-            OP_LOGE(context_, "Dropmask parameter is invalid, please check keepProb.");
+            OP_LOGE_WITH_INVALID_INPUT(opName, "dropMaskOptional", 
+                "The value of dropMaskOptional must be nullptr when keepProb is 1.0.");
             return false;
         }
         auto dropMaskDtype = dropMaskInput->GetDataType();
@@ -1103,7 +1106,9 @@ void FlashAttentionScoreTilingRegbase::CalcThresholdForS2Size()
     int64_t n2Num = std::min(2 * actualUsedCoreNum, bSize * n2Size);
     int64_t dataTypeSize = ge::GetSizeByDataType(inputDtype);
     if (n2Num == 0 || dataTypeSize == 0) {
-        OP_LOGE(context_, "The n2Num[%ld] and dataTypeSize[%ld] cann not be zero.", n2Num, dataTypeSize);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "n2Num, dataTypeSize", 
+            std::to_string(n2Num) + ", " + std::to_string(dataTypeSize), 
+            "The value of n2Num and dataTypeSize cannot be 0.");
         return;
     }
 
@@ -1311,8 +1316,9 @@ bool FlashAttentionScoreTilingRegbase::SparseBandModeCheck(int64_t maxS1Val, int
     }
 
     if (preTokens < 0 && nextTokens < 0) {
-        OP_LOGE(context_, "PreTokens[%ld] and nextTokens[%ld] config error, there is no valid data block.",
-                  oriPreTokens, oriNextTokens);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "preTokens, nextTokens", 
+            std::to_string(oriPreTokens) + ", " + std::to_string(oriNextTokens), 
+            "The value of preTokens and nextTokens cannot be less than 0.");
         return false;
     }
 

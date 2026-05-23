@@ -19,6 +19,7 @@
 #include "opdev/fast_vector.h"
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
+#include "op_common/log/log.h"
 
 using namespace op;
 
@@ -206,8 +207,8 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         // key/value: (T,N2,D)
         AnalysisAxisForTnd(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScore", "input_layout", shapeInfo.dimNum,
-            "The shape dim of input_layout must be dim_num");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScore", "input_layout", 
+            std::to_string(shapeInfo.dimNum).c_str(), "The shape dim of input_layout must be dim_num");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
@@ -538,7 +539,8 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
                                  const aclIntArray *actualSeqKvLenOptional = nullptr)
 {
     if (headNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "head_num must > 0, but got %ld", headNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "FlashAttentionScore", "headNum", std::to_string(headNum), "The value of headNum must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(
@@ -982,7 +984,8 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseMode == 6) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, do not support query_rope and key_rope when sparseMode is 6.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "sparseMode", "6", 
+            "The value of sparseMode cannot be 6 when queryRope and keyRope are provided");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -1000,7 +1003,8 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (keepProb < 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, only support query_rope and key_rope when keepProb = 1.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "keepProb", std::to_string(keepProb), 
+                "The value of keepProb must be 1 when queryRope and keyRope are provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (faShape.inputLayout != InputLayout::TND) {
