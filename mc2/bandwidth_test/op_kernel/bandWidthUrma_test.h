@@ -309,16 +309,17 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
                     uint32_t value = dataStateLocalTensor(j);
                     PRINTF("dataStateLocalTensor(%u) eprank0 is %u\n", j, value);
                 }
-            }
-            i++;
-            if (i >= 10000000){
-                for (uint32_t j = 0; j < 8; j++) {
-                    uint32_t value = dataStateLocalTensor(j);
-                    PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
-                }
-                PRINTF("error do not read dataStateLocalTensor in %u\n", i);
                 break;
             }
+            i++;
+            // if (i >= 10000000){
+            //     for (uint32_t j = 0; j < 8; j++) {
+            //         uint32_t value = dataStateLocalTensor(j);
+            //         PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
+            //     }
+            //     PRINTF("error do not read dataStateLocalTensor in %u\n", i);
+            //     break;
+            // }
         }
      }
 
