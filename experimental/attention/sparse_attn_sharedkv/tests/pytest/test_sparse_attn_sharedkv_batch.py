@@ -53,7 +53,7 @@ def call_sas_npu(testcase_files):   # 初始化参数和tensor
     except Exception as e:
         utils.save_result('Exception', 0, test_data['params'], result_path)
         raise e
-    if npu_result != None:
+    if npu_result is not None:
         result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
     else:
         result = "Failed"
