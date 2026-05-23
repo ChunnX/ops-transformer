@@ -82,70 +82,34 @@ private:
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
     
                                        
-    // __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
-    // {
-    //     if (rankId == epRankId_) {
-    //         return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
-    //     }
-    //     uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-    //     return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE; // + winDataSizeOffset_;
-    // }
-
-    // __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
-    // {
-    //     if (rankId == epRankId_) {
-    //         return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
-    //     }
-    //     uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-    //     return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
-    // }
-
-    // // 获取指定 rank 的通信窗口数据区地址
-    // __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
-    // {
-    //     return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
-    //             UB_ALIGN  * epWorldSize_ + tokenMaxSizePerRank_ * rankId;
-    // }
-
-    // // 获取指定 rank 的通信窗口状态区地址
-    // __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
-    // {
-    //    return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + winDataSizeOffset_ +
-    //             UB_ALIGN  * rankId;
-    // }
-
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
         if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
         }
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE + winDataSizeOffset_;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
         if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
         }
         uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
     }
 
         // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + STATE_SIZE + winDataSizeOffset_;
-        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
+        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + STATE_SIZE;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
-        //return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId;
     }
 
     TPipe *tpipe_{nullptr};
@@ -203,7 +167,6 @@ private:
     uint32_t totalCnt_{0};         // 总计处理的token数
     uint32_t dataState_{0};        // 数据状态 (用于双缓冲)
     uint32_t totalUsedUB_{0};      // 已使用的UB大小
-    uint64_t winDataSizeOffset_{0}; // 窗口数据区偏移
     uint64_t expertPerSizeOnWin_{0}; // 每个expert在窗口中占用的空间
     uint32_t stateOffset_{0};      // 状态偏移 (32字节)
     uint32_t recStatusNumPerCore_{0}; // 每个核负责等待的rank数量
@@ -234,8 +197,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     PRINTF("totalWinSizeEp_ is %u\n", totalWinSizeEp_);
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ =  context_->epRankId;
-    // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
     // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
@@ -249,79 +210,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     for (uint32_t i = 0; i < epWorldSize_ -1; i++) {
         urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]);
     }
-
-    PRINTF("InitCommStatus epRankId_ is %d\n", epRankId_);
-    for (uint32_t i = 0; i < epWorldSize_ - 1; i++) {
-        PRINTF("i is %u, local addr is %u, remote addr is %u\n", i, urmaCommHandle_[i]->localBufferAddr->bufferInfo.rma.addr, urmaCommHandle_[i]->remoteBufferAddr->bufferInfo.rma.addr);
-    }
-
-    // ============ 初始化窗口状态 ============
-    // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
-    TBuf<> dataStateBuf;
-    tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
-    LocalTensor<uint32_t> dataStateLocalTensor = dataStateBuf.Get<uint32_t>();
-    GlobalTensor<uint32_t> selfDataStatusGMTensor;
-    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_));
-    if (epRankId_ == 0) { // 0卡写 1卡读
-        dataStateLocalTensor(0) = epRankId_;
-        dataStateLocalTensor(1) = 1234;
-        dataStateLocalTensor(2) = 12345;
-        dataStateLocalTensor(3) = 123456;
-        dataStateLocalTensor(4) = 0;
-        dataStateLocalTensor(5) = 1234;
-        dataStateLocalTensor(6) = 12345;
-        dataStateLocalTensor(7) = 1;
-        PipeBarrier<PIPE_ALL>();
-        DataCopy(selfDataStatusGMTensor, dataStateLocalTensor, UB_ALIGN / sizeof(uint32_t));
-        PipeBarrier<PIPE_ALL>();
-    }
-    
-    if(epRankId_ ==1){
-        uint32_t i = 0;
-        while(true) {
-            DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
-            PipeBarrier<PIPE_ALL>();
-            if (dataStateLocalTensor(7) == 1){
-                for (uint32_t j = 0; j < 8; j++) {
-                    uint32_t value = dataStateLocalTensor(j);
-                    PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
-                }
-            }
-            i++;
-            if (i >= 10000000){
-                for (uint32_t j = 0; j < 8; j++) {
-                    uint32_t value = dataStateLocalTensor(j);
-                    PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
-                }
-                PRINTF("error do not read dataStateLocalTensor in %u\n", i);
-                break;
-            }
-        }
-    }
-     if(epRankId_ ==0){
-        uint32_t i = 0;
-        while(true) {
-            DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
-            PipeBarrier<PIPE_ALL>();
-            if (dataStateLocalTensor(7) == 1){
-                for (uint32_t j = 0; j < 8; j++) {
-                    uint32_t value = dataStateLocalTensor(j);
-                    PRINTF("dataStateLocalTensor(%u) eprank0 is %u\n", j, value);
-                }
-                break;
-            }
-            i++;
-            // if (i >= 10000000){
-            //     for (uint32_t j = 0; j < 8; j++) {
-            //         uint32_t value = dataStateLocalTensor(j);
-            //         PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
-            //     }
-            //     PRINTF("error do not read dataStateLocalTensor in %u\n", i);
-            //     break;
-            // }
-        }
-     }
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -376,7 +264,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
 
     // ============ 计算窗口数据区偏移 ============
-    winDataSizeOffset_ = totalWinSizeEp_ / 2;
     windowGM_ = GetUrmaAddrByRankId(epRankId_);
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
 
@@ -534,8 +421,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                             epRankId_ * expertPerSizeOnWin_ +
                                             curExpertCnt * hAlignWinSize_);
-            //PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
-            //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
+            PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
+            PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
             ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
@@ -579,12 +466,18 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     PipeBarrier<PIPE_ALL>();
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
-        if (dstRankId == epRankId_) { 
-            continue;
-        }
-        uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
         GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)dstRankGM);
+        if (dstRankId == epRankId_) { 
+            rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
+            PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
+            continue;
+        }
+        PRINTF("flag is %d, count is %d\n", rankGMTensor[0], rankGMTensor[1]);
+        uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
+        // GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
+        // GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
         hcomm_.Wait(handle);
