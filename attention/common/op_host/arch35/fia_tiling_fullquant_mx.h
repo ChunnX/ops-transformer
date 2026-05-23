@@ -108,6 +108,7 @@ private:
     uint32_t sOuterFactor_;
     uint32_t sInnerFactor_;
     bool flashDecodeFlag_ = false;
+    bool dnFlag_ = false;
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
     bool actualSharedPrefixLenFlag_ = false;
