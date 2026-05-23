@@ -242,7 +242,7 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
     }
     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
             FormatString("%d, %s, %s, %s", groupType_, isSingleWeight_ ? "TRUE" : "FALSE", isSingleX_ ? "TRUE" : "FALSE", isSingleY_ ? "TRUE" : "FALSE").c_str(),
-            FormatString("The value of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY", "this combination").c_str());
+            FormatString("The values of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY", "this combination").c_str());
     return false;
 }
 
