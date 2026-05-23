@@ -258,7 +258,7 @@ bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *c
         size_t nValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 2 : 1));
         OP_CHECK_IF((kValue % numInOneBlk != 0 || nValue % numInOneBlk != 0),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "weight",
-                        FormatString("[%zu, %zu]", kValue, nValue).c_str(),
+                        Ops::Base::ToString(wShape).c_str(),
                         FormatString("when the format of %s is %s, %s of %s must be exactly divisible by %s",
                             "weight", "FRACTAL_NZ", "n-axis and k-axis", "weight", "32B").c_str()),
                     return false);
