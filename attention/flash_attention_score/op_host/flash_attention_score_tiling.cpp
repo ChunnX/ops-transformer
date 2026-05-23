@@ -18,6 +18,7 @@
 #include <cfloat>
 #include <register/op_impl_registry.h>
 #include "log/log.h"
+#include "op_common/log/log.h"
 #include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "op_host/data_copy_transpose_tiling.h"
 #include "op_host/tiling_templates_registry.h"
@@ -147,12 +148,12 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
                   const uint64_t &attentionOutShapeSize, const int64_t &softmaxSumShapeSize)
 {
     emptyArgs.coreNum = coreNum;
-    OP_CHECK_IF((coreNum <= 0),
-                OP_LOGE(context, "platform info is invalid, coreNum=%u.", coreNum), return false);
+    OP_CHECK_IF((coreNum <= 0),	 
+                 OP_LOGE(context, "platform info is invalid, coreNum=%u.", coreNum), return false);
     auto kernelType = context->GetInputDesc(KEY_INPUT_INDEX)->GetDataType();
     OP_CHECK_IF((kernelType != ge::DT_FLOAT16 && kernelType != ge::DT_FLOAT && kernelType != ge::DT_BF16),
-               OP_LOGE(context, "kernelType is invalid, kernelType is %d.", kernelType),
-               return false);
+                OP_LOGE(context, "kernelType is invalid, kernelType is %d.", kernelType),	 
+                return false);
     uint32_t kernelTypeSize = ge::GetSizeByDataType(kernelType);
     OP_CHECK_IF((kernelTypeSize <= 0),
                OP_LOGE(context, "kernelType size is invalid, kernelType size is %u.",
