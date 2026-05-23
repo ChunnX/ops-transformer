@@ -178,7 +178,8 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
+    // 透传 IsInterleaved=false（mega_moe.h 路径不走交织 B 布局）
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true, false>;
     BlockEpilogue epilogueOp_;
 };
 
@@ -765,9 +766,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
 
         if (subBlockIdx_ == 0) {
+            // GMM1 per-wave 接口：mega_moe.h 路径无 wave 并行，
+            // (blockIdx_, blockNum_) 等价于全部 tile 由全部 cores 分担；waveTraceIdx=0 (trace 关时无开销)
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, false>(
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, blockIdx_, blockNum_, vecSetSyncCom_, 0);
         }
     }
     EndSync();
