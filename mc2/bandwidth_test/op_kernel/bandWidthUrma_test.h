@@ -419,15 +419,15 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             
             // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-            // GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
-            //                                 epRankId_ * expertPerSizeOnWin_ +
-            //                                 curExpertCnt * hAlignWinSize_);
-            // GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
-            //                                 epRankId_ * expertPerSizeOnWin_ +
-            //                                 curExpertCnt * hAlignWinSize_);
-            PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
+            GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
+                                            epRankId_ * expertPerSizeOnWin_ +
+                                            curExpertCnt * hAlignWinSize_);
+            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+                                            epRankId_ * expertPerSizeOnWin_ +
+                                            curExpertCnt * hAlignWinSize_);
+            //PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
             // //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
-            // ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
+            ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
 }
@@ -660,7 +660,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     if ASCEND_IS_AIV {
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
-            //SetStatus();         // 步骤2: 设置状态通知对端
+            SetStatus();         // 步骤2: 设置状态通知对端
             // WaitDispatch();      // 步骤3: 等待所有rank完成发送
             // LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
