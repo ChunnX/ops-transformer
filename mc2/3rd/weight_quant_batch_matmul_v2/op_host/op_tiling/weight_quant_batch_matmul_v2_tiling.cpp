@@ -769,7 +769,8 @@ bool CheckAttr(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inpu
     if (groupSizePtr != nullptr) {
         OP_TILING_CHECK(
             *groupSizePtr < 0,
-            OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "group_size"),
+            OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "group_size",
+                std::to_string(*groupSizePtr).c_str(), "non-negative"),
             return false);
         inputParams->groupSize = static_cast<uint64_t>(*groupSizePtr);
     }
@@ -781,7 +782,8 @@ bool CheckAttr(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inpu
     if (innerPrecisePtr != nullptr) {
         OP_TILING_CHECK(
             (*innerPrecisePtr != 0) && (*innerPrecisePtr != 1),
-            OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "innerPrecise"),
+            OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "innerPrecise",
+                std::to_string(*innerPrecisePtr).c_str(), "0 or 1"),
             return false);
         inputParams->innerPrecise = static_cast<uint64_t>(*innerPrecisePtr);
     }
@@ -792,7 +794,9 @@ bool CheckTempLimit(Mc2WeightQuantBatchMatmulInfo* inputParams)
 {
     // not support transposeA and int8 out
     OP_TILING_CHECK(
-        inputParams->transA, OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "transA"),
+        inputParams->transA,
+        OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "transA",
+            inputParams->transA ? "1" : "0", "1"),
         return false);
     OP_TILING_CHECK(
         inputParams->cDtype == ge::DT_INT8,
@@ -907,7 +911,8 @@ ge::graphStatus Mc2CheckPara(gert::TilingContext* context, platform_ascendc::Soc
             "invalid dtype", "valid dtype"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        !CheckAttr(context, &inputParams), OP_LOGE_WITH_INVALID_ATTR(inputParams.opName, "all attrs"),
+        !CheckAttr(context, &inputParams),
+        OP_LOGE_WITH_INVALID_ATTR(inputParams.opName, "all attrs", "invalid", "valid"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckShape(context, &inputParams, socVersion), OP_LOGE_FOR_INVALID_SHAPE(inputParams.opName, "all inputs",
