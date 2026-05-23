@@ -278,7 +278,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     }
     
     if(epRankId_ ==1){
-        i = 0;
+        uint32_t i = 0;
         while(true) {
             DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
             PipeBarrier<PIPE_ALL>();
