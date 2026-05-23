@@ -190,7 +190,7 @@ void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaI
     nLoopTimes_ = (gsMergeFlag_) ? fiaInfo.n2Size : fiaInfo.n1Size;
     gsSize_ = (gsMergeFlag_) ? fiaInfo.gSize * fiaInfo.s1Size : fiaInfo.s1Size;
 
-    OP_LOGI(fiaInfo.opName, "gsMergeFlag:%u nLoopTimes:%u gsSize:%u ", gsMergeFlag_, nLoopTimes_, gsSize_);
+    OP_LOGI(fiaInfo.opName, "gsMergeFlag:%d nLoopTimes:%u gsSize:%u ", gsMergeFlag_, nLoopTimes_, gsSize_);
 
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT && fiaInfo.s1Size > 1) {
         isPFAFlag_ = true;
@@ -1422,8 +1422,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GenTilingKey(gert::TilingCon
     OP_LOGI(fiaInfo.opName, "The tilingkey is %llu.", genTilingkey);
     OP_LOGI(fiaInfo.opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, KvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
-            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu",
+            "hasAttenMask: %d, hasRope: %d, KvLayoutType: %llu, isFd: %d, emptyTensor: %d, "
+            "enableKvPrefix: %d, enableS1OutSplit: %d, isReconstructTemp: %d",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
@@ -1840,7 +1840,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
                 i, preTokensPerbatch, i, nextTokensPerbatch);
         OP_LOGI(fiaInfo.opName,
-                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
+                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %u, needInit is %d",
                 i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
 
     }
