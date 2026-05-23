@@ -329,9 +329,10 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
             ? DISPATCH_FFN_COMBINE_QUANT_MODE_INT8
             : DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8)
         : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
-    uint32_t quantOutType = static_cast<uint32_t>(infoCommon.dispatchQuantOutType) == static_cast<uint32_t>(ge::DT_UNDEFINED)
-        ? DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED
-        : DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_E4M3FN;
+    uint32_t quantOutType = static_cast<uint32_t>(infoCommon.dispatchQuantOutType);
+    //  == static_cast<uint32_t>(ge::DT_UNDEFINED)
+    //     ? DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED
+    //     : DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_E4M3FN;
     uint32_t archCode = infoCommon.isA2 ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(

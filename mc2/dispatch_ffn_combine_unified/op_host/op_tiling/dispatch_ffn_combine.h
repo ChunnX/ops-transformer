@@ -64,7 +64,7 @@ struct DispatchFFNCombineConfig {
     uint32_t yIndex                  = 0U;
     uint32_t expertTokenNumsIndex    = 1U;
 
-    // ----------------------------------------------------------------
+      // ----------------------------------------------------------------
     // Attribute indices (matching def order):
     //   0: moe_expert_num            (REQUIRED Int)
     //   1: ep_world_size             (REQUIRED Int)
@@ -76,10 +76,10 @@ struct DispatchFFNCombineConfig {
     //   7: comm_alg                  (OPTIONAL String, default "")
     //   8: num_max_token_per_rank    (OPTIONAL Int, default 0)
     //   9: activation                (OPTIONAL String, default "")
-    //  10: activation_clamp          (OPTIONAL Float, default INFINITY)
-    //  11: transpose_weight1         (OPTIONAL Bool, default false)
-    //  12: transpose_weight2         (OPTIONAL Bool, default false)
-    //  13: gmm2_x_dtype              (OPTIONAL Int, default DT_UNDEFINED)
+    //  10: activation_clamp          (OPTIONAL Float, default 0.0f)
+    //  11: gmm2_x_dtype              (OPTIONAL Int, default DT_UNDEFINED)
+    //  12: transpose_weight1         (OPTIONAL Bool, default false)
+    //  13: transpose_weight2         (OPTIONAL Bool, default false)
     //  14: weight1_interleave        (OPTIONAL Int, default 0)
     // ----------------------------------------------------------------
     uint32_t attrMoeExpertNumIndex          = 0U;
@@ -93,9 +93,9 @@ struct DispatchFFNCombineConfig {
     uint32_t attrNumMaxTokenPerRankIndex    = 8U;
     uint32_t attrActivationIndex            = 9U;
     uint32_t attrActivationClampIndex       = 10U;
-    uint32_t attrTransposeWeight1Index      = 11U;
-    uint32_t attrTransposeWeight2Index      = 12U;
-    uint32_t attrGmm2XDtypeIndex            = 13U;
+    uint32_t attrGmm2XDtypeIndex            = 11U;
+    uint32_t attrTransposeWeight1Index      = 12U;
+    uint32_t attrTransposeWeight2Index      = 13U;
     uint32_t attrWeight1InterleaveIndex     = 14U;
 };
 

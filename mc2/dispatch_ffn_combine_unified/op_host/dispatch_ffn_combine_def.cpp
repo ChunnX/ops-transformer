@@ -51,12 +51,12 @@ class DispatchFFNCombine : public OpDef {
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ});
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_INT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_INT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("bias1")
