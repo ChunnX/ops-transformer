@@ -391,7 +391,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startRankId >= endRankId || sendRankNum == 0) { 
         return; 
     }
-    PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n",aivId_, epWorldSize_, startRankId, endRankId, sendRankNum);
+    //PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n",aivId_, epWorldSize_, startRankId, endRankId, sendRankNum);
     //PRINTF("start SendToMoeExpert inter aivid is %d\n", aivId_);
     // ============ 读取expert_id数组到UB ============
     GlobalTensor<XType> dstWinGMTensor;
@@ -400,17 +400,17 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
-        PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
+        //PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
-    PRINTF("\n\n\n\n");
+    //PRINTF("\n\n\n\n");
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
-        PRINTF("eprank %d aiv %d, rankId is %d\n", epRankId_, aivId_, rankId);
+        //PRINTF("eprank %d aiv %d, rankId is %d\n", epRankId_, aivId_, rankId);
         for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
             uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
             int32_t curExpertCnt = 0;
-            PRINTF("epRankId %d, aiv %d, tokenIndex %d, dstRankId is %d, rankId is %d\n\n", epRankId_, aivId_, tokenIndex, dstRankId, rankId);
+            //PRINTF("epRankId %d, aiv %d, tokenIndex %d, dstRankId is %d, rankId is %d\n\n", epRankId_, aivId_, tokenIndex, dstRankId, rankId);
             if (dstRankId != rankId) { // 只处理当前rank负责的token
-                PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
+                //PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
                 continue;
             }
             // SyncFunc<AscendC::HardEvent::S_V>();
@@ -425,7 +425,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             // GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
             //                                 epRankId_ * expertPerSizeOnWin_ +
             //                                 curExpertCnt * hAlignWinSize_);
-            // PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
+            PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
             // //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
             // ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
