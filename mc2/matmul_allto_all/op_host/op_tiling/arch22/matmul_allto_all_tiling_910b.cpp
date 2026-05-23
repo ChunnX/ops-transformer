@@ -393,7 +393,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
     const int64_t *x1_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX);
     const int64_t *x2_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX);
     // 判断为空或者空字符串
-    OP_TILING_CHECK(group == nullptr, OP_LOGE(opName_, "The input attr group is null pointer."),
+    OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0',
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "group", "empty string",
@@ -426,13 +426,13 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context_->GetInputDesc(INPUT_X1_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName_, "The input tensor x1 is invalid."),
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x1"),
                     return ge::GRAPH_FAILED);
     auto x2TensorDesc = context_->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE(opName_, "The input tensor x2 is invalid."),
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x2"),
                     return ge::GRAPH_FAILED);
     auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE(opName_, "Output tensor y is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "y"), return ge::GRAPH_FAILED);
 
     // 获取数据类型并校验一致性与范围
     ge::DataType x1Dtype = x1TensorDesc->GetDataType();
@@ -445,7 +445,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
         auto x1ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
         auto x2ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
         OP_TILING_CHECK((x1ScaleTensorDesc == nullptr || x2ScaleTensorDesc == nullptr || biasTensorDesc == nullptr),
-                        OP_LOGE(opName_, "Scale and bias tensors should not be null in quant mode."),
+                        OP_LOGE_WITH_INVALID_INPUT(opName_, "x1_scale, x2_scale and bias"),
                         return ge::GRAPH_FAILED);
         ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
         ge::DataType x2ScaleDtype = x2ScaleTensorDesc->GetDataType();
@@ -457,9 +457,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
 
         OP_TILING_CHECK(
             (quantType != SUPPORT_QUANT_MODE),
-            OP_LOGE(opName_,
-                    "Current quant mode only supports x1 PerToken[3], but get [%d], x2 PerChannel[2], but get [%d].",
-                    quantType / X1_QUANT_SIGN, quantType % X1_QUANT_SIGN),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1_quant_mode and x2_quant_mode",
+                (std::to_string(quantType / X1_QUANT_SIGN) + " and " + std::to_string(quantType % X1_QUANT_SIGN)).c_str(),
+                "Current quant mode only supports x1 PerToken[3] and x2 PerChannel[2]"),
             return ge::GRAPH_FAILED);
     }
 
@@ -570,7 +570,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
     // 校验输入Input Shape是否为空
     const gert::StorageShape *x1Shape = context_->GetInputShape(INPUT_X1_INDEX);
     const gert::StorageShape *x2Shape = context_->GetInputShape(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x1Shape == nullptr) || (x2Shape == nullptr), OP_LOGE(opName_, "The input shape is invalid"),
+    OP_TILING_CHECK((x1Shape == nullptr) || (x2Shape == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "x1 and x2"),
                     return ge::GRAPH_FAILED);
 
     // 校验维度数目是否合法
@@ -587,7 +587,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
 
     // 校验输出
     const gert::StorageShape *yShape = context_->GetOutputShape(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((yShape == nullptr), OP_LOGE(opName_, "The yShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "y"), return ge::GRAPH_FAILED);
     uint64_t yDimNum = yShape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK((yDimNum != 2),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "y",
