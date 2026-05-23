@@ -314,7 +314,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         for (uint32_t i = 0; i < 8; i++) {
             PRINTF("rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
         }
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], GetUrmaStateAddrByRankId(1), GetWindStateAddrByRankId(epRankId_), UB_ALIGN);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[0], GetUrmaStateAddrByRankId(1), GetWindStateAddrByRankId(epRankId_), UB_ALIGN);
         hcomm_.Wait(handle);
     }
     if (epRankId_ == 1) {
