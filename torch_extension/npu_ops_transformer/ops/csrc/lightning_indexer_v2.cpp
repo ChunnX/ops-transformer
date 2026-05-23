@@ -84,9 +84,9 @@ std::tuple<at::Tensor, at::Tensor> npu_lightning_indexer_v2(
     std::string key_layout_str = std::string(layout_k);
 
     // construct the output tensor
-    std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2_output = construct_lightning_indexer_output_tensor(
-                                                                    q, k, topk, query_layout_str,
-                                                                    key_layout_str, return_value);
+    std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2_output
+        = construct_lightning_indexer_output_tensor(q, k, topk, query_layout_str,
+                                                    key_layout_str, return_value);
     at::Tensor sparse_indices_out = std::get<0>(lightning_indexer_v2_output);
     at::Tensor sparse_values_out = std::get<1>(lightning_indexer_v2_output);
     // convert str
@@ -94,8 +94,8 @@ std::tuple<at::Tensor, at::Tensor> npu_lightning_indexer_v2(
     char *key_layout_ptr = const_cast<char *>(key_layout_str.c_str());
 
     ACLNN_CMD(aclnnLightningIndexerV2, q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmpResidualK,
-                                    block_table, output_idx_offset, metadata, topk, query_layout_ptr, key_layout_ptr,
-                                    mask_mode, cmp_ratio, return_value, sparse_indices_out, sparse_values_out);
+              block_table, output_idx_offset, metadata, topk, query_layout_ptr, key_layout_ptr,
+              mask_mode, cmp_ratio, return_value, sparse_indices_out, sparse_values_out);
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
 // Bind the C++ function to Python module
