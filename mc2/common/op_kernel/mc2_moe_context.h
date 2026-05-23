@@ -28,6 +28,4 @@ struct Mc2MoeContext {
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 }
-
-
 #endif // MC2_MOE_CONTEXT_H
