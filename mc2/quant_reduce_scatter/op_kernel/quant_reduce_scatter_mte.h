@@ -305,6 +305,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Process()
         return;
     }
 
+    AscendC::PRINTF("===== XYF quant_reduce_scatter_mte.h Process =====");
+
     // 一次性拷贝完所有数据到本地卡win区
     mteComm_.template CopyDataToWin<true>(xSliceSizeNums_, scaleSliceNums_);
     // 写入状态到状态区

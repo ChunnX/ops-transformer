@@ -31,6 +31,7 @@ template<uint32_t quantAllReduceCommMode>
 __global__ __aicore__ void quant_all_reduce(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM,
                                                            GM_ADDR tilingGM)
 {
+    AscendC::PRINTF("===== XYF quant_all_reduce.cpp =====");
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(QuantAllReduceTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantAllReduceTilingData, tilingData, tilingGM);
