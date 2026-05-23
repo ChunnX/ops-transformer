@@ -1893,7 +1893,7 @@ IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::AntiquantAIterExpand(GlobalTensor<
     outputQue1.template EnQue(aResOutUbI8);
     outputQue1.template DeQue<KV_T>();
     if constexpr (KVINT4) {
-        DataCopy(dstGm[outOffset], aResOutUbI8, calcSize >> 1);
+        DataCopy<int8>(dstGm[outOffset], aResOutUbI8, calcSize >> 1);
     } else {
         DataCopy(dstGm[outOffset], aResOutUbI8, calcSize);
     }
