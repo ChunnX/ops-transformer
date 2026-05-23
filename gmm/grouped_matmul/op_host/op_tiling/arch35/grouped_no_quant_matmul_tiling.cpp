@@ -305,7 +305,7 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupListType",
                     FormatString("%u", groupListType_).c_str(),
-                    FormatString("In %s case, the value of %s cannot be %s", "no-quant", "groupListType", "SPARSE_M").c_str()),
+                    FormatString("In %s case, the value of %s cannot be %s", "no-quant", "groupListType", "2").c_str()),
                 return false);
     return true;
 }
