@@ -358,32 +358,33 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalTokenSendExpertCnt(
     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
 {
+    SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
     PipeBarrier<PIPE_V>();
-    for (int32_t i = 0; i < calCnt; i++) {
-       PRINTF("dstExpIdTensor_(%d) is %d\n", i, dstExpIdTensor_(i));
-    }
+    // for (int32_t i = 0; i < calCnt; i++) {
+    //    PRINTF("dstExpIdTensor_(%d) is %d\n", i, dstExpIdTensor_(i));
+    // }
     Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
     PipeBarrier<PIPE_V>();
-    for (int32_t i = 0; i < calCnt; i++) {
-       PRINTF("subExpIdTensor_(%d) is %d\n", i, subExpIdTensor_(i));
-    }
+    // for (int32_t i = 0; i < calCnt; i++) {
+    //    PRINTF("subExpIdTensor_(%d) is %d\n", i, subExpIdTensor_(i));
+    // }
     LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
     LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
     Abs(tmpoutFp32, tmpFp32, calCnt);
     PipeBarrier<PIPE_V>();
-    for (int32_t i = 0; i < calCnt; i++) {
-       PRINTF("tmpoutFp32_(%d) is %f\n", i, tmpoutFp32(i));
-    }
+    // for (int32_t i = 0; i < calCnt; i++) {
+    //    PRINTF("tmpoutFp32_(%d) is %f\n", i, tmpoutFp32(i));
+    // }
     Mins(subExpIdTensor_, dstExpIdTensor_, 1, calCnt);
     PipeBarrier<PIPE_V>();
-    for (int32_t i = 0; i < calCnt; i++) {
-       PRINTF("subExpIdTensor_(%d) is %d\n", i, subExpIdTensor_(i));
-    }
+    // for (int32_t i = 0; i < calCnt; i++) {
+    //    PRINTF("subExpIdTensor_(%d) is %d\n", i, subExpIdTensor_(i));
+    // }
     ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
     SyncFunc<AscendC::HardEvent::V_S>();
     int32_t curOtherExpertCnt = dstExpIdTensor_(0);
-    PRINTF("curOtherExpertCnt is %d\n", curOtherExpertCnt);
+    //PRINTF("curOtherExpertCnt is %d\n", curOtherExpertCnt);
     if (calCnt > curOtherExpertCnt) {
         curExpertCnt = calCnt - curOtherExpertCnt; 
     }
