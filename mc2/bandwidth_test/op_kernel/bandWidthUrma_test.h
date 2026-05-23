@@ -193,8 +193,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     TBuf<> tempBuffer_;
     tpipe_->InitBuffer(tempBuffer_, 1024);
-    LocalTensor<int32_t> tempTensor = tempBuffer_.Get<int32_t>();
-
+    LocalTensor<uint8_t> tempTensor = tempBuffer_.Get<uint8_t>();
+    hcomm_.Init(tempTensor.GetPhyAddr(), 1024);
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     totalWinSizeEp_ = 800UL * 1024 * 1024; //TODO:
@@ -306,7 +306,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     if (epRankId_ == 0) {
         GlobalTensor<int32_t> rankGMTensor;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetWindStateAddrByRankId(epRankId_)));
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + 300));
         for (uint32_t i = 0; i < 8; i++) {
             rankGMTensor(i) = i + 1;
         }
