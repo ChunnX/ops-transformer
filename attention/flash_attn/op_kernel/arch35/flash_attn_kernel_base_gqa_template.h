@@ -116,6 +116,20 @@ public:
     uint32_t nextBatchBN2Start_  = 0;    // 下一个 batch 的起始 bN2（避免每次 GetTaskDealMode 做除法）
     int64_t  cachedPreTokensLeftUp_  = 0; // GetPreNextTokenLeftUp 结果缓存（每 batch 算一次）
     int64_t  cachedNextTokensLeftUp_ = 0;
+    uint64_t cachedGS1Size_      = 0;    // actSeqLensQ * gSize，供 CalcParams / CalcCurS2StartEnd 复用
+
+    // ── per-gS1-row 不变的 CalcParams 缓存（内层 S2 循环每 tile 约省 ~10 次标量操作）────
+    uint32_t cachedRowBN2_         = ~0U; // 上次 CalcParams 的 bN2Cur
+    uint32_t cachedRowGS1_         = ~0U; // 上次 CalcParams 的 gS1Cur
+    uint64_t cachedRowGS1Idx_      = 0;
+    uint64_t cachedRowS1Idx_       = 0;
+    uint32_t cachedRowActMSize_    = 0;
+    uint32_t cachedRowActMSizeA32_ = 0;
+    uint32_t cachedRowActVecMSize_ = 0;
+    uint32_t cachedRowVecMbaseIdx_ = 0;
+    bool     cachedRowIsS2Split_   = false;
+    uint32_t cachedRowTmpOutWsPos_ = 0;
+    uint64_t cachedRowMloop_       = 0;
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -408,7 +422,8 @@ public:
         headS2Split = false;
         tailS2Split = false;
         nextBatchBN2Start_ = 0;    // 重置，保证新 section 第一次调用触发 batch 更新
-        cachedBN2ForCalc   = ~0U;  // 重置 CalcParams 缓存
+        cachedBN2ForCalc   = ~0U;  // 重置 CalcParams batch 缓存
+        cachedRowBN2_      = ~0U;  // 重置 CalcParams row 缓存
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
@@ -486,6 +501,7 @@ public:
             // 换 batch 时才重算（正确位置）
             cachedS2LoopTimes  = static_cast<uint32_t>((actSeqLensKv + s2BaseSize - 1) / s2BaseSize);
             uint64_t gS1Size_  = actSeqLensQ * constInfo.gSize;
+            cachedGS1Size_     = gS1Size_;   // 供 CalcParams / CalcCurS2StartEnd 免重复乘法
             cachedGS1LoopTimes = static_cast<uint32_t>((gS1Size_ + mBaseSize - 1) / mBaseSize);
             GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv,
                                   cachedPreTokensLeftUp_, cachedNextTokensLeftUp_);
@@ -562,16 +578,15 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
-        // 1. Calc preTokenLeftUp, nextTokenLeftUp
-        int64_t preTokenLeftUp = 0;
-        int64_t nextTokenLeftUp = 0;
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
+        // 1. 直接使用 GetTaskDealMode 换 batch 时已缓存的结果，免重复调用和条件判断
+        int64_t preTokenLeftUp  = cachedPreTokensLeftUp_;
+        int64_t nextTokenLeftUp = cachedNextTokensLeftUp_;
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
+        // cachedGS1Size_ = actSeqLensQ * gSize，换 batch 时更新，免重复乘法
         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
-                               1;
+                                   static_cast<int64_t>(cachedGS1Size_)) - 1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
@@ -683,33 +698,80 @@ public:
 
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
     {
-        info.loop = loop;
-        info.mloop = mloop;
+        // ── batch 级缓存（bN2 变化才更新）──
         if (bN2Cur != cachedBN2ForCalc) {
             cachedBN2ForCalc   = bN2Cur;
             cachedBIdxForCalc  = bN2Cur / constInfo.n2Size;
             cachedN2IdxForCalc = bN2Cur % constInfo.n2Size;
         }
+        info.loop  = loop;
         info.bIdx  = cachedBIdxForCalc;
         info.n2Idx = cachedN2IdxForCalc;
-        info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
+        info.preTokensLeftUp  = cachedPreTokensLeftUp_;
+        info.nextTokensLeftUp = cachedNextTokensLeftUp_;
 
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+        // ── row 级缓存（bN2Cur 或 gS1Cur 变化才更新，inner-S2 loop 直接读缓存）──
+        if (bN2Cur != cachedRowBN2_ || gS1Cur != cachedRowGS1_) {
+            cachedRowBN2_ = bN2Cur;
+            cachedRowGS1_ = gS1Cur;
+            cachedRowMloop_  = mloop;
+            cachedRowGS1Idx_ = static_cast<uint64_t>(gS1Cur) * mBaseSize;
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                          LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                cachedRowS1Idx_ = cachedRowGS1Idx_ / constInfo.gSize;
+            } else {
+                cachedRowS1Idx_ = cachedRowGS1Idx_ % actSeqLensQ;
+            }
+            cachedRowActMSize_ = mBaseSize;
+            if ((cachedRowGS1Idx_ + mBaseSize) > cachedGS1Size_) {
+                cachedRowActMSize_ = static_cast<uint32_t>(cachedGS1Size_ - cachedRowGS1Idx_);
+            }
+            if constexpr (USE_DN) {
+                cachedRowActMSizeA32_ = (cachedRowActMSize_ + 31) >> 5 << 5;
+                uint32_t vBase = cachedRowActMSize_ <= 16 ? cachedRowActMSize_ : (cachedRowActMSizeA32_ >> 1);
+                if (constInfo.subBlockIdx == 1) {
+                    cachedRowVecMbaseIdx_ = vBase;
+                    cachedRowActVecMSize_ = cachedRowActMSize_ - vBase;
+                } else {
+                    cachedRowVecMbaseIdx_ = 0;
+                    cachedRowActVecMSize_ = vBase;
+                }
+            } else {
+                uint32_t vBase = (cachedRowActMSize_ + 1) >> 1;
+                if (constInfo.subBlockIdx == 1) {
+                    cachedRowVecMbaseIdx_ = vBase;
+                    cachedRowActVecMSize_ = cachedRowActMSize_ - vBase;
+                } else {
+                    cachedRowVecMbaseIdx_ = 0;
+                    cachedRowActVecMSize_ = vBase;
+                }
+            }
+            cachedRowIsS2Split_   = false;
+            cachedRowTmpOutWsPos_ = coreFirstTmpOutWsPos_;
+            if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
+                cachedRowIsS2Split_ = true;
+            } else if (headS2Split && bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) {
+                cachedRowIsS2Split_ = true;
+            } else if (tailS2Split && bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) {
+                cachedRowIsS2Split_   = true;
+                cachedRowTmpOutWsPos_ = headS2Split ? (coreFirstTmpOutWsPos_ + 1) : coreFirstTmpOutWsPos_;
+            }
         }
+        // ── 填入 row 级缓存字段（O(1) 读取，无计算）──
+        info.mloop           = cachedRowMloop_;
+        info.gS1Idx          = cachedRowGS1Idx_;
+        info.s1Idx           = cachedRowS1Idx_;
+        info.actMSize        = cachedRowActMSize_;
+        info.actMSizeAlign32 = cachedRowActMSizeA32_;
+        info.actVecMSize     = cachedRowActVecMSize_;
+        info.vecMbaseIdx     = cachedRowVecMbaseIdx_;
+        info.isS2SplitCore   = cachedRowIsS2Split_;
+        info.faTmpOutWsPos   = cachedRowTmpOutWsPos_;
+
+        // ── tile 级字段（每个 S2 tile 都不同）──
+        info.s2Idx = s2Cur * s2BaseSize;
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
@@ -726,44 +788,12 @@ public:
                 info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
             }
         }
-
-        info.preTokensLeftUp  = cachedPreTokensLeftUp_;   // 已在 GetTaskDealMode 换 batch 时算好
-        info.nextTokensLeftUp = cachedNextTokensLeftUp_;
-
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
-        } else {
-            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
+        info.isLastS2Loop  = (s2Cur + 1 == curS2End);
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
