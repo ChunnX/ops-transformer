@@ -38,21 +38,21 @@ TEST_F(MhcSinkhornTiling, test_mhc_sinkhorn_4d_fp16_success)
 {
     MhcSinkhornCompileInfo compileInfo = {64, 64};
     gert::TilingContextPara tilingContextPara("MhcSinkhorn",
-        {
-            // input info: h_res
-            {{{1, 128, 4, 4}, {1, 128, 4, 4}}, ge::DT_FLOAT32, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{1, 128, 4, 4}, {1024, 4, 5120}}, ge::DT_FLOAT32, ge::FORMAT_ND},
-        },
-        {
-            // attr
-            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
-            {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(num_iters)},
-            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(out_flag)},
-        },
-        &compileInfo);
+                                              {
+                                                  // input info: h_res
+                                                  {{{1, 128, 4, 4}, {1, 128, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1, 128, 4, 4}, {1024, 4, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-06)},
+                                                  {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
+                                                  {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -63,18 +63,18 @@ TEST_F(MhcSinkhornTiling, test_mhc_sinkhorn_3d_fp16_success)
 {
     MhcSinkhornCompileInfo compileInfo = {64, 64};
     gert::TilingContextPara tilingContextPara("MhcSinkhorn",
-        {
-            {{{1024, 6, 6}, {1024, 6, 6}}, ge::DT_FLOAT32, ge::FORMAT_ND},
-        },
-        {
-            {{{1024, 6, 6}, {1024, 6, 6}}, ge::DT_FLOAT32, ge::FORMAT_ND},
-        },
-        {
-            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
-            {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(num_iters)},
-            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(out_flag)},
-        },
-        &compileInfo);
+                                              {
+                                                  {{{1024, 6, 6}, {1024, 6, 6}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{1024, 6, 6}, {1024, 6, 6}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-06)},
+                                                  {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
+                                                  {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -85,42 +85,43 @@ TEST_F(MhcSinkhornTiling, test_mhc_sinkhorn_invalid_n)
 {
     MhcSinkhornCompileInfo compileInfo = {64, 64};
     gert::TilingContextPara tilingContextPara("MhcSinkhorn",
-        {
-            {{{1024, 5, 5}, {1024, 5, 5}}, ge::DT_FLOAT32, ge::FORMAT_ND},
-        },
-        {
-            {{{1024, 5, 5}, {1024, 5, 5}}, ge::DT_FLOAT32, ge::FORMAT_ND},
-        },
-        {
-            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
-            {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(num_iters)},
-            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(out_flag)},
-        },
-        &compileInfo);
+                                              {
+                                                  {{{1024, 5, 5}, {1024, 5, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{1024, 5, 5}, {1024, 5, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-06)},
+                                                  {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
+                                                  {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "7 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara,  ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }
 
 TEST_F(MhcSinkhornTiling, test_mhc_sinkhorn_invalid_shape)
 {
     MhcSinkhornCompileInfo compileInfo = {64, 64};
-    gert::TilingContextPara tilingContextPara("MhcSinkhorn",
+    gert::TilingContextPara tilingContextPara(
+        "MhcSinkhorn",
         {
-            {{{1, 2, 1024, 5, 5}, {1, 2, 1024, 5, 5}}, ge::DT_FLOAT32, ge::FORMAT_ND},
+            {{{1, 2, 1024, 5, 5}, {1, 2, 1024, 5, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{1, 2, 1024, 5, 5}, {1, 2, 1024, 5, 5}}, ge::DT_FLOAT32, ge::FORMAT_ND},
+            {{{1, 2, 1024, 5, 5}, {1, 2, 1024, 5, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
-            {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(num_iters)},
-            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(out_flag)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-06)},
+            {"num_iters", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "7 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara,  ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }

@@ -126,12 +126,9 @@
          this->Attr("return_softmax_lse") 
              .AttrType(OPTIONAL) 
              .Int(0); 
-         this->Attr("deterministic") 
-             .AttrType(OPTIONAL) 
-             .Int(0); 
- 
- 
-         OpAICoreConfig aicore_config_95; 
+
+
+         OpAICoreConfig aicore_config_95;
          aicore_config_95.DynamicCompileStaticFlag(true) 
              .DynamicFormatFlag(true) 
              .DynamicRankSupportFlag(true) 

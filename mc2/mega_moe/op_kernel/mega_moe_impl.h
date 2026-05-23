@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -45,21 +45,55 @@ constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
-int64_t CeilDivInt(int64_t a, int64_t b)
+__aicore__ inline int64_t CeilDivInt(int64_t a, int64_t b)
 {
     return (a + b - 1) / b;
 }
 
-int64_t CeilAlignInt(int64_t a, int64_t b)
+__aicore__ inline int64_t CeilAlignInt(int64_t a, int64_t b)
 {
     return ((a + b - 1) / b) * b;
 }
 
-int64_t ComputeMaxTokensStride(uint64_t maxOutputSize)
+__aicore__ inline int64_t ComputeMaxTokensStride(uint64_t maxOutputSize, uint32_t blockAivNum)
 {
     int64_t maxRowGroupsPerExpert = CeilDivInt(maxOutputSize, L1_TILE_M);
-    return CeilAlignInt(maxRowGroupsPerExpert, ALIGN_128);
+    int64_t perCoreStride = CeilAlignInt(static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);
+    return CeilAlignInt(maxRowGroupsPerExpert * perCoreStride, ALIGN_128);
 }
+
+__aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores,
+    uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
+{
+    uint32_t baseSize = totalCores / numGroups;
+    uint32_t remainder = totalCores % numGroups;
+    uint32_t boundary = remainder * (baseSize + 1);
+    if (coreId < boundary) {
+        myGroup = coreId / (baseSize + 1);
+        myIdxInGrp = coreId % (baseSize + 1);
+        myGrpSize = baseSize + 1;
+    } else {
+        uint32_t adjusted = coreId - boundary;
+        myGroup = remainder + adjusted / baseSize;
+        myIdxInGrp = adjusted % baseSize;
+        myGrpSize = baseSize;
+    }
+}
+
+__aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, uint32_t totalCores,
+    uint32_t& groupCoreStart, uint32_t& groupCoreSize)
+{
+    uint32_t baseSize = totalCores / numGroups;
+    uint32_t remainder = totalCores % numGroups;
+    if (groupIdx < remainder) {
+        groupCoreSize = baseSize + 1;
+        groupCoreStart = groupIdx * (baseSize + 1);
+    } else {
+        groupCoreSize = baseSize;
+        groupCoreStart = remainder * (baseSize + 1) + (groupIdx - remainder) * baseSize;
+    }
+}
+
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
@@ -236,6 +270,7 @@ __aicore__ inline void GroupMatmul2(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t blockAivNum = GetBlockNum() * 2;
 
     GlobalTensor<int32_t> groupFlagListGm;
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
@@ -243,7 +278,7 @@ __aicore__ inline void GroupMatmul2(
     GlobalTensor<int32_t> rowGroupComplete;
     rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrRowGroupComplete); // 128个token完成的计数位置
 
-    int64_t maxRowGroupsStride = ComputeMaxRowGroupsStride(params.tilingData);
+    int64_t maxRowGroupsStride = ComputeMaxTokensStride(params.tilingData->maxOutputSize, blockAivNum);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
@@ -356,9 +391,14 @@ __aicore__ inline void GroupMatmul2(
         SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
         WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
 
-        uint32_t rowGroupIdx = mLoc / L1_TILE_M; //按mloc去计算计数位的偏移
-        uint32_t globalCounterIdx = groupIdx * maxRowGroupsStride + rowGroupIdx;
-        AscendC::AtomicAdd((__gm__ int32_t*)rowGroupComplete.GetPhyAddr() + globalCounterIdx, int32_t(1));
+        uint32_t rowGroupIdx = mLoc / L1_TILE_M;
+        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M);
+        uint32_t groupCoreStart, groupCoreSize;
+        ComputeGroupRange(rowGroupIdx, rowGroupsThisExpert, blockAivNum, groupCoreStart, groupCoreSize);
+        int64_t baseOffset = groupIdx * maxRowGroupsStride + rowGroupIdx * blockAivNum * INT_CACHELINE;
+        for (uint32_t aivIdx = groupCoreStart; aivIdx < groupCoreStart + groupCoreSize; aivIdx++) {
+            AscendC::AtomicAdd((__gm__ int32_t*)rowGroupComplete.GetPhyAddr() + baseOffset + aivIdx * INT_CACHELINE, int32_t(1));
+        }
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
