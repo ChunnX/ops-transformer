@@ -393,14 +393,18 @@ public:
             }
             ProcessSingleGroup(params, bs, groupIdx);
 
-            if (isDeter_ && ASCEND_IS_AIV) {
-                VectorSync(params);
+            if ASCEND_IS_AIV {
+                if (isDeter_) {
+                    VectorSync(params);
+                }
             }
         }
 
-        if (isDeter_ && ASCEND_IS_AIV) {
-            deterSync_.curM = deterSync_.curGroupM;
-            FRDeterministic(params);
+        if ASCEND_IS_AIV {
+            if (isDeter_) {
+                deterSync_.curM = deterSync_.curGroupM;
+                FRDeterministic(params);
+            }
         }
 
         End();
