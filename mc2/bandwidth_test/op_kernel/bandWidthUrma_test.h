@@ -443,6 +443,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         SyncFunc<AscendC::HardEvent::S_V>();
         
         CalTokenSendExpertCnt(curExpertId, axisBS_, curExpertCnt);
+        PRINTF("curExpertId is %d, curExpertCnt is %d\n", curExpertId, curExpertCnt);
         statusTensor_(cntPosIndex) = curExpertCnt;
     }
 
