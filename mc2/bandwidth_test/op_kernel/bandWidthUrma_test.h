@@ -400,6 +400,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
+    for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
+        PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
+    }
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t rankId = startRankId; rankId < endRankId; ++rankId) {
         // ============ 遍历token并发送到目标rank ============
@@ -463,7 +466,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
         PipeBarrier<PIPE_ALL>();
-        //PRINTF("statusTensor_ flag is %d, count is %d\n", statusTensor_[0], statusTensor_[1]);
+        PRINTF("statusTensor_ flag is %d, count is %d\n", statusTensor_[0], statusTensor_[1]);
     }
     PipeBarrier<PIPE_ALL>();
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
