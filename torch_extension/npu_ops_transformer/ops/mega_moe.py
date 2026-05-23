@@ -30,10 +30,10 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[] weight1, Tensor[] weight2, int moe_expert_num, int ep_world_size, int ccl_buffer_size, *, " \
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, " \
             "Tensor[]? bias1=None, Tensor[]? bias2=None, " \
-            "Tensor? x_active_mask=None, Tensor? scales=None, int? max_recv_token_num=0, int? dispatch_quant_mode=0, " \
-            "int? dispatch_quant_out_type=28, int? combine_quant_mode=0, str? comm_alg=\"\", int? num_max_token_per_rank=0, " \
-            "str? activation=\"swiglu\", float? activation_clamp=3.4028234663852886e+38, " \
-            "int? weight1_type=28, int? weight2_type=28) -> (Tensor, Tensor)"
+            "Tensor? x_active_mask=None, Tensor? scales=None, int? max_recv_token_num=0, " \
+            "int? dispatch_quant_mode=0, int? dispatch_quant_out_type=28, int? combine_quant_mode=0, " \
+            "str? comm_alg=\"\", str? activation=\"swiglu\", float? activation_clamp=3.4028234663852886e+38, " \
+            "int? num_max_token_per_rank=0, int? weight1_type=28, int? weight2_type=28) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
