@@ -439,12 +439,13 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     // 状态区结构: [flag(1.0f), count, rank_id, world_size, ...]
     // ============ 计算当前核负责的rank范围 ============
     SplitToCore(epWorldSize_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
-    
+    for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
+        PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
+    }
     // ============ 统计发送到各rank的token数量 ============
     for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
         int32_t curExpertCnt = 0;
         int32_t cntPosIndex = (curExpertId - startExpertId_) * 8 + 1;
-        SyncFunc<AscendC::HardEvent::S_V>();
         CalTokenSendExpertCnt(curExpertId, axisBS_, curExpertCnt);
         PRINTF("epRankId_ is %d, curExpertId is %d, curExpertCnt is %d, axisBS_ is %d\n", epRankId_, curExpertId, curExpertCnt, axisBS_);
         statusTensor_(cntPosIndex) = curExpertCnt;
