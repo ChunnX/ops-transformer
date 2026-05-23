@@ -414,7 +414,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 continue;
             }
             SyncFunc<AscendC::HardEvent::S_V>();
-            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
             // SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
