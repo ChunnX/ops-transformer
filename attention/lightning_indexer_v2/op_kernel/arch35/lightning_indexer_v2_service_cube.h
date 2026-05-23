@@ -25,14 +25,14 @@
 namespace LIV2Kernel {
 using namespace LIV2Common;
 template <typename LIT>
-class LIV2Matmul {
+class LightningIndexerV2ServiceCube {
 public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using QK_T = typename LIT::queryKeyType;
     using SCORE_T = typename LIT::scoreType;
 
-    __aicore__ inline LIV2Matmul(){};
+    __aicore__ inline LightningIndexerV2ServiceCube(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
                                                const GlobalTensor<Q_T> &queryGm);
@@ -118,7 +118,7 @@ private:
 };
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::InitParams(const ConstInfo &constInfo)
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
     queryBufferOffset_ = constInfo.mBaseSize * D_BASIC_BLOCK;
@@ -127,7 +127,7 @@ __aicore__ inline void LIV2Matmul<LIT>::InitParams(const ConstInfo &constInfo)
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitBuffers(TPipe *pipe)
 {
     // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));
@@ -148,7 +148,7 @@ __aicore__ inline void LIV2Matmul<LIT>::InitBuffers(TPipe *pipe)
 
 template <typename LIT>
 __aicore__ inline void
-LIV2Matmul<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
+LightningIndexerV2ServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
                                    const GlobalTensor<Q_T> &queryGm)
 {
     blkTableGm_ = blkTableGm;
@@ -157,7 +157,7 @@ LIV2Matmul<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, co
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::ComputeMm1(const LIV2Common::RunInfo &runInfo)
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeMm1(const LIV2Common::RunInfo &runInfo)
 {
     CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
         LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
@@ -231,7 +231,7 @@ __aicore__ inline void LIV2Matmul<LIT>::ComputeMm1(const LIV2Common::RunInfo &ru
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
                                                     const LIV2Common::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
@@ -250,7 +250,7 @@ __aicore__ inline void LIV2Matmul<LIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t
 
 // blkNum, blkSize, N2, D
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
                                                     const LIV2Common::RunInfo &runInfo)
 {
     uint64_t s2L1Offset = 0;
@@ -282,7 +282,7 @@ __aicore__ inline void LIV2Matmul<LIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
 
 // batch, s1, n2, g, d
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                  const LIV2Common::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
@@ -300,7 +300,7 @@ __aicore__ inline void LIV2Matmul<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint6
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uint64_t s1gL1Offset,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uint64_t s1gL1Offset,
                                                        uint64_t s1gL1RealSize, uint64_t s1gL0RealSize,
                                                        const LIV2Common::RunInfo &runInfo)
 {
@@ -318,7 +318,7 @@ __aicore__ inline void LIV2Matmul<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
                                                    const LIV2Common::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
@@ -335,7 +335,7 @@ __aicore__ inline void LIV2Matmul<LIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                                 const LIV2Common::RunInfo &runInfo)
 {
     MmadParams mmadParams;
@@ -352,7 +352,7 @@ __aicore__ inline void LIV2Matmul<LIT>::ComputeL0c(uint64_t s1gL0RealSize, uint6
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
                                            uint64_t s2L0RealSize, const LIV2Common::RunInfo &runInfo)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
@@ -383,7 +383,7 @@ __aicore__ inline void LIV2Matmul<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::AllocEventID()
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::AllocEventID()
 {
     SetMMLayoutTransform(true);
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
@@ -401,7 +401,7 @@ __aicore__ inline void LIV2Matmul<LIT>::AllocEventID()
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Matmul<LIT>::FreeEventID()
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::FreeEventID()
 {
     SetMMLayoutTransform(false);
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
