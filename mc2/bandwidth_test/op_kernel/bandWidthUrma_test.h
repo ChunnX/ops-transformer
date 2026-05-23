@@ -398,7 +398,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     // ============ 读取expert_id数组到UB ============
     // SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
-        //PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
+        PRINTF("start aiv %d, eprank %d token tokenIndex is %d, expertId is %d\n", aivId_, epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
     //PRINTF("\n\n\n\n");
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
