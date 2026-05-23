@@ -413,7 +413,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 continue;
             }
             // SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
             // SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
@@ -659,7 +659,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     if ASCEND_IS_AIV {
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
-            SetStatus();         // 步骤2: 设置状态通知对端
+            //SetStatus();         // 步骤2: 设置状态通知对端
             // WaitDispatch();      // 步骤3: 等待所有rank完成发送
             // LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
