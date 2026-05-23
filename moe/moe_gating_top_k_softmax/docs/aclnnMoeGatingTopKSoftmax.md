@@ -262,6 +262,21 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - x最后一维的大小（即专家数）取值范围为[1, 2048]。
 
+## 310P特别说明
+
+<term>Ascend 310P</term> 310P场景下存在以下限制：
+
+- **数据类型限制**：
+  - 输入x仅支持FP16类型，不支持BF16和FP32。
+  - 输入x shape为[token_num, expert_num], expert_num必须满足16对齐，即expert_num是16整数倍
+
+- **参数不支持**：
+  - `finishedOptional`参数不支持，该输入必须设置为None。
+  - `expertIdxOut`输出不支持，输出返回全0。
+
+- **排序说明**：
+  - 当多个expert的softmax值相同时，310P实现为非稳定排序，与其他芯片实现排序顺序可能不同，这是硬件特性，非功能异常。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
