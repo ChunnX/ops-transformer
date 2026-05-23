@@ -532,8 +532,9 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
         n > static_cast<uint64_t>(UINT16_MAX),
-        OP_LOGE(context_->GetNodeName(), "The size of n-axis=%lu exceeds the upper limit=%d.",
-                                        n, UINT16_MAX),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x2",
+            std::to_string(n).c_str(),
+            "The size of n-axis exceeds the upper limit UINT16_MAX"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         isA16W8_ && (antiQuantType_ == AntiQuantType::PER_GROUP) && ((n % alignDim != 0) || (k % alignDim != 0)),

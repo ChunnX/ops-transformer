@@ -1015,9 +1015,11 @@ bool MatmulAllReduceTilingBase::SetArgs(
         args_.cType = D_TYPE_MAP.at(cType);
         args_.biasType = D_TYPE_MAP.at(biasType);
     } catch (const std::out_of_range& e) {
-        OP_LOGE(
-            opName_, "Unsupported{ aType: %d bType: %d cType: %d biasType %d }.", static_cast<int32_t>(aType),
-            static_cast<int32_t>(bType), static_cast<int32_t>(cType), static_cast<int32_t>(biasType));
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            opName_, "a/b/c/bias",
+            (std::to_string(static_cast<int32_t>(aType)) + "/" + std::to_string(static_cast<int32_t>(bType)) + "/" +
+             std::to_string(static_cast<int32_t>(cType)) + "/" + std::to_string(static_cast<int32_t>(biasType))).c_str(),
+            "Unsupported dtype combination");
         return false;
     }
 
@@ -1442,7 +1444,7 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
 {
     const auto scale = mmrCtxInfo_.antiquant_scale_shape;
     if (scale == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "No antiquantScale.");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquant_scale");
         return false;
     }
     // 校验bias dim

@@ -155,11 +155,12 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_y);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_norm);
     OPS_CHECK(
-        InferAllZeroShape(context), OP_LOGE(kInnerDebug, "MatmulAllReduceAddRmsNorm does not support k = 0."),
+        InferAllZeroShape(context), OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "x1", "0", "> 0"),
         return ge::GRAPH_FAILED);
     const size_t dim_num = res_shape->GetDimNum();
     OPS_CHECK(
-        dim_num != 3U, OP_LOGE(context->GetNodeName(), "Invalid dim number %lu for residual.", dim_num),
+        dim_num != 3U, OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "residual",
+            std::to_string(dim_num).c_str(), "3"),
         return ge::GRAPH_FAILED);
     shape_out_y->SetDimNum(dim_num);
     shape_out_norm->SetDimNum(dim_num);
