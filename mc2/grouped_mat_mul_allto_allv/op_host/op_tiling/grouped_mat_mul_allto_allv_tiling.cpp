@@ -38,23 +38,23 @@ using namespace Mc2Tiling::Mc2GroupedMatmul;
 
 namespace optiling {
 
-const std::vector<uint32_t> GmmAlltoAllvTilingStruct::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
-const std::vector<uint32_t> GmmAlltoAllvTilingStruct::GMM_WEIGHT_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
-const std::vector<uint32_t> GmmAlltoAllvTilingStruct::GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 
-ge::graphStatus GmmAlltoAllvTilingStruct::GetShapeAttrsInfo()
+ge::graphStatus GroupedMatmulAllToAllvTiling::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     localParams_.opName = opName_;
     return ge::GRAPH_SUCCESS;
 }
 
-bool GmmAlltoAllvTilingStruct::IsCapable()
+bool GroupedMatmulAllToAllvTiling::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckOpInputSingleParamsTensorNotSupport()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorNotSupport()
 {
     auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
     auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
@@ -64,12 +64,12 @@ ge::graphStatus GmmAlltoAllvTilingStruct::CheckOpInputSingleParamsTensorNotSuppo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckOpInputSingleParamsTensorSupport()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorSupport()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckOpInputSingleParamsTensorMM()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorMM()
 {
     auto mmXTensorShape = context_->GetOptionalInputShape(MM_X_OPTIONAL_INDEX);
     auto mmWeightTensorShape = context_->GetOptionalInputShape(MM_WEIGHT_OPTIONAL_INDEX);
@@ -92,7 +92,7 @@ ge::graphStatus GmmAlltoAllvTilingStruct::CheckOpInputSingleParamsTensorMM()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParamsGmm()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
 {
     localParams_.gmmXDtype = context_->GetInputDesc(GMM_X_INDEX)->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_X_DTYPE_LIST, localParams_.gmmXDtype),
@@ -151,7 +151,7 @@ ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParamsGmm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParamsMm()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
 {
     if (!localParams_.hasSharedMm) {
         return ge::GRAPH_SUCCESS;
@@ -206,7 +206,7 @@ ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParamsMm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParamsAttr()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
@@ -224,7 +224,7 @@ ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParamsAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParams()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParams()
 {
     auto status = CheckAndSetLocalParamsGmm();
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
@@ -235,17 +235,17 @@ ge::graphStatus GmmAlltoAllvTilingStruct::CheckAndSetLocalParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckParamsRelationGmm()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsRelationGmm()
 {
     return CheckParamsRelationGmmTransShape();
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckParamsRelationMm()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
 {
     return CheckParamsRelationMmTransShape();
 }
 
-ge::graphStatus GmmAlltoAllvTilingStruct::CheckParamsAttrEpAndSetLocalParams()
+ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);

@@ -19,7 +19,7 @@
 #include "../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
 #elif __has_include("../../quant_grouped_mat_mul_allto_allv/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
 #include "../../quant_grouped_mat_mul_allto_allv/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
-#elif __has_include(                                                                                                   \
+#elif __has_include(                                                                                              \
     "../../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
 #include "../../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
 #else

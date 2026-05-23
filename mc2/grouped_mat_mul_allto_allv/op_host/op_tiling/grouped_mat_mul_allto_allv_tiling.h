@@ -19,9 +19,9 @@
 #include "../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling/arch35/quant_grouped_mat_mul_allto_allv_tiling_common.h"
 
 namespace optiling {
-class GmmAlltoAllvTilingStruct : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
+class GroupedMatmulAllToAllvTiling : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
 public:
-    explicit GmmAlltoAllvTilingStruct(gert::TilingContext *context)
+    explicit GroupedMatmulAllToAllvTiling(gert::TilingContext *context)
         : Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon(context) {};
 
 protected:
