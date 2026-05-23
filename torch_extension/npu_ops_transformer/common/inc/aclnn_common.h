@@ -19,6 +19,7 @@
 #include <string>
 #include <sstream>
 #include <cstdlib>
+#include <climits>
 #include <functional>
 #include <type_traits>
 #include <ATen/Tensor.h>
@@ -304,12 +305,17 @@ inline std::vector<void *> GetCustOpApiHandlers()
             if (path.empty()) {
                 continue;
             }
-            std::string soPath = path + "/op_api/lib/" + GetCustOpApiLibName();
-            auto handler = dlopen(soPath.c_str(), RTLD_LAZY);
+            std::string soPathStr = path + "/op_api/lib/" + GetCustOpApiLibName();
+            char soPath[PATH_MAX] = {0};
+            if (realpath(soPathStr.c_str(), soPath) == nullptr) {
+                ASCEND_LOGW("realpath failed for %s.", soPathStr.c_str());
+                continue;
+            }
+            auto handler = dlopen(soPath, RTLD_LAZY);
             if (handler != nullptr) {
                 handlers.push_back(handler);
             } else {
-                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath.c_str(), dlerror());
+                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath, dlerror());
             }
         }
     }
