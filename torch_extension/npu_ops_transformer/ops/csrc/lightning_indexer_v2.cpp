@@ -43,7 +43,7 @@ std::tuple<at::Tensor, at::Tensor> construct_lightning_indexer_v2_output_tensor(
         TORCH_CHECK(key.size(i) > 0, "All values within key's shape should be greater "
             "than 0, but shape[", i, "] is ", key.size(i));
     }
-    TORCH_CHECK(topk > 0, "sparse count should be greater than 0, but now is ", topk);
+    TORCH_CHECK(topk > 0, "topk should be greater than 0, but now is ", topk);
     int64_t keyHeadNum = (key_layout_str == "TND")? key.size(DIM_1) : key.size(DIM_2);
     if (query_layout_str == "BSND") {
         output_size = {query.size(DIM_0), query.size(DIM_1), keyHeadNum, topk};
