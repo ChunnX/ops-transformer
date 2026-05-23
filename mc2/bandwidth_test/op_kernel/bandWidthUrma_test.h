@@ -541,7 +541,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
                  windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], 
                  intriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        
+        PRINTF("WaitDispatch  statusFp32Tensor_ aivid %d epRankID %d, startStatusIndex_ = %d, statusFp32Tensor_[0] = %f, statusFp32Tensor_[1] = %f\n", aivId_, epRankId_, startStatusIndex_, statusFp32Tensor_[0], statusFp32Tensor_[1]);
         // 计算所有flag的和
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(), 
                   1, recStatusNumPerCore_, 1);
