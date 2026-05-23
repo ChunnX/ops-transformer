@@ -13,6 +13,7 @@ from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
+
 class LightningIndexerV2OpBuilder(OpBuilder):
     def __init__(self):
         super(LightningIndexerV2OpBuilder, self).__init__("npu_lightning_indexer_v2")
@@ -43,17 +44,20 @@ class LightningIndexerV2OpBuilder(OpBuilder):
                                           output_idx_offset=None, metadata=None,
                                           layout_q="BSND", layout_k="BSND", mask_mode=0,
                                           cmp_ratio=1, return_value=0):
-            keyHeadNum = key.shape[1] if layout_key == "TND" else key.shape[2]
+            key_head_num = key.shape[1] if layout_key == "TND" else key.shape[2]
 
             if layout_query == "BSND":
-                sparse_indices_out = torch.empty([q.shape[0], q.shape[1], keyHeadNum, topk], dtype=torch.int32, device="meta")
+                sparse_indices_out = torch.empty([q.shape[0], q.shape[1], key_head_num, topk],
+                    dtype=torch.int32, device="meta")
             else:
-                sparse_indices_out = torch.empty([q.shape[0], keyHeadNum, topk], dtype=torch.int32, device="meta")
+                sparse_indices_out = torch.empty([q.shape[0], key_head_num, topk], dtype=torch.int32, device="meta")
             if return_value:
                 if layout_query == "BSND":
-                    sparse_values_out = torch.empty([q.shape[0], q.shape[1], keyHeadNum, topk], dtype=torch.float, device="meta")
+                    sparse_values_out = torch.empty([q.shape[0], q.shape[1], key_head_num, topk],
+                        dtype=torch.float, device="meta")
                 else:
-                    sparse_values_out = torch.empty([q.shape[0], keyHeadNum, topk], dtype=torch.float, device="meta")
+                    sparse_values_out = torch.empty([q.shape[0], key_head_num, topk],
+                        dtype=torch.float, device="meta")
             else:
                 sparse_values_out = torch.empty([0], dtype=torch.float, device="meta")
             return (sparse_indices_out, sparse_values_out)
@@ -73,5 +77,6 @@ def npu_lightning_indexer_v2(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=N
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.npu_lightning_indexer_v2(q, k, w, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
-                                            block_table, output_idx_offset, metadata, layout_q, layout_k, mask_mode, cmp_ratio, return_value)
+    return op_module.npu_lightning_indexer_v2(q, k, w, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, 
+                                              cmp_residual_k, block_table, output_idx_offset, metadata, layout_q, 
+                                              layout_k, mask_mode, cmp_ratio, return_value)

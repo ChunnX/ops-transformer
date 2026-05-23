@@ -686,7 +686,7 @@ __aicore__ inline void LIV2Preload<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
         // B,S1,N2,k/T,N2,k
         valueOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.topk + runInfo.n2Idx * constInfo.topk;
-        outputIdxCoreOffset = 
+        outputIdxCoreOffset =
             (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
     }
     uint64_t actualSeqKPrefixSum;

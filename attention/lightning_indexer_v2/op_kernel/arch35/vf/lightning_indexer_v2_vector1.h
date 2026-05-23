@@ -161,7 +161,8 @@ __simd_callee__ inline void UIntToSortableKey(AscendC::MicroAPI::RegTensor<Float
 
     // 4. xor mask
     AscendC::MicroAPI::Select(regMask, ctx.signMask, ctx.allOne, regSelectSign);
-    AscendC::MicroAPI::Xor((AscendC::MicroAPI::RegTensor<UInt>&)outKey, (AscendC::MicroAPI::RegTensor<UInt>&)outKey, regMask, maskAll);
+    AscendC::MicroAPI::Xor((AscendC::MicroAPI::RegTensor<UInt>&)outKey,
+                           (AscendC::MicroAPI::RegTensor<UInt>&)outKey, regMask, maskAll);
 }
 
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
@@ -176,11 +177,12 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<uint16_t> regIn;   
+        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
         AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
-        AscendC::MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskAllB16 =
+            AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
 
-        for(uint16_t i = 0; i < topkLoopNum; ++i) {
+        for (uint16_t i = 0; i < topkLoopNum; ++i) {
             AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
 
             UIntSortConstCtx<bfloat16_t> uint16Ctx;
@@ -188,9 +190,9 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out
 
             UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
 
-            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(outBuf + i * 128, regOut, maskAllB16);
+            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * 128, regOut, maskAllB16);
         }
-
     }
 }
 
@@ -321,7 +323,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
         AscendC::MicroAPI::RegTensor<uint32_t> brcGatherIndex;
         AscendC::MicroAPI::RegTensor<float> regQK[2];
         AscendC::MicroAPI::RegTensor<float> regW;
-        AscendC::MicroAPI::RegTensor<float> regwBrc;        
+        AscendC::MicroAPI::RegTensor<float> regwBrc;
         AscendC::MicroAPI::RegTensor<float> regQScale;
         AscendC::MicroAPI::RegTensor<float> regKScale[2];
         AscendC::MicroAPI::RegTensor<float> regSum[2];
