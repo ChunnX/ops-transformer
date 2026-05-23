@@ -358,15 +358,16 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalToke
     Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
     PipeBarrier<PIPE_V>();
     Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
-    PipeBarrier<PIPE_ALL>();
+    PipeBarrier<PIPE_V>();
     LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
     LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
     Abs(tmpoutFp32, tmpFp32, calCnt);
-    PipeBarrier<PIPE_ALL>();
+    PipeBarrier<PIPE_V>();
     Mins(subExpIdTensor_, dstExpIdTensor_, 1, calCnt);
-    PipeBarrier<PIPE_ALL>();
+    PipeBarrier<PIPE_V>();
     ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
     SyncFunc<AscendC::HardEvent::V_S>();
+    PipeBarrier<PIPE_ALL>();
     int32_t curOtherExpertCnt = dstExpIdTensor_(0);
     if (calCnt > curOtherExpertCnt) {
         curExpertCnt = calCnt - curOtherExpertCnt; 
@@ -411,7 +412,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 continue;
             }
             SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
             // SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
