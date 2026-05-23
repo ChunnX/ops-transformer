@@ -29,11 +29,13 @@ protected:
     static void SetUpTestCase()
     {
         cout << "aclnnQuantGroupedMatmulDequantWeightNz_test SetUp" << endl;
+        SetPlatformSocVersion(SocVersion::ASCEND310P);
     }
 
     static void TearDownTestCase()
     {
         cout << "aclnnQuantGroupedMatmulDequantWeightNz_test TearDown" << endl;
+        SetPlatformSocVersion(SocVersion::ASCEND910B);
     }
 };
 

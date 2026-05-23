@@ -68,17 +68,16 @@ struct QuantMatmulDequantTilingData {
     uint32_t baseNNum = 0;
     uint32_t baseKNum = 0;
 
-    uint64_t swiftGEMVThreshold = 0;
-    uint64_t baseNNum_2 = 0;
-    uint64_t baseKNum_2 = 0;
-    uint64_t baseN = 0;
-    uint64_t baseN_2 = 0;
-    uint64_t baseK = 0;
-    uint64_t baseK_2 = 0;
-    uint64_t baseKTail = 0;
-    uint64_t baseKTail_2 = 0;
-    
+    uint32_t swiftGEMVThreshold = 0;
+    uint32_t baseNNum_2 = 0;
+    uint32_t baseKNum_2 = 0;
+    uint32_t baseK = 0;
+    uint32_t baseKTail = 0;
+    uint32_t baseK_2 = 0;
+    uint32_t baseKTail_2 = 0;
+
     uint64_t ubKMask = 0;
+    uint32_t isXScaleHalf = 0;
 };
 #pragma pack()
 
