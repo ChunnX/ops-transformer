@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * Copyright (c) 2026 联通（广东）产业互联网有限公司.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
