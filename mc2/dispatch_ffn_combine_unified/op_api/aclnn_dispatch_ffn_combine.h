@@ -46,9 +46,11 @@ extern "C" {
  * @param commAlg         [OPTIONAL]  Communication algorithm (default "").
  * @param numMaxTokenPerRank    [OPTIONAL] Maximum tokens per rank (default 0).
  * @param activation      [OPTIONAL]  Activation type (default "").
- * @param activationClamp [OPTIONAL]  Activation clamp (default INFINITY).
+ * @param activationClamp [OPTIONAL]  Activation clamp (default INFINITY, double).
+ * @param gmm2XDtype      [OPTIONAL]  GMM2 X dtype (default 0).
  * @param transposeWeight1 [OPTIONAL] Transpose weight1 (default false).
  * @param transposeWeight2 [OPTIONAL] Transpose weight2 (default false).
+ * @param weight1Interleave [OPTIONAL] Weight1 interleave (default 0).
  * @param yOut            [REQUIRED]  Output tensor (FP16/BF16 ND).
  * @param expertTokenNumsOut [REQUIRED] Per-expert token counts output (INT32 ND).
  * @param workspaceSize   [OUT]       Required workspace size in bytes.
@@ -63,8 +65,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnDispatchFFNCombineGetWor
     int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
     int64_t combineQuantMode, const char *commAlg, int64_t numMaxTokenPerRank,
-    const char *activation, float activationClamp, bool transposeWeight1, bool transposeWeight2,
-    int64_t gmm2XDtype, int64_t weight1Interleave,
+    const char *activation, float activationClamp, int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2,
+    int64_t weight1Interleave,
     aclTensor *yOut, aclTensor *expertTokenNumsOut,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

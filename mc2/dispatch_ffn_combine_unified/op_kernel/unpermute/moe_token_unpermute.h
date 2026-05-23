@@ -245,6 +245,7 @@ KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutToken(const int64_t start_
     if constexpr (IsSameType<T1, float>::value) {
         this->token_tensor0 = this->outque.template AllocTensor<T1>();
     }
+    PipeBarrier<PIPE_ALL>();
     int64_t end_token = start_token + this->top_k;
     T2 cal_token_idx = this->indicesLocal.GetValue(start_token);
 

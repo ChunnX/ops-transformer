@@ -707,12 +707,6 @@ private:
                                   gmC[gmGroupOffsetC + gmOffsetC], layoutC,
                                   gmSLocal[gmOffsetS], layoutScale,
                                   actualBlockShape);
-                    } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
-                        blockMmad(gmA[gmGroupOffsetA + gmOffsetA], layoutA,
-                                  gmB1[gmGroupOffsetB + gmOffsetB], layoutB1,
-                                  gmC[gmGroupOffsetC + gmOffsetC], layoutC,
-                                  gmSLocal, layoutScale,
-                                  actualBlockShape);
                     }
                 }
             }
