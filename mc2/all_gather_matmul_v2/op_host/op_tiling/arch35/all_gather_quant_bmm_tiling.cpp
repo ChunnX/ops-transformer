@@ -492,8 +492,18 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     }
     
     uint8_t quanMmMode = static_cast<uint8_t>(quantMmMode_) - 1;
-    uint8_t commMode = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)?
-                        Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
+    // Set hccl comm engine with comm_mode
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (std::strcmp(commMode_, "ccu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if(std::strcmp(commMode_, "default") == 0){ // default
+        if (rankSize_ <= 8) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        }
+    }
+    OP_LOGD(opName_, "Tiling GetTilingKey commMode_: %s", commMode_);
+    OP_LOGD(opName_, "Tiling GetTilingKey commMode: %d", commMode);
+
     // Non-A5 platform must use AICPU mode
     if (npuArch_ != NpuArch::DAV_3510) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
