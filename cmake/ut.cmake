@@ -507,8 +507,6 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
   add_cann_third_party(gtest)
   if (TARGET GTest::gtest)
     add_library(gtest ALIAS GTest::gtest)
-    add_library(gtest_main ALIAS Gtest::gtest_main)
-    add_library(gmock ALIAS Gtest::gmock)
   endif()
 
   function(AddAicpuOpTestCase opName)
