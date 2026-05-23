@@ -58,7 +58,7 @@ struct PeermemInfo {
         offset += tilingData->bs * tilingData->topK *
             (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
         ptrD = base + offset;
-        int64_t hScale = Ops::Base::CeilDiv(tilingData->h, MXFP_SCALE_GROUP_NUM) * MXFP_MULTI_BASE_SIZE;
+        int64_t hScale = Ops::Base::CeilDiv(tilingData->h, uint32_t(MXFP_SCALE_GROUP_NUM));
         int64_t quantRowSize = tilingData->h + hScale;
         offset += tilingData->maxOutputSize * quantRowSize;
         ptrDScale = ptrD + tilingData->h;  // per-row: scale紧跟data之后

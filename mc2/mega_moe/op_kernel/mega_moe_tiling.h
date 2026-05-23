@@ -35,6 +35,7 @@ struct MegaMoeTilingData {
     uint32_t topK;
     int32_t dispatchRows;
     uint8_t groupListType;
+    uint32_t blockAivNum;
     bool transX;
     bool transW;
     bool transW2;

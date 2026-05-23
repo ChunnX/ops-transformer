@@ -12,7 +12,7 @@
  * \file flash_attention_score_antiquant_block_vec.h
  * \brief
  */
- 
+
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_BLOCK_VEC_BASE_H_
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_BLOCK_VEC_BASE_H_
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -81,7 +81,7 @@ public:
         && !IsSameType<OUTPUT_T, float>::value;
     /*Public Function*/
     __aicore__ inline FABlockVecAntiquant() {};
-    __aicore__ inline void InitVecBlock(__gm__ uint8_t *value, __gm__ uint8_t *attentionOut, 
+    __aicore__ inline void InitVecBlock(__gm__ uint8_t *value, __gm__ uint8_t *attentionOut,
         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *pse, __gm__ uint8_t *attenMask,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *workspace,
@@ -106,7 +106,7 @@ public:
     __aicore__ inline void FDPostQuant(ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
         LocalTensor<T> &accumOutLocal, uint64_t perChannelQuantOffset, uint32_t dealRowCount, uint32_t dSizeAligned64);
     template <typename POSTQUANT_PARAMS_T, typename VEC2_RES_T>
-    __aicore__ inline void PostQuantPerChnl(ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, 
+    __aicore__ inline void PostQuantPerChnl(ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
         LocalTensor<VEC2_RES_T> &vec2ResUb, uint64_t perChannelQuantOffset, uint32_t gSplitSize, uint32_t s1RowCount,
         uint32_t splitOffset, int64_t dSizeAligned64, GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm,
         GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm);
@@ -137,7 +137,7 @@ public:
     __aicore__ inline void Bmm2FDOut(const RunInfo<isInfer> &runInfo, LocalTensor<T> &vec2ResUb, int64_t vec2CalcSize,
         ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitFDBuffers(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo, 
+    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo,
         __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr, int64_t s2InCurrentBatch);
     __aicore__ inline void GetActualSeqLenKV(int64_t boIdx, int64_t &actualSeqLen, __gm__ int64_t *actualSeqKvlenAddr,
         int64_t s2InCurrentBatch, ConstInfo<isInfer, hasRope> &constInfo);
@@ -477,7 +477,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitPostQua
                 constInfo.postQuantOffsetValue = 0.0;
             }
         }
-        
+
         if (!constInfo.isPostQuantPerChnl && constInfo.isPostQuantBF16) {
             if (postQuantScale != nullptr) {
                 postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
@@ -551,9 +551,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     Buffer<BufferType::L1> &outBufAntiKey, GlobalTensor<KV_T> &tempKeyGm, ConstInfo<isInfer, hasRope> &constInfo)
 {
     if(isBeforeHalf) {
-        taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize);  // 2 is Vecnum 
+        taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize);  // 2 is Vecnum
     } else {
-        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSize(runInfo.s2RealSize));  // 2 is Vecnum 
+        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSize(runInfo.s2RealSize));  // 2 is Vecnum
     }
     uint32_t curSequence = constInfo.s2BaseSize * runInfo.s2LoopCount + runInfo.kvLeftPaddingSize +
         constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize);
@@ -628,10 +628,11 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     }
     float slopes = 0.0f;
     float posShift = 0.0f;
-    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE || 
+    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            if (this->tilingData->inputParamsRegbase.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL) && 
+            if (this->tilingData->inputParamsRegbase.sparseType ==
+                    static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL) &&
                 runInfo.boIdx != 0) {
                 pseInfo.qStartIdx = 0;
                 pseInfo.kvStartIdx = 0;
@@ -750,10 +751,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     WaitFlag<HardEvent::V_MTE3>(this->UbToL1Event);
 
     if (likely(runInfo.halfS1RealSize != 0)) {
-        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1ScmBlockTrue], stage1CastTensor, 
-                {s2BaseSize / 16, (uint16_t)runInfo.halfS1RealSize, 
-                (uint16_t)(vec1Srcstride - runInfo.halfS1RealSize),
-                (uint16_t)(s1BaseSize - runInfo.halfS1RealSize)});
+        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1ScmBlockTrue], stage1CastTensor,
+                 {s2BaseSize / 16, (uint16_t)runInfo.halfS1RealSize, (uint16_t)(vec1Srcstride - runInfo.halfS1RealSize),
+                  (uint16_t)(s1BaseSize - runInfo.halfS1RealSize)});
     }
     this->stage1OutQue[0].template FreeTensor(stage1CastTensor);
     // =======================================================
@@ -802,7 +802,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeLogS
         constInfo.subBlockIdx * runInfo.firstHalfS1RealSize);
     int64_t calculateSize = runInfo.halfS1RealSize * fp32BaseSize;
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
-    size_t gmOffset = runInfo.boIdx * constInfo.n2Size * constInfo.splitKVNum * constInfo.gSize * FP32_ONE_BLOCK_SIZE + 
+    size_t gmOffset = runInfo.boIdx * constInfo.n2Size * constInfo.splitKVNum * constInfo.gSize * FP32_ONE_BLOCK_SIZE +
                         runInfo.n2oIdx * constInfo.splitKVNum * constInfo.gSize * FP32_ONE_BLOCK_SIZE +
                         runInfo.flashDecodeS2Idx * constInfo.gSize * FP32_ONE_BLOCK_SIZE + mStart * FP32_ONE_BLOCK_SIZE +
                         runInfo.goIdx * constInfo.s1BaseSize * FP32_ONE_BLOCK_SIZE;
@@ -900,14 +900,14 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
         constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize);
     if constexpr (isInfer) {
         curSequence += runInfo.s2StartIdx;
-    }  
+    }
     taskParam.flashDecodeS2Idx = runInfo.flashDecodeS2Idx;
     if constexpr(isFd) {
         curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
     }
     taskParam.kvGmOffset = runInfo.valueOffset + constInfo.subBlockIdx *
         GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;  // 2 is Vec num
-    
+
     taskParam.s2BatchOffset = curSequence;
     taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
 
@@ -1030,9 +1030,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
     int64_t vec2CalcSize, ConstInfo<isInfer, hasRope> &constInfo)
 {
     LocalTensor<OUTPUT_T> attenOut;
+    attenOut = vec2ResUb.template ReinterpretCast<OUTPUT_T>();
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (!IsSameType<Q_T, VEC2_RES_T>::value) {
-        attenOut.SetAddr(vec2ResUb.address_);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<Q_T, float>::value) {
             if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
@@ -1049,11 +1049,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
             RowInvalid(vec2ResUb, vec2S1Idx, runInfo, dSizeAligned64, constInfo);
         }
         stage2OutQue[0].EnQue(attenOut);
-        stage2OutQue[0].DeQue<OUTPUT_T>();
+        stage2OutQue[0].template DeQue<OUTPUT_T>();
     } else {
-        stage2OutQue[runInfo.taskIdMod2].EnQue(vec2ResUb);
+        stage2OutQue[runInfo.taskIdMod2].EnQue(attenOut);
         stage2OutQue[runInfo.taskIdMod2].template DeQue<OUTPUT_T>();
-        attenOut = vec2ResUb;
     }
 
     DataCopyExtParams dataCopyParams;
@@ -1101,7 +1100,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
             }
         }
     }
-    
+
     if constexpr (isInfer) {
         if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND))) {
             for (int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++) {
@@ -1180,13 +1179,13 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PostQuantPe
     copyInParams.srcStride = 0;
     copyInParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T)); // 32: DATA BLOCK SIZE
 
-    LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb = 
+    LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
         this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
     DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyInParams, copyInPadParams);
     this->postQuantScaleQue.template EnQue(postQuantScaleUb);
     this->postQuantScaleQue.template DeQue<POSTQUANT_PARAMS_T>();
     if (constInfo.isPostQuantOffsetExist) {
-        LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb = 
+        LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb =
             this->postQuantOffsetQue.template AllocTensor<POSTQUANT_PARAMS_T>();
         DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyInParams, copyInPadParams);
         this->postQuantOffsetQue.template EnQue(postQuantOffsetUb);
@@ -1237,7 +1236,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PostQuant(C
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
                     gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleGm, postQuantOffsetGm);
             }
-        }                                 
+        }
     } else {
         PostQuantPerTensorImpl<T, OUTPUT_T, true>(
             attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, runInfo.vec2S1RealSize,
