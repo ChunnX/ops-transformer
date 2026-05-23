@@ -293,6 +293,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
     subExpIdTensor_ = subExpBuf_.Get<int32_t>();
+
+    DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -368,7 +372,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalToke
     PipeBarrier<PIPE_V>();
     ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
     SyncFunc<AscendC::HardEvent::V_S>();
-    PipeBarrier<PIPE_ALL>();
     int32_t curOtherExpertCnt = dstExpIdTensor_(0);
     if (calCnt > curOtherExpertCnt) {
         curExpertCnt = calCnt - curOtherExpertCnt; 
@@ -393,12 +396,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     //PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n",aivId_, epWorldSize_, startRankId, endRankId, sendRankNum);
     //PRINTF("start SendToMoeExpert inter aivid is %d\n", aivId_);
     // ============ 读取expert_id数组到UB ============
-    GlobalTensor<XType> dstWinGMTensor;
-    DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     // SyncFunc<AscendC::HardEvent::MTE2_S>();
-    PipeBarrier<PIPE_ALL>();
     for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
         //PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
@@ -414,7 +412,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 continue;
             }
             SyncFunc<AscendC::HardEvent::S_V>();
-            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
             // SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
