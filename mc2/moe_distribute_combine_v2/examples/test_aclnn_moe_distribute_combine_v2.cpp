@@ -239,9 +239,9 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     if (expandXHostData.size() >= 4) {
         std::memcpy(expandXHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
     }
-    int processNumPerExpert = globalBs / epRecvCountsShapeSize;
+    int processNumPerExpert = globalBS / epRecvCountsShapeSize;
     int remainNum = globalBS % epRecvCountsShapeSize;
-    vector<int32_t> perTokenExpertVec(globalBS * K);
+    std::vector<int32_t> perTokenExpertVec(globalBS * K);
     // TODO 这里不整除场景会有问题 这里可能写的有问题
     std::vector<int32_t> expertIdsHostData(expertIdsShapeSize);
     int index = 0;
