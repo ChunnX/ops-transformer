@@ -20,13 +20,13 @@ aclnnStatus AclnnGroupedMatmulNoQuantDAV3510Checker::CheckGroupedMatmulGroupSize
   if (CheckTensorListLength(gmmParams_.x) != ACLNN_SUCCESS) {
     OP_LOGE_FOR_INVALID_LISTSIZE("grouped_matmul", "x",
         std::to_string(gmmParams_.x != nullptr ? gmmParams_.x->Size() : 0).c_str(),
-        std::to_string(MAX_LENGTH).c_str());
+        ("no more than " + std::to_string(MAX_LENGTH)).c_str());
     return ACLNN_ERR_PARAM_INVALID;
   }
   if (CheckTensorListLength(gmmParams_.weight) != ACLNN_SUCCESS) {
     OP_LOGE_FOR_INVALID_LISTSIZE("grouped_matmul", "weight",
         std::to_string(gmmParams_.weight != nullptr ? gmmParams_.weight->Size() : 0).c_str(),
-        std::to_string(MAX_LENGTH).c_str());
+        ("no more than " + std::to_string(MAX_LENGTH)).c_str());
     return ACLNN_ERR_PARAM_INVALID;
   }
   return ACLNN_SUCCESS;
@@ -40,7 +40,7 @@ aclnnStatus AclnnGroupedMatmulNoQuantDAV3510Checker::CheckTensorListLength(const
   if (groupSize > MAX_LENGTH) {
     OP_LOGE_FOR_INVALID_LISTSIZE("grouped_matmul", "tensorList",
         std::to_string(groupSize).c_str(),
-        std::to_string(MAX_LENGTH).c_str());
+        ("no more than " + std::to_string(MAX_LENGTH)).c_str());
     return ACLNN_ERR_PARAM_INVALID;
   }
   return ACLNN_SUCCESS;
