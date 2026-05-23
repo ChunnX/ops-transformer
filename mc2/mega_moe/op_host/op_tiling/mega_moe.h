@@ -44,7 +44,7 @@ struct MegaMoeConfig {
     uint32_t attrCclBufferSizeIndex = 2U;
     uint32_t attrMaxRecvTokenNumIndex = 3U;
     uint32_t attrDispatchQuantModeIndex = 4U;
-    uint32_t attrDispatchQuantOutTypeIndex = 5U;
+    uint32_t attrdispatchQuantOutDtypeIndex = 5U;
     uint32_t attrCombineQuantModeIndex = 6U;
     uint32_t attrCommAlgIndex = 7U;
     uint32_t attrNumMaxTokenPerRankIndex = 8U;

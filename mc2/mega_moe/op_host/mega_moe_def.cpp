@@ -97,7 +97,7 @@ public:
     this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
     this->Attr("max_recv_token_num").AttrType(OPTIONAL).Int(0);
     this->Attr("dispatch_quant_mode").AttrType(OPTIONAL).Int(0);
-    this->Attr("dispatch_quant_out_type").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
+    this->Attr("dispatch_quant_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("combine_quant_mode").AttrType(OPTIONAL).Int(0);
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
     this->Attr("num_max_token_per_rank").AttrType(OPTIONAL).Int(0);
@@ -162,12 +162,12 @@ public:
         .IgnoreContiguous();
     aicore_config_910b.Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_INT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_910b.Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_INT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_910b.Input("bias1")

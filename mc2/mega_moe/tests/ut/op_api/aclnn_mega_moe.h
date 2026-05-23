@@ -47,7 +47,7 @@ extern "C" {
  * @param [in] cclBufferSize: 计算输入，int。CCL通信缓冲区大小。
  * @param [in] maxRecvTokenNum: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示自动计算。
  * @param [in] dispatchQuantMode: 计算可选输入，int。dispatch通信时量化模式，目前仅支持4（MXFP模式）。默认值为0。
- * @param [in] dispatchQuantOutType: 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
+ * @param [in] dispatchQuantOutDtype: 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
  * @param [in] combineQuantMode: 计算可选输入，int。预留参数，暂不支持。默认值为0。
  * @param [in] commAlg: 计算可选输入，str。预留参数，暂不支持。默认值为""。
  * @param [in] numMaxTokenPerRank: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
@@ -72,7 +72,7 @@ ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList* weightScales2Optional, const aclTensorList* bias1Optional,
     const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
-    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
+    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
     int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
     aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,

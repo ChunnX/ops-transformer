@@ -36,7 +36,7 @@ struct MegaMoeA2A3TilingData {
     uint32_t cclBufferSize;
     uint32_t maxRecvTokenNum;
     uint32_t dispatchQuantMode;
-    int32_t  dispatchQuantOutType;
+    int32_t  dispatchQuantOutDtype;
     uint32_t combineQuantMode;
     uint32_t commAlgCode;
     uint32_t numMaxTokenPerRank;
