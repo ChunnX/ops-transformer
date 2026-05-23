@@ -67,7 +67,7 @@ public:
                     this->constInfo.learnableSinkFlag = true;
                     this->vecFdBlock.InitLearnableSinkGm(this->sinkGm);
                 }
-                if (this->constInfo.isSoftmaxLseEnable) {
+                if (this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable) {
                     this->softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     this->vecFdBlock.InitSoftmaxLseGm(this->softmaxLseGm);
                 }
@@ -87,7 +87,7 @@ public:
             this->vecFaBlock.AllocEventID();
         }
 
-        if (this->constInfo.aicIdx < this->constInfo.coreNum) {
+        if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
             FlashAttentionVector(sectionIdx);
         }
 
@@ -103,7 +103,7 @@ public:
 private:
     __aicore__ inline void FlashAttentionVector(uint32_t sectionIdx)
     {
-        if (this->constInfo.aicIdx >= this->constInfo.coreNum) {
+        if (this->constInfo.aicIdx >= this->tilingData->flashAttnBaseParams.coreNum) {
             return;
         }
 
@@ -170,11 +170,11 @@ private:
     __aicore__ inline TASK_DEAL_MODE GetTaskDealModeVector(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         bool isFirstTask = (bN2Cur == this->bN2Start_) && (gS1Cur == this->gS1OStart_) && (s2Cur == this->s2OStart_);
-        uint32_t bIdx = bN2Cur / this->constInfo.n2Size;
+        uint32_t bIdx = bN2Cur / this->tilingData->flashAttnBaseParams.n2Size;
         if (isFirstTask || this->prevBIdx != bIdx) {
             this->prevBIdx = bIdx;
-            if (this->constInfo.cuSeqLensKVSize == 0 && this->constInfo.seqUsedKvSize == 0 &&
-                !this->constInfo.isKvContinuous) {
+            if (this->tilingData->flashAttnBaseParams.cuSeqLensKVSize == 0 && this->tilingData->flashAttnBaseParams.seqUsedKvSize == 0 &&
+                !this->tilingData->flashAttnBaseParams.isKvContinuous) {
                 this->actSeqLensKv = SeqLenFromTensorList<KernelBase::LAYOUT_KV>(this->keyPtr, bIdx);
             } else {
                 if constexpr (KernelBase::LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
@@ -190,7 +190,7 @@ private:
             }
         }
         uint64_t s2LoopTimes = (this->actSeqLensKv + KernelBase::s2BaseSize - 1) / KernelBase::s2BaseSize;
-        uint64_t gS1Size = this->actSeqLensQ * this->constInfo.gSize;
+        uint64_t gS1Size = this->actSeqLensQ * this->tilingData->flashAttnBaseParams.gSize;
         uint64_t gS1LoopTimes = (gS1Size + KernelBase::mBaseSize - 1) / KernelBase::mBaseSize;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
@@ -227,18 +227,18 @@ private:
     __aicore__ inline void GetPreNextTokenLeftUpVector(int64_t actSeqLensQ, int64_t actSeqLensKv,
                                                        int64_t &preTokenLeftUp, int64_t &nextTokenLeftUp)
     {
-        preTokenLeftUp = this->constInfo.preTokens;
-        nextTokenLeftUp = this->constInfo.nextTokens;
+        preTokenLeftUp = this->tilingData->flashAttnAttenMaskParams.winLefts;
+        nextTokenLeftUp = this->tilingData->flashAttnAttenMaskParams.winRights;
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
-                                        this->constInfo.sparseMode);
+                                        this->tilingData->flashAttnAttenMaskParams.sparseMode);
 
-        if (this->constInfo.sparseMode == fa_base_vector::BAND) {
+        if (this->tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::BAND) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
-        if (this->constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+        if (this->tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (this->constInfo.sparseMode == fa_base_vector::BAND) {
+        } else if (this->tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::BAND) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
@@ -267,13 +267,13 @@ private:
 
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(KernelBase::mBaseSize);
         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(KernelBase::mBaseSize),
-                                   static_cast<int64_t>(this->actSeqLensQ) * static_cast<int64_t>(this->constInfo.gSize)) -
+                                   static_cast<int64_t>(this->actSeqLensQ) * static_cast<int64_t>(this->tilingData->flashAttnBaseParams.gSize)) -
                                1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<KernelBase::LAYOUT_Q>() == UbFormat::S1G) {
-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / this->constInfo.gSize);
-            s1LastToken = static_cast<int64_t>(s1GLastToken / this->constInfo.gSize);
+            s1FirstToken = static_cast<int64_t>(s1GFirstToken / this->tilingData->flashAttnBaseParams.gSize);
+            s1LastToken = static_cast<int64_t>(s1GLastToken / this->tilingData->flashAttnBaseParams.gSize);
         } else {
             if (s1GFirstToken / static_cast<int64_t>(this->actSeqLensQ) == s1GLastToken / static_cast<int64_t>(this->actSeqLensQ)) {
                 s1FirstToken = s1GFirstToken % static_cast<int64_t>(this->actSeqLensQ);
@@ -361,13 +361,13 @@ private:
     {
         info.loop = loop;
         info.mloop = this->mloop;
-        info.bIdx = bN2Cur / this->constInfo.n2Size;
-        info.n2Idx = bN2Cur % this->constInfo.n2Size;
+        info.bIdx = bN2Cur / this->tilingData->flashAttnBaseParams.n2Size;
+        info.n2Idx = bN2Cur % this->tilingData->flashAttnBaseParams.n2Size;
         info.gS1Idx = gS1Cur * KernelBase::mBaseSize;
         if constexpr (KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
                       KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            info.s1Idx = info.gS1Idx / this->constInfo.gSize;
+            info.s1Idx = info.gS1Idx / this->tilingData->flashAttnBaseParams.gSize;
         } else {
             info.s1Idx = info.gS1Idx % this->actSeqLensQ;
         }
@@ -376,7 +376,7 @@ private:
         info.actS2Size = this->actSeqLensKv;
 
         info.actMSize = KernelBase::mBaseSize;
-        uint64_t gS1Size = info.actS1Size * this->constInfo.gSize;
+        uint64_t gS1Size = info.actS1Size * this->tilingData->flashAttnBaseParams.gSize;
         if (((gS1Cur + 1) * KernelBase::mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * KernelBase::mBaseSize;
         }
@@ -386,7 +386,7 @@ private:
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename KernelBase::INPUT_T)));
-        if (this->constInfo.isKvContinuous) {
+        if (this->tilingData->flashAttnBaseParams.isKvContinuous) {
             info.isChangeBatch = false;
         } else {
             if (loop == 0) {
@@ -431,7 +431,7 @@ private:
                                                 uint32_t &s2Cur)
     {
         uint64_t s2LoopTimes = (this->actSeqLensKv + KernelBase::s2BaseSize - 1) / KernelBase::s2BaseSize;
-        uint64_t gS1Size = this->actSeqLensQ * this->constInfo.gSize;
+        uint64_t gS1Size = this->actSeqLensQ * this->tilingData->flashAttnBaseParams.gSize;
         uint64_t gS1LoopTimes = (gS1Size + KernelBase::mBaseSize - 1) / KernelBase::mBaseSize;
 
         if (s2Cur + 1 < s2LoopTimes) {
