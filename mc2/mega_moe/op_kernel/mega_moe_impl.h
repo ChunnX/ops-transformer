@@ -45,20 +45,21 @@ constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
-int64_t CeilDivInt(int64_t a, int64_t b)
+__aicore__ inline int64_t CeilDivInt(int64_t a, int64_t b)
 {
     return (a + b - 1) / b;
 }
 
-int64_t CeilAlignInt(int64_t a, int64_t b)
+__aicore__ inline int64_t CeilAlignInt(int64_t a, int64_t b)
 {
     return ((a + b - 1) / b) * b;
 }
 
-int64_t ComputeMaxTokensStride(uint64_t maxOutputSize)
+__aicore__ inline int64_t ComputeMaxTokensStride(uint64_t maxOutputSize, uint32_t blockAivNum)
 {
     int64_t maxRowGroupsPerExpert = CeilDivInt(maxOutputSize, L1_TILE_M);
-    return CeilAlignInt(maxRowGroupsPerExpert, ALIGN_128);
+    int64_t perCoreStride = CeilAlignInt(static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);
+    return CeilAlignInt(maxRowGroupsPerExpert * perCoreStride, ALIGN_128);
 }
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
@@ -243,7 +244,7 @@ __aicore__ inline void GroupMatmul2(
     GlobalTensor<int32_t> rowGroupComplete;
     rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrRowGroupComplete); // 128个token完成的计数位置
 
-    int64_t maxRowGroupsStride = ComputeMaxRowGroupsStride(params.tilingData);
+    int64_t maxRowGroupsStride = ComputeMaxTokensStride(params.tilingData->maxOutputSize, params.tilingData->blockAivNum);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
@@ -356,9 +357,11 @@ __aicore__ inline void GroupMatmul2(
         SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
         WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
 
-        uint32_t rowGroupIdx = mLoc / L1_TILE_M; //按mloc去计算计数位的偏移
-        uint32_t globalCounterIdx = groupIdx * maxRowGroupsStride + rowGroupIdx;
-        AscendC::AtomicAdd((__gm__ int32_t*)rowGroupComplete.GetPhyAddr() + globalCounterIdx, int32_t(1));
+        uint32_t rowGroupIdx = mLoc / L1_TILE_M;
+        int64_t baseOffset = groupIdx * maxRowGroupsStride + rowGroupIdx * static_cast<int64_t>(params.tilingData->blockAivNum) * INT_CACHELINE;
+        for (uint32_t aivIdx = 0; aivIdx < params.tilingData->blockAivNum; aivIdx++) {
+            AscendC::AtomicAdd((__gm__ int32_t*)rowGroupComplete.GetPhyAddr() + baseOffset + aivIdx * INT_CACHELINE, int32_t(1));
+        }
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }

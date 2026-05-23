@@ -952,6 +952,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
+    tilingData->blockAivNum = aicNum * 2;
     tilingData->dispatchRows = 2;
 
     return ge::GRAPH_SUCCESS;
