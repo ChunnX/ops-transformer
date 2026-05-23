@@ -81,6 +81,8 @@ static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
 
 // 参数约束定义
 static constexpr uint64_t MX_GROUPSIZE = 32;
+static constexpr uint16_t MX_SCALE_GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
+static constexpr uint16_t MX_SCALE_BANK_CONFLICT_OFFSET = 32;
 static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
 static constexpr uint32_t FP32_BLOCK_SIZE = 8;
 static constexpr uint32_t FP16_BLOCK_SIZE = 16;
