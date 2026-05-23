@@ -278,8 +278,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
 
     uint32_t hFp32Size = axisH_ * sizeof(float);
-    uint32_t maxSize = expertIdsSize;
-    maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
+    uint32_t maxSize = expertIdsBufSize;
+    maxSize = hFp32Size > expertIdsBufSize ? hFp32Size : expertIdsBufSize;
     tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
     totalUsedUB_ += maxSize;
 
@@ -358,7 +358,6 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CalTokenSendExpertCnt(
     uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt)
 {
-    SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
     PipeBarrier<PIPE_V>();
     Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
@@ -415,7 +414,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 continue;
             }
             // SyncFunc<AscendC::HardEvent::S_V>();
-            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
             // SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
