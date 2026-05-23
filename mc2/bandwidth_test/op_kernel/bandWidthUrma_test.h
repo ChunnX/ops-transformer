@@ -404,30 +404,32 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
         PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
-        // ============ 遍历token并发送到目标rank ============
-        for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
-            uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
-            int32_t curExpertCnt = 0;
-            if (dstRankId != rankId) { // 只处理当前rank负责的token
-                PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
-                continue;
-            }
-            // SyncFunc<AscendC::HardEvent::S_V>();
-            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
-            // SyncFunc<AscendC::HardEvent::S_V>();
+        PRINTF("eprank %d aiv %d, rankId is %d\n", epRankId_, aivId_, rankId);
+
+        // ============ 发送当前token到目标rank的窗口 ============
+        // for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
+        //     uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
+        //     int32_t curExpertCnt = 0;
+        //     if (dstRankId != rankId) { // 只处理当前rank负责的token
+        //         PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
+        //         continue;
+        //     }
+        //     // SyncFunc<AscendC::HardEvent::S_V>();
+        //     //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+        //     // SyncFunc<AscendC::HardEvent::S_V>();
             
-            // 计算目标窗口地址:
-            // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-            GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
-                                            epRankId_ * expertPerSizeOnWin_ +
-                                            curExpertCnt * hAlignWinSize_);
-            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
-                                            epRankId_ * expertPerSizeOnWin_ +
-                                            curExpertCnt * hAlignWinSize_);
-            PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
-            //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
-            ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
-        }
+        //     // 计算目标窗口地址:
+        //     // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
+        //     GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
+        //                                     epRankId_ * expertPerSizeOnWin_ +
+        //                                     curExpertCnt * hAlignWinSize_);
+        //     GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+        //                                     epRankId_ * expertPerSizeOnWin_ +
+        //                                     curExpertCnt * hAlignWinSize_);
+        //     PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
+        //     //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
+        //     ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
+        // }
     }
 }
 
