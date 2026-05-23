@@ -132,6 +132,26 @@ ge::graphStatus ReplaceCombineV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
         return ge::GRAPH_FAILED;
     }
     v3Op.SetAttr("ccl_buffer_size", cclBufferSize);
+
+    // Mark connected OPTIONAL_INPUT descriptors valid for FE_TransInsert.
+    static const struct { size_t v2Port; const char *v3Name; ge::DataType dtype; } kOptMapping[] = {
+        {5, "tp_send_counts", ge::DT_INT32},         {6, "x_active_mask", ge::DT_BOOL},
+        {7, "activation_scale", ge::DT_FLOAT},       {8, "weight_scale", ge::DT_FLOAT},
+        {9, "group_list", ge::DT_INT64},             {10, "expand_scales", ge::DT_FLOAT},
+        {11, "shared_expert_x", ge::DT_BF16},        {12, "elastic_info", ge::DT_INT32},
+        {13, "ori_x", ge::DT_BF16},                  {14, "const_expert_alpha_1", ge::DT_BF16},
+        {15, "const_expert_alpha_2", ge::DT_BF16},   {16, "const_expert_v", ge::DT_BF16},
+        {17, "performance_info", ge::DT_INT64},
+    };
+    for (auto &m : kOptMapping) {
+        auto srcPair = v2Node.GetInDataNodesAndPortIndexs(static_cast<int32_t>(m.v2Port));
+        if (srcPair.first == nullptr) continue;
+        ge::TensorDesc validDesc(ge::Shape({1}), ge::FORMAT_ND, m.dtype);
+        v3Op.UpdateInputDesc(m.v3Name, validDesc);
+        OPS_LOG_D(PASS_NAME.c_str(), "node %s: validated V3 input '%s' (V2.port%zu connected)",
+                  nameStr.GetString(), m.v3Name, m.v2Port);
+    }
+
     OPS_LOG_D(PASS_NAME.c_str(), "node %s: attrs set, adding nodes to graph (ccl_buffer_size=%ld)...",
               nameStr.GetString(), static_cast<long>(cclBufferSize));
 
@@ -145,7 +165,9 @@ ge::graphStatus ReplaceCombineV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
               nameStr.GetString(), v2ValidInputs, v2ValidOutputs);
 
     // V3 total inputs from REG_OP: 6 INPUT + 13 OPTIONAL_INPUT = 19
+    // V2 total inputs from REG_OP: 5 INPUT + 13 OPTIONAL_INPUT = 18
     constexpr size_t kV3TotalInputs = 19;
+    constexpr size_t kV2TotalInputs = 18;
     ge::graphStatus edgeRet;
 
     OPS_LOG_I(PASS_NAME.c_str(), "node %s: [1/5] wiring Const→V3.0 ...", nameStr.GetString());
@@ -155,48 +177,92 @@ ge::graphStatus ReplaceCombineV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
         return ge::GRAPH_FAILED;
     }
 
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [2/5] wiring V2 inputs→V3 (via source nodes' out edges) ...",
+    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [2/5] wiring V2 inputs→V3 (type-based ordered matching) ...",
               nameStr.GetString());
-    int skippedInputs = 0;
-    int wiredInputs = 0;
-    ge::AscendString v2Name;
-    v2Node.GetName(v2Name);
+
+    // V3 proto ports (0=context already wired), rest in order from REG_OP
+    // Acceptable types per port from V3 REG_OP, in priority order.
+    struct V3Port { int64_t idx; std::vector<ge::DataType> types; };
+    const V3Port v3Ports[] = {
+        {1,  {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT32}},  // expand_x
+        {2,  {ge::DT_INT32}},                                 // expert_ids
+        {3,  {ge::DT_INT32}},                                 // assist_info_for_combine
+        {4,  {ge::DT_INT32}},                                 // ep_send_counts
+        {5,  {ge::DT_FLOAT}},                                 // expert_scales
+        {6,  {ge::DT_INT32}},                                 // tp_send_counts (optional)
+        {7,  {ge::DT_BOOL}},                                  // x_active_mask
+        {8,  {ge::DT_FLOAT}},                                 // activation_scale (optional)
+        {9,  {ge::DT_FLOAT}},                                 // weight_scale (optional)
+        {10, {ge::DT_INT64}},                                 // group_list (optional)
+        {11, {ge::DT_FLOAT}},                                 // expand_scales (optional)
+        {12, {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT32}},   // shared_expert_x (optional)
+        {13, {ge::DT_INT32}},                                 // elastic_info (optional)
+        {14, {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT32}},   // ori_x (optional)
+        {15, {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT32}},   // const_expert_alpha_1 (optional)
+        {16, {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT32}},   // const_expert_alpha_2 (optional)
+        {17, {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT32}},   // const_expert_v (optional)
+        {18, {ge::DT_INT64}},                                 // performance_info (optional)
+    };
+
+    // Collect V2 source nodes (source: feeds into V2)
+    std::vector<std::pair<ge::GNode, int32_t>> v2Sources;
+    ge::AscendString v2NameStr;
+    v2Node.GetName(v2NameStr);
     for (auto &srcNode : graph.GetDirectNode()) {
-        ge::AscendString srcName;
-        srcNode.GetName(srcName);
-        for (int32_t outPort = 0; outPort < static_cast<int32_t>(kV3TotalInputs); outPort++) {
-            auto consumers = srcNode.GetOutDataNodesAndPortIndexs(outPort);
-            if (consumers.empty()) {
-                break;
-            }
-            for (auto &cPair : consumers) {
-                ge::AscendString consumerName;
-                cPair.first->GetName(consumerName);
-                if (consumerName != v2Name) {
-                    continue;
+        ge::AscendString sn;
+        srcNode.GetName(sn);
+        if (sn == v2NameStr) continue;
+        size_t outSize = srcNode.GetOutputsSize();
+        for (size_t op = 0; op < outSize; op++) {
+            auto consumers = srcNode.GetOutDataNodesAndPortIndexs(static_cast<int32_t>(op));
+            for (auto &c : consumers) {
+                ge::AscendString cn;
+                c.first->GetName(cn);
+                if (cn == v2NameStr) {
+                    v2Sources.push_back({srcNode, static_cast<int32_t>(op)});
                 }
-                size_t v3Port = static_cast<size_t>(cPair.second) + 1;
-                if (v3Port >= kV3TotalInputs) {
-                    OPS_LOG_D(PASS_NAME.c_str(), "node %s: %s.port%d→V2.port%d, V3.port%zu out of range, skip",
-                              nameStr.GetString(), srcName.GetString(), outPort, cPair.second, v3Port);
-                    skippedInputs++;
-                    continue;
-                }
-                OPS_LOG_I(PASS_NAME.c_str(), "node %s: wiring %s.port%d → V3.port%zu (was V2.port%d) ...",
-                          nameStr.GetString(), srcName.GetString(), outPort, v3Port, cPair.second);
-                edgeRet = graph.AddDataEdge(srcNode, outPort, v3GNode, static_cast<int32_t>(v3Port));
-                if (edgeRet != ge::GRAPH_SUCCESS) {
-                    OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge %s.port%d→V3.port%zu FAILED (ret=%d)",
-                              nameStr.GetString(), srcName.GetString(), outPort, v3Port, edgeRet);
-                    return ge::GRAPH_FAILED;
-                }
-                OPS_LOG_I(PASS_NAME.c_str(), "node %s:   %s.port%d → V3.port%zu OK", nameStr.GetString(),
-                          srcName.GetString(), outPort, v3Port);
-                wiredInputs++;
             }
         }
     }
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: input wiring done - %d OK, %d out-of-range skipped",
+    OPS_LOG_I(PASS_NAME.c_str(), "node %s: found %zu sources feeding V2",
+              nameStr.GetString(), v2Sources.size());
+
+    auto typeMatches = [](ge::DataType src, const std::vector<ge::DataType> &acceptable) -> bool {
+        for (auto t : acceptable) {
+            if (src == t) return true;
+        }
+        return false;
+    };
+
+    // Ordered match: iterate V3 ports, consume first unused V2 source of same type
+    int wiredInputs = 0;
+    int skippedInputs = 0;
+    for (auto &v3p : v3Ports) {
+        bool matched = false;
+        for (auto it = v2Sources.begin(); it != v2Sources.end(); ++it) {
+            ge::TensorDesc srcDesc;
+            if (it->first.GetOutputDesc(it->second, srcDesc) != ge::GRAPH_SUCCESS) continue;
+            if (typeMatches(srcDesc.GetDataType(), v3p.types)) {
+                ge::AscendString sn;
+                it->first.GetName(sn);
+                OPS_LOG_I(PASS_NAME.c_str(), "node %s: type-match %s.port%d→V3.port%ld",
+                          nameStr.GetString(), sn.GetString(), it->second, v3p.idx);
+                edgeRet = graph.AddDataEdge(it->first, it->second, v3GNode, v3p.idx);
+                if (edgeRet != ge::GRAPH_SUCCESS) {
+                    OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge to V3.port%ld FAILED",
+                              nameStr.GetString(), v3p.idx);
+                    return ge::GRAPH_FAILED;
+                }
+                wiredInputs++;
+                v2Sources.erase(it);
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) skippedInputs++;
+    }
+    skippedInputs += static_cast<int>(v2Sources.size());
+    OPS_LOG_I(PASS_NAME.c_str(), "node %s: input wiring done - %d OK, %d unmatched/skipped",
               nameStr.GetString(), wiredInputs, skippedInputs);
 
     OPS_LOG_I(PASS_NAME.c_str(), "node %s: [3/5] collecting V2 output consumers (V2 has 1 OUTPUT) ...",
