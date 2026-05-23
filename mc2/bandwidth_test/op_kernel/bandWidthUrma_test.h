@@ -261,7 +261,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     sumTarget_ = static_cast<float>(1.0);
     uint64_t mask[2] = { 0x101010101010101, 0 };
     PipeBarrier<PIPE_V>();
-    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, Ceil(statusBufCntAlign_, 8), 1, 8);
+    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, Ceil(statusBufCntAlign, 8), 1, 8);
 
     PRINTF("epRankId_ is %d, statusTensor_ is %p\n", epRankId_, statusTensor_);
     
