@@ -128,13 +128,13 @@ def sas(param_combinations):   # 初始化参数和tensor
     kv_type_str = "FP8_E4M3FN"
     if ori_kv_type == torch.uint8:
         kv_type_str = "HIF8"
-    if Testcase_Name ==None :
+    if Testcase_Name is None :
         Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
 
     # 生成actLen 
     QS = [0]
     KVS = []
-    if cu_seqlens_q == None or seqused_kv == None:
+    if cu_seqlens_q is None or seqused_kv is None:
         if layout_q == "TND":
             for i in range(B):
                 if actlen_mode == "random":
