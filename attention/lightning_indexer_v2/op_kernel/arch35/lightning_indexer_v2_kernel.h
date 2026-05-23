@@ -56,7 +56,7 @@ struct TempLoopInfo {
 template <typename LIT>
 class LIV2Kernel {
 public:
-    __aicore__ inline LIV2Preload(){};
+    __aicore__ inline LIV2Kernel(){};
     __aicore__ inline void Init(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
                                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
@@ -78,7 +78,7 @@ public:
                 typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     LightningIndexerV2ServiceCube<LIT> matmulService;
-    LIV2Vector<LIT> vectorService;
+    LightningIndexerV2ServiceVector<LIT> vectorService;
 
     // =================================常量区=================================
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
@@ -163,7 +163,7 @@ protected:
 };
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::InitTilingData(const LIV2TilingData *__restrict tilingData)
+__aicore__ inline void LIV2Kernel<LIT>::InitTilingData(const LIV2TilingData *__restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
@@ -200,7 +200,7 @@ __aicore__ inline void LIV2Preload<LIT>::InitTilingData(const LIV2TilingData *__
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::InitBuffers()
+__aicore__ inline void LIV2Kernel<LIT>::InitBuffers()
 {
     if ASCEND_IS_AIV {
         vectorService.InitBuffers(pipe);
@@ -210,7 +210,7 @@ __aicore__ inline void LIV2Preload<LIT>::InitBuffers()
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
+__aicore__ inline void LIV2Kernel<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
                                                           __gm__ uint8_t *cuSeqlensK,
                                                           __gm__ uint8_t *sequsedQ,
                                                           __gm__ uint8_t *sequsedK)
@@ -239,7 +239,7 @@ __aicore__ inline void LIV2Preload<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeql
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LIV2Preload<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+__aicore__ inline uint32_t LIV2Kernel<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                              uint32_t defaultSeqLen)
 {
@@ -254,7 +254,7 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetActualSeqLen(uint32_t bIdx, uint
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LIV2Preload<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+__aicore__ inline uint32_t LIV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                              uint32_t defaultSeqLen, uint32_t cmpRatio)
 {
@@ -268,7 +268,7 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetActualSeqLenKey(uint32_t bIdx, u
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx,
+__aicore__ inline void LIV2Kernel<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx,
                                                              uint32_t &actS1Size,
                                                              uint32_t &actS2Size,
                                                              uint32_t &actS2SizeOrig)
@@ -284,7 +284,7 @@ __aicore__ inline void LIV2Preload<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx,
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  GlobalTensor<uint32_t> &metadataGm)
+__aicore__ inline void LIV2Kernel<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  GlobalTensor<uint32_t> &metadataGm)
 {
     uint32_t liCoreEnableIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_CORE_ENABLE_INDEX);
     uint32_t bN2StartIndex = GetAttrAbsIndex(curCoreIdx, LI_V2_BN2_START_INDEX);
@@ -361,7 +361,7 @@ __aicore__ inline void LIV2Preload<LIT>::SplitCoreByAICPU(uint32_t curCoreIdx,  
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LIV2Preload<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
+__aicore__ inline uint32_t LIV2Kernel<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                      uint32_t actS2SizeOrig)
 {
     if (actS2SizeOrig / constInfo.cmpRatio == 0) {
@@ -378,7 +378,7 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1
 }
 
 template <typename LIT>
-__aicore__ inline uint32_t LIV2Preload<LIT>::GetTotalBaseBlockNum()
+__aicore__ inline uint32_t LIV2Kernel<LIT>::GetTotalBaseBlockNum()
 {
     uint32_t totalBlockNum = 0;
     uint32_t actS1Size, actS2Size, actS2SizeOrig;
@@ -402,7 +402,7 @@ __aicore__ inline uint32_t LIV2Preload<LIT>::GetTotalBaseBlockNum()
  
 // 多核版本，双闭区间。基本原则：计算每个核最少处理的块数, 剩余的部分前面的核每个核多处理一块
 template <typename LIT>
-__aicore__ void inline LIV2Preload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum,
+__aicore__ void inline LIV2Kernel<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum,
                                                    LIV2Common::SplitCoreInfo &info)
 {
     uint32_t totalBlockNum = GetTotalBaseBlockNum();
@@ -489,7 +489,7 @@ __aicore__ void inline LIV2Preload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
+__aicore__ inline void LIV2Kernel<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
         if (constInfo.outputLayout == LI_V2_LAYOUT::TND) {
@@ -518,7 +518,7 @@ __aicore__ inline void LIV2Preload<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
+__aicore__ inline void LIV2Kernel<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                               __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
                                               __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
@@ -582,7 +582,7 @@ __aicore__ inline void LIV2Preload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::GetBN2Idx(uint32_t bN2Idx)
+__aicore__ inline void LIV2Kernel<LIT>::GetBN2Idx(uint32_t bN2Idx)
 {
     tempLoopInfo.bN2Idx = bN2Idx;
     tempLoopInfo.bIdx = bN2Idx / constInfo.kHeadNum;
@@ -590,7 +590,7 @@ __aicore__ inline void LIV2Preload<LIT>::GetBN2Idx(uint32_t bN2Idx)
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx)
+__aicore__ inline void LIV2Kernel<LIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx)
 {
     tempLoopInfo.gS1Idx = gS1LoopIdx;
     tempLoopInfo.actMBaseSize = constInfo.mBaseSize;
@@ -610,7 +610,7 @@ __aicore__ inline void LIV2Preload<LIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
+__aicore__ inline void LIV2Kernel<LIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 {
     GetBN2Idx(bN2LoopIdx);
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
@@ -636,7 +636,7 @@ __aicore__ inline void LIV2Preload<LIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, LIV2Common::RunInfo &runInfo)
+__aicore__ inline void LIV2Kernel<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, LIV2Common::RunInfo &runInfo)
 {
     runInfo.loop = loop;
     runInfo.bIdx = tempLoopInfo.bIdx;
@@ -707,7 +707,7 @@ __aicore__ inline void LIV2Preload<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::Process()
+__aicore__ inline void LIV2Kernel<LIT>::Process()
 {
     if (usedCoreNum == 0 || isUsedCoreEqZero) {
         // 没有计算任务，直接清理输出
@@ -719,7 +719,7 @@ __aicore__ inline void LIV2Preload<LIT>::Process()
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::ProcessInvalid()
+__aicore__ inline void LIV2Kernel<LIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
@@ -755,7 +755,7 @@ __aicore__ inline void LIV2Preload<LIT>::ProcessInvalid()
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::ProcessMain()
+__aicore__ inline void LIV2Kernel<LIT>::ProcessMain()
 {
     if (!splitCoreInfo.isCoreEnable) {
         return;
@@ -801,7 +801,7 @@ __aicore__ inline void LIV2Preload<LIT>::ProcessMain()
 }
 
 template <typename LIT>
-__aicore__ inline void LIV2Preload<LIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
+__aicore__ inline void LIV2Kernel<LIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
                                                           LIV2Common::RunInfo runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
