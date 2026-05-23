@@ -288,7 +288,7 @@ const gert::Shape &QuantTilingTransferHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     if (tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr) {
-        OP_LOGE(inputParams_.opName, "Op is quant, but has no quant shape");
+        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "dequant_scale");
         return defaultShape;
     }
     return tilingProcesser_.mmrCtxInfo_.dequant_scale_shape->GetStorageShape();
