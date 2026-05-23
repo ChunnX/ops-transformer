@@ -3,260 +3,408 @@
     "optional_input_mode": "gen_placeholder",
     "op_list": [
         {
-            "bin_filename": "FusedCausalConv1d_fp16",
+            "bin_filename": "FusedCausalConv1d_bfloat16",
             "inputs": [
                 {
                     "name": "x",
                     "index": 0,
-                    "dtype": "float16",
+                    "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
                     "name": "weight",
                     "index": 1,
-                    "dtype": "float16",
+                    "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "convStates",
+                    "name": "conv_states",
                     "index": 2,
-                    "dtype": "float16",
+                    "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "queryStartLoc",
+                    "name": "query_start_loc",
                     "index": 3,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "cacheIndices",
+                    "name": "cache_indices",
                     "index": 4,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "initialStateMode",
+                    "name": "initial_state_mode",
                     "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
                     "name": "bias",
                     "index": 6,
-                    "dtype": "float16",
+                    "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "numAcceptedToken",
+                    "name": "num_accepted_tokens",
                     "index": 7,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
-                }
-            ],
-            "attrs": [
-                {
-                    "name": "activationMode",
-                    "dtype": "int",
-                    "value": 0
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "padSlotId",
-                    "dtype": "int",
-                    "value": -1
+                    "name": "num_computed_tokens",
+                    "index": 8,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "runMode",
-                    "dtype": "int",
-                    "value": 0
+                    "name": "block_idx_first_scheduled_token",
+                    "index": 9,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "residualConnection",
-                    "dtype": "int",
-                    "value": 0
+                    "name": "block_idx_last_scheduled_token",
+                    "index": 10,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "initial_state_idx",
+                    "index": 11,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 }
             ],
             "outputs": [
                 {
-                    "name": "y",
+                    "name": "conv_states",
                     "index": 0,
-                    "dtype": "float16",
+                    "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "convStates",
+                    "name": "y",
                     "index": 1,
-                    "dtype": "float16",
+                    "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "activation_mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "pad_slot_id",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "run_mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "max_query_len",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "residual_connection",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "block_size",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "conv_mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "inplace",
+                    "dtype": "bool",
+                    "value": false
                 }
             ]
         },
         {
-            "bin_filename": "FusedCausalConv1d_bf16",
+            "bin_filename": "FusedCausalConv1d_float16",
             "inputs": [
                 {
                     "name": "x",
                     "index": 0,
-                    "dtype": "bfloat16",
+                    "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
                     "name": "weight",
                     "index": 1,
-                    "dtype": "bfloat16",
+                    "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "convStates",
+                    "name": "conv_states",
                     "index": 2,
-                    "dtype": "bfloat16",
+                    "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "queryStartLoc",
+                    "name": "query_start_loc",
                     "index": 3,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "cacheIndices",
+                    "name": "cache_indices",
                     "index": 4,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "initialStateMode",
+                    "name": "initial_state_mode",
                     "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
                     "name": "bias",
                     "index": 6,
-                    "dtype": "bfloat16",
+                    "dtype": "float16",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "numAcceptedToken",
+                    "name": "num_accepted_tokens",
                     "index": 7,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "optional",
                     "shape": [
                         -2
-                    ]
-                }
-            ],
-            "attrs": [
-                {
-                    "name": "activationMode",
-                    "dtype": "int",
-                    "value": 0
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "padSlotId",
-                    "dtype": "int",
-                    "value": -1
+                    "name": "num_computed_tokens",
+                    "index": 8,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "runMode",
-                    "dtype": "int",
-                    "value": 0
+                    "name": "block_idx_first_scheduled_token",
+                    "index": 9,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "residualConnection",
-                    "dtype": "int",
-                    "value": 0
+                    "name": "block_idx_last_scheduled_token",
+                    "index": 10,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "initial_state_idx",
+                    "index": 11,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "optional",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 }
             ],
             "outputs": [
                 {
-                    "name": "y",
+                    "name": "conv_states",
                     "index": 0,
-                    "dtype": "bfloat16",
+                    "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "convStates",
+                    "name": "y",
                     "index": 1,
-                    "dtype": "bfloat16",
+                    "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
                     "shape": [
                         -2
-                    ]
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "activation_mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "pad_slot_id",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "run_mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "max_query_len",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "residual_connection",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "block_size",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "conv_mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "inplace",
+                    "dtype": "bool",
+                    "value": false
                 }
             ]
         }

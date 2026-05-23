@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <tuple>
 #include "fused_causal_conv1d.h"
@@ -24,18 +24,29 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(FusedCausalConv1d);
 
-bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *queryStartLoc,
-                  const aclTensor *cacheIndices, const aclTensor *initialStateMode, const aclTensor *bias,
-                  const aclTensor *numAcceptedToken, int64_t activationMode, int64_t padSlotId, int64_t runMode,
-                  int64_t residualConnection, aclTensor *y, aclOpExecutor *executor)
+bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
+                       const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
+                       const aclTensor *bias, const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
+                       const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
+                       const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode,
+                       int64_t maxQueryLen, int64_t residualConnection, int64_t blockSize, int64_t convMode,
+                       bool inplace, aclTensor *y, aclOpExecutor *executor)
 {
-    L0_DFX(FusedCausalConv1d, x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedToken,
-           activationMode, padSlotId, runMode, residualConnection, y, convStates);
+    L0_DFX(FusedCausalConv1d, x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias,
+           numAcceptedTokens, numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
+           initialStateIdx, activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
+           inplace, y);
+
+    // When inplace=true, the result is written back to x; y may be nullptr from legacy
+    // callers. Use x as the effective output tensor to keep OP_OUTPUT registration valid.
+    aclTensor *outY = inplace ? const_cast<aclTensor *>(x) : y;
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         FusedCausalConv1d,
-        OP_INPUT(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedToken),
-        OP_OUTPUT(y, convStates), OP_ATTR(activationMode, padSlotId, runMode, residualConnection));
+        OP_INPUT(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
+                 numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
+        OP_OUTPUT(convStates, outY),
+        OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, inplace));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedCausalConv1d ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return false;
