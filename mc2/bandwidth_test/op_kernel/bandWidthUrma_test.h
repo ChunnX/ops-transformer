@@ -444,8 +444,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
 
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>(); // 等待所有核完成统计
-    if (startExpertId_ >= epWorldSize_) { return; }
-
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
     GlobalTensor<int32_t> rankGMTensor;
@@ -468,6 +466,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
+        PRINTF("AIVID %d epRankID %d, dstRankId = %d, srcRankGM[0] = %d, dstRankGM[1] = %d\n", aivId_, epRankId_, dstRankId, srcRankGM(0), srcRankGM(1));
         auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
         hcomm_.Wait(handle);
     }
