@@ -133,7 +133,6 @@ public:
 
     // 其他属性信息
     float softmaxScale_ = 1.0;
-    int64_t deterministic_ = 0;
 
     // seqLen信息
     int64_t seqLenQDims_ = 0;

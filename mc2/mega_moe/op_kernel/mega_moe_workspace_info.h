@@ -117,8 +117,13 @@ struct WorkspaceInfo {
         ptrRowGroupComplete = base + workspaceSize;
         int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(
             static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M));
-        int64_t maxRowGroupsStride = Ops::Base::CeilAlign(maxRowGroupsPerExpert, ALIGN_128);
+        int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE, ALIGN_128);
+        int64_t maxRowGroupsStride = Ops::Base::CeilAlign(
+            maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
+        ptrExpertDoneFlag = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         expandedRowIdxGather = ptrA;
     }
 };
