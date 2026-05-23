@@ -259,16 +259,42 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    // uint32_t epRankIdHccl{0};
-    // uint32_t epWorldSizeHccl{0};
-    // statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
-    // epWorldSizeHccl = epWorldSize_;
-    // GlobalTensor<uint32_t> selfDataStatusGMTensor;
-    // epRankId_ = epRankIdHccl;
-    // selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
-    // dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
-    //                                                 epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
-    // PRINTF("dataState_ is %d\n", dataState_);
+    statusSpaceGm_ = (GM_ADDR)(urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr);
+    LocalTensor<uint32_t> dataStateLocalTensor = dataStateBuf.Get<uint32_t>();
+    GlobalTensor<uint32_t> selfDataStatusGMTensor;
+    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_));
+    if (epRankId_ == 0) { // 0卡写 1卡读
+        dataStateLocalTensor(0) = epRankId_;
+        dataStateLocalTensor(1) = 1234;
+        dataStateLocalTensor(2) = 12345;
+        dataStateLocalTensor(3) = 123456;
+        dataStateLocalTensor(4) = 0;
+        dataStateLocalTensor(5) = 1234;
+        dataStateLocalTensor(6) = 12345;
+        dataStateLocalTensor(7) = 1;
+        PipeBarrier<PIPE_ALL>();
+        DataCopy(selfDataStatusGMTensor, dataStateLocalTensor, UB_ALIGN / sizeof(uint32_t));
+        PipeBarrier<PIPE_ALL>();
+    }
+    
+    if(epRankId_ ==1){
+        i = 0;
+        while(true) {
+            DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
+            PipeBarrier<PIPE_ALL>();
+            if (dataStateLocalTensor(7) == 1){
+                for (uint32_t j = 0; j < 8; j++) {
+                    uint32_t value = dataStateLocalTensor(j);
+                    PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
+                }
+            }
+            i++;
+            if (i >= 1000000){
+                PRINTF("error do not read dataStateLocalTensor in %u\n", i);
+                break;
+            }
+        }
+    }
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -445,16 +471,16 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     
     // ============ 计算当前核处理的token范围 ============
 
-    PRINTF("start SendToMoeExpert aivid is %d\n", aivId_);
+    //PRINTF("start SendToMoeExpert aivid is %d\n", aivId_);
 
     uint32_t startRankId, endRankId, sendRankNum;
     SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
-    PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n", epWorldSize_, startRankId, endRankId, sendRankNum);
+    //PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n", epWorldSize_, startRankId, endRankId, sendRankNum);
     if (startRankId >= endRankId || sendRankNum == 0) { 
         return; 
     }
 
-    PRINTF("start SendToMoeExpert inter aivid is %d\n", aivId_);
+    //PRINTF("start SendToMoeExpert inter aivid is %d\n", aivId_);
     // ============ 读取expert_id数组到UB ============
     GlobalTensor<XType> dstWinGMTensor;
     DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
@@ -481,8 +507,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                             epRankId_ * expertPerSizeOnWin_ +
                                             curExpertCnt * hAlignWinSize_);
-            PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
-            PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
+            //PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
+            //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
             ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
     }
