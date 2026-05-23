@@ -19,7 +19,7 @@
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant_deter.h"
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split_pro.h"
-#include "arch35/grouped_matmul_finalize_routing_tiling_data.h"
+#include "../grouped_matmul_finalize_routing_tiling_data.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
