@@ -13,7 +13,11 @@
  * \brief
  */
 #include "lib/matmul_intf.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "mega_moe_tiling_a2a3.h"
 
 using namespace AscendC;

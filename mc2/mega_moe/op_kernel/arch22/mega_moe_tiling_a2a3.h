@@ -30,7 +30,6 @@ struct MegaMoeA2A3TilingData {
     uint32_t topK;
     uint32_t worldSize;
     uint32_t listLen;
-    bool isA2;
 
     uint32_t moeExpertNum;
     uint32_t epWorldSize;
