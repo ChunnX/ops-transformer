@@ -314,14 +314,14 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
                                                  const GMMCompileInfo *compileInfoPtr)
 {
     if (groupNum_ < 1U || groupNum_ > MAX_TENSOR) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "groupList",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupNum",
             FormatString("%u", groupNum_).c_str(),
-            FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList", 1, 1024).c_str());
+            FormatString("The value of %s must be within the range [%d, %d]", "groupNum", 1, 1024).c_str());
         return false;
     }
-    OP_CHECK_IF(kZero, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x",
+    OP_CHECK_IF(kZero, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "K-axis of x",
         FormatString("%s", "0").c_str(),
-        FormatString("%s of %s must be a positive number", "K-axis", "x").c_str()),
+        FormatString("The value of %s must be a positive number", "K-axis of x").c_str()),
                 return false);
     OP_CHECK_IF(!CalBaseMMTiling(context, compileInfoPtr),
                 OP_LOGE(context->GetNodeName(), "Unable to calculate BaseMMTiling."), return false);

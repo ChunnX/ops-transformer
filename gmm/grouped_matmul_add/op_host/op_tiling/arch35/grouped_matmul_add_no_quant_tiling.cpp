@@ -207,9 +207,9 @@ bool GroupedMatmulAddNoQuantTiling::CalMatMulTiling(const gert::TilingContext *c
                                                     const GMMCompileInfo *compileInfoPtr)
 {
     OP_CHECK_IF(groupNum_ < 1U || groupNum_ > MAX_TENSOR,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "groupList",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "groupNum",
                     FormatString("%u", groupNum_).c_str(),
-                    FormatString("The value of the first axis of %s must be within the range [%d, %d]", "groupList", 1, 1024).c_str()),
+                    FormatString("The value of %s must be within the range [%d, %d]", "groupNum", 1, 1024).c_str()),
                 return false);
     uint32_t remainCoreNum = std::max(1U, compileInfoPtr->aicNum / groupNum_);
     FormulateBasicBlock(compileInfoPtr, remainCoreNum);
