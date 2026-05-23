@@ -303,6 +303,35 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     SyncFunc<AscendC::HardEvent::V_MTE3>();
+
+    if (epRankId_ == 0) {
+        GlobalTensor<int32_t> rankGMTensor;
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetWindStateAddrByRankId(epRankId_)));
+        for (uint32_t i = 0; i < 8; i++) {
+            rankGMTensor(i) = i + 1;
+        }
+        PipeBarrier<PIPE_ALL>();
+        for (uint32_t i = 0; i < 8; i++) {
+            PRINTF("rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
+        }
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], GetUrmaStateAddrByRankId(1), GetWindStateAddrByRankId(epRankId_), UB_ALIGN);
+        hcomm_.Wait(handle);
+    }
+    if (epRankId_ == 1) {
+        int a =0;
+        while (a < 1000000) {
+            a++;
+            if (a % 100000 == 0) {
+                PRINTF("a = %d\n", a);
+            }
+        }
+        GlobalTensor<int32_t> rankGMTensor;
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetWindStateAddrByRankId(epRankId_)));
+        for (uint32_t i = 0; i < 8; i++) {
+            PRINTF("rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
+        }
+    }
+
 }
 
 template <TemplateBandwidthTestTypeClass>
