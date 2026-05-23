@@ -466,7 +466,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        PRINTF("AIVID %d epRankID %d, dstRankId = %d, srcRankGM[0] = %d, dstRankGM[1] = %d\n", aivId_, epRankId_, dstRankId, srcRankGM(0), srcRankGM(1));
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
+        PRINTF("AIVID %d epRankID %d, dstRankId = %d, srcRankGM[0] = %d, dstRankGM[1] = %d\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1));
         auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
         hcomm_.Wait(handle);
     }
