@@ -400,15 +400,16 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
+    for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
         PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
-    for (uint32_t rankId = startRankId; rankId < endRankId; ++rankId) {
+    for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
         // ============ 遍历token并发送到目标rank ============
         for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
             uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
             int32_t curExpertCnt = 0;
             if (dstRankId != rankId) { // 只处理当前rank负责的token
+                PRINTF("aiv %d,eprankid %d, dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, dstRankId, rankId);
                 continue;
             }
             // SyncFunc<AscendC::HardEvent::S_V>();
