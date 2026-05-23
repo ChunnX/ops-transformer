@@ -292,13 +292,13 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     OP_TILING_CHECK(
         (x1Dim1 % MX_SCALE_ALIGN != 0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1",
-            ToString(x1Shape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
             "The mx quant input x1 dim(k) should be divisible by 64"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (x2Dim1 % MX_SCALE_ALIGN != 0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2",
-            ToString(x2Shape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
             "The mx quant input x2 dim(k) should be divisible by 64"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x1ScaleDimNum != DIM_THREE),
@@ -321,18 +321,18 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     OP_TILING_CHECK(
         (x1ScaleDim0 != x1Dim0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1_scale",
-            ToString(x1ScaleShape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
             "The x1scale first dim should match x1 first dim"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x1ScaleDim1 != x1Dim1 / MX_SCALE_ALIGN),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1_scale",
-                        ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                        Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
                         "The x1scale second dim should be x1Dim1 / 64"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (x1ScaleDim2 != DIM_TWO),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1_scale",
-            ToString(x1ScaleShape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
             "The x1scale third dim should be 2"),
         return ge::GRAPH_FAILED);
     uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
@@ -341,18 +341,18 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     OP_TILING_CHECK(
         (x2ScaleDim2 != DIM_TWO),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2_scale",
-            ToString(x2ScaleShape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
             "The x2scale third dim should be 2"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (x2ScaleDim0 != x2Dim0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2_scale",
-            ToString(x2ScaleShape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
             "The x2scale first dim should match x2 first dim"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleDim1 != x2Dim1 / MX_SCALE_ALIGN),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2_scale",
-                        ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                        Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
                         "The x2scale second dim should be x2Dim1 / 64"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
