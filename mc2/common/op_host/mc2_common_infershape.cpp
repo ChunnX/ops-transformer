@@ -28,7 +28,7 @@ ge::graphStatus CommonParamCheck(
     OPS_CHECK_NULL_WITH_CONTEXT(context, commParas.x2MatrixShape);
     if (commParas.x1MatrixShape->GetDimNum() != SUPPORT_DIM_SIZE ||
         commParas.x2MatrixShape->GetDimNum() != SUPPORT_DIM_SIZE) {
-        OP_LOGE(context->GetNodeName(), "Input x1 and Input x2 must be the same with 2 dims.");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x1 and x2", "2D", "2D");
         return ge::GRAPH_FAILED;
     }
     auto attrs = context->GetAttrs();
@@ -66,9 +66,8 @@ ge::graphStatus CommonParamCheck(
         groupStr, (*isTransA), (*isTransB), commParas.x1MatrixShape->GetDim(0), commParas.x1MatrixShape->GetDim(1),
         commParas.x2MatrixShape->GetDim(0), commParas.x2MatrixShape->GetDim(1), commParas.rankSize);
     if (commParas.dimKX1 != commParas.dimKX2) {
-        OP_LOGE(
-            context->GetNodeName(), "Input x1/x2 dim k must be same, but given x1.k %ld, x2.k %ld.", commParas.dimKX1,
-            commParas.dimKX2);
+        std::string shapeMsg = std::to_string(commParas.dimKX1) + " and " + std::to_string(commParas.dimKX2);
+        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "x1 and x2", shapeMsg.c_str(), "same K dim");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -86,7 +85,7 @@ ge::graphStatus AllGatherMatmulInferYShape(gert::InferShapeContext* context, Com
     // 不支持k = 0
     if (commParas.dimKX1 == 0) {
         commParas.dimM = commParas.dimN = 0;
-        OP_LOGE(context->GetNodeName(), "X1/X2 are empty tensors with zero dimK.");
+        OP_LOGE_FOR_INVALID_SHAPESIZE(context->GetNodeName(), "x1/x2", "0", "positive");
         return ge::GRAPH_FAILED;
     }
     gert::Shape* yShape = context->GetOutputShape(0);
@@ -145,7 +144,7 @@ ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context)
     }
     if (commParas.dimKX1 == 0) {
         commParas.dimM = commParas.dimN = 0;
-        OP_LOGE(context->GetNodeName(), "X1/X2 are empty tensors with zero dimK");
+        OP_LOGE_FOR_INVALID_SHAPESIZE(context->GetNodeName(), "x1/x2", "0", "positive");
         return ge::GRAPH_FAILED;
     }
     gert::Shape* yShape = context->GetOutputShape(0);
