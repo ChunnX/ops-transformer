@@ -796,7 +796,7 @@ bool CheckTempLimit(Mc2WeightQuantBatchMatmulInfo* inputParams)
     OP_TILING_CHECK(
         inputParams->transA,
         OP_LOGE_WITH_INVALID_ATTR(inputParams->opName, "transA",
-            inputParams->transA ? "1" : "0", "1"),
+            inputParams->transA ? "1" : "0", "0"),
         return false);
     OP_TILING_CHECK(
         inputParams->cDtype == ge::DT_INT8,
