@@ -108,7 +108,7 @@ private:
         }
 
         this->GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoVector taskRunInfoXVec[KernelBase::PRELOAD_TASK_CACHE_SIZE] = {};
 
         this->createdTaskCount = 0;
         this->executedTaskCount = 0;
@@ -157,7 +157,7 @@ private:
         return ((bN2Cur != this->bN2End_) || (gS1Cur != this->gS1OEnd_) || (s2Cur != this->s2OEnd_));
     }
 
-    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoVector taskRunInfoXVec[KernelBase::PRELOAD_TASK_CACHE_SIZE])
     {
         for (uint32_t i = 0; i < KernelBase::PRELOAD_TASK_CACHE_SIZE; i++) {
             if (taskRunInfo[i].isValid) {
@@ -315,31 +315,31 @@ private:
         return;
     }
 
-    __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoVector taskRunInfoXVec[KernelBase::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - KernelBase::PRELOAD_N) % KernelBase::PRELOAD_TASK_CACHE_SIZE];
-        if (runInfo0.isValid) {
+        RunInfoVector &runInfoXVec0 = taskRunInfoXVec[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoVector &runInfoXVecNegN = taskRunInfoXVec[(loop - KernelBase::PRELOAD_N) % KernelBase::PRELOAD_TASK_CACHE_SIZE];
+if (runInfoXVec0.isValid) {
             if ASCEND_IS_AIV {
-                ComputeVec1Vector(runInfo0);
+                ComputeVec1Vector(runInfoXVec0);
             }
         }
         if (loop >= KernelBase::PRELOAD_N) {
-            if (runInfoNegN.isValid) {
+            if (runInfoXVecNegN.isValid) {
                 if ASCEND_IS_AIV {
-                    ComputeVec2Vector(runInfoNegN);
+                    ComputeVec2Vector(runInfoXVecNegN);
                 }
-                runInfoNegN.isValid = false;
+                runInfoXVecNegN.isValid = false;
             }
         }
     }
 
-    __aicore__ inline void ComputeVec1Vector(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1Vector(RunInfoVector &runInfoXVec)
     {
-        this->vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        this->vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfoXVec);
     }
 
-    __aicore__ inline void ComputeVec2Vector(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2Vector(RunInfoVector &runInfoXVec)
     {
         if constexpr (KernelBase::BMM2_TOUB) {
             this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
@@ -349,80 +349,72 @@ private:
     }
 
     __aicore__ inline void CreateTaskVector(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                            RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE])
+                                            RunInfoVector taskRunInfoXVec[KernelBase::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
-        CalcParamsVector(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
+        RunInfoVector &runInfoXVec = taskRunInfoXVec[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
+        CalcParamsVector(loop, bN2Cur, gS1Cur, s2Cur, runInfoXVec);
+        runInfoXVec.isValid = true;
     }
 
     __aicore__ inline void CalcParamsVector(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                            RunInfoX &info)
+                                            RunInfoVector &runInfoXVec)
     {
-        info.loop = loop;
-        info.mloop = this->mloop;
-        info.bIdx = bN2Cur / this->constInfo.n2Size;
-        info.n2Idx = bN2Cur % this->constInfo.n2Size;
-        info.gS1Idx = gS1Cur * KernelBase::mBaseSize;
-        if constexpr (KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
-                      KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            info.s1Idx = info.gS1Idx / this->constInfo.gSize;
-        } else {
-            info.s1Idx = info.gS1Idx % this->actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * KernelBase::s2BaseSize;
-        info.actS1Size = this->actSeqLensQ;
-        info.actS2Size = this->actSeqLensKv;
-
-        info.actMSize = KernelBase::mBaseSize;
-        uint64_t gS1Size = info.actS1Size * this->constInfo.gSize;
-        if (((gS1Cur + 1) * KernelBase::mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * KernelBase::mBaseSize;
-        }
-        info.actSingleLoopS2Size = KernelBase::s2BaseSize;
-        if (((s2Cur + 1) * KernelBase::s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * KernelBase::s2BaseSize;
-        }
-        info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename KernelBase::INPUT_T)));
-        if (this->constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            if (loop == 0) {
-                info.isChangeBatch = true;
+        if ASCEND_IS_AIV {
+            runInfoXVec.loop = loop;
+            runInfoXVec.mloop = this->mloop;
+            runInfoXVec.bIdx = bN2Cur / this->constInfo.n2Size;
+            runInfoXVec.n2Idx = bN2Cur % this->constInfo.n2Size;
+            runInfoXVec.gS1Idx = gS1Cur * KernelBase::mBaseSize;
+            runInfoXVec.gIdx = 0;
+            if constexpr (KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
+                          KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                          KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                runInfoXVec.s1Idx = runInfoXVec.gS1Idx / this->constInfo.gSize;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == this->curS2Start);
+                runInfoXVec.s1Idx = runInfoXVec.gS1Idx % this->actSeqLensQ;
             }
-        }
+            runInfoXVec.s2Idx = s2Cur * KernelBase::s2BaseSize;
 
-        GetPreNextTokenLeftUpVector(this->actSeqLensQ, this->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+            uint64_t actS1Size = this->actSeqLensQ;
+            uint64_t actS2Size = this->actSeqLensKv;
+            runInfoXVec.actMSize = KernelBase::mBaseSize;
+            uint64_t gS1Size = actS1Size * this->constInfo.gSize;
+            if (((gS1Cur + 1) * KernelBase::mBaseSize) > gS1Size) {
+                runInfoXVec.actMSize = gS1Size - gS1Cur * KernelBase::mBaseSize;
+            }
+            runInfoXVec.actSingleLoopS2Size = KernelBase::s2BaseSize;
+            if (((s2Cur + 1) * KernelBase::s2BaseSize) > actS2Size) {
+                runInfoXVec.actSingleLoopS2Size = actS2Size - s2Cur * KernelBase::s2BaseSize;
+            }
+            runInfoXVec.actSingleLoopS2SizeAlign =
+                Align((uint32_t)runInfoXVec.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename KernelBase::INPUT_T)));
 
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == this->curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = this->coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == this->curS2End);
+            runInfoXVec.isFirstS2Loop = ((loop == 0) || (s2Cur == this->curS2Start));
+            runInfoXVec.isLastS2Loop = (s2Cur + 1 == this->curS2End);
 
-        if constexpr (KernelBase::USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (this->constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
+            if constexpr (KernelBase::USE_DN) {
+                runInfoXVec.actMSizeAlign32 = (runInfoXVec.actMSize + 31) >> 5 << 5;
+                runInfoXVec.actVecMSize = runInfoXVec.actMSize <= 16 ? runInfoXVec.actMSize : (runInfoXVec.actMSizeAlign32 >> 1);
+            } else {
+                runInfoXVec.actVecMSize = (runInfoXVec.actMSize + 1) >> 1;
+            }
+            runInfoXVec.vecMbaseIdx = 0;
+            if (this->constInfo.subBlockIdx == 1) {
+                runInfoXVec.vecMbaseIdx = runInfoXVec.actVecMSize;
+                runInfoXVec.actVecMSize = runInfoXVec.actMSize - runInfoXVec.actVecMSize;
+            }
 
-        if (this->bN2Start_ == this->bN2End_ && this->gS1OStart_ == this->gS1OEnd_) {
-            info.isS2SplitCore = true;
-        } else {
-            if (this->headS2Split && (bN2Cur == this->bN2Start_) && (gS1Cur == this->gS1OStart_)) {
-                info.isS2SplitCore = true;
-            } else if (this->tailS2Split && (bN2Cur == this->bN2End_) && (gS1Cur == this->gS1OEnd_)) {
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = this->headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
+            runInfoXVec.isS2SplitCore = false;
+            runInfoXVec.faTmpOutWsPos = this->coreFirstTmpOutWsPos_;
+            if (this->bN2Start_ == this->bN2End_ && this->gS1OStart_ == this->gS1OEnd_) {
+                runInfoXVec.isS2SplitCore = true;
+            } else {
+                if (this->headS2Split && (bN2Cur == this->bN2Start_) && (gS1Cur == this->gS1OStart_)) {
+                    runInfoXVec.isS2SplitCore = true;
+                } else if (this->tailS2Split && (bN2Cur == this->bN2End_) && (gS1Cur == this->gS1OEnd_)) {
+                    runInfoXVec.isS2SplitCore = true;
+                    runInfoXVec.faTmpOutWsPos = this->headS2Split ? (runInfoXVec.faTmpOutWsPos + 1) : runInfoXVec.faTmpOutWsPos;
+                }
             }
         }
     }
