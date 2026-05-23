@@ -455,6 +455,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     tilingData_.gmmFinalizeRoutingDataParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmFinalizeRoutingDataParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias ? 1 : 0);
 
+    DeterministicTilingProcess();
     PrintQuantParams();
     return ge::GRAPH_SUCCESS;
 }
@@ -560,6 +561,39 @@ void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
         << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
         << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias);
     OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+}
+
+void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
+{
+    if (context_->GetDeterministic() == 0) {
+        tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
+        return;
+    }
+    tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 1;
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint64_t l2_size;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2_size);
+    constexpr uint32_t DETER_WORK_SPACE_SIZE = 96 * 1024 * 1024;
+    constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64 * 1024 * 1024;
+    deterWorkspaceSize_ = l2_size > DETER_WORK_SPACE_SIZE ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
+    tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
+    OP_LOGD(context_->GetNodeName(), "DeterministicTilingProcess: flag=%u, wsSize=%u",
+            tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag,
+            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize);
+}
+
+ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
+{
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
+    workspaces[0] = SYS_WORKSPACE_SIZES;
+    if (deterWorkspaceSize_ > 0) {
+        workspaces[0] += deterWorkspaceSize_;
+    }
+    OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: total=%zu (sys=%u + deter=%u)",
+            workspaces[0], SYS_WORKSPACE_SIZES, deterWorkspaceSize_);
+    return ge::GRAPH_SUCCESS;
 }
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulFinalizeRouting, GroupedMatmulFinalizeRoutingQuantTiling, 1);

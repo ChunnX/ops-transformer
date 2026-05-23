@@ -20,6 +20,7 @@
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split_pro.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
+#include "common/grouped_matmul_finalize_routing_pertoken_dequant_deter.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
@@ -34,6 +35,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
     auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
     auto matmulTiling_ = tilingData.matmulTiling;
+
+    if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
+        grouped_matmul_finalize_routing_pertoken_dequant_deter<layoutA, layoutB, scaleType, rowIndType>(
+            x, w, w_scale, bias, x_scale, group_list, share_input,
+            logit, row_index, offset, y, workspaceGM, tilingGM);
+        return;
+    }
 
     using L1TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
     using L0TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
