@@ -155,35 +155,49 @@ ge::graphStatus ReplaceCombineV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
         return ge::GRAPH_FAILED;
     }
 
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [2/5] wiring V2 inputs→V3 (probing up to %zu ports) ...",
-              nameStr.GetString(), kV3TotalInputs);
+    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [2/5] wiring V2 inputs→V3 (via source nodes' out edges) ...",
+              nameStr.GetString());
     int skippedInputs = 0;
     int wiredInputs = 0;
-    for (size_t v3Port = 1; v3Port < kV3TotalInputs; v3Port++) {
-        size_t v2Port = v3Port - 1;
-        auto srcPair = v2Node.GetInDataNodesAndPortIndexs(static_cast<int32_t>(v2Port));
-        if (srcPair.first == nullptr) {
-            OPS_LOG_D(PASS_NAME.c_str(), "node %s: V2.port%zu→V3.port%zu: src null (optional unfed or no anchor), skip",
-                      nameStr.GetString(), v2Port, v3Port);
-            skippedInputs++;
-            continue;
-        }
+    ge::AscendString v2Name;
+    v2Node.GetName(v2Name);
+    for (auto &srcNode : graph.GetDirectNode()) {
         ge::AscendString srcName;
-        srcPair.first->GetName(srcName);
-        OPS_LOG_I(PASS_NAME.c_str(), "node %s: wiring %s.port%d → V3.port%zu ...",
-                  nameStr.GetString(), srcName.GetString(), srcPair.second, v3Port);
-        edgeRet = graph.AddDataEdge(*srcPair.first, srcPair.second, v3GNode, static_cast<int32_t>(v3Port));
-        if (edgeRet != ge::GRAPH_SUCCESS) {
-            OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge %s.port%d→V3.port%zu FAILED (ret=%d)",
-                      nameStr.GetString(), srcName.GetString(), srcPair.second, v3Port, edgeRet);
-            return ge::GRAPH_FAILED;
+        srcNode.GetName(srcName);
+        for (int32_t outPort = 0; outPort < static_cast<int32_t>(kV3TotalInputs); outPort++) {
+            auto consumers = srcNode.GetOutDataNodesAndPortIndexs(outPort);
+            if (consumers.empty()) {
+                break;
+            }
+            for (auto &cPair : consumers) {
+                ge::AscendString consumerName;
+                cPair.first->GetName(consumerName);
+                if (consumerName != v2Name) {
+                    continue;
+                }
+                size_t v3Port = static_cast<size_t>(cPair.second) + 1;
+                if (v3Port >= kV3TotalInputs) {
+                    OPS_LOG_D(PASS_NAME.c_str(), "node %s: %s.port%d→V2.port%d, V3.port%zu out of range, skip",
+                              nameStr.GetString(), srcName.GetString(), outPort, cPair.second, v3Port);
+                    skippedInputs++;
+                    continue;
+                }
+                OPS_LOG_I(PASS_NAME.c_str(), "node %s: wiring %s.port%d → V3.port%zu (was V2.port%d) ...",
+                          nameStr.GetString(), srcName.GetString(), outPort, v3Port, cPair.second);
+                edgeRet = graph.AddDataEdge(srcNode, outPort, v3GNode, static_cast<int32_t>(v3Port));
+                if (edgeRet != ge::GRAPH_SUCCESS) {
+                    OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge %s.port%d→V3.port%zu FAILED (ret=%d)",
+                              nameStr.GetString(), srcName.GetString(), outPort, v3Port, edgeRet);
+                    return ge::GRAPH_FAILED;
+                }
+                OPS_LOG_I(PASS_NAME.c_str(), "node %s:   %s.port%d → V3.port%zu OK", nameStr.GetString(),
+                          srcName.GetString(), outPort, v3Port);
+                wiredInputs++;
+            }
         }
-        OPS_LOG_I(PASS_NAME.c_str(), "node %s:   %s.port%d → V3.port%zu OK", nameStr.GetString(),
-                  srcName.GetString(), srcPair.second, v3Port);
-        wiredInputs++;
     }
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: input wiring done - %d OK, %d skipped (V3_total=%zu)",
-              nameStr.GetString(), wiredInputs, skippedInputs, kV3TotalInputs);
+    OPS_LOG_I(PASS_NAME.c_str(), "node %s: input wiring done - %d OK, %d out-of-range skipped",
+              nameStr.GetString(), wiredInputs, skippedInputs);
 
     OPS_LOG_I(PASS_NAME.c_str(), "node %s: [3/5] collecting V2 output consumers (V2 has 1 OUTPUT) ...",
               nameStr.GetString());
