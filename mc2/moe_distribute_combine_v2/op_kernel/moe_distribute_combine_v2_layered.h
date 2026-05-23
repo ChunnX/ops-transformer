@@ -57,7 +57,7 @@ public:
     constexpr static uint32_t BUFFER_NUM = 2U;                   // 多buf
     constexpr static uint32_t STATE_OFFSET = 512U;              // 状态空间偏移地址
     constexpr static uint32_t STATE_SPACE_SIZE = 1024U * 1024U;  // 1M
-    constexpr static uint32_t SUM_WINDOW_FLAG = 1088U;
+    constexpr static uint32_t SUM_WINDOW_FLAG = 3072U;
     constexpr static uint32_t UB_ALIGN = 32U;                   // UB按32字节对齐
     constexpr static uint32_t SELF_STATE_OFFSET = 512U * 1024U;  // 本卡状态空间偏移地址
     constexpr static uint32_t BLOCK_SIZE = 32U;
@@ -71,7 +71,7 @@ public:
     constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static uint32_t SRCSTRIDE_BLOCK = 15U;
-    constexpr static uint32_t MAX_LOCAL_BS = 256U;
+    constexpr static uint32_t MAX_LOCAL_BS = 512U;
     constexpr static uint32_t MAGIC_OFFSET = 2U * 1024U * 1024U - 32U * 32U;
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t MB_SIZE = 1024UL * 1024UL;
