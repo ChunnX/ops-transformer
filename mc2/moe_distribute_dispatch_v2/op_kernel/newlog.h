@@ -71,13 +71,13 @@ private:
 template<typename T>
 __aicore__ inline void Log::print_value(const T& val) {
     if constexpr (is_decimal_integer_v<T>) {
-        printf("%d", val);
+        PRINTF("%d", val);
     }
     else if constexpr (is_unsigned_integer_v<T>) {
-        printf("%u",val);
+        PRINTF("%u",val);
     }
     else if constexpr (is_fp_point_v<T>) {
-        printf("%f", val);
+        PRINTF("%f", val);
     }
 }
 
@@ -88,18 +88,18 @@ __aicore__ inline void Log::Init(TPipe * tpipe,int32_t rankId) {
 
 __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, const GM_ADDR addr){
     const __gm__ void * addrtemp = static_cast<const __gm__ void*>(addr);
-    printf("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
-    printf("%s: %p\n", msg, addrtemp);
+    PRINTF("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
+    PRINTF("%s: %p\n", msg, addrtemp);
 }
 __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg){
-    printf("[rankId: %d][aivId: %d][line: %d]%s\n", rankId_, aivId_, line, msg);
+    PRINTF("[rankId: %d][aivId: %d][line: %d]%s\n", rankId_, aivId_, line, msg);
 }
 
 template<typename T>
 __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,   const T num){
-    printf("[rankId: %d][aivId: %d][line: %d]%s: ", rankId_, aivId_, line, msg);
+    PRINTF("[rankId: %d][aivId: %d][line: %d]%s: ", rankId_, aivId_, line, msg);
     print_value(num);
-    printf("\n");
+    PRINTF("\n");
 }
 
 template<typename T>
@@ -148,7 +148,7 @@ __aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t act
     State stack[8];
     int top = 0;
     stack[0] = {0, 0, 0};
-    printf("[");
+    PRINTF("[");
 
     while (top >= 0) {
         State& s = stack[top];
@@ -165,13 +165,13 @@ __aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t act
                 print_value(val);
             } else {
                 // 打印占位符，并记录其宽度为 1
-                printf("-");
+                PRINTF("-");
                 current_printed = 1;
             }
 
             // 打印逗号
             if (!is_last) {
-                printf(",");
+                PRINTF(",");
                 current_printed += 1;
             }
 
@@ -179,17 +179,17 @@ __aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t act
             // 补白 = (最大宽度 + 逗号位) - 当前已打印长度 + 额外间距
             int padding = (max_element_width + (is_last ? 0 : 1)) - current_printed + 1;
             for (int i = 0; i < padding; ++i){ // 增加 +1，保持间隔
-                printf(" ");
+                PRINTF(" ");
             }
 
             if (is_last) {
-                printf("]");
+                PRINTF("]");
                 top--;
                 if (top >= 0) {
                     stack[top].pos++;
                     if (stack[top].pos < shape[stack[top].dim]) {
-                        printf("\n");
-                        for (int i = 0; i <= top; ++i) printf(" ");
+                        PRINTF("\n");
+                        for (int i = 0; i <= top; ++i) PRINTF(" ");
                     }
                 }
             } else {
@@ -200,23 +200,23 @@ __aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t act
                 size_t next_offset = s.offset + s.pos * strides[s.dim];
                 top++;
                 stack[top] = {(int)s.dim + 1, 0, next_offset};
-                printf("[");
+                PRINTF("[");
             } else {
-                printf("]");
+                PRINTF("]");
                 top--;
                 if (top >= 0) {
                     stack[top].pos++;
                     if (stack[top].pos < shape[stack[top].dim]) {
-                        printf(",\n");
+                        PRINTF(",\n");
                         for (int i = 0; i <= top; ++i){
-                            printf(" ");
+                            PRINTF(" ");
                         }
                     }
                 }
             }
         }
     }
-    printf("\n");
+    PRINTF("\n");
 }
 
 
@@ -239,21 +239,21 @@ __aicore__ inline void Log::PrintValue(const LocalTensor<T>& tensor, const uint3
     } 
 
     PrintLevel(tensor, actual_size, shape, strides, max_w);
-    printf("\n");
+    PRINTF("\n");
 }
 
 
 template <typename T,size_t N>
 __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, LocalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
-    printf("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
-    printf("%s\n", msg);
+    PRINTF("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
+    PRINTF("%s\n", msg);
     if(tensor.GetSize() == 0){
-        printf("tensor is empty\n");
+        PRINTF("tensor is empty\n");
         return;
     }
     bool cast = !is_decimal_integer_v<T> && !is_unsigned_integer_v<T> && !is_fp_point_v<T>;
     if (cast) {
-        printf("[ERROR][printf only support float, int, uint, bool .. plese read document and cast data type]\n");
+        PRINTF("[ERROR][PRINTF only support float, int, uint, bool .. plese read document and cast data type]\n");
         return ;
     }
     PrintValue(tensor, shape);
@@ -272,7 +272,7 @@ __aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t ac
     State stack[8];
     int top = 0;
     stack[0] = {0, 0, 0};
-    printf("[");
+    PRINTF("[");
 
     while (top >= 0) {
         State& s = stack[top];
@@ -289,13 +289,13 @@ __aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t ac
                 print_value(val);
             } else {
                 // 打印占位符，并记录其宽度为 1
-                printf("-");
+                PRINTF("-");
                 current_printed = 1;
             }
 
             // 打印逗号
             if (!is_last) {
-                printf(",");
+                PRINTF(",");
                 current_printed += 1;
             }
 
@@ -303,17 +303,17 @@ __aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t ac
             // 补白 = (最大宽度 + 逗号位) - 当前已打印长度 + 额外间距
             int padding = (max_element_width + (is_last ? 0 : 1)) - current_printed + 1;
             for (int i = 0; i < padding; ++i){ // 保留 +1，间距隔开
-                printf(" ");
+                PRINTF(" ");
             }
 
             if (is_last) {
-                printf("]");
+                PRINTF("]");
                 top--;
                 if (top >= 0) {
                     stack[top].pos++;
                     if (stack[top].pos < shape[stack[top].dim]) {
-                        printf("\n");
-                        for (int i = 0; i <= top; ++i) printf(" ");
+                        PRINTF("\n");
+                        for (int i = 0; i <= top; ++i) PRINTF(" ");
                     }
                 }
             } else {
@@ -324,23 +324,23 @@ __aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t ac
                 size_t next_offset = s.offset + s.pos * strides[s.dim];
                 top++;
                 stack[top] = {(int)s.dim + 1, 0, next_offset};
-                printf("[");
+                PRINTF("[");
             } else {
-                printf("]");
+                PRINTF("]");
                 top--;
                 if (top >= 0) {
                     stack[top].pos++;
                     if (stack[top].pos < shape[stack[top].dim]) {
-                        printf(",\n");
+                        PRINTF(",\n");
                         for (int i = 0; i <= top; ++i){
-                            printf(" ");
+                            PRINTF(" ");
                         }
                     }
                 }
             }
         }
     }
-    printf("\n");
+    PRINTF("\n");
 }
 
 template<typename T, size_t N>
@@ -363,16 +363,16 @@ __aicore__  inline void Log::PrintValue(const GlobalTensor<T>& tensor, const uin
     } 
 
     PrintLevel(tensor, actual_size, shape, strides, max_w);
-    printf("\n");
+    PRINTF("\n");
 }
 
 template <typename T,size_t N>
 __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, GlobalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
-    printf("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
-    printf("%s\n", msg);
+    PRINTF("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
+    PRINTF("%s\n", msg);
     bool cast = !is_decimal_integer_v<T> && !is_unsigned_integer_v<T> && !is_fp_point_v<T>;
     if (cast) {
-        printf("[ERROR][printf only support float, int, uint, bool.. plese read document and cast data type]\n");
+        PRINTF("[ERROR][PRINTF only support float, int, uint, bool.. plese read document and cast data type]\n");
         return ; 
     }
     uint64_t elemNum = 1;
@@ -380,7 +380,7 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
         elemNum = elemNum * shape[i];
     }
     if(elemNum == 0) {
-        printf("tensor is empty\n");
+        PRINTF("tensor is empty\n");
         return;
     }
     GlobalTensor<T> tempTensor;
