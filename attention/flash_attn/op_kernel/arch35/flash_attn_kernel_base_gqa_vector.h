@@ -69,7 +69,7 @@ private:
         }
 
         vectorData.ctx->GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[VectorData::PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE] = {};
 
         vectorData.ctx->createdTaskCount = 0;
         vectorData.ctx->executedTaskCount = 0;
@@ -91,7 +91,7 @@ private:
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealModeVector(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    CreateTaskVector(vectorData.ctx->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTaskVector(vectorData.ctx->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoVec);
                     vectorData.ctx->createdTaskCount++;
                     UpdateAxisInfoVector(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
@@ -105,9 +105,9 @@ private:
                     continue;
                 }
             }
-            shouldExecuteTask = ShouldExecuteTaskVector(taskRunInfo);
+            shouldExecuteTask = ShouldExecuteTaskVector(taskRunInfoVec);
             if (shouldExecuteTask) {
-                ExecuteTaskVector(vectorData.ctx->executedTaskCount, taskRunInfo);
+                ExecuteTaskVector(vectorData.ctx->executedTaskCount, taskRunInfoVec);
                 vectorData.ctx->executedTaskCount++;
             }
         }
@@ -118,10 +118,10 @@ private:
         return ((bN2Cur != vectorData.ctx->bN2End_) || (gS1Cur != vectorData.ctx->gS1OEnd_) || (s2Cur != vectorData.ctx->s2OEnd_));
     }
 
-    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoX taskRunInfo[VectorData::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
     {
         for (uint32_t i = 0; i < VectorData::PRELOAD_TASK_CACHE_SIZE; i++) {
-            if (taskRunInfo[i].isValid) {
+            if (taskRunInfoVec[i].isValid) {
                 return true;
             }
         }
@@ -276,10 +276,10 @@ private:
         return;
     }
 
-    __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoX taskRunInfo[VectorData::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - VectorData::PRELOAD_N) % VectorData::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXVec &runInfo0 = taskRunInfoVec[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXVec &runInfoNegN = taskRunInfoVec[(loop - VectorData::PRELOAD_N) % VectorData::PRELOAD_TASK_CACHE_SIZE];
         if (runInfo0.isValid) {
             if ASCEND_IS_AIV {
                 ComputeVec1Vector(runInfo0);
@@ -295,44 +295,37 @@ private:
         }
     }
 
-    __aicore__ inline void ComputeVec1Vector(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1Vector(RunInfoXVec &runInfoVec)
     {
-        vectorData.vecFaBlock.ProcessVec1(vectorData.ctx->l1PBuffers.Get(), vectorData.ctx->bmm1Buffers.Get(), runInfo);
+        vectorData.vecFaBlock.ProcessVec1(vectorData.ctx->l1PBuffers.Get(), vectorData.ctx->bmm1Buffers.Get(), runInfoVec);
     }
 
-    __aicore__ inline void ComputeVec2Vector(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2Vector(RunInfoXVec &runInfoVec)
     {
         using VecMm2ResPos = typename VectorData::VecFaBlockTypeAlias::mm2ResPos;
         using UbBufferType = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
         if constexpr (std::is_same_v<VecMm2ResPos, UbBufferType>) {
-            vectorData.vecFaBlock.ProcessVec2(vectorData.ctx->bmm2Buffers.Get(), runInfo);
+            vectorData.vecFaBlock.ProcessVec2(vectorData.ctx->bmm2Buffers.Get(), runInfoVec);
         } else {
-            vectorData.vecFaBlock.ProcessVec2(vectorData.ctx->bmm2ResGmBuffers.Get(), runInfo);
+            vectorData.vecFaBlock.ProcessVec2(vectorData.ctx->bmm2ResGmBuffers.Get(), runInfoVec);
         }
     }
 
     __aicore__ inline void CreateTaskVector(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                            RunInfoX taskRunInfo[VectorData::PRELOAD_TASK_CACHE_SIZE])
+                                            RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoXVec &runInfo = taskRunInfoVec[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
         CalcParamsVector(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParamsVector(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParamsVector(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoXVec &info)
     {
         info.loop = loop;
         info.mloop = vectorData.ctx->mloop;
         info.bIdx = bN2Cur / vectorData.ctx->constInfo.n2Size;
         info.n2Idx = bN2Cur % vectorData.ctx->constInfo.n2Size;
         info.gS1Idx = gS1Cur * VectorData::mBaseSize;
-        if constexpr (VectorData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
-                      VectorData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      VectorData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            info.s1Idx = info.gS1Idx / vectorData.ctx->constInfo.gSize;
-        } else {
-            info.s1Idx = info.gS1Idx % vectorData.ctx->actSeqLensQ;
-        }
         info.s2Idx = s2Cur * VectorData::s2BaseSize;
         info.actS1Size = vectorData.ctx->actSeqLensQ;
         info.actS2Size = vectorData.ctx->actSeqLensKv;
@@ -348,15 +341,6 @@ private:
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename VectorData::INPUT_T)));
-        if (vectorData.ctx->constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            if (loop == 0) {
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == vectorData.ctx->curS2Start);
-            }
-        }
 
         GetPreNextTokenLeftUpVector(vectorData.ctx->actSeqLensQ, vectorData.ctx->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -371,6 +355,9 @@ private:
             info.vecMbaseIdx = info.actVecMSize;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
+
+        info.gIdx = 0;
+        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
 
         if (vectorData.ctx->bN2Start_ == vectorData.ctx->bN2End_ && vectorData.ctx->gS1OStart_ == vectorData.ctx->gS1OEnd_) {
             info.isS2SplitCore = true;

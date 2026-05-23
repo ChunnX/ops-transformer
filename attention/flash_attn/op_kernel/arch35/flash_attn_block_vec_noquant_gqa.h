@@ -245,7 +245,7 @@ public:
     }
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfoX runInfo)
+                                       RunInfoXVec runInfo)
     {
 #ifdef SKIP_V1
         bmm1ResBuf.WaitCrossCore();
@@ -336,7 +336,7 @@ public:
 
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+                                         RunInfoXVec runInfo)
     {
         LocalTensor<uint8_t> attenMaskUb;
 
@@ -393,7 +393,7 @@ public:
         return;
     }
 
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
+    __aicore__ inline void SoftmaxDataCopyOut(RunInfoXVec runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         if (this->isFd) {
             if (runInfo.isS2SplitCore) {
@@ -417,7 +417,7 @@ public:
     }
 
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
-                                             RunInfoX &runInfo)
+                                             RunInfoXVec &runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
@@ -451,7 +451,7 @@ public:
         softmaxLseQueue.FreeTensor(lseUb);
     }
 
-    __aicore__ inline void Vec1SinkCompute(RunInfoX &runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
+    __aicore__ inline void Vec1SinkCompute(RunInfoXVec &runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         int64_t sinkOffset = runInfo.n2Idx * constInfo.gSize + runInfo.gIdx;
         auto sinkRaw = this->sinkGm.GetValue(sinkOffset);
@@ -464,7 +464,7 @@ public:
         SinkSubExpAddVF<float>(sumUb, maxUb, sinkValue, runInfo.actVecMSize);
     }
 
-    __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
+    __aicore__ inline void Vec1SinkComputeGSFused(RunInfoXVec &runInfo, LocalTensor<float> &sumUb,
                                                   LocalTensor<float> &maxUb)
     {
         CopySinkIn(runInfo);
@@ -473,7 +473,7 @@ public:
         sinkQue.FreeTensor(sinkUb);
     }
 
-    __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
+    __aicore__ inline void CopySinkIn(RunInfoXVec &runInfo)
     {
         LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
         int64_t sinkOffset =
@@ -491,7 +491,7 @@ public:
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+                                         RunInfoXVec runInfo)
     {
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
@@ -616,7 +616,7 @@ public:
     }
 
     __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-                                           RunInfoX runInfo)
+                                           RunInfoXVec runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm2ResBuf.SetCrossCore();
@@ -657,7 +657,7 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
-    __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoXVec &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                  uint32_t mDealSize)
     {
         LocalTensor<OUTPUT_T> attenOut;
@@ -677,7 +677,7 @@ public:
     }
 
     template <typename VEC2_RES_T>
-    __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, const RunInfoX &runInfo)
+    __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, const RunInfoXVec &runInfo)
     {
         // bmm2 result is on GM and global update data on UB
         uint32_t subMBase = 8192 / constInfo.dBasicBlock;
@@ -798,7 +798,7 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
-    __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void CopyOutAttentionOut(RunInfoXVec runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
         if (this->isFd) {
@@ -812,7 +812,7 @@ public:
         }
     }
 
-    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX &runInfo, int64_t s1FirstValidToken,
+    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoXVec &runInfo, int64_t s1FirstValidToken,
                                                    int64_t s1LastValidToken)
     {
         int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
@@ -845,7 +845,7 @@ public:
 
     template <typename VEC2_RES_T>
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t mStartVec, int64_t mDealSize,
-                                      RunInfoX &runInfo, int64_t dSizeAligned64)
+                                      RunInfoXVec &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (hasAtten) {
             int64_t s1FirstValidToken = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
@@ -869,7 +869,7 @@ public:
         }
     }
 
-    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
+    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoXVec &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
         FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
@@ -913,7 +913,7 @@ public:
         }
     }
 
-    __aicore__ inline void BroadCastAndCopyOut(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
+    __aicore__ inline void BroadCastAndCopyOut(const RunInfoXVec &runInfo, LocalTensor<float> &sumUb,
                                                LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
     {
         // Copy sum to gm
@@ -933,7 +933,7 @@ public:
         maxBrdcst.template FreeTensor(maxOutTensor);
     }
 
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoXVec &runInfo, LocalTensor<float> &sumUb,
                                                        LocalTensor<float> &maxUb)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
@@ -945,7 +945,7 @@ public:
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
 
-    __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoXVec &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
@@ -966,7 +966,7 @@ public:
         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
     }
 
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoXVec runInfo)
     {
 #ifdef SKIP_V2
         bmm2ResBuf.WaitCrossCore();
@@ -990,7 +990,7 @@ public:
         return;
     }
 
-    __aicore__ inline void ProcessVec2_C2GmUpdateUb(GlobalTensor<T> &mmRes, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2_C2GmUpdateUb(GlobalTensor<T> &mmRes, RunInfoXVec runInfo)
     {
         // bmm2 result is on GM and global update data on UB
         uint32_t subMBase = 8192 / dTemplateAlign64;
@@ -1162,7 +1162,7 @@ public:
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                           RunInfoX &runInfo)
+                                           RunInfoXVec &runInfo)
     {
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
