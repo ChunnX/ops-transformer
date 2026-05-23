@@ -37,13 +37,15 @@ struct GMMAddrInfo {
     GM_ADDR bScaleGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
+    GM_ADDR gmm2OutGlobal;
 };
 
 struct PeermemInfo {
     GM_ADDR ptrBase;
     GM_ADDR ptrTokenPerExpert;
     GM_ADDR ptrA0;      // initrouting结果，包括data+scale
-    GM_ADDR ptrD;
+    GM_ADDR ptrD;       // combine send结果，量化交织格式 [fp8_data(k_bytes), e8m0_scale(kScale_bytes)]
+    GM_ADDR ptrDScale;  // combine send scale 区域起始地址
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
@@ -56,6 +58,10 @@ struct PeermemInfo {
         offset += tilingData->bs * tilingData->topK *
             (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
         ptrD = base + offset;
+        int64_t hScale = Ops::Base::CeilDiv(tilingData->h, MXFP_SCALE_GROUP_NUM) * MXFP_MULTI_BASE_SIZE;
+        int64_t quantRowSize = tilingData->h + hScale;
+        offset += tilingData->maxOutputSize * quantRowSize;
+        ptrDScale = ptrD + tilingData->h;  // per-row: scale紧跟data之后
     }
 };
 

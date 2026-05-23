@@ -46,6 +46,9 @@ constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
+constexpr uint32_t L1_TILE_M = 128;
+constexpr uint32_t L1_TILE_N = 256;
+constexpr uint32_t COMBINE_BATCH_ROWS = 8;
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
 constexpr int64_t SIMT_THREAD_NUM = 2048;
 constexpr int64_t ALIGN_32 = 32LL;
@@ -76,6 +79,9 @@ struct WorkspaceInfo {
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagSwiGluToGmm2;
     GM_ADDR ptrFlagDispatchToGmm1;
+    GM_ADDR ptrGmmOut;
+    GM_ADDR ptrRowGroupComplete;
+    GM_ADDR ptrExpertDoneFlag;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -105,6 +111,14 @@ struct WorkspaceInfo {
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         ptrFlagDispatchToGmm1 = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        ptrGmmOut = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(2 * tilingData->maxOutputSize * tilingData->h), ALIGN_512);
+        ptrRowGroupComplete = base + workspaceSize;
+        int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(
+            static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M));
+        int64_t maxRowGroupsStride = Ops::Base::CeilAlign(maxRowGroupsPerExpert, ALIGN_128);
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
         expandedRowIdxGather = ptrA;
     }
 };
