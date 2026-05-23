@@ -41,33 +41,8 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 
-template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernelBase {
+class FlashAttentionGqaContext {
 public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
-
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-
-    static constexpr uint32_t PRELOAD_N = 2;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
-
-    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
-
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
-    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
-
-    using INPUT_T = typename CubeBlockType::Q_T;
-    using T = typename CubeBlockType::MM_T;
-    using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
     BufferManager<BufferType::GM> gmBufferManager;
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
@@ -83,17 +58,13 @@ public:
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<uint32_t> fdMetaDataGm;
     GlobalTensor<float> softmaxLseGm;
-    GlobalTensor<INPUT_T> sinkGm;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
-    ConstInfoX constInfo;
+    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
-    CubeBlockType cubeBlock;
-    VecFaBlockType vecFaBlock;
-    VecFdBlockType vecFdBlock;
 
     uint32_t coreGS1Loops = 0U;
     uint32_t frontGS1Count = 0U;
@@ -136,20 +107,6 @@ public:
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
     TBuf<> SharedBuffer3;
 
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
-        qCuSeqLensParser;
-
-    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
-        kvCuSeqLensParser;
-
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
-
-    __aicore__ inline FlashAttentionNoQuantGqaKernelBase()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
-
     __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
@@ -188,60 +145,9 @@ public:
         constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
         constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
 
-        if constexpr (PAGE_ATTENTION) {
-            constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
-            constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
-            constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
-        }
-
         constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
 
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
-    }
-
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
-    {
-        uint32_t mm1OutDtype = sizeof(T);
-
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager.Init(pipe, 524288);
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-        } else {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2);
-        }
-        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-
-        if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock;
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize;
-            gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
-            bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
-        }
-    }
-
-    __aicore__ inline void InitQCuSeqLensParser()
-    {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
-        } else {
-            qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
-        }
-    }
-
-    __aicore__ inline void InitKvCuSeqLensParser()
-    {
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
-        } else {
-            kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
-        }
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -282,6 +188,99 @@ public:
             fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
         fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
+};
+
+template <typename CubeBlockType>
+class FlashAttentionCubeData {
+public:
+    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
+    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
+    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
+    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
+
+    static constexpr bool USE_DN = CubeBlockType::USE_DN;
+    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
+    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
+
+    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+
+    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
+
+    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
+    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
+
+    static constexpr bool IS_TND_LAYOUT = (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD);
+
+    using INPUT_T = typename CubeBlockType::Q_T;
+    using T = typename CubeBlockType::MM_T;
+    using ConstInfoX = typename CubeBlockType::ConstInfoX;
+
+    using QCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
+                                                           ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true>,
+                                                           ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t>>::type;
+    using KvCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
+                                                            ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                            ActualSeqLensParser<KV_MODE, int32_t>>::type;
+    using QSeqUsedParserType = ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>;
+    using KvSeqUsedParserType = ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>;
+
+    QCuSeqLensParserType qCuSeqLensParser;
+    KvCuSeqLensParserType kvCuSeqLensParser;
+    QSeqUsedParserType qSeqUsedParser;
+    KvSeqUsedParserType kvSeqUsedParser;
+
+    CubeBlockType cubeBlock;
+    FlashAttentionGqaContext* ctx;
+
+    __aicore__ inline FlashAttentionCubeData(FlashAttentionGqaContext* c) : cubeBlock(c->constInfo), ctx(c){};
+};
+
+template <typename VecFaBlockType, typename VecFdBlockType, typename InputT, LayOutTypeEnum LayoutQ = LayOutTypeEnum::None, bool PageAttention = false>
+class FlashAttentionVectorData {
+public:
+    using VecFaBlockTypeAlias = VecFaBlockType;
+    static constexpr uint32_t mBaseSize = VecFaBlockType::mBaseSize;
+    static constexpr uint32_t s2BaseSize = VecFaBlockType::s2BaseSize;
+
+    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+
+    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+
+    static constexpr LayOutTypeEnum LAYOUT_Q = LayoutQ;
+    static constexpr LayOutTypeEnum LAYOUT_KV = LayoutQ;
+    static constexpr bool PAGE_ATTENTION = PageAttention;
+
+    static constexpr bool IS_TND_LAYOUT = (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD);
+
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
+
+    using INPUT_T = InputT;
+    using ConstInfoX = typename VecFaBlockType::ConstInfoX;
+
+    using QCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
+                                                           ActualSeqLensParser<Q_MODE, int32_t, true>,
+                                                           ActualSeqLensParser<Q_MODE, int32_t>>::type;
+    using KvCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
+                                                            ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                            ActualSeqLensParser<KV_MODE, int32_t>>::type;
+    using QSeqUsedParserType = QCuSeqLensParserType;
+    using KvSeqUsedParserType = KvCuSeqLensParserType;
+
+    QCuSeqLensParserType qCuSeqLensParser;
+    KvCuSeqLensParserType kvCuSeqLensParser;
+    QSeqUsedParserType qSeqUsedParser;
+    KvSeqUsedParserType kvSeqUsedParser;
+
+    VecFaBlockType vecFaBlock;
+    VecFdBlockType vecFdBlock;
+    FlashAttentionGqaContext* ctx;
+
+    __aicore__ inline FlashAttentionVectorData(FlashAttentionGqaContext* c) : vecFaBlock(c->constInfo), vecFdBlock(c->constInfo), ctx(c){};
 };
 
 } // namespace BaseApi
