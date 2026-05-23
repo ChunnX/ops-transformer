@@ -148,8 +148,9 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitBuffers(TPipe *pi
 
 template <typename LIT>
 __aicore__ inline void
-LightningIndexerV2ServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
-                                   const GlobalTensor<Q_T> &queryGm)
+LightningIndexerV2ServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm,
+                                                        const GlobalTensor<K_T> &keyGm,
+                                                        const GlobalTensor<Q_T> &queryGm)
 {
     blkTableGm_ = blkTableGm;
     keyGm_ = keyGm;
@@ -318,8 +319,8 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadQueryToL0a(uint64
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
-                                                   const LIV2Common::RunInfo &runInfo)
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize,
+                                                   uint64_t s2L0RealSize, const LIV2Common::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
@@ -352,8 +353,9 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeL0c(uint64_t s
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                           uint64_t s2L0RealSize, const LIV2Common::RunInfo &runInfo)
+__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset,
+                                                                uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+                                                                const LIV2Common::RunInfo &runInfo)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
