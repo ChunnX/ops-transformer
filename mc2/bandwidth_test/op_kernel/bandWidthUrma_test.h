@@ -392,7 +392,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startRankId >= endRankId || sendRankNum == 0) { 
         return; 
     }
-    PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n", epWorldSize_, startRankId, endRankId, sendRankNum);
+    PRINTF("aivId_ is %d, epWorldSize_ is %d, startRankId is %d, endRankId is %d, sendRankNum is %d\n",aivId_, epWorldSize_, startRankId, endRankId, sendRankNum);
     //PRINTF("start SendToMoeExpert inter aivid is %d\n", aivId_);
     // ============ 读取expert_id数组到UB ============
     GlobalTensor<XType> dstWinGMTensor;
