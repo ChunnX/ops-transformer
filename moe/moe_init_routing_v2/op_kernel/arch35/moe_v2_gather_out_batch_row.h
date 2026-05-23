@@ -34,7 +34,7 @@ public:
 
 private:
     __aicore__ inline void CopyInDstToSrcIndices(int64_t progress, int64_t loopRows);
-    __aicore__ inline void GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows, int64_t indexOffset,
+    __aicore__ inline void GatherOutOneBlock(int64_t outPosStartIdx, int64_t outPosRowsNum, int64_t indexOffsetVal,
                                              LocalTensor<int32_t> &dstToSrcLocal);
     __aicore__ inline void GatherOutCompute(int64_t progress, int64_t loopRows);
 
@@ -78,8 +78,8 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyInDstToSrcIndices(int64_t 
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows,
-                                                                    int64_t indexOffset,
+__aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outPosStartIdx, int64_t outPosRowsNum,
+                                                                    int64_t indexOffsetVal,
                                                                     LocalTensor<int32_t> &dstToSrcLocal)
 {
     int64_t cols = this->cols;
@@ -90,17 +90,17 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 
     LocalTensor<T> outRowsLocal = outputRowsQueue.AllocTensor<T>();
 
-    int64_t validOutPosRows = Min(outPosRows, activateRows - outPosStart);
+    int64_t validOutPosRowsNum = Min(outPosRowsNum, activateRows - outPosStartIdx);
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(cols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
 
-    for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
-        if (outPosIdx >= validOutPosRows) {
+    for (int64_t outPosIndex = 0; outPosIndex < outPosRowsNum; outPosIndex++) {
+        if (outPosIndex >= validOutPosRowsNum) {
             break;
         }
 
-        int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffset + outPosIdx);
+        int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffsetVal + outPosIndex);
 
         if (expandedTokenIdx < 0 || expandedTokenIdx >= totalLength) {
             continue;
@@ -112,15 +112,15 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
             continue;
         }
 
-        DataCopyPad(outRowsLocal[outPosIdx * cols], inputXGm[srcRowIdx * cols], copyInParams, copyInPadParams);
+        DataCopyPad(outRowsLocal[outPosIndex * cols], inputXGm[srcRowIdx * cols], copyInParams, copyInPadParams);
     }
 
     SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
 
-    if (validOutPosRows > 0 && outPosStart < activateRows) {
-        DataCopyExtParams copyOutParams{static_cast<uint16_t>(validOutPosRows), static_cast<uint32_t>(cols * sizeof(T)),
-                                        0, 0, 0};
-        DataCopyPad(expandedXGm[outPosStart * cols], outRowsLocal, copyOutParams);
+    if (validOutPosRowsNum > 0 && outPosStartIdx < activateRows) {
+        DataCopyExtParams copyOutParams{static_cast<uint16_t>(validOutPosRowsNum),
+                                        static_cast<uint32_t>(cols * sizeof(T)), 0, 0, 0};
+        DataCopyPad(expandedXGm[outPosStartIdx * cols], outRowsLocal, copyOutParams);
     }
 
     outputRowsQueue.FreeTensor(outRowsLocal);
@@ -131,26 +131,26 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutCompute(int64_t progr
 {
     LocalTensor<int32_t> dstToSrcLocal = dstToSrcIndexQueue.DeQue<int32_t>();
 
-    int64_t outPosStart = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
+    int64_t outPosStartIdx = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
 
-    if (outPosStart >= this->activateRows) {
+    if (outPosStartIdx >= this->activateRows) {
         dstToSrcIndexQueue.FreeTensor(dstToSrcLocal);
         return;
     }
 
-    int64_t totalOutPosRows = loopRows;
-    int64_t ubRowsLoops = Ceil(totalOutPosRows, this->ubRowsPerLoop);
+    int64_t totalOutPosRowsNum = loopRows;
+    int64_t ubRowsLoops = Ceil(totalOutPosRowsNum, this->ubRowsPerLoop);
 
     for (int64_t ubBlockIdx = 0; ubBlockIdx < ubRowsLoops; ubBlockIdx++) {
         int64_t currentUbRows = this->ubRowsPerLoop;
-        int64_t remainingRows = totalOutPosRows - ubBlockIdx * this->ubRowsPerLoop;
+        int64_t remainingRows = totalOutPosRowsNum - ubBlockIdx * this->ubRowsPerLoop;
         if (remainingRows < this->ubRowsPerLoop) {
             currentUbRows = remainingRows;
         }
 
-        int64_t blockOutPosStart = outPosStart + ubBlockIdx * this->ubRowsPerLoop;
-        int64_t blockIndexOffset = ubBlockIdx * this->ubRowsPerLoop;
-        GatherOutOneBlock(blockOutPosStart, currentUbRows, blockIndexOffset, dstToSrcLocal);
+        int64_t blockOutPosStartIdx = outPosStartIdx + ubBlockIdx * this->ubRowsPerLoop;
+        int64_t blockIndexOffsetVal = ubBlockIdx * this->ubRowsPerLoop;
+        GatherOutOneBlock(blockOutPosStartIdx, currentUbRows, blockIndexOffsetVal, dstToSrcLocal);
     }
 
     dstToSrcIndexQueue.FreeTensor(dstToSrcLocal);
