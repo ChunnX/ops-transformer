@@ -355,6 +355,39 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
     actualSeqLength -= preTokensError;
 }
 
+/*
+ * 计算同时参与计算所需的L2 cache大小
+ * 算法思路：
+ * 1. 同时最多只有aicNum个核在计算，每个核处理一个(batch, head)组合
+ * 2. 每个batch有n2Size个head，因此每个batch最多有n2Size个核同时处理
+ * 3. 为最大化L2占用，优先给actualSeqLenKV最大的batch分配核
+ * 4. 分配策略：按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
+ * 5. 如果同时参与计算的KV块超过L2CacheSize的一半就开启S1外切分核
+ * 计算公式：L2Size = sum(分配核数 * actualSeqLenKV) * (qkHeadDim + vHeadDim) * dataTypeSize
+ */
+int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
+{
+    int64_t dataTypeSize = 2;
+    if ((fiaInfo_->inputKvType == ge::DT_INT8) || (fiaInfo_->inputKvType == ge::DT_INT4) ||
+        (fiaInfo_->inputKvType == ge::DT_FLOAT8_E4M3FN) || (fiaInfo_->inputKvType == ge::DT_HIFLOAT8) ||
+        (fiaInfo_->inputKvType == ge::DT_FLOAT4_E2M1)) {
+        dataTypeSize = 1;
+    }
+    // 按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
+    std::vector<int64_t> sortedSeqLenKV = actualSeqLengthsKV_;
+    std::sort(sortedSeqLenKV.begin(), sortedSeqLenKV.end(), std::greater<int64_t>());
+    uint32_t remainingCores = platformInfo_.aicNum;
+    int64_t totalSeqLenKV = 0;
+    for (size_t i = 0; i < sortedSeqLenKV.size() && remainingCores > 0; i++) {
+        uint32_t coresForThisBatch = std::min(remainingCores, fiaInfo_->n2Size);
+        totalSeqLenKV += coresForThisBatch * sortedSeqLenKV[i];
+        remainingCores -= coresForThisBatch;
+    }
+
+    int64_t requiredL2Size = totalSeqLenKV * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize;
+    return requiredL2Size;
+}
+
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
     if (fiaInfo_->isOutQuantEnable) {
