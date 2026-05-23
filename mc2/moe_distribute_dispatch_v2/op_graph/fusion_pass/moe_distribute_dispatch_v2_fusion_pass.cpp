@@ -167,7 +167,8 @@ ge::graphStatus ReplaceDispatchV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
     for (auto &srcNode : graph.GetDirectNode()) {
         ge::AscendString srcName;
         srcNode.GetName(srcName);
-        for (int32_t outPort = 0; outPort < static_cast<int32_t>(kV3TotalInputs); outPort++) {
+        size_t srcOutSize = srcNode.GetOutputsSize();
+        for (int32_t outPort = 0; outPort < static_cast<int32_t>(srcOutSize); outPort++) {
             auto consumers = srcNode.GetOutDataNodesAndPortIndexs(outPort);
             if (consumers.empty()) {
                 break;
