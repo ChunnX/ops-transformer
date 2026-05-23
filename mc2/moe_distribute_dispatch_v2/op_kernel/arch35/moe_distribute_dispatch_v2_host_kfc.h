@@ -99,8 +99,8 @@ using namespace MoeDistributeV2Base;
 using namespace MoeDispatchLog_NEW;
 using namespace Mc2Aclnn;
 
-#define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
-#define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
+#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
 
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
