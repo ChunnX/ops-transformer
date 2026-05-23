@@ -299,6 +299,28 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
             }
         }
     }
+     if(epRankId_ ==0){
+        uint32_t i = 0;
+        while(true) {
+            DataCopy(dataStateLocalTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
+            PipeBarrier<PIPE_ALL>();
+            if (dataStateLocalTensor(7) == 1){
+                for (uint32_t j = 0; j < 8; j++) {
+                    uint32_t value = dataStateLocalTensor(j);
+                    PRINTF("dataStateLocalTensor(%u) eprank0 is %u\n", j, value);
+                }
+            }
+            i++;
+            if (i >= 10000000){
+                for (uint32_t j = 0; j < 8; j++) {
+                    uint32_t value = dataStateLocalTensor(j);
+                    PRINTF("dataStateLocalTensor(%u) is %u\n", j, value);
+                }
+                PRINTF("error do not read dataStateLocalTensor in %u\n", i);
+                break;
+            }
+        }
+     }
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
