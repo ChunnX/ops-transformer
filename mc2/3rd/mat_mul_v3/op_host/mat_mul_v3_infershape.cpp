@@ -80,12 +80,11 @@ bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out,
         UpdateUnknowDimNumToUnkownRank(shape_bias_new);
         int64_t bias_dim = shape_bias_new.GetDimNum();
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) != UNKNOWN_DIM) {
-            OP_CHECK_IF(
-                shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1),
-                OP_LOGE(
-                    op_name, "The dimension of n [%ld] and bias [%ld] tensors must be the same", shape_out->GetDim(1),
-                    shape_bias_new.GetDim(bias_dim - 1)),
-                return false);
+            if (shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1)) {
+                std::string shapeStr = "n=" + std::to_string(shape_out->GetDim(1)) + ", bias=" + std::to_string(shape_bias_new.GetDim(bias_dim - 1));
+                OP_LOGE_FOR_INVALID_SHAPE(op_name, "bias", shapeStr.c_str(), "n should equal bias");
+                return false;
+            }
         }
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) == UNKNOWN_DIM) {
             shape_out->SetDim(1, shape_bias_new.GetDim(bias_dim - 1));
