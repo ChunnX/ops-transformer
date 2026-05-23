@@ -293,6 +293,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
     subExpIdTensor_ = subExpBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -396,7 +397,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    // SyncFunc<AscendC::HardEvent::MTE2_S>();
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; tokenIndex++) {
         //PRINTF("eprank %d token tokenIndex is %d, expertId is %d\n", epRankId_, tokenIndex, expertIdsTensor_(tokenIndex));
     }
