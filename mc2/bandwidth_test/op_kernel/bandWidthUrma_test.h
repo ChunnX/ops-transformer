@@ -409,7 +409,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
         for (uint32_t tokenIndex = 0; tokenIndex < axisBS_; ++tokenIndex) {
             uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
             int32_t curExpertCnt = 0;
-            PRINTF("epRankId %d, aiv %d, dstRankId is %d, rankId is %d\n\n", epRankId_, aivId_, dstRankId, rankId);
+            PRINTF("epRankId %d, aiv %d, tokenIndex %d, dstRankId is %d, rankId is %d\n\n", epRankId_, aivId_, tokenIndex, dstRankId, rankId);
             if (dstRankId != rankId) { // 只处理当前rank负责的token
                 PRINTF("aiv %d,eprankid %d,tokenIndex %d dstRankId is %d, rankId is %d, continue\n", aivId_, epRankId_, tokenIndex, dstRankId, rankId);
                 continue;
