@@ -42,7 +42,7 @@
 
 ## 2. 专业术语
 
-本章简要列出接口文档中涉及的术语，完整的概念性解释请参见 [GroupedMatmul README - 专业术语](../README_202605220012.md#2-专业术语)。
+本章简要列出接口文档中涉及的术语，完整的概念性解释请参见 [GroupedMatmul README - 专业术语](../README.md#2-专业术语)。
 
 | 类别 | 术语 | 简要说明 |
 |------|------|----------|
@@ -78,7 +78,7 @@
 - **K 轴分组（groupType=2）**：$m_i,n_i$ 各组相同，$k_i$ 可不同。
 - **不分组（groupType=-1）**：各组 shape 完全独立。
 
-> 详细计算公式和量化原理请参见 [GroupedMatmul README - 计算公式](../README_202605220012.md#32-计算公式)。
+> 详细计算公式和量化原理请参见 [GroupedMatmul README - 计算公式](../README.md#32-计算公式)。
 
 **版本演进：**
 
@@ -340,7 +340,7 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
   - 非量化/伪量化仅支持 0。
   - 全量化下 x/weight=INT8、静态 T-C 或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
 
-> 各类场景的数据类型组合表格请参见 [GroupedMatmul README - Ascend 950PR/950DT 约束说明](../README_202605220012.md#52-ascend-950prascend-950dt)。
+> 各类场景的数据类型组合表格请参见 [GroupedMatmul README - Ascend 950PR/950DT 约束说明](../README.md#52-ascend-950prascend-950dt)。
 
 #### groupType 支持场景
 

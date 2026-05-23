@@ -275,7 +275,7 @@ $$
 ### 5.1 公共约束
 
 - **确定性计算**：算子默认提供确定性实现。
-- 详细接口级约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5_202605220012.md#6-约束说明)。
+- 详细接口级约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#6-约束说明)。
 
 ### 5.2 Ascend 950PR/Ascend 950DT
 
@@ -347,7 +347,7 @@ $$
 | groupType | shape |
 |:---:|:---|
 | 0 | `(g, N, ceil(K/64), 2)`（weight 转置）/ `(g, ceil(K/64), N, 2)`（weight 不转置） |
-| 2 | `(K/64 + g, N, 2)`，偏移详见 [aclnn 文档](docs/aclnnGroupedMatmulV5_202605220012.md) |
+| 2 | `(K/64 + g, N, 2)`，偏移详见 [aclnn 文档](docs/aclnnGroupedMatmulV5.md) |
 
 - **perTokenScaleOptional shape**：
 
@@ -370,7 +370,7 @@ $$
 | groupType | shape |
 |:---:|:---|
 | 0 | `(g, ceil(N/gsN), ceil(K/gsK))`（转置）/ `(g, ceil(K/gsK), ceil(N/gsN))`（非转置），gsN=gsK=128 |
-| 2 | `(K/gsK + g, ceil(N/gsN))`，偏移详见 [aclnn 文档](docs/aclnnGroupedMatmulV5_202605220012.md) |
+| 2 | `(K/gsK + g, ceil(N/gsN))`，偏移详见 [aclnn 文档](docs/aclnnGroupedMatmulV5.md) |
 
 - **perTokenScaleOptional shape**：
 
@@ -411,7 +411,7 @@ $$
 
 #### 输入数据类型和格式总览
 
-> 详细场景约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5_202605220012.md#6-约束说明)。
+> 详细场景约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#6-约束说明)。
 
 | 类型 | x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | out |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
@@ -448,4 +448,4 @@ $$
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|
-| aclnn 调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5_202605220012.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5_202605220012.md#72-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
+| aclnn 调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#72-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
