@@ -289,7 +289,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
                 }
             }
             i++;
-            if (i >= 1000000){
+            if (i >= 10000000){
                 PRINTF("error do not read dataStateLocalTensor in %u\n", i);
                 break;
             }
