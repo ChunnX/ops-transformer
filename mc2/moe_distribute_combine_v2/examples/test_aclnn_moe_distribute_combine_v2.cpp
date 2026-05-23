@@ -208,7 +208,8 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<op::fp16_t> xHostData(xShapeSize, 1);
     std::vector<float> scalesHostData(scalesShapeSize, 0);
     std::vector<float> expertScalesHostData(expertScalesShapeSize, 0);
-    std::vector<op::fp16_t> expandXHostData(expandXShapeSize, 0);
+    // std::vector<op::fp16_t> expandXHostData(expandXShapeSize, 0);
+    std::vector<op::fp16_t> expandXHostData(expandXShapeSize, 1);
     std::vector<float> dynamicScalesHostData(dynamicScalesShapeSize, 0);
     std::vector<int32_t> expandIdxHostData(expandIdxShapeSize, 0);
     std::vector<int64_t> expertTokenNumsHostData(expertTokenNumsShapeSize, 0);
@@ -245,16 +246,19 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<int32_t> expertIdsHostData(expertIdsShapeSize);
     int index = 0;
     for (int i = 0; i < (globalBS * K); i++) {
-        perTokenExpertVec[i] = i % moeExpertNum; // 先确定每个token发送给哪个专家
-        epRecvCountsHostData[(perTokenExpertVec[i]) % n_pes]++;
-        int curRank = i / (BS * K);
-        if (curRank == pe_id) { // 如果是本卡
-            expertIdsHostData[i % (BS * K)] = perTokenExpertVec[i];
+        perTokenExpertVec[i] = i % moeExpertNum; // 先确定每个token发送给哪个专家 这个专家是全局的专家id
+        if ((perTokenExpertVec[i]) / localExpertNum == pe_id) { // 如果这个token是发送给本卡的专家
+            epRecvCountsHostData[epRecvCountsShapeSize - 1]++; // 最后一个位置是要发送出去的所有token数目
         }
-        if ((perTokenExpertVec[i]) / localExpertNum == pe_id) { // 如果是本卡
-            expandIdxHostData[index * 3] = i / (BS * K);
-            expandIdxHostData[index * 3 + 1] = i % (BS * K) / K;
-            expandIdxHostData[index * 3 + 2] = i % (BS * K) % K;
+        int curRank = i / (BS * K);
+        if (curRank == pe_id) { // 如果是本卡的输入token
+            // 本卡所有的输入token对应的topk个专家列表，用于在localwindowcopy的时候确定是按照哪种专家进行计算
+            expertIdsHostData[i % (BS * K)] = perTokenExpertVec[i]; 
+        }
+        if ((perTokenExpertVec[i]) / localExpertNum == pe_id) { // 如果这个token是发送给本卡的专家
+            expandIdxHostData[index * 3] = i / (BS * K); // toRank
+            expandIdxHostData[index * 3 + 1] = i % (BS * K) / K; // tokenId
+            expandIdxHostData[index * 3 + 2] = i % (BS * K) % K; // topkId
             index++;
         }
     }
