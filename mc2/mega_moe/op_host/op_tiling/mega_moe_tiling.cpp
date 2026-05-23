@@ -351,13 +351,13 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *context, MegaMoeConfig &config)
 {
     auto attrs = context->GetAttrs();
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
-    int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
 
     int64_t opQuantMode;
-    if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
+    if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
-    } else if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
+    } else if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
     } else {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
@@ -792,7 +792,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokenPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokenPerRankIndex));
@@ -807,8 +807,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE(nodeName, "maxRecvTokenNumPtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
         OP_LOGE(nodeName, "dispatchQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(dispatchQuantOutTypePtr == nullptr,
-        OP_LOGE(nodeName, "dispatchQuantOutTypePtr is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr,
+        OP_LOGE(nodeName, "dispatchQuantOutDtypePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(combineQuantModePtr == nullptr,
         OP_LOGE(nodeName, "combineQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commAlgPtr == nullptr,
@@ -893,14 +893,14 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             DISPATCH_QUANT_MODE_MXFP, dispatchQuantMode),
         return ge::GRAPH_FAILED);
 
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
-    int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
-    OP_TILING_CHECK(dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
-                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
+    OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
-            "but now is %ld.", dispatchQuantOutType),
+            "Invalid dispatchQuantOutDtype, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
+            "but now is %ld.", dispatchQuantOutDtype),
         return ge::GRAPH_FAILED);
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
