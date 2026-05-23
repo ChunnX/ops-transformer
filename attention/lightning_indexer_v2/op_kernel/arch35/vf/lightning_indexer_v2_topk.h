@@ -98,7 +98,7 @@ public:
                 }
             }
         }
-        //indices加偏移
+        // indices加偏移
         if (outputIdxOffset != 0) {
             liV2Topkb32gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
         }
