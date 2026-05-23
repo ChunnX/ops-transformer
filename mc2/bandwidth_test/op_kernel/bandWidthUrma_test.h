@@ -424,7 +424,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                             epRankId_ * expertPerSizeOnWin_ +
                                             curExpertCnt * hAlignWinSize_);
-            //PRINTF("rankGM is %u, remoteAddr is %u, tokenIndex is %u, dstRankId is %u\n", rankGM, remoteAddr, tokenIndex, dstRankId);
+            PRINTF("AIV %d eprank %d token tokenIndex is %d, dstRankId is %u curExpertCnt is %d\n", aivId_, epRankId_, tokenIndex, dstRankId, curExpertCnt);
             //PRINTF("epRankId_ is %d, expertPerSizeOnWin_ is %d, hAlignWinSize_ is %d, curExpertCnt is %d\n", epRankId_, expertPerSizeOnWin_, hAlignWinSize_, curExpertCnt);
             ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId);   
         }
