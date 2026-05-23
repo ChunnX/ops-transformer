@@ -948,9 +948,9 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
             dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
             dataCopyParams.blockLen = curS2EnsPos - treeMaskStart;
             dataCopyParams.srcStride = (info.layout == S1_EQUAL1) ? 0 :
-                info.attenMaskStride - (curS2EnsPos - treeMaskStart);
+                (info.attenMaskStride - (curS2EnsPos - treeMaskStart));
             dataCopyParams.dstStride = (info.layout == S1_EQUAL1) ? 0 :
-                (treeMaskStart - info.s2StartIdx) / 32; // dst在UB上，单位为32字节，同时左侧不对齐场景会进行左padding
+                ((treeMaskStart - info.s2StartIdx) / 32); // dst在UB上，单位为32字节，同时左侧不对齐场景会进行左padding
             DataCopyPadExtParams<bool> padParams;
             padParams.isPad = true;
             padParams.leftPadding = static_cast<uint8_t>(treeMaskStart % 32);
