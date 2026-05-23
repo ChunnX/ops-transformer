@@ -25,7 +25,7 @@
 #include "array_ops.h"
 #include "ge_ir_build.h"
 
-#include "experiment_ops.h"
+#include "fusion_ops.h"
 #include "nn_other.h"
 #include "../op_graph/moe_re_routing_proto.h"
 
@@ -38,10 +38,10 @@ using std::string;
 using std::vector;
 
 const int A = 11;
-const int H = 79; 
-const int N = 11; 
-const int E = 1; 
-const int S = 1; 
+const int H = 79;
+const int N = 11;
+const int E = 1;
+const int S = 1;
 
 #define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                          \
     vector<int64_t> placeholder##intputIndex##_shape = inputShape;                           \
@@ -96,7 +96,7 @@ const int S = 1;
 #define ADD_OUTPUT(outputIndex, outputName, outputDtype, outputShape)                        \
     TensorDesc outputName##outputIndex##_desc =                                              \
         TensorDesc(ge::Shape(outputShape), FORMAT_ND, outputDtype);                          \
-    moe_re_routing_op.update_output_desc_##outputName(outputName##outputIndex##_desc);             
+    moe_re_routing_op.update_output_desc_##outputName(outputName##outputIndex##_desc);
 
 #define LOG_PRINT(message, ...)     \
   do {                              \
@@ -194,7 +194,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     Status ret = SUCCESS;
     // 自定义代码：添加单算子定义到图中
     auto moe_re_routing_op = op::MoeReRouting("test_geir_moe_re_routing");
-    
+
     // shape定义
     std::vector<int64_t> tokens_shape = {A, H};
     std::vector<int64_t> num_in_shape = {N, E};
@@ -204,13 +204,13 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     std::vector<int64_t> scales_out_shape = {A};
     std::vector<int64_t> idx_out_shape = {A};
     std::vector<int64_t> num_out_shape = {E};
-    
+
 
     // 添加输入（顺序严格匹配 proto.h）
     ADD_INPUT(1, tokens, DT_FLOAT16, tokens_shape);
     ADD_INPUT(2, expert_token_num_per_rank, inDtype, num_in_shape);
     ADD_INPUT(3, per_token_scales, DT_FLOAT, scales_in_shape);
-    
+
     // 添加输出（顺序严格匹配 proto.h）
     ADD_OUTPUT(1, permute_tokens, DT_FLOAT16, tokens_out_shape);
     ADD_OUTPUT(2, permute_per_token_scales, DT_FLOAT, scales_out_shape);
