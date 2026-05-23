@@ -156,7 +156,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
                 groupSizeM, groupSizeN, groupSizeK),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(opName_, "Quant mode should be pertensor or perblock or mxfp!");
+        OP_LOGE_WITH_INVALID_ATTR(opName_, "quantMode", std::to_string(static_cast<int64_t>(quantMode_)).c_str(), "MXFP_MODE/PERTENSOR_MODE/PERBLOCK_MODE")
         return ge::GRAPH_FAILED;
     }
 
@@ -737,7 +737,7 @@ const gert::Shape &QuantBmmReduceScatterHelper::GetScaleShape(const size_t index
 {
     (void)index;
     if (context_->GetOptionalInputShape(static_cast<size_t>(X2SCALE_INDEX)) == nullptr) {
-        OP_LOGE(inputParams_.opName, "has dequant, but has no x2scale shape");
+        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "x2scale")
         return defaultShape;
     }
     return context_->GetOptionalInputShape(static_cast<size_t>(X2SCALE_INDEX))->GetStorageShape();
