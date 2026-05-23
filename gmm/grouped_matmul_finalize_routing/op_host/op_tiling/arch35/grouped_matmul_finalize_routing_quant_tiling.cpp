@@ -585,14 +585,16 @@ void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    workspaces[0] = SYS_WORKSPACE_SIZES;
-    if (deterWorkspaceSize_ > 0) {
-        workspaces[0] += deterWorkspaceSize_;
+    auto ret = GroupedQmmTiling::GetWorkspaceSize();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
     }
-    OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: total=%zu (sys=%u + deter=%u)",
-            workspaces[0], SYS_WORKSPACE_SIZES, deterWorkspaceSize_);
+    if (deterWorkspaceSize_ > 0) {
+        size_t *workspaces = context_->GetWorkspaceSizes(1);
+        workspaces[0] += deterWorkspaceSize_;
+        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: added deterministic workspace %u, total=%zu",
+                deterWorkspaceSize_, workspaces[0]);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
