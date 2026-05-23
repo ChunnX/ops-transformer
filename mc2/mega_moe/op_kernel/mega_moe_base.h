@@ -37,6 +37,7 @@ struct GMMAddrInfo {
     GM_ADDR bScaleGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
+    GM_ADDR gmm2OutGlobal;
 };
 
 struct PeermemInfo {
@@ -160,6 +161,30 @@ __aicore__ constexpr inline decltype(auto) Get(T&& t)
 {
     return Get<Second, Rest...>(AscendC::Std::get<First>(AscendC::Std::forward<T>(t)));
 }
+
+// MegaMoeTrace: 占位空实现，所有打点编译成 0 开销 inline 空函数
+namespace MegaMoeTrace {
+constexpr int P_KERNEL_ENTRY = 0;
+constexpr int P_ROUTING_DONE = 1;
+constexpr int P_CROSSRANK_DONE = 2;
+constexpr int P_EXPERT_LOOP_END = 3;
+constexpr int P_PROCESS_END = 4;
+constexpr int SP_WAVE_ENTRY = 0;
+constexpr int SP_GMM1_BEGIN = 1;
+constexpr int SP_GMM1_FIRST_WAIT_DONE = 2;
+constexpr int SP_GMM1_FIRST_TILE_DONE = 3;
+constexpr int SP_GMM1_LAST_TILE_DONE = 4;
+constexpr int SP_GMM1_END = 5;
+constexpr int SP_GMM2_BEGIN = 6;
+constexpr int SP_GMM2_FIRST_WAIT_DONE = 7;
+constexpr int SP_GMM2_FIRST_TILE_DONE = 8;
+constexpr int SP_GMM2_LAST_TILE_DONE = 9;
+constexpr int SP_GMM2_END = 10;
+constexpr int SP_WAVE_END = 11;
+__aicore__ inline void RecordTimestampAt(GM_ADDR, int) {}
+__aicore__ inline void RecordDispatchPoint(GM_ADDR, int, bool) {}
+__aicore__ inline void RecordWavePoint(GM_ADDR, int, int) {}
+} // namespace MegaMoeTrace
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(MoeInitRoutingV3::SIMT_THREAD_NUM)
 inline void ArgsortSimt(int64_t elements, int64_t indexBase, __gm__ int32_t *sortedExpertIndicesGmAddr,

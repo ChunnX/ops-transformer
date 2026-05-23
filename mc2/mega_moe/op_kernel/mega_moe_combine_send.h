@@ -102,6 +102,53 @@ __aicore__ inline void CombineTokensOptimize(
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
     }
 }
+// 把整个 tile 从 GM (gmm2OutAddr) 搬到 UB
+template <typename ElementMMadOut2>
+__aicore__ inline void CopyTileFromGM(
+    LocalTensor<ElementMMadOut2>& ubDst,
+    GlobalTensor<ElementMMadOut2>& gmSrc,
+    uint32_t rowStart, uint32_t rowCount, uint32_t colStart, uint32_t colCount, uint32_t gmNStride)
+{
+    DataCopyPadExtParams<ElementMMadOut2> copyPadParams{false, 0U, 0U, 0U};
+    AscendC::DataCopyExtParams gm2UbParams{
+        static_cast<uint16_t>(rowCount),
+        static_cast<uint32_t>(colCount * sizeof(ElementMMadOut2)),
+        static_cast<uint32_t>((gmNStride - colCount) * sizeof(ElementMMadOut2)),
+        0, 0};
+    AscendC::DataCopyPad(ubDst, gmSrc[rowStart * gmNStride + colStart], gm2UbParams, copyPadParams);
+}
+
+// CombineTileOptimize = 读 GM tile 到 UB + 加载 triple + CombineTokensOptimize
+// groupCnt: 当前 expert 在 tripleInfoPtr 中的累计起始 token 数（含 waveRowOffset）
+template <typename ElementMMadOut2, typename BlockShape>
+__aicore__ inline void CombineTileOptimize(
+    uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t expertIdx, uint32_t rankId,
+    GM_ADDR gmm2OutAddr, LocalTensor<ElementMMadOut2>& ubBuffer,
+    BlockShape& actualBlockShape, const ParamsOptimize& params, uint32_t groupCnt)
+{
+    GlobalTensor<ElementMMadOut2> gmm2OutGm;
+    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(gmm2OutAddr));
+
+    uint32_t rowCount = Get<M_VALUE>(actualBlockShape);
+    uint32_t colCount = Get<N_VALUE>(actualBlockShape);
+
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
+    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+
+    // 从 tripleInfoPtr 加载本 tile 的三元组信息（groupCnt 是 expert + wave 累计起点）
+    AscendC::GlobalTensor<int32_t> tripleGm;
+    LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 150 * 1024, rowCount * 8);
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+        params.workspaceInfo.tripleInfoPtr + (groupCnt + mLoc) * 32));
+    AscendC::DataCopy(tripleTensor, tripleGm, rowCount * 8);
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
+
+    CombineTokensOptimize<ElementMMadOut2, BlockShape>(
+        mLoc, nLoc, n, expertIdx, rankId, tripleTensor, ubBuffer, actualBlockShape, params);
+}
+
 }  // namespace MegaMoeCombineImpl
 
 #endif  // MEGA_MOE_COMBINE_SEND_H

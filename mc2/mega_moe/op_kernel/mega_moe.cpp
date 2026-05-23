@@ -14,8 +14,9 @@
  */
 
 #include "kernel_operator.h"
-#include "mega_moe.h"
+// 让 optimize.h 先定义 MEGA_MOE_H，使 mega_moe.h 在共享 include guard 下跳过解析
 #include "mega_moe_optimize.h"
+// #include "mega_moe.h"
 #include "mega_moe_tiling.h"
 #include "mega_moe_tiling_key.h"
 

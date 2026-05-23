@@ -1541,7 +1541,14 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     context->SetTilingKey(tilingKey);
 
     // WorkspaceSize
+    // 同时算 legacy WorkspaceInfo 和 optimize 路径的 WorkspaceInfoOptimize，取两者较大者作为
+    // 实际分配大小。optimize 路径多了 ptrGmmOut（2 * maxOutputSize * h * sizeof(bf16)）和
+    // ptrGmm2RowReady 等字段；如果只按 legacy 大小分配，kernel 写 ptrGmmOut 时会 MTE OOB。
     WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
+    WorkspaceInfoOptimize workspaceInfoOpt((uint8_t*)0, tilingData);
+    if (workspaceInfoOpt.workspaceSize > workspaceInfo.workspaceSize) {
+        workspaceInfo.workspaceSize = workspaceInfoOpt.workspaceSize;
+    }
     OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 

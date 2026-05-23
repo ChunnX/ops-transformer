@@ -62,6 +62,7 @@ constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
+constexpr int64_t L1_TILE_M = 256LL;
 } // namespace
 
 struct WorkspaceInfo {
@@ -118,6 +119,8 @@ struct WorkspaceInfoOptimize {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR ptrGmmOut;
+    GM_ADDR ptrGmm2RowReady;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfoOptimize() = default;
@@ -146,14 +149,23 @@ struct WorkspaceInfoOptimize {
         tripleInfoPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
+        int64_t maxWavesPerExpert = (tilingData->maxOutputSize + L1_TILE_M - 1) / L1_TILE_M;
+        int64_t swigluElems = tilingData->expertPerRank * maxWavesPerExpert;
+        int64_t dispatchElems = tilingData->expertPerRank;
+        int64_t totalFlagElems =
+            Ops::Base::CeilAlign(static_cast<uint64_t>(swigluElems + dispatchElems), static_cast<uint64_t>(8));
+
         flagSwiGluToGmm2Ptr = base + workspaceSize;
+        flagDispatchToGmm1Ptr = base + workspaceSize + SIZE_INT_32 * swigluElems;
+        workspaceSize += SIZE_INT_32 * totalFlagElems;
 
+        ptrGmmOut = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(2 * tilingData->maxOutputSize * tilingData->h), ALIGN_512);
 
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-
-        flagDispatchToGmm1Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-
+        ptrGmm2RowReady = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->aicNum), ALIGN_128);
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
