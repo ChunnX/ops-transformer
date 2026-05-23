@@ -946,10 +946,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::URMA_Core_Pro
     int processed_cnt_per_core[64] = {0};
     SplitCoreCal_urma();
     while(processed_cnt < selfSendCnt_){
-        for(int i = 0; i < 64; i += 16){
-            dcci(flag_gm + i, 0);
-        }
-        dcci(flag_gm + 63, 0);
+        // for(int i = 0; i < 64; i += 16){
+        //     dcci(flag_gm + i, 0);
+        // }
+        // dcci(flag_gm + 63, 0);
         for(int cid = 0; cid < aivNum_; cid ++) { 
             int flag_new = flag_gm[cid];
             if(flag_new > processed_cnt_per_core[cid]) {
@@ -1017,7 +1017,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         if (loop >= 4) {
             flag++;
             WaitFlag<HardEvent::MTE3_S>((loop - 4) % 4);
-            AscendC::SetValue(flagGmTensor[coreIdx_], flag);
+            flagGmTensor.SetValue(coreIdx_, flag);
             AscendC::DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGmTensor[coreIdx_]);
             // st_dev(flag, flag_gm + coreIdx_, 0);
         }
@@ -1025,7 +1025,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     for(; flag <= sendCntNum_; flag++) {
         WaitFlag<HardEvent::MTE3_S>((flag - 1) % 4);
         // st_dev(flag, flag_gm + coreIdx_, 0);
-        AscendC::SetValue(flagGmTensor[coreIdx_], flag);
+        flagGmTensor.SetValue(coreIdx_, flag);
         AscendC::DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGmTensor[coreIdx_]);
     }
 }
