@@ -948,9 +948,9 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
             dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
             dataCopyParams.blockLen = curS2EnsPos - treeMaskStart;
             dataCopyParams.srcStride = (info.layout == S1_EQUAL1) ? 0 :
-                info.attenMaskStride - (curS2EnsPos - treeMaskStart);
+                (info.attenMaskStride - (curS2EnsPos - treeMaskStart));
             dataCopyParams.dstStride = (info.layout == S1_EQUAL1) ? 0 :
-                (treeMaskStart - info.s2StartIdx) / 32; // dst在UB上，单位为32字节，同时左侧不对齐场景会进行左padding
+                ((treeMaskStart - info.s2StartIdx) / 32); // dst在UB上，单位为32字节，同时左侧不对齐场景会进行左padding
             DataCopyPadExtParams<bool> padParams;
             padParams.isPad = true;
             padParams.leftPadding = static_cast<uint8_t>(treeMaskStart % 32);
@@ -973,6 +973,10 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
     DataCopyPadExtParams<bool> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
 
     DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+
+    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
+    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 }
 
 template <typename T, typename U, bool ENABLE_TREE = false>
@@ -990,15 +994,9 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
     } else {
         AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, 0, info.s1Size, isPre);
         LocalTensor<T> attenMaskUbDst = tmpBuf.template ReinterpretCast<T>();
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 
         uint32_t headS1Count = 0;
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
@@ -1036,10 +1034,6 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
 
     AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx + 1, isPre);
-
-    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 
     LocalTensor<int16_t> attenMaskUbDst = tmpBuf.template ReinterpretCast<int16_t>();
     LocalTensor<int16_t> mask16 = attenMaskUb.template ReinterpretCast<int16_t>();
@@ -1142,23 +1136,21 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
 {
     if (info.layout == S1_EQUAL1) {
         AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, 0, 1, isPre);
-
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
         for (uint32_t i = 1; i < info.gs1dealNum; i++) {
             uint32_t offset = i * Align(info.s2dealNum, 32U);
             DataCopy(attenMaskUb[offset], attenMaskUb, Align(info.s2dealNum, 32U));
         }
-    } else {
-        if constexpr (layoutQ == GS) {
-            AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(
-            attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-        } else {
-            AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(
-                attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-        }
+        return;
     }
+
+    if constexpr (layoutQ == GS) {
+        AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(
+        attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+    } else {
+        AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(
+            attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+    }
+
 }
 
 template <typename T, typename M, typename U>
