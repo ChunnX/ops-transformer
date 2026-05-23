@@ -16,6 +16,9 @@
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_QUANT_MATMUL_DEQUANT_H
 #include <cstdint>
 #include <vector>
+#include "register/tilingdata_base.h"
+#include "exe_graph/runtime/tiling_context.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 

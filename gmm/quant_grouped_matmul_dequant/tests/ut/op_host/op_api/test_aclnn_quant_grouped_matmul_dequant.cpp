@@ -12,11 +12,12 @@
 #include <array>
 #include "gtest/gtest.h"
 
-#include "level2/aclnn_quant_grouped_matmul_dequant.h"
+#include "../../../../op_api/aclnn_quant_grouped_matmul_dequant.h"
 
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
+#include "opdev/platform.h"
 
 
 using namespace std;
@@ -25,9 +26,13 @@ class l2_quant_grouped_matmul_dequant_test : public testing::Test {
  protected:
   static void SetUpTestCase() {
     cout << "l2_quant_grouped_matmul_dequant_test SetUp" << endl;
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND310P);
   }
 
-  static void TearDownTestCase() { cout << "l2_quant_grouped_matmul_dequant_test TearDown" << endl; }
+  static void TearDownTestCase() {
+    cout << "l2_quant_grouped_matmul_dequant_test TearDown" << endl;
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+  }
 };
 
 TEST_F(l2_quant_grouped_matmul_dequant_test, ascend310P_normal_1) {
@@ -115,6 +120,6 @@ TEST_F(l2_quant_grouped_matmul_dequant_test, ascend310P_normal_4) {
 
   uint64_t workspace_size = 0;
   aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-  EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 }
