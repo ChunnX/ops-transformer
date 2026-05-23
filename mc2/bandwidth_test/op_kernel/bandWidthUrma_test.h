@@ -501,6 +501,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::BufferI
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
 {
+    int32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
     GlobalTensor<int32_t> rankGMTensor;
     PipeBarrier<PIPE_ALL>();
     rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
