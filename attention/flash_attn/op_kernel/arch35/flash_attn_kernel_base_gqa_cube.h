@@ -75,7 +75,7 @@ private:
         }
 
         this->GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoCube taskRunInfoXCube[KernelBase::PRELOAD_TASK_CACHE_SIZE] = {};
 
         this->createdTaskCount = 0;
         this->executedTaskCount = 0;
@@ -97,7 +97,7 @@ private:
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealModeCube(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    CreateTaskCube(this->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTaskCube(this->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoXCube);
                     this->createdTaskCount++;
                     UpdateAxisInfoCube(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
@@ -108,9 +108,9 @@ private:
                     continue;
                 }
             }
-            shouldExecuteTask = ShouldExecuteTaskCube(taskRunInfo);
+            shouldExecuteTask = ShouldExecuteTaskCube(taskRunInfoXCube);
             if (shouldExecuteTask) {
-                ExecuteTaskCube(this->executedTaskCount, taskRunInfo);
+                ExecuteTaskCube(this->executedTaskCount, taskRunInfoXCube);
                 this->executedTaskCount++;
             }
         }
@@ -121,10 +121,10 @@ private:
         return ((bN2Cur != this->bN2End_) || (gS1Cur != this->gS1OEnd_) || (s2Cur != this->s2OEnd_));
     }
 
-    __aicore__ inline bool ShouldExecuteTaskCube(RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTaskCube(RunInfoCube taskRunInfoXCube[KernelBase::PRELOAD_TASK_CACHE_SIZE])
     {
         for (uint32_t i = 0; i < KernelBase::PRELOAD_TASK_CACHE_SIZE; i++) {
-            if (taskRunInfo[i].isValid) {
+            if (taskRunInfoXCube[i].isValid) {
                 return true;
             }
         }
@@ -279,115 +279,78 @@ private:
         return;
     }
 
-    __aicore__ inline void ExecuteTaskCube(uint64_t loop, RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTaskCube(uint64_t loop, RunInfoCube taskRunInfoXCube[KernelBase::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - KernelBase::PRELOAD_N) % KernelBase::PRELOAD_TASK_CACHE_SIZE];
-        if (runInfo0.isValid) {
+        RunInfoCube &runInfoXCube0 = taskRunInfoXCube[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
+        RunInfoCube &runInfoXCubeNegN = taskRunInfoXCube[(loop - KernelBase::PRELOAD_N) % KernelBase::PRELOAD_TASK_CACHE_SIZE];
+if (runInfoXCube0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1Cube(runInfo0);
+                ComputeMm1Cube(runInfoXCube0);
             }
         }
         if (loop >= KernelBase::PRELOAD_N) {
-            if (runInfoNegN.isValid) {
+            if (runInfoXCubeNegN.isValid) {
                 if ASCEND_IS_AIC {
-                    ComputeMm2Cube(runInfoNegN);
+                    ComputeMm2Cube(runInfoXCubeNegN);
                 }
-                runInfoNegN.isValid = false;
+                runInfoXCubeNegN.isValid = false;
             }
         }
     }
 
-    __aicore__ inline void ComputeMm1Cube(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1Cube(RunInfoCube &runInfoXCube)
     {
-        this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfoXCube);
     }
 
-    __aicore__ inline void ComputeMm2Cube(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm2Cube(RunInfoCube &runInfoXCube)
     {
         if constexpr (KernelBase::BMM2_TOUB) {
-            this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+            this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfoXCube);
         } else {
-            this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
+            this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfoXCube);
         }
     }
 
     __aicore__ inline void CreateTaskCube(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                          RunInfoX taskRunInfo[KernelBase::PRELOAD_TASK_CACHE_SIZE])
+                                          RunInfoCube taskRunInfoXCube[KernelBase::PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
-        CalcParamsCube(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
+        RunInfoCube &runInfoXCube = taskRunInfoXCube[loop % KernelBase::PRELOAD_TASK_CACHE_SIZE];
+        CalcParamsCube(loop, bN2Cur, gS1Cur, s2Cur, runInfoXCube);
+        runInfoXCube.isValid = true;
     }
 
-    __aicore__ inline void CalcParamsCube(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParamsCube(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoCube &runInfoXCube)
     {
-        info.loop = loop;
-        info.mloop = this->mloop;
-        info.bIdx = bN2Cur / this->constInfo.n2Size;
-        info.n2Idx = bN2Cur % this->constInfo.n2Size;
-        info.gS1Idx = gS1Cur * KernelBase::mBaseSize;
-        if constexpr (KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH ||
-                      KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      KernelBase::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            info.s1Idx = info.gS1Idx / this->constInfo.gSize;
-        } else {
-            info.s1Idx = info.gS1Idx % this->actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * KernelBase::s2BaseSize;
-        info.actS1Size = this->actSeqLensQ;
-        info.actS2Size = this->actSeqLensKv;
+        runInfoXCube.bIdx = bN2Cur / this->constInfo.n2Size;
+        runInfoXCube.n2Idx = bN2Cur % this->constInfo.n2Size;
+        runInfoXCube.gS1Idx = gS1Cur * KernelBase::mBaseSize;
+        runInfoXCube.s2Idx = s2Cur * KernelBase::s2BaseSize;
 
-        info.actMSize = KernelBase::mBaseSize;
-        uint64_t gS1Size = info.actS1Size * this->constInfo.gSize;
+        uint64_t actS1Size = this->actSeqLensQ;
+        uint64_t actS2Size = this->actSeqLensKv;
+        runInfoXCube.actMSize = KernelBase::mBaseSize;
+        uint64_t gS1Size = actS1Size * this->constInfo.gSize;
         if (((gS1Cur + 1) * KernelBase::mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * KernelBase::mBaseSize;
+            runInfoXCube.actMSize = gS1Size - gS1Cur * KernelBase::mBaseSize;
         }
-        info.actSingleLoopS2Size = KernelBase::s2BaseSize;
-        if (((s2Cur + 1) * KernelBase::s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * KernelBase::s2BaseSize;
+        runInfoXCube.actSingleLoopS2Size = KernelBase::s2BaseSize;
+        if (((s2Cur + 1) * KernelBase::s2BaseSize) > actS2Size) {
+            runInfoXCube.actSingleLoopS2Size = actS2Size - s2Cur * KernelBase::s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename KernelBase::INPUT_T)));
+
         if (this->constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
+            runInfoXCube.isChangeBatch = false;
         } else {
             if (loop == 0) {
-                info.isChangeBatch = true;
+                runInfoXCube.isChangeBatch = true;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == this->curS2Start);
+                runInfoXCube.isChangeBatch = (runInfoXCube.n2Idx == 0 && s2Cur == this->curS2Start);
             }
         }
 
-        GetPreNextTokenLeftUpCube(this->actSeqLensQ, this->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
-
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == this->curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = this->coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == this->curS2End);
-
-        if constexpr (KernelBase::USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (this->constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (this->bN2Start_ == this->bN2End_ && this->gS1OStart_ == this->gS1OEnd_) {
-            info.isS2SplitCore = true;
-        } else {
-            if (this->headS2Split && (bN2Cur == this->bN2Start_) && (gS1Cur == this->gS1OStart_)) {
-                info.isS2SplitCore = true;
-            } else if (this->tailS2Split && (bN2Cur == this->bN2End_) && (gS1Cur == this->gS1OEnd_)) {
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = this->headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
+        runInfoXCube.isFirstS2Loop = ((loop == 0) || (s2Cur == this->curS2Start));
+        runInfoXCube.isLastS2Loop = (s2Cur + 1 == this->curS2End);
     }
 
     __aicore__ inline void UpdateAxisInfoCube(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
