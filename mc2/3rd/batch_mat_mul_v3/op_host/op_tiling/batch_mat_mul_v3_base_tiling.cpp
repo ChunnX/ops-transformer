@@ -125,7 +125,8 @@ bool Mc2BatchMatmulV3BaseTiling::GetBatchInfo()
     bool batch1Invalid = batchInfo_.batchA1 != batchInfo_.batchB1 && batchInfo_.batchA1 != 1UL && batchInfo_.batchB1 != 1UL;
     bool batch0Invalid = batchInfo_.batchA0 != batchInfo_.batchB0 && batchInfo_.batchA0 != 1UL && batchInfo_.batchB0 != 1UL;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE("[Mc2BatchMatMulV3]", "Is M broadcast to N situation, do not support!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args_.opName, "batch dims of x1 and x2", "M broadcast to N",
+                                              "x1 and x2 batch dims must be equal or one must be 1");
         return false;
     }
     return GetBiasWithBatchInfo();
@@ -143,14 +144,14 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
         return true;
     }
     if (biasDims == NO_BATCH_SHAPE_DIM) {
-        OP_LOGE("[Mc2BatchMatMulV3]", " Dim number of bias must not be 2 !");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(args_.opName, "bias", "2D", "not 2D");
         return false;
     }
 
     batchInfo_.biasWithBatch = true;
     uint64_t biasMValue = biasShape[biasDims - NO_BATCH_SHAPE_DIM];
     if (biasMValue != 1UL) {
-        OP_LOGE("[Mc2BatchMatMulV3]", "M of Bias must be 1 !");
+        OP_LOGE_FOR_INVALID_SHAPE(args_.opName, "bias", ("[" + std::to_string(biasMValue) + "]").c_str(), "[1]");
         return false;
     }
 
@@ -165,7 +166,15 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
     bool biasBatchValid = batchBias3 == batchInfo_.batchC3 && batchBias2 == batchInfo_.batchC2
         && batchBias1 == batchInfo_.batchC1 && batchBias0 == batchInfo_.batchC0;
     if (batchInfo_.biasWithBatch && !biasBatchValid) {
-        OP_LOGE("[Mc2BatchMatMulV3]", "Batch of Bias  must be equal to C !");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            args_.opName, "bias",
+            ("[" + std::to_string(batchBias3) + "," + std::to_string(batchBias2) + "," + std::to_string(batchBias1) +
+             "," + std::to_string(batchBias0) + "]")
+                .c_str(),
+            ("batch dims of bias should equal batch dims of output C: [" + std::to_string(batchInfo_.batchC3) + "," +
+             std::to_string(batchInfo_.batchC2) + "," + std::to_string(batchInfo_.batchC1) + "," +
+             std::to_string(batchInfo_.batchC0) + "]")
+                .c_str());
         return false;
     }
     return true;
