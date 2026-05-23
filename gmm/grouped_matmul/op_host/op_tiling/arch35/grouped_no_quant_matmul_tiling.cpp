@@ -451,7 +451,7 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     }
 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
             FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
-            FormatString("Under %s scene, the value of %s cannot be %s", "SPLIT_K", "group_type, isSingleWeight, isSingleX, isSingleY",
+            FormatString("Under %s scene, the values of %s cannot be %s", "SPLIT_K", "group_type, isSingleWeight, isSingleX, isSingleY",
                 "this combination").c_str());
     return false;
 }
