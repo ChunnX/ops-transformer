@@ -236,37 +236,47 @@ enum class FiaKernelType : uint8_t {
 };
 
 struct RunInfoX {
-    uint32_t loop = 0;
-    uint32_t mloop = 0;
-    bool isValid = false;
-    bool isChangeBatch = false;
-    bool isFirstS2Loop = false;
-    bool isLastS2Loop = false;
+    // === 公共字段段 (Offset 0-39): Cube和Vector都使用 ===
+    bool isValid = false;              // 公共：任务有效性
+    bool isFirstS2Loop = false;        // 公共：S2首循环标志
+    bool isLastS2Loop = false;         // 公共：S2末循环标志
+    uint8_t reservedPublic[5] = {0};   // padding: 公共bool段凑成8字节
 
-    uint32_t bIdx = 0;
-    uint32_t n2Idx = 0;
-    uint32_t gS1Idx = 0;
-    uint32_t gIdx = 0;
-    uint32_t s1Idx = 0;
-    uint32_t s2Idx = 0;
-    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
-    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
-    uint32_t actMSize = 0;    // GS1方向上的长度
-    uint32_t actMSizeAlign32; // GS1 方向上长度对齐
-    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
-    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+    uint32_t bIdx = 0;                 // 公共：batch索引
+    uint32_t n2Idx = 0;                // 公共：n2索引
+    uint32_t gS1Idx = 0;               // 公共：g*S1索引
+    uint32_t s2Idx = 0;                // 公共：s2索引
+    uint32_t actMSize = 0;             // 公共：M轴大小
+    uint32_t actSingleLoopS2Size = 0;  // 公共：S2循环大小
 
-    uint32_t actSingleLoopS2Size = 0; // S2方向长度
-    uint32_t actSingleLoopS2SizeAlign;
-    // uint32_t curS2LoopTimes = 0;
-    bool isS2SplitCore = false;
-    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    // === Vector专用字段段 (Offset 40-107): Vector核专用 ===
+    uint32_t loop = 0;                 // Vector：Buffer索引
+    uint32_t mloop = 0;                // Vector：m循环计数
+    uint32_t gIdx = 0;                 // Vector：g索引
+    uint32_t s1Idx = 0;                // Vector：s1索引
+    uint32_t actMSizeAlign32 = 0;      // Vector：32对齐M大小
+    uint32_t actVecMSize = 0;          // Vector：Vector视角M大小
+    uint32_t vecMbaseIdx = 0;          // Vector：Vector M起始偏移
+    uint32_t actSingleLoopS2SizeAlign = 0; // Vector：S2对齐大小
+    uint32_t faTmpOutWsPos = 0;        // Vector：workspace位置
+    uint32_t reservedVector[3] = {0};  // padding: Vector段对齐到32字节
 
-    int64_t preTokensLeftUp = 0;
-    int64_t nextTokensLeftUp = 0;
+    bool isS2SplitCore = false;        // Vector：workspace分割标志
+    uint8_t reservedVectorBool[7] = {0}; // padding: Vector bool段凑成8字节
 
-    uint64_t qPaddingBeginOffset = 0;
-    uint64_t kvPaddingBeginOffset = 0;
+    uint64_t actS1Size = 1;            // Vector：S1轴实际大小
+    uint64_t actS2Size = 1;            // Vector：S2轴实际大小
+    uint64_t qPaddingBeginOffset = 0;  // Vector：Q padding偏移
+    uint64_t kvPaddingBeginOffset = 0; // Vector：KV padding偏移
+
+    int64_t preTokensLeftUp = 0;       // Vector：sparse token左
+    int64_t nextTokensLeftUp = 0;      // Vector：sparse token右
+
+    // === Cube专用字段段 (Offset 108-115): Cube核专用 ===
+    bool isChangeBatch = false;        // Cube：K/V batch切换标志
+    uint8_t reservedCube[7] = {0};     // padding: Cube段凑成8字节
+
+    uint32_t reservedTail[6] = {0};    // padding: 总大小凑成128字节（32字节对齐）
 };
 
 
