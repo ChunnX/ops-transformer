@@ -694,7 +694,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
     ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+        (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
     # 分别生成bf16类型的nope合rope矩阵，为了模拟量化的过程，得到准确的量化参数
@@ -782,7 +782,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.q_type)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
 
     if kv_quant_mode == 10:
