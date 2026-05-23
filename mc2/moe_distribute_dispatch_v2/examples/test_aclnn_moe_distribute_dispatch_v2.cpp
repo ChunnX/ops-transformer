@@ -29,6 +29,7 @@
 #include "acl/acl.h"
 #include "shmem.h"
 #include <iterator>
+#include <unistd.h>
 
 int g_npus  = 8;
 const char*ipport;
@@ -307,6 +308,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d\n", ret); return ret);
     }
     // 调用dispatchV2算子第二阶段接口
+    printf("[HOST TIME] Launch Kernel Start !!\n");
     ret = aclnnMoeDistributeDispatchV2(dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, dispatchV2Executor, args.dispatchV2Stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2 failed. ret = %d\n", ret); return ret);
     // （固定写法）同步等待任务执行结束
@@ -316,6 +318,10 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
     );
 
+    // 当前同步有问题，先验证功能
+    sleep(5);
+
+    printf("[HOST TIME] Kernel Run Success !!\n");
     std::vector<int64_t> time_vec(4, 0);
     ret = aclrtMemcpy(time_vec.data(), 32, expertIdsDeviceAddr, 32, ACL_MEMCPY_DEVICE_TO_HOST);
     printf("[HOST TIME] pe=%d, total wqe: %lld, total wqe+pollcq: %lld, \n", pe_id, time_vec[0], time_vec[1]);
@@ -327,16 +333,12 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclrtMemcpy(y_host, input_size, custom_ptr, input_size, ACL_MEMCPY_DEVICE_TO_HOST);
 
     std::vector<int> output((int*)y_host, (int*)(y_host + n_pes * trans_size));
-    std::cout << "[Output] pe=" << pe_id << ": "
-                                << y_host[trans_size * 0] << " "
-                                << y_host[trans_size * 1] << " "
-                                << y_host[trans_size * 2] << " "
-                                << y_host[trans_size * 3] << " "
-                                << y_host[trans_size * 4] << " "
-                                << y_host[trans_size * 5] << " "
-                                << y_host[trans_size * 6] << " "
-                                << y_host[trans_size * 7] << " " << std::endl;
-    
+    std::cout << "[Output] pe=" << pe_id << ": ";
+    for (int i = 0; i < n_pes; i++) {
+        std::cout << y_host[trans_size * i] << " ";
+    }
+    std::cout << std::endl;
+ 
     aclshmem_free(custom_ptr);
 
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);

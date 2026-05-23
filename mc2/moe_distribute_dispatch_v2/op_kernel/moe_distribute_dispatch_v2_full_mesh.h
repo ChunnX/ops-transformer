@@ -1685,21 +1685,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         AscendC::printf("====================== zzz In moe_distribute_dispatch_v2 ==========================\n");
         AscendC::printf("Shmem Interface my_pe: %d \n", aclshmem_my_pe());
 
-        __gm__ ACLSHMEMAIVUDMAInfo* udmaInfo = aclshmemi_udma_qp_info_fetch();
-        AscendC::printf("====================== Shmem udmaInfo address: %p ====================== \n", udmaInfo);
-
-        __gm__ ACLSHMEMUDMAWQCtx* qpCtxEntry = aclshmemi_udma_get_qp_ctx(udmaInfo, (aclshmem_my_pe() + 1) % aclshmem_n_pes(), 0, 0);
-        AscendC::printf("====================== Shmem udma qpCtxEntry address: %p ====================== \n", qpCtxEntry);
-
-        auto wqeSize = 1 << qpCtxEntry->baseBkShift; // basebk_shift
-        auto curHardwareHeadAddr = qpCtxEntry->headAddr;
-        uint32_t curHead = ld_dev((__gm__ uint32_t*)(curHardwareHeadAddr), 0);
-        AscendC::printf("====================== Shmem udma wqeSize: %d ====================== \n", wqeSize);
-        AscendC::printf("====================== Shmem udma curHead: %d ====================== \n", curHead);
-
-        __gm__ uint32_t* doorBellAddr = (__gm__ uint32_t*)qpCtxEntry->dbAddr;
-        AscendC::printf("====================== Shmem udma doorBell: %d ====================== \n", (*doorBellAddr));
-
         AscendC::TBuf<AscendC::TPosition::VECOUT> buf;
         tpipe_->InitBuffer(buf, UB_ALIGN_SIZE * 2);
         // A user-provided LocalTensor of at least 64 bytes is required to submit UDMA tasks.
@@ -1714,24 +1699,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         int64_t my_pe = aclshmem_my_pe();
         int64_t pe_size = aclshmem_n_pes();
 
-        // ring
-        int64_t target_pe = (my_pe + 1) % pe_size;
-
-        constexpr int32_t warmupIter = 5;
-        constexpr int32_t benchIter = 1;    //PKG_NUM / NUM_THREAD_CPP;
-        int64_t totalCycles = 0;
         int64_t start = 0;
         int64_t end = 0;
         int64_t end2 = 0;
 
-        // for (int32_t idx = 0; idx < warmupIter; idx++) {
-        //     aclshmemx_udma_put_nbi(
-        //         custom_ptr, custom_ptr, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
-        //         message_length, target_pe);
-        // }
-        // aclshmemx_udma_quiet(target_pe);
-
-        aclshmemx_barrier_all_vec();
+        // aclshmemx_barrier_all_vec();
 
         if (AscendC::GetBlockIdx() == 0) {
             start = AscendC::GetSystemCycle();
@@ -1753,7 +1725,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
         }
 
-        aclshmemx_barrier_all_vec();
+        // aclshmemx_barrier_all_vec();
         PipeBarrier<PIPE_ALL>();
     }
 }

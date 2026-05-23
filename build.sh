@@ -560,6 +560,18 @@ function build_example()
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
 
+    # ========= cann 路径配置（通过环境变量 SHMEM_HOME 指定） =========
+    if [[ -z "${ASCEND_HOME_PATH}" ]]; then
+        echo "Error: 环境变量 ASCEND_HOME_PATH 未设置，请先 source CANN包"
+        return 1
+    fi
+    ASCEND_HOME="$(realpath "${ASCEND_HOME_PATH}/..")"
+
+    if [[ ! -d "${ASCEND_HOME}" ]]; then
+        echo "Error: ASCEND_HOME=${ASCEND_HOME} 不存在"
+        return 1
+    fi
+
     # ========= shmem 外接配置（通过环境变量 SHMEM_HOME 指定） =========
     if [[ -z "${SHMEM_HOME}" ]]; then
         echo "Error: 环境变量 SHMEM_HOME 未设置，请先 export SHMEM_HOME=/path/to/shmem"
@@ -591,23 +603,10 @@ function build_example()
     export SHMEM_LOG_LEVEL=ERROR
     export SHMEM_LOG_TO_STDOUT=1
 
-    # 节点ID + SHMEM Master IP
-    export SHMEM_NODE_RANK=0
-    export SHMEM_UID_SESSION_ID="127.0.0.1:18899"
-
     export PATH=${MPI_TEST_HOME}/bin:$PATH
     export LD_LIBRARY_PATH=${MPI_TEST_HOME}/lib:$LD_LIBRARY_PATH
     MPI_INC_DIR="${MPI_TEST_HOME}/include"
     MPI_LIB_DIR="${MPI_TEST_HOME}/lib"
-
-    echo "====== Launch Config ======"
-    echo "SHMEM_NODE_RANK   = $SHMEM_NODE_RANK"
-    echo "MASTER_IP         = tcp://$SHMEM_UID_SESSION_ID"
-    echo "==========================="
-
-    n_pes=8
-    g_npus=8
-    pids=()
 
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
@@ -677,19 +676,113 @@ function build_example()
             if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS}" == "ascend950" ]]; then
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
             else 
+                # 指定 SHMEM Master IP
+                export SHMEM_UID_SESSION_ID="141.61.133.110:18899"
+                HOSTS=(141.61.133.110 141.61.133.109)
+ 	            PPN=8
+ 	            N_PES=$((${#HOSTS[@]} * PPN))
+                WORK_DIR="$(pwd)"                           # ops-transformer/build/
+                OPS_DIR="$(realpath "${WORK_DIR}/..")"      # ops-transformer/
+                EXEC="${WORK_DIR}/test_aclnn_${EXAMPLE_NAME}"
+ 	            LOG_DIR="${WORK_DIR}/../logs_${EXAMPLE_NAME}_$(date +%Y%m%d)"
+                mkdir -p ${LOG_DIR} ${WORK_DIR}
+
+                # 本地环境安装
+                # 算子 run 包（相对当前 build/ 目录）
+                OPS_RUN_LOCAL="${WORK_DIR}/../build_out/cann-ops-transformer-custom_linux-aarch64.run"
+                bash ${OPS_RUN_LOCAL} --install-path=${ASCEND_HOME}/cann/ --force
+                source ${ASCEND_HOME}/cann/vendors/custom_transformer/bin/set_env.bash
+
                 # 生成日志包装脚本（每次运行覆盖，确保最新）
-                LOG_DIR="../logs_${EXAMPLE_NAME}_$(date +%Y%m%d)"
-                mkdir -p "${LOG_DIR}"
-                WRAPPER="${LOG_DIR}/wrapper.sh"
+                WRAPPER="${WORK_DIR}/wrapper_${EXAMPLE_NAME}.sh"
                 {
                     echo '#!/bin/bash'
                     echo 'RANK=${PMI_RANK:-0}'
-                    echo "exec \"\$@\" > \"${LOG_DIR}/log_rank_\${RANK}.txt\" 2>&1"
+                    echo 'HOST=$(hostname -s)'
+                    echo "LOG_FILE=\"${LOG_DIR}/log_\${HOST}_rank_\${RANK}.txt\""
+                    echo ''
+                    echo '# CANN 环境'
+                    echo "source ${ASCEND_HOME}/ascend-toolkit/set_env.sh"
+                    echo ''
+                    echo '# 自定义算子环境'
+                    echo "source ${ASCEND_HOME}/cann/vendors/custom_transformer/bin/set_env.bash"
+                    echo '# 自定义算子 .so'
+                    echo "export LD_LIBRARY_PATH=${OPS_DIR}/build:${LD_LIBRARY_PATH}"
+                    echo ''
+                    echo 'export ASCEND_SLOG_PRINT_TO_STDOUT=0'
+                    echo 'export SHMEM_LOG_LEVEL=ERROR'
+                    echo 'export SHMEM_LOG_TO_STDOUT=1'
+                    echo ''
+                    echo '# SHMEM'
+                    echo "SHMEM_HOME=${SHMEM_HOME}"
+                    echo "export LD_LIBRARY_PATH=${SHMEM_HOME}/build/lib:${LD_LIBRARY_PATH}"
+                    echo ''
+                    echo '{'
+                    echo '    echo "[wrapper] host=${HOST} rank=${RANK}"'
+                    echo '    echo "[wrapper] LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"'
+                    echo '    echo "----"'
+                    echo '} > "${LOG_FILE}"'
+                    echo ''
+                    echo 'exec "$@" >> "${LOG_FILE}" 2>&1'
                 } > "${WRAPPER}"
                 chmod +x "${WRAPPER}"
+                # MPI执行前，进行运行所需的环境和可执行文件scp复制
+                SSH_USER=root
+                # 需要同步的目录/文件
+                SYNC_PATHS=(
+                    "${WORK_DIR}/"
+                    "${WORK_DIR}/../../shmem/"
+                )
+                # 在远端预先创建的目录
+                REMOTE_MKDIRS=(
+                    "${LOG_DIR}"
+                    "${WORK_DIR}"
+                    "${WORK_DIR}/../../shmem/"
+                )
+
+                OPS_RUN_REMOTE="${WORK_DIR}/cann-ops-transformer-custom_linux-aarch64.run"
+
+                for ip in "${HOSTS[@]:1}"; do   # 跳过本机
+                    echo "==> 准备远端 ${ip}"
+
+                    # 1) 远端建目录
+                    ssh "${SSH_USER}@${ip}" "mkdir -p ${REMOTE_MKDIRS[*]}"
+
+                    # 2) 同步可执行文件 + wrapper
+                    scp "${WRAPPER}" "${SSH_USER}@${ip}:${WRAPPER}"
+                    scp "${EXEC}"    "${SSH_USER}@${ip}:${EXEC}"
+
+                    # 3) 同步库目录（递归）
+                    for p in "${SYNC_PATHS[@]}"; do
+                        scp -r "${p}/" "${SSH_USER}@${ip}:$(dirname ${p})/"
+                    done
+
+                    # 4) 同步算子 run 包
+                    scp "${OPS_RUN_LOCAL}" "${SSH_USER}@${ip}:${OPS_RUN_REMOTE}"
+
+                    # 5) 远端安装算子包
+                    ssh "${SSH_USER}@${ip}" "bash ${OPS_RUN_REMOTE} --install-path=${ASCEND_HOME}/cann/ --force"
+                done
+
                 echo "Per-rank logs will be written to: ${LOG_DIR}/"
 
-                mpirun -np ${n_pes} "${WRAPPER}" ./test_aclnn_${EXAMPLE_NAME} "tcp://${SHMEM_UID_SESSION_ID}" ${g_npus}
+                HOSTS_ARG=$(IFS=,; echo "${HOSTS[*]/%/:${PPN}}")
+ 	 
+                echo $HOSTS_ARG
+                echo "HOSTS    = ${HOSTS[@]}"
+                echo "HOSTS#   = ${#HOSTS[@]}"
+                echo "PPN      = ${PPN}"
+                echo "N_PES    = ${N_PES}"
+                echo "WRAPPER  = ${WRAPPER}"
+                echo "EXEC     = ${EXEC}"
+                echo "HOSTS_ARG= ${HOSTS_ARG}"
+    
+                mpirun -np ${N_PES}     \
+                -hosts "${HOSTS_ARG}"   \
+                -genv PATH "${PATH}"    \
+                -genv LD_LIBRARY_PATH "${LD_LIBRARY_PATH}" \
+                -genv SHMEM_UID_SESSION_ID "${SHMEM_UID_SESSION_ID}" \
+                "${WRAPPER}" "${EXEC}" "tcp://${SHMEM_UID_SESSION_ID}" ${PPN}
             fi
             run_result=$?
             if [ $run_result -ne 0 ]; then
