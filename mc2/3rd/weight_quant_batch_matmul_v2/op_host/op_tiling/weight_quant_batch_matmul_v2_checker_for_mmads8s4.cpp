@@ -111,11 +111,11 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAttr()
 
     OP_TILING_CHECK(inputParams_.transA,
                     OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transA",
-                        inputParams_.transA ? "1" : "0", "1"),
+                        inputParams_.transA ? "1" : "0", "0"),
                     return false);
     OP_TILING_CHECK(inputParams_.transB,
                     OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transB",
-                        inputParams_.transB ? "1" : "0", "1"),
+                        inputParams_.transB ? "1" : "0", "0"),
                     return false);
 
     if (groupSizePtr != nullptr) {
