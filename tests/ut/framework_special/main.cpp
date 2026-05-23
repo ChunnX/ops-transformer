@@ -29,9 +29,6 @@ int main(int argc, char **argv)
     if (!platform.InitArgsInfo(argc, argv)) {
         return 1;
     }
-    if (!platform.LoadOpProtoSo()) {
-        return 1;
-    }
     if (!platform.LoadOpTilingSo()) {
         return 1;
     }
@@ -40,9 +37,6 @@ int main(int argc, char **argv)
     int ret = RUN_ALL_TESTS();
 
     if (!platform.UnLoadOpTilingSo()) {
-        return 1;
-    }
-    if (!platform.UnLoadOpProtoSo()) {
         return 1;
     }
 
