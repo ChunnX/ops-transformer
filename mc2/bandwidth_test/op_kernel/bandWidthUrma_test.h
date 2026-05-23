@@ -411,8 +411,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 continue;
             }
             SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
-            SyncFunc<AscendC::HardEvent::S_V>();
+            //CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            // SyncFunc<AscendC::HardEvent::S_V>();
             
             // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
