@@ -577,7 +577,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
         base_addr[rankId] = (GM_ADDR)(aclshmem_ptr((GM_ADDR)(curRankShmemAddr), rankId));
     }
     curRankShmemAddr = *((__gm__ uint64_t*)(expandXGM_.GetPhyAddr()));
-    REMOTE_DATA_SIZE = hExpandXAlign32Size_ * flagRcvCount_ * axisBS_;
+    REMOTE_DATA_SIZE = hExpandXAlign32Size_ * flagRcvCount_ * axisBS;
     epWindowGM_ = (GM_ADDR)curRankShmemAddr + A5_MTE_STATE_WIN_SIZE;
     token_buffer = (GM_ADDR)(curRankShmemAddr) + A5_MTE_STATE_WIN_SIZE + REMOTE_DATA_SIZE;
     // token_buffer = (GM_ADDR)(curRankShmemAddr) + DATA_FLAG_SIZE; // 本端新增的数据区域，用于本卡数据拷贝，占用空间大小是hExpandXAlign32Size_
@@ -984,6 +984,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     if (sendCntNum_ == 0U) { // 空闲核，直接返回
         return;
     }
+    GlobalTensor<uint32_t> flagGmTensor;
+    flagGmTensor.SetGlobalBuffer((__gm__ uint32_t*)flag_gm, aivNum_);
     expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     uint32_t flag = 0;
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
@@ -1015,12 +1017,16 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         if (loop >= 4) {
             flag++;
             WaitFlag<HardEvent::MTE3_S>((loop - 4) % 4);
-            st_dev(flag, flag_gm + coreIdx_, 0);
+            AscendC::SetValue(flagGmTensor[coreIdx_], flag);
+            AscendC::DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGmTensor[coreIdx_]);
+            // st_dev(flag, flag_gm + coreIdx_, 0);
         }
-        for(; flag <= sendCntNum_; flag++) {
-            WaitFlag<HardEvent::MTE3_S>((flag - 1) % 4);
-            st_dev(flag, flag_gm + coreIdx_, 0);
-        }
+    }
+    for(; flag <= sendCntNum_; flag++) {
+        WaitFlag<HardEvent::MTE3_S>((flag - 1) % 4);
+        // st_dev(flag, flag_gm + coreIdx_, 0);
+        AscendC::SetValue(flagGmTensor[coreIdx_], flag);
+        AscendC::DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGmTensor[coreIdx_]);
     }
 }
 
