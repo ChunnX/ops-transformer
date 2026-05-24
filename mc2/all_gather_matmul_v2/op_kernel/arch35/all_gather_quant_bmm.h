@@ -164,11 +164,15 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
     uint64_t stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
                       tailSendCount * static_cast<uint64_t>(tailCnt); // 不同rank在数据块内的地址偏移
     uint8_t repeat = 1;                                               // 搬运重复次数
-    // 当N=0时，tiling参数为0，stride用rankM*rankK，保持tileCnt/tailCnt不变
+    // 当N=0时，matmulTiling参数为0，重新计算通信参数
     if (cfg.rankN == 0) {
-        stride = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankK);
-        tileSendCount = stride / static_cast<uint64_t>(tileCnt + tailCnt);
-        tailSendCount = 0;
+        uint32_t nTilingKa = cfg.rankK;                                         // 使用cfg.rankK
+        uint32_t nTailM = cfg.tailM;                                            // 从cfg读取tailM
+        uint32_t nTileM = (cfg.rankM - nTailM * tailCnt) / tileCnt;             // 计算tileM
+        tileSendCount = static_cast<uint64_t>(nTileM) * static_cast<uint64_t>(nTilingKa);
+        tailSendCount = static_cast<uint64_t>(nTailM) * static_cast<uint64_t>(nTilingKa);
+        stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
+                 tailSendCount * static_cast<uint64_t>(tailCnt);
     }
     uint64_t scalesCount = DequantBmm::Align(CeilDiv(tilingKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
                            static_cast<uint64_t>(cfg.rankM); // scale1总共搬运数据个数

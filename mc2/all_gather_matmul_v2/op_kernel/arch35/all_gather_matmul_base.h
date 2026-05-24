@@ -205,14 +205,14 @@ private:
                 (uint64_t)tailInfo_.mmTiling->matmulTiling.M * (uint64_t)tailInfo_.mmTiling->matmulTiling.N;
             tailInfo_.cAddrOffset = tailInfo_.cOffset * sizeof(CType);
         }
-        // 当N=0时，matmulTiling参数为0，使用cfg参数计算
+        // 当N=0时，matmulTiling参数为0，重新计算通信参数
         if (paramInTiling_->rankN == 0) {
-            uint32_t tilingKa = paramInTiling_->rankK;
-            uint32_t tailM = paramInTiling_->tailM;
-            uint32_t tilingM = (paramInTiling_->rankM - tailM * tailCnt) / paramInTiling_->tileCnt;
-            tileInfo_.aOffset = (uint64_t)tilingM * (uint64_t)tilingKa;
+            uint32_t nTilingKa = paramInTiling_->rankK;
+            uint32_t nTailM = paramInTiling_->tailM;
+            uint32_t nTileM = (paramInTiling_->rankM - nTailM * tailCnt) / paramInTiling_->tileCnt;
+            tileInfo_.aOffset = (uint64_t)nTileM * (uint64_t)nTilingKa;
             tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(AType);
-            tailInfo_.aOffset = (uint64_t)tailM * (uint64_t)tilingKa;
+            tailInfo_.aOffset = (uint64_t)nTailM * (uint64_t)nTilingKa;
             tailInfo_.aAddrOffset = tailInfo_.aOffset * sizeof(AType);
         }
     }
