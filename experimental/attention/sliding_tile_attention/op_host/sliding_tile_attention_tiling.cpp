@@ -28,11 +28,18 @@ constexpr int64_t DEFAULT_TILE_H = 8;
 constexpr int64_t DEFAULT_TILE_W = 8;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t CUBE_Q_BLOCK = 64;
+constexpr int64_t CUBE_Q_BLOCK_2D_SOFTMAX = 32;
+constexpr int64_t HEAD_DIM_2D_SOFTMAX = 64;
 constexpr int64_t CUBE_KV_BLOCK = 128;
 constexpr uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 
 struct SlidingTileAttentionCompileInfo {
 };
+
+static bool Use2DSoftmaxTiling(int64_t headDim)
+{
+    return headDim == HEAD_DIM_2D_SOFTMAX;
+}
 
 static bool ParseSeqShape(const char *shapeStr, int64_t &seqT, int64_t &seqH, int64_t &seqW)
 {
@@ -162,10 +169,10 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->seqLen = seqLen;
     tiling->headDim = headDim;
     tiling->scale = 1.0F / std::sqrt(static_cast<float>(headDim));
-    tiling->qBlock = CUBE_Q_BLOCK;
+    tiling->qBlock = Use2DSoftmaxTiling(headDim) ? CUBE_Q_BLOCK_2D_SOFTMAX : CUBE_Q_BLOCK;
     tiling->kvBlock = CUBE_KV_BLOCK;
     tiling->headDimAlign = ((headDim + 15) / 16) * 16;
-    tiling->seqBlockNum = (seqLen + CUBE_Q_BLOCK - 1) / CUBE_Q_BLOCK;
+    tiling->seqBlockNum = (seqLen + tiling->qBlock - 1) / tiling->qBlock;
     tiling->cubeTaskNum = batch * headNum * tiling->seqBlockNum;
     tiling->aicCoreNum = aicCoreNum;
     tiling->aivCoreNum = aivCoreNum;
@@ -202,9 +209,11 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     OP_CHECK_NULL_WITH_CONTEXT(context, inputDesc);
     const ge::DataType dtype = inputDesc->GetDataType();
     if (dtype == ge::DT_FLOAT16) {
-        context->SetTilingKey(SLIDING_TILE_ATTENTION_FP16_TILING_KEY);
+        context->SetTilingKey(Use2DSoftmaxTiling(headDim) ? SLIDING_TILE_ATTENTION_FP16_2D_SOFTMAX_TILING_KEY :
+                                                            SLIDING_TILE_ATTENTION_FP16_TILING_KEY);
     } else if (dtype == ge::DT_BF16) {
-        context->SetTilingKey(SLIDING_TILE_ATTENTION_BF16_TILING_KEY);
+        context->SetTilingKey(Use2DSoftmaxTiling(headDim) ? SLIDING_TILE_ATTENTION_BF16_2D_SOFTMAX_TILING_KEY :
+                                                            SLIDING_TILE_ATTENTION_BF16_TILING_KEY);
     } else {
         OP_LOGE(context, "Unsupported dtype for SlidingTileAttention.");
         return ge::GRAPH_FAILED;

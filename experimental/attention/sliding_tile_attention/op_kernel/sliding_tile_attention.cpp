@@ -4,19 +4,35 @@
  */
 
 #include "sliding_tile_attention.h"
+#include "sliding_tile_attention_legacy.h"
 #include "sliding_tile_attention_tiling_key.h"
 
 namespace {
 template <bool IS_BF16>
-__aicore__ inline void RunSlidingTileAttention(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
-                                               const SlidingTileAttentionTilingData *tilingData)
+__aicore__ inline void RunSlidingTileAttentionLegacy(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
+                                                     const SlidingTileAttentionTilingData *tilingData)
 {
     if ASCEND_IS_AIC {
-        SlidingTileAttentionKernel::SlidingTileAttentionCube<IS_BF16> op;
+        SlidingTileAttentionLegacyKernel::SlidingTileAttentionCube<IS_BF16> op;
         op.Init(q, k, v, y, workspace, tilingData);
         op.Process();
     } else {
-        SlidingTileAttentionKernel::SlidingTileAttention<IS_BF16> op;
+        SlidingTileAttentionLegacyKernel::SlidingTileAttention<IS_BF16> op;
+        op.Init(q, k, v, y, workspace, tilingData);
+        op.Process();
+    }
+}
+
+template <bool IS_BF16>
+__aicore__ inline void RunSlidingTileAttention2D(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
+                                                 const SlidingTileAttentionTilingData *tilingData)
+{
+    if ASCEND_IS_AIC {
+        SlidingTileAttentionKernel::SlidingTileAttentionCube<IS_BF16, true> op;
+        op.Init(q, k, v, y, workspace, tilingData);
+        op.Process();
+    } else {
+        SlidingTileAttentionKernel::SlidingTileAttention<IS_BF16, true> op;
         op.Init(q, k, v, y, workspace, tilingData);
         op.Process();
     }
@@ -31,8 +47,12 @@ extern "C" __global__ __aicore__ void sliding_tile_attention(GM_ADDR q, GM_ADDR 
     REGISTER_TILING_DEFAULT(SlidingTileAttentionTilingData);
     GET_TILING_DATA_WITH_STRUCT(SlidingTileAttentionTilingData, tilingData, tiling);
     if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_FP16_TILING_KEY)) {
-        RunSlidingTileAttention<false>(q, k, v, y, userWorkspace, &tilingData);
+        RunSlidingTileAttentionLegacy<false>(q, k, v, y, userWorkspace, &tilingData);
     } else if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_BF16_TILING_KEY)) {
-        RunSlidingTileAttention<true>(q, k, v, y, userWorkspace, &tilingData);
+        RunSlidingTileAttentionLegacy<true>(q, k, v, y, userWorkspace, &tilingData);
+    } else if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_FP16_2D_SOFTMAX_TILING_KEY)) {
+        RunSlidingTileAttention2D<false>(q, k, v, y, userWorkspace, &tilingData);
+    } else if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_BF16_2D_SOFTMAX_TILING_KEY)) {
+        RunSlidingTileAttention2D<true>(q, k, v, y, userWorkspace, &tilingData);
     }
 }
