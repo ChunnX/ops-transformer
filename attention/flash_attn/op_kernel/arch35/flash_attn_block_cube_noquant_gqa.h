@@ -22,6 +22,7 @@
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "flash_attn_tiling_data.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -320,8 +321,8 @@ public:
     __gm__ uint8_t *valuePtr = nullptr;
 
     const ConstInfoX &constInfo;
+    const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
 
-    /*============================================================================== */
     __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
         : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType,
                         useDn, bmm2Write2Ub, splitD>(constInfo),
@@ -329,12 +330,14 @@ public:
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
-                                         QSeqParserType &qParser, KvSeqParserType &kvParser)
+                                         QSeqParserType &qParser, KvSeqParserType &kvParser,
+                                         const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tiling)
     {
         tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
         this->qSeqParserPtr = &qParser;
         this->kvSeqParserPtr = &kvParser;
+        this->tilingData = tiling;
         InitCubeInput(query, key, value, blockTable);
     }
 
@@ -383,16 +386,19 @@ public:
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
-        InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize, queryGm,
-                    query);
+        InitQBuffer(tilingData->flashAttnBaseParams.bSize, tilingData->flashAttnBaseParams.n2Size,
+                    tilingData->flashAttnBaseParams.gSize, tilingData->flashAttnBaseParams.s1Size,
+                    tilingData->flashAttnBaseParams.dSize, queryGm, query);
 
-        keyPtr = key;
+keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
-                         keyGm, key);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
-                         valueGm, value);
+        if (tilingData->flashAttnBaseParams.isKvContinuous) {
+            InitKVBuffer(tilingData->flashAttnBaseParams.bSize, tilingData->flashAttnBaseParams.s2Size,
+                          tilingData->flashAttnBaseParams.n2Size, tilingData->flashAttnPageAttentionParams.blockSize,
+                          tilingData->flashAttnBaseParams.dSize, keyGm, key);
+            InitKVBuffer(tilingData->flashAttnBaseParams.bSize, tilingData->flashAttnBaseParams.s2Size,
+                          tilingData->flashAttnBaseParams.n2Size, tilingData->flashAttnPageAttentionParams.blockSize,
+                          tilingData->flashAttnBaseParams.dSizeV, valueGm, value);
         }
     }
 
@@ -414,13 +420,13 @@ public:
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
 
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
+kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
+                                              tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
             uint32_t d1 = headDim / d0;
-            kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
+kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
+                                              tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
             kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
@@ -466,7 +472,7 @@ public:
 
     __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoXCube &runInfo)
     {
-        uint32_t dSize = constInfo.dSize;
+        uint32_t dSize = tilingData->flashAttnBaseParams.dSize;
         CopyQuerySlice(dstTensor, 0, dSize, runInfo);
     }
 
@@ -482,7 +488,7 @@ public:
         if (nopeDealSize > 0) {
             FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            GmKvCoord gmCoord{.bIdx = tilingData->flashAttnBaseParams.isKvContinuous ? runInfo.bIdx : 0,
                               .n2Idx = runInfo.n2Idx,
                               .s2Idx = runInfo.s2Idx,
                               .dIdx = dOffset,
@@ -499,7 +505,7 @@ public:
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
                                                 .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+        GmKvCoord gmCoord{.bIdx = tilingData->flashAttnBaseParams.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
@@ -511,13 +517,13 @@ public:
     // 全量拷贝
     __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoXCube &runInfo)
     {
-        uint32_t dSize = constInfo.dSize;
+        uint32_t dSize = tilingData->flashAttnBaseParams.dSize;
         CopyKeySlice(dstTensor, 0, dSize, runInfo);
     }
 
     __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoXCube &runInfo)
     {
-        CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
+        CopyValueSlice(dstTensor, 0, tilingData->flashAttnBaseParams.dSizeV, runInfo);
     }
 
     __aicore__ inline void UpdateKey(uint32_t bIdx)
@@ -527,7 +533,7 @@ public:
 
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
         keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
+        keyGm.offsetCalculator.Init(0, tilingData->flashAttnBaseParams.n2Size, s2Size, tilingData->flashAttnBaseParams.dSize);
     }
 
     __aicore__ inline void UpdateValue(uint32_t bIdx)
@@ -536,7 +542,7 @@ public:
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
         valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
+        valueGm.offsetCalculator.Init(0, tilingData->flashAttnBaseParams.n2Size, s2Size, tilingData->flashAttnBaseParams.dSize);
     }
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
@@ -615,7 +621,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                    (uint32_t)(constInfo.dSize), false, true);
+                                    (uint32_t)(tilingData->flashAttnBaseParams.dSize), false, true);
         if constexpr (dBaseSize > 128) {
             if constexpr (s2BaseSize == 256) {
                 MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
@@ -651,7 +657,7 @@ public:
     __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &outputBuf, RunInfoXCube &runInfo)
     {
         constexpr uint32_t baseK = l1BaseD;
-        uint32_t kLoops = (constInfo.dSize + baseK - 1) / baseK;
+        uint32_t kLoops = (tilingData->flashAttnBaseParams.dSize + baseK - 1) / baseK;
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
@@ -668,7 +674,7 @@ public:
         for (uint32_t k = 0; k < kLoops; k++) {
             Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
             if (k == kLoops - 1) {
-                realK = constInfo.dSize - k * baseK;
+                realK = tilingData->flashAttnBaseParams.dSize - k * baseK;
             }
             if (unlikely(runInfo.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
                 LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
@@ -740,7 +746,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                    (uint32_t)(constInfo.dSize), false, true);
+                                    (uint32_t)(tilingData->flashAttnBaseParams.dSize), false, true);
 
         MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
             mm1A.GetTensor<KV_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
@@ -801,7 +807,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                    (uint32_t)(constInfo.dSize), false, true);
+                                    (uint32_t)(tilingData->flashAttnBaseParams.dSize), false, true);
 
         MatmulBase<KV_T, Q_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
             mm1A.GetTensor<KV_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
@@ -855,11 +861,11 @@ public:
             outputBuf.WaitCrossCore();
         }
         constexpr uint32_t baseN = l1BaseD;
-        uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN; // 尾块处理
+        uint32_t nLoops = ((uint32_t)tilingData->flashAttnBaseParams.dSizeV + baseN - 1) / baseN; // 尾块处理
         uint32_t realN = baseN;
         for (uint32_t n = 0; n < nLoops; ++n) {
             if (n == nLoops - 1) {
-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseN;
+                uint32_t tailSize = (uint32_t)tilingData->flashAttnBaseParams.dSizeV % baseN;
                 realN = tailSize ? tailSize : baseN;
             }
             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
@@ -912,7 +918,7 @@ public:
         if constexpr (bmm2Write2Ub || splitD) {
             fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
         } else {
-            fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
+            fixpipeParams.dstStride = (uint32_t)tilingData->flashAttnBaseParams.dSizeV;
         }
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
@@ -935,7 +941,7 @@ public:
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
         MMParam param = {
             (uint32_t)mBaseSize,                   // singleM 128
-            (uint32_t)constInfo.dSizeV,            // singleN 128
+            (uint32_t)tilingData->flashAttnBaseParams.dSizeV,            // singleN 128
             (uint32_t)runInfo.actSingleLoopS2Size, // singleK
             useDn,                                 // isLeftTranspose
             false                                  // isRightTranspose
@@ -966,7 +972,7 @@ public:
             outputBuf.WaitCrossCore();
         }
 
-        FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
+        FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), tilingData->flashAttnBaseParams.dSizeV, runInfo);
 
         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
         outputBuf.SetCrossCore();

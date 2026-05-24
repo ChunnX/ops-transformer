@@ -277,63 +277,16 @@ struct RunInfoXVec {
 
 
 struct CommonConstInfo {
-    /* 轴长度 */
-    uint32_t bSize;
-    uint64_t t1Size;
-    uint64_t t2Size;
-    uint32_t dSize;
-    uint32_t dSizeV;
-    uint32_t dBasicBlock;
-    uint32_t dSizeRope;
-    uint32_t gSize; /* g轴的大小 */
-    uint32_t n2Size;
-    uint64_t s1Size;          /* s1总大小 */
-    uint64_t s2Size;          /* s2总大小 */
-    uint64_t cuSeqLensQSize;  /* 用户输入的actualseq的长度 */
-    uint64_t cuSeqLensKVSize; /* 用户输入的actualseq_kv的长度 */
-    uint64_t seqUsedQSize;    /* 用户输入的seq used q的长度 */
-    uint64_t seqUsedKvSize;   /* 用户输入的seq used kv的长度 */
-
-    /* FA kernel meta */
-    uint32_t bN2Start;
-    uint32_t bN2End;
-    uint32_t gS1OStart;
-    uint32_t gS1OEnd;
-    uint32_t s2OStart;
-    uint32_t s2OEnd;
-    uint32_t coreFirstTmpOutWsPos;
-
-    uint32_t sparseMode; // sparse
-    uint32_t attenMaskBatch;
-    uint32_t attenMaskS1Size;
-    uint32_t attenMaskS2Size;
-    int64_t preTokens;
-    int64_t nextTokens;
-    bool isExistRowInvalid;
-    float scaleValue;
-
-    /* 核信息 */
     uint32_t aicIdx;
     uint32_t aivIdx;
     uint8_t subBlockIdx;
-    uint32_t coreNum;
-
-    /* FA中间结果写出workspace信息 */
-    uint32_t accumOutSize;
-    uint32_t logSumExpSize;
-
-    /* 输出shape */
-    FA_LAYOUT outputLayout;
+    uint32_t dBasicBlock;
 };
 
 struct PAConstInfo {
-    uint32_t blockSize;
-    uint32_t maxBlockNumPerBatch;
-    uint32_t paLayoutType;
 };
 
 struct LseConstInfo {
-    bool isSoftmaxLseEnable;
 };
 
 struct SinkConstInfo {
@@ -341,36 +294,18 @@ struct SinkConstInfo {
 };
 
 struct PseConstInfo {
-    uint32_t pseShiftByBatch;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseStride;
 };
 
 struct TensorListConstInfo {
-    bool isKvContinuous; /* 是否为tensorlist */
 };
 
 struct PostQuantConstInfo {
-    bool isPostQuantPerChnl;
-    bool isPostQuantBF16;
-    bool isPostQuantOffsetExist;
-    float postQuantScaleValue;
-    float postQuantOffsetValue;
 };
 
 struct LeftPaddingConstInfo {
-    bool isQHasLeftPadding;
-    bool isKVHasLeftPadding;
-    int64_t queryRightPaddingSize;
-    int64_t kvRightPaddingSize;
 };
 
 struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
 };
 
 template <FiaKernelType>
