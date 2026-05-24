@@ -477,15 +477,15 @@ private:
             Exp(oldScaleLocal[alignedBegin], oldScaleLocal[alignedBegin], alignedCount);
             SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
             WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+            Mul(denomLocal[alignedBegin], denomLocal[alignedBegin], oldScaleLocal[alignedBegin], alignedCount);
+            PipeBarrier<PIPE_V>();
+            Add(denomLocal[alignedBegin], denomLocal[alignedBegin], blockSumLocal[alignedBegin], alignedCount);
+            PipeBarrier<PIPE_V>();
             for (int64_t row = rowBegin; row < validRowEnd; ++row) {
                 const float oldScale = oldScaleLocal.GetValue(row);
-                if (oldScale != 1.0F) {
-                    LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-                    Muls(accRow, accRow, oldScale, alignedHeadDim);
-                    PipeBarrier<PIPE_V>();
-                }
-                const float denom = denomLocal.GetValue(row) * oldScale + blockSumLocal.GetValue(row);
-                denomLocal.SetValue(row, denom);
+                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+                Muls(accRow, accRow, oldScale, alignedHeadDim);
+                PipeBarrier<PIPE_V>();
             }
         }
     }
