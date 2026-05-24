@@ -22,7 +22,7 @@ constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t VECTOR_FP32_REPEAT_ELEMS = 64;
 constexpr int64_t BUFFER_NUM = 1;
-constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 60 * 1024;
+constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 32 * 1024;
 constexpr int64_t SUBBLOCK_SYNC_FLAG_OFFSET = 16;
 constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
 constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
@@ -152,7 +152,7 @@ public:
         pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(DataType));
         pipe_.InitBuffer(tmpFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(accTileFloatBuf_, tiling_->qBlock * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(accTileFloatBuf_, tiling_->qBlock * tiling_->headDimAlign * sizeof(float));
         pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
         pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
         pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
@@ -387,7 +387,7 @@ private:
     __aicore__ inline LocalTensor<float> GetAccTileRow(uint32_t rowInBlock)
     {
         LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
-        return accTile[static_cast<int64_t>(rowInBlock) * VECTOR_HEAD_DIM_LIMIT];
+        return accTile[static_cast<int64_t>(rowInBlock) * tiling_->headDimAlign];
     }
 
     __aicore__ inline void InitOnlineStateRows(int64_t rowBegin, int64_t rowEnd, LocalTensor<float> &maxLocal,
@@ -652,8 +652,7 @@ private:
         const int64_t rowCount = rowEnd - rowBegin;
         if (rowCount > 0) {
             LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
-            Duplicate(accTile[rowBegin * VECTOR_HEAD_DIM_LIMIT], 0.0F,
-                      static_cast<uint32_t>(rowCount * VECTOR_HEAD_DIM_LIMIT));
+            Duplicate(accTile[rowBegin * alignedHeadDim], 0.0F, static_cast<uint32_t>(rowCount * alignedHeadDim));
             PipeBarrier<PIPE_V>();
         }
         InitOnlineStateRows(rowBegin, rowEnd, maxLocal, denomLocal);

@@ -27,7 +27,7 @@ constexpr int64_t DEFAULT_TILE_T = 6;
 constexpr int64_t DEFAULT_TILE_H = 8;
 constexpr int64_t DEFAULT_TILE_W = 8;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
-constexpr int64_t CUBE_Q_BLOCK = 96;
+constexpr int64_t CUBE_Q_BLOCK = 64;
 constexpr int64_t CUBE_KV_BLOCK = 128;
 constexpr uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 
