@@ -39,11 +39,6 @@ public:
     __aicore__ inline void InitConstInfoWithPA()
     {
         FlashAttentionGqaContext::InitConstInfo();
-        if constexpr (CubeBlockType::PAGE_ATTENTION) {
-            this->constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
-            this->constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
-            this->constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
-        }
     }
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
@@ -70,37 +65,35 @@ public:
         this->bmm1Buffers.Init(this->ubBufferManager, mm1ResultSize);
 
         if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSizeCalc = mBaseSize * this->constInfo.dBasicBlock;
+int64_t mm2ResultSizeCalc = mBaseSize * this->tilingData->flashAttnBaseParams.dSizeV;
             int64_t prevCoretotalOffset = this->constInfo.aicIdx * 3 * mm2ResultSizeCalc;
-            this->gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
-            this->bmm2ResGmBuffers.Init(this->gmBufferManager, mm2ResultSizeCalc * sizeof(T));
-            workspace = workspace + this->constInfo.coreNum * 3 * mm2ResultSizeCalc * sizeof(T);
+            workspace = workspace + this->tilingData->flashAttnBaseParams.coreNum * 3 * mm2ResultSizeCalc * sizeof(T);
         }
     }
 
     __aicore__ inline void InitQCuSeqLensParser()
     {
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cubeProc.cubeData.qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ, this->constInfo.cuSeqLensQSize,
-                                                     this->constInfo.seqUsedQSize);
-            vectorProc.vectorData.qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ, this->constInfo.cuSeqLensQSize,
-                                                         this->constInfo.seqUsedQSize);
+            cubeProc.cubeData.qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ, this->tilingData->flashAttnBaseParams.cuSeqLensQSize,
+                                                     this->tilingData->flashAttnBaseParams.seqUsedQSize);
+            vectorProc.vectorData.qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ, this->tilingData->flashAttnBaseParams.cuSeqLensQSize,
+                                                         this->tilingData->flashAttnBaseParams.seqUsedQSize);
         } else {
-            cubeProc.cubeData.qSeqUsedParser.Init(this->seqUsedGmQ, this->constInfo.seqUsedQSize, this->constInfo.s1Size);
-            vectorProc.vectorData.qSeqUsedParser.Init(this->seqUsedGmQ, this->constInfo.seqUsedQSize, this->constInfo.s1Size);
+            cubeProc.cubeData.qSeqUsedParser.Init(this->seqUsedGmQ, this->tilingData->flashAttnBaseParams.seqUsedQSize, this->tilingData->flashAttnBaseParams.s1Size);
+            vectorProc.vectorData.qSeqUsedParser.Init(this->seqUsedGmQ, this->tilingData->flashAttnBaseParams.seqUsedQSize, this->tilingData->flashAttnBaseParams.s1Size);
         }
     }
 
     __aicore__ inline void InitKvCuSeqLensParser()
     {
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cubeProc.cubeData.kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv, this->constInfo.cuSeqLensKVSize,
-                                                      this->constInfo.seqUsedKvSize);
-            vectorProc.vectorData.kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv, this->constInfo.cuSeqLensKVSize,
-                                                          this->constInfo.seqUsedKvSize);
+            cubeProc.cubeData.kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv, this->tilingData->flashAttnBaseParams.cuSeqLensKVSize,
+                                                      this->tilingData->flashAttnBaseParams.seqUsedKvSize);
+            vectorProc.vectorData.kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv, this->tilingData->flashAttnBaseParams.cuSeqLensKVSize,
+                                                          this->tilingData->flashAttnBaseParams.seqUsedKvSize);
         } else {
-            cubeProc.cubeData.kvSeqUsedParser.Init(this->seqUsedGmKv, this->constInfo.seqUsedKvSize, this->constInfo.s2Size);
-            vectorProc.vectorData.kvSeqUsedParser.Init(this->seqUsedGmKv, this->constInfo.seqUsedKvSize, this->constInfo.s2Size);
+            cubeProc.cubeData.kvSeqUsedParser.Init(this->seqUsedGmKv, this->tilingData->flashAttnBaseParams.seqUsedKvSize, this->tilingData->flashAttnBaseParams.s2Size);
+            vectorProc.vectorData.kvSeqUsedParser.Init(this->seqUsedGmKv, this->tilingData->flashAttnBaseParams.seqUsedKvSize, this->tilingData->flashAttnBaseParams.s2Size);
         }
     }
 
@@ -110,10 +103,12 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value, blockTable,
-                                                          cubeProc.cubeData.qCuSeqLensParser, cubeProc.cubeData.kvCuSeqLensParser);
+                                                          cubeProc.cubeData.qCuSeqLensParser, cubeProc.cubeData.kvCuSeqLensParser,
+                                                          this->tilingData);
             } else {
                 cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value, blockTable,
-                                                          cubeProc.cubeData.qSeqUsedParser, cubeProc.cubeData.kvSeqUsedParser);
+                                                          cubeProc.cubeData.qSeqUsedParser, cubeProc.cubeData.kvSeqUsedParser,
+                                                          this->tilingData);
             }
         }
     }
@@ -127,11 +122,11 @@ public:
             vectorProc.vectorData.vecFaBlock.isFd = this->isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vectorProc.vectorData.vecFaBlock.InitVecBlock(this->pipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
-                                                               attentionOut, workspace);
+                                                               attentionOut, workspace, this->tilingData);
                 vectorProc.vectorData.vecFaBlock.SetCuSeqLensParser(vectorProc.vectorData.qCuSeqLensParser);
             } else {
                 vectorProc.vectorData.vecFaBlock.InitVecBlock(this->pipe, seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse,
-                                                               attentionOut, workspace);
+                                                               attentionOut, workspace, this->tilingData);
                 vectorProc.vectorData.vecFaBlock.SetCuSeqLensParser(vectorProc.vectorData.qSeqUsedParser);
             }
             vectorProc.vectorData.vecFaBlock.ClearOutput();
@@ -139,6 +134,7 @@ public:
 
         if (this->isFd) {
             if ASCEND_IS_AIV {
+                vectorProc.vectorData.vecFdBlock.SetTilingData(this->tilingData);
                 vectorProc.vectorData.vecFdBlock.InitParams();
                 vectorProc.vectorData.vecFdBlock.InitGlobalTensor(vectorProc.vectorData.vecFaBlock.softmaxFDMaxGm, 
                                                                    vectorProc.vectorData.vecFaBlock.softmaxFDSumGm,
@@ -151,7 +147,7 @@ public:
                     this->constInfo.learnableSinkFlag = true;
                     vectorProc.vectorData.vecFdBlock.InitLearnableSinkGm(sinkGm);
                 }
-                if (this->constInfo.isSoftmaxLseEnable) {
+                if (this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable) {
                     this->softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vectorProc.vectorData.vecFdBlock.InitSoftmaxLseGm(this->softmaxLseGm);
                 }
@@ -192,16 +188,13 @@ public:
         this->valuePtr = value;
 
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            this->cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, this->constInfo.cuSeqLensQSize + 1);
-            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->constInfo.seqUsedQSize);
+            this->cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, this->tilingData->flashAttnBaseParams.cuSeqLensQSize + 1);
+            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->tilingData->flashAttnBaseParams.seqUsedQSize);
+            this->cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, this->tilingData->flashAttnBaseParams.cuSeqLensKVSize + 1);
+            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->tilingData->flashAttnBaseParams.seqUsedKvSize);
         } else {
-            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->constInfo.seqUsedQSize);
-        }
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            this->cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, this->constInfo.cuSeqLensKVSize + 1);
-            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->constInfo.seqUsedKvSize);
-        } else {
-            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->constInfo.seqUsedKvSize);
+            this->seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, this->tilingData->flashAttnBaseParams.seqUsedQSize);
+            this->seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, this->tilingData->flashAttnBaseParams.seqUsedKvSize);
         }
 
         this->InitQCuSeqLensParser();
@@ -220,7 +213,7 @@ public:
     __aicore__ inline void Process()
     {
         if ASCEND_IS_AIV {
-            if (this->constInfo.aicIdx < this->constInfo.coreNum) {
+            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 vectorProc.CrossCoreBufferInit();
             }
         }
@@ -234,7 +227,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            if (this->constInfo.aicIdx < this->constInfo.coreNum) {
+            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 cubeProc.CrossCoreBufferUnInit();
             }
         }
