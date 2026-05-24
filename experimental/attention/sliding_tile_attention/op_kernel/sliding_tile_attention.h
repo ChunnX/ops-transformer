@@ -431,6 +431,8 @@ private:
     {
         LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
         CopyScoreHandoffRowToLocal(scoreLocal, rowInSubBlock, scoreCopyCount, bufferIdx);
+        Muls(scoreLocal, scoreLocal, scale_, scoreCopyCount);
+        PipeBarrier<PIPE_V>();
         if (hasKvTail) {
             DuplicateTailFp32(scoreLocal, kvCount, calcCount, NEG_INF);
             PipeBarrier<PIPE_V>();
@@ -527,13 +529,6 @@ private:
         const bool hasKvTail = static_cast<uint32_t>(kvCount) < calcCount;
         CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx, subBlock));
         const int64_t validRowCount = validRowEnd - rowBegin;
-        if (validRowCount > 0) {
-            LocalTensor<float> scoreHandoff = GetScoreHandoffTensor(bufferIdx);
-            const uint32_t scoreTileElemCount =
-                static_cast<uint32_t>(validRowCount * static_cast<int64_t>(tiling_->maxKvBlock));
-            Muls(scoreHandoff, scoreHandoff, scale_, scoreTileElemCount);
-            PipeBarrier<PIPE_V>();
-        }
         if (tileLoop == 0) {
             LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
             LocalTensor<float> reduceLocal = GetKvBlockSlice<float>(reduceFloatBuf_, bufferIdx);
@@ -546,6 +541,8 @@ private:
             for (int64_t row = rowBegin; row < validRowEnd; ++row) {
                 const uint32_t rowInSubBlock = static_cast<uint32_t>(row - rowBegin);
                 CopyScoreHandoffRowToLocal(scoreLocal, rowInSubBlock, scoreCopyCount, bufferIdx);
+                Muls(scoreLocal, scoreLocal, scale_, scoreCopyCount);
+                PipeBarrier<PIPE_V>();
                 if (hasReduceTail) {
                     DuplicateTailFp32(scoreLocal, kvCount, reduceElementCount, NEG_INF);
                     PipeBarrier<PIPE_V>();
