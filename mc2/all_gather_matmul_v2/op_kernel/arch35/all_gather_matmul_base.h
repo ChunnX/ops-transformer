@@ -205,6 +205,16 @@ private:
                 (uint64_t)tailInfo_.mmTiling->matmulTiling.M * (uint64_t)tailInfo_.mmTiling->matmulTiling.N;
             tailInfo_.cAddrOffset = tailInfo_.cOffset * sizeof(CType);
         }
+        // 当N=0时，matmulTiling参数为0，使用cfg参数计算
+        if (paramInTiling_->rankN == 0) {
+            uint32_t tilingKa = paramInTiling_->rankK;
+            uint32_t tailM = paramInTiling_->tailM;
+            uint32_t tilingM = (paramInTiling_->rankM - tailM * tailCnt) / paramInTiling_->tileCnt;
+            tileInfo_.aOffset = (uint64_t)tilingM * (uint64_t)tilingKa;
+            tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(AType);
+            tailInfo_.aOffset = (uint64_t)tailM * (uint64_t)tilingKa;
+            tailInfo_.aAddrOffset = tailInfo_.aOffset * sizeof(AType);
+        }
     }
 
     __aicore__ inline void UpdateBatchWeight()
