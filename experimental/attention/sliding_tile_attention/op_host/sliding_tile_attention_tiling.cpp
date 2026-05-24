@@ -29,7 +29,6 @@ constexpr int64_t DEFAULT_TILE_W = 8;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t CUBE_Q_BLOCK = 96;
 constexpr int64_t CUBE_KV_BLOCK = 128;
-constexpr int64_t CUBE_WORKSPACE_DOUBLE_BUFFER = 1;
 constexpr uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 
 struct SlidingTileAttentionCompileInfo {
@@ -181,10 +180,7 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->tileW = DEFAULT_TILE_W;
     tiling->tileTokenNum = DEFAULT_TILE_T * DEFAULT_TILE_H * DEFAULT_TILE_W;
     tiling->maxKvBlock = std::max(CUBE_KV_BLOCK, tiling->tileTokenNum);
-    const int64_t scoreBlockElems = CUBE_Q_BLOCK * tiling->maxKvBlock;
-    const int64_t outBlockElems = CUBE_Q_BLOCK * tiling->headDimAlign;
-    tiling->cubeWorkspacePerCore =
-        CUBE_WORKSPACE_DOUBLE_BUFFER * (scoreBlockElems * 2 + outBlockElems) * static_cast<int64_t>(sizeof(float));
+    tiling->cubeWorkspacePerCore = 0;
     tiling->tileNumT = seqT / DEFAULT_TILE_T;
     tiling->tileNumH = seqH / DEFAULT_TILE_H;
     tiling->tileNumW = seqW / DEFAULT_TILE_W;

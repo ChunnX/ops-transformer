@@ -12,14 +12,6 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "sliding_tile_attention_tiling_data.h"
 
-#ifndef STA_USE_VECIN_SCORE_HANDOFF
-#define STA_USE_VECIN_SCORE_HANDOFF 1
-#endif
-
-#ifndef STA_USE_VECIN_PROB_OUT_HANDOFF
-#define STA_USE_VECIN_PROB_OUT_HANDOFF 1
-#endif
-
 namespace SlidingTileAttentionKernel {
 using namespace AscendC;
 using namespace matmul;
@@ -154,15 +146,7 @@ public:
         yDataGm_.SetGlobalBuffer((__gm__ DataType *)y, total);
         scale_ = tiling_->scale;
 
-        const int64_t cubeCoreIdx = GetCubeCoreIdx();
-        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
-        __gm__ uint8_t *base = (__gm__ uint8_t *)workspace + cubeCoreIdx * tiling_->cubeWorkspacePerCore;
-        scoreGm_.SetGlobalBuffer((__gm__ float *)base, scoreElems * BUFFER_NUM);
-        probGm_.SetGlobalBuffer((__gm__ DataType *)(base + scoreElems * BUFFER_NUM * sizeof(float)),
-                                scoreElems * BUFFER_NUM);
-        outGm_.SetGlobalBuffer((__gm__ float *)(base + scoreElems * BUFFER_NUM * 2 * sizeof(float)),
-                               outElems * BUFFER_NUM);
+        (void)workspace;
 
         pipe_.InitBuffer(yDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(DataType));
@@ -320,18 +304,6 @@ private:
         }
     }
 
-    __aicore__ inline void CopyScoreRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInBlock,
-                                               uint32_t copyCount, uint32_t bufferIdx)
-    {
-        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock +
-                                    static_cast<int64_t>(rowInBlock) * tiling_->maxKvBlock;
-        DataCopyExtParams copyParams{1, static_cast<uint32_t>(copyCount * sizeof(float)), 0, 0, 0};
-        DataCopyPadExtParams<float> padParams{false, 0, 0, 0.0F};
-        DataCopyPad(scoreLocal, scoreGm_[scoreOffset], copyParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
-    }
-
     __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
     {
         const int64_t subBlockRows = GetSubBlockRows(tiling_->qBlock, GetTaskRatioValue());
@@ -385,18 +357,16 @@ private:
         return outTensor[static_cast<int64_t>(rowInSubBlock) * tiling_->headDimAlign];
     }
 
-    __aicore__ inline void CopyScoreHandoffRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInBlock,
-                                                      uint32_t rowInSubBlock, uint32_t copyCount,
-                                                      uint32_t bufferIdx)
+    __aicore__ inline void CopyScoreHandoffRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInSubBlock,
+                                                      uint32_t copyCount, uint32_t bufferIdx)
     {
-        (void)rowInBlock;
         LocalTensor<float> scoreHandoff = GetScoreHandoffRow(rowInSubBlock, bufferIdx);
         DataCopy(scoreLocal, scoreHandoff, copyCount);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
     }
 
-    __aicore__ inline void StoreProbRow(uint32_t rowInBlock, LocalTensor<float> &weightLocal, uint32_t copyCount,
+    __aicore__ inline void StoreProbRow(LocalTensor<float> &weightLocal, uint32_t copyCount,
                                         uint32_t rowInSubBlock, uint32_t bufferIdx)
     {
         LocalTensor<DataType> probLocal = GetKvBlockSlice<DataType>(probDataBuf_, bufferIdx);
@@ -406,24 +376,12 @@ private:
             Cast(probLocal, weightLocal, RoundMode::CAST_ROUND, copyCount);
         }
         PipeBarrier<PIPE_V>();
-#if STA_USE_VECIN_PROB_OUT_HANDOFF
         LocalTensor<DataType> probHandoff = GetProbHandoffRow(rowInSubBlock, bufferIdx);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
         DataCopy(probHandoff, probLocal, copyCount);
         SetFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
-#else
-        const int64_t probOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock +
-                                   static_cast<int64_t>(rowInBlock) * tiling_->maxKvBlock;
-        DataCopyExtParams copyParams{
-            1, static_cast<uint32_t>(copyCount * sizeof(DataType)), 0, 0, 0};
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
-        DataCopyPad(probGm_[probOffset], probLocal, copyParams);
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
-#endif
     }
 
     __aicore__ inline LocalTensor<float> GetAccTileRow(uint32_t rowInBlock)
@@ -465,17 +423,13 @@ private:
     }
 
     __aicore__ inline void AccumulateVisibleScoreBlockDeferred(int64_t kvCount, uint32_t calcCount,
-                                                               uint32_t scoreCopyCount, uint32_t rowInBlock,
-                                                               uint32_t rowInSubBlock, float maxScore,
+                                                               uint32_t scoreCopyCount, uint32_t rowInSubBlock,
+                                                               float maxScore,
                                                                float &newMaxScore, float &scaleDelta,
                                                                float &blockSum, bool hasKvTail, uint32_t bufferIdx)
     {
         LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
-#if STA_USE_VECIN_SCORE_HANDOFF
-        CopyScoreHandoffRowToLocal(scoreLocal, rowInBlock, rowInSubBlock, scoreCopyCount, bufferIdx);
-#else
-        CopyScoreRowToLocal(scoreLocal, rowInBlock, scoreCopyCount, bufferIdx);
-#endif
+        CopyScoreHandoffRowToLocal(scoreLocal, rowInSubBlock, scoreCopyCount, bufferIdx);
         Muls(scoreLocal, scoreLocal, scale_, scoreCopyCount);
         PipeBarrier<PIPE_V>();
         if (hasKvTail) {
@@ -502,7 +456,7 @@ private:
         PipeBarrier<PIPE_V>();
         Exp(weightLocal, weightLocal, calcCount);
         PipeBarrier<PIPE_V>();
-        StoreProbRow(rowInBlock, weightLocal, calcCount, rowInSubBlock, bufferIdx);
+        StoreProbRow(weightLocal, calcCount, rowInSubBlock, bufferIdx);
 
         ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, calcCount);
         SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
@@ -555,13 +509,8 @@ private:
             const uint32_t reduceElementCount = reduceBlockCount * VECTOR_FP32_REPEAT_ELEMS;
             const bool hasReduceTail = static_cast<uint32_t>(kvCount) < reduceElementCount;
             for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                const uint32_t rowInBlock = static_cast<uint32_t>(row);
                 const uint32_t rowInSubBlock = static_cast<uint32_t>(row - rowBegin);
-#if STA_USE_VECIN_SCORE_HANDOFF
-                CopyScoreHandoffRowToLocal(scoreLocal, rowInBlock, rowInSubBlock, scoreCopyCount, bufferIdx);
-#else
-                CopyScoreRowToLocal(scoreLocal, rowInBlock, scoreCopyCount, bufferIdx);
-#endif
+                CopyScoreHandoffRowToLocal(scoreLocal, rowInSubBlock, scoreCopyCount, bufferIdx);
                 Muls(scoreLocal, scoreLocal, scale_, scoreCopyCount);
                 PipeBarrier<PIPE_V>();
                 if (hasReduceTail) {
@@ -583,7 +532,7 @@ private:
                 PipeBarrier<PIPE_V>();
                 Exp(weightLocal, weightLocal, calcCount);
                 PipeBarrier<PIPE_V>();
-                StoreProbRow(rowInBlock, weightLocal, calcCount, rowInSubBlock, bufferIdx);
+                StoreProbRow(weightLocal, calcCount, rowInSubBlock, bufferIdx);
 
                 ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, calcCount);
                 SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
@@ -600,8 +549,8 @@ private:
                 float newMaxScore = maxScore;
                 float scaleDelta = 0.0F;
                 float blockSum = 0.0F;
-                AccumulateVisibleScoreBlockDeferred(kvCount, calcCount, scoreCopyCount, static_cast<uint32_t>(row),
-                                                    rowInSubBlock, maxScore, newMaxScore, scaleDelta, blockSum,
+                AccumulateVisibleScoreBlockDeferred(kvCount, calcCount, scoreCopyCount, rowInSubBlock,
+                                                    maxScore, newMaxScore, scaleDelta, blockSum,
                                                     hasKvTail, bufferIdx);
                 oldScaleLocal.SetValue(row, scaleDelta);
                 blockSumLocal.SetValue(row, blockSum);
@@ -633,17 +582,8 @@ private:
         for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             const uint32_t rowInBlock = static_cast<uint32_t>(row);
             const uint32_t rowInSubBlock = static_cast<uint32_t>(row - rowBegin);
-#if STA_USE_VECIN_PROB_OUT_HANDOFF
             LocalTensor<float> outHandoff = GetOutHandoffRow(rowInSubBlock, bufferIdx);
             DataCopy(outLocal, outHandoff, alignedHeadDim);
-#else
-            const int64_t outOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->headDimAlign +
-                                      static_cast<int64_t>(rowInBlock) * tiling_->headDim;
-            DataCopyExtParams copyParams{1, static_cast<uint32_t>(tiling_->headDim * sizeof(float)), 0, 0, 0};
-            DataCopyPadExtParams<float> padParams{
-                true, 0, static_cast<uint8_t>(alignedHeadDim - static_cast<uint32_t>(tiling_->headDim)), 0.0F};
-            DataCopyPad(outLocal, outGm_[outOffset], copyParams, padParams);
-#endif
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
             LocalTensor<float> accRow = GetAccTileRow(rowInBlock);
@@ -757,9 +697,6 @@ private:
 
 private:
     GlobalTensor<DataType> yDataGm_;
-    GlobalTensor<float> scoreGm_;
-    GlobalTensor<DataType> probGm_;
-    GlobalTensor<float> outGm_;
     TPipe pipe_;
     TBuf<QuePosition::VECCALC> yDataBuf_;
     TBuf<QuePosition::VECCALC> probDataBuf_;
@@ -785,18 +722,9 @@ public:
     using AType = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
     using BTypeTrans = MatmulType<TPosition::GM, CubeFormat::ND, DataType, true>;
     using BType = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
-#if STA_USE_VECIN_SCORE_HANDOFF
     using ScoreCType = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, float>;
-#else
-    using ScoreCType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-#endif
-#if STA_USE_VECIN_PROB_OUT_HANDOFF
     using ProbAType = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, DataType>;
     using OutCType = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, float>;
-#else
-    using ProbAType = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
-    using OutCType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-#endif
     using BiasType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
     static constexpr MatmulConfig MM_CFG = GetNormalConfig(true);
 
@@ -812,15 +740,7 @@ public:
         kDataGm_.SetGlobalBuffer((__gm__ DataType *)k, total);
         vDataGm_.SetGlobalBuffer((__gm__ DataType *)v, total);
 
-        const int64_t coreOffset = static_cast<int64_t>(GetBlockIdx()) * tiling_->cubeWorkspacePerCore;
-        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
-        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
-        __gm__ uint8_t *base = (__gm__ uint8_t *)workspace + coreOffset;
-        scoreGm_.SetGlobalBuffer((__gm__ float *)base, scoreElems * BUFFER_NUM);
-        probGm_.SetGlobalBuffer((__gm__ DataType *)(base + scoreElems * BUFFER_NUM * sizeof(float)),
-                                scoreElems * BUFFER_NUM);
-        outGm_.SetGlobalBuffer((__gm__ float *)(base + scoreElems * BUFFER_NUM * 2 * sizeof(float)),
-                               outElems * BUFFER_NUM);
+        (void)workspace;
     }
 
     __aicore__ inline void Process()
@@ -1050,14 +970,8 @@ private:
         qkMatmul_.SetTail(rowCount, kvCount, tiling_->headDim);
         qkMatmul_.SetTensorA(qDataGm_[qBase]);
         qkMatmul_.SetTensorB(kDataGm_[kvBase], true);
-#if STA_USE_VECIN_SCORE_HANDOFF
         LocalTensor<float> scoreLocal = GetScoreHandoffTensor(bufferIdx);
         qkMatmul_.template IterateAll<false>(scoreLocal, 0);
-#else
-        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock +
-                                    rowBegin * tiling_->maxKvBlock;
-        qkMatmul_.template IterateAll<false>(scoreGm_[scoreOffset], false, false, true);
-#endif
         qkMatmul_.WaitIterateAll();
         qkMatmul_.End();
     }
@@ -1081,21 +995,11 @@ private:
         const int64_t kvBase = TensorOffset(batch, head, kvBegin, 0);
         pvMatmul_.SetOrgShape(rowCount, tiling_->headDim, kvCount, tiling_->maxKvBlock, tiling_->headDim);
         pvMatmul_.SetTail(rowCount, tiling_->headDim, kvCount);
-#if STA_USE_VECIN_PROB_OUT_HANDOFF
         LocalTensor<DataType> probLocal = GetProbHandoffTensor(bufferIdx);
         LocalTensor<float> outLocal = GetOutHandoffTensor(bufferIdx);
         pvMatmul_.SetTensorA(probLocal);
         pvMatmul_.SetTensorB(vDataGm_[kvBase]);
         pvMatmul_.template IterateAll<false>(outLocal, 0);
-#else
-        const int64_t probOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock +
-                                   rowBegin * tiling_->maxKvBlock;
-        const int64_t outOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->headDimAlign +
-                                  rowBegin * tiling_->headDimAlign;
-        pvMatmul_.SetTensorA(probGm_[probOffset]);
-        pvMatmul_.SetTensorB(vDataGm_[kvBase]);
-        pvMatmul_.template IterateAll<false>(outGm_[outOffset], false, false, true);
-#endif
         pvMatmul_.WaitIterateAll();
         pvMatmul_.End();
     }
@@ -1104,9 +1008,6 @@ private:
     GlobalTensor<DataType> qDataGm_;
     GlobalTensor<DataType> kDataGm_;
     GlobalTensor<DataType> vDataGm_;
-    GlobalTensor<float> scoreGm_;
-    GlobalTensor<DataType> probGm_;
-    GlobalTensor<float> outGm_;
     Matmul<AType, BTypeTrans, ScoreCType, BiasType, MM_CFG> qkMatmul_;
     Matmul<ProbAType, BType, OutCType, BiasType, MM_CFG> pvMatmul_;
     const SlidingTileAttentionTilingData *tiling_ = nullptr;
