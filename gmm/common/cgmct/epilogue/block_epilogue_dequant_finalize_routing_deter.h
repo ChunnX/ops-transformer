@@ -105,6 +105,7 @@ public:
     __aicore__ inline void DeterministicFlushRow(uint64_t mOffset, uint64_t outRow, uint64_t nSize);
     __aicore__ inline uint64_t GetRowIndex(uint64_t globalOffset);
     __aicore__ inline void SetWorkspaceGroupOffset(uint64_t groupAccumM);
+    __aicore__ inline void ResetRowIndexAddr();
 
 private:
     __aicore__ inline void CopyInLogit(uint32_t curBaseM, uint64_t offsetM, LocalTensor<float> &logitUb);
@@ -522,6 +523,13 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
 __aicore__ inline void
+BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::ResetRowIndexAddr()
+{
+    rowIndexGlobal_.SetGlobalBuffer((__gm__ DataTypeRowIndex *)params_->rowIndexGmAddr);
+}
+
+GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
+__aicore__ inline void
 BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::DeterministicFlushRow(
     uint64_t mOffset, uint64_t outRow, uint64_t nSize)
 {
@@ -530,6 +538,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         uint64_t curN = (nOff + baseN > nSize) ? (nSize - nOff) : baseN;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(curN * sizeof(DataTypeOut)), 0, 0, 0};
         DataCopyPad(deterDmaUb_, mmQuantOutGm_[mOffset * nSize + nOff], copyParams, {});
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
         SetAtomicAdd<float>();
         DataCopyPad(yGlobal_[outRow * nSize + nOff], deterDmaUb_, copyParams);
         SetAtomicNone();

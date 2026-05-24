@@ -68,6 +68,7 @@ struct DeterSyncConfig {
     uint64_t curGroupM = 0;
     uint64_t lowBoundM = 0;
     uint64_t windowSize = 0;
+    uint64_t windowStartM = 0;
 };
 
 using namespace AscendC;
@@ -292,6 +293,15 @@ public:
                 Get<DETER_IDX_M_TILEIDXS>(tileIdx), Get<DETER_IDX_N_TILEIDXS>(tileIdx),
                 Get<DETER_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
                 Get<DETER_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
+            int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
+            int64_t tileMOffset = y / n;
+            uint64_t absMEnd = cumulativeGroupM_ + tileMOffset + Get<MNK_M>(singleShape);
+            while (isDeter_ && absMEnd > deterSync_.lowBoundM) {
+                deterSync_.curGroupM = cumulativeGroupM_ + tileMOffset;
+                SyncAll<false>();
+                FinalFlush(params);
+                SyncAll<false>();
+            }
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
@@ -306,16 +316,16 @@ public:
             if ASCEND_IS_AIV {
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
                                                                                       Get<MNK_N>(singleShape), 0, 0};
-                int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
-                int64_t mOffset = y / n;
-                int64_t nOffset = y - mOffset * n;
+                int64_t nOffset = y - tileMOffset * n;
+                epilogueDequantOp_.SetWorkspaceGroupOffset(
+                    cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                     nOffset,
                     Get<DETER_IDX_BIAS_OFFSETS>(blockOffset_),
                     Get<DETER_IDX_X2SCALE_OFFSETS>(blockOffset_),
                     Get<DETER_IDX_X1SCALE_OFFSETS>(blockOffset_),
-                    mOffset,
-                    mOffset};
+                    tileMOffset,
+                    tileMOffset};
                 WaitForCube();
                 epilogueDequantOp_(epilogueShape, epilogueOffset);
                 NotifyCube();
@@ -327,15 +337,23 @@ public:
     {
         if ASCEND_IS_AIC return;
 
-        uint64_t totalM = deterSync_.curGroupM;
+        epilogueDequantOp_.ResetRowIndexAddr();
+
+        uint64_t totalM = deterSync_.curGroupM - deterSync_.windowStartM;
+        if (totalM == 0) {
+            return;
+        }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
 
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-            auto outRow = epilogueDequantOp_.GetRowIndex(mOffset);
+            auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
             if (outRow % coreNumVec != GetBlockIdx()) continue;
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
         }
+
+        deterSync_.windowStartM = deterSync_.curGroupM;
+        deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -373,9 +391,6 @@ public:
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
-            }
-            if ASCEND_IS_AIV {
-                epilogueDequantOp_.SetWorkspaceGroupOffset(cumulativeGroupM_);
             }
             ProcessSingleGroup(params, bs, groupIdx);
             cumulativeGroupM_ += Get<MNK_M>(problemShape_);
