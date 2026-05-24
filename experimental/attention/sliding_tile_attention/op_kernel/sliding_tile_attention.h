@@ -465,28 +465,6 @@ private:
         blockSum = reduceLocal.GetValue(0);
     }
 
-    __aicore__ inline void ScaleAccRowsByDuplicate(int64_t rowBegin, int64_t validRowEnd, uint32_t alignedHeadDim,
-                                                   LocalTensor<float> &rowScaleLocal)
-    {
-        const int64_t validRowCount = validRowEnd - rowBegin;
-        if (validRowCount <= 0) {
-            return;
-        }
-
-        LocalTensor<float> scaleTileLocal = outTileFloatBuf_.Get<float>();
-        for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-            const float scale = rowScaleLocal.GetValue(row);
-            const int64_t rowInSubBlock = row - rowBegin;
-            Duplicate(scaleTileLocal[rowInSubBlock * alignedHeadDim], scale, alignedHeadDim);
-        }
-        PipeBarrier<PIPE_V>();
-
-        LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
-        LocalTensor<float> accRows = accTile[rowBegin * alignedHeadDim];
-        Mul(accRows, accRows, scaleTileLocal, static_cast<uint32_t>(validRowCount * alignedHeadDim));
-        PipeBarrier<PIPE_V>();
-    }
-
     __aicore__ inline void ApplyDeferredAccScaleAndDenom(int64_t rowBegin, int64_t validRowEnd,
                                                          uint32_t alignedHeadDim,
                                                          LocalTensor<float> &denomLocal, uint32_t bufferIdx)
@@ -504,7 +482,12 @@ private:
             PipeBarrier<PIPE_V>();
             Add(denomLocal[alignedBegin], denomLocal[alignedBegin], blockSumLocal[alignedBegin], alignedCount);
             PipeBarrier<PIPE_V>();
-            ScaleAccRowsByDuplicate(rowBegin, validRowEnd, alignedHeadDim, oldScaleLocal);
+            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
+                const float oldScale = oldScaleLocal.GetValue(row);
+                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+                Muls(accRow, accRow, oldScale, alignedHeadDim);
+                PipeBarrier<PIPE_V>();
+            }
         }
     }
 
@@ -701,18 +684,13 @@ private:
             }
         }
 
-        if (rowBegin < validRowEnd) {
-            LocalTensor<float> invDenomLocal = oldScaleFloatBuf_.Get<float>();
-            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                const float denom = denomLocal.GetValue(row);
-                invDenomLocal.SetValue(row, 1.0F / denom);
-            }
-            ScaleAccRowsByDuplicate(rowBegin, validRowEnd, alignedHeadDim, invDenomLocal);
-        }
         for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+            const float denom = denomLocal.GetValue(row);
+            Muls(accRow, accRow, 1.0F / denom, alignedHeadDim);
+            PipeBarrier<PIPE_V>();
             StoreFloatRow(qBase, accRow, alignedHeadDim, static_cast<uint32_t>(row % BUFFER_NUM));
         }
     }
