@@ -491,6 +491,26 @@ private:
         }
     }
 
+    __aicore__ inline LocalTensor<float> PrepareFinalInvDenom(int64_t rowBegin, int64_t validRowEnd,
+                                                              LocalTensor<float> &denomLocal)
+    {
+        LocalTensor<float> invDenomLocal = oldScaleFloatBuf_.Get<float>();
+        if (rowBegin >= validRowEnd) {
+            return invDenomLocal;
+        }
+
+        const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
+        const int64_t alignedEnd = MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
+        DuplicateTailFp32(denomLocal, alignedBegin, static_cast<uint32_t>(rowBegin), 1.0F);
+        DuplicateTailFp32(denomLocal, validRowEnd, static_cast<uint32_t>(alignedEnd), 1.0F);
+        Duplicate(invDenomLocal[alignedBegin], 1.0F, static_cast<uint32_t>(alignedEnd - alignedBegin));
+        PipeBarrier<PIPE_V>();
+        Div(invDenomLocal[alignedBegin], invDenomLocal[alignedBegin], denomLocal[alignedBegin],
+            static_cast<uint32_t>(alignedEnd - alignedBegin));
+        PipeBarrier<PIPE_V>();
+        return invDenomLocal;
+    }
+
     __aicore__ inline void ProcessVisibleKvBlock(int64_t kvCount, int64_t rowBegin, int64_t validRowEnd,
                                                  int64_t subBlock, uint32_t alignedHeadDim, int64_t &tileLoop,
                                                  LocalTensor<float> &maxLocal, LocalTensor<float> &denomLocal)
@@ -684,12 +704,13 @@ private:
             }
         }
 
+        LocalTensor<float> invDenomLocal = PrepareFinalInvDenom(rowBegin, validRowEnd, denomLocal);
         for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-            const float denom = denomLocal.GetValue(row);
-            Muls(accRow, accRow, 1.0F / denom, alignedHeadDim);
+            const float invDenom = invDenomLocal.GetValue(row);
+            Muls(accRow, accRow, invDenom, alignedHeadDim);
             PipeBarrier<PIPE_V>();
             StoreFloatRow(qBase, accRow, alignedHeadDim, static_cast<uint32_t>(row % BUFFER_NUM));
         }
