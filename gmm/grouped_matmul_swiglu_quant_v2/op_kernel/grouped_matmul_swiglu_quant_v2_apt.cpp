@@ -64,9 +64,9 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 {
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
     #ifndef DTYPE_BIAS
-    #define DTYPE_BIAS bfloat16_t
+    #define DTYPE_BIAS float
     #endif
-    // MxA8W4场景：完整Controller实现
+    // MxA8W4场景
     AscendC::InitSocState();
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     // enable overflow mode to avoid nan/inf value

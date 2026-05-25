@@ -397,7 +397,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::EndSync()
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + i);
         WaitFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + i);
     }
-}
+}FIXP_DST_STRIDE
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::PadL1IfNotAlign(const LocalTensor<xType> &l1Buf,
@@ -431,7 +431,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::GetTensorC(LocalTensor<yType
     FixL0CToDstParams fixL0CToDstParams;
     fixL0CToDstParams.mL0Size = param.mL1Size;
     fixL0CToDstParams.nL0Size = param.nL1Size;
-    fixL0CToDstParams.outNSize = 256;
+    fixL0CToDstParams.outNSize = param.nL1Size;
     fixL0CToDstParams.splitNSize = 0;
     fixL0CToDstParams.dstNdStride = 0;
     FixL0CToDst(yUb, l0c_[l0cOffset_], fixL0CToDstParams);
