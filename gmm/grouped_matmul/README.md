@@ -51,8 +51,8 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 GroupedMatmul 根据计算过程中对数据精度的处理方式，分为三大场景：
 
-| 场景 | 含义 | 简单理解 |
-|------|------|----------|
+| 场景       | 含义 | 简单理解 |
+|------------|------|----------|
 | **非量化** | x 和 weight 均以浮点类型（FLOAT16/BFLOAT16/FLOAT32）直接参与计算 | 常规矩阵乘，不涉及任何缩放/偏移 |
 | **伪量化** | weight 以低精度整数（INT4/INT8/FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8）存储，计算时通过 `antiquantScale` / `antiquantOffset` 反量化为浮点再与 x 相乘 | "存储时省空间，计算时还原" |
 | **全量化** | x 和 weight 均以整数类型（INT8/INT4/FLOAT8 等）参与计算，结果通过 `scale` / `offset` / `perTokenScale` 还原为浮点 | "全程低精度计算，最后还原" |
