@@ -269,14 +269,12 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    //判断是否为混合精度，作为计算中是否进行精度转换的依据
-    bool isMixed = false;
-    if(probsOptional != nullptr) {
-        if(permutedTokens->GetDataType() == op::DataType::DT_BF16 &&
-            probsOptional->GetDataType() == op::DataType::DT_FLOAT) {
-                isMixed = true;
-            }
-    }
+    // 判断是否需要进行精度转换（包含混精和bf16 fp16场景）
+    bool isCast = false;
+    op::DataType originType = permutedTokens->GetDataType();
+    if (originType == op::DataType::DT_BF16 || originType == op::DataType::DT_FLOAT16) {
+            isCast = true;
+        }
      // 空Tensor处理
     if (sortedIndices->IsEmpty() || (paddedMode == false && permutedTokens->IsEmpty())) {
         *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -346,9 +344,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
         unpermutedTokensOut = l0op::ZerosLike(unpermutedTokensContiguous, uniqueExecutor.get());
         CHECK_RET(unpermutedTokensOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-        //混精场景下将unpermutedTokensOut提升精度再计算
-        if (isMixed) {
+        // 类型转换场景下将unpermutedTokensOut提升精度再计算
+        if (isCast) {
             unpermutedTokensOut = l0op::Cast(unpermutedTokensOut, op::DataType::DT_FLOAT, uniqueExecutor.get());
+            source = l0op::Cast(source, op::DataType::DT_FLOAT, uniqueExecutor.get());
             CHECK_RET(unpermutedTokensOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
 
@@ -410,9 +409,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
         auto sortValuesViewCopyResult = l0op::ViewCopy(sortValuesI32, permuteTokenId, uniqueExecutor.get());
         CHECK_RET(sortValuesViewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         
-        //混精场景下在ViewCopy之前，将高精度（FP32）的累加结果转换回目标输出精度
-        if (isMixed) {
-            indexAddRes = l0op::Cast(indexAddRes, op::DataType::DT_BF16, uniqueExecutor.get());
+        // 类型转换场景下在ViewCopy之前，将高精度（FP32）的累加结果转换回目标输出精度
+        if (isCast) {
+            indexAddRes = l0op::Cast(indexAddRes, originType, uniqueExecutor.get());
             CHECK_RET(indexAddRes != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
         //输出0
