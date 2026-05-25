@@ -92,12 +92,11 @@ COLUMN_MAP = {
     'seqlens_list_kv':     '_seqlens_list_kv_',  # 非前缀和，需转换
     'dtype':               'Dtype',
     'sparse_mode':         'mask_mode',
-    'pre_tokens':          'pre_tokens',
-    'next_tokens':         'next_tokens',
+    'pre_tokens':          'win_left',
+    'next_tokens':         'win_right',
     'input_layout':        '_input_layout_',      # 同时设置 layout_q/kv/out
     'atten_mask_dtype':    'atten_mask_dtype',
     'atten_mask_layout':   'atten_mask_layout',
-    'keep_prob':           'keep_prob',
 }
 
 DTYPE_MAP = {
@@ -114,9 +113,8 @@ KEY_ORDER = [
     'Dtype',
     'q_range', 'k_range', 'v_range',
     'scale',
-    'mask_mode', 'pre_tokens', 'next_tokens',
+    'mask_mode', 'win_left', 'win_right',
     'winLeft', 'winRight',
-    'keep_prob',
     'seqused_q', 'seqused_kv',
     'cu_seqlens_q', 'cu_seqlens_kv',
     'block_table', 'block_size',
@@ -268,7 +266,7 @@ def convert_row(headers, row_values):
 
         # ---- 整数标量 ----
         if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'mask_mode', 'block_size',
-                   'pre_tokens', 'next_tokens'):
+                   'win_left', 'win_right'):
             case_dict[key] = [int(float(val))]
 
         # ---- 字符串标量 (layout) ----
@@ -285,8 +283,8 @@ def convert_row(headers, row_values):
             if r is not None:
                 case_dict[key] = [r]
 
-        # ---- 浮点标量 (softmax_scale, keep_prob) ----
-        elif key in ('scale', 'keep_prob'):
+        # ---- 浮点标量 (softmax_scale) ----
+        elif key in ('scale',):
             case_dict[key] = [float(val)]
 
         # ---- winLeft / winRight (保持字符串，与 test_case.py 一致) ----

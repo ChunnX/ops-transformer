@@ -15,7 +15,7 @@ num_heads_q = 1
 num_heads_kv = 1                                                                                                                                                                    
 head_dim = 128 
 
-mask_mode = 1  # 0: default mask, 3: rightDownCausal, 4: band mask 
+mask_mode = 0  # 0: band mask, 3: rightDownCausal, 4: bandCausal 
 win_left = None
 win_right = None
 layout_q = "TND"
