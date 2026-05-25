@@ -118,13 +118,13 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
     uint32_t curS2Idx = startPos.s2Offset;
     uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
     // ropeshape的M方向与nopeshape保持一样， 此处只判断nopeshape的
-    while(copyFinishRowCnt < shape.copyRowNum){
+    while(copyFinishRowCnt < shape.copyRowNum) {
         uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
         uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
         //计算可以拷贝行数
         uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
-        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
@@ -178,13 +178,13 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
     uint32_t curS2Idx = startPos.s2Offset;
     uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
-    while(copyFinishRowCnt < shape.copyRowNum){
+    while(copyFinishRowCnt < shape.copyRowNum) {
         uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
         uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
         //计算可以拷贝行数
         uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
-        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移

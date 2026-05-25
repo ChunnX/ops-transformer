@@ -47,10 +47,10 @@ __aicore__ inline void ProcessVec1NoUpdate(
     if constexpr (oriNRange == OriginNRange::EQ_128_SCFA) {
         ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SCFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SCFA) {
         ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SCFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SCFA) {
         ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, expSumTensor, maxTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
     }
@@ -68,7 +68,7 @@ __aicore__ inline void ProcessVec1Update(
     } else if constexpr (oriNRange == OriginNRange::GT_0_AND_LTE_64_SCFA) {
         ProcessVec1UpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
-    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SCFA){
+    } else if constexpr (oriNRange == OriginNRange::GT_64_AND_LTE_128_SCFA) {
         ProcessVec1UpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, m, originN, scale, minValue);
     }

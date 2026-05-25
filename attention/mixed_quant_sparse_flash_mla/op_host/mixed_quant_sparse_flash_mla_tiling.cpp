@@ -239,7 +239,7 @@ size_t KvQuantSASInfoParser::GetAxisIdx(const SASAxis &axis, const SASLayout &la
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t KvQuantSASInfoParser::GetAxisNum(const gert::Shape &shape, const SASAxis &axis,const SASLayout &layout) const
+uint32_t KvQuantSASInfoParser::GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -344,7 +344,8 @@ ge::graphStatus KvQuantSASInfoParser::GetS1Size()
 ge::graphStatus KvQuantSASInfoParser::GetMaxBlockNumPerBatch()
 {
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
-        OP_LOGE(opName_, "the layout_kv is %s, blockTable must be provided.", KvQuantSASLayoutToSerialString(kvLayout_).c_str());
+        OP_LOGE(opName_, "the layout_kv is %s, blockTable must be provided.",
+            KvQuantSASLayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
     }
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
@@ -430,27 +431,29 @@ ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::GetDSizeQ() {
+ge::graphStatus KvQuantSASInfoParser::GetDSizeQ()
+{
     dSizeQ_ = GetAxisNum(qShape_, SASAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::GetDSizeKV() {
+ge::graphStatus KvQuantSASInfoParser::GetDSizeKV()
+{
     dSizeKV_ = GetAxisNum(oriKvShape_, SASAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus KvQuantSASInfoParser::GetSinks()
 {
-    if(opParamInfo_.sequsedKv.tensor != nullptr){
+    if(opParamInfo_.sequsedKv.tensor != nullptr) {
         uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
-        if(oriDimNum != DIM_NUM_ONE){
+        if(oriDimNum != DIM_NUM_ONE) {
             OP_LOGE(opName_, "the dim num of sinks is %u, it should be %u.", oriDimNum, DIM_NUM_ONE);
             return ge::GRAPH_FAILED;
         }
 
         int64_t oriDimension = opParamInfo_.sequsedKv.tensor->GetStorageShape().GetDim(0);
-        if(oriDimension != gSize_){
+        if(oriDimension != gSize_) {
             OP_LOGE(opName_, "sinks's dimension(%ld) should be equal to query head num(%u).", oriDimension, gSize_);
             return ge::GRAPH_FAILED;
         }
@@ -460,11 +463,11 @@ ge::graphStatus KvQuantSASInfoParser::GetSinks()
 
 ge::graphStatus KvQuantSASInfoParser::GetKvstride()
 {
-    if(opParamInfo_.oriKv.tensor != nullptr){
+    if(opParamInfo_.oriKv.tensor != nullptr) {
         oriKvStride_ = opParamInfo_.oriKv.tensor->GetShapeSize() /
                     opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0);
     }
-    if(opParamInfo_.cmpKv.tensor != nullptr){
+    if(opParamInfo_.cmpKv.tensor != nullptr) {
         cmpKvStride_ = opParamInfo_.cmpKv.tensor->GetShapeSize() /
                     opParamInfo_.cmpKv.tensor->GetStorageShape().GetDim(0);
     }

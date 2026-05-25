@@ -447,7 +447,7 @@ __aicore__ inline void MatmulKM(const LocalTensor<A> &aL1Tensor,
 
     for (uint32_t k = 0; k < kLoops; k++) {
         kSplitSize = (k == (kLoops - 1)) ? kSplitTailSize : kSplitSize;
-        for (uint32_t m = 0; m < mLoops; m++){
+        for (uint32_t m = 0; m < mLoops; m++) {
             mSplitSize = (m == (mLoops - 1)) ? mplitTailSize : mSplitSize;
             Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
             l0aBuffer.Wait<HardEvent::M_MTE1>(); // 占用

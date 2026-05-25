@@ -194,7 +194,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriKv.desc, ORI_KV_NAME) ||
         ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, ORI_KV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriKv.tensor->GetShape(), keyDimNumList, ORI_KV_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_,
+            &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
@@ -216,8 +217,10 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpKv.desc, CMP_KV_NAME) ||
             ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, CMP_KV_NAME) ||
-            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpKv.tensor->GetShape(), keyDimNumList, CMP_KV_NAME) ||
-            ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.cmpKv.tensor->GetShape(), CMP_KV_NAME)) {
+            ge::GRAPH_SUCCESS != 
+                CheckDimNumSupport(&opParamInfo_.cmpKv.tensor->GetShape(), keyDimNumList, CMP_KV_NAME) ||
+            ge::GRAPH_SUCCESS !=
+                CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.cmpKv.tensor->GetShape(), CMP_KV_NAME)) {
             return ge::GRAPH_FAILED;
         }
 
@@ -275,7 +278,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKvHeadNums() const
 ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaSparseMode() const
 {
     OP_CHECK_IF((*opParamInfo_.oriMaskMode != 4 || *opParamInfo_.cmpMaskMode != 3),
-        OP_LOGE(opName_, "oriMaskMode only support 4 and cmpMaskMode only support 3, but got %u and %u.", *opParamInfo_.oriMaskMode, *opParamInfo_.cmpMaskMode),
+        OP_LOGE(opName_, "oriMaskMode only support 4 and cmpMaskMode only support 3, but got %u and %u.",
+            *opParamInfo_.oriMaskMode, *opParamInfo_.cmpMaskMode),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -299,7 +303,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpSparseIndices() const
             return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpSparseIndices.desc, CMP_SPARSE_INDICES_NAME) ||
-            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpSparseIndices.tensor->GetShape(), cmpSparseIndicesDimNumList, CMP_SPARSE_INDICES_NAME)) {
+            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpSparseIndices.tensor->GetShape(),
+                cmpSparseIndicesDimNumList, CMP_SPARSE_INDICES_NAME)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -316,7 +321,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaBlockTable() const
             return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriBlockTable.desc, ORI_BLOCK_TABLE_NAME) ||
-            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriBlockTable.tensor->GetShape(), BlockTableDimNumList, ORI_BLOCK_TABLE_NAME)) {
+            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriBlockTable.tensor->GetShape(),
+                BlockTableDimNumList, ORI_BLOCK_TABLE_NAME)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -327,7 +333,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaBlockTable() const
             return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpBlockTable.desc, CMP_BLOCK_TABLE_NAME) ||
-            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(), BlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
+            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(),
+                BlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -372,7 +379,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaSequsedKv() const
     }
 
     OP_CHECK_IF(opParamInfo_.sequsedKv.tensor->GetShapeSize() != bSize_,
-        OP_LOGE(opName_, "input sequsedKv's shapeSize is not equal to B: %u, it is %ld", bSize_, opParamInfo_.sequsedKv.tensor->GetShapeSize()),
+        OP_LOGE(opName_, "input sequsedKv's shapeSize is not equal to B: %u, it is %ld",
+            bSize_, opParamInfo_.sequsedKv.tensor->GetShapeSize()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -389,7 +397,8 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaSinks() const
     }
 
     OP_CHECK_IF(opParamInfo_.sinks.tensor->GetShapeSize() != n1Size_,
-        OP_LOGE(opName_, "Input sinks's shapeSize is not equal to n1: %u, it is %ld.", n1Size_, opParamInfo_.sinks.tensor->GetShapeSize()),
+        OP_LOGE(opName_, "Input sinks's shapeSize is not equal to n1: %u, it is %ld.",
+            n1Size_, opParamInfo_.sinks.tensor->GetShapeSize()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -417,7 +426,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSequsedKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaMetadata() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSinks() ) {
+        ge::GRAPH_SUCCESS != CheckSingleParaSinks()) {
         return ge::GRAPH_FAILED;
     }
 
