@@ -221,8 +221,8 @@ public:
                                         kvSeqUsedParser);
             }
         }
-        if ASCEND_IS_AIV {
-            if (isFd) {
+        if (isFd) {
+            if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();
                 vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
                                             this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm, keyPtr);
