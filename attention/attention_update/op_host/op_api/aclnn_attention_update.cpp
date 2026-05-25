@@ -209,7 +209,7 @@ static inline bool CheckShape_95(const aclTensorList *lse, const aclTensorList *
                      lseShape.GetDimNum()),
              return false);
     OP_CHECK(goShape.GetDimNum() == GO_DIM_NUM,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lse should be %ld, but which is %ld.", GO_DIM_NUM,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of localOut should be %ld, but which is %ld.", GO_DIM_NUM,
                      goShape.GetDimNum()),
              return false);
 
