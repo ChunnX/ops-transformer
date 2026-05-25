@@ -439,10 +439,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
         epWorldSizeHccl = Mc2Kernel::GetRankDim(epWinContext_);
     }
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    for (int tempEpRankId = 0; tempEpRankId < epWorldSize_; tempEpRankId++) {
-        OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempEpRankId, EP_DOMAIN)), totalWinSizeEp_);
-        OOMCheckAddrRange<float>((__gm__ float*)(GetWinStateAddrByRankId(tempEpRankId, EP_DOMAIN)), STATE_SIZE);
-    }
+    uint64_t totalStatusSize = static_cast<uint64_t>(epWorldSize_) * STATE_OFFSET * 2; // 0/1两个分区
+    OOMCheckAddrRange<float>((__gm__ float*)statusDataSpaceGm_,totalStatusSize);
 #endif
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
