@@ -144,8 +144,8 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
     //Check if one of the batch size is zero
     bool isBatchZero = (batchInfo.batchA == 0UL || batchInfo.batchB == 0UL);
     if (isBatchZero) {
-      OP_LOGE_FOR_INVALID_VALUE(args.opName, "batch dims of x1 and x2", "0", "> 0");
-      return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_VALUE(args.opName, "batch dims of x1 and x2", "0", "> 0");
+        return ge::GRAPH_FAILED;
     }
 
     // when BatchB == 1, adjust M = batchA * M, batchA = 1

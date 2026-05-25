@@ -328,7 +328,7 @@ static bool CheckScalesValid(const gert::TilingContext *context,
     size_t actualDimNum = scalesShape->GetStorageShape().GetDimNum();
     if (actualDimNum != expectedScalesDims.size()) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", (std::to_string(actualDimNum) + "D").c_str(),
-                                      (std::to_string(expectedScalesDims.size()) + "D").c_str());
+                                     (std::to_string(expectedScalesDims.size()) + "D").c_str());
         return false;
     }
     

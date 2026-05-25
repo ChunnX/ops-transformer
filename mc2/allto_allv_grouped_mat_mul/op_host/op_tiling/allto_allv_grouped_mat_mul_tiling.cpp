@@ -243,7 +243,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
         !((mmXStorageShape != nullptr) && (mmWeightStorageShape != nullptr) &&
           (outputMmYStorageShape != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != NUM_ZERO))) {
         OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mmX/mmWeight/mmY", "inconsistent",
-                                   "all should be nullptr or all be not nullptr");
+                                  "all should be nullptr or all be not nullptr");
         return ge::GRAPH_FAILED;
     }
     tilingData->commonTilingInfo.isNeedMM = (mmXStorageShape != nullptr);
