@@ -356,6 +356,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
             OP_LOGE(A_INNER_DEBUG, "MmX shape dim num[%lu] should be 2.", mmXShape.GetDimNum()), return ge::GRAPH_FAILED);
         maxMForMM_ = mmXShape.GetDim(0);
         maxKForMM_ = mmXShape.GetDim(1);
+        mmXDataType_ = context->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
+        mmWeightDataType_ = context->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
 
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmWeightShape.GetDimNum() != DIM_TWO,
