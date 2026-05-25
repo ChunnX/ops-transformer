@@ -54,7 +54,7 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     OP_CHECK_IF(wDimNum != MIN_DIM || xDimNum_ != MIN_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
                     context->GetNodeName(), "x, weight", FormatString("%u, %u", xDimNum_, wDimNum).c_str(),
-                    FormatString("The shape dims of %s must be %d", "x, weight", 2).c_str()),
+                    FormatString("The shape dims of %s must be %d.", "x, weight", 2).c_str()),
                 return false);
     xKDim_ = transposeX_ ? 0U : xDimNum_ - 1U;
     weightNDim_ = transposeWeight_ ? wDimNum - DIM_TWO : wDimNum - DIM_ONE;
@@ -63,14 +63,14 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
                     context->GetDynamicInputTensor(INDEX_X, 1) != nullptr,
                 OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
                     context->GetNodeName(), "x, weight", "",
-                    FormatString("The tensor nums of %s must be %s", "x, weight", "1").c_str()),
+                    FormatString("The tensor nums of %s must be %s.", "x, weight", "1").c_str()),
                 return false);
     if (groupType_ == SPLIT_K) {
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
         context->GetNodeName(), "group_type", FormatString("%d", groupType_).c_str(),
-        FormatString("The value of %s cannot be %d", "group_type", groupType_).c_str());
+        FormatString("The value of %s cannot be %d.", "group_type", groupType_).c_str());
     return false;
 }
 
@@ -93,7 +93,7 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
             context->GetNodeName(), "group_type, transposeX, transposeWeight",
             FormatString("%d, %s, %s", groupType_, transposeX_ ? "TRUE" : "FALSE", transposeWeight_ ? "TRUE" : "FALSE")
                 .c_str(),
-            FormatString("When %s is %d, the values of %s must be %s", "group_type", 2, "transposeX, transposeWeight",
+            FormatString("When %s is %d, the values of %s must be %s.", "group_type", 2, "transposeX, transposeWeight",
                          "TRUE, FALSE")
                 .c_str()),
         return false);
@@ -113,7 +113,7 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
                     FormatString("%s, %s", (xFormat != ge::FORMAT_ND) ? "not ND" : "ND",
                                  (wFormat != ge::Format::FORMAT_ND) ? "not ND" : "ND")
                         .c_str(),
-                    FormatString("The formats of %s must be %s", "x, weight", "ND").c_str()),
+                    FormatString("The formats of %s must be %s.", "x, weight", "ND").c_str()),
                 return false);
     return true;
 }
@@ -215,7 +215,7 @@ bool GroupedMatmulAddNoQuantTiling::CalMatMulTiling(const gert::TilingContext *c
     OP_CHECK_IF(groupNum_ < 1U || groupNum_ > MAX_TENSOR,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context->GetNodeName(), "groupNum", FormatString("%u", groupNum_).c_str(),
-                    FormatString("The value of %s must be within the range [%d, %d]", "groupNum", 1, 1024).c_str()),
+                    FormatString("The value of %s must be within the range [%d, %d].", "groupNum", 1, 1024).c_str()),
                 return false);
     uint32_t remainCoreNum = std::max(1U, compileInfoPtr->aicNum / groupNum_);
     FormulateBasicBlock(compileInfoPtr, remainCoreNum);

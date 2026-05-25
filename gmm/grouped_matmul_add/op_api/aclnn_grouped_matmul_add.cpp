@@ -113,15 +113,16 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
         auto yDimNum = params.yRef->GetViewShape().GetDimNum();
         if (yDimNum != 3) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("grouped_matmul_add", "y", FormatString("%zu", yDimNum).c_str(),
-                                                     FormatString("The shape dim of %s must be %d", "y", 3).c_str());
+                                                     FormatString("The shape dim of %s must be %d.", "y", 3).c_str());
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto groupNumY = params.yRef->GetViewShape().GetDim(0);
         if (groupNum != groupNumY) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                 "grouped_matmul_add", "groupList", FormatString("%ld", groupNum).c_str(),
-                FormatString("when %s is %s, the shape size of %s must be equal to the size (%ld) of the %s axis of %s",
-                             "group_type", "2", "groupList", groupNumY, "first", "y")
+                FormatString(
+                    "When %s is %s, the shape size of %s must be equal to the size (%ld) of the %s axis of %s.",
+                    "group_type", "2", "groupList", groupNumY, "first", "y")
                     .c_str());
             return ACLNN_ERR_PARAM_INVALID;
         }
