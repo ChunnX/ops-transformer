@@ -152,8 +152,10 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
         add_cann_third_party(eigen)
-        include(cmake/third_party/abseil-cpp.cmake)
-        include(cmake/third_party/ascend_protobuf.cmake)
+        #include(cmake/third_party/abseil-cpp.cmake)
+        #include(cmake/third_party/ascend_protobuf.cmake)
+        add_cann_third_party(abseil-cpp)
+        add_cann_third_party(protobuf)
 
 
         include(cmake/custom_build.cmake)
