@@ -17,6 +17,7 @@
 #define MOE_DISTRIBUTE_DISPATCH_TILING_V2
 
 #include <cstdint>
+#include <functional>
 #include "op_host/op_tiling/mc2_opversion_manager.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -94,24 +95,46 @@ struct DispatchV2Config {
 };
 using namespace Ops::Transformer::OpTiling;
 
+// 架构差异回调类型（原则5：通过参数传递，而非继承）
+using CheckTensorDataTypeFn = std::function<bool(const gert::TilingContext*, const char*, DispatchV2TilingCtx&, DispatchV2Config&)>;
+using CalTilingKeyFn = std::function<uint64_t(const DispatchV2TilingCtx&)>;
+using CheckQuantModeMatchScalesFn = std::function<ge::graphStatus(gert::TilingContext*, const char*, DispatchV2TilingCtx&, DispatchV2Config&)>;
+using CheckCommAlgPtrFn = std::function<ge::graphStatus(const char*, const char*)>;
+using CheckQuantModePtrFn = std::function<ge::graphStatus(const int64_t*, const char*)>;
+
+// 公共验证/解析函数：提取为自由函数（原则2）
+ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
+    DispatchV2TilingCtx &tc, DispatchV2Config &config, const CheckTensorDataTypeFn &checkTensorDataType);
+bool CheckCommomOtherInputTensorDataType(const gert::TilingContext *context, const char *nodeName,
+    DispatchV2TilingCtx &tc, DispatchV2Config &config);
+bool CheckCommomOutputTensorDataType(const gert::TilingContext *context, const char *nodeName);
+ge::graphStatus CheckOtherAttrParams(const gert::TilingContext *context, const char *nodeName,
+    DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
+ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const char *nodeName,
+    DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
+ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context, const char *nodeName,
+    MoeDistributeDispatchV2TilingData &tilingData, DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
+ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
+    DispatchV2TilingCtx &tc, const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
+    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
+ge::graphStatus MoeDistributeDispatchA5TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
+    DispatchV2TilingCtx &tc, const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
+    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
+
+ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config,
+    const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
+    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
+
+// A2/V3 保留基类（A2 仍继承，V3 仍通过 A2A3 调用旧入口）
 class MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
-    ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
-        DispatchV2TilingCtx &tc);
-    ge::graphStatus MoeDistributeDispatchA5TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
-        DispatchV2TilingCtx &tc);
-    ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
-        DispatchV2TilingCtx &tc, DispatchV2Config &config);
-    bool CheckCommomOtherInputTensorDataType(const gert::TilingContext *context, const char *nodeName,
-        DispatchV2TilingCtx &tc, DispatchV2Config &config);
-    bool CheckCommomOutputTensorDataType(const gert::TilingContext *context, const char *nodeName);
-    ge::graphStatus CheckOtherAttrParams(const gert::TilingContext *context, const char *nodeName,
-        DispatchV2TilingCtx &tc, DispatchV2Config &config);
-    ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const char *nodeName,
-        DispatchV2TilingCtx &tc, DispatchV2Config &config);
-    ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context, const char *nodeName,
-        MoeDistributeDispatchV2TilingData &tilingData, DispatchV2TilingCtx &tc, DispatchV2Config &config);
 
     virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) = 0;
     virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context) = 0;
