@@ -1687,16 +1687,15 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
         AscendC::printf("====================== zzz In moe_distribute_dispatch_v2 ==========================\n");
         AscendC::printf("Shmem Interface my_pe: %d \n", aclshmem_my_pe());
-        AscendC::printf("Shmem Buffer: %d \n", shmemBuffer_);
+        AscendC::printf("Shmem Buffer: %llu \n", shmemBuffer_);
 
         AscendC::TBuf<AscendC::TPosition::VECOUT> buf;
         tpipe_->InitBuffer(buf, UB_ALIGN_SIZE * 2);
         // A user-provided LocalTensor of at least 64 bytes is required to submit UDMA tasks.
         AscendC::LocalTensor<uint8_t> ubLocal = buf.GetWithOffset<uint8_t>(UB_ALIGN_SIZE * 2, 0);
 
-        uint64_t custom_ptr_addr = *((__gm__ uint64_t*)(xGMTensor_.GetPhyAddr()));
-        AscendC::printf("[DEVICE custom_ptr_addr] %llu\n", custom_ptr_addr);
-        __gm__ uint8_t* custom_ptr = (__gm__ uint8_t*)custom_ptr_addr;
+        __gm__ uint8_t* custom_ptr = (__gm__ uint8_t*)shmemBuffer_;
+        AscendC::printf("[DEVICE custom_ptr] %llu\n", shmemBuffer_);
 
         int message_length = 64;    // trans_size * sizeof(int32_t)
 

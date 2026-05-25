@@ -223,15 +223,15 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
     std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
+    // ####### Shmem Hack START #######
     int pe_id = aclshmem_my_pe();
     int n_pes = aclshmem_n_pes();
 
-    // DEBUG: n_pes * trans_size * sizeof(int32_t)
     uint32_t trans_size = 16;
-    uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t)));
-    uint64_t custom_ptr_addr = (uint64_t)custom_ptr;
-    std::cout << "[HOST custom_ptr_addr] " << custom_ptr_addr << std::endl;
+    uint8_t* custom_ptr = static_cast<uint8_t*>(aclshmem_malloc(n_pes * trans_size * sizeof(int32_t) + 16 * 1024 * 1024));
+    std::cout << "[HOST custom_ptr] " << (uint64_t)custom_ptr << std::endl;
 
+    // 准备shmem host侧数据
     const int num10 = 10;
     std::vector<int32_t> input(trans_size, 0);
     for (int i = 0; i < trans_size; i++) {
@@ -241,12 +241,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclrtMemcpy(
         custom_ptr + aclshmem_my_pe() * trans_size * sizeof(int32_t), trans_size * sizeof(int32_t), input.data(),
         trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
-
-
-    // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
-    if (xHostData.size() >= 4) {
-        std::memcpy(xHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
-    }
+    // ####### Shmem Hack END #######
 
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
