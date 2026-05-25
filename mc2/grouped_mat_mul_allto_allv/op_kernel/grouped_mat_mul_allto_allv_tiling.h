@@ -38,12 +38,12 @@ struct GmmAlltoAllvCommonTilingInfo {
     uint64_t epWorldSize;
     uint64_t aivCoreNum;
     uint64_t aicCoreNum;
+    uint64_t expertGroupSize;   // G: 每组专家数（2的幂）
+    uint64_t numAlltoAllvCalls; // ceil(E_ep / G): kernel 侧 AlltoAllv 调用次数
     bool isGmmWeightTrans;
     bool isMmWeightTrans;
     bool isOptionalMatmul;
     bool isOptionalSendRecvCountTensors;
-    uint64_t expertGroupSize;   // G
-    uint64_t numAlltoAllvCalls; // ceil(E_ep / G)
 };
 
 class GroupedMatMulAlltoAllvTilingData
