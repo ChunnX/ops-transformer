@@ -375,15 +375,6 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyOutRowIdx()
             expandedRowIdxQueue_.FreeTensor(expandedRowIdx);
         } else {
             LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.DeQue<int32_t>();
-            int64_t outputRows = Min(actualExpertIdxNum_, activeNum_);
-            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-            for (int64_t i = 0; i < totalLength_; i++) {
-                int32_t outIndex = expandedRowIdx.GetValue(i);
-                if (outIndex < 0 || outIndex >= outputRows) {
-                    expandedRowIdx.SetValue(i, static_cast<int32_t>(-1));
-                }
-            }
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                          static_cast<uint32_t>(totalLength_ * sizeof(int32_t)), 0, 0, 0};
             DataCopyPad(expandedRowIdxGm_, expandedRowIdx, copyParams);

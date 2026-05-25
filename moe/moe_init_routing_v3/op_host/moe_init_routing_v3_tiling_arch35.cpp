@@ -729,7 +729,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
                 return ge::GRAPH_FAILED);
 
     // INT4 dynamic quantization only supports FLOAT/BF16 input, not FLOAT16 or INT8
-    if (IsInt4DynamicQuantCase() && (xDtype_ == ge::DataType::DT_FLOAT16 || xDtype_ == ge::DataType::DT_INT8)) {
+    if (IsInt4DynamicQuantCase() && (xDtype_ != ge::DataType::DT_FLOAT && xDtype_ != ge::DataType::DT_BF16)) {
         OP_LOGE(context_, "INT4 dynamic quantization only supports DT_FLOAT or DT_BF16 input, but got x dtype: %d.",
                 xDtype_);
         return ge::GRAPH_FAILED;
@@ -859,12 +859,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputOffset()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckInputOffset()");
-
-    // INT4动态量化不支持offset
-    if (IsInt4DynamicQuantCase() && isInputOffset_ == 1) {
-        OP_LOGE(context_, "Input offset is not supported when quant_mode=1 and expanded_x=DT_INT4.");
-        return ge::GRAPH_FAILED;
-    }
 
     // 静态量化模式：offset必须输入，shape为[1]，dtype为FLOAT
     if (quantMode_ == QUANT_MODE_STATIC) {

@@ -97,13 +97,8 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
                                 2 * AlignBytes(this->cols_, sizeof(T)));
     }
     this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(float)));
-    if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
-                                AlignBytes(colsAsInt8_, sizeof(int8_t)));
-    } else {
-        this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
-                                AlignBytes(this->cols_, sizeof(int8_t)));
-    }
+    this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
+                            AlignBytes(colsAsInt8_, sizeof(int8_t)));
     this->pipe_->InitBuffer(scaleOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, BLOCK_BYTES + BLOCK_BYTES);
 }
 
@@ -258,7 +253,11 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         inputXInQueue_.EnQue<T>(inLocal);
 
         if (this->isInputScale_ && expertIdx != lastExpertIdx) {
-            DataCopyPad(smoothLocal, quantSmoothGm_[0], smoothParams, {false, 0, 0, 0});
+            int64_t smoothOffset = 0;
+            if constexpr (!IsSameType<QuantT, int4b_t>::value) {
+                smoothOffset = expertIdx * this->cols_;
+            }
+            DataCopyPad(smoothLocal, quantSmoothGm_[smoothOffset], smoothParams, {false, 0, 0, 0});
             smoothInQueue_.EnQue(smoothLocal);
             smoothLocal = smoothInQueue_.DeQue<float>();
             lastExpertIdx = expertIdx;
