@@ -1555,7 +1555,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         Not(preg_all_b8_half, preg_all_b8_128, preg_all_b8);
         Duplicate(vreg_p_scale_f8e8m0_pad, 0x7f, preg_all_b8_half);
         Duplicate(vreg_p_scale, static_cast<float>(1.0f));
-        Mul(vreg_p_scale, vreg_x_max_f32_b, vreg_p_scale, preg_all);
+        Mul(vreg_p_scale, vreg_subloop_update, vreg_p_scale, preg_all);
         Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all_b16);
         Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
