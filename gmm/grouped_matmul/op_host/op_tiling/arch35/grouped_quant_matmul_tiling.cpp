@@ -1037,7 +1037,8 @@ void GroupedQmmTiling::SetKernelType()
 uint64_t GroupedQmmTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
-                              static_cast<uint64_t>(inputParams_.kernelType));
+                              static_cast<uint64_t>(inputParams_.kernelType),
+                              static_cast<uint64_t>(GMM_L1_BUFFER_NUM_2));
 }
 
 ge::graphStatus GroupedQmmTiling::GetWorkspaceSize()

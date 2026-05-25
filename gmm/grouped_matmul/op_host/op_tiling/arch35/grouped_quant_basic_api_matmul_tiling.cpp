@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_quant_basic_api_matmul_tiling.h"
+#include "../../../op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
@@ -40,6 +41,7 @@ bool GroupedQmmBasicApiTiling::IsCapable()
 void GroupedQmmBasicApiTiling::Reset()
 {
     tilingData_ = GMMQuantBasicApiTilingData();
+    l1BufferNumKey_ = GMM_L1_BUFFER_NUM_2;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::GetShapeAttrsInfo()
@@ -86,12 +88,19 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
             inputParams_.kSize);
         tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
     }
+    l1BufferNumKey_ = CanEnableThreeL1Buffer() ? GMM_L1_BUFFER_NUM_3 : GMM_L1_BUFFER_NUM_2;
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
 {
     return SaveTilingDataToContext(tilingData_);
+}
+
+uint64_t GroupedQmmBasicApiTiling::GetTilingKey() const
+{
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
+                              static_cast<uint64_t>(inputParams_.kernelType), l1BufferNumKey_);
 }
 
 void GroupedQmmBasicApiTiling::PrintQuantParams()
@@ -141,6 +150,35 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
         return CalScaleFactors();
     }
     return ge::GRAPH_SUCCESS;
+}
+
+bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
+{
+    if (inputParams_.bQuantMode != optiling::QuantMode::MX_PERGROUP_MODE) {
+        return false;
+    }
+    if (GmmConstant::BASIC_BLOCK_SIZE_256 * 3UL * inputParams_.groupNum >= inputParams_.mSize) {
+        return false;
+    }
+    uint64_t kAL1 = tilingData_.mmTilingData.kAL1;
+    uint64_t kBL1 = tilingData_.mmTilingData.kBL1;
+    uint64_t scaleKL1 = tilingData_.mmTilingData.scaleKAL1;
+    if (kAL1 == 0UL || kBL1 == 0UL || scaleKL1 == 0UL) {
+        return false;
+    }
+    uint64_t aL1Size =
+        GetSizeWithDataType(basicTiling_.baseM * CeilAlign(kAL1, MXFP_BASEK_FACTOR), inputParams_.aDtype);
+    uint64_t bL1Size =
+        GetSizeWithDataType(basicTiling_.baseN * CeilAlign(kBL1, MXFP_BASEK_FACTOR), inputParams_.bDtype);
+    uint64_t scaleKSize = CeilDiv(scaleKL1, MXFP_BASEK_FACTOR) * MXFP_MULTI_BASE_SIZE;
+    uint64_t scaleAL1Size = GetSizeWithDataType(basicTiling_.baseM * scaleKSize, inputParams_.perTokenScaleDtype);
+    uint64_t scaleBL1Size = GetSizeWithDataType(basicTiling_.baseN * scaleKSize, inputParams_.scaleDtype);
+    uint64_t biasL1Size =
+        inputParams_.hasBias ? basicTiling_.baseN * static_cast<uint64_t>(ge::GetSizeByDataType(inputParams_.biasDtype)) :
+                               0UL;
+    uint64_t commonL1Size = aL1Size + bL1Size + scaleAL1Size + scaleBL1Size + biasL1Size;
+    uint64_t halfL1Size = aicoreParams_.l1Size / DB_SIZE;
+    return (commonL1Size + aL1Size <= halfL1Size) && (commonL1Size + bL1Size <= halfL1Size);
 }
 
 uint64_t GroupedQmmBasicApiTiling::GetDepthWithHighBW(uint64_t mnL1) const
