@@ -58,5 +58,7 @@ ge::graphStatus InferDataTypeMixedQuantSparseFlashMla(gert::InferDataTypeContext
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(MixedQuantSparseFlashMla).InferShape(InferShapeMixedQuantSparseFlashMla).InferDataType(InferDataTypeMixedQuantSparseFlashMla);
+IMPL_OP(MixedQuantSparseFlashMla)
+    .InferShape(InferShapeMixedQuantSparseFlashMla)
+    .InferDataType(InferDataTypeMixedQuantSparseFlashMla);
 } // namespace ops

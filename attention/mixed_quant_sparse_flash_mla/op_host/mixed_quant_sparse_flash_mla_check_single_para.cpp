@@ -142,7 +142,7 @@ void KvQuantSASTilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNu
         }
     }
     OP_LOGE(opName_, "%s %s only support %s, but got %s",
-              name.c_str(), subName.c_str(), oss.str().c_str(), std::to_string(actualValue).c_str());
+        name.c_str(), subName.c_str(), oss.str().c_str(), std::to_string(actualValue).c_str());
 }
 
 

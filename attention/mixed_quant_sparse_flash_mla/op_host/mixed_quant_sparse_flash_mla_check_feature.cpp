@@ -132,7 +132,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantPa() const
         OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%ld) should be in range (0, %u].",
         oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
 
-    if (cmpBlockSize_ != 0){
+    if (cmpBlockSize_ != 0) {
         OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
             OP_LOGE(opName_, "when page attention is enabled, cmpBlockSize_(%ld) should be in range (0, %u].",
             cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
