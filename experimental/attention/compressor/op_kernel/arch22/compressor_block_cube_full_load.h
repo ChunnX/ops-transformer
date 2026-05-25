@@ -369,61 +369,61 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
             }
             bool isFirst = (h == 0);
             bool isLast = (h + K_L1_BASE >= hSize);
-                WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
-                LocalTensor<X_T> xL1Tensor = xBufL1.GetWithOffset<X_T>(L1_X_SIZE / sizeof(X_T), xBufId * L1_X_SIZE);
-                CopyXGmToL1(xL1Tensor, hStart + hIdx, kSize);
-                SetFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
-                WaitFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
-                WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT0 + wBufId);
-                LocalTensor<X_T> wL1Tensor = wBufL1.GetWithOffset<X_T>(L1_W_SIZE / sizeof(X_T), wBufId * L1_W_SIZE);
-                CopyWeightGmToL1(wL1Tensor, hStart + hIdx, kSize, coffId);
-                SetFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
-                WaitFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
-                uint32_t actMDealSize = M_L0_BASE;
-                for (uint32_t mL0 = 0; mL0 < mSize; mL0 += M_L0_BASE) {
-                    if (mL0 + M_L0_BASE > mSize) {
-                        actMDealSize = mSize - mL0;
+            WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
+            LocalTensor<X_T> xL1Tensor = xBufL1.GetWithOffset<X_T>(L1_X_SIZE / sizeof(X_T), xBufId * L1_X_SIZE);
+            CopyXGmToL1(xL1Tensor, hStart + hIdx, kSize);
+            SetFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
+            WaitFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
+            WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT0 + wBufId);
+            LocalTensor<X_T> wL1Tensor = wBufL1.GetWithOffset<X_T>(L1_W_SIZE / sizeof(X_T), wBufId * L1_W_SIZE);
+            CopyWeightGmToL1(wL1Tensor, hStart + hIdx, kSize, coffId);
+            SetFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
+            WaitFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
+            uint32_t actMDealSize = M_L0_BASE;
+            for (uint32_t mL0 = 0; mL0 < mSize; mL0 += M_L0_BASE) {
+                if (mL0 + M_L0_BASE > mSize) {
+                    actMDealSize = mSize - mL0;
+                }
+                uint32_t nDealSize = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+                uint32_t actNDealSize = N_L0_BASE;
+                for (uint32_t nL0 = 0; nL0 < nDealSize; nL0 += N_L0_BASE) {
+                    if (nL0 + N_L0_BASE > nDealSize) {
+                        actNDealSize = nDealSize - nL0;
                     }
-                    uint32_t nDealSize = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
-                    uint32_t actNDealSize = N_L0_BASE;
-                    for (uint32_t nL0 = 0; nL0 < nDealSize; nL0 += N_L0_BASE) {
-                        if (nL0 + N_L0_BASE > nDealSize) {
-                            actNDealSize = nDealSize - nL0;
+                    l0cBufId = (mL0 / M_L0_BASE);
+                    LocalTensor<T> cL0Tensor = tmpBufL0C.GetWithOffset<T>((L0C_PP_SIZE / sizeof(T)), l0cBufId * L0C_PP_SIZE);
+                    if (isFirst) {
+                        WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
+                    }
+                    uint32_t actKDealSize = K_L0_BASE;
+                    for (uint32_t kL0 = 0; kL0 < kSize; kL0 += K_L0_BASE) {
+                        if (kL0 + K_L0_BASE > kSize) {
+                            actKDealSize = kSize - kL0;
                         }
-                        l0cBufId = (mL0 / M_L0_BASE);
-                        LocalTensor<T> cL0Tensor = tmpBufL0C.GetWithOffset<T>((L0C_PP_SIZE / sizeof(T)), l0cBufId * L0C_PP_SIZE);
-                        if (isFirst) {
-                            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
-                        }
-                        uint32_t actKDealSize = K_L0_BASE;
-                        for (uint32_t kL0 = 0; kL0 < kSize; kL0 += K_L0_BASE) {
-                            if (kL0 + K_L0_BASE > kSize) {
-                                actKDealSize = kSize - kL0;
-                            }
-                            WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId);
-                            LocalTensor<X_T> aL0Tensor = tmpBufL0A.GetWithOffset<X_T>(L0A_PP_SIZE / sizeof(X_T), l0abBufId * L0A_PP_SIZE);
-                            LocalTensor<X_T> bL0Tensor = tmpBufL0B.GetWithOffset<X_T>(L0B_PP_SIZE / sizeof(X_T), l0abBufId * L0B_PP_SIZE);
-                            LoadAToL0(aL0Tensor, xL1Tensor, kL0, actKDealSize, mL0, actMDealSize);
-                            LoadBToL0(bL0Tensor, wL1Tensor, kL0, actKDealSize, nL0, actNDealSize);
-                            SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
-                            WaitFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
-                            bool isInitL0C = isFirst && (kL0 == 0);
-                            MatrixMmad(cL0Tensor, aL0Tensor, bL0Tensor, actMDealSize, actNDealSize, actKDealSize, isInitL0C);
-                            SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId);
-                            l0abBufId = (l0abBufId + 1) % 2;
-                        }
-                        if (isLast) {
-                            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
-                            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
-                            CopyOutMm1Res(info, cL0Tensor, coffId, mL0, actMDealSize, nL0, actNDealSize);
-                            SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
-                        }
+                        WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId);
+                        LocalTensor<X_T> aL0Tensor = tmpBufL0A.GetWithOffset<X_T>(L0A_PP_SIZE / sizeof(X_T), l0abBufId * L0A_PP_SIZE);
+                        LocalTensor<X_T> bL0Tensor = tmpBufL0B.GetWithOffset<X_T>(L0B_PP_SIZE / sizeof(X_T), l0abBufId * L0B_PP_SIZE);
+                        LoadAToL0(aL0Tensor, xL1Tensor, kL0, actKDealSize, mL0, actMDealSize);
+                        LoadBToL0(bL0Tensor, wL1Tensor, kL0, actKDealSize, nL0, actNDealSize);
+                        SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
+                        WaitFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
+                        bool isInitL0C = isFirst && (kL0 == 0);
+                        MatrixMmad(cL0Tensor, aL0Tensor, bL0Tensor, actMDealSize, actNDealSize, actKDealSize, isInitL0C);
+                        SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId);
+                        l0abBufId = (l0abBufId + 1) % 2;
+                    }
+                    if (isLast) {
+                        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
+                        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId);
+                        CopyOutMm1Res(info, cL0Tensor, coffId, mL0, actMDealSize, nL0, actNDealSize);
+                        SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId);
                     }
                 }
-                SetFlag<HardEvent::MTE1_MTE2>(W_EVENT0 + wBufId);
-                wBufId = (wBufId + 1) % 2;
-                SetFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
-                xBufId = (xBufId + 1) % 2;
+            }
+            SetFlag<HardEvent::MTE1_MTE2>(W_EVENT0 + wBufId);
+            wBufId = (wBufId + 1) % 2;
+            SetFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
+            xBufId = (xBufId + 1) % 2;
         }
     }
     
