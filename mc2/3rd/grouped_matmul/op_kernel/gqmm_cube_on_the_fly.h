@@ -320,7 +320,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
     if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
         mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
         mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
-    } else {
+    } else if (gmmQuantParams_->bQuantMode != static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
         if (gmmQuantParams_->bQuantMode ==
             static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
             mm_.SetQuantScalar(scaleScalar_);
