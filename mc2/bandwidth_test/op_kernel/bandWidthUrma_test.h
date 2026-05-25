@@ -195,6 +195,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_->InitBuffer(tempBuffer_, 1024);
     LocalTensor<uint8_t> tempTensor = tempBuffer_.Get<uint8_t>();
     hcomm_.Init((__ubuf__ uint8_t*)tempTensor.GetPhyAddr(), 1024);
+
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     totalWinSizeEp_ = 800UL * 1024 * 1024; //TODO:
@@ -306,8 +307,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     if (epRankId_ == 0) {
         GlobalTensor<int32_t> rankGMTensor;
-        GM_ADDR rankGMTensorAddr = GetUrmaStateAddrByRankId(epRankId_) + 300;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(rankGMTensorAddr));
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetWindStateAddrByRankId(epRankId_)));
         for (uint32_t i = 0; i < 8; i++) {
             rankGMTensor(i) = i + 1;
         }
@@ -315,7 +315,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         for (uint32_t i = 0; i < 8; i++) {
             PRINTF("write rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
         }
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[0], GetUrmaStateAddrByRankId(1), rankGMTensorAddr, UB_ALIGN);
+        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[0], GetUrmaStateAddrByRankId(1), GetWindStateAddrByRankId(epRankId_), UB_ALIGN);
         hcomm_.Wait(handle);
     }
     if (epRankId_ == 1) {
@@ -327,7 +327,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
             }
         }
         GlobalTensor<int32_t> rankGMTensor;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(0)));
+        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_)));
         for (uint32_t i = 0; i < 8; i++) {
             PRINTF("read rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
         }
