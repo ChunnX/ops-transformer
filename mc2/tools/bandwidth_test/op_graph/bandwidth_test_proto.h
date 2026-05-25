@@ -23,31 +23,31 @@ namespace ge {
 
 * @par Inputs
 * Two inputs, including:
- * @li x: A tensor. Support dtype: float16, bfloat16. Shape supports (BS, H), support format: ND.
-* @li expert_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ), support format: ND.
+* @li x: A tensor. Support dtype: float16, bfloat16. Shape supports (BS, H), support format: ND.
+* @li dst_rank_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ), support format: ND.
 
 * @par Attributes
 * @li group: Required. Communication group name, dtype: String.
 * @li world_size: Required. Number of ranks in the group, dtype: Int.
-* @li rank_id: Required. Current rank ID, dtype: Int.
- * @li max_bs: Required. Maximum batch size per rank, dtype: Int.
- * @li mode: Required. mode, dtype: Int.
+* @li max_bs: Required. Maximum batch size per rank, dtype: Int.
+* @li mode: Required. mode, dtype: Int.
 
- * @par Outputs
+* @par Outputs
 * Two outputs, including:
- * @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H), support format: ND.
+* @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H), support format: ND.
 * @li receive_cnt: A tensor. Received token count from each rank. Support dtype: int32, support format: ND.
 */
 REG_OP(BandwidthTest)
     .INPUT(x, TensorType({DT_FLOAT16}))
-    .INPUT(expert_id, TensorType({DT_INT32}))
+    .INPUT(dst_rank_id, TensorType({DT_INT32}))
     .OUTPUT(y, TensorType({DT_FLOAT16}))
     .OUTPUT(receive_cnt, TensorType({DT_INT32}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
-    .REQUIRED_ATTR(rank_id, Int)
     .REQUIRED_ATTR(max_bs, Int)
     .REQUIRED_ATTR(mode, Int)
+    .REQUIRED_ATTR(ccl_buffer_size, Int)
+    .ATTR(comm_alg, String, "")
     .OP_END_FACTORY_REG(BandwidthTest)
 
 }  // namespace ge
