@@ -346,17 +346,17 @@ public:
                 // l0C nbuffer chunked only in n loop
                 uint32_t l0CBufId = Arch35MmadOpt::StageId<L0_STAGES>(l0CLoopCounter);
                 uint32_t l0CEventId = l0CBufId;
-                auto l0CLayoutTla = tla::MakeLayoutL0C(rowNum, l0TileNAct);
+                auto l0CLayoutTla = tla::MakeLayoutL0C(l0TileNAct, mFixPAligned64);
                 auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CBufId], l0CLayoutTla, Arch::PositionL0C{});
                 uint32_t mOffset = 0;
-                uint32_t l0ALoopBase = static_cast<uint32_t>(prefixSumL0AStages);
-                uint32_t l0BLoopBase = static_cast<uint32_t>(prefixSumL0BStages) + lNLoopCounterL0 * kL0LoopNum;
+                uint32_t l0ALoopBase = static_cast<uint32_t>(prefixSumL0AStages) + lNLoopCounterL0 * kL0LoopNum;
+                uint32_t l0BLoopBase = static_cast<uint32_t>(prefixSumL0BStages);
                 for (uint32_t mL0Itr = 0; mL0Itr < Arch35MmadOpt::LoopBound<staticML0LoopNum>(mL0LoopNum); mL0Itr++) {
                     uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (rowNum - mOffset) : L0_TILE_M;
                     // uint32_t mLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNum, mL0Itr);
                     // different m chunks will be concated in the same piece of l0C buffer
                     auto l0CTensorTlaTile = GetTile(l0CTensorTla,
-                        tla::MakeCoord(mOffset, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
+                        tla::MakeCoord(0, mOffset), tla::MakeShape(l0TileNAct, l0TileMAct));
                     uint32_t l0ALoopCounter = l0ALoopBase;
                     uint32_t l0BLoopCounter = l0BLoopBase;
                     uint32_t kOffset = 0;
@@ -434,14 +434,22 @@ public:
                 // valid rows in AIV0: [0, mFixPAligned64 / 2 - 1]
                 // valid rows in AIV1: [mFixPAligned64 / 2, rowNum - 1]
                 uint32_t nFixPAligned16 = Arch35MmadOpt::AlignUpPow2<16>(l0TileNAct);
-                auto ubCTensorTlaTile = GetTile(ubCTensor,
-                    tla::MakeCoord(0, nL0Offset), tla::MakeShape(mPerSubCore, nFixPAligned16));
+               
+                //reshape 64
+                auto ubCViewLayoutTla = tla::MakeLayoutL0C(l0TileNAct * (mFixPAligned64 >> 5), 32);
+                auto ubCViewTla = tla::MakeTensor(
+                    ubCTensor.data(), ubCViewLayoutTla, ubCTensor.coord(), Arch::PositionUB{});
+                auto ubCTensorTlaTile = GetTile(ubCViewTla,
+                    tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
                 auto l0CTensorTlaTileSub0 = GetTile(l0CTensorTla,
-                        tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+                    tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
                 auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
-                        tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+                    tla::MakeCoord(nFixPAligned16 * (mFixPAligned64 >> 6), 0),
+                    tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
+               
                 copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, false);
                 copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, true);
+
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                 lNLoopCounterL0++;
                 l0CLoopCounter++;

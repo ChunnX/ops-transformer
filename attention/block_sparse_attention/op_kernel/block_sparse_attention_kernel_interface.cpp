@@ -161,7 +161,7 @@ struct PVScaleGranularitySelector {
 
 template <>
 struct PVScaleGranularitySelector<1> {
-    static constexpr NpuArch::Gemm::Tile::ScaleGranularity value = NpuArch::Gemm::Tile::ScaleGranularity::PER_CHANNEL;
+    static constexpr NpuArch::Gemm::Tile::ScaleGranularity value = NpuArch::Gemm::Tile::ScaleGranularity::NO_QUANT;
 };
 
 using namespace BsaKernelArch35;

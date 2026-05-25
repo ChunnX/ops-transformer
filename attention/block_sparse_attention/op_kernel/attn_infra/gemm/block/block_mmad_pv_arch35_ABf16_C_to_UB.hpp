@@ -116,7 +116,7 @@ public:
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
     static constexpr uint32_t VSDB_BUF_NUM = 2; 
     static constexpr uint32_t VSDB_BUF_SIZE = 256 * sizeof(uint64_t); 
-    static constexpr bool enFixpipeDequant = true;
+    static constexpr bool enFixpipeDequant = false;
 
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)

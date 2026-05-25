@@ -348,7 +348,7 @@ public:
                     // QK
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
                     uint32_t ubSBufId = gatheredKvSTileIdx % UB_S_OTMP_BUF_STAGES;
-                    auto ubSLayoutTla = tla::MakeLayout<ElementS, LayoutS>(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    auto ubSLayoutTla = tla::MakeLayout<ElementS, LayoutS>(RoundUp(kvSTileSizeAct, 16)*rowNumRound >> 5, 32);
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId],
                     ubSLayoutTla, Arch::PositionUB{});
                     uint32_t Mm1ToSmFlagId = ubSBufId;
