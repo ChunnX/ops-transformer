@@ -18,6 +18,10 @@
 extern "C" {
 #endif
 
+namespace fia_aclnn {
+inline constexpr char kOpName[] = "FusedInferAttentionScore";
+}  // namespace fia_aclnn
+
 void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue);
 void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue);
 aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outArray);
