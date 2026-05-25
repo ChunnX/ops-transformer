@@ -121,7 +121,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     // construct the atten_out tensor
     std::tuple<at::Tensor, at::Tensor> mixed_quant_sparse_flash_mla_atten_out =
         op_api::construct_mixed_quant_sparse_flash_mla_atten_out_tensor(
-        q, ori_kv_val, layout_q_str, layout_kv_str, rope_head_dim, return_softmax_lse);
+            q, ori_kv_val, layout_q_str, layout_kv_str, rope_head_dim, return_softmax_lse);
     at::Tensor atten_out = std::get<0>(mixed_quant_sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(mixed_quant_sparse_flash_mla_atten_out);
 

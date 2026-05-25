@@ -32,19 +32,23 @@ constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
 
 namespace BaseApi {
-__aicore__ constexpr uint64_t Align2Func(uint64_t data) {
+__aicore__ constexpr uint64_t Align2Func(uint64_t data)
+{
     return (data + 1UL) >> 1UL << 1UL; // 向上2对齐, +1移位2
 }
 
-__aicore__ constexpr uint64_t Align8Func(uint64_t data) {
+__aicore__ constexpr uint64_t Align8Func(uint64_t data)
+{
     return (data + 7UL) >> 3UL << 3UL; // 向上8对齐, +7移位3
 }
 
-__aicore__ constexpr uint64_t Align16Func(uint64_t data) {
+__aicore__ constexpr uint64_t Align16Func(uint64_t data)
+{
     return (data + 15UL) >> 4UL << 4UL; // 向上16对齐, +15移位4
 }
 
-__aicore__ constexpr uint64_t Align64Func(uint64_t data) {
+__aicore__ constexpr uint64_t Align64Func(uint64_t data)
+{
     return (data + 63UL) >> 6UL << 6UL; // 向上64对齐, +63移位6
 }
 }

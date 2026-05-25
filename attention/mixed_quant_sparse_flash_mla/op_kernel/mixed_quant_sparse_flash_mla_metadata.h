@@ -57,7 +57,7 @@ constexpr uint32_t FD_M_NUM_INDEX = 6;
  * @return 返回属性的绝对索引
  */
 #ifdef __CCE_AICORE__
-__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV=false)
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false)
 {
     if (isAIV) {
         return FA_METADATA_SIZE * AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
