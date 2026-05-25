@@ -950,7 +950,7 @@ if (NOT ENABLE_AICPU_KERNEL)
     # Whitelist: *_depends paths (e.g. mc2/common) whose op_kernel is installed in one place below.
     # Skipped in the per-operator depends loop to avoid duplicate CMake install rules. Add new deps here
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
-    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
+    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS gmm/common mc2/common)
 
     add_custom_target(generate_transformer_adapt_py
             COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
@@ -986,6 +986,9 @@ if (NOT ENABLE_AICPU_KERNEL)
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
     # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
+    install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/op_kernel/
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
+    )
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
