@@ -241,7 +241,7 @@
 - Ascend 950PR/Ascend 950DT：
   - query N1仅支持8、16、24、32、64。
   - 参数weights不支持`float32`类型。
-- A3 训练系列产品/Atlas A3 推理系列产品：
+- Atlas A3 训练系列产品/Atlas A3 推理系列产品：
   - query N1支持小于等于64。
 
 ## 调用示例

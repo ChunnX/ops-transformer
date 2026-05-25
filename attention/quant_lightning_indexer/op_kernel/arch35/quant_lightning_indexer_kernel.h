@@ -180,6 +180,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
         constInfo.mBaseSize /= 2;
         constInfo.s1BaseSize /= 2;
     }
+
+    constInfo.setL2DisableFlag = constInfo.tSize / constInfo.batchSize <= constInfo.s1BaseSize;
 }
 
 template <typename QLIT>
@@ -426,6 +428,9 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
+        if (constInfo.setL2DisableFlag) {
+            kScaleGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        }
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
         vectorService.InitVecWorkspaceTensor(scoreGm);
@@ -436,6 +441,9 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
         keyGm.SetGlobalBuffer((__gm__ K_T *)key);
+        if (constInfo.setL2DisableFlag) {
+            keyGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        }
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
     InitBuffers();
