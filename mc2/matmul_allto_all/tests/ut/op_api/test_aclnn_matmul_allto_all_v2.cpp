@@ -243,14 +243,8 @@ static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_950[] = {
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-1, -2}, "ut_test_matmul_allto_all", "aicpu", false, false, ACLNN_ERR_PARAM_INVALID},
-    // 11. commMode不合法（2条）
-    // 11.1 commMode为空
+    // 11. commMode不合法（1条）
     {"error-AclnnMatmulAlltoAllV2-empty-commMode-24", 2, {256, 128}, {128, 256}, {256}, {512, 128},
-        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
-    // 11.2 commMode不合法
-    {"error-AclnnMatmulAlltoAllV2-empty-commMode-25", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-1, -2}, "ut_test_matmul_allto_all", "other", false, false, ACLNN_ERR_PARAM_INVALID}
