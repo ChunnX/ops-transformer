@@ -254,6 +254,16 @@ public:
         return;
 #endif
 
+        LocalTensor<uint8_t> attenMaskUb;
+        if constexpr (!useDn && hasAtten) {
+            if (likely(runInfo.actVecMSize != 0)) {
+                set_mark(0x50010000); // AttenMaskCopyIn开始
+                attenMaskUb = this->attenMaskInQue[runInfo.loop & (DB - 1)].template AllocTensor<uint8_t>();
+                AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
+                set_mark(0x500100FF); // AttenMaskCopyIn结束
+            }
+        }
+
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
@@ -264,7 +274,7 @@ public:
         if constexpr (useDn) {
             ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo);
         } else {
-            ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo);
+            ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, attenMaskUb);
         }
     }
 
@@ -491,16 +501,11 @@ public:
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+                                         RunInfoX runInfo,
+                                         LocalTensor<uint8_t> attenMaskUb = {})
     {
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
-        LocalTensor<uint8_t> attenMaskUb;
-        LocalTensor<uint8_t> attenMaskUbPre;
-        if constexpr (hasAtten == true) {
-            attenMaskUb = this->attenMaskInQue[runInfo.loop & (DB - 1)].template AllocTensor<uint8_t>();
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
-        }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop & (PRELOAD_N + 1)].template Get<float>();
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop & (PRELOAD_N + 1)].template Get<float>();
