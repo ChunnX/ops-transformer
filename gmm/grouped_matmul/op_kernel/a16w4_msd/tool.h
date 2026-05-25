@@ -9,11 +9,11 @@
  */
 
 /* !
- * \file a16w4_msd_tool.h
+ * \file tool.h
  * \brief
  */
-#ifndef A16W4_MSD_TOOL_H
-#define A16W4_MSD_TOOL_H
+#ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
+#define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 
 #include "kernel_operator.h"
 

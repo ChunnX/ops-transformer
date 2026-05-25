@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "lib/matmul_intf.h"
-#include "a16w4_msd_tool.h"
+#include "tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 #define GMM_WQ_A16W4_MSD_BASIC_BLOCK_TEMPLATE_PARAM template <typename xType, typename wType, typename biasType>
