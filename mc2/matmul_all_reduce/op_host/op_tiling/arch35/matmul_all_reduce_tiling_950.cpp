@@ -91,10 +91,6 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        isUseA2APath = false;
-    }
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     if (isUseA2APath) {
         OP_TILING_CHECK(
@@ -153,11 +149,8 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
         matmulWithAdd = false;
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        isUseA2APath = false;
-    }
     bool isA2ARSAG = isUseA2APath;
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_FP_MM,                               \
         false,                                      \
@@ -216,12 +209,7 @@ ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSize()
         workspaceSize_);
     myWorkSpaceSize_ = std::max(myWorkSpaceSize_, workspaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        isUseA2APath = false;
-    }
-    if (isUseA2APath) {
+    if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
         GetWorkspaceSizeForA2ARSAG();
     }
     workspaces[0] = myWorkSpaceSize_;
@@ -426,14 +414,12 @@ CutResult MatmulAllReduceTilingA5::GetTilingResult()
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    bool isAicpu = (commMode == Mc2Comm::COMM_MODE_AICPU);
-    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_) && !isAicpu) {
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
-    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_) && !isAicpu) {
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);
