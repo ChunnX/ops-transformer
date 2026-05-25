@@ -475,22 +475,26 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
                 alltoAllvRecvCnt[i] = sumCnt * axisN1_;
             }
 
-            // Compute recvOffsets
+            // Compute recvOffsets: match original per-expert pattern
+            // recvOffset[0] = rank 0 data from all previous groups
+            // recvOffset[i] = recvOffset[i-1] + ALL groups' rank (i-1) data (constant stride)
             alltoAllvRecvOffset[0] = 0;
             for (uint64_t pg = 0; pg < g; pg++) {
                 uint64_t peStart = pg * G;
                 uint64_t peEnd = (peStart + G < E) ? (peStart + G) : E;
                 for (uint64_t e = peStart; e < peEnd; e++) {
-                    for (uint64_t i = 0; i < rankDim_; i++) {
-                        alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[e + i * E]) * axisN1_;
-                    }
+                    alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[e]) * axisN1_;
                 }
             }
             for (uint64_t i = 1; i < rankDim_; i++) {
                 alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
-                for (uint64_t e = eStart; e < eEnd; e++) {
-                    alltoAllvRecvOffset[i] +=
-                        static_cast<uint64_t>(recvCnt[e + (i - 1) * E]) * axisN1_;
+                for (uint64_t pg = 0; pg < numGroups; pg++) {
+                    uint64_t peStart = pg * G;
+                    uint64_t peEnd = (peStart + G < E) ? (peStart + G) : E;
+                    for (uint64_t e = peStart; e < peEnd; e++) {
+                        alltoAllvRecvOffset[i] +=
+                            static_cast<uint64_t>(recvCnt[e + (i - 1) * E]) * axisN1_;
+                    }
                 }
             }
 

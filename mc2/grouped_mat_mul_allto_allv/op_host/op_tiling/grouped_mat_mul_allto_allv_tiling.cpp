@@ -117,7 +117,7 @@ static uint64_t ComputeOptimalGroupSize(uint64_t eEp, uint64_t perExpertBytes, u
     double bestTotalTime = std::numeric_limits<double>::max();
     for (uint64_t g = 1; g <= eEp; g <<= 1) {
         uint64_t numCalls = (eEp + g - 1) / g;
-        if (numCalls > 64) continue;
+        if (numCalls > 63) continue;
         uint64_t groupBytes = g * perExpertBytes;
         double tComm = HcclEstimateTimeUs(groupBytes);
         double tStage = (g * t0 > tComm) ? (g * t0) : tComm;
