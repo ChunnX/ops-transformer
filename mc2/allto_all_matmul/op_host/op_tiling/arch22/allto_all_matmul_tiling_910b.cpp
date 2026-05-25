@@ -1123,6 +1123,16 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     orgN = info.N;
     orgK = info.K;
     if (quantType == TILINGKEY_TPL_A16W8 || quantType == TILINGKEY_TPL_A16W4) {
+        if (info.isSmoothQuant) {
+            const gert::StorageShape *x1ScaleShape = context_->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
+            uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
+            uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
+            OP_TILING_CHECK(
+                (x1ScaleDim0 != tokenSize),
+                OP_LOGE(opName_, "The x1Scale dim0 should be %u (x1's second dim multiplied by world_size), "
+                                 "but actual value is %lu.", tokenSize, x1ScaleDim0),
+                return ge::GRAPH_FAILED);
+        }
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
         uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
         uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
