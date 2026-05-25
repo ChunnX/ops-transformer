@@ -166,6 +166,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
     auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
     inputParams_.bFormat = weightFormat;
+    if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
+        return CheckDtypePertoken();
+    }
     if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
         const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
 
@@ -194,9 +197,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                     OP_LOGE(context_->GetNodeName(), "CheckQuantDtypeByFormat failed."), return false);
     }
     
-    if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
-        return CheckDtypePertoken();
-    }
     return CheckDtype();
 }
 
