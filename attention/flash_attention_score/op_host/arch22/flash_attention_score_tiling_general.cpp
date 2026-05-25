@@ -122,6 +122,7 @@ static const int64_t TND_S1_BASICBLOCK_256 = 256L;
 static const int64_t TND_S1_BASICBLOCK_512 = 512L;
 static const int64_t SAMEAB_BASIC_BLOCK_OPTIMIZE = 2048L;
 static constexpr uint64_t B4_L2_CACHESIZE = static_cast<uint64_t>(96) * 1024 * 1024;
+static constexpr uint64_t B4_1_L2_CACHESIZE = static_cast<uint64_t>(168) * 1024 * 1024;
 static const int64_t S2_SPECIFIC_SIZE_18432 = 18432L;
 static const int64_t S1_BASIC_BLOCK_L1CARRY_MAX = 128L;
 static const int64_t D_SIZE_L1CARRY_MAX = 256L;
@@ -2749,7 +2750,7 @@ protected:
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
-        s1BasicBlock = std::min(128L, alignedS1); // PERFORMANCE OPT
+        s1BasicBlock = (l2CacheSize == B4_1_L2_CACHESIZE) ? std::min(64L, alignedS1) : std::min(128L, alignedS1); // PERFORMANCE OPT
         s2BasicBlock = std::min(128L, alignedS2);
     }
 
@@ -3231,7 +3232,7 @@ protected:
 
     void CalcNRatio() override
     {
-        nRatio = 8L;
+        nRatio = (l2CacheSize == B4_1_L2_CACHESIZE) ? 4L : 8L;
         // s2Size (1025, 1040]
         if (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L) {
             nRatio = 5L;
