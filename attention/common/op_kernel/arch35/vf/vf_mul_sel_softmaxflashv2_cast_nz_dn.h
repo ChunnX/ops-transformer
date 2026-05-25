@@ -1560,7 +1560,9 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
                                        const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
                                        const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
                                        const uint32_t m, const uint32_t n, const uint32_t originN,
-                                       const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const LocalTensor<T>& preLoopMaxTensor, const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor, int32_t subLoop)
+                                       const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten,
+                                       const LocalTensor<T>& preLoopMaxTensor, const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor,
+                                       int32_t subLoop)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
