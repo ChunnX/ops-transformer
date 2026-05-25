@@ -1371,7 +1371,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantAIterExpand(GlobalTensor<KV_T>
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     if constexpr (KVINT4) {
-        DataCopy(dstGm[outOffset], aResOutUbI8, calcSize >> 1);
+        DataCopy<int8_t>(dstGm[outOffset], aResOutUbI8, calcSize >> 1);
     } else {
         DataCopy(dstGm[outOffset], aResOutUbI8, calcSize);
     }
