@@ -86,11 +86,11 @@ struct QuantMatmulAlltoAllV2AclnnTestParam {
     const char* commMode; // 新增：通信引擎参数
     bool transposeX1;
     bool transposeX2;
-    aclnnStatus aclnnStatusUt;d
+    aclnnStatus aclnnStatusUt;
 };
 
 // KC量化UT用例表
-static QuantMatmulAlltoAllAclnnTestParam KCQuant_v2_cases_params[] = {
+static QuantMatmulAlltoAllV2AclnnTestParam KCQuant_v2_cases_params[] = {
     // 正常用例 48条，caseid按照[算子名-x1-x2-bias-x1scale-x2scale-output-format-transpose-id]构成
     // x1Dtype = ACL_FLOAT8_E4M3FN, x2Dtype = ACL_FLOAT8_E4M3FN (共12个), 按output（bf16、fp16、fp32）分组
     {"AclnnQuantMatmulAlltoAllV2-e4m3-e4m3-f32-f32-f32-bf16-nd-notrans-01", 2, 3, 2, {256, 128}, {128, 256}, {256}, {256}, {256}, {512, 128},
@@ -464,14 +464,14 @@ static QuantMatmulAlltoAllAclnnTestParam KCQuant_v2_cases_params[] = {
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         0, {-1, -2}, "ut_test_quant_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
     // 13.2 commMode为非法值
-    {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_other-33", 2, 3, 2, {256, 128}, {256, 128}, {}, {256}, {256}, {512, 128},
+    {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_other-34", 2, 3, 2, {256, 128}, {256, 128}, {}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_DT_UNDEFINED, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         0, {-1, -2}, "ut_test_quant_matmul_allto_all", "other", false, true, ACLNN_ERR_PARAM_INVALID},
 };
 
 // MX量化UT用例表
-static QuantMatmulAlltoAllAclnnTestParam MXQuant_v2_cases_params[] = {
+static QuantMatmulAlltoAllV2AclnnTestParam MXQuant_v2_cases_params[] = {
     // 正常用例
     {"QMMAAV2_MX-succ1", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
         ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
