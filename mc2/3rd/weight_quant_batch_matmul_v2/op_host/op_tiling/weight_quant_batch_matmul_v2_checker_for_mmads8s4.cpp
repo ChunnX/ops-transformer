@@ -301,7 +301,8 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAntiQuantShape(const gert
                     Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
                     Ops::Base::ToString(expectShape).c_str()),
                 return false);
-            inputParams_.antiQuantType = inputParams_.groupSize > 0 ? Mc2QuantType::PER_GROUP : Mc2QuantType::PER_CHANNEL;
+            inputParams_.antiQuantType =
+                inputParams_.groupSize > 0 ? Mc2QuantType::PER_GROUP : Mc2QuantType::PER_CHANNEL;
         } else {
             OP_TILING_CHECK(antiQuantScaleShapeSize != inputParams_.nSize,
                             OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "antiquant_scale",
