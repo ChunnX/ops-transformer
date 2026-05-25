@@ -15,6 +15,7 @@
 
 #include <map>
 #include <cstdio>
+#include <sstream>
 #include <numeric>
 #include "log/log.h"
 #include "log/error_code.h"
@@ -919,7 +920,7 @@ ge::graphStatus FiaInfoParser::GetQueryAndOutLayout()
         outLayout_ = it->second.second;
     } else {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "input layout is %s, it is unsupported.", layout.c_str()) > 0) ? reason : "input layout is %s, it is unsupported.");
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1056,7 +1057,7 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
     if (attenMaskFlag_) {
         if (*opParamInfo_.sparseMode == 9U && npuArch_ == NpuArch::DAV_3510) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "NpuArch[%d] currently does not support sparse9.", static_cast<int32_t>(npuArch_)) > 0) ? reason : "NpuArch[%d] currently does not support sparse9.");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "sparse_mode", "sparse9 on current NPU architecture");
             return ge::GRAPH_FAILED;
         }
         if (*opParamInfo_.sparseMode == 9U) {
@@ -1132,7 +1133,7 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
         OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
-                    ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "PseType(%ld) is not supported, pseType must be 0.", pseType_) > 0) ? reason : "PseType(%ld) is not supported, pseType must be 0."); }),
+                    ({ std::ostringstream oss; oss << pseType_; OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "pse_type", oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||

@@ -149,8 +149,7 @@ static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
         n1 = (*queryShape)[FIA_LAYOUT_DIM0];
         d1 = (*queryShape)[FIA_LAYOUT_DIM2];
     } else {
-        char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Layout %s is not supported in GetQueryBSND function!", queryLayout.c_str()) > 0) ? reason : "Layout %s is not supported in GetQueryBSND function!");
+        OP_LOGE("FusedInferAttentionScore", "In op [%s], [%s] is not supported, got [%s]", "FusedInferAttentionScore", "input_layout", queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -169,8 +168,7 @@ static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
         n1 = (*queryShape)[FIA_LAYOUT_DIM0];
         d1 = (*queryShape)[FIA_LAYOUT_DIM2];
     } else {
-        char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Layout %s is not supported in GetQueryTND function!", queryLayout.c_str()) > 0) ? reason : "Layout %s is not supported in GetQueryTND function!");
+        OP_LOGE("FusedInferAttentionScore", "In op [%s], [%s] is not supported, got [%s]", "FusedInferAttentionScore", "input_layout", queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -393,7 +391,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
             if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
                 char reason[512] = {0};
-                OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Fia graph mode do not support post quant output data type: %s.", it->second.c_str()) > 0) ? reason : "Fia graph mode do not support post quant output data type: %s.");
+                OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "post_quant_output", it->second.c_str());
                 return ge::GRAPH_FAILED;
             }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);

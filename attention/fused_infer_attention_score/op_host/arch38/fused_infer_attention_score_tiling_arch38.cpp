@@ -1083,8 +1083,7 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
                 return ge::GRAPH_FAILED);
         }
     } else {
-        char reason[512] = {0};
-        OP_LOGE(context_->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context_->GetNodeName(), (snprintf(reason, sizeof(reason), "Invalid input layout:%s. Currently only TND/NTD/BSH/BNSD/BSND/BSND_BNSD/BNSD_BSND/BSH_BNSD/BSND_NBSD/BNSD_NBSD/BSH_NBSD layout are supported!", inputLayoutStr.c_str()) > 0) ? reason : "Invalid input layout:%s. Currently only TND/NTD/BSH/BNSD/BSND/BSND_BNSD/BNSD_BSND/BSH_BNSD/BSND_NBSD/BNSD_NBSD/BSH_NBSD ");
+        OP_LOGE(context_->GetNodeName(), "In op [%s], [%s] is not supported, got [%s]", context_->GetNodeName(), "input_layout", inputLayoutStr.c_str());
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF((queryD > DLIMIT),

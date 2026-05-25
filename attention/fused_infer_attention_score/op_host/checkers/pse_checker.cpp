@@ -15,6 +15,7 @@
 
 #include <map>
 #include <cstdio>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -50,7 +51,7 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
     int64_t pseType = *fiaInfo.opParamInfo.pseType;
     // pseType支持范围为0
     OP_CHECK_IF((pseType != PSE_OUTER_MUL_ADD_TYPE),
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "pseType(%ld) is not supported. pseType must be 0.", pseType) > 0) ? reason : "pseType(%ld) is not supported. pseType must be 0."); }),
+                ({ std::ostringstream oss; oss << pseType; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "pse_type", oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -67,20 +68,20 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi，pseShift的数据类型必须为FLOAT32
         OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The datatype of pseShift(%s) is not FLOAT32. The datatype of pseShift must be FLOAT32 when pseType is 2 or 3.", DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()) > 0) ? reason : "The datatype of pseShift(%s) is not FLOAT32. The datatype of pseShift must be FLOAT32 when pseType is 2 or 3."); }),
+                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "pse_shift", DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()); }),
                     return ge::GRAPH_FAILED);
     } else {
         // 不使能alibi
         // query的datatype为FLOAT16、INT8时，pseShift的datatype应为FLOAT16
         if (fiaInfo.inputQType == ge::DT_FLOAT16 || fiaInfo.inputQType == ge::DT_INT8) {
             OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT16),
-                        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The datatype of pseShift(%s) is not FLOAT16. The datatype of pseShift must be FLOAT16 when the datatype of query is FLOAT16 or INT8 and pseType is 0.", DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()) > 0) ? reason : "The datatype of pseShift(%s) is not FLOAT16. The datatype of pseShift must be FLOAT16 when the datatype of query is FLOA"); }),
+                        ({ OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "pse_shift", DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()); }),
                         return ge::GRAPH_FAILED);
         }
         // query的datatype为BFLOAT16时，pseShift的datatype应为BFLOAT16
         if (fiaInfo.inputQType == ge::DT_BF16) {
             OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_BF16),
-                        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The datatype of pseShift(%s) is not BFLOAT16. The datatype of pseShift must be BFLOAT16 when the datatype of query is BFLOAT16 and pseType is 0.", DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()) > 0) ? reason : "The datatype of pseShift(%s) is not BFLOAT16. The datatype of pseShift must be BFLOAT16 when the datatype of query is BF"); }),
+                        ({ OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "pse_shift", DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()); }),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -101,7 +102,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         uint32_t numHeads = *fiaInfo.opParamInfo.numHeads;
         gert::Shape expectedShapeN = gert::Shape({numHeads});
         OP_CHECK_IF((pseShiftShape != expectedShapeN),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The shape of pseShift is not supported. The shape of pseShift must be [N]([%u]) when pseType is 2 or 3.", numHeads) > 0) ? reason : "The shape of pseShift is not supported. The shape of pseShift must be [N]([%u]) when pseType is 2 or 3."); }),
+                    ({ std::ostringstream oss; oss << "[" << numHeads << "]"; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "pse_shift", oss.str().c_str(), "shape must be [N] when pseType is 2 or 3"); }),
                     return ge::GRAPH_FAILED);
     } else {
         uint32_t batchSize = fiaInfo.bSize;
@@ -186,7 +187,7 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
     if (fiaInfo.enableAlibiPse || fiaInfo.pseShiftFlag) {
         // D不等长时，不支持pse
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "pseShift is not supported when query and key headdim is not equal to value headdim."); }),
+                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "pseShift is not supported when query and key headdim is not equal to value headdim."); }),
                     return ge::GRAPH_FAILED);
     }
     if (fiaInfo.enableAlibiPse) {

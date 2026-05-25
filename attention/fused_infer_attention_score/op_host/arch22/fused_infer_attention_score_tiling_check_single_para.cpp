@@ -15,6 +15,7 @@
 
 #include <set>
 #include <cstdio>
+#include <sstream>
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"

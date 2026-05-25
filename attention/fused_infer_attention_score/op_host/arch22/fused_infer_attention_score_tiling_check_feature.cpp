@@ -15,6 +15,7 @@
 
 #include <numeric>
 #include <cstdio>
+#include <sstream>
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_check.h"
 
@@ -37,7 +38,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureNoQuantDtype() const
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, query dtype only support %s and %s, but got %s", QuantModeToSerialString(quantMode_).c_str(), FusedDataTypeToSerialString(ge::DT_BF16).c_str(), FusedDataTypeToSerialString(ge::DT_FLOAT16).c_str(), FusedDataTypeToSerialString(inputQType_).c_str()) > 0) ? reason : "In %s situation, query dtype only support %s and %s, but got %s"); }),
+        ({ OP_LOGE(opName_, "In op [%s], the data type of [%s] is not supported, got [%s]", opName_, "query", FusedDataTypeToSerialString(inputQType_).c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(inputQType_ != inputKvType_,
@@ -98,7 +99,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureTensorList() const
         std::string layout = opParamInfo_.layOut;
         if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when the tensor number of key/value is greater than 1 (this scenario is called tensor list), input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s", layout.c_str()) > 0) ? reason : "when the tensor number of key/value is greater than 1 (this scenario is called tensor list), input_layout only supports ");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -112,7 +113,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureTensorList() const
 ge::graphStatus FiaTilingCheck::CheckFeatureMlaNoquant()
 {
     OP_CHECK_IF(socVersion_ == platform_ascendc::SocVersion::ASCEND310P,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, Ascend310P is not supported", RopeModeToSerialString(ropeMode_).c_str(), QuantModeToSerialString(quantMode_).c_str()) > 0) ? reason : "In %s %s situation, Ascend310P is not supported"); }),
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "platform", "Ascend310P");
         return ge::GRAPH_FAILED);
     if (ge::GRAPH_SUCCESS != CheckFeatureTensorList() ||
         ge::GRAPH_SUCCESS != CheckFeatureBlockSize() ||
@@ -162,7 +163,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureSparseMode() const
     if (sparseMode == SPARSE_MODE_TREE) {
         // 特性校验
         OP_CHECK_IF(ropeMode_ != RopeMode::ROPE_SPLIT,
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, when query_rope and key_rope not exist, %s does not support sparse(%d).", QuantModeToSerialString(quantMode_).c_str(), SPARSE_MODE_NAME.c_str(), sparseMode) > 0) ? reason : "In %s situation, when query_rope and key_rope not exist, %s does not support sparse(%d)."); }),
+            ({ std::ostringstream oss; oss << sparseMode; OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "sparse_mode", oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo_.qPaddingSizeFlag || fiaInfo_.kvPaddingSizeFlag,
@@ -178,7 +179,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureSparseMode() const
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(outputType_ == ge::DT_INT8,
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, when sparse is %d, output dtype %d is not currently supported.", QuantModeToSerialString(quantMode_).c_str(), sparseMode, static_cast<int32_t>(outputType_)) > 0) ? reason : "In %s situation, when sparse is %d, output dtype %d is not currently supported."); }),
+            ({ std::ostringstream oss; oss << static_cast<int32_t>(outputType_); OP_LOGE(opName_, "In op [%s], the data type of [%s] is not supported, got [%s]", opName_, "output", oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         // s2 >= s1拦截
@@ -222,11 +223,11 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
                 };
                 std::string layout = opParamInfo_.layOut;
                 OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                    ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s", QuantModeToSerialString(quantMode_).c_str(), layout.c_str()) > 0) ? reason : "In %s situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, two dim mask only support for layout"); }),
+                    ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str()); }),
                     return ge::GRAPH_FAILED);
             } else {
                 char reason[512] = {0};
-                OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.", QuantModeToSerialString(quantMode_).c_str()) > 0) ? reason : "In %s situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "sparse_mode", "two_dim_mask_when_qkHeadDim_ne_vHeadDim");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -250,11 +251,11 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
         return ge::GRAPH_SUCCESS;
     }
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, "postquant do not support qkHeadDim = vHeadDim and rope exist");
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "post_quant", "qkHeadDim_eq_vHeadDim_with_rope");
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) {
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, "postquant do not support qkHeadDim != vHeadDim");
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "post_quant", "qkHeadDim_ne_vHeadDim");
         return ge::GRAPH_FAILED;
     }
     const std::vector<std::string> layoutSupportList = {
@@ -263,7 +264,7 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
     std::string layout = opParamInfo_.layOut;
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when enable postquant, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s", layout.c_str()) > 0) ? reason : "when enable postquant, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s");
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str());
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo_.isLegacyIfa) {
@@ -362,7 +363,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLeftPadding() const
         std::string layout = opParamInfo_.layOut;
         if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when query_padding_size or kv_padding_size exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s", layout.c_str()) > 0) ? reason : "when query_padding_size or kv_padding_size exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -406,7 +407,7 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePSE() const
         std::string layout = opParamInfo_.layOut;
         if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when pse_shift exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s", layout.c_str()) > 0) ? reason : "when pse_shift exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -447,13 +448,13 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
     };
     std::string layout = opParamInfo_.layOut;
     OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()) > 0) ? reason : "In %s %s situation, layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BS"); }),
+        ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str()); }),
         return ge::GRAPH_FAILED);
 
     if (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
         OP_CHECK_IF(kvLayout_ != FiaLayout::BSH && kvLayout_ != FiaLayout::BSND && kvLayout_ != FiaLayout::BNSD &&
             kvLayout_ != FiaLayout::TND && kvLayout_ != FiaLayout::NTD,
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, key/value's layout only support BSH, BSND, BNSD, TND and NTD in batch continuous scene, but got %s", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), LayoutToSerialString(kvLayout_).c_str()) > 0) ? reason : "In %s %s situation, key/value's layout only support BSH, BSND, BNSD, TND and NTD in batch continuous scene, but got %s"); }),
+            ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "key_value_layout", LayoutToSerialString(kvLayout_).c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvLayout_ != qLayout_,
@@ -461,7 +462,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
             return ge::GRAPH_FAILED);
     } else if (kvStorageMode_ == KvStorageMode::TENSOR_LIST) {
         OP_CHECK_IF(kvLayout_ != FiaLayout::BSH && kvLayout_ != FiaLayout::BSND && kvLayout_ != FiaLayout::BNSD,
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, key/value's layout only support BSH, BSND and BNSD in tensor list scene, but got %s", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), LayoutToSerialString(kvLayout_).c_str()) > 0) ? reason : "In %s %s situation, key/value's layout only support BSH, BSND and BNSD in tensor list scene, but got %s"); }),
+            ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "key_value_layout", LayoutToSerialString(kvLayout_).c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvLayout_ != qLayout_,
@@ -512,17 +513,17 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
         if (vHeadDim_ == HEAD_DIM_512) {
             OP_CHECK_IF(std::find(splitRopeLayoutSupportList.begin(), splitRopeLayoutSupportList.end(), layout) == splitRopeLayoutSupportList.end(),
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, when value headDim = 512, layout only supports BSH, BSND, BNSD, TND, BNSD_NBSD, BSND_NBSD, BSH_NBSD, TND_NTD, but got %s", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()) > 0) ? reason : "In %s %s situation, when value headDim = 512, layout only supports BSH, BSND, BNSD, TND, BNSD_NBSD, BSND_NBSD, BSH_NBSD,"); }),
+            ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str()); }),
             return ge::GRAPH_FAILED);
         }
         if (vHeadDim_ == HEAD_DIM_128) {
             OP_CHECK_IF(std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) == restrictedLayoutSupportList.end(),
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, when value headDim = 128, layout only supports BSH, BSND, BNSD, BNSD_BSND, TND, NTD, BSH_BNSD, BSND_BNSD, NTD_TND, but got %s", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()) > 0) ? reason : "In %s %s situation, when value headDim = 128, layout only supports BSH, BSND, BNSD, BNSD_BSND, TND, NTD, BSH_BNSD, BSND_"); }),
+            ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str()); }),
             return ge::GRAPH_FAILED);
         }
     } else if (fiaInfo_.ropeMode == RopeMode::NO_ROPE) {
         OP_CHECK_IF(std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) == restrictedLayoutSupportList.end(),
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, layout only supports BSH、BSND、BNSD、BNSD_BSND、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND, but got %s.", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()) > 0) ? reason : "In %s %s situation, layout only supports BSH、BSND、BNSD、BNSD_BSND、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND, but got %s."); }),
+            ({ OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str()); }),
             return ge::GRAPH_FAILED);
 
         if (!fiaInfo_.isLegacyIfa && (vHeadDim_ % ALIGN_SIZE_16 != 0)) {
@@ -609,7 +610,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureGqaPrefix() const
     std::string layout = opParamInfo_.layOut;
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when system prefix exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s", layout.c_str()) > 0) ? reason : "when system prefix exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s");
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", layout.c_str());
         return ge::GRAPH_FAILED;
     }
     int32_t sparseMode = *opParamInfo_.sparseMode;
@@ -703,7 +704,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
 ge::graphStatus FiaTilingCheck::CheckFeatureGqaNoquant()
 {
     OP_CHECK_IF(socVersion_ == platform_ascendc::SocVersion::ASCEND310P,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s %s situation, Ascend310P is not supported", RopeModeToSerialString(ropeMode_).c_str(), QuantModeToSerialString(quantMode_).c_str()) > 0) ? reason : "In %s %s situation, Ascend310P is not supported"); }),
+        OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "platform", "Ascend310P");
         return ge::GRAPH_FAILED);
     if (ge::GRAPH_SUCCESS != CheckFeatureTensorList() ||
         ge::GRAPH_SUCCESS != CheckFeatureBlockSize() ||
@@ -911,7 +912,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureInOutDtype() const
     std::pair<ge::DataType, ge::DataType> inOutDtypePair = {inputQType_, outputType_};
     if (!VecContains(inOutDtypePairSupported, inOutDtypePair)) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "input dtype %d with output dtype %d is not currently supported.", static_cast<int32_t>(inputQType_), static_cast<int32_t>(outputType_)) > 0) ? reason : "input dtype %d with output dtype %d is not currently supported.");
+        ({ std::ostringstream oss; oss << static_cast<int32_t>(inputQType_) << "/" << static_cast<int32_t>(outputType_); OP_LOGE(opName_, "In op [%s], the data type of [%s] is not supported, got [%s]", opName_, "input_output", oss.str().c_str()); })
         return ge::GRAPH_FAILED;
     }
 

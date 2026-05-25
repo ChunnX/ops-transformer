@@ -15,6 +15,7 @@
 
 #include <map>
 #include <cstdio>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -53,7 +54,7 @@ std::string FusedDataTypeToSerialString(ge::DataType type)
         return it->second;
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "datatype %d not support", type) > 0) ? reason : "datatype %d not support");
+        ({ std::ostringstream oss; oss << type; OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "tensor", oss.str().c_str()); })
         return "UNDEFINED";
     }
 }

@@ -40,7 +40,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableDtype(const FiaTilingInfo 
     }
     const gert::CompileTimeTensorDesc *blockTableDesc = fiaInfo.opParamInfo.blockTable.desc;
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
-        ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "When page attention enable, blockTable datatype only support INT32."); }),
+        ({ OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "block_table", "non-INT32"); }),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -431,7 +431,7 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum == 3, ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "In MXFP8 fullquant scenario, PA BnBsH is not supported."); }),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
-        OP_CHECK_IF(dimNum == 4, ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable and input layout is %s, PA BnNBsD is not supported.", inputLayout.c_str()) > 0) ? reason : "When page attention enable and input layout is %s, PA BnNBsD is not supported."); }),
+        OP_CHECK_IF(dimNum == 4, ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "page_attention_layout", inputLayout.c_str()); }),
             return ge::GRAPH_FAILED);
     }
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {

@@ -15,6 +15,7 @@
 
 #include <map>
 #include <cstdio>
+#include <sstream>
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
@@ -47,7 +48,7 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-                    ({ char reason[512] = {0}; OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()) > 0) ? reason : "%s format only supports ND/NCHW/NHWC/NCDHW!"); }),
+                    ({ OP_LOGE("FusedInferAttentionScore", "In op [%s], the format of [%s] is not supported, got [%s]", "FusedInferAttentionScore", name.c_str(), "non-ND/NCHW/NHWC/NCDHW"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -70,7 +71,7 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
         return it->second;
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "datatype %d not support", type) > 0) ? reason : "datatype %d not support");
+        ({ std::ostringstream oss; oss << type; OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "tensor", oss.str().c_str()); })
         return "UNDEFINED";
     }
 }

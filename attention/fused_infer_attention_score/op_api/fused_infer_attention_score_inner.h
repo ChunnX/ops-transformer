@@ -15,6 +15,9 @@
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
+namespace fia_aclnn {
+static const char kOpName[] = "FusedInferAttentionScore";
+} // namespace fia_aclnn
 extern "C" {
 #endif
 

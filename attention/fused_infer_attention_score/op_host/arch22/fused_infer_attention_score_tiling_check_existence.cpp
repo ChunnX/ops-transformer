@@ -15,6 +15,7 @@
 
 #include <map>
 #include <cstdio>
+#include <sstream>
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_check.h"

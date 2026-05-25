@@ -15,6 +15,7 @@
 
 #include <map>
 #include <cstdio>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -75,7 +76,7 @@ ge::graphStatus MaskChecker::CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(
             fiaInfo.sparseMode != SPARSE_MODE_NO_MASK && fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN &&
                 fiaInfo.sparseMode != SPARSE_MODE_BAND && fiaInfo.sparseMode != SPARSE_MODE_TREE,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Only support sparse(%d) 0/3/4/9 when ifa mla is enable!", fiaInfo.sparseMode) > 0) ? reason : "Only support sparse(%d) 0/3/4/9 when ifa mla is enable!"); }),
+            ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_mode", oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -91,7 +92,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8 || fiaInfo.inputQType == ge::DT_INT8) &&
                     !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
                     ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and input datatype is FLOAT8_E4M3/HIFLOAT8/INT8, input sparse mode is %d and there has%smask", fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no ") > 0) ? reason : "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and input datatype is FLOAT8_E4M3/HIFLOAT8/INT8, "); }),
+                    ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "ifa_mla_sparse_mask_combo", oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
         // 对于Int8场景下，进行以下拦截限制：
         const std::vector<std::string> layoutSupportList = {
@@ -105,7 +106,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
             OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
                         !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
                         ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
-                        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and input datatype is INT8 and layout is TND or TND_NTD and input sparse mode is %d and there has%smask", fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no ") > 0) ? reason : "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and input datatype is INT8 and layout is TND or T"); }),
+                        ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "ifa_mla_tnd_sparse_mask_combo", oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         } else {
             // 非TND/TND_NTD场景下，int8场景需要对qs进行区分
@@ -113,13 +114,13 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
             if (fiaInfo.s1Size == 1U) {
                 OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
                             !((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)),
-                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Sparse 0 without mask is only supported when using IFA MLA full quantization and input datatype is INT8 and layout is not TND or TND_NTD and query_length is 1input sparse mode is %d and there has%smask", fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no ") > 0) ? reason : "Sparse 0 without mask is only supported when using IFA MLA full quantization and input datatype is INT8 and layout is no"); }),
+                            ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_0_without_mask_mla", oss.str().c_str()); }),
                             return ge::GRAPH_FAILED);
             } else {
                 // 当qs大于1时，仅支持传入sparsemode=3，且传入mask
                 OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
                             !((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)),
-                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Sparse 3 without mask is only supported when using IFA MLA full quantization and input datatype is INT8 and layout is not TND or TND_NTD and query_length is greater than 1 and input sparse mode is %d and there has%smask", fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no ") > 0) ? reason : "Sparse 3 without mask is only supported when using IFA MLA full quantization and input datatype is INT8 and layout is no"); }),
+                            ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_3_without_mask_mla", oss.str().c_str()); }),
                             return ge::GRAPH_FAILED);
             }
         }
@@ -137,7 +138,7 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     }
     OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
                 ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Only support sparse 0 without mask or sparse 3 with mask in MXFP8 fullquant scenario, now input sparse mode is %d and there has%smask", fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no ") > 0) ? reason : "Only support sparse 0 without mask or sparse 3 with mask in MXFP8 fullquant scenario, now input sparse mode is %d and th"); }),
+                    ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "mxfp8_sparse_mask_combo", oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -148,7 +149,7 @@ ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo)
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.sparseMode != SPARSE_MODE_NO_MASK &&
             fiaInfo.sparseMode != SPARSE_MODE_LEFT_UP && fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Not support sparse mode %d when query and key headdim is not equal to value headdim.", fiaInfo.sparseMode) > 0) ? reason : "Not support sparse mode %d when query and key headdim is not equal to value headdim."); }),
+        ({ std::ostringstream oss; oss << fiaInfo.sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_mode", oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -160,7 +161,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
     if (sparseMode == SPARSE_MODE_TREE) {
         // 特性校验
         OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In %s situation, when query_rope and key_rope not exist, %s does not support sparse(%d).", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SPARSE_MODE_NAME.c_str(), sparseMode) > 0) ? reason : "In %s situation, when query_rope and key_rope not exist, %s does not support sparse(%d)."); }),
+            ({ std::ostringstream oss; oss << sparseMode; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_mode", oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
@@ -176,7 +177,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.outputType == ge::DT_INT8,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In %s situation, when sparse is %d, output dtype %d is not currently supported.", QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode, static_cast<int32_t>(fiaInfo.outputType)) > 0) ? reason : "In %s situation, when sparse is %d, output dtype %d is not currently supported."); }),
+            ({ std::ostringstream oss; oss << static_cast<int32_t>(fiaInfo.outputType); OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "output", oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         // s2 >= s1拦截
         // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
@@ -237,10 +238,10 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                     "BSH", "BSND", "BNSD", "BNSD_BSND",
                 };
                 OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr) == layoutSupportList.end(),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In gqa noquant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s", layoutStr.c_str()) > 0) ? reason : "In gqa noquant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, two dim mask only support f"); }),
+                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "input_layout", layoutStr.c_str()); }),
                     return ge::GRAPH_FAILED);
             } else {
-                OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_mode", "two_dim_mask_when_qkHeadDim_ne_vHeadDim");
                 return ge::GRAPH_FAILED;
             }
         } else {
@@ -281,7 +282,7 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
     if (fiaInfo.sparseMode == SPARSE_MODE_TREE) {
         if (attenMaskDim != MASK_DIM_S && attenMaskDim != MASK_DIM_BSS) {
  	        char reason[512] = {0};
- 	        OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Attenmask dim num only support 1 or 3 when sparse mode = %u, but got %zu", SPARSE_MODE_TREE, attenMaskDim) > 0) ? reason : "Attenmask dim num only support 1 or 3 when sparse mode = %u, but got %zu");
+({ std::ostringstream oss; oss << attenMaskDim; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "atten_mask_dim", oss.str().c_str()); });
  	            return ge::GRAPH_FAILED;
  	    }
         uint64_t sSize = 0;
@@ -304,8 +305,8 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
         if (attenMaskDim == MASK_DIM_SS) {
             if ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) &&
                 fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
-                char reason[512] = {0};
-                OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "Attenmask does not support inputs with dim 2 when sparse mode = %u. Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].", fiaInfo.sparseMode) > 0) ? reason : "Attenmask does not support inputs with dim 2 when sparse mode = %u. Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D ");
+                ({ std::ostringstream oss; oss << "dim_2_with_sparse_mode_" << fiaInfo.sparseMode;
+                OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "atten_mask", oss.str().c_str()); });
                 return ge::GRAPH_FAILED;
             } else {
                 if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
@@ -317,10 +318,10 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
                         std::string layoutStr(fiaInfo.opParamInfo.layOut);
                         std::string layout = layoutStr;
                         OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In gqa no quant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s", layout.c_str()) > 0) ? reason : "In gqa no quant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, two dim mask only support "); }),
+                            ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "input_layout", layout.c_str()); }),
                             return ge::GRAPH_FAILED);
                     } else {
-                        OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "In gqa no quant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                        OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "sparse_mode", "two_dim_mask_when_qkHeadDim_ne_vHeadDim");
                         return ge::GRAPH_FAILED;
                     }
                 }
