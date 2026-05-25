@@ -273,6 +273,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::InitParams(const ConstInfo &
     this->constInfo_ = constInfo;
     this->tools_ = tools;
     v2MBaseSize = BLOCK_VEC_BASE_BUFFER_SIZE / (constInfo_.headDim * sizeof(float));
+    cmpRatio_ = constInfo.cmpRatio;
 }
 
 template <typename COMP>
@@ -839,7 +840,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::ReadFromCacheState(
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                    remainRowCnt * 2 * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
-            printf("stride[%u]\n",constInfo_.stateCacheStrideDim0);
 
             DataCopyAlignGmToUb(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
                                     dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
