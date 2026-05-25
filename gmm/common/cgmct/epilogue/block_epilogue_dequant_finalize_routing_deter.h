@@ -287,12 +287,13 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 {
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        uint64_t wsIdx = (groupAccumM_ + offsetM + i) * n_ + yOffset;
+        uint64_t wsRow = groupAccumM_ + offsetM + i;
+        uint64_t wsIdx = wsRow * n_ + yOffset;
+        if (wsRow < 3 && yOffset == 0) {
+            printf("[DETER-WSIDX] blk=%u groupAccumM=%llu offsetM=%llu i=%u wsRow=%llu\n",
+                GetBlockIdx(), groupAccumM_, offsetM, i, wsRow);
+        }
         DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
-    }
-    if (groupAccumM_ + offsetM < 3 && yOffset == 0) {
-        printf("[DETER-WRITE] blk=%u firstRow=%llu firstWsIdx=%llu\n",
-            GetBlockIdx(), groupAccumM_ + offsetM, (groupAccumM_ + offsetM) * n_ + yOffset);
     }
 }
 

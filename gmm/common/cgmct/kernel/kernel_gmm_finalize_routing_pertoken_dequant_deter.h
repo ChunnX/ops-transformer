@@ -318,10 +318,11 @@ public:
                                                                                       Get<MNK_N>(singleShape), 0, 0};
                 int64_t nOffset = y - tileMOffset * n;
                 if (cumulativeGroupM_ + tileMOffset < 5) {
-                    printf("[DETER-GOFF] cumM=%llu tileMOff=%lld winStart=%llu result=%lld blk=%u\n",
-                        cumulativeGroupM_, tileMOffset, deterSync_.windowStartM,
-                        cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM,
-                        GetBlockIdx());
+                    printf("[DETER-WSOFF] blk=%u cumM=%llu tileMOff=%lld winStart=%llu "
+                           "setGroupAccumM=%lld expectedGroupAccumM=%lld\n",
+                        GetBlockIdx(), cumulativeGroupM_, tileMOffset, deterSync_.windowStartM,
+                        (int64_t)(cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM),
+                        (int64_t)(cumulativeGroupM_ - deterSync_.windowStartM));
                 }
                 epilogueDequantOp_.SetWorkspaceGroupOffset(
                     cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
