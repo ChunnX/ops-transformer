@@ -95,7 +95,8 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), tilingDataSize);
     if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
         return ge::GRAPH_FAILED;
     }
     PrintTilingData();
@@ -288,7 +289,7 @@ const gert::Shape &QuantTilingTransferHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     if (tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr) {
-        OP_LOGE(inputParams_.opName, "Op is quant, but has no quant shape");
+        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "dequant_scale_shape");
         return defaultShape;
     }
     return tilingProcesser_.mmrCtxInfo_.dequant_scale_shape->GetStorageShape();

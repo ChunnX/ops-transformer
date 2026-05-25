@@ -25,14 +25,16 @@ using namespace ge;
 
 namespace optiling {
 constexpr uint32_t ATTR_COMMMODE = 11;
-ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context)
+ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext *context)
 {
     OP_LOGI("AllGatherMatmulTilingV2", "Start to do tiling in AllGatherMatmulTilingV2Func A2/A3");
     auto attrs = context->GetAttrs();
     auto commModePtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMMMODE));
     OP_TILING_CHECK((commModePtr == nullptr || !(std::strcmp(commModePtr, "aiv") == 0)),
-        OP_LOGE(context->GetNodeName(), "AivModeTiling commMode is invalid. commMode is %s",
-        commModePtr), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "AivModeTiling", "invalid",
+                        CreateErrorMsg("AivModeTiling commMode is invalid. commMode is %s", commModePtr).data()),
+                    return ge::GRAPH_FAILED);
     return AllGatherMatmulTilingAIVModeFunc(context);
 }
-}  // namespace optiling
+} // namespace optiling
