@@ -19,6 +19,7 @@
 #define FUSED_CAUSAL_CONV1D_CUT_BSH_H
 
 #include "kernel_operator.h"
+#include "vf/fused_causal_conv1d_128dim.h"
 #include "vf/fused_causal_conv1d_state_single_tail.h"
 #include "vf/fused_causal_conv1d_no_state_single_tail.h"
 #include "vf/fused_causal_conv1d_no_state_double_tail.h"
@@ -856,7 +857,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 
         // conv_mode==1 + useZeroCache: all-zero output for the leading tokens
         bool allZeroConv = (convMode_ == 1 && meta.useZeroCache);
-
+        uint32_t dimRem = dimSize - (dimSize / (DIM_ALIGN * 2)) * (DIM_ALIGN * 2);
         if (needCacheTokens > 0) {
             // tokens that need cache state (positions 0..K-2)
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
@@ -877,8 +878,13 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                     LocalTensor<T> xSlice = xLocal[(i - seqInBatch + xOff) * dimSize];
                     LocalTensor<T> sSlice = cacheLocal[((sLen > 0) ? (meta.mtpOffset + seqPos) : 0) * dimSize];
                     LocalTensor<T> ySlice = yLocal[(yOutOff + j) * dimSize];
-                    Conv1dNeedStateSingleTail(xSlice, weightLocal, sSlice, ySlice, static_cast<uint8_t>(sLen), xLen,
+                    if (dimRem == 0) {
+                        Conv1dNeedState(xSlice, weightLocal, sSlice, ySlice, static_cast<uint8_t>(sLen), xLen,
+                                    dimSize, residualConnection_);
+                    } else {
+                        Conv1dNeedStateSingleTail(xSlice, weightLocal, sSlice, ySlice, static_cast<uint8_t>(sLen), xLen,
                                               dimSize, residualConnection_);
+                    }
                 }
             }
         }
@@ -892,8 +898,9 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             LocalTensor<T> xSlice = xLocal[xStartIdx * dimSize];
             LocalTensor<T> ySlice = yLocal[(yOutOff + needCacheTokens) * dimSize];
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-            if (dimSize - (dimSize / (DIM_ALIGN * 2)) * (DIM_ALIGN * 2) == 0 ||
-                dimSize - (dimSize / (DIM_ALIGN * 2)) * (DIM_ALIGN * 2) > DIM_ALIGN) {
+            if (dimRem == 0) {
+                Conv1dNoNeedState(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
+            } else if (dimRem > DIM_ALIGN) {
                 Conv1dNoStateDoubleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
             } else {
                 Conv1dNoStateSingleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
