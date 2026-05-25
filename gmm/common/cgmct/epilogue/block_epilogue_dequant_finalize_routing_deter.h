@@ -554,7 +554,15 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
         if (mOffset < 3 && nOff == 0) {
-            AscendC::DumpTensor(deterDmaUb_, 1005, static_cast<uint32_t>(curN * sizeof(DataTypeOut)));
+            printf("[DETER-FLUSH-READ] blk=%u mOff=%llu wsRead[0..4]=%f %f %f %f %f\n",
+                GetBlockIdx(), mOffset,
+                static_cast<float>(deterDmaUb_.GetValue(0)), static_cast<float>(deterDmaUb_.GetValue(1)),
+                static_cast<float>(deterDmaUb_.GetValue(2)), static_cast<float>(deterDmaUb_.GetValue(3)),
+                static_cast<float>(deterDmaUb_.GetValue(4)));
+            printf("[DETER-FLUSH-READ] blk=%u mOff=%llu wsRead[252..255]=%f %f %f %f\n",
+                GetBlockIdx(), mOffset,
+                static_cast<float>(deterDmaUb_.GetValue(252)), static_cast<float>(deterDmaUb_.GetValue(253)),
+                static_cast<float>(deterDmaUb_.GetValue(254)), static_cast<float>(deterDmaUb_.GetValue(255)));
         }
         SetAtomicAdd<float>();
         DataCopyPad(yGlobal_[outRow * nSize + nOff], deterDmaUb_, copyParams);
