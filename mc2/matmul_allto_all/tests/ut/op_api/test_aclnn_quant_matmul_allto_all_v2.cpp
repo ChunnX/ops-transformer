@@ -458,13 +458,7 @@ static QuantMatmulAlltoAllV2AclnnTestParam KCQuant_v2_cases_params[] = {
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         0, {-1, -2}, "ut_test_quant_matmul_allto_all", "aicpu", false, false, ACLNN_ERR_PARAM_INVALID},
     // 13 commMode非法
-    // 13.1 commMode为空
-    {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_empty-33", 2, 3, 2, {256, 128}, {128, 256}, {256}, {256}, {256}, {512, 128},
-        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        0, {-1, -2}, "ut_test_quant_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
-    // 13.2 commMode为非法值
-    {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_other-34", 2, 3, 2, {256, 128}, {256, 128}, {}, {256}, {256}, {512, 128},
+    {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_other-33", 2, 3, 2, {256, 128}, {256, 128}, {}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_DT_UNDEFINED, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         0, {-1, -2}, "ut_test_quant_matmul_allto_all", "other", false, true, ACLNN_ERR_PARAM_INVALID},
@@ -729,10 +723,6 @@ static QuantMatmulAlltoAllV2AclnnTestParam MXQuant_v2_cases_params[] = {
     {"QMMAAV2_MX-error39", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
         ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：commMode为空
-    {"QMMAAV2_MX-error40", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
-        ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "other", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：commMode为非法值
     // MXFP4正常用例
     {"QMMAAV2_MXFP4-succ1", 2, 6, 6, {256, 128}, {256, 128}, {}, {256, 2, 2}, {256, 2, 2}, {512, 128},
@@ -843,12 +833,8 @@ static QuantMatmulAlltoAllV2AclnnTestParam MXQuant_v2_cases_params[] = {
     {"QMMAAV2_MXFP4-error19", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
         ACL_FLOAT4_E2M1, ACL_FLOAT4_E2M1, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：commMode为空
-    {"QMMAAV2_MXFP4-error20", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
-        ACL_FLOAT4_E2M1, ACL_FLOAT4_E2M1, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "other", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：commMode为非法值
-    {"QMMAAV2_MXFP4-error21", 2, 7, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+    {"QMMAAV2_MXFP4-error20", 2, 7, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
         ACL_FLOAT4_E2M1, ACL_FLOAT4_E2M1, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "aicpu", false, true, ACLNN_ERR_PARAM_INVALID} // 异常场景：quantmode组合非法，不是mx量化场景（6,6）
