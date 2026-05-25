@@ -12,12 +12,15 @@ from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
+
 class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
         super(MixedQuantSparseFlashMlaOpBuilder, self).__init__("npu_mixed_quant_sparse_flash_mla")
+
     def sources(self):
         """Path to C++ source code."""
         return ['ops/csrc/mixed_quant_sparse_flash_mla.cpp']
+
     def schema(self) -> str:
         """PyTorch operator signature."""
         return "npu_mixed_quant_sparse_flash_mla(Tensor q, *,"                   \
@@ -55,8 +58,8 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
-                                quant_mode = 1, rope_head_dim=64,
-                                softmax_scale= 1.0, cmp_ratio=1,
+                                quant_mode=1, rope_head_dim=64,
+                                softmax_scale=1.0, cmp_ratio=1,
                                 ori_mask_mode=4, cmp_mask_mode=3,
                                 ori_win_left=127, ori_win_right=0,
                                 layout_q='BSND', layout_kv='PA_ND',
@@ -65,26 +68,27 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 key_dtype=None, value_dtype=None):
             if layout_q == "BSND":
                 ## 添加softmax_lse
-                attn_out = torch.empty(q.shape, dtype = q.dtype, device="meta")
+                attn_out = torch.empty(q.shape, dtype = q.dtype, device = "meta")
                 if return_softmax_lse:
-                    softmax_lse = torch.empty([q.shape[0], ori_kv.shape[2],q.shape[1], q.shape[2] / ori_kv.shape[2]],
-                                              dtype = torch.float32, device="meta")
+                    softmax_lse = torch.empty([q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] / ori_kv.shape[2]],
+                                              dtype = torch.float32, device = "meta")
                 else:
                     # 给一个空的合法张量，不能是 nullptr
-                    softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
+                    softmax_lse = torch.empty([], dtype=torch.float32, device = "meta")
             else:
-                attn_out = torch.empty(q.shape, dtype = q.dtype, device="meta")
+                attn_out = torch.empty(q.shape, dtype = q.dtype, device = "meta")
                 if return_softmax_lse:
                     softmax_lse = torch.empty([ori_kv.shape[1], q.shape[0], q.shape[2] / ori_kv.shape[2]],
-                                              dtype = torch.float32, device="meta")
+                                              dtype = torch.float32, device = "meta")
                 else:
                     # 给一个空的合法张量，不能是 nullptr
-                    softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
+                    softmax_lse = torch.empty([], dtype=torch.float32, device = "meta")
             return (attn_out, softmax_lse)
 
 # Instantiate the builder
 npu_mixed_quant_sparse_flash_mla_op_builder = MixedQuantSparseFlashMlaOpBuilder()
 op_module = npu_mixed_quant_sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
+
 
 @impl(AS_LIBRARY, npu_mixed_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
 def npu_mixed_quant_sparse_flash_mla(q,
@@ -97,7 +101,7 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
-                                quant_mode = 1, rope_head_dim=64,
+                                quant_mode=1, rope_head_dim=64,
                                 softmax_scale= 1.0, cmp_ratio=1,
                                 ori_mask_mode=4, cmp_mask_mode=3,
                                 ori_win_left=127, ori_win_right=0,
