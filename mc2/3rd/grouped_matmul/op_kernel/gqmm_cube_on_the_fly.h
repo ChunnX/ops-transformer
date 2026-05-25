@@ -110,7 +110,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
         gmmQuantParams_->groupNum, gmmQuantParams_->aQuantMode, gmmQuantParams_->bQuantMode,
         gmmQuantParams_->groupType, gmmQuantParams_->groupListType);
     mm_.SetSubBlockIdx(0);
-    mm_.Init(mmTilingData_, que);
+    // mm_.Init(mmTilingData_, que);  // [LBH-V4] 注释：Init分配TPipe QueQueue但无Iterate消费→死锁
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
 }
 
