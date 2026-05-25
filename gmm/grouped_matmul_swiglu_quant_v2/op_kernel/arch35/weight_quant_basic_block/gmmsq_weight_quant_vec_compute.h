@@ -250,7 +250,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
         return;
     }
 
-    // 0. swiglu和gate N轴对半切分
+    // swiglu和gate N轴对半切分
     uint64_t swishNOffset = offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE);
     uint64_t gateNOffset = (offsetParam.nOffset + offsetParam.nSize / 2) * static_cast<uint64_t>(C0_SIZE);
     uint64_t kOffset = (kGmOffset + kL1Offset) * offsetParam.nAlign;
@@ -266,7 +266,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
 
     DataCopyPad2D(
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize +
-                      (128 / DIVISOR_FACTOR_TWO / 2 * C0_SIZE)]
+                      (offsetParam.nL1Size / DIVISOR_FACTOR_TWO * C0_SIZE / 2)]
             .template ReinterpretCast<wType>(),
         wGlobal_[kOffset + gateNOffset],
         CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
