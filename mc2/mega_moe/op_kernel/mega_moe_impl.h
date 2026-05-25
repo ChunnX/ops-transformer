@@ -58,7 +58,7 @@ constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 //   true        ：B 已被预先交织——每 L1_TILE_N=256 列 = 128 列 gate + 128 列 up；scheduler 在
 //                  全 n 上 tile，每 tile 只做 1 次 mmad，swiglu 在同 UB 行内读 gate / up 半。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
-          bool IsInterleaved = false, typename ParamsType = Params>
+          bool IsInterleaved = false, typename ParamsType = ParamsOptimize>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, IsInterleaved>& epilogueOp,
     const ParamsType& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,

@@ -199,22 +199,6 @@ private:
     // 本核连续累计的 wave iteration 序号（trace 用，trace 关时无副作用）
     int waveTraceIdx_ = 0;
 
-    // ─── 编译期身份哨兵：保证当前编译的是 optimize.h 这套，而不是 legacy mega_moe.h ───
-    // 1) params_ 必须是 ParamsOptimize（不是 Params）
-    static_assert(std::is_same<decltype(params_), ParamsOptimize>::value,
-        "[MegaMoe build guard] params_ must be ParamsOptimize -- "
-        "you're linking the legacy mega_moe.h template, not optimize.h.");
-    // 2) workspaceInfo 必须是 WorkspaceInfoOptimize（带 dispatchRevDataPtr/tripleInfoPtr/ptrGmm2RowReady/ptrGmmOut 等）
-    static_assert(std::is_same<decltype(params_.workspaceInfo), WorkspaceInfoOptimize>::value,
-        "[MegaMoe build guard] workspaceInfo must be WorkspaceInfoOptimize.");
-    // 3) peermemInfo 必须是 PeermemInfoOptimize（带 quantTokenScalePtr/combineSendPtr 等）
-    static_assert(std::is_same<decltype(params_.peermemInfo), PeermemInfoOptimize>::value,
-        "[MegaMoe build guard] peermemInfo must be PeermemInfoOptimize.");
-    // 4) GMMAddrInfo 必须含 gmm2OutGlobal（pr_5806 wave 流水的 GMM2 GM-direct 目的地）
-    static_assert(sizeof(GMMAddrInfo::gmm2OutGlobal) > 0,
-        "[MegaMoe build guard] GMMAddrInfo must have gmm2OutGlobal field.");
-    // 5) 这个唯一的编译期标记字符串可以从 readelf / nm 里搜出来证明 optimize.h 被实际编译
-    static constexpr const char* kMegaMoeOptimizeBuildTag = "MEGA_MOE_OPTIMIZE_H_ACTIVE_v1";
 };
 
 template <TemplateMegaMoeTypeClass>
@@ -343,12 +327,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::BuffInit()
     uint32_t topkIdsTensorAddr = 0;
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign((int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_32));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
+    // resetTensor_ 用作两个 zero-fill 场景的 UB 缓存：
+    //   (1) ResetFlagList    : flag block 总元素数 = expertPerRank * (maxWavesPerExpert + 1) 对齐到 8
+    //                          按 ALIGN_32 分核（每核 ≤ ALIGN_32 个 int32）
+    //   (2) ResetGmm2RowReadyFlags: 单 AIV0 写 align(aicNum, 8) 个 int32
+    // 大小取两者上限的较大者，并按 8 个 int32 对齐
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
-    uint32_t resetNumPerCore = Ops::Base::CeilDiv(
-        (uint64_t)(expertPerRank_ * INT_CACHELINE * 2), (uint64_t)(blockAivNum_));
-    // 取 max(flag-reset 需求, ResetGmm2RowReadyFlags 单核 blockNumAlign 需求)
-    uint32_t rowReadyAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8));
-    uint32_t resetMax = resetNumPerCore > rowReadyAlign ? resetNumPerCore : rowReadyAlign;
+    int32_t flagListTotal = static_cast<int32_t>(
+        Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_ * (maxWavesPerExpert_ + 1U)),
+                             static_cast<uint32_t>(8)));
+    int32_t flagPerCoreMax = static_cast<int32_t>(Ops::Base::CeilAlign(
+        Ops::Base::CeilDiv(static_cast<uint32_t>(flagListTotal), static_cast<uint32_t>(blockAivNum_)),
+        static_cast<uint32_t>(ALIGN_32)));
+    int32_t rowReadyMax = static_cast<int32_t>(
+        Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8)));
+    int32_t resetMax = flagPerCoreMax > rowReadyMax ? flagPerCoreMax : rowReadyMax;
     uint32_t resetTensorSize = Ops::Base::CeilAlign((uint64_t)resetMax, (uint64_t)8) * sizeof(int32_t);
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     uint32_t mxTempTensorAddr = resetTensorAddr + resetTensorSize;
@@ -378,18 +371,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr(g_coreType == AIC) {
         return;
     }
-    // workSpace groupFlagList清零（含 swiglu->gmm2 + dispatch->gmm1 两段）
+    // workSpace groupFlagList 清零（覆盖 swiglu->gmm2 段 + dispatch->gmm1 段，共一整块）：
+    //   总元素数 = expertPerRank * maxWavesPerExpert (swiglu, per-wave) + expertPerRank (dispatch, per-expert)
+    //   workspace 里按 CeilAlign(., 8) 分配，这里 flagNum 也按 8 对齐保证整段覆盖
+    //   分核走 ALIGN_32 的粒度（默认）：每核一次写一个 32 个 int32 的块，DataCopy 直发，避免 DataCopyPad 的非对齐小块路径
     groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t swigluElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_);
     int32_t dispatchElems = static_cast<int32_t>(expertPerRank_);
     int32_t flagNum = Ops::Base::CeilAlign(
         static_cast<uint32_t>(swigluElems + dispatchElems), static_cast<uint32_t>(8));
     int32_t coreLen, coreOffset;
-    TilingByCore(flagNum, coreLen, coreOffset, 1);
-    DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    TilingByCore(flagNum, coreLen, coreOffset);  // 默认 align=ALIGN_32
     if (coreLen != 0) {
-        DataCopyPad(groupFlagListGm_[coreOffset], resetTensor_, rankSyncCopyParams);
+        Duplicate<int32_t>(resetTensor_, 0, coreLen);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(groupFlagListGm_[coreOffset], resetTensor_, coreLen);
     }
 }
 
@@ -402,9 +398,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags(
     if (aivCoreIdx_ != 0) {
         return;
     }
+    // ptrGmm2RowReady 分配大小 = align(aicNum, ALIGN_128) 个 int32，足够覆盖 align(blockNum_, 8)。
+    // 单 AIV0 写 align(blockNum_, 8) 个 int32（按 8 对齐够 DataCopy）。
     GlobalTensor<int32_t> rowReadyFlags;
     rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
     int32_t blockNumAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8));
+    Duplicate<int32_t>(resetTensor_, 0, blockNumAlign);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(rowReadyFlags, resetTensor_, blockNumAlign);
 }
@@ -1042,7 +1041,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
     // 触碰一下 build tag，防止 constexpr 字符串被优化掉（用于二进制 grep 验证）
-    (void)kMegaMoeOptimizeBuildTag;
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     BuffInit();
     TopKIdsAllGather();

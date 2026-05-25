@@ -65,51 +65,6 @@ constexpr int64_t FP4_NUM = 2U;
 constexpr int64_t L1_TILE_M = 256LL;
 } // namespace
 
-struct WorkspaceInfo {
-    GM_ADDR gmCtx;
-    GM_ADDR ptrA;
-    GM_ADDR ptrAScale;
-    GM_ADDR ptrA2;
-    GM_ADDR ptrA2Scale;
-    GM_ADDR ptrcumsumMM;
-    GM_ADDR expandedRowIdx;
-    GM_ADDR expandedRowIdxGather;
-    GM_ADDR ptrSumBeforeRank;
-    GM_ADDR ptrFlagSwiGluToGmm2;
-    GM_ADDR ptrFlagDispatchToGmm1;
-    int64_t workspaceSize;
-    HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
-    {
-        workspaceSize = 0;
-        ptrA = base;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
-        ptrAScale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
-            MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrA2 = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
-            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
-        ptrA2Scale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
-            SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrcumsumMM = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
-            tilingData->expertPerRank, ALIGN_512);
-        expandedRowIdx = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
-            tilingData->topK;
-        ptrSumBeforeRank = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
-            tilingData->expertPerRank, ALIGN_128);
-        ptrFlagSwiGluToGmm2 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        ptrFlagDispatchToGmm1 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        expandedRowIdxGather = ptrA;
-    }
-};
-
 struct WorkspaceInfoOptimize {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
