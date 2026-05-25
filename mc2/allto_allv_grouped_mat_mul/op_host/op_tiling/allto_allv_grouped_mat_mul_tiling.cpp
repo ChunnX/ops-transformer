@@ -347,6 +347,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
 
     mmXDataType_ = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
     gmmXDataType_ = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
+    gmmWeightDataType_ = context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
     mmDataTypeSize = GetSizeByDataType(mmXDataType_);
 
     if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
