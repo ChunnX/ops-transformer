@@ -609,7 +609,7 @@ def liv2_output_single(params):
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     max_seqlen_q = actual_seq_lengths_query.max().item()
     max_seqlen_k = actual_seq_lengths_key.max().item()
-    # metadata = torch.ops.custom.npu_quant_lightning_indexer_metadata(
+    # metadata = torch.ops.custom.npu_lightning_indexer_v2_metadata(
     #                                 num_heads_q = q_head_num,
     #                                 num_heads_k = k_head_num,
     #                                 head_dim = head_dim,
@@ -631,7 +631,7 @@ def liv2_output_single(params):
 
     # metadata = metadata.npu()
     metadata = None
-    npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(q, k, w,
+    npu_result,_ = torch.ops.custom.npu_lightning_indexer_v2(q, k, w,
                                                     cu_seqlens_q = cu_seqlens_q,
                                                     cu_seqlens_k = cu_seqlens_k,
                                                     seqused_q = seqused_q,
@@ -641,7 +641,7 @@ def liv2_output_single(params):
                                                     output_idx_offset = output_idx_offset,
                                                     metadata = metadata,
                                                     topk = topk,
-                                                    max_seqlen_q = max_seqlen_q
+                                                    max_seqlen_q = max_seqlen_q,
                                                     layout_q = layout_q,
                                                     layout_k = layout_k,
                                                     mask_mode = mask_mode,

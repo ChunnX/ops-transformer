@@ -236,29 +236,44 @@ def trans_tnd_actseq(list):
 
 def check_result(expect, result, topk_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
-    qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, layout_query,\
-    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-    k_scale_datarange, cmp_ratio = params
-    # 处理B+1
-    if isinstance(act_seq_q, int):
-        act_seq_q = [act_seq_q]
-    elif isinstance(act_seq_q, list):
-        act_seq_q = act_seq_q
+    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, layout_query,\
+    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
+    cmp_ratio, return_value, max_seqlen_q = params
+
+    if isinstance(cu_seqlens_q, int):
+        cu_seqlens_q = [cu_seqlens_q]
+    elif isinstance(cu_seqlens_q, list):
+        cu_seqlens_q = cu_seqlens_q
     else:
-        act_seq_q = [int(x.strip()) for x in act_seq_q.split(',')]
-    if isinstance(act_seq_k, int):
-        act_seq_k = [act_seq_k]
-    elif isinstance(act_seq_k, list):
-        act_seq_k = act_seq_k
+        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+    
+    if isinstance(cu_seqlens_k, int):
+        cu_seqlens_k = [cu_seqlens_k]
+    elif isinstance(cu_seqlens_k, list):
+        cu_seqlens_k = cu_seqlens_k
     else:
-        act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
+        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+
+    if isinstance(seqused_q, int):
+        seqused_q = [seqused_q]
+    elif isinstance(seqused_q, list):
+        seqused_q = seqused_q
+    else:
+        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+    
+    if isinstance(seqused_k, int):
+        seqused_k = [seqused_k]
+    elif isinstance(seqused_k, list):
+        seqused_k = seqused_k
+    else:
+        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
 
     if layout_query == 'TND':
-        if len(act_seq_q) == batch_size + 1:
-            act_seq_q = act_seq_q[1:]
+        if len(cu_seqlens_q) == batch_size + 1:
+            cu_seqlens_q = cu_seqlens_q[1:]
     if layout_key == 'TND':
-        if len(act_seq_k) == batch_size + 1:
-            act_seq_k = act_seq_k[1:]
+        if len(cu_seqlens_k) == batch_size + 1:
+            cu_seqlens_k = cu_seqlens_k[1:]
 
     npu_pass = True
     max_error = 0
