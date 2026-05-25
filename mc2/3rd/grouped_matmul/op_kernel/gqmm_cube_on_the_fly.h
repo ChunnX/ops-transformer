@@ -103,14 +103,8 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     mmTilingData_ = mmTilingDataIn;
     gmmQuantParams_ = gmmBaseParamsIn;
     blockIdx_ = GetBlockIdx();
-    AscendC::printf("[LBH-DIAG] Init blk=%d M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d cores=%d gN=%d aQ=%d bQ=%d gT=%d gLT=%d\n",
-        blockIdx_, mmTilingData_->M, mmTilingData_->N, mmTilingData_->Ka,
-        mmTilingData_->baseM, mmTilingData_->baseN, mmTilingData_->baseK,
-        mmTilingData_->usedCoreNum,
-        gmmQuantParams_->groupNum, gmmQuantParams_->aQuantMode, gmmQuantParams_->bQuantMode,
-        gmmQuantParams_->groupType, gmmQuantParams_->groupListType);
     mm_.SetSubBlockIdx(0);
-    // mm_.Init(mmTilingData_, que);  // [LBH-V4] 注释：Init分配TPipe QueQueue但无Iterate消费→死锁
+    mm_.Init(mmTilingData_, que);
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
 }
 
@@ -333,17 +327,11 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
     if ASCEND_IS_AIV {
         return;
     }
-    AscendC::printf("[LBH] A=%llu B=%llu C=%llu offA=%llu offB=%llu offC=%llu scM=%llu scN=%llu k=%llu\n",
-        reinterpret_cast<uint64_t>(xGlobal_.GetPhyAddr()), reinterpret_cast<uint64_t>(wGlobal_.GetPhyAddr()),
-        reinterpret_cast<uint64_t>(yGlobal_.GetPhyAddr()),
-        block_.offset_.offsetA, block_.offset_.offsetB, block_.offset_.offsetC,
-        block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    // [LBH-V4] 注释计算逻辑验证是否卡住
-    // mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    // mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
-    // mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
-    // mm_.Iterate();
-    // mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
+    mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
+    mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
+    mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
+    mm_.Iterate();
+    mm_.GetTensorC(yGlobal_[block_.offset_.offsetC]);
 }
 } // Mc2GroupedMatmul
 #endif // MC2_GQMM_CUBE_ON_THE_FLY_H
