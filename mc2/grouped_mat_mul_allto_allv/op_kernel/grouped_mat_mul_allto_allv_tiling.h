@@ -19,7 +19,7 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-constexpr uint32_t MAX_EXPERT_SIZE = 16384U; // 最大通信域专家的数量
+constexpr uint32_t MAX_EXPERT_SIZE = 4096U; // 最大通信域专家的数量 (512 experts * 8 ranks)
 constexpr uint32_t MAX_EXPERT_PER_RANK = 1024U;
 
 struct GmmAlltoAllvAicpuTiling {
