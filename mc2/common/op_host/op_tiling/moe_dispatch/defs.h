@@ -17,6 +17,7 @@
 #define MOE_DISPATCH_DEFS_H
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include "graph/utils/type_utils.h"
 #include "mc2_common_log.h"
@@ -152,6 +153,33 @@ enum class TensorType : uint32_t {
     OUTPUT = 1,
     OPTIONAL_INPUT = 2
 };
+
+// ========== QuantMode + dtype → RealMode 查表 ==========
+inline RealMode CheckQuantModeMap(QuantMode quantMode, ge::DataType dtype)
+{
+    static const std::map<std::pair<QuantMode, ge::DataType>, RealMode> kQuantModeMap = {
+        {{QuantMode::NON_QUANT, ge::DT_BF16}, RealMode::NO_SCALES},
+        {{QuantMode::NON_QUANT, ge::DT_FLOAT16}, RealMode::NO_SCALES},
+        {{QuantMode::NON_QUANT, ge::DT_FLOAT8_E4M3FN}, RealMode::NO_SCALES},
+        {{QuantMode::NON_QUANT, ge::DT_FLOAT8_E5M2}, RealMode::NO_SCALES},
+        {{QuantMode::NON_QUANT, ge::DT_HIFLOAT8}, RealMode::NO_SCALES},
+        {{QuantMode::NON_QUANT, ge::DT_FLOAT4_E2M1}, RealMode::NO_SCALES},
+        {{QuantMode::NON_QUANT, ge::DT_FLOAT4_E1M2}, RealMode::NO_SCALES},
+        {{QuantMode::STATIC_QUANT, ge::DT_INT8}, RealMode::STATIC_SCALES},
+        {{QuantMode::STATIC_QUANT, ge::DT_HIFLOAT8}, RealMode::HIF8_SCALES},
+        {{QuantMode::PERTOKEN_DYNAMIC_QUANT, ge::DT_INT8}, RealMode::PERTOKEN_SCALES},
+        {{QuantMode::PERTOKEN_DYNAMIC_QUANT, ge::DT_FLOAT8_E5M2}, RealMode::PERTOKEN_SCALES},
+        {{QuantMode::PERTOKEN_DYNAMIC_QUANT, ge::DT_FLOAT8_E4M3FN}, RealMode::PERTOKEN_SCALES},
+        {{QuantMode::PERGROUP_DYNAMIC_QUANT, ge::DT_FLOAT8_E5M2}, RealMode::PERGROUP_SCALES},
+        {{QuantMode::PERGROUP_DYNAMIC_QUANT, ge::DT_FLOAT8_E4M3FN}, RealMode::PERGROUP_SCALES},
+        {{QuantMode::MX_QUANT, ge::DT_FLOAT8_E5M2}, RealMode::MX_SCALES},
+        {{QuantMode::MX_QUANT, ge::DT_FLOAT8_E4M3FN}, RealMode::MX_SCALES},
+        {{QuantMode::MX_QUANT, ge::DT_FLOAT4_E2M1}, RealMode::MX_SCALES},
+        {{QuantMode::MX_QUANT, ge::DT_FLOAT4_E1M2}, RealMode::MX_SCALES},
+    };
+    auto it = kQuantModeMap.find({quantMode, dtype});
+    return (it != kQuantModeMap.end()) ? it->second : RealMode::INVALID_MODE;
+}
 
 } // namespace moe_dispatch_defs
 
