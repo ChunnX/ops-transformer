@@ -206,7 +206,8 @@ void MatmulAllReduceTilingBase::setUseBufferType()
                 std::string envStr(getenv(HCCL_BUFFSIZE));
                 defaultWindowSize = std::stoi(envStr);
             } catch (...) {
-                OP_LOGE(opName_, "Unknown Exception encountered when parser env HCCL_BUFFERSIZE.");
+                OP_LOGE_FOR_INVALID_CONFIG_WITH_REASON(
+                    opName_, HCCL_BUFFSIZE, HCCL_BUFFSIZE, getenv(HCCL_BUFFSIZE), "failed to parse env value");
             }
         }
         // 1024 * 1024表示1M
@@ -403,8 +404,11 @@ ge::graphStatus MatmulAllReduceTilingBase::DoMatmulTiling(
     int32_t fixCoreN = -1;
     mm1.SetSingleShape(fixCoreM, fixCoreN, fixCoreK);
     if (mm1.GetTiling(cubeTiling) == -1) {
-        OP_LOGE(
-            opName_, "MValue %lu, nValue %lu, kValue %lu, aicCoreNum %lu.", mValue, nValue, kValue, args_.aicCoreNum);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            opName_, "mValue, nValue, kValue and aicCoreNum",
+            (std::string("{") + std::to_string(mValue) + ", " + std::to_string(nValue) + ", " +
+             std::to_string(kValue) + ", " + std::to_string(args_.aicCoreNum) + "}").c_str(),
+            "failed to get matmul tiling");
         return ge::GRAPH_FAILED;
     }
     mc2tiling::MatmulFormulaicTiling reduceTiling("MatmulAllReduce");
@@ -526,7 +530,8 @@ ge::graphStatus MatmulAllReduceTilingBase::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&tilingData_), tilingDataSize);
     if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d.", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
         return ge::GRAPH_FAILED;
     }
     PrintTilingData();
@@ -802,7 +807,9 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
                 context_->GetNodeName(), "Parameter comm_quant_scale is not support 310p."),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(context_->GetNodeName(), "Unsupported SocVersion.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "SocVersion", std::to_string(static_cast<int32_t>(socVersion_)),
+            "unsupported SocVersion");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -910,7 +917,8 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "When antiquant , dequantScale should be null"),
         return ge::GRAPH_FAILED);
     if (!CheckAntiQuantOffsetValid()) {
-        OP_LOGE(context_->GetNodeName(), "Antiquantoffset input valid.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "antiquantOffset", "invalid", "antiquantOffset input is invalid");
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK(
@@ -1015,9 +1023,12 @@ bool MatmulAllReduceTilingBase::SetArgs(
         args_.cType = D_TYPE_MAP.at(cType);
         args_.biasType = D_TYPE_MAP.at(biasType);
     } catch (const std::out_of_range& e) {
-        OP_LOGE(
-            opName_, "Unsupported{ aType: %d bType: %d cType: %d biasType %d }.", static_cast<int32_t>(aType),
-            static_cast<int32_t>(bType), static_cast<int32_t>(cType), static_cast<int32_t>(biasType));
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            opName_, "aType, bType, cType and biasType",
+            (std::string("{") + std::to_string(static_cast<int32_t>(aType)) + ", " +
+             std::to_string(static_cast<int32_t>(bType)) + ", " + std::to_string(static_cast<int32_t>(cType)) +
+             ", " + std::to_string(static_cast<int32_t>(biasType)) + "}").c_str(),
+            "unsupported dtype combination");
         return false;
     }
 
@@ -1442,7 +1453,7 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
 {
     const auto scale = mmrCtxInfo_.antiquant_scale_shape;
     if (scale == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "No antiquantScale.");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquantScale");
         return false;
     }
     // 校验bias dim

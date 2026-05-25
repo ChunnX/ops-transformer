@@ -87,7 +87,7 @@ constexpr int64_t MOE_EXPERT_MAX_NUM = 512;
 namespace optiling {
 
 void MoeDistributeCombineTilingBase::PrintTilingDataInfo(const char *nodeName,
-    MoeDistributeCombineTilingData &tilingData)
+                                                         MoeDistributeCombineTilingData &tilingData)
 {
     OP_LOGD(nodeName, "epWorldSize is %u.", tilingData.moeDistributeCombineInfo.epWorldSize);
     OP_LOGD(nodeName, "tpWorldSize is %u.", tilingData.moeDistributeCombineInfo.tpWorldSize);
@@ -107,7 +107,7 @@ void MoeDistributeCombineTilingBase::PrintTilingDataInfo(const char *nodeName,
     OP_LOGD(nodeName, "totalWinSizeTP is %lu.", tilingData.moeDistributeCombineInfo.totalWinSizeTp);
 }
 
-static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, const char *nodeName) 
+static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto groupEpPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
@@ -120,26 +120,33 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_SHARED_EXPERT_NUM_INDEX));
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_COMM_QUANT_MODE_INDEX));
-    
+
     OP_TILING_CHECK((groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-        (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-        OP_LOGE(nodeName, "groupEp is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSize is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE(nodeName, "tpWorldSize is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankId is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE(nodeName, "tpRankId is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expertShardPtr == nullptr, OP_LOGE(nodeName, "expertShardType is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE(nodeName, "sharedExpertRankNum is null."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE(nodeName, "moeExpertNum is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sharedExpertNumPtr == nullptr, OP_LOGE(nodeName, "sharedExpertNum is null."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE(nodeName, "commQuantMode is null."), return ge::GRAPH_FAILED);
+                        (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "groupEp", "invalid", "groupEp is invalid."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epWorldSize"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpWorldSize"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epRankId"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRankId"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertShardPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertShardType"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertRankNum"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertNum"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckCommAttrValuesValid(gert::TilingContext *context, const char *nodeName, std::string &groupTp)
+static ge::graphStatus CheckCommAttrValuesValid(gert::TilingContext *context, const char *nodeName,
+                                                std::string &groupTp)
 {
     auto attrs = context->GetAttrs();
     auto groupTpPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
@@ -150,35 +157,61 @@ static ge::graphStatus CheckCommAttrValuesValid(gert::TilingContext *context, co
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_COMM_QUANT_MODE_INDEX));
 
     OP_TILING_CHECK((*epWorldSizePtr <= 0) || (*epWorldSizePtr > MAX_EP_WORLD_SIZE),
-        OP_LOGE(nodeName, "epWorldSize is invalid, only support (0, %ld], but got epWorldSize=%ld.",
-        MAX_EP_WORLD_SIZE, *epWorldSizePtr), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "epWorldSize", "invalid",
+                        CreateErrorMsg("epWorldSize is invalid, only support (0, %ld], but got epWorldSize=%ld.",
+                                       MAX_EP_WORLD_SIZE, *epWorldSizePtr)
+                            .data()),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > MAX_TP_WORLD_SIZE),
-        OP_LOGE(nodeName, "tpWorldSize is invalid, only support [0, %ld], but got tpWorldSize=%ld.",
-        MAX_TP_WORLD_SIZE, *tpWorldSizePtr), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "tpWorldSize", "invalid",
+                        CreateErrorMsg("tpWorldSize is invalid, only support [0, %ld], but got tpWorldSize=%ld.",
+                                       MAX_TP_WORLD_SIZE, *tpWorldSizePtr)
+                            .data()),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr),
-        OP_LOGE(nodeName, "epRankId is invalid, only support [0, %ld), but got epRankId=%ld.",
-        *epWorldSizePtr, *epRankIdPtr), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "epRankId", "invalid",
+                        CreateErrorMsg("epRankId is invalid, only support [0, %ld), but got epRankId=%ld.",
+                                       *epWorldSizePtr, *epRankIdPtr)
+                            .data()),
+                    return ge::GRAPH_FAILED);
     if (*tpWorldSizePtr > 1) {
         OP_TILING_CHECK((*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr),
-            OP_LOGE(nodeName, "tpRankId is invalid, only support [0, %ld), but got tpRankId=%ld.",
-            *tpWorldSizePtr, *tpRankIdPtr), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            nodeName, "tpRankId", "invalid",
+                            CreateErrorMsg("tpRankId is invalid, only support [0, %ld), but got tpRankId=%ld.",
+                                           *tpWorldSizePtr, *tpRankIdPtr)
+                                .data()),
+                        return ge::GRAPH_FAILED);
         OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-            OP_LOGE(nodeName, "groupTpPtr is null."), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((*commQuantModePtr != 0), OP_LOGE(nodeName,
-            "commQuantMode only supports 0 when tpWorldSize > 1, but got commQuantMode=%ld, tpWorldSize=%ld.",
-            *commQuantModePtr, *tpWorldSizePtr), return ge::GRAPH_FAILED);
+                            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+                        OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTp"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (*commQuantModePtr != 0),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName, "commQuantMode", "invalid",
+                CreateErrorMsg(
+                    "commQuantMode only supports 0 when tpWorldSize > 1, but got commQuantMode=%ld, tpWorldSize=%ld.",
+                    *commQuantModePtr, *tpWorldSizePtr)
+                    .data()),
+            return ge::GRAPH_FAILED);
         groupTp = std::string(groupTpPtr);
     } else {
-        OP_TILING_CHECK(*tpRankIdPtr != 0, OP_LOGE(nodeName,
-            "tpRankId is invalid, NoTp mode only support 0, but got tpRankId=%ld.", *tpRankIdPtr),
+        OP_TILING_CHECK(
+            *tpRankIdPtr != 0,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName, "tpRankId", "invalid",
+                CreateErrorMsg("tpRankId is invalid, NoTp mode only support 0, but got tpRankId=%ld.", *tpRankIdPtr)
+                    .data()),
             return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const char *nodeName, std::string &groupTp) 
+static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const char *nodeName, std::string &groupTp)
 {
     auto attrs = context->GetAttrs();
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
@@ -189,32 +222,53 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_COMM_QUANT_MODE_INDEX));
 
     OP_TILING_CHECK(CheckCommAttrValuesValid(context, nodeName, groupTp) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "ep tp attrs is invalid"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*expertShardPtr != 0,
-        OP_LOGE(nodeName, "expertShardType is invalid, only support 0, but got expertShardType=%ld.", *expertShardPtr),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "ep", "invalid", "ep tp attrs is invalid"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *expertShardPtr != 0,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName, "expertShardType", "invalid",
+            CreateErrorMsg("expertShardType is invalid, only support 0, but got expertShardType=%ld.", *expertShardPtr)
+                .data()),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
-        OP_LOGE(nodeName, "sharedExpertRankNum is invalid, only support [0, %ld), but got sharedExpertRankNum=%ld.",
-        *epWorldSizePtr, *sharedExpertRankNumPtr), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*sharedExpertNumPtr != 1,
-        OP_LOGE(nodeName, "sharedExpertNum only support 1, but got sharedExpertNum=%ld.", *sharedExpertNumPtr),
+    OP_TILING_CHECK(
+        (*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr >= *epWorldSizePtr),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "sharedExpertRankNum", "invalid",
+            CreateErrorMsg("sharedExpertRankNum is invalid, only support [0, %ld), but got sharedExpertRankNum=%ld.",
+                           *epWorldSizePtr, *sharedExpertRankNumPtr)
+                .data()),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *sharedExpertNumPtr != 1,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "sharedExpertNum", "invalid",
+            CreateErrorMsg("sharedExpertNum only support 1, but got sharedExpertNum=%ld.", *sharedExpertNumPtr).data()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MOE_EXPERT_MAX_NUM),
-        OP_LOGE(nodeName, "moeExpertNum is invalid, only support (0, %ld], but got moeExpertNum=%ld.",
-        MOE_EXPERT_MAX_NUM, *moeExpertNumPtr), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*commQuantModePtr != 0) && (*commQuantModePtr != 2),
-        OP_LOGE(nodeName, "commQuantMode only support 0 or 2, but got commQuantMode=%ld.", *commQuantModePtr),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "moeExpertNum", "invalid",
+                        CreateErrorMsg("moeExpertNum is invalid, only support (0, %ld], but got moeExpertNum=%ld.",
+                                       MOE_EXPERT_MAX_NUM, *moeExpertNumPtr)
+                            .data()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*commQuantModePtr != 0) && (*commQuantModePtr != 2),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "commQuantMode", "invalid",
+            CreateErrorMsg("commQuantMode only support 0 or 2, but got commQuantMode=%ld.", *commQuantModePtr).data()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeCombineTilingBase::GetAttrAndSetTilingData(gert::TilingContext *context,
-    MoeDistributeCombineTilingData &tilingData,
-    const char *nodeName, std::string &groupEp, std::string &groupTp, uint32_t &commQuantMode)
+                                                                        MoeDistributeCombineTilingData &tilingData,
+                                                                        const char *nodeName, std::string &groupEp,
+                                                                        std::string &groupTp, uint32_t &commQuantMode)
 {
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
     auto groupEpPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
     auto groupTpPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
@@ -230,11 +284,11 @@ ge::graphStatus MoeDistributeCombineTilingBase::GetAttrAndSetTilingData(gert::Ti
 
     // 校验指针非空
     OP_TILING_CHECK(CheckAttrPointersNotNull(context, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check attr pointers not null failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check attr pointers not null failed."), return ge::GRAPH_FAILED);
 
     // 判断是否满足uint32_t及其他限制
     OP_TILING_CHECK(CheckAttrValuesValid(context, nodeName, groupTp) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Check attr values valid failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Check attr values valid failed."), return ge::GRAPH_FAILED);
 
     commQuantMode = static_cast<uint32_t>(*commQuantModePtr);
     groupEp = string(groupEpPtr);
@@ -249,8 +303,8 @@ ge::graphStatus MoeDistributeCombineTilingBase::GetAttrAndSetTilingData(gert::Ti
     return ge::GRAPH_SUCCESS;
 }
 
-static bool CheckExpertAttrs(gert::TilingContext *context, 
-    MoeDistributeCombineTilingData &tilingData, const char *nodeName, uint32_t &localMoeExpertNum) 
+static bool CheckExpertAttrs(gert::TilingContext *context, MoeDistributeCombineTilingData &tilingData,
+                             const char *nodeName, uint32_t &localMoeExpertNum)
 {
     uint32_t epWorldSize = tilingData.moeDistributeCombineInfo.epWorldSize;
     uint32_t tpWorldSize = tilingData.moeDistributeCombineInfo.tpWorldSize;
@@ -259,67 +313,103 @@ static bool CheckExpertAttrs(gert::TilingContext *context,
 
     // 校验ep能均分共享
     OP_TILING_CHECK((sharedExpertRankNum != 0) && (epWorldSize % sharedExpertRankNum != 0),
-        OP_LOGE(nodeName, "epWorldSize should be divisible by sharedExpertRankNum, but epWorldSize=%u, "
-        "sharedExpertRankNum=%u.", epWorldSize, sharedExpertRankNum), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "epWorldSize", "invalid",
+                        CreateErrorMsg("epWorldSize should be divisible by sharedExpertRankNum, but epWorldSize=%u, "
+                                       "sharedExpertRankNum=%u.",
+                                       epWorldSize, sharedExpertRankNum)
+                            .data()),
+                    return false);
 
     // 校验moe专家数量能否均分给多机
     OP_TILING_CHECK(moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
-        OP_LOGE(nodeName, "moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
-        "but got moeExpertNum=%u, epWorldSize=%u, sharedExpertRankNum=%u.", moeExpertNum, epWorldSize, 
-        sharedExpertRankNum), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "moeExpertNum", "invalid",
+                        CreateErrorMsg("moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
+                                       "but got moeExpertNum=%u, epWorldSize=%u, sharedExpertRankNum=%u.",
+                                       moeExpertNum, epWorldSize, sharedExpertRankNum)
+                            .data()),
+                    return false);
     localMoeExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum);
-    OP_TILING_CHECK(localMoeExpertNum <= 0,
-        OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %u", localMoeExpertNum),
+    OP_TILING_CHECK(
+        localMoeExpertNum <= 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "localMoeExpertNum", "invalid",
+            CreateErrorMsg("localMoeExpertNum is invalid, localMoeExpertNum = %u", localMoeExpertNum).data()),
         return false);
     OP_TILING_CHECK((localMoeExpertNum > 1) && (tpWorldSize > 1),
-        OP_LOGE(nodeName, "Cannot support multi-moeExpert %u in a rank when tpWorldSize = %u > 1",
-        localMoeExpertNum, tpWorldSize), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "multi", "invalid",
+                        CreateErrorMsg("Cannot support multi-moeExpert %u in a rank when tpWorldSize = %u > 1",
+                                       localMoeExpertNum, tpWorldSize)
+                            .data()),
+                    return false);
     tilingData.moeDistributeCombineInfo.moeExpertPerRankNum = localMoeExpertNum;
 
     // 校验k > moeExpertNum
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
     const int64_t expertIdsDim1 = expertIdStorageShape->GetStorageShape().GetDim(1);
     uint32_t K = static_cast<uint32_t>(expertIdsDim1);
-    OP_TILING_CHECK(K > moeExpertNum, OP_LOGE(nodeName, "K is larger than moeExpertNum, "
-        "k is %u, moeExpertNum is %u.", K, moeExpertNum), return false);
+    OP_TILING_CHECK(K > moeExpertNum,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "K", "invalid",
+                                                          CreateErrorMsg("K is larger than moeExpertNum, "
+                                                                         "k is %u, moeExpertNum is %u.",
+                                                                         K, moeExpertNum)
+                                                              .data()),
+                    return false);
 
     return true;
 }
 
 bool MoeDistributeCombineTilingBase::CheckEpWorldSizeAttrs(gert::TilingContext *context,
-    MoeDistributeCombineTilingData &tilingData, const char *nodeName)
+                                                           MoeDistributeCombineTilingData &tilingData,
+                                                           const char *nodeName)
 {
     uint32_t epWorldSize = tilingData.moeDistributeCombineInfo.epWorldSize;
 
     return CheckEpWorldSize(nodeName, epWorldSize);
 }
 
-static bool CheckBatchAttrs(gert::TilingContext *context,
-    MoeDistributeCombineTilingData &tilingData, const char *nodeName)
+static bool CheckBatchAttrs(gert::TilingContext *context, MoeDistributeCombineTilingData &tilingData,
+                            const char *nodeName)
 {
     uint32_t epWorldSize = tilingData.moeDistributeCombineInfo.epWorldSize;
 
     // 校验输入expertIds的维度0并设bs
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
-    OP_TILING_CHECK(expertIdsStorageShape == nullptr, OP_LOGE(nodeName, "expertIds id null."), return false);
+    OP_TILING_CHECK(expertIdsStorageShape == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "expertIds", "invalid", "expertIds id null."),
+                    return false);
     int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK((expertIdsDim0 <= 0) || (expertIdsDim0 > BS_UPPER_BOUND),
-        OP_LOGE(nodeName, "Invalid expertIds dims0(BS) %ld. Should be between [1, %ld].", expertIdsDim0,
-        BS_UPPER_BOUND), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "expertIds", "invalid",
+                        CreateErrorMsg("Invalid expertIds dims0(BS) %ld. Should be between [1, %ld].", expertIdsDim0,
+                                       BS_UPPER_BOUND)
+                            .data()),
+                    return false);
     tilingData.moeDistributeCombineInfo.bs = static_cast<uint32_t>(expertIdsDim0);
 
     // 校验globalBS
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is null."), return false);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return false);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
-    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE(nodeName, "globalBs is null."), return false);
-    OP_LOGD(nodeName, "MoeDistributeCombine *globalBsPtr = %ld, bs = %ld, epWorldSize = %u\n", 
-        *globalBsPtr, expertIdsDim0, epWorldSize);
+    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "globalBs"), return false);
+    OP_LOGD(nodeName, "MoeDistributeCombine *globalBsPtr = %ld, bs = %ld, epWorldSize = %u\n", *globalBsPtr,
+            expertIdsDim0, epWorldSize);
 
-    OP_TILING_CHECK((*globalBsPtr != 0) && ((*globalBsPtr < static_cast<int64_t>(epWorldSize) * expertIdsDim0) ||
-        ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)), OP_LOGE(nodeName, "globalBS is invalid, only "
-        "support 0 or maxBs(maxBs is the largest bs on all ranks) * epWorldSize, but got globalBS=%ld, "
-        "bs=%ld, epWorldSize=%u.", *globalBsPtr, expertIdsDim0, epWorldSize), return false);
+    OP_TILING_CHECK(
+        (*globalBsPtr != 0) && ((*globalBsPtr < static_cast<int64_t>(epWorldSize) * expertIdsDim0) ||
+                                ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "globalBS", "invalid",
+            CreateErrorMsg(
+                "globalBS is invalid, only "
+                "support 0 or maxBs(maxBs is the largest bs on all ranks) * epWorldSize, but got globalBS=%ld, "
+                "bs=%ld, epWorldSize=%u.",
+                *globalBsPtr, expertIdsDim0, epWorldSize)
+                .data()),
+        return false);
     if (*globalBsPtr == 0) {
         tilingData.moeDistributeCombineInfo.globalBs = static_cast<uint32_t>(expertIdsDim0) * epWorldSize;
     } else {
@@ -330,8 +420,8 @@ static bool CheckBatchAttrs(gert::TilingContext *context,
 }
 
 static bool CheckBasicInputTensorShape(gert::TilingContext *context, MoeDistributeCombineTilingData &tilingData,
-    const char *nodeName, bool isShared, uint32_t localExpertNum) 
-{ 
+                                       const char *nodeName, bool isShared, uint32_t localExpertNum)
+{
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
     int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
     int64_t expertIdsDim1 = expertIdsStorageShape->GetStorageShape().GetDim(1);
@@ -351,31 +441,49 @@ static bool CheckBasicInputTensorShape(gert::TilingContext *context, MoeDistribu
     const gert::StorageShape *expandXStorageShape = context->GetInputShape(EXPAND_X_INDEX);
     int64_t expandXDim0 = expandXStorageShape->GetStorageShape().GetDim(0);
     int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(expandXDim0 < tpWorldSize * static_cast<int64_t>(A), OP_LOGE(nodeName, 
-        "expandX's dim0 not greater than or equal to A * tpWorldSize, expandXDim0 = %ld, A = %ld, "
-        "tpWorldSize = %ld", expandXDim0, static_cast<int64_t>(A), tpWorldSize), return false);
+    OP_TILING_CHECK(
+        expandXDim0 < tpWorldSize * static_cast<int64_t>(A),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "expandX", "invalid",
+            CreateErrorMsg("expandX's dim0 not greater than or equal to A * tpWorldSize, expandXDim0 = %ld, A = %ld, "
+                           "tpWorldSize = %ld",
+                           expandXDim0, static_cast<int64_t>(A), tpWorldSize)
+                .data()),
+        return false);
     OP_TILING_CHECK((expandXDim1 != 7168),
-        OP_LOGE(nodeName, "expandX dims1(H) only supports 7168, but got %ld.", expandXDim1), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "expandX", "invalid",
+                        CreateErrorMsg("expandX dims1(H) only supports 7168, but got %ld.", expandXDim1).data()),
+                    return false);
     tilingData.moeDistributeCombineInfo.h = static_cast<uint32_t>(expandXDim1);
 
-    OP_TILING_CHECK((expertIdsDim1 <= 0) || (expertIdsDim1 > K_MAX), OP_LOGE(nodeName,
-        "expertIdShape's dim1(k) should be in (0, %ld], but got expertIdShape's dim1=%ld.", K_MAX,
-        expertIdsDim1), return false);
+    OP_TILING_CHECK(
+        (expertIdsDim1 <= 0) || (expertIdsDim1 > K_MAX),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "expertIdShape", "invalid",
+            CreateErrorMsg("expertIdShape's dim1(k) should be in (0, %ld], but got expertIdShape's dim1=%ld.", K_MAX,
+                           expertIdsDim1)
+                .data()),
+        return false);
     tilingData.moeDistributeCombineInfo.k = static_cast<uint32_t>(expertIdsDim1);
 
     // 校验expandIdx的维度
     const gert::StorageShape *expandIdxStorageShape = context->GetInputShape(EXPAND_IDX_INDEX);
     int64_t expandIdxDim0 = expandIdxStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(expandIdxDim0 != expertIdsDim0 * expertIdsDim1,
-        OP_LOGE(nodeName, "expandIdxDim0 != bs * k, expandIdxDim0 is %ld, bs * k is %ld.", expandIdxDim0,
-        expertIdsDim0 * expertIdsDim1), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "expandIdxDim0", "invalid",
+                        CreateErrorMsg("expandIdxDim0 != bs * k, expandIdxDim0 is %ld, bs * k is %ld.", expandIdxDim0,
+                                       expertIdsDim0 * expertIdsDim1)
+                            .data()),
+                    return false);
 
     return true;
 }
 
 static bool CheckCommInputTensorShape(gert::TilingContext *context, MoeDistributeCombineTilingData &tilingData,
-    const char *nodeName, bool isShared)
-{ 
+                                      const char *nodeName, bool isShared)
+{
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
     int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
     int64_t expertIdsDim1 = expertIdsStorageShape->GetStorageShape().GetDim(1);
@@ -389,30 +497,49 @@ static bool CheckCommInputTensorShape(gert::TilingContext *context, MoeDistribut
     const int64_t epSendCountDim0 = epSendCountStorageShape->GetStorageShape().GetDim(0);
     const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
     int64_t epSendCount = (isShared) ? epWorldSize : epWorldSize * moeExpertPerRankNum;
-    OP_TILING_CHECK(epSendCountDim0 < epSendCount * tpWorldSize, OP_LOGE(nodeName,
-        "epSendCountDim0 not greater than or equal to epSendCount * tpWorldSize, epSendCountDim0 is %ld, epSendCount is %ld, "
-        "tpWorldSize is %ld.", epSendCountDim0, epSendCount, tpWorldSize), return false);
-    OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize, OP_LOGE(nodeName,
-        "tpSendCountDim0 not equal to tpWorldSize, tpSendCountDim0 is %ld, tpWorldSize is %ld.",
-        tpSendCountDim0, tpWorldSize), return false);
+    OP_TILING_CHECK(epSendCountDim0 < epSendCount * tpWorldSize,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "epSendCountDim0", "invalid",
+                        CreateErrorMsg("epSendCountDim0 not greater than or equal to epSendCount * tpWorldSize, "
+                                       "epSendCountDim0 is %ld, epSendCount is %ld, "
+                                       "tpWorldSize is %ld.",
+                                       epSendCountDim0, epSendCount, tpWorldSize)
+                            .data()),
+                    return false);
+    OP_TILING_CHECK(
+        tpSendCountDim0 != tpWorldSize,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "tpSendCountDim0", "invalid",
+            CreateErrorMsg("tpSendCountDim0 not equal to tpWorldSize, tpSendCountDim0 is %ld, tpWorldSize is %ld.",
+                           tpSendCountDim0, tpWorldSize)
+                .data()),
+        return false);
 
     // 校验expertScales的维度
     const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(EXPERT_SCALES_INDEX);
     int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
     int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0, OP_LOGE(nodeName, 
-        "expertScales' dim0 not equal to bs, expertScalesDim0 = %ld, bs = %ld", expertScalesDim0, expertIdsDim0),
-        return false);
-    OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1, OP_LOGE(nodeName, 
-        "expertScales' dim1 not equal to k, expertScalesDim1 = %ld, k = %ld", expertScalesDim1, expertIdsDim1),
-        return false);
+    OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "expertScales", "invalid",
+                        CreateErrorMsg("expertScales' dim0 not equal to bs, expertScalesDim0 = %ld, bs = %ld",
+                                       expertScalesDim0, expertIdsDim0)
+                            .data()),
+                    return false);
+    OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "expertScales", "invalid",
+                        CreateErrorMsg("expertScales' dim1 not equal to k, expertScalesDim1 = %ld, k = %ld",
+                                       expertScalesDim1, expertIdsDim1)
+                            .data()),
+                    return false);
 
     return true;
 }
 
 bool MoeDistributeCombineTilingBase::CheckTensorShape(gert::TilingContext *context,
-    MoeDistributeCombineTilingData &tilingData,
-    const char *nodeName, bool isShared, uint32_t localExpertNum)
+                                                      MoeDistributeCombineTilingData &tilingData, const char *nodeName,
+                                                      bool isShared, uint32_t localExpertNum)
 {
     // 校验输入expertIds的维度1并设k, bs已校验过
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
@@ -421,21 +548,26 @@ bool MoeDistributeCombineTilingBase::CheckTensorShape(gert::TilingContext *conte
     int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(!CheckBasicInputTensorShape(context, tilingData, nodeName, isShared, localExpertNum),
-        OP_LOGE(nodeName, "Check basic input shapes failed."), return false);
+                    OP_LOGE(nodeName, "Check basic input shapes failed."), return false);
 
     OP_TILING_CHECK(!CheckCommInputTensorShape(context, tilingData, nodeName, isShared),
-        OP_LOGE(nodeName, "Check comm input shapes failed."), return false);
+                    OP_LOGE(nodeName, "Check comm input shapes failed."), return false);
 
     // 校验x的维度
     const gert::StorageShape *xStorageShape = context->GetOutputShape(OUTPUT_X_INDEX);
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(nodeName, "x is null."), return false);
+    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return false);
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(xDim0 != expertIdsDim0,
-                    OP_LOGE(nodeName, "xDim0 not equal to bs, bs = %ld, xDim0 = %ld", expertIdsDim0, xDim0),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "xDim0", "invalid",
+                        CreateErrorMsg("xDim0 not equal to bs, bs = %ld, xDim0 = %ld", expertIdsDim0, xDim0).data()),
                     return false);
     OP_TILING_CHECK(xDim1 != expandXDim1,
-                    OP_LOGE(nodeName, "xDim1 not equal to h, xDim1 = %ld, h = %ld", xDim1, expandXDim1), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "xDim1", "invalid",
+                        CreateErrorMsg("xDim1 not equal to h, xDim1 = %ld, h = %ld", xDim1, expandXDim1).data()),
+                    return false);
 
     return true;
 }
@@ -443,16 +575,19 @@ bool MoeDistributeCombineTilingBase::CheckTensorShape(gert::TilingContext *conte
 ge::graphStatus MoeDistributeCombineTilingBase::SetWorkspace(gert::TilingContext *context, const char *nodeName)
 {
     size_t *workspace = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        workspace == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "parameter", CreateErrorMsg("get workspace failed").data(), "valid"),
+        return ge::GRAPH_FAILED);
     workspace[0] = SYSTEM_NEED_WORKSPACE;
     OP_LOGD(nodeName, "workspace[0] size is %ld", workspace[0]);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeCombineTilingBase::SetHCommCfg(const gert::TilingContext *context,
-    MoeDistributeCombineTilingData *tiling,
-    const std::string groupEp, const std::string groupTp, const uint32_t tpWorldSize)
+                                                            MoeDistributeCombineTilingData *tiling,
+                                                            const std::string groupEp, const std::string groupTp,
+                                                            const uint32_t tpWorldSize)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "MoeDistributeCombine groupEp = %s", groupEp.c_str());
@@ -462,11 +597,13 @@ ge::graphStatus MoeDistributeCombineTilingBase::SetHCommCfg(const gert::TilingCo
     std::string algConfigReduceScatterStr = "ReduceScatter=level0:ring";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType1, algConfigAllToAllStr);
-    mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);   // 通过不拉起AICPU，提高算子退出性能
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE); // 通过不拉起AICPU，提高算子退出性能
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling1 failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling1 failed"),
+                    return ge::GRAPH_FAILED);
 
     if (tpWorldSize > 1) {
         OP_LOGD(nodeName, "MoeDistributeCombine groupTp = %s", groupTp.c_str());
@@ -474,21 +611,22 @@ ge::graphStatus MoeDistributeCombineTilingBase::SetHCommCfg(const gert::TilingCo
         mc2CcTilingConfig.SetOpType(opType2);
         mc2CcTilingConfig.SetAlgConfig(algConfigReduceScatterStr);
         OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2) != 0,
-            OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling2 failed"), return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling2 failed"),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeCombineTilingBase::CheckWinSize(const gert::TilingContext *context,
-    MoeDistributeCombineTilingData* tilingData,
-    const char *nodeName, uint32_t localMoeExpertNum)
+                                                             MoeDistributeCombineTilingData *tilingData,
+                                                             const char *nodeName, uint32_t localMoeExpertNum)
 {
     auto attrs = context->GetAttrs();
     uint64_t hcclBufferSizeEp = 0;
     uint64_t maxWindowSizeEp = 0;
-    OP_TILING_CHECK(mc2tiling::GetEpWinSize(
-        context, nodeName, hcclBufferSizeEp, maxWindowSizeEp, ATTR_GROUP_EP_INDEX, false) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "Get EP WinSize failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mc2tiling::GetEpWinSize(context, nodeName, hcclBufferSizeEp, maxWindowSizeEp, ATTR_GROUP_EP_INDEX,
+                                            false) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "Get EP WinSize failed"), return ge::GRAPH_FAILED);
     uint64_t h = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.h);
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.epWorldSize);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.globalBs) / epWorldSize;
@@ -508,13 +646,16 @@ ge::graphStatus MoeDistributeCombineTilingBase::CheckWinSize(const gert::TilingC
         uint64_t maxWindowSizeTp = 0;
         auto groupTpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
         OP_TILING_CHECK(mc2tiling::GetCclBufferSize(groupTpHccl, &maxWindowSizeTp, nodeName) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName, "Get Ep HcclBufferSizeTP failed, HcclBufferSizeTP is %lu", maxWindowSizeTp),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "Get Ep HcclBufferSizeTP failed, HcclBufferSizeTP is %lu", maxWindowSizeTp),
+                        return ge::GRAPH_FAILED);
         actualSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.a) * (h * 2UL + 128UL) * 2UL;
-        OP_TILING_CHECK((actualSize > maxWindowSizeTp), OP_LOGE(nodeName,
-            "TP HCCL_BUFFSIZE is too SMALL, A = %u, h = %lu, NEEDED_HCCL_BUFFSIZE(A * (h * 2UL + 128UL) * 2UL)"
-            " = %luMB, TP HCCL_BUFFSIZE=%luMB.", tilingData->moeDistributeCombineInfo.a,
-            h, actualSize / MB_SIZE + 1UL, maxWindowSizeTp / MB_SIZE), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (actualSize > maxWindowSizeTp),
+            OP_LOGE(nodeName,
+                    "TP HCCL_BUFFSIZE is too SMALL, A = %u, h = %lu, NEEDED_HCCL_BUFFSIZE(A * (h * 2UL + 128UL) * 2UL)"
+                    " = %luMB, TP HCCL_BUFFSIZE=%luMB.",
+                    tilingData->moeDistributeCombineInfo.a, h, actualSize / MB_SIZE + 1UL, maxWindowSizeTp / MB_SIZE),
+            return ge::GRAPH_FAILED);
         tilingData->moeDistributeCombineInfo.totalWinSizeTp = maxWindowSizeTp;
         OP_LOGD(nodeName, "TpwindowSize = %lu", maxWindowSizeTp);
     }
@@ -522,17 +663,17 @@ ge::graphStatus MoeDistributeCombineTilingBase::CheckWinSize(const gert::TilingC
 }
 
 bool MoeDistributeCombineTilingBase::CheckAttrs(gert::TilingContext *context,
-    MoeDistributeCombineTilingData &tilingData,
-    const char *nodeName, uint32_t &localMoeExpertNum)
+                                                MoeDistributeCombineTilingData &tilingData, const char *nodeName,
+                                                uint32_t &localMoeExpertNum)
 {
     OP_TILING_CHECK(!CheckExpertAttrs(context, tilingData, nodeName, localMoeExpertNum),
-        OP_LOGE(nodeName, "Check expert params failed."), return false);
+                    OP_LOGE(nodeName, "Check expert params failed."), return false);
 
     OP_TILING_CHECK(!CheckEpWorldSizeAttrs(context, tilingData, nodeName),
-        OP_LOGE(nodeName, "Check epworldsize params failed."), return false);
+                    OP_LOGE(nodeName, "Check epworldsize params failed."), return false);
 
-    OP_TILING_CHECK(!CheckBatchAttrs(context, tilingData, nodeName),
-        OP_LOGE(nodeName, "Check batch params failed."), return false);
+    OP_TILING_CHECK(!CheckBatchAttrs(context, tilingData, nodeName), OP_LOGE(nodeName, "Check batch params failed."),
+                    return false);
 
     return true;
 }
@@ -542,11 +683,12 @@ ge::graphStatus MoeDistributeCombineTilingBase::MoeDistributeCombineTilingFunc(g
     // 不支持 expandX数据类型为int32 type
     auto expandXDesc = context->GetInputDesc(EXPAND_X_INDEX);
     const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE(nodeName, "expandxDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"),
+                    return ge::GRAPH_FAILED);
     // 检查expandX数据类型为DT_INT32
     OP_TILING_CHECK((expandXDesc->GetDataType() == ge::DT_INT32),
-                    OP_LOGE(nodeName, "expandX dataType is invalid, dataType should be bf16 or float16, but is %s",
-                            Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX", Ops::Base::ToString(expandXDesc->GetDataType()),
+                                              "bf16 or float16"),
                     return ge::GRAPH_FAILED);
 
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();

@@ -17,21 +17,23 @@
 
 namespace optiling {
 
-ge::graphStatus AllGatherMatmulTilingA2A3::CheckValidRank(Mc2Tiling::AllGatherMatmulTilingData* tilingData,
-    const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK, gert::TilingContext *context,
-    uint32_t rankSize)
+ge::graphStatus AllGatherMatmulTilingA2A3::CheckValidRank(Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                                          const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
+                                                          gert::TilingContext *context, uint32_t rankSize)
 {
     // distinguish between 910A2 and 910A3
     auto it = std::find(VALID_RANK.at(tilingData->socParam.isA3).begin(),
-    VALID_RANK.at(tilingData->socParam.isA3).end(), rankSize);
+                        VALID_RANK.at(tilingData->socParam.isA3).end(), rankSize);
     OP_TILING_CHECK(it == VALID_RANK.at(tilingData->socParam.isA3).end(),
-    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-    "world_size value is %u, which is illegal.", rankSize), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "parameter",
+                        CreateErrorMsg("world_size value is %u, which is illegal.", rankSize).data(), "valid"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingA2A3::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
+void AllGatherMatmulTilingA2A3::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group)
 {
     auto commSets = mc2tiling::Mc2TilingUtils::GetCommSets(group);
     tilingData->socParam.isA3 = (commSets == mc2tiling::COMM_MESH) ? 0 : 1;
@@ -39,13 +41,13 @@ void AllGatherMatmulTilingA2A3::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData
     tilingData->socParam.isND2NZ = 1U;
 }
 
-std::string AllGatherMatmulTilingA2A3::GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData* tilingData)
+std::string AllGatherMatmulTilingA2A3::GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData)
 {
     return (tilingData->socParam.isA3 == 0) ? "AllGather=level0:fullmesh" : "AllGather=level0:doublering";
 }
 
-CutResult AllGatherMatmulTilingA2A3::GetCutResult(Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-    mc2tiling::TilingArgs& args)
+CutResult AllGatherMatmulTilingA2A3::GetCutResult(Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                                  mc2tiling::TilingArgs &args)
 {
     SocVersion inputSocVersion = (tilingData.socParam.isA3 == 0) ? SocVersion::SOC910_B : SocVersion::SOC910_93;
     AllGatherPlusMMA2A3 tileFormulate(args, args.rankDim, KernelType::ALL_GATHER, inputSocVersion);
@@ -69,4 +71,4 @@ IMPL_OP_OPTILING(AllGatherMatmul)
     .Tiling(AllGatherMatmulTilingFuncA2A3)
     .TilingParse<AllGatherMatmulCompileInfo>(TilingParseForAllGatherMatmul);
 
-}
+} // namespace optiling

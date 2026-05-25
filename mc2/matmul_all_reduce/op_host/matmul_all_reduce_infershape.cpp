@@ -117,7 +117,7 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
 
 static ge::graphStatus InferShapeForMatmulAllReduce(gert::InferShapeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(kInnerDebug, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     OP_LOGD(kInnerDebug, "Start to infer shape of matmul all reduce.");
     auto shape_out = context->GetOutputShape(static_cast<size_t>(MC2OutputIdx::K_Y));
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out);
@@ -142,7 +142,7 @@ static ge::graphStatus InferShapeForMatmulAllReduce(gert::InferShapeContext* con
 
 static ge::graphStatus InferDataTypeForMC2(gert::InferDataTypeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(kInnerDebug, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     OP_LOGD(kInnerDebug, "Start to infer datatype of MC2.");
     ge::DataType x1_type = context->GetInputDataType(static_cast<size_t>(MC2InputIdx::K_X1));
     ge::DataType x2_type = context->GetInputDataType(static_cast<size_t>(MC2InputIdx::K_X2));

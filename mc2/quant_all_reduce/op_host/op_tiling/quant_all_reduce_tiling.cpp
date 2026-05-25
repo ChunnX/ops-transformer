@@ -46,7 +46,7 @@ static void PrintTilingDataInfo(const gert::TilingContext *context, QuantAllRedu
  * @return
  */
 static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllReduceTilingData *tilingData,
-                        const TilingRunInfo &runInfo)
+                                   const TilingRunInfo &runInfo)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "group is %s in quant_all_reduce.", runInfo.group.c_str());
@@ -55,9 +55,9 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllR
     // MTE方式必须适配，且要在getTiling之前
     mc2CcTilingConfig.SetCommEngine(AIV_TYPE);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -134,17 +134,21 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
 
     QuantAllReduceTilingData *tilingData = context->GetTilingData<QuantAllReduceTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr in quant_all_reduce."),
+    OP_TILING_CHECK(tilingData == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "tilingData", "invalid",
+                                                          "tilingData is nullptr in quant_all_reduce."),
                     return ge::GRAPH_FAILED);
 
     TilingRunInfo runInfo = {};
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
- 	                OP_LOGE(nodeName, "NpuArch is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "NpuArch", "invalid",
+                                                          "NpuArch is invalid in quant_all_reduce."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     SetTilingData(context, *tilingData);
     SetXPerBlock(*tilingData);
     SetTilingKey(context);

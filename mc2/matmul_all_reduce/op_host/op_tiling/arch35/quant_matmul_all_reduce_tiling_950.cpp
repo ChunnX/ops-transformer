@@ -67,11 +67,13 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* g
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
-        OP_LOGE(opName_, "Get mc2InitTiling from quantMatmulAllReduceTilingData failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2InitTiling", "invalid", "failed to get tiling from quantMatmulAllReduceTilingData"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2CcTiling),
-        OP_LOGE(opName_, "Get mc2CcTiling from quantMatmulAllReduceTilingData failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2CcTiling", "invalid", "failed to get tiling from quantMatmulAllReduceTilingData"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -90,11 +92,12 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
-        OP_LOGE(opName_, "Get mc2InitTiling from quantMatmulAllReduceTilingData by SetMc2HcommTwoShot failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2InitTiling", "invalid", "SetMc2HcommTwoShot failed"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2CcTiling),
-        OP_LOGE(opName_, "Get mc2CcTiling from quantMatmulAllReduceTilingData by SetMc2HcommTwoShot failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "invalid", "SetMc2HcommTwoShot failed"),
         return ge::GRAPH_FAILED);
     mc2CcTilingConfig.SetGroupName(groupName);
     mc2CcTilingConfig.SetOpType(opType2);
@@ -102,7 +105,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
     mc2CcTilingConfig.SetReduceType(reduceType, dataType, dataType);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2CcTilingComm),
-        OP_LOGE(opName_, "Get mc2CcTilingComm from quantMatmulAllReduceTilingData by SetMc2HcommTwoShot failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2CcTilingComm", "invalid", "SetMc2HcommTwoShot failed"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -122,11 +126,11 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
-        OP_LOGE(opName_, "Get mc2InitTiling from quantMatmulAllReduceTilingData by SetMc2HcommRSAG failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2InitTiling", "invalid", "SetMc2HcommRSAG failed"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2CcTiling),
-        OP_LOGE(opName_, "Get mc2CcTiling from quantMatmulAllReduceTilingData by SetMc2HcommRSAG failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mc2CcTiling", "invalid", "SetMc2HcommRSAG failed"),
         return ge::GRAPH_FAILED);
     mc2CcTilingConfig.SetGroupName(groupName);
     mc2CcTilingConfig.SetOpType(opType2);
@@ -134,7 +138,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
     mc2CcTilingConfig.SetReduceType(reduceType, dataType1, dataType1);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2CcTilingComm),
-        OP_LOGE(opName_, "Get mc2CcTilingComm from quantMatmulAllReduceTilingData failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2CcTilingComm", "invalid", "failed to get tiling from quantMatmulAllReduceTilingData"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -147,31 +152,32 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
         VECTOR_INNER_ERR_REPORT_TILING(
             opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+                    return ge::GRAPH_FAILED);
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
         uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType, dataType) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
     } else {
         if (MutableRCSTilingData().isInputCommQuantScale == 1) {
             OP_TILING_CHECK(
                 SetMc2HcommRSAG(groupName, reduceType) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName_, "set Mc2Hcomm config By SetMc2HcommRSAG failed."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommRSAG failed"),
                 return ge::GRAPH_FAILED);
         } else if (MutableRCSTilingData().isInputCommQuantScale == QUANT_MODE_FP8) {
             uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
             OP_TILING_CHECK(
                 SetMc2HcommTwoShot(groupName, reduceType, dataType) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName_, "set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommTwoShot failed"),
                 return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK(
                 SetMc2HcommAllReduce(groupName, reduceType) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName_, "set Mc2Hcomm config By SetMc2HcommAllReduce failed."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommAllReduce failed"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -209,15 +215,15 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckHCCLSize()
     // 如果1行数据就超通信数据量限制，那么任何M切分方式都无法满足
     uint64_t sizeOfSingleM = static_cast<uint64_t>(param.rankN) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), "
-            "the size %lu still exceeds 256MB.", sizeOfSingleM),
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            opName_, "matmul output", std::to_string(sizeOfSingleM), "size still exceeds 256MB after splitting to (1, n)"),
         return ge::GRAPH_FAILED);
     // 如果按通信最大次数切分，能够满足通信数据量限制，那么继续做tiling
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM),
         mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), "
-            "the size %lu still exceeds 256MB.", sizeOfSplitM),
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            opName_, "x1", std::to_string(sizeOfSplitM), "size still exceeds 256MB after splitting M into 16 parts"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -454,12 +460,14 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSize()
     if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_) && !MutableRCSTilingData().isInputCommQuantScale) {
         OP_TILING_CHECK(
             GetWorkspaceSizeForA2ARSAG(gmcFloat) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeForA2ARSAG failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "workspace size", "invalid", "GetWorkspaceSizeForA2ARSAG failed"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             GetWorkspaceSizeOfCommQuantScaleOrFP8(gmcFloat) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeOfCommQuantScaleOrFP8 failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "workspace size", "invalid", "GetWorkspaceSizeOfCommQuantScaleOrFP8 failed"),
             return ge::GRAPH_FAILED);
     }
     OP_LOGI(opName_, "Set max workspace size=%lu to context.", myWorkSpaceSize_);
@@ -483,7 +491,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), sizeof(QuantMatmulAllReduceTilingDataA5));
     if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d.", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
         return ge::GRAPH_FAILED;
     }
 

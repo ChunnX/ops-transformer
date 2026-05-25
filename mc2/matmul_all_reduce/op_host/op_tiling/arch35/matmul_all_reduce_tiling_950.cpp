@@ -38,7 +38,8 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
         return ge::GRAPH_FAILED);
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+                    return ge::GRAPH_FAILED);
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
@@ -47,11 +48,13 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
     }
     OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
-            OP_LOGE(opName_, "Get mc2InitTiling from matmulAllReduce910TilingData failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "mc2InitTiling", "invalid", "failed to get tiling from matmulAllReduce910TilingData"),
             return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2CcTiling),
-        OP_LOGE(opName_, "Get mc2CcTiling from matmulAllReduce910TilingData failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2CcTiling", "invalid", "failed to get tiling from matmulAllReduce910TilingData"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -70,11 +73,13 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
-        OP_LOGE(opName_, "Get mc2InitTiling from MatmulAllReduce910TilingDataA5 failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2InitTiling", "invalid", "failed to get tiling from MatmulAllReduce910TilingDataA5"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2CcTiling),
-        OP_LOGE(opName_, "Get mc2CcTiling from MatmulAllReduce910TilingDataA5 failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2CcTiling", "invalid", "failed to get tiling from MatmulAllReduce910TilingDataA5"),
         return ge::GRAPH_FAILED);
     mc2CcTilingConfig.SetGroupName(groupName);
     mc2CcTilingConfig.SetOpType(opType2);
@@ -82,7 +87,8 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
     mc2CcTilingConfig.SetReduceType(reduceType, dataType, dataType);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2CcTilingComm),
-        OP_LOGE(opName_, "Get mc2CcTilingComm from MatmulAllReduce910TilingDataA5 failed."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "mc2CcTilingComm", "invalid", "failed to get tiling from MatmulAllReduce910TilingDataA5"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -95,12 +101,14 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2Hcomm()
     if (isUseA2APath) {
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "MatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommTwoShot failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommTwoShot failed"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             SetMc2HcommAllReduce(groupName, reduceType) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "MatmulAllReduceTilingA5 set Mc2Hcomm config By SetMc2HcommAllReduce failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "Mc2Hcomm config", "invalid", "SetMc2HcommAllReduce failed"),
             return ge::GRAPH_FAILED);
     }
     
@@ -232,7 +240,8 @@ ge::graphStatus MatmulAllReduceTilingA5::PostTiling()
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&matmulAllReduce910TilingData_), sizeof(MatmulAllReduce910TilingDataA5));
     if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d.", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s ret", std::to_string(ret), "failed to copy tiling data");
         return ge::GRAPH_FAILED;
     }
 
@@ -284,7 +293,7 @@ ge::graphStatus MatmulAllReduceTilingA5::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2Ma
     tilingCfg.SetRankDim(args_.rankDim);
     tilingCfg.SetMatMulV3TilingData(tilingData);
     if (Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(opName_, "Failed to do MatmulV3Tiling.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "MatmulV3Tiling", "invalid", "failed to do MatmulV3Tiling");
         return ge::GRAPH_FAILED;
     }
 

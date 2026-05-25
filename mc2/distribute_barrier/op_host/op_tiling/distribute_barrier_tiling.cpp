@@ -290,4 +290,4 @@ ge::graphStatus TilingParseForDistributeBarrier(gert::TilingParseContext *contex
 IMPL_OP_OPTILING(DistributeBarrier)
     .Tiling(DistributeBarrierTilingFunc)
     .TilingParse<DistributeBarrierCompileInfo>(TilingParseForDistributeBarrier);
-}  // end of namespace optiling
+} // end of namespace optiling
