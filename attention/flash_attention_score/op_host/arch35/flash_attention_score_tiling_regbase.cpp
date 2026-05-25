@@ -156,9 +156,22 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
             "nextTokens will be reset min int value.", nextTokens);
         nextTokens = std::numeric_limits<int32_t>::min();
     }
-    OP_CHECK_IF(n1Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "head num is zero."), return false);
-    OP_CHECK_IF(keepProb <= 0.0 || keepProb > 1.0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "keepProb value must be in range of (0, 1]."), return false);
+    OP_CHECK_IF(
+        n1Size == 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, 
+            "n1Size", 
+            std::to_string(n1Size), 
+            "The head number cannot be zero.");
+        return false);
+    OP_CHECK_IF(
+        (keepProb <= 0.0) || (keepProb > 1.0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, 
+            "keepProb", 
+            std::to_string(keepProb), 
+            "keepProb value must be in range of (0, 1].");
+        return false);
     keepProbUint8 = static_cast<int64_t>(keepProb * UINT8_MAX);
     hasDropOut = (keepProb < 1.0f);
 
@@ -192,8 +205,15 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
     if (attrs->GetAttrNum() > idx) {
         auto pseTypePtr = attrs->GetAttrPointer<int64_t>(idx++);
         pseType = *pseTypePtr;
-        OP_CHECK_IF(pseType < 0 || pseType >= static_cast<uint8_t>(PseType::PSE_INVALID_TYPE),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "pseType value is out of range"), return false);
+        OP_CHECK_IF(
+            (pseType < 0) || (pseType >= static_cast<uint8_t>(PseType::PSE_INVALID_TYPE)),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, 
+                "pseType", 
+                std::to_string(pseType), 
+                "pseType value must be in range of [0, " + 
+                std::to_string(static_cast<uint8_t>(PseType::PSE_INVALID_TYPE) - 1) "].");
+            return false);
     }
     if (attrs->GetAttrNum() > idx) {
         auto seedPtr = attrs->GetAttrPointer<int64_t>(idx++);
@@ -290,7 +310,11 @@ bool FlashAttentionScoreTilingRegbase::GetActualSeqLenData(
     try {
         res.reserve(seqLen);
     } catch (...) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName, "Init actual_seq_len failed, array is too long.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, 
+            "seqLen", 
+            std::to_string(seqLen), 
+            "Init actual_seq_len failed, array is too long.");
         return false;
     }
     res.emplace_back(value[0]);
@@ -364,7 +388,14 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
                                             queryShape.GetDim(1)),
                 return false);
     n2Size = keyShape.GetDim(1);
-    OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
+    OP_CHECK_IF(
+        n2Size == 0, 
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, 
+            "n2Size", 
+            std::to_string(n2Size), 
+            "n2Size should be larger than 0."), 
+        return false);
     gSize = queryShape.GetDim(1) / n2Size;
     dSize = queryShape.GetDim(DIM_NUM_2);
     dSizeV = valueShape.GetDim(DIM_NUM_2);
@@ -425,13 +456,26 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
         } else {
             return false;
         }
-        OP_CHECK_IF(h1 == 0 || h2 == 0 || h3 == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "H is zero."), return false);
+        OP_CHECK_IF(
+            (h1 == 0) || (h2 == 0) || (h3 == 0), 
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, 
+                "h1, h2, h3", 
+                std::to_string(h1) + ", " + std::to_string(h2) + ", " + std::to_string(h3), 
+                "h1(n1Size * dSize), h2(n2Size * dSize), h3(n2Size * dSizeV) should be larger than 0."),
+            return false);
         OP_CHECK_IF(h1 % n1Size != 0,
                    OPS_REPORT_VECTOR_INNER_ERR(opName, "h1 [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
                    return false);
-        OP_CHECK_IF(hRope % n1Size != 0,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "hRope [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
-                   return false);
+        OP_CHECK_IF(
+            hRope % n1Size != 0,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "hRope [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, 
+                "hRope, n1Size", 
+                std::to_string(hRope) + ", " + std::to_string(n1Size), 
+                "hRope should be a multiple of n1Size."),
+            return false);
         dSize = h1 / n1Size;
         gSize = h1 / h2;
         dSizeRope = hRope / n1Size;
@@ -453,7 +497,14 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             s1Size = queryShape.GetDim(1);
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2); // 2: N idx
-            OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
+            OP_CHECK_IF(
+                n2Size == 0, 
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName, 
+                    "n2Size", 
+                    std::to_string(n2Size), 
+                    "n2Size should be larger than 0."),
+                return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(2),
                        OPS_REPORT_VECTOR_INNER_ERR(opName, "head_num is [%ld], but got query dim2 [%ld].", n1Size,
                                                    queryShape.GetDim(2)),
@@ -473,7 +524,14 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
                    inputLayout[2] == 'S' && inputLayout[3] == 'D') {
             bSize = queryShape.GetDim(0);
             n2Size = keyShape.GetDim(1); // 1: N idx
-            OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
+            OP_CHECK_IF(
+                n2Size == 0, 
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName, 
+                    "n2Size", 
+                    std::to_string(n2Size), 
+                    "n2Size should be larger than 0."),
+                return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                        OPS_REPORT_VECTOR_INNER_ERR(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size,
                                                    queryShape.GetDim(1)),
@@ -502,8 +560,14 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
 {
     opName = context_->GetNodeName();
     OP_LOGD(opName, "TilingContext: %s.", GetTilingContextDebugStr().c_str());
-    OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid context."),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckContext() != ge::GRAPH_SUCCESS, 
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, 
+            "context", 
+            "", 
+            "Failed to get attribute from context. Please check whether the input is correct or whether the context is null."),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout() || !AnalyzeOptionalInput(),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
@@ -522,6 +586,11 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
 
     if (hasRope && (dSize != 128 || dSizeRope != 64)) {
         OPS_REPORT_VECTOR_INNER_ERR(opName, "MLA concat only support dSize=128, dSizeRope=64.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, 
+            "hasRope, dSize, dSizeRope",
+            "std::to_string(hasRope) + ", " + std::to_string(dSize) + ", " + std::to_string(dSizeRope)", 
+            "MLA concat only support dSize=128, dSizeRope=64.."),
         return ge::GRAPH_FAILED;
     }
 
@@ -1282,9 +1351,11 @@ bool FlashAttentionScoreTilingRegbase::SparseBandModeCheck(int64_t maxS1Val, int
             sparseType = SparseEnum::BAND;
             return true;
         } else {
-            OP_LOGE(context_,
-                      "PreTokens[%ld] and nextTokens[%ld] config error with S1[%ld], there is no valid data block.",
-                      oriPreTokens, oriNextTokens, minS1Val);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, 
+                "PreTokens, nextTokens, s1", 
+                std::to_string(oriPreTokens) + ", " + std::to_string(oriNextTokens) + ", " + std::to_string(minS1Val), 
+                "Under the current config of pretoken, nextoken and s1, there is no valid data block.");
             return false;
         }
     }
@@ -1300,9 +1371,11 @@ bool FlashAttentionScoreTilingRegbase::SparseBandModeCheck(int64_t maxS1Val, int
             sparseType = SparseEnum::BAND;
             return true;
         } else {
-            OP_LOGE(context_,
-                      "PreTokens[%ld] and nextTokens[%ld] config error with S2[%ld], there is no valid data block.",
-                      oriPreTokens, oriNextTokens, minS2Val);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, 
+                "PreTokens, nextTokens, s2", 
+                std::to_string(oriPreTokens) + ", " + std::to_string(oriNextTokens) + ", " + std::to_string(minS2Val), 
+                "Under the current config of pretoken, nextoken and s2, there is no valid data block.");
             return false;
         }
     }
@@ -1340,7 +1413,11 @@ bool FlashAttentionScoreTilingRegbase::GetSparseInfo(SparseEnum &sparseType)
     OP_LOGD(context_, "check sparse info: preTokens[%ld], nextTokens[%ld], s1[%ld], s2[%ld], hasAttenMask[%d].",
               preTokens, nextTokens, s1Size, s2Size, hasAttenMask);
     if (sparseMode > static_cast<int64_t>(SparseMode::PREFIX_COMPRESS)) {
-        OP_LOGE(context_, "Not support sparse mode of %ld.", sparseMode);
+        OP_LOGE_FOR_INVALID_VALUE(
+                opName, 
+                "sparseMode", 
+                std::to_string(sparseMode), 
+                "[0, " + std::to_string(SparseMode::PREFIX_COMPRESS) + "]");
         return false;
     }
 
@@ -1635,8 +1712,11 @@ SparseEnum FlashAttentionScoreTilingRegbase::GetPrefixNList(std::ostringstream &
     }
     if (isPrefixNullptr) {
         if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX_COMPRESS)) {
-            OP_LOGE(context_, "[%s] prefixN must be provided when sparseMode=6.", templateName);
-            failReason << "prefixN must be provided when sparseMode=6";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, 
+                "prefixN", 
+                "", 
+                "PrefixN must be provided when sparseMode=6.");
         } else {
             OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
             failReason << "prefixN is null pointer while sparse mode is prefix";
