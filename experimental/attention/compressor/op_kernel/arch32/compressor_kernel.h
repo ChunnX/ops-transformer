@@ -17,11 +17,12 @@
 #define COMPRESSOR_KERNEL_H
 
 #include "compressor_comm.h"
-#include "../compressor_template_tiling_key.h"
-#include "../compressor_tiling_data.h"
+#include "compressor_template_tiling_key.h"
+#include "compressor_tiling_data.h"
 #include "compressor_tools.h"
 #include "compressor_block_cube.h"
 #include "compressor_block_vec.h"
+
 
 using namespace AscendC;
 
@@ -205,22 +206,34 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     SetBaseSize(); // 设置基本块大小
     CalcSplitCoreInfo();
     // 2. 计算循环次数
-    loopTimes = GetLoopTimes();     // TODO 似乎可以不用计算
+    loopTimes = GetLoopTimes();
     // 3. 初始化workspace
     InitWorkspace(workspace);
     // 4. 初始化block层
     if ASCEND_IS_AIC {
+#if __CCE_AICORE__ == 310
         blockCube_.InitParams(constInfo, tools_);
+#else
+        blockCube_.InitParams(constInfo, tools_);
+#endif
         blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, 
             stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
+#if __CCE_AICORE__ == 310
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
+#else
+        blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
+#endif
     } else {
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable, 
                         cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
+#if __CCE_AICORE__ == 310
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
+#else 
+        blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
+#endif
     }
 }
 
@@ -382,12 +395,10 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
         uint32_t curDealTcNum = 0;
         uint32_t curDealCompressedTcNum = 0;
         // 无法处理完当前整个batch
-        // printf("[SkipOneLoop] quota:%u, remSeqCnt:%u\n", quota, batchInfo.remSeqCnt);
         if (quota < batchInfo.remSeqCnt) {
             // 向下对齐r，
             if (quota > constInfo.cmpRatio - batchInfo.headHolderSeq) {
                 uint32_t delta = (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
-                // TODO 下面两处检视一下容易减翻
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
                 curDealTcNum = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
@@ -433,7 +444,6 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
         basicBlockInfo.dealSeqCnt = (remaining < constInfo.mBaseSize) ? remaining : constInfo.mBaseSize;
     }
     
-    // printf("[SkipOneLoop] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", basicBlockInfo.bIdx, basicBlockInfo.sIdx, basicBlockInfo.dealTcNum, basicBlockInfo.compressedTcNum);
     return basicBlockInfo;
 }
 
@@ -471,24 +481,6 @@ __aicore__ inline void CompressorKernel<COMP>::CalcSplitCoreInfo()
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
-
-    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, dBaseSize:%u, dBasicBlockNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.dBaseSize, constInfo.dBasicBlockNum, constInfo.curGroupIdx, constInfo.mBaseSize);
-
-    // // 单组核在T方向处理的最大基本块数量
-    // constInfo.singleCoreDealTcBasicNum = (constInfo.tcBasicBlockNum + constInfo.coreGroupNum - 1) / constInfo.coreGroupNum;
-    // // 尾组所在id
-    // constInfo.tailGroupIdx = (constInfo.tcBasicBlockNum - 1) / constInfo.singleCoreDealTcBasicNum;
-    // // 尾组处理基本块数量
-    // constInfo.tailBasicBlockNum = constInfo.tcBasicBlockNum - constInfo.tailGroupIdx * constInfo.singleCoreDealTcBasicNum;
-
-    // // 计算当前核需要处理的基本块个数
-    // if (constInfo.curGroupIdx < constInfo.tailGroupIdx) {
-    //     constInfo.realDealBasicBlockNum = constInfo.singleCoreDealTcBasicNum;
-    // } else if (constInfo.curGroupIdx > constInfo.tailGroupIdx) {
-    //     constInfo.realDealBasicBlockNum = 0;
-    // } else {
-    //     constInfo.realDealBasicBlockNum = constInfo.tailBasicBlockNum;
-    // }
 }
 
 template <typename COMP>
@@ -535,7 +527,6 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeMm1(const RunInfo &info, bool isNeedExcute) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + info.cubeDbIdx);
     if (isNeedExcute) {
-        // printf("[MM1] bStart:%u, sStart:%u, dealSeqCnt:%u, dealTcNum:%u, dealScSize:%u, cubeDbIdx:%u\n", info.bStart, info.sStart, info.dealSeqCnt, info.dealTcNum, info.dealScSize, info.cubeDbIdx);
         blockCube_.ComputeMm1(info);
     }
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
@@ -547,7 +538,6 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const Vec1RunInfo &info) {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
-    // printf("[VEC1] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u, c1v1DbIdx:%u, v1v2DbIdx:%u\n", info.bStart, info.sStart, info.dealTcNum, info.dealScSize, info.c1v1DbIdx, info.v1v2DbIdx);
     blockVec_.ComputeVec1(info);
     CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
@@ -557,7 +547,6 @@ __aicore__ inline void CompressorKernel<COMP>::ComputeVec1(const Vec1RunInfo &in
 
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::ComputeVec2(const Vec2RunInfo &info) {
-    // printf("[VEC2] bStart:%u, sStart:%u, bCompressedId:%u, dealScSize:%u, v2DbIdx:%u\n", info.bStart, info.sStart, info.bCompressedId, info.dealScSize, info.v2DbIdx);
     blockVec_.ComputeVec2(info);
 }
 
@@ -682,7 +671,6 @@ __aicore__ inline void CompressorKernel<COMP>::Process()
         RunInfo &extraInfo0 = extraInfo[0];
         CalcC1V1Params(extraInfo0, vec1Info, batchInfo, i);
         bool isNeedExcuteC1 = IsNeedExcuteC1(extraInfo0);
-        // printf("[LOOP] bStart:%u, sStart:%u, dealTcNum:%u, dealScSize:%u\n", extraInfo0.bStart, extraInfo0.sStart, vec1Info.dealTcNum, vec1Info.dealScSize);
 
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0, isNeedExcuteC1);

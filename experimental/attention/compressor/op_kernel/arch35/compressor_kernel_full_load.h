@@ -17,8 +17,8 @@
 #define COMPRESSOR_KERNEL_FULL_LOAD_H
 
 #include "compressor_comm.h"
-#include "../compressor_template_tiling_key.h"
-#include "../compressor_tiling_data.h"
+#include "compressor_template_tiling_key.h"
+#include "compressor_tiling_data.h"
 #include "compressor_tools.h"
 #include "compressor_block_cube_full_load.h"
 #include "compressor_block_vec_full_load.h"
