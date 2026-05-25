@@ -107,6 +107,6 @@ inline void InitTilingData(uint8_t* tiling, MoeGatingTopKRegbaseTilingData* cons
     MoeGatingTopKTilingData tiling_data;         \
     InitTilingData(tiling_arg, &tiling_data)
 
-#define DTYPE_X half
+#define DTYPE_X float
 
 #endif
