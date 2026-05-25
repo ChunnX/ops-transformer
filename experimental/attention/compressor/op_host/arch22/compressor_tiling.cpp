@@ -315,9 +315,25 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData* tilin
         }
     }
 
-    baseParams_->usedCoreNum = aicNum_;
+    uint32_t usedCoreNum = aicNum_;
+    if (context_->templateId == TemplateId::PERF && baseParams_->tokenSize <= 64U) {
+        const uint32_t headDim = baseParams_->headDim;
+        uint32_t dBlockNum = 0U;
+        if (headDim == 128U) {
+            dBlockNum = 8U;
+        } else if (headDim == 512U) {
+            dBlockNum = 16U;
+        }
+        if (dBlockNum != 0U) {
+            const uint32_t alignedCoreNum = (aicNum_ / dBlockNum) * dBlockNum;
+            if (alignedCoreNum != 0U) {
+                usedCoreNum = alignedCoreNum;
+            }
+        }
+    }
+    baseParams_->usedCoreNum = usedCoreNum;
 
-    context_->blockDim = aicNum_;
+    context_->blockDim = usedCoreNum;
 
     OP_LOGI("Run big kernel");
 
