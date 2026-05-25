@@ -225,21 +225,23 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
     // G=1 fast path: exact original logic (known correct for all cases 1-18)
     if (G == 1) {
         uint64_t expertoffset = 0UL;
-        uint64_t mmInOffset = 0;
-        uint64_t mmOutOffset = 0;
-        uint32_t tokenNumVal = 0;
+        uint64_t mmInOffset[2] = {0};
+        uint64_t mmOutOffset[2] = {0};
+        uint64_t mmWeightOffset[2] = {0};
+        uint32_t tokenNum[2] = {0};
         uint32_t processNum = 1;
         for (uint64_t i = 0UL; i < E; i++) {
             uint64_t curTokenNum = 0;
             for (uint64_t j = 0; j < rankDim_; j++) {
                 curTokenNum += static_cast<uint64_t>(sendCnt[i + j * E]);
             }
-            mmInOffset = expertoffset;
-            mmOutOffset = expertoffset / axisH_ * axisN1_;
-            tokenNumVal = static_cast<uint32_t>(curTokenNum);
+            mmInOffset[0] = expertoffset;
+            mmOutOffset[0] = expertoffset / axisH_ * axisN1_;
+            mmWeightOffset[0] = i * axisH_ * axisN1_;
+            tokenNum[0] = static_cast<uint32_t>(curTokenNum);
             if ASCEND_IS_AIC {
-                if (tokenNumVal != 0) {
-                    gmmOp.Process(this->rankId_, axisH_, axisN1_, &mmInOffset, &mmOutOffset, &tokenNumVal, processNum, i);
+                if (tokenNum[0] != 0) {
+                    gmmOp.Process(this->rankId_, axisH_, axisN1_, mmInOffset, mmOutOffset, tokenNum, processNum, i);
                 }
             }
             SyncAll<false>();
