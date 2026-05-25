@@ -97,7 +97,7 @@ public:
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 public:
-    __aicore__ inline void Init(const Params &params);
+    __aicore__ inline void Init(const Params &params, AscendC::TPipe *pipe);
     __aicore__ inline auto GetL0c2UbTensor();
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
@@ -139,8 +139,8 @@ private:
     AscendC::GlobalTensor<DataTypeOut> mmQuantOutGm_;
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MNSD};
-    AscendC::LocalTensor<float> l0cOutUbFloat_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MNSD};
+    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, DETER_UB_SIZED, MAX_SINGLE_MNSD};
+    AscendC::LocalTensor<float> l0cOutUbFloat_{AscendC::TPosition::VECIN, DETER_UB_SIZED, MAX_SINGLE_MNSD};
     AscendC::LocalTensor<float> logitUbPing_;
     AscendC::LocalTensor<float> logitUbPong_;
     AscendC::LocalTensor<DataTypeX2Scale> x2ScaleUbPing_;
@@ -151,7 +151,7 @@ private:
     AscendC::LocalTensor<BiasDtype> biasUbPong_;
     AscendC::LocalTensor<DataTypeOut> outUbPing_;
     AscendC::LocalTensor<DataTypeOut> outUbPong_;
-    AscendC::LocalTensor<DataTypeOut> deterDmaUb_;
+    AscendC::TQueBind<AscendC::TPosition::VECIN, AscendC::TPosition::VECOUT, 1> deterDmaQue_;
 
     const Params *params_;
     int64_t n_;
@@ -191,14 +191,14 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::Init(
-    Params const &params)
+    Params const &params, AscendC::TPipe *pipe)
 {
     if ASCEND_IS_AIC {
         return;
     }
     params_ = &params;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
-    uint32_t afterFirstIn = MAX_SINGLE_MNSD * sizeof(DataTypeOut);
+    uint32_t afterFirstIn = DETER_UB_SIZED + MAX_SINGLE_MNSD * sizeof(DataTypeOut);
     logitUbPing_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterFirstIn, BLOCKS_BYTESD);
     uint32_t afterSecondIn = afterFirstIn + BLOCKS_BYTESD * sizeof(float);
     logitUbPong_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterSecondIn, BLOCKS_BYTESD);
@@ -219,11 +219,10 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     outUbPong_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT,
                                                    afterBiasPong + HALF_DB_MAX_SINGLE_MNSD * sizeof(DataTypeOut),
                                                    HALF_DB_MAX_SINGLE_MNSD);
-    uint32_t afterOutPong = afterBiasPong + 2 * HALF_DB_MAX_SINGLE_MNSD * sizeof(DataTypeOut);
-    deterDmaUb_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT, afterOutPong, DETER_UB_SIZED / sizeof(DataTypeOut));
 
     if (params_->workspaceGM != nullptr) {
         isDeter_ = true;
+        pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
         constexpr uint32_t SYS_WS_SIZE = 16 * 1024 * 1024U;
         mmQuantOutGm_.SetGlobalBuffer(
             reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM) + SYS_WS_SIZE / sizeof(DataTypeOut));
@@ -550,32 +549,21 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint64_t nOff = 0; nOff < nSize; nOff += baseN) {
         uint64_t curN = (nOff + baseN > nSize) ? (nSize - nOff) : baseN;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(curN * sizeof(DataTypeOut)), 0, 0, 0};
+        auto local = deterDmaQue_.AllocTensor<DataTypeOut>();
+        DataCopyPad(local, mmQuantOutGm_[mOffset * nSize + nOff], copyParams, DataCopyPadExtParams<DataTypeOut>{});
+        deterDmaQue_.EnQue(local);
+        auto readLocal = deterDmaQue_.DeQue<DataTypeOut>();
         if (mOffset < 3 && nOff == 0) {
-            printf("[DETER-FLUSH-PRE] blk=%u mOff=%llu nOff=%llu readIdx=%llu blockLen=%u baseN=%llu nSize=%llu\n",
-                GetBlockIdx(), mOffset, nOff, mOffset * nSize + nOff,
-                static_cast<uint32_t>(curN * sizeof(DataTypeOut)), baseN, nSize);
-        }
-        DataCopyPad(deterDmaUb_, mmQuantOutGm_[mOffset * nSize + nOff], copyParams, {});
-        if (mOffset < 3 && nOff == 0) {
-            printf("[DETER-FLUSH-CPY] blk=%u mOff=%llu nOff=%llu DataCopyPad done\n",
-                GetBlockIdx(), mOffset, nOff);
-        }
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
-        if (mOffset < 3 && nOff == 0) {
-            printf("[DETER-FLUSH-SFLAG] blk=%u mOff=%llu SetFlag MTE2_V(0) done\n",
-                GetBlockIdx(), mOffset);
-        }
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-        if (mOffset < 3 && nOff == 0) {
-            printf("[DETER-FLUSH-WFLAG] blk=%u mOff=%llu WaitFlag MTE2_V(0) done, wsRead[0..2]=%f %f %f\n",
+            printf("[DETER-FLUSH] blk=%u mOff=%llu wsRead[0..2]=%f %f %f\n",
                 GetBlockIdx(), mOffset,
-                static_cast<float>(deterDmaUb_.GetValue(0)),
-                static_cast<float>(deterDmaUb_.GetValue(1)),
-                static_cast<float>(deterDmaUb_.GetValue(2)));
+                static_cast<float>(readLocal.GetValue(0)),
+                static_cast<float>(readLocal.GetValue(1)),
+                static_cast<float>(readLocal.GetValue(2)));
         }
         SetAtomicAdd<float>();
-        DataCopyPad(yGlobal_[outRow * nSize + nOff], deterDmaUb_, copyParams);
+        DataCopyPad(yGlobal_[outRow * nSize + nOff], readLocal, copyParams);
         SetAtomicNone();
+        deterDmaQue_.FreeTensor(readLocal);
     }
 }
 

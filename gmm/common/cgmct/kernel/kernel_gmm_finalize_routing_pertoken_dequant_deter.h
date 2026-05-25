@@ -350,8 +350,6 @@ public:
 
     __aicore__ inline void FinalFlush(const Params &params)
     {
-        if ASCEND_IS_AIC return;
-
         printf("[DETER-FLUSH] winStart=%llu curGroupM=%llu totalM=%llu coreNumVec=%llu blk=%u\n",
             deterSync_.windowStartM, deterSync_.curGroupM,
             deterSync_.curGroupM - deterSync_.windowStartM,
@@ -407,7 +405,7 @@ public:
 
         SyncAll<false>();
         if ASCEND_IS_AIV {
-            epilogueDequantOp_.Init(params.epilogueParams);
+            epilogueDequantOp_.Init(params.epilogueParams, GetTPipePtr());
         }
         uint32_t groupNum = params.gmmParams.groupNum;
         if constexpr (formatB == CubeFormat::NZ) {
