@@ -130,6 +130,7 @@ public:
     uint64_t tilingDtype = TILING_DTYPE_UNKNOWN;
     uint64_t tilingKey = TILING_KEY_PREFIX;
     bool isTndLayOut = false;
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND310P;
     RotaryPositionEmbeddingTilingData tiling;
     RotateHalfParams &tilingData_ = tiling.rotateHalfParams;
     ge::graphStatus DoRotateHalfTiling();
@@ -476,6 +477,12 @@ inline bool RotateHalfTiling::CalcFullLoadXDTiling(
 
 inline bool RotateHalfTiling::CheckRotHalfFullLoadXDConds(const ge::DataType &origType, const uint64_t ubSize)
 {
+    // FullLoadXD kernel only supports 910B and 910C
+    if (socVersion != platform_ascendc::SocVersion::ASCEND910_93 && 
+        socVersion != platform_ascendc::SocVersion::ASCEND910B) {
+        return false;
+    }
+
     // XY1D: second to last dim of RoPE MUST BE 1
     uint64_t axisR3 = tilingData_.get_axisLenR3();
     uint64_t dLength = tilingData_.get_dLength();  // Dim
@@ -656,6 +663,7 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     coreNum = aivNum;
+    socVersion = ascendcPlatform.GetSocVersion();
 
     // get x and r shape. layout: [..., head_dim]
     auto inputXShapePtr = context->GetInputShape(INDEX_INPUT_X);
