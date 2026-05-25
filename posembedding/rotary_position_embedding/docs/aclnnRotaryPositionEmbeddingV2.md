@@ -329,14 +329,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。
-- <font color="red">满足以下条件的shape支持自适应分核策略，优先满载UB，从而减少启动核数。</font>
-  - 输入input (x_dim0，x_dim1, x_dim2, x_dim3)或(x_dim1, x_dim2, x_dim3)
-  - 输入r1/r2 (r_dim0, r_dim1, r_dim2, r_dim3)或(r_dim1, r_dim2, r_dim3)
-  - r_dim2 等于 1
-  - (x_dim0==r_dim0 && x_dim1==r_dim1）||（r_dim0 * r_dim1 * r_dim2==1)
-  - x_dim3 <= 64
-  - 对于float32类型输入：8 * x_dim2 * x_dim3 + 8 * x_dim3 <= UBsize
-  - 对于float16/bfloat16类型输入：10 * x_dim2 * x_dim3 + 12 * x_dim3 <= UBsize
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
