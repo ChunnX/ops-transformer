@@ -113,8 +113,10 @@ static ge::graphStatus CheckAxisKShapeForAlltoAllMatmul(const gert::InferShapeCo
               AXIS_K_UPPER_LIMIT, shape.k1, shape.k2), return ge::GRAPH_FAILED);
     if (shape.k1 != shape.k2 / shape.rankNum) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x1 and x2",
-            ("x1.k=" + std::to_string(shape.k1) + ", x2.k=" + std::to_string(shape.k2) + ", rankSize=" + std::to_string(shape.rankNum)).c_str(),
-            "x1.k must be the same to x2.k / rankSize in allto_all_matmul");
+                                              ("x1.k=" + std::to_string(shape.k1) + ", x2.k=" +
+                                               std::to_string(shape.k2) + ", rankSize=" + std::to_string(shape.rankNum))
+                                                  .c_str(),
+                                              "x1.k must be the same to x2.k / rankSize in allto_all_matmul");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

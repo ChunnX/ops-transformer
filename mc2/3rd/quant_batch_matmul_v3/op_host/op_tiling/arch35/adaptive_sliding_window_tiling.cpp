@@ -116,7 +116,9 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::GetPlatformInfo()
 {
     OP_LOGE_IF(!SetPlatformInfoForTiling(), ge::GRAPH_FAILED, inputParams_.opName, "SetPlatformInfo fail");
     if (aicoreParams_.aicNum == 0UL || aicoreParams_.l1Size == 0UL || aicoreParams_.l0cSize == 0UL) {
-        std::string valStr = "coreNum=" + std::to_string(aicoreParams_.aicNum) + ", L1Size=" + std::to_string(aicoreParams_.l1Size) + ", L0cSize=" + std::to_string(aicoreParams_.l0cSize);
+        std::string valStr = "coreNum=" + std::to_string(aicoreParams_.aicNum) +
+                             ", L1Size=" + std::to_string(aicoreParams_.l1Size) +
+                             ", L0cSize=" + std::to_string(aicoreParams_.l0cSize);
         OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "coreNum/L1Size/L0cSize", valStr.c_str(), "non-zero");
         return ge::GRAPH_FAILED;
     }
@@ -331,9 +333,10 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
                 ? ops::CeilAlign(adaptiveWin_.baseM, CUBE_BLOCK)
                 : ops::CeilAlign(adaptiveWin_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
         adaptiveWin_.baseN = std::min(inputParams_.nSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_256));
-        adaptiveWin_.baseN = inputParams_.transB ? ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK)
-                                                : ops::CeilAlign(adaptiveWin_.baseN,
-                                                                GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
+        adaptiveWin_.baseN =
+            inputParams_.transB ?
+                ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK) :
+                ops::CeilAlign(adaptiveWin_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
         uint64_t baseKDefaultSize =
             static_cast<uint64_t>(GetShapeWithDataType(BASIC_BLOCK_SIZE_128, inputParams_.aDtype));
 
@@ -661,7 +664,8 @@ uint64_t Mc2AdaptiveSlidingWindowTiling::GetDepthA1B1(uint64_t leftSize, uint64_
                (depthScale * baseKSize) > BASIC_BLOCK_SIZE_512) {
             depthScale -= 1UL;
         }
-        if ((depthScale * baseKSize) % BASIC_BLOCK_SIZE_512 != 0UL && (depthScale * baseKSize) >= BASIC_BLOCK_SIZE_256) {
+        if ((depthScale * baseKSize) % BASIC_BLOCK_SIZE_512 != 0UL &&
+            (depthScale * baseKSize) >= BASIC_BLOCK_SIZE_256) {
             depthScale = BASIC_BLOCK_SIZE_256 / baseKSize;
         }
         depthScale = std::max(depthScale, static_cast<uint64_t>(1));
@@ -732,7 +736,8 @@ uint64_t Mc2AdaptiveSlidingWindowTiling::GetScaleFactorBAfullLoad(uint64_t leftS
         }
     }
 
-    uint64_t scaleFactorbMaxFromK = inputParams_.kSize / static_cast<uint64_t>(basicTiling_.stepKb * basicTiling_.baseK);
+    uint64_t scaleFactorbMaxFromK =
+        inputParams_.kSize / static_cast<uint64_t>(basicTiling_.stepKb * basicTiling_.baseK);
     scaleFactorbMaxFromK = std::min(static_cast<uint64_t>(SCALER_FACTOR_MAX), scaleFactorbMaxFromK);
     scaleFactorbMaxFromK = std::max(static_cast<uint64_t>(SCALER_FACTOR_MIN), scaleFactorbMaxFromK);
 
