@@ -625,10 +625,11 @@ void Mc2MatmulV3BaseTiling::OptimizeLoadBalanceBasicKernel()
     constexpr uint64_t aicNumCheck = 24;
     bool baseMNKFlag = runInfo_.baseM * runInfo_.baseN == baseMNCheck && runInfo_.baseK == baseKCheck;
     Mc2MixNd2NzType mixNd2nzType = GetMixNd2nzType();
-    bool tilingKeyCheckFlag = tilingEnable_.tilingEnableFullLoad == Mc2TilingEnableFullLoad::BASE &&
-                              tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::BASE &&
-                              tilingEnable_.tilingEnableFixOpti == Mc2TilingEnableFixOpti::BASE &&
-                              (mixNd2nzType == Mc2MixNd2NzType::NO_ND2NZ || mixNd2nzType == Mc2MixNd2NzType::V_HEAD_ND2NZ);
+    bool tilingKeyCheckFlag =
+        tilingEnable_.tilingEnableFullLoad == Mc2TilingEnableFullLoad::BASE &&
+        tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::BASE &&
+        tilingEnable_.tilingEnableFixOpti == Mc2TilingEnableFixOpti::BASE &&
+        (mixNd2nzType == Mc2MixNd2NzType::NO_ND2NZ || mixNd2nzType == Mc2MixNd2NzType::V_HEAD_ND2NZ);
     bool aicNumCheckFlag = compileInfo_.aicNum == aicNumCheck;
     uint64_t mCore = ops::CeilDiv(args_.mValue, runInfo_.baseM);
     uint64_t nCore = ops::CeilDiv(args_.nValue, runInfo_.baseN);
@@ -646,7 +647,8 @@ void Mc2MatmulV3BaseTiling::OptimizeLoadBalanceBasicKernel()
     bool smallMCheckFlag = args_.mValue <= 672 && args_.mValue > 128;
     if (commonFlag && !smallroundsCheckFlag && smallMCheckFlag) {
         // 调小m不增加mCore
-        while (runInfo_.baseM > BASIC_BLOCK_SIZE_16 && ops::CeilDiv(args_.mValue, runInfo_.baseM - BASIC_BLOCK_SIZE_16) == mCore) {
+        while (runInfo_.baseM > BASIC_BLOCK_SIZE_16 &&
+               ops::CeilDiv(args_.mValue, runInfo_.baseM - BASIC_BLOCK_SIZE_16) == mCore) {
             runInfo_.baseM -= BASIC_BLOCK_SIZE_16;
         }
         runInfo_.singleCoreM = runInfo_.baseM;
@@ -672,14 +674,18 @@ void Mc2MatmulV3BaseTiling::OptimizeBasicKernelStepK()
     constexpr uint64_t mataCheck = 16384;
     constexpr uint64_t aicNumCheck = 24;
     bool baseMNKFlag = runInfo_.baseM * runInfo_.baseN == baseMNCheck && runInfo_.baseK == baseKCheck;
-    bool alignFlag = args_.mValue % alignCheck == 0 && args_.nValue % alignCheck == 0 && args_.kValue % alignCheck == 0 &&
-                    args_.mValue >= MNCheck && args_.nValue >= MNCheck && !IsPowerOfTwo(args_.kValue);
+    bool alignFlag = args_.mValue % alignCheck == 0 && args_.nValue % alignCheck == 0 &&
+                     args_.kValue % alignCheck == 0 && args_.mValue >= MNCheck && args_.nValue >= MNCheck &&
+                     !IsPowerOfTwo(args_.kValue);
     bool middleMShapeFlag = args_.mValue >= 10368 && args_.mValue <= 18000 && args_.nValue >= 1280 &&
-                            args_.nValue <= 5120 && args_.kValue >= 1280 && args_.kValue <= 5120; // "middle-m" dimension is [10368, 18000]
+                            args_.nValue <= 5120 && args_.kValue >= 1280 &&
+                            args_.kValue <= 5120; // "middle-m" dimension is [10368, 18000]
     bool middleKShapeFlag = args_.mValue >= 1280 && args_.mValue <= 5120 && args_.nValue >= 1280 &&
-                            args_.nValue <= 5120 && args_.kValue >= 13788 && args_.kValue <= 19304; // "middle-k" dimension is [13788, 19304]
+                            args_.nValue <= 5120 && args_.kValue >= 13788 &&
+                            args_.kValue <= 19304; // "middle-k" dimension is [13788, 19304]
     bool BigMShapeFlag = args_.mValue >= 320000 && args_.mValue <= 380000 && args_.nValue >= 960 &&
-                         args_.nValue <= 3500 && args_.kValue >= 1280 && args_.kValue <= 3328; // "big-m" dimension is [320000, 380000]
+                         args_.nValue <= 3500 && args_.kValue >= 1280 &&
+                         args_.kValue <= 3328; // "big-m" dimension is [320000, 380000]
     bool globalMNFlag = args_.mValue * args_.nValue > baseMNCheck * compileInfo_.aicNum;
     bool aicNumCheckFlag = compileInfo_.aicNum == aicNumCheck;
     bool notMataFlag = args_.mValue % mataCheck != 0 && args_.nValue % mataCheck != 0;
@@ -693,8 +699,8 @@ void Mc2MatmulV3BaseTiling::OptimizeBasicKernelStepK()
         static_cast<uint64_t>(tilingEnable_.tilingEnableFixOpti), disableMixNd2nz);
     if (tilingEnable_.tilingEnableFullLoad == Mc2TilingEnableFullLoad::BASE &&
         tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::BASE &&
-        tilingEnable_.tilingEnableFixOpti == Mc2TilingEnableFixOpti::BASE && GetMixNd2nzType() == Mc2MixNd2NzType::NO_ND2NZ &&
-        baseMNKFlag && notMataFlag && dtypeFlag &&
+        tilingEnable_.tilingEnableFixOpti == Mc2TilingEnableFixOpti::BASE &&
+        GetMixNd2nzType() == Mc2MixNd2NzType::NO_ND2NZ && baseMNKFlag && notMataFlag && dtypeFlag &&
         (alignFlag || middleMShapeFlag || middleKShapeFlag || BigMShapeFlag) && globalMNFlag && aicNumCheckFlag) {
         OP_LOGI(args_.opName, "Fit optimization condition, tilingKey_: %lu", tilingKey_);
         OP_LOGI(
@@ -1002,8 +1008,8 @@ void Mc2MatmulV3BaseTiling::SetBaseBlockTiling()
     return;
 }
 
-inline void Convert2AscendCTiling(CacheTilingData &tbeTiling, const BatchmatmulRunParas &runParams, const Mc2MatmulV3Args &args,
-    uint64_t aicNum, Mc2MatmulV3RunInfo &runInfo)
+inline void Convert2AscendCTiling(CacheTilingData &tbeTiling, const BatchmatmulRunParas &runParams,
+                                  const Mc2MatmulV3Args &args, uint64_t aicNum, Mc2MatmulV3RunInfo &runInfo)
 {
     if (tbeTiling.al1_full_load && !runParams.pattern_flag) {
         tbeTiling.kal1_16 = runParams.k / tbeTiling.k_dim;
@@ -1169,7 +1175,8 @@ void Mc2MatmulV3BaseTiling::CalcNd2NzTiling(uint64_t dtypeSize, uint64_t nValue,
         uint64_t dLoop = MathUtil::CeilDivision(dAlignedC0, baseD);
         uint64_t dTail = dAlignedC0 % baseD;
         if (dTail > 0 && dTail < (MIN_TAIL / dtypeSize)) {
-            if (baseD * dtypeSize == CALC_ND_BASIC.at(0)) {  // if dtail < 0.5K && baseD == 3k, give up and return bestbase
+            if (baseD * dtypeSize ==
+                CALC_ND_BASIC.at(0)) { // if dtail < 0.5K && baseD == 3k, give up and return bestbase
                 continue;
             }
             dLoop--;
@@ -1689,8 +1696,8 @@ void Mc2MatmulV3BaseTiling::InitL2SplitParams(Mc2MatmulV3L2SplitParams &l2SplitP
     }
 }
 
-bool Mc2MatmulV3BaseTiling::IsTailSmall(Mc2MatmulV3L2SplitParams &l2SplitParams, uint64_t outL2Split, uint64_t innerL2Split,
-    uint64_t innerMaxConflict) const
+bool Mc2MatmulV3BaseTiling::IsTailSmall(Mc2MatmulV3L2SplitParams &l2SplitParams, uint64_t outL2Split,
+                                        uint64_t innerL2Split, uint64_t innerMaxConflict) const
 {
     if (outL2Split == 0UL || innerL2Split == 0UL) {
         return false;
@@ -1704,8 +1711,8 @@ bool Mc2MatmulV3BaseTiling::IsTailSmall(Mc2MatmulV3L2SplitParams &l2SplitParams,
     return (isOutTailSmall || isInnerTailSmall);
 }
 
-bool Mc2MatmulV3BaseTiling::CalcTile(uint64_t &outTile, uint64_t &innerTile, uint64_t &outL2Split, uint64_t &innerL2Split,
-    const bool isInnerBad) const
+bool Mc2MatmulV3BaseTiling::CalcTile(uint64_t &outTile, uint64_t &innerTile, uint64_t &outL2Split,
+                                     uint64_t &innerL2Split, const bool isInnerBad) const
 {
     Mc2MatmulV3L2SplitParams l2SplitParams;
     InitL2SplitParams(l2SplitParams);
@@ -2133,7 +2140,8 @@ void Mc2MatmulV3BaseTiling::SetBasicBlockOfMK33(Mc2MatmulV3RunInfo &runInfo)
     runInfo.iterateOrder = ITER_ROW_FIRST;
 }
 
-void Mc2MatmulV3BaseTiling::SetBasicBlockOf24(Mc2MatmulV3RunInfo &runInfo, const uint64_t &mTile, const uint64_t &nTile) const
+void Mc2MatmulV3BaseTiling::SetBasicBlockOf24(Mc2MatmulV3RunInfo &runInfo, const uint64_t &mTile,
+                                              const uint64_t &nTile) const
 {
     // 2*4算法
     if (mTile * nTile < compileInfo_.aicNum) {
@@ -2504,7 +2512,8 @@ bool Mc2MatmulV3BaseTiling::IsNkOrder()
         return false;
     }
     // M非对齐256B && N*dtype <= 256B && N*dtype %32B == 0时走回MK
-    if (!Is256BAlign(args_.mValue, aDtypeSize_) && args_.nValue * bDtypeSize_ <= N_THRESHOLD && Is32BAlign(args_.nValue, bDtypeSize_)) {
+    if (!Is256BAlign(args_.mValue, aDtypeSize_) && args_.nValue * bDtypeSize_ <= N_THRESHOLD &&
+        Is32BAlign(args_.nValue, bDtypeSize_)) {
         return false;
     }
     // N=16时，M超过2048则走回MK
@@ -2552,7 +2561,8 @@ bool Mc2MatmulV3BaseTiling::ShouldUseDeterministicMultiCoreSplitKwithSmallMN() c
     if (args_.aType != ge::DT_FLOAT || args_.isHf32){
         return false;
     }
-    return args_.mValue <= BASIC_BLOCK_SIZE_64 && args_.nValue <= BASIC_BLOCK_SIZE_64 && args_.kValue >= MIN_SPLITK_MN64;
+    return args_.mValue <= BASIC_BLOCK_SIZE_64 && args_.nValue <= BASIC_BLOCK_SIZE_64 &&
+           args_.kValue >= MIN_SPLITK_MN64;
 }
 
 void Mc2MatmulV3BaseTiling::OptCoreNumsDeterministicMultiCoreSplitK(){
@@ -2603,7 +2613,9 @@ bool Mc2MatmulV3BaseTiling::DoDeterministicMultiCoreSplitKTiling()
     } else {
         SetBasicBlockOfMK33(runInfo_);
         // 多核切K在k完成分核，n轴不分核, m轴做外层循环进行pingpong
-        runInfo_.singleCoreN = args_.nValue; //Is256BAlign(args_.nValue, DATA_SIZE_FP32) ? args_.nValue : ops::CeilAlign(args_.nValue * DATA_SIZE_FP32, ALIGN_BYTE) / DATA_SIZE_FP32;
+        runInfo_.singleCoreN =
+            args_.nValue; // Is256BAlign(args_.nValue, DATA_SIZE_FP32) ? args_.nValue : ops::CeilAlign(args_.nValue *
+                          // DATA_SIZE_FP32, ALIGN_BYTE) / DATA_SIZE_FP32;
         // singleCoreM * singleCoreK表示基本块大小，一次IterateALL完成singleCoreM * singleCoreN的计算
         runInfo_.singleCoreM = runInfo_.stepM * runInfo_.baseM;
         runInfo_.singleCoreK = runInfo_.stepKa * runInfo_.baseK;
@@ -2716,7 +2728,8 @@ ge::graphStatus Mc2MatmulV3BaseTiling::GetWorkspaceSize()
     alignedN = std::max(alignedN, static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreN));
 
     workspaceSize_ = RPC_WORKSIZE * MB_SIZE; // 20MB reserve > 16MB for rpc
-    if (tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_SPLIT_K || tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_NKM_SPLIT_K ||
+    if (tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_SPLIT_K ||
+        tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_NKM_SPLIT_K ||
         tilingEnable_.tilingEnableSplitCore == Mc2TilingEnableSplitCore::SINGLE_CORE_SPLIT_K_GM_TO_L1) {
         workspaceSize_ = args_.mValue * ops::CeilAlign(args_.nValue, align256Byte) * DATA_SIZE_FP32 +
             RPC_WORKSIZE * MB_SIZE; // 20 means 20MB
@@ -2768,7 +2781,8 @@ ge::graphStatus Mc2MatmulV3BaseTiling::PostTiling()
         OP_LOGE(args_.opName, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
     OPS_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+                           reinterpret_cast<void *>(&tilingData_), tilingDataSize);
     if (ret != EOK){
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
