@@ -74,6 +74,10 @@ private:
     uint64_t a_;
     const GmmTilingDataType *gmmTilingData_;
     TILING_TYPE *gmmArrayAddrIn_;
+    GM_ADDR ttXScaleRepeatGm_ = nullptr;
+    GM_ADDR ttWeightScaleRepeatGm_ = nullptr;
+    GlobalTensor<float> ttXScaleRepeatGlobalBuffer_;
+    GlobalTensor<float> ttWeightScaleRepeatGlobalBuffer_;
 };
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
@@ -121,6 +125,14 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
     wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
 
+    if constexpr (!MX_QUANT_MODE) {
+        uint32_t expertNumMax = tilingData_->taskTilingInfo.expertNum;
+        ttWeightScaleRepeatGm_ = ptrTableBase_ + TENSOR_LIST_SIZE;
+        ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumMax;
+        ttWeightScaleRepeatGlobalBuffer_.SetGlobalBuffer((__gm__ float *)ttWeightScaleRepeatGm_, expertNumMax);
+        ttXScaleRepeatGlobalBuffer_.SetGlobalBuffer((__gm__ float *)ttXScaleRepeatGm_, expertNumMax);
+    }
+
     const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] : &tilingData_->taskTilingInfo.sendCnt[0];
     for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
@@ -150,17 +162,50 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
     GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
     GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
-    GM_ADDR scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+    GM_ADDR scaleBPtr;
+    GM_ADDR xScalePtr;
+    if constexpr (!MX_QUANT_MODE) {
+        float xScaleValue = *((__gm__ float *)xScaleGM_);
+        float wScaleValue = *((__gm__ float *)weightScaleGM_);
+        for (uint32_t i = 0; i < expertNum; i++) {
+            ttXScaleRepeatGlobalBuffer_.SetValue(i, xScaleValue);
+            ttWeightScaleRepeatGlobalBuffer_.SetValue(i, wScaleValue);
+        }
+        uint32_t ttScaleCacheLineNum = CeilDiv(sizeof(float) * expertNum, 64U);
+        for (uint32_t cacheLineIdx = 0; cacheLineIdx < ttScaleCacheLineNum; cacheLineIdx++) {
+            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                AscendC::DcciDst::CACHELINE_OUT>(ttWeightScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
+            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                AscendC::DcciDst::CACHELINE_OUT>(ttXScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
+        }
+        scaleBPtr = BuildPtrTable(ttWeightScaleRepeatGm_, 2);
+        xScalePtr = ttXScaleRepeatGm_;
+    } else {
+        scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+        xScalePtr = xScaleGM_;
+    }
     GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
     uint64_t groupListToken = isLocal ? bs_ : expertTokenNum;
-    groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
-    AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
+    if (!isLocal) {
+        for (uint32_t idx = 0; idx < expertNum; idx++) {
+            groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX + idx,
+                expertTokenNum_[startExpertIdx + idx]);
+        }
+    } else {
+        groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
+    }
+    uint32_t groupListCacheLineNum = CeilDiv(sizeof(int64_t) * expertNum, 64U);
+    for (uint32_t cacheLineIdx = 0; cacheLineIdx < groupListCacheLineNum; cacheLineIdx++) {
+        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_[cacheLineIdx * 8]);
+    }
+    Mc2GroupedMatmulTilingData::GMMQuantParams localQuantParams = gmmTilingData_->gmmQuantParams;
+    localQuantParams.groupNum = expertNum;
     Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
     tPipe_->Reset();
-    gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
-        &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+    gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScalePtr, yPtr, workspaceGM_,
+        &localQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
     gmmASWKernel.Process();
 }
 

@@ -733,9 +733,13 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->epWorldSize = localParams_.epWorldSize;
     gmmQTilingCommonInfoPtr->e = localParams_.ep;
 
-    gmmQTilingCommonInfoPtr->mainLoopExpertNum = 1;
-    gmmQTilingCommonInfoPtr->tailLoopExpertNum = 1;
-    gmmQTilingCommonInfoPtr->totalLoopCount = localParams_.ep;
+    uint32_t expertNum = static_cast<uint32_t>(localParams_.ep);
+    gmmQTilingCommonInfoPtr->expertNum = expertNum;
+    gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum;
+    gmmQTilingCommonInfoPtr->tailLoopExpertNum =
+        (localParams_.ep % expertNum == 0) ? 0 : static_cast<uint32_t>(localParams_.ep % expertNum);
+    gmmQTilingCommonInfoPtr->totalLoopCount =
+        static_cast<uint32_t>(Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(expertNum)));
 
     return ge::GRAPH_SUCCESS;
 }
@@ -743,17 +747,34 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo()
 {
     constexpr uint64_t alignAddrLen = 512;
+    constexpr uint64_t tensorListSize = 512;
     auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
     inferredInfo_.gmmResultLen = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
     localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
-    // GmmComputeOp workspace 内部布局: groupList (ep * 8B) + ptrTable (4 * 32B = 128B)
-    constexpr uint64_t ptrTableSize = 128;
-    uint64_t gmmComputeWsSize = localParams_.ep * sizeof(int64_t) + ptrTableSize;
+    // GmmComputeOp workspace 内部布局:
+    //   [groupList (ep * 8B)] [ptrTable (tensorListSize=512)] [TT scale repeat (sizeof(float) * ep * 2)]
+    uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
+    uint64_t gmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + ttScaleRepeatSize;
     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
-    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
+    uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
+    uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
+    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize = mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
+
+    // AlltoAllv 通信接收缓冲：接收的数据按rank排列，需要临时空间再Permute到yGM
+    uint64_t commRecvSize = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
+    localTilingData_.workspaceInfo.wsCommRecvSize = commRecvSize;
+
+    // Permute 数据重排空间（expertNum>1时：commRecv → permuteOut → yGM）
+    // 当expertNum=1时不需要Permute，但分配空间以确保安全性
+    uint64_t permuteOutSize = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
+    permuteOutSize = permuteOutSize * 2;
+    localTilingData_.workspaceInfo.wsPermuteOutSize = permuteOutSize;
+
     workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
                      localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
-                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize;
+                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize +
+                     localTilingData_.workspaceInfo.wsCommRecvSize +
+                     localTilingData_.workspaceInfo.wsPermuteOutSize;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -773,7 +794,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize));
+    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize, static_cast<uint32_t>(localParams_.ep)));
     GE_ASSERT_GRAPH_SUCCESS(gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 

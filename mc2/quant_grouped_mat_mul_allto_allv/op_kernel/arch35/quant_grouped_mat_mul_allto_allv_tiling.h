@@ -37,18 +37,23 @@ using MC2KernelTemplate::TaskTilingInfo;
  *   [+, + wsSharedGmmComputeWorkspaceSize)            → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的 tempAddr 参数
  *
  * GmmComputeOp / SharedGmmComputeOp workspace 内部布局 (由各自内部管理, tiling 侧仅需计算并分配总大小):
- *   [0, 64)                   ptrTable:  4 × 16B GetTensorAddr 双重间接指针表 (x, weight, scaleB, y)
- *                              注: scaleA (perTokenScale) 不经过 GetTensorAddr, 直接作为 float* 使用
- *                              注: 若后续 hasBias=1, bias 也经过 GetTensorAddr, 需增加第 5 个 slot (80B)
- *   [64, 64 + expertNum * 8)  groupList: expertNum × int64_t 累积和
- *   总大小 = 64 + expertNum * sizeof(int64_t)
- *   其中 expertNum = 单次 GmmASWKernel 调用中的专家数 (当前 groupNum=1 时 expertNum=1,
- *   后续多专家同时计算时 expertNum 随融合算子切分的专家数量变化)
+ *   TT模式 (MX_QUANT_MODE=false):
+ *     [0, ep * 8)                      groupList: ep × int64_t 累积和
+ *     [ep * 8, ep * 8 + 512)           ptrTable:  4 × 16B GetTensorAddr 双重间接指针表 (x, weight, scaleB, y)
+ *                                      注: 实际使用64B(4 slots), 预留至TENSOR_LIST_SIZE(512B)对齐
+ *     [ep * 8 + 512, + sizeof(float)*ep)    ttWeightScaleRepeat: PerTensor weight scale 重复拷贝
+ *     [+, + sizeof(float)*ep)              ttXScaleRepeat: PerTensor x scale 重复拷贝
+ *   MX模式 (MX_QUANT_MODE=true):
+ *     [0, ep * 8)                      groupList
+ *     [ep * 8, ep * 8 + 512)           ptrTable
+ *   总大小需按最大模式(TT)计算 = ep * sizeof(int64_t) + 512 + sizeof(float) * ep * 2
  */
 struct GmmA2avWorkspaceInfo {
-    uint64_t wsGmmOutputSize;                    // 路由专家 GMM 主输出缓冲大小 (x @ weight -> gmm_output -> hccl -> y)
+    uint64_t wsGmmOutputSize;                    // 路由专家 GMM 主输出缓冲大小 (x @ weight -> gmm_output -> hccl send)
     uint64_t wsGmmComputeWorkspaceSize;          // 路由专家 GmmComputeOp 内部空间大小
     uint64_t wsSharedGmmComputeWorkspaceSize;    // 共享专家 SharedGmmComputeOp 内部空间大小
+    uint64_t wsCommRecvSize;                     // AlltoAllv 通信接收缓冲大小（按rank排列，需Permute重排到yGM）
+    uint64_t wsPermuteOutSize;                   // Permute 数据重排空间大小（expertNum>1时使用）
 };
 
 struct QuantGmmA2avTilingData {

@@ -61,7 +61,6 @@ private:
     GM_ADDR computeWorkspaceGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
-    uint32_t cntCounts_ = 1;
     uint32_t expertNum_ = 1;
     bool isScaleBatchMode_ = false;
     bool isNeedPermute_ = false;
@@ -78,6 +77,7 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     GET_TILING_DATA(tilingData, tilingGM);
     tilingData_ = &tilingData;
     e_ = tilingData_->taskTilingInfo.e;
+    expertNum_ = tilingData_->taskTilingInfo.expertNum;
     gmmxScaleGm_ = gmmxScaleGM;
     isScaleBatchMode_ = e_ >= SCALE_COMM_BATCH_THRESHOLD;
     isNeedPermute_ = expertNum_ > 1;
@@ -87,11 +87,16 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     if (!tilingData_->isPermuteOut) {
         commOutGm_ = workspaceGM + workspaceOffset;
         workspaceOffset += gmmxSize;
+        gmmxPermuteGM_ = workspaceGM + workspaceOffset;
+        workspaceOffset += gmmxSize;
+        computeGmmxGM_ = isNeedPermute_ ? gmmxPermuteGM_ : commOutGm_;
     } else {
-        commOutGm_ = permuteOutOptionalGM;
+        GM_ADDR tempGM = workspaceGM + workspaceOffset;
+        workspaceOffset += gmmxSize;
+        commOutGm_ = isNeedPermute_ ? tempGM : permuteOutOptionalGM;
+        gmmxPermuteGM_ = isNeedPermute_ ? permuteOutOptionalGM : tempGM;
+        computeGmmxGM_ = permuteOutOptionalGM;
     }
-    gmmxPermuteGM_ = workspaceGM + workspaceOffset;
-    workspaceOffset += gmmxSize;
     computeScaleGm_ = gmmxScaleGm_;
     const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
     uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
@@ -153,13 +158,13 @@ template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpTy
 __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeOpType, TilingDataType,
     GmmTilingDataType, GmmArrayAddrType>::ProcessScaleCommBatchMode()
 {
-    commOp.LaunchComm(0, e_, true);
+    commOp.LaunchCommScale(0, e_);
     for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-        commOp.LaunchComm(expertIdx, 1, false);
+        commOp.LaunchCommData(expertIdx, 1);
     }
     commOp.WaitScale(0);
     SyncAll<false>();
-    commOp.Permute(0, e_, true);
+    commOp.PermuteScale(0, e_);
     SyncAll<false>();
     for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
         commOp.Wait(expertIdx);
@@ -173,27 +178,29 @@ template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpTy
 __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeOpType, TilingDataType,
     GmmTilingDataType, GmmArrayAddrType>::ProcessCommRoundMode()
 {
-    uint32_t totalCnt = e_ * cntCounts_;
-    uint32_t expertNum = totalCnt == e_ ? expertNum_ : 0;
-    for (uint32_t start = 0; start < totalCnt; start++) {
+    for (uint32_t startExpertIdx = 0; startExpertIdx < e_; startExpertIdx += expertNum_) {
+        uint32_t actualExpertNum = (startExpertIdx + expertNum_ > e_) ? (e_ - startExpertIdx) : expertNum_;
         if constexpr (MX_QUANT_MODE) {
-            commOp.LaunchComm(start, expertNum, true);
+            commOp.LaunchCommScale(startExpertIdx, actualExpertNum);
         }
-        commOp.LaunchComm(start, expertNum, false);
+        commOp.LaunchCommData(startExpertIdx, actualExpertNum);
     }
-    for (uint32_t start = 0; start < totalCnt; start++) {
+    for (uint32_t startExpertIdx = 0; startExpertIdx < e_; startExpertIdx += expertNum_) {
+        uint32_t actualExpertNum = (startExpertIdx + expertNum_ > e_) ? (e_ - startExpertIdx) : expertNum_;
         if constexpr (MX_QUANT_MODE) {
-            commOp.WaitScale(start);
+            commOp.WaitScale(startExpertIdx);
             if (isNeedPermute_) {
-                commOp.Permute(start, expertNum, true);
+                SyncAll<true>();
+                commOp.PermuteScale(startExpertIdx, actualExpertNum);
             }
         }
-        commOp.Wait(start);
+        commOp.Wait(startExpertIdx);
         if (isNeedPermute_) {
-            commOp.Permute(start, expertNum, false);
+            SyncAll<true>();
+            commOp.PermuteData(startExpertIdx, actualExpertNum);
         }
         SyncAll<false>();
-        computeOp.Process(start, expertNum);
+        computeOp.Process(startExpertIdx, actualExpertNum);
     }
 }
 

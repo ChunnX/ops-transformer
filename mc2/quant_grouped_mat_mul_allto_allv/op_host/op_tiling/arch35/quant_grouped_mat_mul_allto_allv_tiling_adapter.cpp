@@ -49,12 +49,12 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetCommonInputParams(const Q
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX)
+ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX, uint32_t expertNum)
 {
     inputParams_.mSize = gmmX;
     inputParams_.kSize = params.H1;
     inputParams_.nSize = params.N1;
-    inputParams_.groupNum = 1;
+    inputParams_.groupNum = expertNum;
     if (params.gmmXQuantMode > 0 && params.gmmXQuantMode < QUANT_MODE_MP.size()) {
         inputParams_.aQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.gmmXQuantMode]));
         inputParams_.bQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.gmmWeightQuantMode]));
@@ -70,7 +70,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameter
     inputParams_.perTokenScaleDtype = params.gmmXScaleDtype;
 
     inputParams_.transB = params.isGmmWeightTrans;
-    mList_[0] = static_cast<int32_t>(gmmX);
+    for (uint32_t i = 0; i < expertNum; i++) {
+        mList_[i] = static_cast<int32_t>(gmmX);
+    }
     kList_[0] = static_cast<int32_t>(params.H1);
     nList_[0] = static_cast<int32_t>(params.N1);
     SetKernelType();
