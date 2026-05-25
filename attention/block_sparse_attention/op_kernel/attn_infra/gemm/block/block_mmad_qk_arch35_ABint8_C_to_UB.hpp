@@ -436,7 +436,7 @@ public:
                 uint32_t nFixPAligned16 = Arch35MmadOpt::AlignUpPow2<16>(l0TileNAct);
                
                 //reshape 64
-                auto l0CViewLayoutTla = tla::l0CTensorTla(l0TileNAct * (mFixPAligned64 >> 5), 32);
+                auto l0CViewLayoutTla = tla::MakeLayoutL0C(l0TileNAct * (mFixPAligned64 >> 5), 32);
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
                     tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
                 auto l0CTensorTlaTileSub0 = GetTile(l0CViewLayoutTla,
