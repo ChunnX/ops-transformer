@@ -61,7 +61,7 @@ struct MatmulAlltoAllV2AclnnTestParam {
     bool outputNull = false;
 };
 
-static MatmulAlltoAllAclnnTestParam g_v2_casesParams_950[] = {
+static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_950[] = {
     // 正常用例 13条
     // caseid按照[算子名-x1x2output_dtype-biasDtype-format-transpose-id]构成，按bias分组
     // ========================bfloat16 系列（6条）========================
@@ -344,7 +344,7 @@ TEST_F(TestAclnnMatmulAlltoAllV2, CasesParamsTest950)
     op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
 }
 
-static MatmulAlltoAllAclnnTestParam g_v2_casesParams_910B[] = {
+static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_910B[] = {
     // ========================910B 正常用例 ========================
     // BF16 + bias=FLOAT32
     {"AclnnMatmulAlltoAllV2-910B-bf16-biasf32-nd-notrans-01", 2, {256, 128}, {128, 256}, {256}, {512, 128},
