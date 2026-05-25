@@ -52,7 +52,7 @@ if __name__ == "__main__" and __package__ is None:
     from op_filters.op_step4_common_3rd import filter_common_3rd
     from op_filters.op_step5_extractor import extract_operators, filter_ops_by_soc
     from op_filters.op_step6_dependency import build_reverse_dependency_graph, find_dependent_ops
-    from op_filters.op_step7_output import write_output_json, get_all_ops_with_products, get_ops_info_by_names, adjust_supported_products_by_arch, write_soc_json
+    from op_filters.op_step7_output import write_output_json, get_all_ops_with_products, get_ops_info_by_names, adjust_supported_products_by_arch, write_soc_json, load_whitelist_ops, resolve_whitelist_ops, filter_ops_by_whitelist
     from op_filters.op_step0_mc2_analyzer import analyze_mc2_and_generate_json
 else:
     from .utils import setup_logging, read_file_lines, load_dependency_json, normalize_path
@@ -62,11 +62,12 @@ else:
     from .op_step4_common_3rd import filter_common_3rd
     from .op_step5_extractor import extract_operators, filter_ops_by_soc
     from .op_step6_dependency import build_reverse_dependency_graph, find_dependent_ops
-    from .op_step7_output import write_output_json, get_all_ops_with_products, get_ops_info_by_names, adjust_supported_products_by_arch, write_soc_json
+    from .op_step7_output import write_output_json, get_all_ops_with_products, get_ops_info_by_names, adjust_supported_products_by_arch, write_soc_json, load_whitelist_ops, resolve_whitelist_ops, filter_ops_by_whitelist
     from .op_step0_mc2_analyzer import analyze_mc2_and_generate_json
 
 
 DEFAULT_WHITELIST = str(SCRIPT_DIR / "whitelist.txt")
+DEFAULT_WHITELIST_OPS = str(SCRIPT_DIR / "whitelist_ops.txt")
 DEFAULT_DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
 DEFAULT_MC2 = str(PROJECT_DIR / "mc2")
 DEFAULT_OUTPUT_JSON = str(WORK_DIR / "op_tests.json")
@@ -115,6 +116,11 @@ def main() -> int:
         help=f"白名单文件路径 (默认: {DEFAULT_WHITELIST})"
     )
     parser.add_argument(
+        "--whitelist-ops",
+        default=DEFAULT_WHITELIST_OPS,
+        help=f"算子白名单文件路径 (默认: {DEFAULT_WHITELIST_OPS})"
+    )
+    parser.add_argument(
         "--dependency-json",
         default=DEFAULT_DEPENDENCY_JSON,
         help=f"依赖关系 JSON 文件路径 (默认: {DEFAULT_DEPENDENCY_JSON})"
@@ -154,11 +160,15 @@ def main() -> int:
         
         logger.info(f"PR: {args.pr}")
         logger.info(f"白名单文件: {args.whitelist}")
+        logger.info(f"算子白名单文件: {args.whitelist_ops}")
         logger.info(f"mc2 目录: {args.mc2}")
         logger.info(f"输出 JSON: {args.output_json}")
         logger.info(f"输出日志: {args.output_log}")
         if soc_types:
             logger.info(f"SOC 类型: {sorted(soc_types)}")
+        
+        whitelist_sections = load_whitelist_ops(args.whitelist_ops, logger)
+        whitelist_ops = resolve_whitelist_ops(whitelist_sections, soc_types, logger)
         
         changed_files = read_file_lines(args.pr, logger)
         logger.info(f"读取到 {len(changed_files)} 个变更文件:")
@@ -211,6 +221,7 @@ def main() -> int:
         if non_mc2_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
             all_ops = adjust_supported_products_by_arch(all_ops, {}, soc_types, logger)
+            all_ops = filter_ops_by_whitelist(all_ops, whitelist_ops, logger)
             write_output_json(all_ops, args.output_json, logger)
             if soc_types:
                 soc_name = sorted(soc_types)[0]
@@ -225,6 +236,7 @@ def main() -> int:
         if common_3rd_result["should_full_test"]:
             all_ops = get_all_ops_with_products(dependency_data, logger)
             all_ops = adjust_supported_products_by_arch(all_ops, {}, soc_types, logger)
+            all_ops = filter_ops_by_whitelist(all_ops, whitelist_ops, logger)
             write_output_json(all_ops, args.output_json, logger)
             if soc_types:
                 soc_name = sorted(soc_types)[0]
@@ -291,6 +303,7 @@ def main() -> int:
         final_ops = get_ops_info_by_names(ops_to_run, dependency_data, logger)
         
         final_ops = adjust_supported_products_by_arch(final_ops, op_arch_restrictions, soc_types, logger)
+        final_ops = filter_ops_by_whitelist(final_ops, whitelist_ops, logger)
         
         logger.info(f"最终需要测试的算子数量: {len(final_ops)}")
         for op_info in final_ops:

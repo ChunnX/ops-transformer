@@ -10,5 +10,5 @@ from .op_step3_non_mc2 import is_in_mc2, filter_non_mc2
 from .op_step4_common_3rd import is_in_common, is_in_3rd, get_3rd_subdir, filter_common_3rd, THIRD_PARTY_OP_MAPPING
 from .op_step5_extractor import extract_op_name, extract_operators
 from .op_step6_dependency import build_reverse_dependency_graph, find_dependent_ops
-from .op_step7_output import transform_to_product_grouped, write_output_json, write_soc_json, get_all_ops_with_products, get_ops_info_by_names, load_arch_restrictions, filter_ops_by_arch_and_soc, adjust_supported_products_by_arch
+from .op_step7_output import transform_to_product_grouped, write_output_json, write_soc_json, get_all_ops_with_products, get_ops_info_by_names, load_arch_restrictions, filter_ops_by_arch_and_soc, adjust_supported_products_by_arch, load_whitelist_ops, resolve_whitelist_ops, filter_ops_by_whitelist
 from .op_step0_mc2_analyzer import analyze_mc2_and_generate_json, analyze_all_operators

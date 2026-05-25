@@ -25,6 +25,7 @@ WORK_DIR = Path.cwd()
 DEFAULT_INPUT_FILE = str(WORK_DIR / "filtered_files.txt")
 DEFAULT_SPECIAL_3RD_OPS_FILE = str(WORK_DIR / "special_3rd_ops.txt")
 DEFAULT_ARCH_RESTRICTIONS_FILE = str(WORK_DIR / "arch_restrictions.json")
+DEFAULT_WHITELIST_OPS_FILE = str(SCRIPT_DIR / "whitelist_ops.txt")
 DEFAULT_DEPENDENCY_JSON = str(SCRIPT_DIR / "result.json")
 DEFAULT_OUTPUT_JSON = str(WORK_DIR / "op_tests.json")
 DEFAULT_LOG_FILE = str(WORK_DIR / "step7.log")
@@ -124,6 +125,106 @@ def get_ops_info_by_names(
             logger.warning(f"算子 {op_name} 有警告: {warnings}")
     
     return result
+
+
+def load_whitelist_ops(file_path: str, logger: logging.Logger) -> Dict[str, Set[str]]:
+    """
+    加载算子白名单文件，按 section 返回屏蔽算子名称字典。
+
+    文件格式：
+    - # 开头为注释
+    - [soc_name] 为 section 头，该 section 下的算子仅对指定 SOC 屏蔽
+    - 无 section 头的算子为全局屏蔽（所有 SOC）
+
+    Args:
+        file_path: 算子白名单文件路径
+        logger: 日志记录器
+
+    Returns:
+        字典，key 为 section 名（"global" 或 SOC 名），value 为算子名称集合
+    """
+    if not Path(file_path).exists():
+        logger.info(f"算子白名单文件不存在: {file_path}")
+        return {}
+    sections: Dict[str, Set[str]] = {"global": set()}
+    current_section = "global"
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                if stripped.startswith('[') and stripped.endswith(']'):
+                    current_section = stripped[1:-1]
+                    if current_section not in sections:
+                        sections[current_section] = set()
+                    continue
+                sections[current_section].add(stripped)
+        for section_name, ops in sections.items():
+            if ops:
+                logger.info(f"白名单 section [{section_name}]: {sorted(ops)} ({len(ops)} 个算子)")
+        logger.info(f"成功加载算子白名单文件: {file_path}, 共 {len(sections)} 个 section")
+        return sections
+    except Exception as e:
+        logger.warning(f"加载算子白名单文件失败: {file_path}, 错误: {e}")
+        return {}
+
+
+def resolve_whitelist_ops(sections: Dict[str, Set[str]], soc_types: Set[str], logger: logging.Logger) -> Set[str]:
+    """
+    根据当前 SOC 类型合并白名单算子集合。
+
+    合并规则：
+    - global section 中的算子始终屏蔽
+    - 匹配当前 SOC 类型的 section 中的算子也屏蔽
+
+    Args:
+        sections: 白名单 section 字典
+        soc_types: 当前 SOC 类型集合（为空时只屏蔽 global）
+        logger: 日志记录器
+
+    Returns:
+        合并后的屏蔽算子名称集合
+    """
+    whitelist_ops = set(sections.get("global", set()))
+    if soc_types:
+        for soc_name in soc_types:
+            if soc_name in sections:
+                whitelist_ops.update(sections[soc_name])
+                logger.info(f"合并 SOC 白名单 [{soc_name}]: {sorted(sections[soc_name])} ({len(sections[soc_name])} 个算子)")
+    if whitelist_ops:
+        logger.info(f"最终白名单屏蔽算子: {sorted(whitelist_ops)} ({len(whitelist_ops)} 个)")
+    else:
+        logger.info("无白名单屏蔽算子")
+    return whitelist_ops
+
+
+def filter_ops_by_whitelist(data: List[Dict], whitelist_ops: Set[str], logger: logging.Logger) -> List[Dict]:
+    """
+    根据算子白名单过滤，移除白名单中的算子。
+
+    Args:
+        data: 算子信息列表
+        whitelist_ops: 需屏蔽的算子名称集合
+        logger: 日志记录器
+
+    Returns:
+        过滤后的算子信息列表
+    """
+    if not whitelist_ops:
+        return data
+    removed_ops = []
+    filtered = []
+    for op_info in data:
+        if op_info["op_name"] in whitelist_ops:
+            removed_ops.append(op_info["op_name"])
+        else:
+            filtered.append(op_info)
+    if removed_ops:
+        logger.info("=" * 60)
+        logger.info(f"算子白名单屏蔽: 移除 {sorted(removed_ops)} (原因: 在 whitelist_ops.txt 中)")
+        logger.info(f"屏蔽前 {len(data)} 个算子, 屏蔽后 {len(filtered)} 个算子")
+    return filtered
 
 
 def load_arch_restrictions(file_path: str, logger: logging.Logger) -> Dict:
@@ -423,6 +524,11 @@ def main() -> int:
         help=f"arch 限制信息文件路径 (默认: {DEFAULT_ARCH_RESTRICTIONS_FILE})"
     )
     parser.add_argument(
+        "--whitelist-ops",
+        default=DEFAULT_WHITELIST_OPS_FILE,
+        help=f"算子白名单文件路径 (默认: {DEFAULT_WHITELIST_OPS_FILE})"
+    )
+    parser.add_argument(
         "--dependency-json",
         default=DEFAULT_DEPENDENCY_JSON,
         help=f"依赖关系 JSON 文件路径 (默认: {DEFAULT_DEPENDENCY_JSON})"
@@ -471,6 +577,8 @@ def main() -> int:
         
         dependency_data = load_dependency_json(args.dependency_json, logger)
         arch_restrictions = load_arch_restrictions(args.arch_restrictions, logger)
+        whitelist_sections = load_whitelist_ops(args.whitelist_ops, logger)
+        whitelist_ops = resolve_whitelist_ops(whitelist_sections, soc_types, logger)
         
         if args.full_test:
             logger.info("生成全量测试列表")
@@ -515,6 +623,7 @@ def main() -> int:
                 final_ops = get_ops_info_by_names(all_ops_set, dependency_data, logger)
         
         final_ops = adjust_supported_products_by_arch(final_ops, arch_restrictions, soc_types, logger)
+        final_ops = filter_ops_by_whitelist(final_ops, whitelist_ops, logger)
         
         write_output_json(final_ops, args.output_json, logger)
         
