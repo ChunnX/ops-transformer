@@ -53,7 +53,7 @@ public:
     __gm__ uint32_t *fiaMetaDataGm;
     __cbuf__ void *q1[2], *k1[4], *v1[4], *p1[3], *pscale[1];
     int ikv{-1};
-    int iq{-1};
+    int iq{3};
     int iquse = -1;
     int ipid{-1};
     __ca__ void * l0a[2];
@@ -255,13 +255,13 @@ public:
         mte2Q2NzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
         mte2Q2NzPara |= static_cast<uint64_t>(3);            // MTE2_NZ_PARA[15:0]
         set_mte2_nz_para(mte2Q2NzPara); // CCE: store parameters for ND2NZ DMA instructions
-        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + 8 * 32, (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, 128, 0, 8, 128, 8 * 128 * 8,false);
+        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + 8 * 32, (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, 128, 0, 8, 128, 8 * 128 * 8, false);
     }
 
-        __aicore__ inline void gm_l1_qscale(uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
+    __aicore__ inline void gm_l1_qscale(uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
         uint32_t qScaleOffset = 32 * 128;//((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize;runInfo.actMSize=gs1=8*4
-        uint64_t gmQScaleOffset = (bIdx * 4 + outer *  128 / 8) * 4 * 8 + n2Idx * 4 * 8 * (1 + 48) * 48 /2 *4;
+        uint64_t gmQScaleOffset = (bIdx * 4 + outer *  128 / 8) * 4 * 8 + n2Idx * 4 * 8 * (1 + 48) * 48 / 2 * 4;
         // Dn2NzParams dn2nzPara;
         // dn2nzPara.dnNum = 1;                 // ND矩阵的个数
         // dn2nzPara.nValue = 2;       // 单个DN矩阵的实际列数，单位为元素个数
@@ -453,16 +453,15 @@ public:
         uint64_t blockId =
             *(__gm__ int32_t *)(blockTableGm + bIdx * constInfo.maxBlockNumPerBatch +
                                 s2Offset / 512);
-        // uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
+        uint64_t gmOffset = blockId * 512 * 8 * 128 + n2Idx * 512 * 128 + bsIdx * 32;
         // intriParams.blockCount = 4;
         // intriParams.blockLen = 256;
         // intriParams.dstStride = 0;
         // intriParams.srcStride = 256;
         /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
                                  leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
-        uint64_t gmVOffset = bIdx * (128 * 10240 * 8) + n2Idx * (128 * 10240) + s2Offset * 128;
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)v1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmVOffset),
-                                 0, 4, 256 * 32, 0, 0, true, 0, 4 * 32 * 2, 8192);
+        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)v1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmOffset),
+                                     0, 4, 256 * 32, 0, 0, true, 0, 256 * 32 * 2, 8192);
     }
 
      __aicore__ inline void gm_l1_vscale(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t k, int ivkuse)
@@ -560,17 +559,17 @@ public:
     {
         ipid ++;
         int ipuse = ipid % 3;
-        int ipscaleuse = 6;
-        if (inner == 0) {
-            wait_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
-            int64_t repeatBit = (static_cast<uint64_t>(128 * 512 / 32) << 16) |
-                            (static_cast<uint64_t>(0) << 32) | 1;
-            create_cbuf_matrix((__cbuf__ int16_t * )pscale[0], repeatBit, GetScalarBitcodeToHalf(0x7f7f));
-            set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
-        } else {
-            set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
-        }
-        wait_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
+        // int ipscaleuse = 6;
+        // if (inner == 0) {
+        //     wait_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
+        //     int64_t repeatBit = (static_cast<uint64_t>(128 * 512 / 32) << 16) |
+        //                     (static_cast<uint64_t>(0) << 32) | 1;
+        //     create_cbuf_matrix((__cbuf__ int16_t * )pscale[0], repeatBit, GetScalarBitcodeToHalf(0x7f7f));
+        //     set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
+        // } else {
+        //     set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
+        // }
+        // wait_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
         for (uint32_t k = 0; k < 2; k++) {
             ikv++;
             int ivkuse = ikv % 4;
@@ -602,9 +601,9 @@ public:
 
             set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
         }
-        if (inner == 19) {
-            set_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
-        }
+        // if (inner == 19) {
+        //     set_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
+        // }
     }
 
     __aicore__ inline void Process()
