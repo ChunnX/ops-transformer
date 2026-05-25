@@ -6,14 +6,14 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /* !
- * \file tool.h
+ * \file weight_quant_basic_block_tool.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
+#ifndef WEIGHT_QUANT_BASIC_BLOCK_TOOL_H
+#define WEIGHT_QUANT_BASIC_BLOCK_TOOL_H
 
 #include "kernel_operator.h"
 
@@ -69,7 +69,6 @@ static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
 // 参数约束定义
 static constexpr uint64_t MX_GROUPSIZE = 32;
 static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
-static constexpr uint64_t VEC_MAX_ELEM_B32 = VECTOR_REG_WIDTH / sizeof(float);
 static constexpr uint32_t FP32_BLOCK_SIZE = 8;
 static constexpr uint32_t FP16_BLOCK_SIZE = 16;
 static constexpr int32_t C0_SIZE_B8 = 32;
@@ -174,5 +173,5 @@ template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = f
 struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
     constexpr static TPosition srcPos = TPosition::GM;
 };
-} // namespace WeightQuantBatchMatmulV2::Arch35
+}  // namespace WeightQuantBatchMatmulV2::Arch35
 #endif
