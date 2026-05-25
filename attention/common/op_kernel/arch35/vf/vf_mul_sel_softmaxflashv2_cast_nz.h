@@ -106,7 +106,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
                 hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
                 dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, m, originN, pseStride, slopes,
-                posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue, pScale);
+                posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue);
         } else if constexpr (oriNRange == GT_0_AND_LTE_64) {
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -118,7 +118,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
                 hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
                 dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, m, originN, pseStride, slopes,
-                posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue, pScale);
+                posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue);
         } else if constexpr (oriNRange == GT_256_AND_LTE_512) {
             ProcessVec1NoUpdateGeneralImpl512<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                 pseMode, hasDrop>(
@@ -143,7 +143,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
                 dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, m, originN, pseStride,
                 slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
-                sinkValue, pScale);
+                sinkValue);
         }
     }
 }
@@ -292,7 +292,7 @@ __aicore__ inline void ProcessVec1Update(
                 hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
                 dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, pScaleTensor, m, originN, pseStride,
-                slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue, pScale);
+                slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue);
         } else if constexpr (oriNRange == GT_0_AND_LTE_64) {
             LocalTensor<uint8_t> indexesTensor;
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -304,7 +304,7 @@ __aicore__ inline void ProcessVec1Update(
                 hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
                 dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, pScaleTensor, m, originN, pseStride,
-                slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue, pScale);
+                slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue);
         } else if constexpr (oriNRange == GT_256_AND_LTE_512) {
             ProcessVec1UpdateGeneralImpl512<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
                 dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
@@ -327,7 +327,7 @@ __aicore__ inline void ProcessVec1Update(
                 dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor,
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, pScaleTensor, m, originN,
                 pseStride, slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
-                sinkValue, pScale);
+                sinkValue);
         }
     }
 }
