@@ -217,7 +217,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpKv.desc, CMP_KV_NAME) ||
             ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, CMP_KV_NAME) ||
-            ge::GRAPH_SUCCESS != 
+            ge::GRAPH_SUCCESS !=
                 CheckDimNumSupport(&opParamInfo_.cmpKv.tensor->GetShape(), keyDimNumList, CMP_KV_NAME) ||
             ge::GRAPH_SUCCESS !=
                 CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.cmpKv.tensor->GetShape(), CMP_KV_NAME)) {

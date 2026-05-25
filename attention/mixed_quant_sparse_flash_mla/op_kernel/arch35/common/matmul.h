@@ -575,7 +575,7 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTenso
         loadData2dTransposeParams.srcStride = 1;
         loadData2dTransposeParams.dstFracGap = (kSplitSize + blockElementCnt -1) / blockElementCnt;
         loadData2dTransposeParams.dstGap = mSplitSize / ONE_FRACTAL_H_ELEMENT - 1;
-        if(rowSize == kSplitSize) {
+        if (rowSize == kSplitSize) {
             loadData2dTransposeParams.repeatTimes = (kSplitSize + blockElementCnt - 1) / blockElementCnt;
             uint32_t loopTimes = mSplitSize / blockElementCnt;
             uint64_t l1Offset = rowSize * blockElementCnt;
@@ -619,7 +619,7 @@ __aicore__ inline void LoadDataToL0B(LocalTensor<T>& bL0Tensor, const LocalTenso
         loadData2DParams.srcStride = 1; // 相邻迭代间，源操作数前一个分型和后一个分型起始地址的间隔（单位512B）
         loadData2DParams.dstGap = 0; // 相邻迭代间，目的操作数前一个分型的结束地址和后一个分型起始地址的间隔（单位512B）
         loadData2DParams.ifTranspose = false;
-        if(rowSize == kSplitSize) {
+        if (rowSize == kSplitSize) {
             loadData2DParams.repeatTimes = ((nSplitSize + ONE_FRACTAL_H_ELEMENT - 1) / ONE_FRACTAL_H_ELEMENT) * (kSplitSize / blockElementCnt);// 迭代次数，每个迭代可以处理512B数据
             LoadData(bL0Tensor, bL1Tensor, loadData2DParams);
         } else {
