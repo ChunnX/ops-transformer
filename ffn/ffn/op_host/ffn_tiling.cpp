@@ -798,9 +798,9 @@ ge::graphStatus FFNTiling::FFNParamsCheck(gert::TilingContext *context)
                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "the data type and format is invalid."), return ge::GRAPH_FAILED);
     weightDataTypeSize = GetSizeByDataType(weight1Dtype);
     innerPrecise = HIGH_PRECISION;
-    const int *innerPrecisePtr = attrs->GetAttrPointer<int>(FFN_ATTR_INDEX_INNER_PRECISE);
+    const int64_t *innerPrecisePtr = attrs->GetAttrPointer<int64_t>(FFN_ATTR_INDEX_INNER_PRECISE);
     if (innerPrecisePtr != nullptr) {
-        innerPrecise = *innerPrecisePtr;
+        innerPrecise = static_cast<int32_t>(*innerPrecisePtr);
     }
     OP_LOGI(context, "Inner_precise is %d.", innerPrecise);
 
