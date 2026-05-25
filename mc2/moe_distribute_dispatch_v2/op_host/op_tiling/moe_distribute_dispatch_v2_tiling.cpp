@@ -318,7 +318,7 @@ static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *contex
     return ge::GRAPH_SUCCESS;
 }
 
-bool MoeDistributeDispatchV2TilingFuncBase::CheckCommomOutputTensorDataType(
+bool CheckCommomOutputTensorDataType(
     const gert::TilingContext *context, const char *nodeName)
 {
     auto assistInfoDesc = context->GetOutputDesc(OUTPUT_ASSIST_INFO_INDEX);
@@ -349,7 +349,7 @@ bool MoeDistributeDispatchV2TilingFuncBase::CheckCommomOutputTensorDataType(
     return true;
 }
 
-bool MoeDistributeDispatchV2TilingFuncBase::CheckCommomOtherInputTensorDataType(
+bool CheckCommomOtherInputTensorDataType(
     const gert::TilingContext *context, const char *nodeName,
     DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
@@ -530,9 +530,10 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
+ge::graphStatus CheckOtherAttrParams(
     const gert::TilingContext *context, const char *nodeName,
-    DispatchV2TilingCtx &tc, DispatchV2Config &config)
+    DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr)
 {
     auto attrs = context->GetAttrs();
     auto expertShardPtr = attrs->GetAttrPointer<int64_t>(config.attrExpertSharedTypeIndex);
@@ -548,14 +549,14 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
         OPS_LOG_E(nodeName, "expertShardType is invalid, only support 0, but got expertShardType=%ld.",
         *expertShardPtr), return ge::GRAPH_FAILED);
 
-    if (CheckQuantModePtr(quantModePtr, nodeName) == ge::GRAPH_FAILED) {
+    if (checkQuantModePtr(quantModePtr, nodeName) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK((*expertTokenNumsTypePtr != 0) && (*expertTokenNumsTypePtr != 1),
         OPS_LOG_E(nodeName, "expertTokenNumsType only support 0 or 1, but got expertTokenNumsType=%ld.",
         *expertTokenNumsTypePtr), return ge::GRAPH_FAILED);
     // A5 已作校验，这里只校验 A3
-    if (CheckCommAlgPtr(commAlgPtr, nodeName) == ge::GRAPH_FAILED) {
+    if (checkCommAlgPtr(commAlgPtr, nodeName) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
 
@@ -565,15 +566,16 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckCommAttrParams(
+ge::graphStatus CheckCommAttrParams(
     const gert::TilingContext *context, const char *nodeName,
-    DispatchV2TilingCtx &tc, DispatchV2Config &config)
+    DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr)
 {
     // 校验 epWorldSize tpWorldSize epRankId tpRankId
     OP_TILING_CHECK(CheckGroupAttrParams(context, nodeName, tc.groupTp, tc.isLayered, config) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "CheckGroupAttrParams is failed."), return ge::GRAPH_FAILED);
     // 校验 expertSharedType quantMode expertTokenNumsType commAlg
-    OP_TILING_CHECK(CheckOtherAttrParams(context, nodeName, tc, config) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckOtherAttrParams(context, nodeName, tc, config, checkQuantModePtr, checkCommAlgPtr) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "CheckGroupAttrParams is failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -669,13 +671,14 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, const c
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::GetAttrAndSetTilingData(
+ge::graphStatus GetAttrAndSetTilingData(
     const gert::TilingContext *context, const char *nodeName,
-    MoeDistributeDispatchV2TilingData &tilingData, DispatchV2TilingCtx &tc, DispatchV2Config &config)
+    MoeDistributeDispatchV2TilingData &tilingData, DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr)
 {
     OP_TILING_CHECK(CheckAttrPtrNullptr(context, nodeName, tc.groupEp, config) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckCommAttrParams(context, nodeName, tc, config) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckCommAttrParams(context, nodeName, tc, config, checkQuantModePtr, checkCommAlgPtr) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckExpertAttrParams(context, nodeName, tc.isLayered, config) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
@@ -1308,9 +1311,10 @@ static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::TilingCheckMoeDistributeDispatch(
+ge::graphStatus TilingCheckMoeDistributeDispatch(
     gert::TilingContext *context, const char *nodeName,
-    DispatchV2TilingCtx &tc, DispatchV2Config &config)
+    DispatchV2TilingCtx &tc, DispatchV2Config &config,
+    const CheckTensorDataTypeFn &checkTensorDataType)
 {
     OP_TILING_CHECK(!CheckTensorPtrNullptr(context, nodeName, tc.isScales, tc.quantMode,
         tc.isActiveMask, tc.hasElasticInfo, tc.isPerformance, config),
@@ -1318,7 +1322,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::TilingCheckMoeDistributeD
     OP_TILING_CHECK(!CheckTensorDim(context, nodeName, tc.isScales, tc.quantMode,
         tc.isActiveMask, tc.hasElasticInfo, tc.isPerformance, tc.isLayered, config),
         OPS_LOG_E(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, tc, config),
+    OP_TILING_CHECK(!checkTensorDataType(context, nodeName, tc, config),
         OPS_LOG_E(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, tc.isScales, tc.quantMode,
         tc.isActiveMask, tc.hasElasticInfo, tc.isPerformance, config),
@@ -1627,8 +1631,11 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext* context, MoeDistrib
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3TilingFuncImplPublic(
-    gert::TilingContext *context, DispatchV2Config &config)
+ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(
+    gert::TilingContext *context, DispatchV2Config &config,
+    const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
+    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr)
 {
     const char *nodeName = context->GetNodeName();
     MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
@@ -1647,7 +1654,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
     OP_LOGI(nodeName, "Enter MoeDistributeDispatchV2 tiling check func.");
 
     // 获取入参属性
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, nodeName, *tilingData, tc, config) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(GetAttrAndSetTilingData(context, nodeName, *tilingData, tc, config,
+        checkQuantModePtr, checkCommAlgPtr) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "Get attr and set tiling data failed."), return ge::GRAPH_FAILED);
 
     // 检查并填充可选输入
@@ -1659,7 +1667,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
     tc.quantMode = tilingData->moeDistributeDispatchV2Info.quantMode;
     // 检查quantMode和scales是否匹配
     OP_TILING_CHECK(
-        CheckQuantModeMatchScales(context, nodeName, tc, config) == ge::GRAPH_FAILED,
+        checkQuantModeMatchScales(context, nodeName, tc, config) == ge::GRAPH_FAILED,
         OPS_LOG_E(nodeName, "Check quant mode match scales failed."), return ge::GRAPH_FAILED);
 
     // 检查context输入
@@ -1670,7 +1678,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 
     // 检查输入输出的dim、format、dataType
     OP_TILING_CHECK(
-        TilingCheckMoeDistributeDispatch(context, nodeName, tc, config) != ge::GRAPH_SUCCESS,
+        TilingCheckMoeDistributeDispatch(context, nodeName, tc, config, checkTensorDataType) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "Tiling check param failed."), return ge::GRAPH_FAILED);
 
     // 检查Input参数
@@ -1683,7 +1691,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
         OPS_LOG_E(nodeName, "Check UB/window size or set workspace/hcomm cfg failed."), return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
-    uint64_t tilingKey = CalTilingKey(tc);
+    uint64_t tilingKey = calTilingKey(tc);
     tilingData->moeDistributeDispatchV2Info.isMc2Context = config.isMc2Context;
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
@@ -1695,9 +1703,27 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3TilingFuncImplPublic(
+    gert::TilingContext *context, DispatchV2Config &config)
+{
+    return ::optiling::MoeDistributeDispatchA3TilingFuncImplPublic(context, config,
+        [this](gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return this->CheckQuantModeMatchScales(ctx, name, t, cfg);
+        },
+        [this](const DispatchV2TilingCtx &t) { return this->CalTilingKey(t); },
+        [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return this->CheckTensorDataType(ctx, name, t, cfg);
+        },
+        [this](const int64_t *ptr, const char *name) { return this->CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return this->CheckCommAlgPtr(ptr, name); });
+}
+
 // A3 V2 拼装实现：单函数内联，使用公共层模块，quantMode 上限为 PERTOKEN_DYNAMIC_QUANT
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3TilingFuncImplPublicV2(
-    gert::TilingContext *context, DispatchV2Config &config, DispatchV2TilingCtx &tc)
+ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublicV2(
+    gert::TilingContext *context, DispatchV2Config &config, DispatchV2TilingCtx &tc,
+    const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
+    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr)
 {
     const char *nodeName = context->GetNodeName();
     MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
@@ -1705,7 +1731,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
     OP_LOGI(nodeName, "Enter MoeDistributeDispatchA3 tiling check func V2.");
 
     // 解析属性与可选输入
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, nodeName, *tilingData, tc, config) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(GetAttrAndSetTilingData(context, nodeName, *tilingData, tc, config,
+        checkQuantModePtr, checkCommAlgPtr) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "Get attr and set tiling data failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAndGetOptionalInput(context, nodeName, tilingData, config,
@@ -1866,7 +1893,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 
     // A3 保留：quantMode 与 scales 匹配校验
     OP_TILING_CHECK(
-        CheckQuantModeMatchScales(context, nodeName, tc, config) == ge::GRAPH_FAILED,
+        checkQuantModeMatchScales(context, nodeName, tc, config) == ge::GRAPH_FAILED,
         OPS_LOG_E(nodeName, "Check quant mode match scales failed."), return ge::GRAPH_FAILED);
 
     if (config.isMc2Context) {
@@ -1876,7 +1903,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 
     // 检查输入输出的 dim、format、dataType
     OP_TILING_CHECK(
-        TilingCheckMoeDistributeDispatch(context, nodeName, tc, config) != ge::GRAPH_SUCCESS,
+        TilingCheckMoeDistributeDispatch(context, nodeName, tc, config, checkTensorDataType) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "Tiling check param failed."), return ge::GRAPH_FAILED);
 
     // 检查 Input 参数
@@ -1911,8 +1938,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
         }
     }
 
-    // 计算 TilingKey（virtual，A3 调用时自动解析到 A3::CalTilingKey）
-    uint64_t tilingKey = CalTilingKey(tc);
+    // 计算 TilingKey
+    uint64_t tilingKey = calTilingKey(tc);
     tilingData->moeDistributeDispatchV2Info.isMc2Context = config.isMc2Context;
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
@@ -1936,8 +1963,11 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 }
 
 // A5 V2 拼装实现：单函数形式，使用公共层模块，quantMode 上限为 MX_QUANT
-ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA5TilingFuncImplPublicV2(
-    gert::TilingContext *context, DispatchV2Config &config, DispatchV2TilingCtx &tc)
+ge::graphStatus MoeDistributeDispatchA5TilingFuncImplPublicV2(
+    gert::TilingContext *context, DispatchV2Config &config, DispatchV2TilingCtx &tc,
+    const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
+    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr)
 {
     const char *nodeName = context->GetNodeName();
     MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
@@ -1945,7 +1975,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA5Ti
     OP_LOGI(nodeName, "Enter MoeDistributeDispatchA5 tiling check func V2.");
 
     // 解析属性与可选输入
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, nodeName, *tilingData, tc, config) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(GetAttrAndSetTilingData(context, nodeName, *tilingData, tc, config,
+        checkQuantModePtr, checkCommAlgPtr) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "Get attr and set tiling data failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAndGetOptionalInput(context, nodeName, tilingData, config,
@@ -2106,7 +2137,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA5Ti
 
     // A5 保留：quantMode 与 scales 匹配校验
     OP_TILING_CHECK(
-        CheckQuantModeMatchScales(context, nodeName, tc, config) == ge::GRAPH_FAILED,
+        checkQuantModeMatchScales(context, nodeName, tc, config) == ge::GRAPH_FAILED,
         OPS_LOG_E(nodeName, "Check quant mode match scales failed."), return ge::GRAPH_FAILED);
 
     if (config.isMc2Context) {
@@ -2116,7 +2147,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA5Ti
 
     // 检查输入输出的 dim、format、dataType
     OP_TILING_CHECK(
-        TilingCheckMoeDistributeDispatch(context, nodeName, tc, config) != ge::GRAPH_SUCCESS,
+        TilingCheckMoeDistributeDispatch(context, nodeName, tc, config, checkTensorDataType) != ge::GRAPH_SUCCESS,
         OPS_LOG_E(nodeName, "Tiling check param failed."), return ge::GRAPH_FAILED);
 
     // 检查 Input 参数
@@ -2151,8 +2182,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA5Ti
         }
     }
 
-    // 计算 TilingKey（virtual，A5 调用时自动解析到 A5::CalTilingKey）
-    uint64_t tilingKey = CalTilingKey(tc);
+    // 计算 TilingKey
+    uint64_t tilingKey = calTilingKey(tc);
     tilingData->moeDistributeDispatchV2Info.isMc2Context = config.isMc2Context;
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
