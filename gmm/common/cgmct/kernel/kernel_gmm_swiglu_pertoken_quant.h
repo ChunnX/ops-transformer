@@ -112,7 +112,7 @@ public:
     using AType = typename BlockMmadBuilder::AType;
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, yscale
@@ -286,7 +286,7 @@ public:
         int64_t n = Get<N_VALUES>(problemShape_);
         int64_t k = Get<K_VALUES>(problemShape_);
         TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
-                                   Get<K_VALUES>(problemShape_), 0};
+                                   Get<K_VALUES>(problemShape_)};
         bs.UpdateNextProblem(resProblemShape);
         epilogueDequantAndSwigluOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);

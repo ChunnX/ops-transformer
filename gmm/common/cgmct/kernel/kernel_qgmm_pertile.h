@@ -201,10 +201,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
             epilogueOp_.UpdateParamsForNextProblem(problemShape_);
         }
 
-        AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> bsProblemShape{
-            Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_), 0L};
-        bs.UpdateNextProblem(bsProblemShape);
-
+        bs.UpdateNextProblem(problemShape_);
         UpdateMMGlobalAddr();
         ProcessSingleGroup(params, bs, groupIdx);
     }
