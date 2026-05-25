@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_rain_fusion_attention.h"
+#include <cstdio>
 
 #include "rain_fusion_attention.h"
 #include "aclnn_kernels/contiguous.h"
@@ -47,13 +48,14 @@ static bool CheckDataType(const aclTensor *query,
 
     auto iter = validKvType.find(qDtype);
     if (iter == validKvType.end()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported query datatype %d.", static_cast<int>(qDtype));
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "Unsupported query datatype %d.", static_cast<int>(qDtype)) > 0) ? reason : "Unsupported query datatype %d.");
         return false;
     }
     
     if (std::find(iter->second.begin(), iter->second.end(), kDtype) == iter->second.end() ||
         std::find(iter->second.begin(), iter->second.end(), vDtype) == iter->second.end()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Key/Value datatype mismatch with query.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", "Key/Value datatype mismatch with query.");
         return false;
     }
 
@@ -77,24 +79,25 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
 static aclnnStatus ParseBlockShape(const aclIntArray *blockShape)
 {
     if (blockShape == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "blockShape is null.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [%s] missing [%s] parameter", "RainFusionAttention", "blockshape");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
     uint64_t size = blockShape->Size();
     if (size < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShape must contain at least two elements [x, y].");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", "blockShape must contain at least two elements [x, y].");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     const int64_t *data = blockShape->GetData();
     if (data == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShape data is null.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] missing [%s] parameter", "RainFusionAttention", "data");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (data[0] <= 0 || data[1] <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShape values must be positive, got [%ld, %ld].", data[0], data[1]);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "blockShape values must be positive, got [%ld, %ld].", data[0], data[1]) > 0) ? reason : "blockShape values must be positive, got [%ld, %ld].");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -118,7 +121,7 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     }
 
     if (qInputLayout == nullptr || kvInputLayout == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input layout strings are null.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", "Input layout strings are null.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     std::string qLayout(qInputLayout);
@@ -126,13 +129,15 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     
     // 验证Q layout
     if (qLayout != "TND" && qLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str()) > 0) ? reason : "qInputLayout only supports TND or BNSD, got %s.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
     // 验证KV layout
     if (kvLayout != "TND" && kvLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str()) > 0) ? reason : "kvInputLayout only supports TND or BNSD, got %s.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -140,9 +145,8 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     bool qIsBNSD = (qLayout == "BNSD");
     bool kvIsBNSD = (kvLayout == "BNSD");
     if (qIsBNSD != kvIsBNSD) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
-                "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str()) > 0) ? reason : "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. Q layout: %s, KV layout: %s");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -192,8 +196,8 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise,
                                             aclOpExecutor **executor)
 {
     if (innerPrecise != 0 && innerPrecise != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 0 (float32 softmax) or 1 (fp16 softmax), got %ld.",
-                innerPrecise);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "innerPrecise must be 0 (float32 softmax) or 1 (fp16 softmax), got %ld.", innerPrecise) > 0) ? reason : "innerPrecise must be 0 (float32 softmax) or 1 (fp16 softmax), got %ld.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -270,7 +274,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnRainFusionAttentionGetWo
                                              qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads,
                                              maskType, scaleValue, innerPrecise, blockSize, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "RainFusionAttention returned nullptr outputs.");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", "RainFusionAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
 

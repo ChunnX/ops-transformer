@@ -9,6 +9,7 @@
  */
 
 #include "block_sparse_attention_tiling.h"
+#include <cstdio>
 #include <cmath>
 #include <cstring>
 #include "log/log.h"
@@ -145,17 +146,15 @@ ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
     
     // 校验qseqlen之和是否等于Q的T
     if (sumQSeqlen != totalTokensT_) {
-        OP_LOGE(bsaContext->GetNodeName(), 
-                "TND format validation failed: sum of qseqlen across all batches (%ld) != Q T (%ld)", 
-                sumQSeqlen, totalTokensT_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "TND format validation failed: sum of qseqlen across all batches (%ld) != Q T (%ld)", sumQSeqlen, totalTokensT_) > 0) ? reason : "TND format validation failed: sum of qseqlen across all batches (%ld) != Q T (%ld)");
         return ge::GRAPH_FAILED;
     }
     
     // 校验kvseqlen之和是否等于KV的T
     if (sumKvSeqlen != totalTokensKv_) {
-        OP_LOGE(bsaContext->GetNodeName(), 
-                "TND format validation failed: sum of kvseqlen across all batches (%ld) != KV T (%ld)", 
-                sumKvSeqlen, totalTokensKv_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "TND format validation failed: sum of kvseqlen across all batches (%ld) != KV T (%ld)", sumKvSeqlen, totalTokensKv_) > 0) ? reason : "TND format validation failed: sum of kvseqlen across all batches (%ld) != KV T (%ld)");
         return ge::GRAPH_FAILED;
     }
     
@@ -169,7 +168,7 @@ ge::graphStatus BSATiling::GetInputLayout(gert::TilingContext *bsaContext)
     auto attrLayoutQ = attrs->GetAttrPointer<char>(Q_INPUT_LAYOUT_INDEX);
     auto attrLayoutKv = attrs->GetAttrPointer<char>(KV_INPUT_LAYOUT_INDEX);
     if (attrLayoutQ == nullptr || attrLayoutKv == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "qInputLayout, kvInputLayout must be provided.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "qInputLayout, kvInputLayout must be provided.");
         return ge::GRAPH_FAILED;
     }
     std::string qLayout(attrLayoutQ);
@@ -177,10 +176,10 @@ ge::graphStatus BSATiling::GetInputLayout(gert::TilingContext *bsaContext)
     auto it = inputLayoutMapQ2Kv.find(qLayout);
     auto itRev = inputLayoutMapQ2Kv.find(kvLayout);
     if (it == inputLayoutMapQ2Kv.end() || itRev == inputLayoutMapQ2Kv.end()) {
-        OP_LOGE(bsaContext->GetNodeName(), "The inputLayout attrs only support TND/BNSD.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "The inputLayout attrs only support TND/BNSD.");
         return ge::GRAPH_FAILED;
     } else if (it->second != kvLayout) {
-        OP_LOGE(bsaContext->GetNodeName(), "QInputLayout and kvInputLayout must be the same.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "QInputLayout and kvInputLayout must be the same.");
         return ge::GRAPH_FAILED;
     } else if (it->first == "TND") {
         qInputLayout_ = RFAQInputLayout::TND_Q;
@@ -204,11 +203,11 @@ ge::graphStatus BSATiling::CheckQKVDtype(gert::TilingContext *bsaContext)
     auto kDataType = kInputDesc->GetDataType();
     auto vDataType = vInputDesc->GetDataType();
     if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
-        OP_LOGE(bsaContext->GetNodeName(), "The supported dtype of query/key/value is float16 or bfloat16.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "The supported dtype of query/key/value is float16 or bfloat16.");
         return ge::GRAPH_FAILED;
     }
     if (dataType_ != kDataType || dataType_ != vDataType) {
-        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent dtype with each other.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "Tensor query/key/value must have consistent dtype with each other.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -218,20 +217,19 @@ ge::graphStatus BSATiling::CheckQKVDimVal(
     gert::TilingContext *bsaContext, uint32_t kHeads, uint32_t vHeads, uint32_t kHeadDim, uint32_t vHeadDim)
 {
     if (embeddingSize_ != kHeadDim || embeddingSize_ != vHeadDim) {
-        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent headDim with each other, "
-            "but got qHeadDim %u, kHeadDim %u, vHeadDim %u.", embeddingSize_, kHeadDim, vHeadDim);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "Tensor query/key/value must have consistent headDim with each other, but got qHeadDim %u, kHeadDim %u, vHeadDim %u.", embeddingSize_, kHeadDim, vHeadDim) > 0) ? reason : "Tensor query/key/value must have consistent headDim with each other, but got qHeadDim %u, kHeadDim %u, vHeadDim %u.");
         return ge::GRAPH_FAILED;
     }
     if (kvHeads_ != kHeads || kvHeads_ != vHeads) {
-        OP_LOGE(bsaContext->GetNodeName(),
-            "Tensor key/value must have consistent headNum with each other and attr kvHeads, "
-            "but got kHeads %u, vHeads %u, kvHeads(attr) %u.", kHeads, vHeads, kvHeads_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "Tensor key/value must have consistent headNum with each other and attr kvHeads, but got kHeads %u, vHeads %u, kvHeads(attr) %u.", kHeads, vHeads, kvHeads_) > 0) ? reason : "Tensor key/value must have consistent headNum with each other and attr kvHeads, but got kHeads %u, vHeads %u, kvHeads(at");
         return ge::GRAPH_FAILED;
     }
     // temporary regulations of D
     if ((embeddingSize_ != VALID_EMBEDDING_SIZE_128) && (embeddingSize_ != VALID_EMBEDDING_SIZE_64)) {
-        OP_LOGE(bsaContext->GetNodeName(),
-            "The supported headDim so far is 64 or 128, but got %u.", embeddingSize_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "The supported headDim so far is 64 or 128, but got %u.", embeddingSize_) > 0) ? reason : "The supported headDim so far is 64 or 128, but got %u.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -243,13 +241,13 @@ ge::graphStatus BSATiling::ParseQKVInTND(gert::TilingContext *bsaContext)
     const auto *keyShape = bsaContext->GetInputShape(KEY_INDEX);
     const auto *valueShape = bsaContext->GetInputShape(VALUE_INDEX);
     if (queryShape == nullptr || keyShape == nullptr || valueShape == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "Query/Key/Value shape is null");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] missing [%s] parameter", bsaContext->GetNodeName(), "shape");
         return ge::GRAPH_FAILED;
     }
     if (queryShape->GetStorageShape().GetDimNum() != TND_DIM_NUM ||
         keyShape->GetStorageShape().GetDimNum() != TND_DIM_NUM ||
         valueShape->GetStorageShape().GetDimNum() != TND_DIM_NUM) {
-        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have 3 dimensions when layout is 'TND'.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "Tensor query/key/value must have 3 dimensions when layout is 'TND'.");
         return ge::GRAPH_FAILED;
     }
     totalTokensT_ = queryShape->GetStorageShape().GetDim(TND_DIM_T);
@@ -261,7 +259,7 @@ ge::graphStatus BSATiling::ParseQKVInTND(gert::TilingContext *bsaContext)
     auto embeddingSizeK = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(TND_DIM_D));
     auto embeddingSizeV = static_cast<uint32_t>(valueShape->GetStorageShape().GetDim(TND_DIM_D));
     if (CheckQKVDimVal(bsaContext, kHeads, vHeads, embeddingSizeK, embeddingSizeV) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -273,13 +271,13 @@ ge::graphStatus BSATiling::ParseQKVInBNSD(gert::TilingContext *bsaContext)
     const auto *keyShape = bsaContext->GetInputShape(KEY_INDEX);
     const auto *valueShape = bsaContext->GetInputShape(VALUE_INDEX);
     if (queryShape == nullptr || keyShape == nullptr || valueShape == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "Query/Key/Value shape is null");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] missing [%s] parameter", bsaContext->GetNodeName(), "shape");
         return ge::GRAPH_FAILED;
     }
     if (queryShape->GetStorageShape().GetDimNum() != BNSD_DIM_NUM ||
         keyShape->GetStorageShape().GetDimNum() != BNSD_DIM_NUM ||
         valueShape->GetStorageShape().GetDimNum() != BNSD_DIM_NUM) {
-        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have 4 dimensions when layout is 'BNSD'.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "Tensor query/key/value must have 4 dimensions when layout is 'BNSD'.");
         return ge::GRAPH_FAILED;
     }
     batch_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_B));
@@ -294,12 +292,12 @@ ge::graphStatus BSATiling::ParseQKVInBNSD(gert::TilingContext *bsaContext)
     maxQSeqlen_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_S));
     maxKvSeqlen_ = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BNSD_DIM_S));
     if (batch_ != kBatch || batch_ != vBatch) {
-        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent batch with each other, "
-            "but got qBatch %u, kBatch %u, vBatch %u.", batch_, kBatch, vBatch);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "Tensor query/key/value must have consistent batch with each other, but got qBatch %u, kBatch %u, vBatch %u.", batch_, kBatch, vBatch) > 0) ? reason : "Tensor query/key/value must have consistent batch with each other, but got qBatch %u, kBatch %u, vBatch %u.");
         return ge::GRAPH_FAILED;
     }
     if (CheckQKVDimVal(bsaContext, kHeads, vHeads, embeddingSizeK, embeddingSizeV) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -324,16 +322,14 @@ ge::graphStatus BSATiling::ParseSeqlensInTND(gert::TilingContext *bsaContext)
     const auto *actualSeqLengths = bsaContext->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_INDEX);
     const auto *actualSeqLengthsKv = bsaContext->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_KV_INDEX);
     if (actualSeqLengths == nullptr || actualSeqLengthsKv == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(),
-            "ActualSeqLengths/actualSeqLengthsKv must be provided when corresponding layout is 'TND'.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "ActualSeqLengths/actualSeqLengthsKv must be provided when corresponding layout is 'TND'.");
         return ge::GRAPH_FAILED;
     }
     batch_ = static_cast<uint32_t>(actualSeqLengths->GetShapeSize());
     auto batchKvS = static_cast<uint32_t>(actualSeqLengthsKv->GetShapeSize());
     if (batch_ != batchKvS) {
-        OP_LOGE(bsaContext->GetNodeName(),
-            "ActualSeqLengths & actualSeqLengthsKv must have consistent batch size, "
-            "but got batch in actualSeqLengths: %u, batch in actualSeqLengthsKv: %u", batch_, batchKvS);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "ActualSeqLengths & actualSeqLengthsKv must have consistent batch size, but got batch in actualSeqLengths: %u, batch in actualSeqLengthsKv: %u", batch_, batchKvS) > 0) ? reason : "ActualSeqLengths & actualSeqLengthsKv must have consistent batch size, but got batch in actualSeqLengths: %u, batch in a");
         return ge::GRAPH_FAILED;
     }
     qSeqLenList_ = actualSeqLengths->GetData<int64_t>();
@@ -351,11 +347,8 @@ ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
         uint32_t batchQS = static_cast<uint32_t>(actualSeqLengths->GetShapeSize());
         uint32_t batchKvS = static_cast<uint32_t>(actualSeqLengthsKv->GetShapeSize());
         if (batch_ != batchKvS || batch_ != batchQS) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                "ActualSeqLengths & actualSeqLengthsKv must have consistent batch size with each other and context,"
-                "but got batch in actualSeqLengths: %u, batch in actualSeqLengthsKv: %u, "
-                "batch in context(from query dim0): %u",
-                batchQS, batchKvS, batch_);
+            char reason[512] = {0};
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "ActualSeqLengths & actualSeqLengthsKv must have consistent batch size with each other and context,but got batch in actualSeqLengths: %u, batch in actualSeqLengthsKv: %u, batch in context(from query dim0): %u", batchQS, batchKvS, batch_) > 0) ? reason : "ActualSeqLengths & actualSeqLengthsKv must have consistent batch size with each other and context,but got batch in actua");
             return ge::GRAPH_FAILED;
         }
         qSeqLenList_ = actualSeqLengths->GetData<int64_t>();
@@ -366,8 +359,7 @@ ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
         useUniformQSeqlen_ = true;
         useUniformKvSeqlen_ = true;
     } else {
-        OP_LOGE(bsaContext->GetNodeName(),
-            "ActualSeqLengths & actualSeqLengthsKv must be either both provided, or neither provided.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "ActualSeqLengths & actualSeqLengthsKv must be either both provided, or neither provided.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -388,30 +380,30 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
 {
     const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
     if (blockShapeX_ <= 0 || blockShapeY_ <= 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elems must be greater than 0, "
-            "but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "BlockShape elems must be greater than 0, but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_) > 0) ? reason : "BlockShape elems must be greater than 0, but got elem0: %ld, elem1: %ld.");
         return ge::GRAPH_FAILED;
     }
     // temporary regulation of blockShapeY
     if (blockShapeY_ % defaultShape != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem1 must be a multiple of 128 so far, "
-            "but got elem1: %ld.", blockShapeY_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "BlockShape elem1 must be a multiple of 128 so far, but got elem1: %ld.", blockShapeY_) > 0) ? reason : "BlockShape elem1 must be a multiple of 128 so far, but got elem1: %ld.");
         return ge::GRAPH_FAILED;
     }
     if (blockSparseMaskShape->GetStorageShape().GetDimNum() != 4) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have 4 dims.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "BlockSparseMask must have 4 dims.");
         return ge::GRAPH_FAILED;
     }
     uint32_t bsmBatch = blockSparseMaskShape->GetStorageShape().GetDim(0);  // batch_size
     uint32_t bsmNumHead = blockSparseMaskShape->GetStorageShape().GetDim(1);  // num_heads
     if (bsmBatch != batch_) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent batch with context,"
-            "but got BlockSparseMask batch(dim0): %u, context batch: %u.", bsmBatch, batch_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "BlockSparseMask must have consistent batch with context,but got BlockSparseMask batch(dim0): %u, context batch: %u.", bsmBatch, batch_) > 0) ? reason : "BlockSparseMask must have consistent batch with context,but got BlockSparseMask batch(dim0): %u, context batch: %u.");
         return ge::GRAPH_FAILED;        
     }
     if (bsmNumHead != numHeads_) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent numHeads with context,"
-            "but got BlockSparseMask numHeads(dim1): %u, context numHeads: %u.", bsmNumHead, numHeads_);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "BlockSparseMask must have consistent numHeads with context,but got BlockSparseMask numHeads(dim1): %u, context numHeads: %u.", bsmNumHead, numHeads_) > 0) ? reason : "BlockSparseMask must have consistent numHeads with context,but got BlockSparseMask numHeads(dim1): %u, context numHeads:");
         return ge::GRAPH_FAILED; 
     }
     return ge::GRAPH_SUCCESS;
@@ -426,13 +418,13 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     const auto *blockShapeTensor = bsaContext->GetOptionalInputTensor(BLOCK_SHAPE_INDEX);
     
     if (blockSparseMaskTensor == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask should be provided so far.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "BlockSparseMask should be provided so far.");
         return ge::GRAPH_FAILED;
     }
     if (blockShapeTensor != nullptr) {
         uint32_t blockShapeElemNum = static_cast<uint32_t>(blockShapeTensor->GetShapeSize());
         if (blockShapeElemNum != 2) {
-            OP_LOGE(bsaContext->GetNodeName(), "BlockShape elem num must be 2.");
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "BlockShape elem num must be 2.");
             return ge::GRAPH_FAILED;
         }
         blockShapeList = blockShapeTensor->GetData<int64_t>();
@@ -451,7 +443,7 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
     if (attenMaskTensor != nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
+        OP_LOGE(bsaContext->GetNodeName(), "In op [%s], [%s] is not supported, got [%s]", bsaContext->GetNodeName(), "feature", "AttenMask is NOT YET supported.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -461,8 +453,7 @@ ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 {
     const auto *blockTableTensor = bsaContext->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     if (blockTableTensor != nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(),
-            "Paged cache is NOT YET supported, therefore blockTable should be nullptr.");
+        OP_LOGE(bsaContext->GetNodeName(), "In op [%s], [%s] is not supported, got [%s]", bsaContext->GetNodeName(), "feature", "Paged cache is NOT YET supported, therefore blockTable should be nullptr.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -484,7 +475,7 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
     auto attrs = bsaContext->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(bsaContext, attrs);
     if (attrs->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX) == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "numKeyValueHeads is null");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "numKeyValueHeads is null");
         return ge::GRAPH_FAILED;
     }
     kvHeads_ = *attrs->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX);
@@ -505,8 +496,8 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
     }
     if (socVer_ == SOC_VER_950_CODE) {
         if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
-            OP_LOGE(bsaContext->GetNodeName(), "On chip 950, only innerPrec = 4 is supported, "
-                "but got %u.", innerPrecise_);
+            char reason[512] = {0};
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "On chip 950, only innerPrec = 4 is supported, but got %u.", innerPrecise_) > 0) ? reason : "On chip 950, only innerPrec = 4 is supported, but got %u.");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -514,43 +505,44 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         OP_CHECK_NULL_WITH_CONTEXT(bsaContext, qInputDesc);
         auto dtypeQ = qInputDesc->GetDataType();
         if (innerPrecise_ != BsaInnerCalcPrec::ALL_HIGH && innerPrecise_ != BsaInnerCalcPrec::ALL_LOW) {
-            OP_LOGE(bsaContext->GetNodeName(), "On chip 910 & 910_93, only innerPrec = 0 or 1 is supported, "
-                "but got %u.", innerPrecise_);
+            char reason[512] = {0};
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "On chip 910 & 910_93, only innerPrec = 0 or 1 is supported, but got %u.", innerPrecise_) > 0) ? reason : "On chip 910 & 910_93, only innerPrec = 0 or 1 is supported, but got %u.");
             return ge::GRAPH_FAILED;
         } else if (innerPrecise_ == BsaInnerCalcPrec::ALL_LOW && dtypeQ == ge::DT_BF16) {
-            OP_LOGE(bsaContext->GetNodeName(), "On chip 910 & 910_93, when query dtype is bfloat16, "
-                "only innerPrec = 0 is supported, but got %u.", innerPrecise_);
+            char reason[512] = {0};
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "On chip 910 & 910_93, when query dtype is bfloat16, only innerPrec = 0 is supported, but got %u.", innerPrecise_) > 0) ? reason : "On chip 910 & 910_93, when query dtype is bfloat16, only innerPrec = 0 is supported, but got %u.");
             return ge::GRAPH_FAILED;
         }
     }
     // reserved yet non-configurable attrs
     int64_t blockSize = *attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
     if (blockSize != 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "Since paged cache is not yet supported, "
-                "blocksize must be 0, but got %ld.", blockSize);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "Since paged cache is not yet supported, blocksize must be 0, but got %ld.", blockSize) > 0) ? reason : "Since paged cache is not yet supported, blocksize must be 0, but got %ld.");
         return ge::GRAPH_FAILED;
     }
     int64_t preTokens = *attrs->GetAttrPointer<int64_t>(PRE_TOKENS_INDEX);
     int64_t nextTokens = *attrs->GetAttrPointer<int64_t>(NEXT_TOKENS_INDEX);
     if (preTokens != INF_WINDOW_SIZE_PRE_NEXT || nextTokens != INF_WINDOW_SIZE_PRE_NEXT) {
-        OP_LOGE(bsaContext->GetNodeName(), "Since windowed atten mask is not yet supported, "
-                "preTokens & nextTokens must be 2147483647, but got %ld, %ld.", preTokens, nextTokens);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "Since windowed atten mask is not yet supported, preTokens & nextTokens must be 2147483647, but got %ld, %ld.", preTokens, nextTokens) > 0) ? reason : "Since windowed atten mask is not yet supported, preTokens & nextTokens must be 2147483647, but got %ld, %ld.");
         return ge::GRAPH_FAILED;
     }
     auto softmaxLsePtr = attrs->GetAttrPointer<int64_t>(SOFTMAX_LSE_FLAG_INDEX);
     if (softmaxLsePtr == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag is nullptr.");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] missing [%s] attribute", bsaContext->GetNodeName(), "softmax_lse_flag");
         return ge::GRAPH_FAILED;
     } else if (*softmaxLsePtr == LSE_OUT) {
         if (socVer_ == SOC_VER_950_CODE) {
-            OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 on chip 950.");
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 on chip 950.");
             return ge::GRAPH_FAILED;
         }
         softmaxLseFlag_ = true;
     } else if (*softmaxLsePtr == LSE_NO_OUT) {
         softmaxLseFlag_ = false;
     } else {
-        OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 or 1, but got: %ld.", *softmaxLsePtr);
+        char reason[512] = {0};
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), (snprintf(reason, sizeof(reason), "Attr softmaxLseFlag must be 0 or 1, but got: %ld.", *softmaxLsePtr) > 0) ? reason : "Attr softmaxLseFlag must be 0 or 1, but got: %ld.");
         return ge::GRAPH_FAILED;
     }
     
@@ -617,11 +609,11 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
     totalQBlocks_ = 0;
 
     if (kvHeads_ == 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "kvHeads_ is 0, cannot calculate groupSize");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "kvHeads_ is 0, cannot calculate groupSize");
         return ge::GRAPH_FAILED;
     }
     if (batch_ == 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "batch_ is 0 in CalculateTaskSplit");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "batch_ is 0 in CalculateTaskSplit");
         return ge::GRAPH_FAILED;
     }
     
@@ -638,7 +630,7 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
         } else {
             // 使用actualSeqLengths数组（TND格式或BNSD格式但提供了actualSeqLengths）
             if (qSeqLenList_ == nullptr) {
-                OP_LOGE(bsaContext->GetNodeName(), "qSeqLenList_ is nullptr, cannot calculate task split");
+                OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "qSeqLenList_ is nullptr, cannot calculate task split");
                 return ge::GRAPH_FAILED;
             }
             qSeqlen = qSeqLenList_[i];
@@ -670,7 +662,7 @@ void BSATiling::CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
 {
     if (blockDim_ == 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "blockDim is 0");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "blockDim is 0");
         return ge::GRAPH_FAILED;
     }
 
@@ -886,7 +878,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
     tilingData_ = &tilingData;
     ge::graphStatus ret = GetNpuInfo(bsaContext);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(bsaContext->GetNodeName(), "GetNpuInfo failed");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "GetNpuInfo failed");
         return ret;
     }
     if (GetInputLayout(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -899,7 +891,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
     // 校验TND格式下qseqlen和kvseqlen之和是否分别等于Q和KV的T
     ret = ValidateTNDSeqlenSum(bsaContext);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(bsaContext->GetNodeName(), "ValidateTNDSeqlenSum failed");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "ValidateTNDSeqlenSum failed");
         return ret;
     }
     
@@ -910,19 +902,19 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
     } else {
         ret = CalculateTaskSplit(bsaContext);
         if (ret != ge::GRAPH_SUCCESS) {
-            OP_LOGE(bsaContext->GetNodeName(), "CalculateTaskSplit failed");
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "CalculateTaskSplit failed");
             return ret;
         }
         ret = CalculateWorkSpace(bsaContext);
         if (ret != ge::GRAPH_SUCCESS) {
-            OP_LOGE(bsaContext->GetNodeName(), "CalculateWorkSpace failed");
+            OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "CalculateWorkSpace failed");
             return ret;
         }
     }
 
     ret = FillTilingData(bsaContext);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(bsaContext->GetNodeName(), "FillTilingData failed");
+        OP_LOGE(bsaContext->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", bsaContext->GetNodeName(), "FillTilingData failed");
         return ret;
     }
     return ge::GRAPH_SUCCESS;
@@ -949,7 +941,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingBlockSparseAttention(gert::TilingContext*
         bsaTiling.BsaSetTilingData(context, tilingData);
         return ge::GRAPH_SUCCESS;
     } else {
-        OP_LOGE(context->GetNodeName(), "GetBsaTiling failed");
+        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "GetBsaTiling failed");
         return ge::GRAPH_FAILED;
     }
 }

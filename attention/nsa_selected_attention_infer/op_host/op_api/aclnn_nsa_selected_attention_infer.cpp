@@ -14,6 +14,7 @@
  */
 
 #include "nsa_selected_attention_infer.h"
+#include <cstdio>
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/pad.h"
 #include "aclnn_kernels/reshape.h"
@@ -138,17 +139,18 @@ aclnnStatus AnalysisAxisShape(const aclTensor *query, const aclTensor *key, cons
     } else if (shapeInfo.dimNum == DIM_NUM_3 && inputLayoutStr == "TND") {
         AnalysisAxisForTND(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support input_layout %s with dim_num %lu", inputLayout, shapeInfo.dimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "not support input_layout %s with dim_num %lu", inputLayout, shapeInfo.dimNum) > 0) ? reason : "not support input_layout %s with dim_num %lu");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qD and kD should be same, but got qD=%ld kD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dk);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "qD and kD should be same, but got qD=%ld kD=%ld", shapeInfo.axes.d, shapeInfo.axes.dk) > 0) ? reason : "qD and kD should be same, but got qD=%ld kD=%ld");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d < shapeInfo.axes.dv) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dv);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d, shapeInfo.axes.dv) > 0) ? reason : "only support kD >= vD, but got kD=%ld vD=%ld");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -161,17 +163,16 @@ aclnnStatus DtypeCheck(const aclTensor *query, const aclTensor *key, const aclTe
     auto qDtype = query->GetDataType();
     auto topkDtype = topkIndices->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "The data type of query[%s], key[%s], value[%s] are not equal.", op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(), op::ToString(DataType(vDtype)).GetString()) > 0) ? reason : "The data type of query[%s], key[%s], value[%s] are not equal.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (qDtype != ge::DT_FLOAT16 && qDtype != ge::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type does not meet requirements.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", "The data type does not meet requirements.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (topkDtype != ge::DT_INT32) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "topk dtype does not match with required dtype int32.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", "topk dtype does not match with required dtype int32.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -186,18 +187,20 @@ aclnnStatus AnalysisInputNsa(const aclTensor *query, const aclTensor *key, const
         AnalysisAxisShape(query, key, value, inputLayout, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     if (shapeInfo.axes.d != HEAD_DIM_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QK Head dim must == 192, but got %ld", shapeInfo.axes.d);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "QK Head dim must == 192, but got %ld", shapeInfo.axes.d) > 0) ? reason : "QK Head dim must == 192, but got %ld");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.dv != HEAD_DIM_V_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "V Head dim must == 128, but got %ld", shapeInfo.axes.dv);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "V Head dim must == 128, but got %ld", shapeInfo.axes.dv) > 0) ? reason : "V Head dim must == 128, but got %ld");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if ((actualQSeqLenOptional != nullptr && actualSeqKvLenOptional != nullptr) && 
                     (actualQSeqLenOptional->Size() > 3 * 1024 || actualSeqKvLenOptional->Size() > 3 * 1024)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "actualSeqQLen size and actualSeqKvLen size must <= 3072, but got %lu ", actualQSeqLenOptional->Size());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "actualSeqQLen size and actualSeqKvLen size must <= 3072, but got %lu ", actualQSeqLenOptional->Size()) > 0) ? reason : "actualSeqQLen size and actualSeqKvLen size must <= 3072, but got %lu ");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -268,7 +271,7 @@ aclnnStatus FakeArray_sai(const aclIntArray *inArray, aclIntArray *&outArray) {
         // tiling侧认为有tensor但没有data就是计算最大workspace
         outArray = aclCreateIntArray(fake_array.data(), size);
         if (outArray == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc array failed");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", "Try alloc array failed");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
@@ -371,7 +374,8 @@ aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
     }
     std::string layoutStr = op::ToString(layoutOptional).GetString();
     if ((layoutStr !="BSND") && (layoutStr != "BSH") && (layoutStr != "TND")) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not BSND or BSH or TND, invalid shape, please check", layoutOptional);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", (snprintf(reason, sizeof(reason), "Layout %s is not BSND or BSH or TND, invalid shape, please check", layoutOptional) > 0) ? reason : "Layout %s is not BSND or BSH or TND, invalid shape, please check");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -393,7 +397,7 @@ aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
         actualKvSeqLenOptional, layoutOptional, numHeads, numKeyValueHeads, selectBlockSize,
         selectBlockCount, pageBlockSize, scaleValue, sparseMode, l0Executor);
     if (l0attentionOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "l0attentionOut is null");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", "l0attentionOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_INNER_NULLPTR;

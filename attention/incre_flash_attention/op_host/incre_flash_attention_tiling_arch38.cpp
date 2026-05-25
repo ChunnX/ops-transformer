@@ -121,7 +121,7 @@ void TilingGetTempCompileInfo(platform_ascendc::PlatformAscendC &ascendcPlatform
 ge::graphStatus IFATilingArch38::ConvertContext(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext)
 {
     OP_CHECK_IF(context.GetNodeName() == nullptr,
-                OP_LOGE("IncreFlashAttention", "OpName got from TilingContext is null."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE("IncreFlashAttention", "The op [%s] received bad params, the reason is: [%s]", "IncreFlashAttention", "OpName got from TilingContext is null."); }), return ge::GRAPH_FAILED);
     ifaContext.opName = context.GetNodeName();
     ifaContext.platformInfo = context.GetPlatformInfo();
     ifaContext.query.desc = context.GetInputDesc(QUERY_INPUT_INDEX);
@@ -129,7 +129,7 @@ ge::graphStatus IFATilingArch38::ConvertContext(gert::TilingContext &context, In
     ifaContext.key.desc = context.GetInputDesc(KEY_INPUT_INDEX);
     ifaContext.key.shape = context.GetInputShape(KEY_INPUT_INDEX);
     OP_CHECK_IF((ifaContext.query.shape == nullptr) || (ifaContext.key.shape == nullptr),
-                OP_LOGE(context.GetNodeName(), "Shape of query or shape of key is null."), return ge::GRAPH_FAILED);
+                ({ OP_LOGE(context.GetNodeName(), "The op [%s] missing [%s] parameter", context.GetNodeName(), "key"); }), return ge::GRAPH_FAILED);
     auto batchOfQuery = ifaContext.query.shape->GetStorageShape().GetDim(NUM0);
     auto batchOfKey = ifaContext.key.shape->GetStorageShape().GetDim(NUM0);
     if (batchOfQuery != batchOfKey) {
@@ -176,7 +176,7 @@ ge::graphStatus IFATilingArch38::ConvertContext(gert::TilingContext &context, In
     ifaContext.kvPaddingSize.tensor = context.GetOptionalInputTensor(KV_PADDING_SIZE_INPUT_INDEX);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "Attrs got from ge is null."),
+    OP_CHECK_IF(attrs == nullptr, ({ OP_LOGE(context.GetNodeName(), "The op [%s] missing [%s] attribute", context.GetNodeName(), "attribute"); }),
                 return ge::GRAPH_FAILED);
 
     ifaContext.numHeads = attrs->GetAttrPointer<uint32_t>(NUM_HEADS_ATTR_INDEX);

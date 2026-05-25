@@ -46,19 +46,16 @@ static bool IsEmptyInput(gert::TilingContext *context)
 {
     auto inputShape = context->GetInputShape(INPUT_INPUT_INDEX);
     OP_CHECK_IF(inputShape == nullptr,
-                OP_LOGE(unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(),
-                "inputShape is nullptr!"),
+                ({ OP_LOGE(unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(), "The op [%s] missing [%s] parameter", unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(), "inputshape"); }),
                 return false);
     auto weightShape = context->GetInputShape(WEIGHT_INPUT_INDEX);
     OP_CHECK_IF(weightShape == nullptr,
-                OP_LOGE(unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(),
-                "weightShape is nullptr!"),
+                ({ OP_LOGE(unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(), "The op [%s] missing [%s] parameter", unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(), "weightshape"); }),
                 return false);
     auto outputCacheShape = context->GetInputShape(OUTPUT_CACHE_INPUT_INDEX);
 
     OP_CHECK_IF(outputCacheShape == nullptr,
-                OP_LOGE(unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(),
-                "outputCacheShape is nullptr!"),
+                ({ OP_LOGE(unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(), "The op [%s] missing [%s] parameter", unlikely(((context) == nullptr) || (context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(), "outputcacheshape"); }),
                 return false);
 
     int64_t inputShapeSize = inputShape->GetStorageShape().GetShapeSize();
@@ -73,11 +70,11 @@ static bool IsEmptyInput(gert::TilingContext *context)
 ASCENDC_EXTERN_C ge::graphStatus NsaCompressWithCache(gert::TilingContext *context)
 {
     if (CheckParams(context) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context, "[NSACompressWithCache] CheckParams failed");
+        OP_LOGE(context, "The op [%s] received bad params, the reason is: [%s]", context, "[NSACompressWithCache] CheckParams failed");
         return ge::GRAPH_FAILED;
     }
     if (IsEmptyInput(context)) {
-        OP_LOGE(context, "[NSACompressWithCache] do not support empty input/weight/outputCache");
+        OP_LOGE(context, "In op [%s], [%s] is not supported, got [%s]", context, "feature", "[NSACompressWithCache] do not support empty input/weight/outputCache");
         return ge::GRAPH_FAILED;
     } else {
         auto resultCode = TilingRegistry::GetInstance().DoTilingImpl(context);

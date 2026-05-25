@@ -52,7 +52,7 @@ aclnnStatus aclnnPromptFlashAttentionV3GetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
             return ACLNN_ERR_RUNTIME_ERROR;
         }
         return InnerPromptFlashAttentionGetWorkspaceSize(query, key, value, pseShift, attenMask,
@@ -70,7 +70,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     aclOpExecutor *executor,
     const aclrtStream stream) { // V3 call aclnn inner
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
             return ACLNN_ERR_RUNTIME_ERROR;
         }
         return InnerPromptFlashAttention(workspace, workspaceSize, executor, stream);

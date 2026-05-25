@@ -14,6 +14,7 @@
  */
 
  #include <graph/utils/type_utils.h>
+#include <cstdio>
  #include <register/op_impl_registry.h>
  #include "log/log.h"
  
@@ -52,8 +53,8 @@
          c = toupper(c);
      }
     if (inputLayoutStr != "BSND" && inputLayoutStr != "BSH" && inputLayoutStr != "TND") {
-         OP_LOGE(context, "The inputLayout should be BSND or BSH or TND, but got %s.",
-                 inputLayoutStr.c_str());
+         char reason[512] = {0};
+         OP_LOGE(context, "The op [%s] received bad params, the reason is: [%s]", context, (snprintf(reason, sizeof(reason), "The inputLayout should be BSND or BSH or TND, but got %s.", inputLayoutStr.c_str()) > 0) ? reason : "The inputLayout should be BSND or BSH or TND, but got %s.");
          return GRAPH_FAILED;
      }
 
@@ -65,8 +66,8 @@
          attentionOutShape->SetDim(DIM_NUM_3, shapeD2);
      } else if (inputLayoutStr == "BSH") {
          if (queryShape->GetDim(DIM_NUM_2) % keyShape->GetDim(DIM_NUM_2) != 0) {
-             OP_LOGE(context, "The H of query shape cannot div  %s.",
-                 inputLayoutStr.c_str());
+             char reason[512] = {0};
+             OP_LOGE(context, "The op [%s] received bad params, the reason is: [%s]", context, (snprintf(reason, sizeof(reason), "The H of query shape cannot div  %s.", inputLayoutStr.c_str()) > 0) ? reason : "The H of query shape cannot div  %s.");
              return GRAPH_FAILED;
          }
          auto group = queryShape->GetDim(DIM_NUM_2) / keyShape->GetDim(DIM_NUM_2);

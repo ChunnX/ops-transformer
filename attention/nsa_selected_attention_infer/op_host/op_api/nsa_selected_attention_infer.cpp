@@ -78,7 +78,7 @@ const aclTensor* NsaSelectedAttentionInfer(
                         OP_ATTR(layoutOptional, numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount,
                                 pageBlockSize, static_cast<float>(scaleValue), sparseMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "NsaSelectedAttentionInfer InferShape failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "NsaSelectedAttentionInfer", "NsaSelectedAttentionInfer InferShape failed.");
         return nullptr;
     }
 

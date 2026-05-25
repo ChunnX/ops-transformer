@@ -15,6 +15,7 @@
 
 
 #include "block_sparse_attention.h"
+#include <cstdio>
 
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -96,7 +97,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
                                    static_cast<int64_t>(blockSize), static_cast<uint32_t>(preTokens),
                                    static_cast<int64_t>(nextTokens), static_cast<int64_t>(softmaxLseFlag)));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue) > 0) ? reason : "BlockSparseAttention infer shape failed, scaleValue: %f.");
         return {nullptr, nullptr};
     }
     

@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_block_sparse_attention.h"
+#include <cstdio>
 
 #include "block_sparse_attention.h"
 #include "aclnn_kernels/contiguous.h"
@@ -48,13 +49,14 @@ static bool CheckDataType(const aclTensor *query,
 
     auto iter = validKvType.find(qDtype);
     if (iter == validKvType.end()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported query datatype %d.", static_cast<int>(qDtype));
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "Unsupported query datatype %d.", static_cast<int>(qDtype)) > 0) ? reason : "Unsupported query datatype %d.");
         return false;
     }
     
     if (std::find(iter->second.begin(), iter->second.end(), kDtype) == iter->second.end() ||
         std::find(iter->second.begin(), iter->second.end(), vDtype) == iter->second.end()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Key/Value datatype mismatch with query.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", "Key/Value datatype mismatch with query.");
         return false;
     }
 
@@ -75,24 +77,25 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
 static aclnnStatus ParseblockShapeOptional(const aclIntArray *blockShapeOptional)
 {
     if (blockShapeOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "blockShapeOptional is null.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [%s] missing [%s] parameter", "BlockSparseAttention", "blockshapeoptional");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
     uint64_t size = blockShapeOptional->Size();
     if (size < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain at least two elements [x, y].");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", "blockShapeOptional must contain at least two elements [x, y].");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     const int64_t *data = blockShapeOptional->GetData();
     if (data == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] missing [%s] parameter", "BlockSparseAttention", "data");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (data[0] <= 0 || data[1] <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0], data[1]);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "blockShapeOptional values must be positive, got [%ld, %ld].", data[0], data[1]) > 0) ? reason : "blockShapeOptional values must be positive, got [%ld, %ld].");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -114,7 +117,7 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     }
 
     if (qInputLayout == nullptr || kvInputLayout == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input layout strings are null.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", "Input layout strings are null.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     std::string qLayout(qInputLayout);
@@ -122,13 +125,15 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     
     // 验证Q layout
     if (qLayout != "TND" && qLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str()) > 0) ? reason : "qInputLayout only supports TND or BNSD, got %s.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
     // 验证KV layout
     if (kvLayout != "TND" && kvLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str()) > 0) ? reason : "kvInputLayout only supports TND or BNSD, got %s.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -136,9 +141,8 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     bool qIsBNSD = (qLayout == "BNSD");
     bool kvIsBNSD = (kvLayout == "BNSD");
     if (qIsBNSD != kvIsBNSD) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
-                "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str()) > 0) ? reason : "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. Q layout: %s, KV layout: %s");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -166,8 +170,7 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
         blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);  
         CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR); 
         if (blockSparseMaskOptional->GetStorageShape().GetDimNum() != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "blockSparseMask must be 4D tensor");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", "blockSparseMask must be 4D tensor");
         return ACLNN_ERR_PARAM_INVALID;
         }
        //CHECK_RET(blockSparseMaskOptional->GetStorageShape().GetDim() == 4, "blockSparseMask must be 4D tensor");
@@ -192,8 +195,8 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise,
                                             aclOpExecutor **executor)
 {
     if (innerPrecise != 0 && innerPrecise != 1 && innerPrecise != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 0 or 1 or 4, got %ld.",
-                innerPrecise);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", (snprintf(reason, sizeof(reason), "innerPrecise must be 0 or 1 or 4, got %ld.", innerPrecise) > 0) ? reason : "innerPrecise must be 0 or 1 or 4, got %ld.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -272,7 +275,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
                                              qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads,
                                              maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "BlockSparseAttention", "BlockSparseAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
