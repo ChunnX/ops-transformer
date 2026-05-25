@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -37,15 +38,11 @@ ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF((fiaInfo.inputQRopeType != ge::DT_BF16 && fiaInfo.inputQRopeType != ge::DT_FLOAT16),
-        OP_LOGE(fiaInfo.opName,
-        "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16.",
-        DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()),
+        OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((fiaInfo.inputKRopeType != ge::DT_BF16 && fiaInfo.inputKRopeType != ge::DT_FLOAT16),
-        OP_LOGE(fiaInfo.opName,
-        "When rope exist, the datatype(%s) of keyRope only support BF16 or FLOAT16.",
-        DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
+        OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -57,8 +54,9 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF((fiaInfo.ropeHeadDim != NUM_64),
-        OP_LOGE(fiaInfo.opName,
-            "When rope exist, the d size of rope must be 64, but current is %u.", fiaInfo.ropeHeadDim),
+        ({ std::ostringstream oss; oss << "When rope exist, the d size of rope must be 64, but current is ";
+        oss << fiaInfo.ropeHeadDim;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -67,16 +65,15 @@ ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
     if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
-        OP_LOGE(fiaInfo.opName,
-            "In MXFP8 fullquant scenario, when rope exist, "
-            "the d size of query and key must be 64 or 128, but current is %u.",
-            fiaInfo.qkHeadDim),
+        ({ std::ostringstream oss; oss << "In MXFP8 fullquant scenario, when rope exist, the d size of query and key must be 64 or 128, but current is ";
+        oss << fiaInfo.qkHeadDim;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
-        OP_LOGE(fiaInfo.opName,
-            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.",
-            fiaInfo.qkHeadDim),
+        ({ std::ostringstream oss; oss << "When rope exist, the d size of query and key must be 128 or 512, but current is ";
+        oss << fiaInfo.qkHeadDim;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -112,13 +109,18 @@ ge::graphStatus RopeChecker::CheckRopeDtypeConsistency(const FiaTilingInfo &fiaI
 {
     if (enableNonQuant_) {
         OP_CHECK_IF((fiaInfo.inputQRopeType != fiaInfo.inputQType),
-            OP_LOGE(fiaInfo.opName, "The datatype of query rope(%s) should be equal to query(%s).",
-            DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()),
+            ({ std::ostringstream oss; oss << "The datatype of query rope(";
+        oss << DataTypeToSerialString(fiaInfo.inputQRopeType).c_str();
+        oss << ") should be equal to query(";
+        oss << DataTypeToSerialString(fiaInfo.inputQType).c_str();
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.inputKRopeType != fiaInfo.inputKvType),
-            OP_LOGE(fiaInfo.opName, "The datatype of key rope(%s) should be equal to key(%s).",
-            DataTypeToSerialString(fiaInfo.inputKRopeType).c_str(),
-            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+            ({ std::ostringstream oss; oss << "The datatype of key rope(";
+        oss << DataTypeToSerialString(fiaInfo.inputKRopeType).c_str();
+        oss << ") should be equal to key(";
+        oss << DataTypeToSerialString(fiaInfo.inputKvType).c_str();
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -136,16 +138,30 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
     const uint32_t ropeDimNum = ropeShape.GetDimNum();
 
     OP_CHECK_IF(dimNum != ropeDimNum,
-        OP_LOGE(fiaInfo.opName,
-            "The dim num of %s(%u) should be equal to %s(%u).",
-            inputRopeName.c_str(), ropeDimNum, inputName.c_str(), dimNum),
+        ({ std::ostringstream oss; oss << "The dim num of ";
+        oss << inputRopeName.c_str();
+        oss << "(";
+        oss << ropeDimNum;
+        oss << ") should be equal to ";
+        oss << inputName.c_str();
+        oss << "(";
+        oss << dimNum;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     
     for (uint32_t i = 0; i < dimNum - 1; i++) {
         OP_CHECK_IF(shape.GetDim(i) != ropeShape.GetDim(i),
-            OP_LOGE(fiaInfo.opName,
-                "The %uth dim of %s(%ld) should be equal to %s(%ld).",
-                i, inputRopeName.c_str(), ropeShape.GetDim(i), inputName.c_str(), shape.GetDim(i)),
+            ({ std::ostringstream oss; oss << "The ";
+        oss << i;
+        oss << "th dim of ";
+        oss << inputRopeName.c_str();
+        oss << "(";
+        oss << ropeShape.GetDim(i);
+        oss << ") should be equal to ";
+        oss << inputName.c_str();
+        oss << "(";
+        oss << shape.GetDim(i);
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
 
@@ -153,9 +169,15 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
         uint32_t tmpN = static_cast<uint32_t>(shape.GetDim(dimNum - 1) / fiaInfo.qkHeadDim);
         uint32_t ropeN = static_cast<uint32_t>(ropeShape.GetDim(ropeDimNum - 1) / fiaInfo.ropeHeadDim);
         OP_CHECK_IF(tmpN != ropeN,
-            OP_LOGE(fiaInfo.opName,
-                "The axis N of %s(%u) should be equal to %s(%u).",
-                inputRopeName.c_str(), ropeN, inputName.c_str(), tmpN),
+            ({ std::ostringstream oss; oss << "The axis N of ";
+        oss << inputRopeName.c_str();
+        oss << "(";
+        oss << ropeN;
+        oss << ") should be equal to ";
+        oss << inputName.c_str();
+        oss << "(";
+        oss << tmpN;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -172,9 +194,11 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
     const uint32_t keyDimNum = keyShape.GetDimNum();
     const uint32_t keyRopeDimNum = keyRopeShape.GetDimNum();
     OP_CHECK_IF(keyDimNum != keyRopeDimNum,
-        OP_LOGE(fiaInfo.opName,
-            "The dim num of keyRope(%u) should be equal to key(%u).",
-            keyRopeDimNum, keyDimNum),
+        ({ std::ostringstream oss; oss << "The dim num of keyRope(";
+        oss << keyRopeDimNum;
+        oss << ") should be equal to key(";
+        oss << keyDimNum;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     uint32_t keyBlockNum = 0;
@@ -208,19 +232,25 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
     }
 
     OP_CHECK_IF(keyBlockNum != keyRopeBlockNum,
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, the axis blockNum of keyRope(%u) should be equal to key(%u).",
-            keyRopeBlockNum, keyBlockNum),
+        ({ std::ostringstream oss; oss << "When page attention enable, the axis blockNum of keyRope(";
+        oss << keyRopeBlockNum;
+        oss << ") should be equal to key(";
+        oss << keyBlockNum;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyBlockSize != keyRopeBlockSize,
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, the axis blockSize of keyRope(%u) should be equal to key(%u).",
-            keyRopeBlockSize, keyBlockSize),
+        ({ std::ostringstream oss; oss << "When page attention enable, the axis blockSize of keyRope(";
+        oss << keyRopeBlockSize;
+        oss << ") should be equal to key(";
+        oss << keyBlockSize;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyN != keyRopeN,
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, the axis N of keyRope(%u) should be equal to key(%u).",
-            keyRopeN, keyN),
+        ({ std::ostringstream oss; oss << "When page attention enable, the axis N of keyRope(";
+        oss << keyRopeN;
+        oss << ") should be equal to key(";
+        oss << keyN;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -239,8 +269,11 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
     // b = len(kCache)
     const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
     OP_CHECK_IF(fiaInfo.kCache.size() != keyRopeShape.GetDim(DIM_NUM_0),
-        OP_LOGE(fiaInfo.opName, "The axis B of keyRope(%u) should be equal to the tensor number of key(%u).",
-                keyRopeShape.GetDim(DIM_NUM_0), fiaInfo.kCache.size()),
+        ({ std::ostringstream oss; oss << "The axis B of keyRope(";
+        oss << keyRopeShape.GetDim(DIM_NUM_0);
+        oss << ") should be equal to the tensor number of key(";
+        oss << fiaInfo.kCache.size();
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     // k_s = krope_s
@@ -253,12 +286,18 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeS,
-                OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
-                    keyRopeS, keyShape.GetDim(DIM_NUM_2)),
+                ({ std::ostringstream oss; oss << "The axis S of keyRope(";
+        oss << keyRopeS;
+        oss << ") should be equal to key(";
+        oss << keyShape.GetDim(DIM_NUM_2);
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeN,
-                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
-                    keyRopeN, keyShape.GetDim(DIM_NUM_1)),
+                ({ std::ostringstream oss; oss << "The axis N of keyRope(";
+        oss << keyRopeN;
+        oss << ") should be equal to key(";
+        oss << keyShape.GetDim(DIM_NUM_1);
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
         }
     } else if (inputLayout == "BSH") {
@@ -267,12 +306,18 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
-                OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
-                    keyRopeS, keyShape.GetDim(DIM_NUM_1)),
+                ({ std::ostringstream oss; oss << "The axis S of keyRope(";
+        oss << keyRopeS;
+        oss << ") should be equal to key(";
+        oss << keyShape.GetDim(DIM_NUM_1);
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN,
-                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
-                    keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim),
+                ({ std::ostringstream oss; oss << "The axis N of keyRope(";
+        oss << keyRopeN;
+        oss << ") should be equal to key(";
+        oss << keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
         }
     } else if (inputLayout == "BSND") {
@@ -281,12 +326,18 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
-                OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
-                    keyRopeS, keyShape.GetDim(DIM_NUM_1)),
+                ({ std::ostringstream oss; oss << "The axis S of keyRope(";
+        oss << keyRopeS;
+        oss << ") should be equal to key(";
+        oss << keyShape.GetDim(DIM_NUM_1);
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeN,
-                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
-                    keyRopeN, keyShape.GetDim(DIM_NUM_2)),
+                ({ std::ostringstream oss; oss << "The axis N of keyRope(";
+        oss << keyRopeN;
+        oss << ") should be equal to key(";
+        oss << keyShape.GetDim(DIM_NUM_2);
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -300,21 +351,18 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo)
     
     // 一个空 一个非空
     OP_CHECK_IF((queryRopeTensor == nullptr && keyRopeTensor != nullptr),
-        OP_LOGE(fiaInfo.opName, "queryRope is null, but keyRope is not null, "
-            "they should be consistent."),
+        OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "queryrope"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((keyRopeTensor == nullptr && queryRopeTensor != nullptr),
-    OP_LOGE(fiaInfo.opName, "keyRope is null, but queryRope is not null, "
-        "they should be consistent."),
+    OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "keyrope"),
     return ge::GRAPH_FAILED);
 
     // rope split时 rope必须都存在
     if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
         OP_LOGI(fiaInfo.opName, "Rope mode is ROPE_SPLIT.");
         OP_CHECK_IF((queryRopeTensor == nullptr || keyRopeTensor == nullptr),
-            OP_LOGE(fiaInfo.opName,
-            "When rope exists, queryRope or keyRope should not be null."),
+            ({ std::ostringstream oss; oss << "When rope exists, queryRope or keyRope should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -327,31 +375,30 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
     }
     // 不支持 prefix
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-        OP_LOGE(fiaInfo.opName, "When rope exists, system prefix is not supported."),
+        ({ std::ostringstream oss; oss << "When rope exists, system prefix is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When rope exists, pse is not supported."),
+        ({ std::ostringstream oss; oss << "When rope exists, pse is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     
     // 不支持alibepse
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
-        OP_LOGE(fiaInfo.opName, "When rope exists, pseType = 2/3 is not supported."),
+        ({ std::ostringstream oss; oss << "When rope exists, pseType = 2/3 is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
         // 不支持左padding
         OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-            OP_LOGE(fiaInfo.opName, "When rope exsists, leftPadding is not supported."),
+            ({ std::ostringstream oss; oss << "When rope exsists, leftPadding is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         // 不支持tensorlist
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-            OP_LOGE(fiaInfo.opName, "When rope exsists, tensorlist is not supported."),
+            ({ std::ostringstream oss; oss << "When rope exsists, tensorlist is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         // 不支持后量化
         OP_CHECK_IF(fiaInfo.isOutQuantEnable,
-            OP_LOGE(fiaInfo.opName, "When rope exsists, postQuant is not supported."),
+            ({ std::ostringstream oss; oss << "When rope exsists, postQuant is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
 
@@ -365,13 +412,11 @@ ge::graphStatus RopeChecker::CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo)
     }
 
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-        OP_LOGE(fiaInfo.opName,
-                "In the Decode MLA scenario, left padding is not supported."),
+        ({ std::ostringstream oss; oss << "In the Decode MLA scenario, left padding is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
      OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-        OP_LOGE(fiaInfo.opName,
-                "In the Decode MLA scenario, tensorlist is not supported."),
+        ({ std::ostringstream oss; oss << "In the Decode MLA scenario, tensorlist is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -381,8 +426,7 @@ ge::graphStatus RopeChecker::CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo)
 {
     // 不支持伪量化
     OP_CHECK_IF(fiaInfo.opParamInfo.queryRope.tensor != nullptr || fiaInfo.opParamInfo.keyRope.tensor != nullptr,
-        OP_LOGE(fiaInfo.opName,
-                "Rope is not supported in antiquant scenario."),
+        ({ std::ostringstream oss; oss << "Rope is not supported in antiquant scenario."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -399,15 +443,17 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
     
 
     OP_CHECK_IF((fiaInfo.s1Size < NUM1),
-        OP_LOGE(fiaInfo.opName,
-            "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0.",
-            fiaInfo.s1Size),
+        ({ std::ostringstream oss; oss << "In the Decode MLA scenario, sequence length(";
+        oss << fiaInfo.s1Size;
+        oss << ") of query should be larger than 0."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(enableFullQuant_ && (fiaInfo.s1Size > maxQuerySeqLenForMLAFullquant),
-        OP_LOGE(fiaInfo.opName,
-            "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u].",
-            fiaInfo.s1Size, maxQuerySeqLenForMLAFullquant),
+        ({ std::ostringstream oss; oss << "In the Decode MLA fullquant scenario, sequence length(";
+        oss << fiaInfo.s1Size;
+        oss << ") of query should be in range of [1, ";
+        oss << maxQuerySeqLenForMLAFullquant;
+        oss << "]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -420,15 +466,15 @@ ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo)
     }
     static const std::set<uint32_t> supportNumHeadForMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
     OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
-        OP_LOGE(fiaInfo.opName,
-            "In the Decode MLA scenario, "
-            "the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}.", fiaInfo.n1Size),
+        ({ std::ostringstream oss; oss << "In the Decode MLA scenario, the heads num(";
+        oss << fiaInfo.n1Size;
+        oss << ") of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((*fiaInfo.opParamInfo.kvHeadNums != NUM1),
-        OP_LOGE(fiaInfo.opName,
-            "In the Decode MLA scenario, the heads num(%d) of key should be 1.",
-            *fiaInfo.opParamInfo.kvHeadNums),
+        ({ std::ostringstream oss; oss << "In the Decode MLA scenario, the heads num(";
+        oss << *fiaInfo.opParamInfo.kvHeadNums;
+        oss << ") of key should be 1."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

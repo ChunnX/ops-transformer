@@ -112,7 +112,7 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
         outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
                                     0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
         if (outTensor == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] missing [%s] parameter", fia_aclnn::kOpName, "fake_optional_tensor");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
