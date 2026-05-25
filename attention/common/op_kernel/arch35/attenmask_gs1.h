@@ -287,10 +287,15 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
 
 // TODO，老模板收编完成后删除该函数
 template <typename T>
-__aicore__ inline bool CheckIsSkipAttenMask(LocalTensor<T> &attenMaskUb, MaskInfo &info, bool isPre)
+__aicore__ inline bool CheckIsSkipAttenMask(LocalTensor<T> &attenMaskUb, MaskInfo &info,
+                                            uint32_t s2BaseSize, bool isPre)
 {
     if ((isPre && IsSkipAttentionmaskForPre(info)) || (!isPre && IsSkipAttentionmask(info))) {
-        Duplicate(attenMaskUb, static_cast<T>(0U), info.gs1dealNum * Align(info.s2dealNum, 32U));
+        if (isPre) {
+            Duplicate(attenMaskUb, static_cast<T>(1U), info.gs1dealNum * s2BaseSize);
+        } else {
+            Duplicate(attenMaskUb, static_cast<T>(0U), info.gs1dealNum * s2BaseSize);
+        }
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
@@ -305,7 +310,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
                                                       MaskInfo &info, bool isPre = false)
 {
     if constexpr (!isReconstructTemp) {
-        if (CheckIsSkipAttenMask(attenMaskUb, info, isPre)) {
+        if (CheckIsSkipAttenMask(attenMaskUb, info, s2BaseSize, isPre)) {
             return;
         }
     }
@@ -359,7 +364,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
                                                       MaskInfo &info, bool isPre = false)
 {
     if constexpr (!isReconstructTemp) {
-        if (CheckIsSkipAttenMask(attenMaskUb, info, isPre)) {
+        if (CheckIsSkipAttenMask(attenMaskUb, info, s2BaseSize, isPre)) {
             return;
         }
     }
