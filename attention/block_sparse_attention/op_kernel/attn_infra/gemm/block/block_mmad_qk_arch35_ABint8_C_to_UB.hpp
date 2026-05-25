@@ -437,11 +437,13 @@ public:
                
                 //reshape 64
                 auto l0CViewLayoutTla = tla::MakeLayoutL0C(l0TileNAct * (mFixPAligned64 >> 5), 32);
+                
+                auto l0CViewTensorTla = tla::MakeTensor(l0CTensor[l0CBufId], l0CViewLayoutTla, Arch::PositionL0C{});
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
                     tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
-                auto l0CTensorTlaTileSub0 = GetTile(l0CViewLayoutTla,
+                auto l0CTensorTlaTileSub0 = GetTile(l0CViewTensorTla,
                     tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
-                auto l0CTensorTlaTileSub1 = GetTile(l0CViewLayoutTla,
+                auto l0CTensorTlaTileSub1 = GetTile(l0CViewTensorTla,
                     tla::MakeCoord(nFixPAligned16 * (mFixPAligned64 >> 6), 0),
                     tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
                
