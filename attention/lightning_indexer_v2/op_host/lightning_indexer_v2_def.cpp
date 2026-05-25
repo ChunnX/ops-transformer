@@ -84,6 +84,7 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 默认值，筛选前2048
+        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
