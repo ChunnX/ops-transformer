@@ -44,6 +44,8 @@ constexpr uint64_t MAX_REPEAT_TIMES = 255UL; // InitOutput接口取值
 constexpr uint64_t GMM_MAX_GROUP_LIST_SIZE = 1024UL;
 constexpr size_t LAST_FIRST_DIM_INDEX = 1;
 constexpr size_t LAST_SECOND_DIM_INDEX = 2;
+constexpr size_t LAST_THIRD_DIM_INDEX = 3;
+constexpr size_t LAST_FOURTH_DIM_INDEX = 4;
 constexpr uint64_t PER_BLOCK_GROUP_SIZE = 128UL;
 constexpr uint64_t SPLIT_M_W_DIMS = 3UL;
 constexpr uint64_t SPLIT_K_W_DIMS = 2UL;
@@ -55,6 +57,7 @@ constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
 constexpr size_t MXFP_PER_TOKEN_SCALE_DIM_NUM = 3;
+constexpr size_t MXFP_SCALE_NZ_TAIL_DIM_NUM = 5;
 constexpr uint32_t RESERVED_LENGTH = 1024U;
 
 constexpr size_t WEIGHTNZ_DIM_NUM = 5;
@@ -143,6 +146,7 @@ public:
 
     ge::Format aFormat = ge::FORMAT_ND;
     ge::Format bFormat = ge::FORMAT_ND;
+    ge::Format scaleFormat = ge::FORMAT_ND;
     ge::Format cFormat = ge::FORMAT_ND;
     bool transA = false;
     bool transB = false;
@@ -193,6 +197,7 @@ protected:
     virtual void PrintQuantParams();
     bool IsMicroScaling() const;
     bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
+    bool CheckMxScaleNzStorageShape(const gert::Shape &scaleStorageShape) const;
     bool CheckShapeForWeightNz(const gert::Shape &wShape) const;
     uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     uint64_t GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;

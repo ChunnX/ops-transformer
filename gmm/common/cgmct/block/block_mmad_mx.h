@@ -58,17 +58,17 @@ struct TileL1L0Param {
 } // namespace
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
-          class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
-          uint64_t L1BufferNum_ = 2UL, class Enable = void>
+          class LayoutB_, class LayoutScaleB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_,
+          class TileCopy_, uint64_t L1BufferNum_ = 2UL, class Enable = void>
 class BlockMmadMx {
     static_assert(AscendC::Std::always_false_v<DispatchPolicy_>, "Should not be here!");
 };
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
-          class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
-          uint64_t L1BufferNum_>
-class BlockMmadMx<DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_,
-                  BiasType_, LayoutBias_, TileCopy_, L1BufferNum_,
+          class LayoutB_, class LayoutScaleB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_,
+          class TileCopy_, uint64_t L1BufferNum_>
+class BlockMmadMx<DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, LayoutScaleB_,
+                  CType_, LayoutC_, BiasType_, LayoutBias_, TileCopy_, L1BufferNum_,
                   AscendC::Std::enable_if_t<
                       AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_> ||
                       AscendC::Std::is_base_of_v<MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, A_FULL_LOAD_MODE>,
@@ -79,6 +79,7 @@ public:
     using CType = CType_;
     using LayoutA = LayoutA_;
     using LayoutB = LayoutB_;
+    using LayoutScaleB = LayoutScaleB_;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
     using MxL0AType = typename AscendC::GetL0DataType<AType, true>::Type;
@@ -90,6 +91,7 @@ public:
     static constexpr bool transA = TagToTrans<LayoutA>::value;
     static constexpr bool transB = TagToTrans<LayoutB>::value;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
+    static constexpr CubeFormat formatScaleB = TagToFormat<LayoutScaleB>::format;
     static constexpr bool IS_FP4 =
         AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
     static constexpr uint64_t MIN_STEP = IS_FP4 ? B4_MIN_STEP : B8_MIN_STEP;
@@ -425,11 +427,30 @@ public:
             curScaleKL1 = k_ - kL1Offset;
         }
 
-        AscendC::GlobalTensor<half> bScaleGlobalB16;
-        bScaleGlobalB16.SetGlobalBuffer(((__gm__ half *)(bScaleGlobal.GetPhyAddr())));
-        auto bScaleL1LocalImpl = bScaleL1Local.template ReinterpretCast<half>();
+        uint64_t offsetScaleBGM = transB ? kL1Offset / MXFP_DIVISOR_SIZE : (kL1Offset / MXFP_DIVISOR_SIZE) * n_;
 
-        if constexpr (transB) {
+        if constexpr (formatScaleB == CubeFormat::NZ) {
+            // scaleNz GM layout is [N1, Kg1, Kg0, N0, 2], copied as half over the pair dimension.
+            AscendC::DataCopyExtParams dataCopyParams;
+            AscendC::DataCopyPadExtParams<half> padParams{false, 0, 0, 0};
+            const uint64_t curScaleGroupKL1 = Cgmct::Gemm::CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE);
+            const uint64_t scaleGroupK = Cgmct::Gemm::CeilDiv(k_, static_cast<uint64_t>(MXFP_DIVISOR_SIZE));
+            const uint64_t scaleGroupKAlign = Align16(scaleGroupK);
+            const uint64_t l1ScaleGroupStride = mxScaleKL1B16_;
+            const uint64_t scaleGroupKOffset = kL1Offset / MXFP_DIVISOR_SIZE;
+            dataCopyParams.blockCount = Cgmct::Gemm::CeilDiv(curNL1, static_cast<uint64_t>(AscendC::BLOCK_CUBE));
+            dataCopyParams.blockLen = curScaleGroupKL1 * AscendC::BLOCK_CUBE * sizeof(half);
+            dataCopyParams.srcStride = (scaleGroupKAlign - curScaleGroupKL1) * AscendC::BLOCK_CUBE * sizeof(half);
+            // GM->L1 DataCopyPad: srcStride is in bytes; L1 dstStride is in 32B data blocks.
+            dataCopyParams.dstStride = l1ScaleGroupStride - curScaleGroupKL1;
+            AscendC::DataCopyPad(bScaleL1Local.template ReinterpretCast<half>(),
+                                  bScaleGlobal.template ReinterpretCast<half>()[scaleGroupKOffset *
+                                                                                 AscendC::BLOCK_CUBE],
+                                  dataCopyParams, padParams);
+        } else if constexpr (transB) {
+            AscendC::GlobalTensor<half> bScaleGlobalB16;
+            bScaleGlobalB16.SetGlobalBuffer(((__gm__ half *)(bScaleGlobal.GetPhyAddr())));
+            auto bScaleL1LocalImpl = bScaleL1Local.template ReinterpretCast<half>();
             AscendC::Dn2NzParams dn2nzParams;
             dn2nzParams.dnNum = 1;
             dn2nzParams.dValue = curNL1;
@@ -439,8 +460,11 @@ public:
             dn2nzParams.dstNzC0Stride = mxScaleKL1B16_;
             dn2nzParams.dstNzNStride = 1;
             dn2nzParams.dstNzMatrixStride = 0;
-            AscendC::DataCopy(bScaleL1LocalImpl, bScaleGlobalB16[kL1Offset / MXFP_DIVISOR_SIZE], dn2nzParams);
+            AscendC::DataCopy(bScaleL1LocalImpl, bScaleGlobalB16[offsetScaleBGM], dn2nzParams);
         } else {
+            AscendC::GlobalTensor<half> bScaleGlobalB16;
+            bScaleGlobalB16.SetGlobalBuffer(((__gm__ half *)(bScaleGlobal.GetPhyAddr())));
+            auto bScaleL1LocalImpl = bScaleL1Local.template ReinterpretCast<half>();
             AscendC::Nd2NzParams nd2nzParams;
             nd2nzParams.ndNum = 1;
             nd2nzParams.nValue = Cgmct::Gemm::CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE);
@@ -450,7 +474,7 @@ public:
             nd2nzParams.dstNzC0Stride = mxScaleKL1B16_;
             nd2nzParams.dstNzNStride = 1;
             nd2nzParams.dstNzMatrixStride = 0;
-            AscendC::DataCopy(bScaleL1LocalImpl, bScaleGlobalB16[(kL1Offset / MXFP_DIVISOR_SIZE) * n_], nd2nzParams);
+            AscendC::DataCopy(bScaleL1LocalImpl, bScaleGlobalB16[offsetScaleBGM], nd2nzParams);
         }
     }
 

@@ -304,6 +304,8 @@ bool GroupedQmmTiling::AnalyzeDtype()
     auto scaleDesc = context_->GetDynamicInputDesc(SCALE_INDEX, 0);
     inputParams_.scaleDtype = scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32 ? scaleDesc->GetDataType() :
                                                                                             inputParams_.scaleDtype;
+    inputParams_.scaleFormat = scaleDesc != nullptr ?
+        static_cast<ge::Format>(ge::GetPrimaryFormat(scaleDesc->GetStorageFormat())) : inputParams_.scaleFormat;
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
@@ -321,7 +323,8 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
-    OP_CHECK_IF(wScaleDimNum != MXFP_TYPE_M_SCALE_DIM_NUM,
+    const bool isScaleNz = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ;
+    OP_CHECK_IF(!isScaleNz && wScaleDimNum != MXFP_TYPE_M_SCALE_DIM_NUM,
                 OP_LOGE(inputParams_.opName,
                         "When split m, the dim num of scale should be 4 in mx quant mode, but actual \
 is %zu",
@@ -333,17 +336,37 @@ is %zu",
 actual is %zu",
                         xScaleDimNum),
                 return false);
+    auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
+    auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
+    auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
+    auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
+    if (isScaleNz) {
+        auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
+        OP_CHECK_IF(scaleStorageShape == nullptr,
+                    OP_LOGE(inputParams_.opName, "scaleStorageShape is nullptr when scale is FRACTAL_NZ."),
+                    return false);
+        OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(inputParams_.opName, "scaleNz is only supported when weight is FRACTAL_NZ."),
+                    return false);
+        OP_CHECK_IF(!CheckMxScaleNzStorageShape(scaleStorageShape->GetStorageShape()),
+                    OP_LOGE(inputParams_.opName, "CheckMxScaleNzStorageShape failed."), return false);
+        OP_CHECK_IF(
+            xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue ||
+                xScaleLastDim != MXFP_MULTI_BASE_SIZE,
+            OP_LOGE(inputParams_.opName,
+                    "When split m in mx quant mode, the expected shape of pertokenScale is (%lu,%lu,2), but the "
+                    "actual is (%lu,%lu,%lu).",
+                    inputParams_.mSize, expectedKDimValue, xScaleMDim, xScaleKDim, xScaleLastDim),
+            return false);
+        return true;
+    }
     auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
     auto wScaleNDim = static_cast<uint64_t>(
         inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)); // 2 is index for the third dim
     auto wScaleKDim =
         static_cast<uint64_t>(inputParams_.transB ? wScaleShape.GetDim(2) : // 2 is index for the third dim
                                                     wScaleShape.GetDim(1));
-    auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
-    auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
-    auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
-    auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     if (wScaleKDim != 1 && wScaleNDim != 1) {
         OP_CHECK_IF(
             wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue ||
@@ -362,6 +385,36 @@ is (%lu,%lu,%lu,%lu).",
 is (%lu,%lu,%lu).",
                 inputParams_.mSize, expectedKDimValue, xScaleMDim, xScaleKDim, xScaleLastDim),
         return false);
+    return true;
+}
+
+bool GroupedQmmTiling::CheckMxScaleNzStorageShape(const gert::Shape &scaleStorageShape) const
+{
+    const auto scaleStorageDimNum = scaleStorageShape.GetDimNum();
+    OP_CHECK_IF(scaleStorageDimNum < MXFP_SCALE_NZ_TAIL_DIM_NUM + 1,
+                OP_LOGE(inputParams_.opName,
+                        "In mx quant mode, scaleNz storage dim num should be at least 6, but actual is %zu.",
+                        scaleStorageDimNum),
+                return false);
+    const uint64_t expectN1 = CeilDiv(inputParams_.nSize, CUBE_BLOCK);
+    const uint64_t expectK1 = CeilDiv(CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR), CUBE_BLOCK);
+    OP_CHECK_IF(static_cast<uint64_t>(scaleStorageShape.GetDim(scaleStorageDimNum - MXFP_SCALE_NZ_TAIL_DIM_NUM - 1)) !=
+                        inputParams_.groupNum ||
+                    static_cast<uint64_t>(scaleStorageShape.GetDim(scaleStorageDimNum - MXFP_SCALE_NZ_TAIL_DIM_NUM)) !=
+                        expectN1 ||
+                    static_cast<uint64_t>(scaleStorageShape.GetDim(scaleStorageDimNum - LAST_FOURTH_DIM_INDEX)) !=
+                        expectK1 ||
+                    static_cast<uint64_t>(scaleStorageShape.GetDim(scaleStorageDimNum - LAST_THIRD_DIM_INDEX)) !=
+                        CUBE_BLOCK ||
+                    static_cast<uint64_t>(scaleStorageShape.GetDim(scaleStorageDimNum - LAST_SECOND_DIM_INDEX)) !=
+                        CUBE_BLOCK ||
+                    static_cast<uint64_t>(scaleStorageShape.GetDim(scaleStorageDimNum - LAST_FIRST_DIM_INDEX)) !=
+                        MXFP_MULTI_BASE_SIZE,
+                OP_LOGE(inputParams_.opName,
+                        "In mx quant mode, scaleNz storage shape should end with [%lu, %lu, 16, 16, 2], "
+                        "and group dim should be %lu.",
+                        expectN1, expectK1, inputParams_.groupNum),
+                return false);
     return true;
 }
 
@@ -1382,6 +1435,7 @@ void GQmmInputInfo::Reset()
     outScaleDtype = ge::DT_FLOAT;
     aFormat = ge::FORMAT_ND;
     bFormat = ge::FORMAT_ND;
+    scaleFormat = ge::FORMAT_ND;
     cFormat = ge::FORMAT_ND;
     transA = false;
     transB = false;
