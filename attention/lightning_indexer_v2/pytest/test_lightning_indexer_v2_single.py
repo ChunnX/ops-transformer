@@ -41,12 +41,9 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_block_size"],
         locals()["param_block_num"],
         locals()["param_qk_dtype"],
-        locals()["param_dequant_dtype"],
         locals()["param_actual_seq_dtype"],
         locals()["param_act_seq_q"],
         locals()["param_act_seq_k"],
-        locals()["param_query_quant_mode"],
-        locals()["param_key_quant_mode"],
         locals()["param_layout_query"],
         locals()["param_layout_key"],
         locals()["param_sparse_count"],
@@ -54,8 +51,6 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_query_datarange"],
         locals()["param_key_datarange"],
         locals()["param_weights_datarange"],
-        locals()["param_q_scale_datarange"],
-        locals()["param_k_scale_datarange"],
         locals()["param_cmp_ratio"]
     ]
 
