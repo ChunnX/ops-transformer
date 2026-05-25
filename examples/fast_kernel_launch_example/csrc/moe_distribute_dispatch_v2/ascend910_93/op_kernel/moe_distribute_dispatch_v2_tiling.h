@@ -32,6 +32,7 @@ struct MoeDistributeDispatchV2Info {
     uint32_t aivNum;                     // aivNum
     bool isTokenMask;                    // input active mask 1dims or not
     bool isExpertMask;                   // input active mask 2dims or not
+    bool hasElasticInfo;                 // has elasticinfo or not
     bool isPerformance;                  // whether performance or not
     bool isQuant;                        // whether quant or not
     bool reserved0;

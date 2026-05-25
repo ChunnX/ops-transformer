@@ -55,6 +55,7 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t RANK_LIST_NUM = 2U;
 constexpr uint32_t EXPAND_IDX_INFO = 3U;  // expand_idx是按3元组保存信息，分别为rank_id token_id topk_id
+constexpr uint32_t ELASTIC_INFO_OFFSET = 4U;
 constexpr uint32_t FLAG_AFTER_WAIT = 2U;
 constexpr uint8_t EP_WORLD_SIZE_IDX = 1U;
 constexpr uint8_t SHARE_RANK_NUM_IDX = 2U;
