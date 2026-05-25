@@ -305,111 +305,6 @@ def aclnn_op_func_fag_cpu(input_data : InputDataset):
 
     return tbackward(dy, q, k, v, softmax_max, softmax_sum, attention_in, drop_mask, real_shift, atten_mask, sink, headNum, inputLayout, scaleValue, keep_prob)
 
-def aclnn_op_func_fag_gpu(input_data : InputDataset):
-    from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
-    q = input_data.kwargs["query"]
-    k = input_data.kwargs["keyIn"]
-    v = input_data.kwargs["value"]
-    dy = input_data.kwargs["dy"]
-    real_shift = input_data.kwargs["pseShiftOptional"]
-    atten_mask = input_data.kwargs["attenMaskOptional"]
-    inputLayout = input_data.kwargs["inputLayout"]
-    sparseMode = input_data.kwargs["sparseMode"]
-    scaleValue = input_data.kwargs["scaleValue"]
-    keep_prob = input_data.kwargs["keepProb"]
-    pre_tocken = input_data.kwargs["preTokens"]
-    next_tocken = input_data.kwargs["nextTokens"]
-    N1 = input_data.kwargs["headNum"]
-    deterministic = False
-    device = "cuda"
-    if inputLayout == "SBH":
-        B = q.shape[1]
-        S1 = q.shape[0]
-        S2 = v.shape[0]
-        D1 = q.shape[2] // N1
-        N2 = k.shape[2] // D1
-        D2 = v.shape[2] // N2
-        q = q.permute(1, 0, 2).reshape(B, S1, N1, D1).contiguous()
-        k = k.permute(1, 0, 2).reshape(B, S2, N2, D1).contiguous()
-        v = v.permute(1, 0, 2).reshape(B, S2, N2, D2).contiguous()
-        dy = dy.permute(1, 0, 2).reshape(B, S2, N2, D2).contiguous()
-    elif inputLayout == "BSH":
-        B = q.shape[0]
-        S1 = q.shape[1]
-        S2 = v.shape[1]
-        D1 = q.shape[2] // N1
-        N2 = k.shape[2] // D1
-        D2 = v.shape[2] // N2
-        q = q.reshape(B, S1, N1, D1).contiguous()
-        k = k.reshape(B, S2, N2, D1).contiguous()
-        v = v.reshape(B, S2, N2, D2).contiguous()
-        dy = dy.reshape(B, S2, N2, D2).contiguous()
-    elif inputLayout == "BNSD":
-        B = q.shape[0]
-        S1 = q.shape[2]
-        D1 = q.shape[3]
-        S2 = v.shape[2]
-        N2 = v.shape[1]
-        D2 = v.shape[3]
-        q = q.permute(0, 2, 1, 3).contiguous()
-        k = k.permute(0, 2, 1, 3).contiguous()
-        v = v.reshape(B, S2, N2, D2).contiguous()
-        dy = dy.permute(0, 2, 1, 3).contiguous()
-    elif inputLayout == "BSND":
-        B = q.shape[0]
-        S1 = q.shape[1]
-        D1 = q.shape[3]
-        S2 = v.shape[1]
-        N2 = v.shape[2]
-        D2 = v.shape[3]
-    if atten_mask is None or len(atten_mask.shape) == 0 or (
-            sparseMode == 4 and (next_tocken != 0 or pre_tocken < S1)) or (sparseMode == 0 and pre_tocken >=S1 and next_tocken >= S2):
-        atten_off = True
-    else:
-        atten_off = False
-    causal_switch = False if atten_off else True
-    alibi_slopes = None
-    if not (real_shift is None or len(real_shift.shape) == 0):
-        alibi_slopes = torch.rand(B, N1, dtype=torch.float32) * 0.3
-        alibi_slopes = alibi_slopes.cuda()
-    if sparseMode == 4:
-        window_left = pre_tocken
-        window_right = next_tocken
-    elif atten_mask is None or len(atten_mask.shape) == 0:
-        window_left = -1
-        window_right = -1
-        causal_switch = False
-    else:
-        window_left = pre_tocken - S1 + S2
-        window_right = next_tocken + S1 - S2
-    if causal_switch:
-        window_left = -1
-        window_right = -1
-    q = q.cuda().requires_grad_(True)
-    k = k.cuda().requires_grad_(True)
-    v = v.cuda().requires_grad_(True)
-    out = flash_attn_func(q, k, v, dropout_p=(1 - keep_prob), softmax_scale=scaleValue, causal=causal_switch,
-                          window_size=(window_left, window_right), alibi_slopes=alibi_slopes, deterministic=deterministic)
-    out.backward(dy.to(device))
-    dq = q.grad
-    dk = k.grad
-    dv = v.grad
-    if inputLayout == "BNSD":
-        dq = dq.permute(0, 2, 1, 3).contiguous()
-        dk = dk.permute(0, 2, 1, 3).contiguous()
-        dv = dv.permute(0, 2, 1, 3).contiguous()
-    elif inputLayout == "BSH":
-        dq = dq.reshape(B, S1, N1, D1).contiguous()
-        dk = dk.reshape(B, S2, N2, D1).contiguous()
-        dv = dv.reshape(B, S2, N2, D2).contiguous()
-    elif inputLayout == "SBH":
-        dq = dq.permute(1, 0, 2, 3).reshape(S1, B, -1).contiguous()
-        dk = dk.permute(1, 0, 1, 3).reshape(S2, B, -1).contiguous()
-        dv = dv.permute(1, 0, 1, 3).reshape(S2, B, -1).contiguous()
-    
-    return dq, dk, dv, torch.Tensor(0), torch.Tensor(0)
-
-
 @register("executor_flash_attention_score_grad_v3")
 class FlashAttentionScoreGradApi(BaseApi):
     def __init__(self, task_result: TaskResult):
@@ -438,9 +333,7 @@ class FlashAttentionScoreGradApi(BaseApi):
         sparseMode = input_data.kwargs["sparseMode"]
         pseType = input_data.kwargs["pseType"]
 
-        if self.device == "gpu":
-            device = f"cuda:{self.device_id}"
-        elif self.device == "npu":
+        if self.device == "npu":
             device = f"{self.device}:{self.device_id}"
         else:
             device = "cpu"
@@ -454,10 +347,7 @@ class FlashAttentionScoreGradApi(BaseApi):
         input_data.kwargs["attentionInOptional"] = attention_out
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-        if self.device == "gpu":
-            device = f"cuda:{self.device_id}"
-            output = aclnn_op_func_fag_gpu(input_data)
-        elif self.device == "npu":
+        if self.device == "npu":
             device = f"{self.device}:{self.device_id}"
         elif self.device == "cpu":
             device = "cpu"
@@ -468,21 +358,6 @@ class FlashAttentionScoreGradApi(BaseApi):
 class aclnnFlashAttentionScoreApi(AclnnBaseApi):
     def __call__(self):
         super().__call__()
-
-    def get_cpp_func_signature_type(self):
-        return "aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(\
-            const aclTensor *query, const aclTensor *keyIn, const aclTensor *value, const aclTensor *dy,\
-            const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,\
-            const aclTensor *attenMaskOptional, const aclTensor *softmaxMaxOptional, const aclTensor *softmaxSumOptional,\
-            const aclTensor *softmaxInOptional, const aclTensor *attentionInOptional, \
-            const aclTensor *sinkInOptional,const aclIntArray *prefixOptional,\
-            const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,\
-            double keepProb, int64_t preTokens, int64_t nextTokens,\
-            int64_t headNum, char *inputLayout, int64_t innerPrecise, int64_t sparseMode,\
-            int64_t pseType, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,\
-            const aclTensor *dpseOut, \
-            const aclTensor *dsinkOut,\
-            uint64_t *workspaceSize, aclOpExecutor **executor)"
 
     def init_by_input_data(self, input_data: InputDataset):
         input_args, output_packages = super().init_by_input_data(input_data)
