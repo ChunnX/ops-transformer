@@ -289,7 +289,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
-        if (wsRow < 3 && yOffset == 0) {
+        if ((wsRow < 3 || (wsRow >= 254 && wsRow <= 260) || (wsRow >= 510 && wsRow <= 515)) && yOffset == 0) {
             printf("[DETER-WSIDX] blk=%u groupAccumM=%llu offsetM=%llu i=%u wsRow=%llu\n",
                 GetBlockIdx(), groupAccumM_, offsetM, i, wsRow);
         }
@@ -542,7 +542,7 @@ __aicore__ inline void
 BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::DeterministicFlushRow(
     uint64_t mOffset, uint64_t outRow, uint64_t nSize)
 {
-    if (mOffset < 3) {
+    if (mOffset < 3 || (mOffset >= 256 && mOffset <= 258)) {
         printf("[DETER-FROW] mOff=%llu outRow=%llu nSize=%llu wsReadIdx=%llu yGmIdx=%llu\n",
             mOffset, outRow, nSize, mOffset * nSize, outRow * nSize);
     }
@@ -554,7 +554,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         DataCopyPad(local, mmQuantOutGm_[mOffset * nSize + nOff], copyParams, DataCopyPadExtParams<DataTypeOut>{});
         deterDmaQue_.EnQue(local);
         auto readLocal = deterDmaQue_.DeQue<DataTypeOut>();
-        if (mOffset < 3 && nOff == 0) {
+        if ((mOffset < 3 || (mOffset >= 256 && mOffset <= 258)) && nOff == 0) {
             printf("[DETER-FLUSH] blk=%u mOff=%llu wsRead[0..2]=%f %f %f\n",
                 GetBlockIdx(), mOffset,
                 static_cast<float>(readLocal.GetValue(0)),

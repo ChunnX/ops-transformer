@@ -317,12 +317,13 @@ public:
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
                                                                                       Get<MNK_N>(singleShape), 0, 0};
                 int64_t nOffset = y - tileMOffset * n;
-                if (cumulativeGroupM_ + tileMOffset < 5) {
-                    printf("[DETER-WSOFF] blk=%u cumM=%llu tileMOff=%lld winStart=%llu "
-                           "setGroupAccumM=%lld expectedGroupAccumM=%lld\n",
-                        GetBlockIdx(), cumulativeGroupM_, tileMOffset, deterSync_.windowStartM,
-                        (int64_t)(cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM),
-                        (int64_t)(cumulativeGroupM_ - deterSync_.windowStartM));
+                if (cumulativeGroupM_ == 0 && GetBlockIdx() < 2) {
+                    int64_t oldGA = (int64_t)(cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
+                    int64_t newGA = (int64_t)(cumulativeGroupM_ - deterSync_.windowStartM);
+                    printf("[DETER-WSOFF] blk=%u cumM=%llu tileMOff=%lld "
+                           "oldGA=%lld newGA=%lld oldWsRow0=%lld newWsRow0=%lld\n",
+                        GetBlockIdx(), cumulativeGroupM_, tileMOffset,
+                        oldGA, newGA, oldGA + tileMOffset, newGA + tileMOffset);
                 }
                 epilogueDequantOp_.SetWorkspaceGroupOffset(
                     cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
