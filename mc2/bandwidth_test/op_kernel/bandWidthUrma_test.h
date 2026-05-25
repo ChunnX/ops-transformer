@@ -52,7 +52,7 @@
 #endif
 
 namespace BandwidthTestImpl {
-#define HCOMM_INIT_SIZE 512UL * 1024UL
+#define HCOMM_INIT_SIZE 512UL
 
 using namespace AscendC;
 using namespace Mc2Kernel;
