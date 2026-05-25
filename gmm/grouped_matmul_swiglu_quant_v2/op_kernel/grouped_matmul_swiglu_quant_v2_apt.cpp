@@ -67,6 +67,9 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
+    #ifndef DTYPE_BIAS
+    #define DTYPE_BIAS bfloat16_t
+    #endif
     // MxA8W4场景：完整Controller实现
     AscendC::InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
