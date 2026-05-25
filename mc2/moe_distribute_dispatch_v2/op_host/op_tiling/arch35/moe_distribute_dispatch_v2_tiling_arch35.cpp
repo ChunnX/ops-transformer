@@ -1157,15 +1157,13 @@ static bool CheckQuantModeAndExpandXTypeStatic(const gert::TilingContext *contex
 }
 
 bool MoeDistributeDispatchV2TilingFuncA5::CheckTensorDataType(const gert::TilingContext *context, const char *nodeName,
-    const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
-    const bool isPerformance, DispatchV2Config &config)
+    DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
     OP_TILING_CHECK(!CheckQuantModeAndExpandXTypeStatic(context, nodeName, config),
         OP_LOGE(nodeName, "CheckQuantModeAndExpandXTypeStatic failed."), return false);
-    OP_TILING_CHECK(!CheckDistinctTensorDataType(context, nodeName, isScales, quantMode, config),
+    OP_TILING_CHECK(!CheckDistinctTensorDataType(context, nodeName, tc.isScales, tc.quantMode, config),
         OP_LOGE(nodeName, "CheckDistinctTensorDataType failed."), return false);
-    OP_TILING_CHECK(!CheckCommomOtherInputTensorDataType(context, nodeName,
-        isActiveMask, hasElasticInfo, isPerformance, config),
+    OP_TILING_CHECK(!CheckCommomOtherInputTensorDataType(context, nodeName, tc, config),
         OP_LOGE(nodeName, "CheckCommomOtherInputTensorDataType failed."), return false);
     OP_TILING_CHECK(!CheckCommomOutputTensorDataType(context, nodeName),
         OP_LOGE(nodeName, "CheckCommomOutputTensorDataType failed."), return false);
@@ -1225,7 +1223,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = false;
     // MTE 调用 A5 V2 tiling 实现
-    return MoeDistributeDispatchA5TilingFuncImplPublicV2(context, config);
+    DispatchV2TilingCtx tc;
+    return MoeDistributeDispatchA5TilingFuncImplPublicV2(context, config, tc);
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
@@ -1234,22 +1233,21 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchV2Tili
     return ret;
 }
 
-uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const bool isScales, const uint32_t quantMode,
-    const uint32_t tpWorldSize, const bool isSetFullMeshV2, bool isLayered)
+uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const DispatchV2TilingCtx &tc)
 {
     uint32_t templateDispatch = TILINGKEY_NO_FULLMESH;
     bool tp = false;
-    uint32_t tilingKeyQuantMode = quantMode;
+    uint32_t tilingKeyQuantMode = tc.quantMode;
     bool scaleMode = false;
     uint64_t tilingKey;
     uint32_t commMode = TILINGKEY_TPL_MTE;
-    if (isScales) {
+    if (tc.isScales) {
         scaleMode = true;
     }
-    if (isSetFullMeshV2) {
+    if (tc.isSetFullMeshV2) {
         templateDispatch = TILINGKEY_ENABLE_FULLMESH;
     }
-    if (isLayered) {
+    if (tc.isLayered) {
         templateDispatch = TILINGKEY_ENABLE_HIERARCHY;
     }
     tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode,
@@ -1258,12 +1256,12 @@ uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const bool isScales, 
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModeMatchScales(
-    gert::TilingContext *context, const char *nodeName, bool isScales,
-    uint32_t quantMode, DispatchV2Config &config)
+    gert::TilingContext *context, const char *nodeName,
+    DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
-    OP_TILING_CHECK(CheckQuantModeAndScales(context, nodeName, isScales, quantMode) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckQuantModeAndScales(context, nodeName, tc.isScales, tc.quantMode) != ge::GRAPH_SUCCESS,
             OP_LOGE(nodeName, "quant mode and scales not match, isScales is %d,quantMode is %u.",
-            static_cast<int32_t>(isScales), quantMode), return ge::GRAPH_FAILED);
+            static_cast<int32_t>(tc.isScales), tc.quantMode), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

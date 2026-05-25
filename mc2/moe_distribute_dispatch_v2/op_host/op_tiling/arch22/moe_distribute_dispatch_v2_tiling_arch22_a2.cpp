@@ -508,41 +508,30 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchV2Ti
     return MoeDistributeDispatchTilingFuncImpl(context);
 }
 
-uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const bool isScales, const uint32_t quantMode,
-    const uint32_t tpWorldSize, const bool isSetFullMeshV2, bool isLayered)
+uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const DispatchV2TilingCtx &tc)
 {
-    (void)isScales;
-    (void)quantMode;
-    (void)tpWorldSize;
-    (void)isSetFullMeshV2;
-    (void)isLayered;
+    (void)tc;
     return 0;
 }
 
 bool MoeDistributeDispatchV2TilingFuncA2A3::CheckTensorDataType(
     const gert::TilingContext *context, const char *nodeName,
-    const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
-    const bool isPerformance, DispatchV2Config &config)
+    DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
     (void)context;
     (void)nodeName;
-    (void)isScales;
-    (void)quantMode;
-    (void)isActiveMask;
-    (void)hasElasticInfo;
-    (void)isPerformance;
+    (void)tc;
     (void)config;
     return false;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales(
-    gert::TilingContext *context, const char *nodeName, bool isScales,
-    uint32_t quantMode, DispatchV2Config &config)
+    gert::TilingContext *context, const char *nodeName,
+    DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
     (void)context;
     (void)nodeName;
-    (void)isScales;
-    (void)quantMode;
+    (void)tc;
     (void)config;
     return ge::GRAPH_FAILED;
 }
