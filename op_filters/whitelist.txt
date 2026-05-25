@@ -5,3 +5,14 @@ mc2/moe_distribute_dispatch_teardown
 mc2/moe_distribute_combine_setup
 mc2/moe_distribute_combine_teardown
 mc2/mega_moe
+#### 仅A3添加白名单 ########
+mc2/all_gather_matmul_v2
+mc2/grouped_mat_mul_all_reduce
+mc2/allto_allv_quant_grouped_mat_mul
+mc2/quant_grouped_mat_mul_allto_allv
+mc2/matmul_all_reduce
+mc2/matmul_all_reduce_add_rms_norm
+mc2/inplace_matmul_all_reduce_add_rms_norm
+mc2/matmul_reduce_scatter_v2
+mc2/quant_reduce_scatter
+mc2/quant_all_reduce

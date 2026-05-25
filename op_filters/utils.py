@@ -63,7 +63,7 @@ def read_file_lines(file_path: str, logger: logging.Logger) -> List[str]:
             with open(file_path, "r", encoding=encoding) as f:
                 for line in f:
                     stripped = line.strip()
-                    if stripped:
+                    if stripped and not stripped.startswith('#'):
                         lines.append(stripped)
             logger.debug(f"成功读取文件: {file_path}, 共 {len(lines)} 行, 编码: {encoding}")
             return lines
