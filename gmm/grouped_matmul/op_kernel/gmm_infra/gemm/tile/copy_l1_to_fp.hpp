@@ -35,10 +35,10 @@ struct CopyL1ToFP<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLay
 
     static constexpr uint32_t ELE_NUM_PER_FP =  BYTE_PER_BLK_FP / sizeof(ElementSrc);
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToFP(){}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementDst> dstTensor,
         AscendC::LocalTensor<ElementSrc> srcTensor,

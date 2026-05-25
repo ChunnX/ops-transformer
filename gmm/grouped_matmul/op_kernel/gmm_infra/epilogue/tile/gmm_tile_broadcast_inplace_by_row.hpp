@@ -28,10 +28,10 @@ struct TileBroadcastInplaceByRow {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileBroadcastInplaceByRow() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubInOut
     )

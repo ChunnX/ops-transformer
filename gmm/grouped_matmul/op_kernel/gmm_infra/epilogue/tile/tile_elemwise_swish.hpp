@@ -27,10 +27,10 @@ struct TileElemWiseSwish {
 
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_COMPUTE_LENGTH_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileElemWiseSwish() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator () (AscendC::LocalTensor<ElementCompute> const & dstLocal,
         AscendC::LocalTensor<ElementCompute> const & srcLocal)
     {

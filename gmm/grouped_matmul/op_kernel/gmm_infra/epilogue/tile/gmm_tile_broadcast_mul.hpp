@@ -34,10 +34,10 @@ struct TileRowBroadcastMul {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileRowBroadcastMul() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,
@@ -90,10 +90,10 @@ struct TileOneBlkColumnBroadcastMul {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileOneBlkColumnBroadcastMul() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,

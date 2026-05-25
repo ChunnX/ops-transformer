@@ -221,13 +221,13 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
     struct Params {};
     Params params;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm(Params const &params_) : params(params_) {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
         LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {
@@ -272,10 +272,10 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
     struct Params {
         float scale = 1.0;
 
-        GMM_HOST_DEVICE
+        CATLASS_HOST_DEVICE
         Params() = default;
 
-        GMM_HOST_DEVICE
+        CATLASS_HOST_DEVICE
         Params(float scalar)
         {
             scale = scalar;
@@ -283,13 +283,13 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
     };
     Params params;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm(Params const &params_) : params(params_) {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
         LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {
@@ -335,13 +335,13 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
     struct Params {};
     Params params;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm(Params const &params_) : params(params_) {};
 	
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src, AscendC::LocalTensor<uint64_t> const &scale,
         LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {
@@ -419,13 +419,13 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
     struct Params {};
     Params params;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm(Params const &params_) : params(params_) {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
         LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {
@@ -489,13 +489,13 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
     struct Params {};
     Params params;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL0CToGm(Params const &params_) : params(params_) {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
         LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {

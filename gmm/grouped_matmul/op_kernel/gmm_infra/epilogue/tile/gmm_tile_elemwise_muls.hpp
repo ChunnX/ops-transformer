@@ -25,10 +25,10 @@
 
      static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-     GMM_DEVICE
+     CATLASS_DEVICE
      TileElemWiseMuls(){}
 
-     GMM_DEVICE
+     CATLASS_DEVICE
      void operator()(
          AscendC::LocalTensor<ElementCompute> dstLocal,
          AscendC::LocalTensor<ElementCompute> srcTensor,

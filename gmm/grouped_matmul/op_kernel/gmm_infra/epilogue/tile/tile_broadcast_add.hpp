@@ -13,7 +13,7 @@
 #define GMM_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/matrix_gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Tile {
 
@@ -36,10 +36,10 @@ struct TileRowBroadcastAdd {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileRowBroadcastAdd() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,

@@ -33,10 +33,10 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyUb2Gm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
