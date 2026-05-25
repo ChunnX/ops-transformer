@@ -351,7 +351,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>activeExpertRangeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>表示活跃的expert范围</td>
-      <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum。当quantMode为1且expandedXOut为INT4时，仅支持expertEnd-expertStart为1。</td>
+      <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -507,8 +507,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
     - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
     - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
     - activeNum等于NUM_ROWS*K。
-    - activeExpertRangeOptional满足expertEnd-expertStart=1。
-    - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32；offsetOptional不输入。
+    - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
     - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
     
 ## aclnnMoeInitRoutingV3

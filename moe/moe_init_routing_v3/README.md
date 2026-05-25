@@ -171,7 +171,7 @@
       <tr>
         <td>activeExpertRangeOptional</td>
         <td>可选属性</td>
-        <td>长度为2，数组内的值为[expertStart, expertEnd], 表示活跃的expert范围在expertStart和expertEnd之间，左闭右开。要求值大于等于0，并且expertEnd不大于expertNum。当quantMode为1且expandedXOut为INT4时，仅支持expertEnd-expertStart为1。</td>
+        <td>长度为2，数组内的值为[expertStart, expertEnd], 表示活跃的expert范围在expertStart和expertEnd之间，左闭右开。要求值大于等于0，并且expertEnd不大于expertNum。</td>
         <td>ListInt</td>
         <td>-</td>
       </tr>
@@ -228,8 +228,7 @@
     - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
     - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
     - activeNum等于NUM_ROWS*K。
-    - activeExpertRangeOptional满足expertEnd-expertStart=1。
-    - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32；offsetOptional不输入。
+    - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
     - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
   
 - 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。
