@@ -876,6 +876,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     
     tilingData->isPermuteOut = permuteOutFlag_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
+    tilingData->isFp16 = (gmmXDataType_ == ge::DT_FLOAT16);
 
     OP_LOGI(context_->GetNodeName(), "[LBH] PostTiling: gmmQuant baseM=%d baseN=%d baseK=%d M=%d N=%d K=%d singleM=%d singleN=%d singleK=%d",
         tilingData->gmmQuantTilingData.mmTilingData.baseM,
