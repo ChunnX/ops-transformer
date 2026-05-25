@@ -221,7 +221,7 @@ __aicore__ inline void FixL0CToDst(const LocalTensor<DstType> &outTensor, const 
     fixParams.mSize = Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, 2UL);
     fixParams.nSize = Ops::Base::CeilAlign(fixL0CToDstParams.nL0Size, static_cast<uint64_t>(BLOCK_CUBE));
     fixParams.srcStride = Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE));
-    fixParams.dstStride = FIXP_DST_STRIDE;
+    fixParams.dstStride = fixL0CToDstParams.outNSize;
     fixParams.unitFlag = UNIT_FALG_UPDATE;
     fixParams.quantPre = QuantMode_t::NoQuant;
     fixParams.dualDstCtl = 1;
