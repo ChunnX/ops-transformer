@@ -20,21 +20,22 @@ class CombineNormalOpBuilder(OpBuilder):
         super(CombineNormalOpBuilder, self).__init__("npu_moe_combine_normal")
 
     def sources(self):
-        return ['ops/csrc/combine_normal.cpp']
+        return ['ops/csrc/moe_combine_normal.cpp']
 
     def schema(self) -> str:
         return (
             "npu_moe_combine_normal(Tensor recv_x, Tensor token_src_info, Tensor ep_recv_counts, "
-            "Tensor recv_topk_weights, Tensor? tp_recv_counts=None, str ep_group_name, int ep_world_size, "
-            "int ep_rank_id, int moe_expert_num, *, str tp_group_name='', int tp_world_size=0, int tp_rank_id=0, "
+            "Tensor recv_topk_weights, str ep_group_name, int ep_world_size, int ep_rank_id, int moe_expert_num, "
+            "Tensor? tp_recv_counts=None, *, str tp_group_name='', int tp_world_size=0, int tp_rank_id=0, "
             "int global_bs=0, Tensor? combine_send_cost_stats=None) -> Tensor"
         )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_moe_combine_normal_meta(
-            recv_x, token_src_info, ep_recv_counts, recv_topk_weights, tp_recv_counts=None,
+            recv_x, token_src_info, ep_recv_counts, recv_topk_weights, 
             ep_group_name, ep_world_size, ep_rank_id, moe_expert_num,
+            tp_recv_counts=None,
             tp_group_name="", tp_world_size=0, tp_rank_id=0, global_bs=0,
             combine_send_cost_stats=None,
         ):
@@ -167,8 +168,9 @@ op_module = combine_normal_op_builder.load()
 
 @impl(AS_LIBRARY, combine_normal_op_builder.name, "PrivateUse1")
 def npu_moe_combine_normal(
-    recv_x, token_src_info, ep_recv_counts, recv_topk_weights, tp_recv_counts=None,
+    recv_x, token_src_info, ep_recv_counts, recv_topk_weights, 
     ep_group_name, ep_world_size, ep_rank_id, moe_expert_num,
+    tp_recv_counts=None,
     tp_group_name="", tp_world_size=0, tp_rank_id=0, global_bs=0,
     combine_send_cost_stats=None,
 ):

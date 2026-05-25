@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file combine_normal.cpp
+ * \file moe_combine_normal.cpp
  * \brief ACLNN wrapper for moe_combine_normal (MoE EP combine).
  */
 
@@ -84,8 +84,11 @@ at::Tensor npu_moe_combine_normal(const at::Tensor &recv_x, const at::Tensor &to
                                           .device(c10::DeviceType::PrivateUse1)
                                           .memory_format(c10::MemoryFormat::Contiguous));
 
+    const char *ep_group_name_ptr = ep_group_name.c_str();
+    const char *tp_group_name_ptr = tp_group_name.c_str();
+
     ACLNN_CMD(aclnnMoeCombineNormal, recv_x, token_src_info, ep_recv_counts, recv_topk_weights, tp_recv_counts_tensor,
-              ep_group_name.c_str(), ep_world_size, ep_rank_id, moe_expert_num, tp_group_name.c_str(), tp_world_size,
+              ep_group_name_ptr, ep_world_size, ep_rank_id, moe_expert_num, tp_group_name_ptr, tp_world_size,
               tp_rank_id, global_bs, x, combine_send_cost_stats_tensor);
 
     return x;
