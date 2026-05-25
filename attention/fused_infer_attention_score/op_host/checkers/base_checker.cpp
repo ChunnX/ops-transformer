@@ -33,7 +33,7 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
-                    ({ char reason[512] = {0}; OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()) > 0) ? reason : "%s datatype support list should be specify in DTYPE_SUPPORT_MAP"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, (snprintf(reason, sizeof(reason), "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()) > 0) ? reason : "%s datatype support list should be specify in DTYPE_SUPPORT_MAP"); }),
                     return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
@@ -48,7 +48,7 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-                    ({ OP_LOGE("FusedInferAttentionScore", "In op [%s], the format of [%s] is not supported, got [%s]", "FusedInferAttentionScore", name.c_str(), "non-ND/NCHW/NHWC/NCDHW"); }),
+                    ({ OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, name.c_str(), "non-ND/NCHW/NHWC/NCDHW"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -71,7 +71,7 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
         return it->second;
     } else {
         char reason[512] = {0};
-        ({ std::ostringstream oss; oss << type; OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "tensor", oss.str().c_str()); })
+        ({ std::ostringstream oss; oss << type; OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", oss.str().c_str()); })
         return "UNDEFINED";
     }
 }

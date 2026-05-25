@@ -19,6 +19,7 @@
 #include "../../common/op_host/fia_tiling_info.h"
 
 namespace optiling {
+inline constexpr char kFiaOpName[] = "FusedInferAttentionScore";
 namespace arch35FIA {
 // shape limit
 constexpr uint32_t B_LIMIT = 65536;

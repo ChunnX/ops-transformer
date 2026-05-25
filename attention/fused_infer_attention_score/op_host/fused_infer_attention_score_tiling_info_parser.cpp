@@ -177,11 +177,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 
 ge::graphStatus FiaInfoParser::GetOpName()
 {
-    if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "opName got from TilingContext is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    opName_ = context_->GetNodeName();
+    opName_ = kFiaOpName;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -339,7 +335,7 @@ void FiaInfoParser::GetOutputParaInfo()
 ge::graphStatus FiaInfoParser::GetAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "attrs got from ge is nullptr"),
+    OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(kFiaOpName, "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
 
     // sparseMode,preToken,nextToken在GetUpdateInfo()中获取
@@ -449,7 +445,7 @@ ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::str
         bIdx++;
     }
     OP_CHECK_IF(bIdx == 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tensor list of %s is empty.", name.c_str()),
+                OPS_REPORT_VECTOR_INNER_ERR(kFiaOpName, "tensor list of %s is empty.", name.c_str()),
                 return ge::GRAPH_FAILED);
     cache.resize(bIdx);
     return ge::GRAPH_SUCCESS;
@@ -466,7 +462,7 @@ ge::graphStatus FiaInfoParser::GetKvCache()
 
     OP_CHECK_IF(kCache_.size() != vCache_.size(),
                 OPS_REPORT_VECTOR_INNER_ERR(
-                    context_->GetNodeName(),
+                    kFiaOpName,
                     "tensor list of %s has %zu tensor, but tensor list of %s has %zu tensor, they should be equal.",
                     KEY_NAME.c_str(), kCache_.size(), VALUE_NAME.c_str(), vCache_.size()),
                 return ge::GRAPH_FAILED);

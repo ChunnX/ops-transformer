@@ -54,7 +54,7 @@ std::string FusedDataTypeToSerialString(ge::DataType type)
         return it->second;
     } else {
         char reason[512] = {0};
-        ({ std::ostringstream oss; oss << type; OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "tensor", oss.str().c_str()); })
+        ({ std::ostringstream oss; oss << type; OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", oss.str().c_str()); })
         return "UNDEFINED";
     }
 }
