@@ -295,18 +295,6 @@ public:
                 Get<DETER_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
             int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
             int64_t tileMOffset = y / n;
-            uint64_t absMEnd = cumulativeGroupM_ + tileMOffset + Get<MNK_M>(singleShape);
-            if ASCEND_IS_AIV {
-                printf("[DETER-WHILE] blk=%u cumM=%llu tileMOff=%lld absMEnd=%llu lowBound=%llu winStart=%llu enter=%d\n",
-                    GetBlockIdx(), cumulativeGroupM_, tileMOffset, absMEnd, deterSync_.lowBoundM,
-                    deterSync_.windowStartM, (int)(isDeter_ && absMEnd > deterSync_.lowBoundM));
-            }
-            // while (isDeter_ && absMEnd > deterSync_.lowBoundM) {
-            //     deterSync_.curGroupM = cumulativeGroupM_ + tileMOffset;
-            //     SyncAll<false>();
-            //     FinalFlush(params);
-            //     SyncAll<false>();
-            // }
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
@@ -439,6 +427,23 @@ public:
                     cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_),
                     deterSync_.windowSize, deterSync_.lowBoundM,
                     (int)(isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM));
+            }
+            while (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
+                deterSync_.curGroupM = cumulativeGroupM_;
+                if ASCEND_IS_AIV {
+                    printf("[DETER-MIDFLUSH] blk=%u cumM=%llu winStart=%llu lowBound=%llu totalM=%llu\n",
+                        GetBlockIdx(), cumulativeGroupM_, deterSync_.windowStartM,
+                        deterSync_.lowBoundM, cumulativeGroupM_ - deterSync_.windowStartM);
+                }
+                SyncAll<false>();
+                if ASCEND_IS_AIV {
+                    FinalFlush(params);
+                }
+                if ASCEND_IS_AIC {
+                    deterSync_.windowStartM = deterSync_.curGroupM;
+                    deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
+                }
+                SyncAll<false>();
             }
             ProcessSingleGroup(params, bs, groupIdx);
             cumulativeGroupM_ += Get<MNK_M>(problemShape_);
