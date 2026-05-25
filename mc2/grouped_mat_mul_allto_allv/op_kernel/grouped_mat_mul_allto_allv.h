@@ -320,7 +320,6 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
         // Process each expert in this group with rank-major output layout
 
         for (uint64_t e = eStart; e < eEnd; e++) {
-            uint16_t validRanks = 0;
             uint64_t inputBase = expertInputOffset[e];
             uint64_t rankInSum = 0;
 
@@ -330,19 +329,19 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
                 mmOutOffset[r] = (rankOutputBase[r] + expertContribOffset[r]) * axisN1_;
                 tokenNum[r] = static_cast<uint32_t>(tok);
                 rankInSum += tok;
-                if (tok > 0) {
-                    compactInOffset[validRanks] = mmInOffset[r];
-                    compactOutOffset[validRanks] = mmOutOffset[r];
-                    compactTokenNum[validRanks] = static_cast<uint32_t>(tok);
-                    validRanks++;
-                }
             }
 
+            // Call Process once per rank (computerNum=1) — same pattern as G=1
             if ASCEND_IS_AIC {
-                if (validRanks > 0) {
-                    gmmOp.Process(this->rankId_, axisH_, axisN1_,
-                                  compactInOffset, compactOutOffset, compactTokenNum,
-                                  validRanks, e);
+                for (uint64_t r = 0; r < rankDim_; r++) {
+                    if (tokenNum[r] != 0) {
+                        compactInOffset[0] = mmInOffset[r];
+                        compactOutOffset[0] = mmOutOffset[r];
+                        compactTokenNum[0] = tokenNum[r];
+                        gmmOp.Process(this->rankId_, axisH_, axisN1_,
+                                      compactInOffset, compactOutOffset, compactTokenNum,
+                                      1, e);
+                    }
                 }
             }
 
