@@ -436,14 +436,12 @@ public:
                 uint32_t nFixPAligned16 = Arch35MmadOpt::AlignUpPow2<16>(l0TileNAct);
                
                 //reshape 64
-                auto ubCViewLayoutTla = tla::MakeLayoutL0C(l0TileNAct * (mFixPAligned64 >> 5), 32);
-                auto ubCViewTla = tla::MakeTensor(
-                    ubCTensor.data(), ubCViewLayoutTla, ubCTensor.coord(), Arch::PositionUB{});
-                auto ubCTensorTlaTile = GetTile(ubCViewTla,
+                auto l0CViewLayoutTla = tla::l0CTensorTla(l0TileNAct * (mFixPAligned64 >> 5), 32);
+                auto ubCTensorTlaTile = GetTile(ubCTensor,
                     tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
-                auto l0CTensorTlaTileSub0 = GetTile(l0CTensorTla,
+                auto l0CTensorTlaTileSub0 = GetTile(l0CViewLayoutTla,
                     tla::MakeCoord(0, 0), tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
-                auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
+                auto l0CTensorTlaTileSub1 = GetTile(l0CViewLayoutTla,
                     tla::MakeCoord(nFixPAligned16 * (mFixPAligned64 >> 6), 0),
                     tla::MakeShape(nFixPAligned16 * (mFixPAligned64 >> 6), 32));
                
