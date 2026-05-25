@@ -140,7 +140,7 @@ public:
     TBuf<> preLoopMaxBuf;
     TBuf<> preLoopSumBuf;
     TBuf<> firstLoopSumBuf;
-    TBuf<> vselrIndexesBuf[4];
+    TBuf<> vselrIndexesBuf[5];
     TBuf<> mm2InBuf;
     /* 用来做Broadcast[S1,1]->[S2,8]的临时UB区域 */
     TQue<QuePosition::VECOUT, 1> maxBrdcst;
@@ -380,10 +380,10 @@ public:
         if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
             this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
             this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-            uint64_t copyBlockCount = runInfo.actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE / blockBytes;
-            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
-            uint64_t subLoopOffset = runInfo.actVecMSizeAlign16 * mxfp8s2BaseSize / blockBytes * 2;
-            uint16_t copyCount = runInfo.actVecMSizeAlign16 / 16;
+            uint64_t copyBlockCount = 64 * mxfp8s2BaseSize / MXFP_GROUP_SIZE / blockBytes;
+            uint64_t vecOffset = constInfo.subBlockIdx * 64 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
+            uint64_t subLoopOffset = 64 * mxfp8s2BaseSize / blockBytes * 2;
+            uint16_t copyCount = 64 / 16;
             uint16_t dstStride = mxfp8s2BaseSize / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
@@ -392,8 +392,8 @@ public:
                     {copyCount, 1, 0, dstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= 256) {
-            uint16_t copyCount = runInfo.actVecMSizeAlign16 / 16;
-            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
+            uint16_t copyCount = 64 / 16;
+            uint64_t vecOffset = constInfo.subBlockIdx * 64 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
             DataCopy(mm2AScaleL1Tensor[vecOffset], pScaleSubLoop0Tensor, {copyCount, 4, 0, 0});
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
@@ -700,7 +700,8 @@ public:
             return;
         }
 
-        int64_t vec2CalcSize = runInfo.actVecMSizeAlign16 * dTemplateAlign64;
+        uint32_t generalVecMSize = USE_DN ? runInfo.actVecMSize : runInfo.actVecMSizeAlign16;
+        int64_t vec2CalcSize = generalVecMSize * dTemplateAlign64;
         float deSCaleVValue = 1.0f;
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
@@ -715,11 +716,11 @@ public:
             float deSCalePreVValue = 1.0f;
             if (!runInfo.isLastS2Loop) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSizeAlign16, dTemplateAlign64, 1.0, 1.0);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, generalVecMSize, dTemplateAlign64, 1.0, 1.0);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSizeAlign16, dTemplateAlign64, 1.0,
+                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, generalVecMSize, dTemplateAlign64, 1.0,
                     1.0);
             }
         }
@@ -728,9 +729,9 @@ public:
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSizeAlign16, (uint16_t)dTemplateAlign64, deSCaleVValue);
+                    vec2ResUb, vec2ResUb, sumUb, generalVecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
-            CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSizeAlign16);
+            CopyOutAttentionOut(runInfo, vec2ResUb, 0, generalVecMSize);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
@@ -1021,6 +1022,12 @@ public:
                     for (int j = 0; j < (256 >> 2); j++) {
                         vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
                     }
+                }
+                tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::PSCALE_INDEX)], 128);
+                LocalTensor<uint8_t> vselrIndexesTensorPScale =
+                    vselrIndexesBuf[static_cast<int>(VselrIndexEnum::PSCALE_INDEX)].template Get<uint8_t>();
+                for (int i = 0; i < 128; i++) {
+                    vselrIndexesTensorPScale.SetValue(i, i * 2);
                 }
             } else {
                 tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],

@@ -25,7 +25,7 @@ namespace regbaseutil {
 constexpr uint16_t regBytes = 256;
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 constexpr float SINK_MIN_INF = -3.40E+38;
-enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2, NZ_INDEX = 3};
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2, NZ_INDEX = 3, PSCALE_INDEX = 4};
 enum class DTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,

@@ -718,7 +718,7 @@ public:
         }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSizeAlign16;
+            info.vecMbaseIdx = USE_DN ? info.actVecMSize : info.actVecMSizeAlign16;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
