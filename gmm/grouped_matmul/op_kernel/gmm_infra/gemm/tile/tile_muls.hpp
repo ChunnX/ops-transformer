@@ -8,12 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
-#ifndef CATLASS_GEMM_TILE_TILE_MULS_HPP
-#define CATLASS_GEMM_TILE_TILE_MULS_HPP
+#ifndef GMM_GEMM_TILE_TILE_MULS_HPP
+#define GMM_GEMM_TILE_TILE_MULS_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 namespace Catlass::Gemm::Tile {
 
 ///////////////////////////////////////////////////////
@@ -30,18 +29,13 @@ struct TileMuls {
     }
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::LocalTensor<Element> dstTensor,
-        AscendC::LocalTensor<Element> srcTensor,
-        Element scalar,
-        uint32_t len
-    )
+    void operator()(AscendC::LocalTensor<Element> dstTensor, AscendC::LocalTensor<Element> srcTensor, Element scalar,
+                    uint32_t len)
     {
         AscendC::SetMaskCount();
         AscendC::SetVectorMask<Element, AscendC::MaskMode::COUNTER>(len);
-        AscendC::Muls<Element, false>(
-            dstTensor, srcTensor, scalar, AscendC::MASK_PLACEHOLDER, 1, AscendC::UnaryRepeatParams{}
-        );
+        AscendC::Muls<Element, false>(dstTensor, srcTensor, scalar, AscendC::MASK_PLACEHOLDER, 1,
+                                      AscendC::UnaryRepeatParams{});
         AscendC::SetMaskNorm();
         AscendC::ResetMask();
     }
@@ -49,4 +43,4 @@ struct TileMuls {
 ///////////////////////////////////////////////////////
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_TILE_MULS_HPP
+#endif // GMM_GEMM_TILE_TILE_MULS_HPP
