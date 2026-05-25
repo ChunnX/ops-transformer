@@ -332,6 +332,15 @@ public:
                     Get<DETER_IDX_X1SCALE_OFFSETS>(blockOffset_),
                     tileMOffset,
                     tileMOffset};
+                if (cumulativeGroupM_ + tileMOffset < 3) {
+                    printf("[DETER-EOFF] blk=%u epiOff={%lld,%lld,%lld,%lld,%lld,%lld} groupAccumM=%llu\n",
+                        GetBlockIdx(), nOffset,
+                        Get<DETER_IDX_BIAS_OFFSETS>(blockOffset_),
+                        Get<DETER_IDX_X2SCALE_OFFSETS>(blockOffset_),
+                        Get<DETER_IDX_X1SCALE_OFFSETS>(blockOffset_),
+                        tileMOffset, tileMOffset,
+                        cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
+                }
                 WaitForCube();
                 epilogueDequantOp_(epilogueShape, epilogueOffset);
                 NotifyCube();
@@ -359,6 +368,10 @@ public:
 
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
+            if (mOffset < 5) {
+                printf("[DETER-RIDX] blk=%u mOff=%llu globalRow=%llu outRow=%llu coreNumVec=%llu myBlk=%u\n",
+                    GetBlockIdx(), mOffset, deterSync_.windowStartM + mOffset, outRow, coreNumVec, GetBlockIdx());
+            }
             if (outRow % coreNumVec != GetBlockIdx()) continue;
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
         }
