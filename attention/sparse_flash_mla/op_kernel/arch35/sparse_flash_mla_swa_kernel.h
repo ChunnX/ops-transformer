@@ -269,7 +269,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     }
 
     vecBlock.InitGlobalBuffer(oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ,
-                              sinks);
+                              sinks, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     cubeBlock.InitCubeInput(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, cuSeqlensQ,
                               cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
 }

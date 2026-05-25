@@ -320,7 +320,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
             runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, runParam.actualS2CmpSize);
             runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
         } else { // SCFA_TEMPLATE_MODE
-            runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, constInfo.sparseBlockCount);
+            runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, constInfo.cmpSparseBlockCount);
             runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, runParam.actualS2CmpSize);
             runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
         }

@@ -198,7 +198,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
     constInfo.actualLenDimsOriKV = sparseFlashMLABaseParams.actualLenDimsOriKV;
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.actualLenDimsCmpKV = sparseFlashMLABaseParams.actualLenDimsCmpKV;
-        constInfo.cmpResidualKV = sparseFlashMLABaseParams.cmpResidualKV;
+        constInfo.cmpResidualKVSize = sparseFlashMLABaseParams.cmpResidualKv;
     }
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         this->constInfo.isActualLenDimsOriKVNull = 0U;
@@ -278,7 +278,11 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     }
 
     vecBlock.InitGlobalBuffer(oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ,
+<<<<<<< HEAD
                               sinks, sequsedOriKv, sequsedCmpKV, cmpResidualKV);
+=======
+                              sinks, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
+>>>>>>> 9d1b91e2fe9f0df58ebb03446dd74cf71fed600d
     cubeBlock.InitCubeInput(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, cuSeqlensQ,
                             cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
 }
