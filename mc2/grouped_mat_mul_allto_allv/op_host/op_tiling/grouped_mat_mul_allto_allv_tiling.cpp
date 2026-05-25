@@ -710,7 +710,7 @@ static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context,
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
-    if (std::strcmp(commModeStr, "aicpu") == 0) {
+    if (std::strcmp(commModeStr, "aicpu") == 0 || std::strcmp(commModeStr, "") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
