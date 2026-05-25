@@ -825,13 +825,56 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus AlltoAllvGmmTilingBase::GetShapeInfo()
+{
+    // 非量化算子用正确的输入索引读取shape信息，替代base class的GetShapeInfo()
+    // base class的GetShapeInfo()用量化索引(MM_X_INDEX=6, MM_WEIGHT_INDEX=7)读取mm数据，
+    // 且用SEND_COUNTS_TENSOR_INDEX=4/RECV_COUNTS_TENSOR_INDEX=5检查count tensor为null，
+    // 这些索引在非量化算子中对应mmX/mmWeight，会导致误判。
+
+    // gmmX - index 0 (量化/非量化相同)
+    OP_TILING_CHECK(context_->GetInputShape(GMM_X_INDEX) == nullptr,
+        OP_LOGE(A_INNER_DEBUG, "gmmX input shape can not be null."), return ge::GRAPH_FAILED);
+    bsk_ = context_->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    h1_ = context_->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    gmmXDataType_ = context_->GetInputDesc(GMM_X_INDEX)->GetDataType();
+
+    // gmmWeight - index 1 (量化/非量化相同)
+    OP_TILING_CHECK(context_->GetInputShape(GMM_WEIGHT_INDEX) == nullptr,
+        OP_LOGE(A_INNER_DEBUG, "gmmWeight input shape can not be null."), return ge::GRAPH_FAILED);
+    e_ = context_->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    n1_ = context_->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(n1DimIndex);
+    gmmWeightDataType_ = context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
+
+    // gmmY - output index 0 (量化/非量化相同)
+    OP_TILING_CHECK(context_->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr,
+        OP_LOGE(A_INNER_DEBUG, "gmmY output shape can not be null."), return ge::GRAPH_FAILED);
+    a_ = context_->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+
+    // mmX - 非量化用NON_QUANT_MM_X_INDEX=4，量化用MM_X_INDEX=6
+    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        hasSharedExpertFlag_ = true;
+        bs_ = context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+        h2_ = context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+        mmXDataType_ = context_->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
+    }
+
+    // mmWeight - 非量化用NON_QUANT_MM_WEIGHT_INDEX=5，量化用MM_WEIGHT_INDEX=7
+    if (context_->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX) != nullptr) {
+        auto mmWeightShape = context_->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
+        uint64_t n2DimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
+        n2_ = mmWeightShape.GetDim(n2DimIndex);
+        mmWeightDataType_ = context_->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
+    }
+
+    // 非量化算子的sendCounts/recvCounts是attrs而非input tensors，无需GetCountsTensorShapeInfo
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AlltoAllvGmmTilingBase::DoLibApiTiling()
 {
-    // 非量化算子的输入索引(index 4/5)与量化base class的索引(index 6/7)不同，
-    // GetShapeInfo()用量化索引读取mmWeight会读到null，导致误判。
-    // 非量化算子的shape信息已在GetShapeAttrsInfo()和GetContextAttr()中用正确索引处理，
-    // 此处直接返回成功，跳过base class的GetShapeInfo()检查。
-    return ge::GRAPH_SUCCESS;
+    return GetShapeInfo();
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
