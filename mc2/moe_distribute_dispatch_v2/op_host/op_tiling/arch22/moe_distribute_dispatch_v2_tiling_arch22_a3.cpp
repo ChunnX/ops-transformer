@@ -64,7 +64,7 @@ bool MoeDistributeDispatchV2TilingFuncA3::CheckTensorDataType(
         OP_LOGE(nodeName, "x dataType is invalid, dataType should be bf16 or float16, but is %s.",
         Ops::Base::ToString(xDesc->GetDataType()).c_str()), return false);
 
-    if (tc.quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
+    if (tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT)) {
         auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
         OP_TILING_CHECK(dynamicScalesDesc == nullptr, OP_LOGE(nodeName, "dynamicScalesDesc is null."),
             return false);
@@ -79,7 +79,7 @@ bool MoeDistributeDispatchV2TilingFuncA3::CheckTensorDataType(
             Ops::Base::ToString(scalesDesc->GetDataType()).c_str()), return false);
     }
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
-    if (tc.quantMode != static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
+    if (tc.quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) {
         OP_TILING_CHECK(expandXDesc->GetDataType() != ge::DT_INT8,
             OP_LOGE(nodeName, "expandX dataType is invalid, dataType should be int8, but is %s.",
             Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return false);
@@ -103,11 +103,11 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::CheckQuantModeMatchScales(
     DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
     (void)config;
-    OP_TILING_CHECK(tc.quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT),
+    OP_TILING_CHECK(tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::STATIC_QUANT),
         OP_LOGE(nodeName, "cannot support static quant now."),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((tc.isScales && (tc.quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))) ||
-        ((!tc.isScales) && (tc.quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))),
+    OP_TILING_CHECK((tc.isScales && (tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT))) ||
+        ((!tc.isScales) && (tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::STATIC_QUANT))),
         OP_LOGE(nodeName, "quant mode and scales not match, isScales is %d, quantMode is %u.",
         static_cast<int32_t>(tc.isScales), tc.quantMode), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -127,47 +127,24 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::CheckCommAlgPtr(const char*
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::CheckQuantModePtr(const int64_t* quantModePtr,
     const char *nodeName)
 {
-    OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
-    (*quantModePtr > static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
+    OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) ||
+    (*quantModePtr > static_cast<int64_t>(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT)),
     OP_LOGE(nodeName, "quantMode is invalid, only support [0, %ld], but got quantMode=%ld.",
-    static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
+    static_cast<int64_t>(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
 {
     DispatchV2Config config;
-    config.xIndex = 0U;
-    config.expertIdsIndex = 1U;
-    config.scalesIndex = 2U;
-    config.xActiveMaskIndex = 3U;
-    config.expertScalesIndex = 4U;
-    config.elasticInfoIndex = 5U;
-    config.performanceInfoIndex = 6U;
-    config.attrGroupEpIndex = 0;
-    config.attrEpWorldSizeIndex = 1;
-    config.attrEpRankIdIndex = 2;
-    config.attrMoeExpertNumIndex = 3;
-    config.attrGroupTpIndex = 4;
-    config.attrTpWorldSizeIndex = 5;
-    config.attrTpRankIdIndex = 6;
-    config.attrExpertSharedTypeIndex = 7;
-    config.attrSharedExpertNumIndex = 8;
-    config.attrSharedExpertRankNumIndex = 9;
-    config.attrQuantModeIndex = 10;
-    config.attrGlobalBsIndex = 11;
-    config.attrExpertTokenNumsTypeIndex = 12;
-    config.attrCommAlgIndex = 13;
-    config.attrZeroExpertNumIndex = 14;
-    config.attrCopyExpertNumIndex = 15;
-    config.attrConstExpertNumIndex = 16;
-    config.isMc2Context = false;
+    InitDispatchV2ConfigDefault(config);
+    config.maxQuantMode = static_cast<uint32_t>(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT);
+    config.tilingKeyArch = TILINGKEY_TPL_A3;
     DispatchV2TilingCtx tc;
-    return MoeDistributeDispatchA3TilingFuncImplPublicV2(context, config, tc,
+    return MoeDistributeDispatchV2TilingFuncImplPublicV2(context, config, tc,
         [this](gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
             return CheckQuantModeMatchScales(ctx, name, t, cfg);
         },
-        [this](const DispatchV2TilingCtx &t) { return CalTilingKey(t); },
         [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
             return CheckTensorDataType(ctx, name, t, cfg);
         },

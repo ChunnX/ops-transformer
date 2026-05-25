@@ -258,8 +258,8 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "sharedExpertRankNum is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(quantModePtr == nullptr ||
-        (*quantModePtr != static_cast<uint64_t>(QuantModeA5::NON_QUANT) &&
-        *quantModePtr != static_cast<uint64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
+        (*quantModePtr != static_cast<uint64_t>(moe_dispatch_defs::QuantMode::NON_QUANT) &&
+        *quantModePtr != static_cast<uint64_t>(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT)),
         OP_LOGE(K_INNER_DEBUG, "quantMode is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(globalBsPtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "globalBs is null."), return GRAPH_FAILED);
@@ -375,7 +375,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     int32_t zeroComputeExpertNum = zeroExpertNum + copyExpertNum + constExpertNum;
     OP_TILING_CHECK(k == 0 || k > MAX_K_VALUE_A2 || k > moeExpertNum + zeroComputeExpertNum,
         OP_LOGE(K_INNER_DEBUG, "k is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(*quantModePtr == static_cast<uint64_t>(QuantModeA5::NON_QUANT) && isScales,
+    OP_TILING_CHECK(*quantModePtr == static_cast<uint64_t>(moe_dispatch_defs::QuantMode::NON_QUANT) && isScales,
         OP_LOGE(K_INNER_DEBUG, "scales should be null when quantMode is unQuant."), return GRAPH_FAILED);
 
     bool isActiveMask = (xActiveMaskStorageShape != nullptr);
