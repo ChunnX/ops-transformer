@@ -15,6 +15,7 @@
 
 
 #include "rain_fusion_attention.h"
+#include <cstdio>
 
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -86,7 +87,8 @@ const std::array<const aclTensor *, 2> RainFusionAttention(
                                    static_cast<float>(scaleValue), static_cast<uint32_t>(innerPrecise),
                                    static_cast<uint32_t>(blockSize)));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "RainFusionAttention infer shape failed, scaleValue: %f.", scaleValue);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "RainFusionAttention", (snprintf(reason, sizeof(reason), "RainFusionAttention infer shape failed, scaleValue: %f.", scaleValue) > 0) ? reason : "RainFusionAttention infer shape failed, scaleValue: %f.");
         return {nullptr, nullptr};
     }
     

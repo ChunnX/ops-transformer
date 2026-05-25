@@ -49,7 +49,7 @@ const aclTensor *PromptFlashAttention(
 
     const aclTensor *actualSeqLengthsTensor = nullptr;
     if (executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PromptFlashAttention: executor is nullptr.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "PromptFlashAttention: executor is nullptr.");
         return nullptr;
     }
 
@@ -76,7 +76,7 @@ const aclTensor *PromptFlashAttention(
         OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens,
                 inputLayout, numKeyValueHeads, sparseMode, innerPrecise));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PromptFlashAttention InferShape failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "PromptFlashAttention InferShape failed.");
         return nullptr;
     }
 
@@ -87,7 +87,7 @@ const aclTensor *PromptFlashAttention(
         OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens,
                 inputLayout, numKeyValueHeads, sparseMode, innerPrecise));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PromptFlashAttention LaunchAicore failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "PromptFlashAttention LaunchAicore failed.");
         return nullptr;
     }
 

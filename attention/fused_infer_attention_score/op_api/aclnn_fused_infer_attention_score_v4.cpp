@@ -86,7 +86,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     OP_LOGD("start aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize");
@@ -103,14 +103,14 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
 
     ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSeqLengthsKvOptional failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Try alloc fake actualSeqLengthsKvOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         return ret;
     }
 
     ret = FakeArray(actualSharedPrefixLenOptional, fakeActualSharedPrefixLenOptional);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSharedPrefixLenOptional failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Try alloc fake actualSharedPrefixLenOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
        return ret;
@@ -176,7 +176,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     const aclTensorList *tensorListKey = key;
@@ -218,7 +218,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(void *workspace, uint64_t workspaceS
                                             const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     return aclnnInnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);

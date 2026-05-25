@@ -13,6 +13,7 @@
  * \brief
  */
 #include <queue>
+#include <cstdio>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 
@@ -1691,7 +1692,8 @@ bool PromptFlashAttentionTiling::CheckInputDimAndHeadNum(ContextParamsForPFATili
             keyShapeHeadNum = keyShape->GetStorageShape().GetDim(nIdx);
             valueShapeHeadNum = valueShape->GetStorageShape().GetDim(nIdx);
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%u), k(%u), v(%u) must be 4 for BNSD or BSND format!", queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%u), k(%u), v(%u) must be 4 for BNSD or BSND format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%u), k(%u), v(%u) must be 4 for BNSD or BSND format!");
             return false;
         }
     } else if ((inputLayout == InputLayout::NSD) && (!enablePA)) {
@@ -1700,7 +1702,8 @@ bool PromptFlashAttentionTiling::CheckInputDimAndHeadNum(ContextParamsForPFATili
             keyShapeHeadNum = keyShape->GetStorageShape().GetDim(0);
             valueShapeHeadNum = valueShape->GetStorageShape().GetDim(0);
         } else {
-            OP_LOGE(contextKeyParams.opName, "input dim of q(%u), k(%u), v(%u) must be 3 for NSD format!", queryDim, keyDim, valueDim);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "input dim of q(%u), k(%u), v(%u) must be 3 for NSD format!", queryDim, keyDim, valueDim) > 0) ? reason : "input dim of q(%u), k(%u), v(%u) must be 3 for NSD format!");
             return false;
         }
     }
@@ -1728,7 +1731,8 @@ bool PromptFlashAttentionTiling::SetTilingHeadNumRatio(ContextParamsForPFATiling
     const int64_t nKV = *numKeyValueHeads;
 
     if ((nQ < 0) || (nKV < 0)) {
-        OP_LOGE(contextKeyParams.opName, "numHeads(%d) or numKeyValueHeads(%d) is negative!", nQ, nKV);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads(%d) or numKeyValueHeads(%d) is negative!", nQ, nKV) > 0) ? reason : "numHeads(%d) or numKeyValueHeads(%d) is negative!");
         return false;
     }
 
@@ -1742,11 +1746,13 @@ bool PromptFlashAttentionTiling::SetTilingHeadNumRatio(ContextParamsForPFATiling
     }
 
     if (nQ % nKV != 0) {
-        OP_LOGE(contextKeyParams.opName, "numHeads(%d) must be divisible by numKeyValueHeads(%d)!", nQ, nKV);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads(%d) must be divisible by numKeyValueHeads(%d)!", nQ, nKV) > 0) ? reason : "numHeads(%d) must be divisible by numKeyValueHeads(%d)!");
         return false;
     } else {
         if (nQ / nKV > 64) {   // G cannot be greater than 64.
-            OP_LOGE(contextKeyParams.opName, "numHeads / numKeyValueHeads = %d, cannot be larger than 64", nQ / nKV);
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "numHeads / numKeyValueHeads = %d, cannot be larger than 64", nQ / nKV) > 0) ? reason : "numHeads / numKeyValueHeads = %d, cannot be larger than 64");
             return false;
         }
         tilingData.promptAttentionBaseParams.set_headNumRatio(nQ / nKV);
@@ -2290,7 +2296,7 @@ bool PromptFlashAttentionTiling::CheckPATypeAndShape(ContextParamsForPFATiling& 
             layoutStr.c_str(), blockNumValid, *curBlockSize, h),
             return false);
     } else {
-        OP_LOGE(contextKeyParams.opName, "unsupported input data layout when PA enable");
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, "unsupported input data layout when PA enable");
         return false;
     }
 
@@ -2373,7 +2379,8 @@ bool PromptFlashAttentionTiling::CheckAttenMaskShape(ContextParamsForPFATiling& 
                 attenMaskS2 == SPARSE_OPTIMIZE_ATTENTION_SIZE);
         }
     } else {
-        OP_LOGE(contextKeyParams.opName, "attenMask dim(%u) must be 2 or 3 or 4!", attenMaskDim);
+        char reason[512] = {0};
+        OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "attenMask dim(%u) must be 2 or 3 or 4!", attenMaskDim) > 0) ? reason : "attenMask dim(%u) must be 2 or 3 or 4!");
         return false;
     }
     if ((sparseMode == nullptr) || ((sparseMode != nullptr) && (*sparseMode == SPARSE_MODE_NO_MASK)) ||
@@ -3103,9 +3110,11 @@ void PromptFlashAttentionTiling::GetActualSeqLenData(int64_t inputIdx,
     }
     if (actualSeqLenTensor == nullptr) {
         if (inputIdx == ACTUAL_SEQ_KV_INDEX) {
-            OP_LOGE(contextKeyParamsPtr->opName, "[%s]the key/value's actual sequence lengths can not be null pointer", "PFA_TND");
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParamsPtr->opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParamsPtr->opName, (snprintf(reason, sizeof(reason), "[%s]the key/value's actual sequence lengths can not be null pointer", "PFA_TND") > 0) ? reason : "[%s]the key/value's actual sequence lengths can not be null pointer");
         } else {
-            OP_LOGE(contextKeyParamsPtr->opName, "[%s]the query's actual sequence lengths can not be null pointer", "PFA_TND");
+            char reason[512] = {0};
+            OP_LOGE(contextKeyParamsPtr->opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParamsPtr->opName, (snprintf(reason, sizeof(reason), "[%s]the query's actual sequence lengths can not be null pointer", "PFA_TND") > 0) ? reason : "[%s]the query's actual sequence lengths can not be null pointer");
         }
         return;
     }
@@ -3118,7 +3127,7 @@ void PromptFlashAttentionTiling::GetActualSeqLenData(int64_t inputIdx,
     /* Get Data from tensor. */
     const int64_t *value = actualSeqLenTensor->GetData<int64_t>();
     if (value == nullptr) {
-        OP_LOGE(contextKeyParamsPtr->opName, "[%s]actualSeqLenTensor data is null pointer", "PFA_TND");
+        OP_LOGE(contextKeyParamsPtr->opName, "The op [%s] missing [%s] parameter", contextKeyParamsPtr->opName, "data");
         return;
     }
     res[0] = value[0];
@@ -4025,11 +4034,11 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
         const gert::StorageShape* queryRopeShapeParam = contextKeyParams.queryRope;
         const gert::StorageShape* keyRopeShapeParam = contextKeyParams.keyRope;
         if ((queryRopeShapeParam != nullptr) && (queryRopeShapeParam->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(contextKeyParams.opName, "When layout is TND or NTD_TND, and queryRopeShape is not nullptr, queryRope should not be empty tensor.");
+            OP_LOGE(contextKeyParams.opName, "The op [%s] missing [%s] parameter", contextKeyParams.opName, "input");
             return ge::GRAPH_FAILED;
         }
         if ((keyRopeShapeParam != nullptr) && (keyRopeShapeParam->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(contextKeyParams.opName, "When layout is TND or NTD_TND, and keyRopeShape is not nullptr, keyRope should not be empty tensor.");
+            OP_LOGE(contextKeyParams.opName, "The op [%s] missing [%s] parameter", contextKeyParams.opName, "input");
             return ge::GRAPH_FAILED;
         }
     }
@@ -4754,7 +4763,8 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
 
     if (enableMsd) {
         if (s > CVDIFF_SMALL_QS_THRESHOLDS) {
-            OP_LOGE("PromptFlashAttention", "S of query(%u) is larger than 16, when the key/value's dequant scale is enabled.", s);
+            char reason[512] = {0};
+            OP_LOGE("PromptFlashAttention", "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "S of query(%u) is larger than 16, when the key/value's dequant scale is enabled.", s) > 0) ? reason : "S of query(%u) is larger than 16, when the key/value's dequant scale is enabled.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -4828,8 +4838,8 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
         } else if (sparseModeVal == SPARSE_MODE_RIGHT_DOWN) {
             for (int64_t i = 0L; i < bSize; ++i) {
                 if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
-                    OP_LOGE(contextKeyParams.opName, "When layout is TND and sparse = 3 ,Batch[%ld], need s1[%ld] <= s2[%ld].", i,
-                        actualSeqLenData[i], actualSeqLenKvData[i]);
+                    char reason[512] = {0};
+                    OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "When layout is TND and sparse = 3 ,Batch[%ld], need s1[%ld] <= s2[%ld].", i, actualSeqLenData[i], actualSeqLenKvData[i]) > 0) ? reason : "When layout is TND and sparse = 3 ,Batch[%ld], need s1[%ld] <= s2[%ld].");
                     return ge::GRAPH_FAILED;
                 }
             }
@@ -5190,9 +5200,8 @@ ge::graphStatus PromptFlashAttentionTiling::RunBigKernelTilingWithParams(Context
                         contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(0), hKV),
                     return ge::GRAPH_FAILED);
             } else {
-                OP_LOGE(contextKeyParams.opName, "The shape dimension of the key's dequant scale(%zu)/offset(%zu) or the value's dequant scale(%zu)/offset(%zu) is not 1 or 2 or 3 in perChannel mode",
-                    contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDimNum(), contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDimNum(),
-                    contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDimNum(), contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDimNum());
+                char reason[512] = {0};
+                OP_LOGE(contextKeyParams.opName, "The op [%s] received bad params, the reason is: [%s]", contextKeyParams.opName, (snprintf(reason, sizeof(reason), "The shape dimension of the key's dequant scale(%zu)/offset(%zu) or the value's dequant scale(%zu)/offset(%zu) is not 1 or 2 or 3 in perChannel mode", contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDimNum(), contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDimNum(), contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDimNum(), contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDimNum()) > 0) ? reason : "The shape dimension of the key's dequant scale(%zu)/offset(%zu) or the value's dequant scale(%zu)/offset(%zu) is not 1 o");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -6486,7 +6495,7 @@ ge::graphStatus PromptFlashAttentionTiling::AdjustCVTilingCVDiff(int64_t ubSize,
 
 ge::graphStatus TilingPromptFlashAttention(gert::TilingContext* context) {
     if (context == nullptr) {
-            OP_LOGE("PromptFlashAttention", "tiling context is nullptr!");
+            OP_LOGE("PromptFlashAttention", "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "tiling context is nullptr!");
             return ge::GRAPH_FAILED;
     }
     auto resultCode = FiaTilingRegistry::GetInstance().DoTilingImpl(context, nullptr);
@@ -6495,11 +6504,11 @@ ge::graphStatus TilingPromptFlashAttention(gert::TilingContext* context) {
 
 PFA_EXTERN_C ge::graphStatus PromptFlashAttentionTiling::DoOpTiling() {
     if (context_ == nullptr) {
-        OP_LOGE("PromptFlashAttention", "tiling context is nullptr!");
+        OP_LOGE("PromptFlashAttention", "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
     if (context_->GetRawTilingData() == nullptr) {
-        OP_LOGE("PromptFlashAttention", "tiling context GetRawTilingData is nullptr!");
+        OP_LOGE("PromptFlashAttention", "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "tiling context GetRawTilingData is nullptr!");
         return ge::GRAPH_FAILED;
     }
     auto platformInfoPtr = context_->GetPlatformInfo();

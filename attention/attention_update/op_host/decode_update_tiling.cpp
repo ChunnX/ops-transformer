@@ -14,6 +14,7 @@
  */
 
 #include "register/op_def_registry.h"
+#include <cstdio>
 #include "platform/platform_info.h"
 #include "util/shape_util.h"
 #include "log/log.h"
@@ -56,7 +57,7 @@ uint64_t GetTilingKey(uint32_t sp, ge::DataType goType_)
 }
 
 ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("AttentionUpdate", "context is null"),
+    OP_CHECK_IF(context == nullptr, ({ OP_LOGE("AttentionUpdate", "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", "context is null"); }),
            return ge::GRAPH_FAILED);
     auto compileInfo = reinterpret_cast<const DecodeUpdateCompileInfo*>(context->GetCompileInfo());
     if (compileInfo->is_ascendc) {
@@ -125,7 +126,7 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
 static ge::graphStatus TilingPrepare4DecodeUpdate(gert::TilingParseContext* context) {
     auto compileInfo = context->GetCompiledInfo<DecodeUpdateCompileInfo>();
     OP_CHECK_IF(compileInfo == nullptr,
-                OP_LOGE(context, "compileInfoPtr is null"),
+                ({ OP_LOGE(context, "The op [%s] received bad params, the reason is: [%s]", context, "compileInfoPtr is null"); }),
                 return ge::GRAPH_FAILED);
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -136,14 +137,10 @@ static ge::graphStatus TilingPrepare4DecodeUpdate(gert::TilingParseContext* cont
     compileInfo->is_ascendc = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context);
 
     OP_CHECK_IF(compileInfo->coreNum <= 0,
-                OP_LOGE(context->GetNodeName(),
-                        "AttentionUpdate GetHardwareInfo Failed, vectorCoreNum: %u",
-                        compileInfo->coreNum),
+                ({ char reason[512] = {0}; OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "AttentionUpdate GetHardwareInfo Failed, vectorCoreNum: %u", compileInfo->coreNum) > 0) ? reason : "AttentionUpdate GetHardwareInfo Failed, vectorCoreNum: %u"); }),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(compileInfo->ubSize <= 0,
-                OP_LOGE(context->GetNodeName(),
-                        "AttentionUpdate GetHardwareInfo Failed, ubSize: %lu",
-                        compileInfo->ubSize),
+                ({ char reason[512] = {0}; OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "AttentionUpdate GetHardwareInfo Failed, ubSize: %lu", compileInfo->ubSize) > 0) ? reason : "AttentionUpdate GetHardwareInfo Failed, ubSize: %lu"); }),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

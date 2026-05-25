@@ -14,6 +14,7 @@
  */
 
 #include "aclnn_attention_update.h"
+#include <cstdio>
 #include "attention_update.h"
 #include "aclnn_kernels/contiguous.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
@@ -117,29 +118,30 @@ static inline bool CheckShape(const aclTensorList* lse, const aclTensorList* loc
     auto localOutSp = localOut->Size();
 
     OP_CHECK(lseSp > 0 && lseSp <= SP_MAX,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse must greater than zero and less than %ld,"
-                                         "but which is %ld.", SP_MAX, lseSp), return false);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse must greater than zero and less than %ld,but which is %ld.", SP_MAX, lseSp) > 0) ? reason : "Size of lse must greater than zero and less than %ld,but which is %ld."), return false);
     OP_CHECK(localOutSp == lseSp,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse: %ld must equal to size of localOut: %ld.", lseSp, localOutSp),
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse: %ld must equal to size of localOut: %ld.", lseSp, localOutSp) > 0) ? reason : "Size of lse: %ld must equal to size of localOut: %ld."),
         return false);
     
     auto lseShape = (*lse)[0]->GetViewShape();
     auto goShape = (*localOut)[0]->GetViewShape();
 
     OP_CHECK(lseShape.GetDimNum() == LSE_DIM_NUM,
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lse should be %ld, but which is %ld.",
-                                                    LSE_DIM_NUM, lseShape.GetDimNum()),
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of lse should be %ld, but which is %ld.", LSE_DIM_NUM, lseShape.GetDimNum()) > 0) ? reason : "Dim num of lse should be %ld, but which is %ld."),
         return false);
     OP_CHECK(goShape.GetDimNum() == GO_DIM_NUM,
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of localOut should be %ld, but which is %ld.",
-                                                    GO_DIM_NUM, goShape.GetDimNum()),
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of localOut should be %ld, but which is %ld.", GO_DIM_NUM, goShape.GetDimNum()) > 0) ? reason : "Dim num of localOut should be %ld, but which is %ld."),
         return false);
     for (size_t i = 1; i < lseSp; i++) {
         OP_CHECK(lseShape == (*lse)[i]->GetViewShape(),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The shape of every tensor of lse must be same."),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", "The shape of every tensor of lse must be same."),
             return false);
         OP_CHECK(goShape == (*localOut)[i]->GetViewShape(),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The shape of every tensor of localOut must be same."),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", "The shape of every tensor of localOut must be same."),
             return false);
     }
 
@@ -151,47 +153,48 @@ static inline bool CheckShape(const aclTensorList* lse, const aclTensorList* loc
     auto goHd =  goShape.GetDim(GO_HD_DIM);
 
     OP_CHECK(goHd > 0 && goHd % HD_MULTIPLE == 0 && goHd <= HD_MAX ,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of localOut[1] must be a multiple of 8 and less than %ld, but which is %ld.",
-                HD_MAX, goHd), return false);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of localOut[1] must be a multiple of 8 and less than %ld, but which is %ld.", HD_MAX, goHd) > 0) ? reason : "Size of localOut[1] must be a multiple of 8 and less than %ld, but which is %ld."), return false);
 
     OP_CHECK(lseBshc == localOutBshc,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse[0]: %ld must equal to size of localOut[0]: %ld.",
-                lseBshc, localOutBshc), return false);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse[0]: %ld must equal to size of localOut[0]: %ld.", lseBshc, localOutBshc) > 0) ? reason : "Size of lse[0]: %ld must equal to size of localOut[0]: %ld."), return false);
 
     if (updateType == 0 || updateType == 1) { // ATTENTION_UPDATE
         auto outDimNum = outShape.GetDimNum();
         OP_CHECK(outDimNum == ATTENTION_UPDATE_OUT_DIM_NUM,
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of out should be %ld, but which is %ld.",
-                                                    ATTENTION_UPDATE_OUT_DIM_NUM, outDimNum),
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of out should be %ld, but which is %ld.", ATTENTION_UPDATE_OUT_DIM_NUM, outDimNum) > 0) ? reason : "Dim num of out should be %ld, but which is %ld."),
         return false);
 
         auto outBshc = outShape.GetDim(OUT_TOTAL_LENGTH_DIM);
         OP_CHECK(lseBshc == outBshc,
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse[%ld]: %ld must equal to size of out[%ld]: %ld.",
-                                LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, outBshc),
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse[%ld]: %ld must equal to size of out[%ld]: %ld.", LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, outBshc) > 0) ? reason : "Size of lse[%ld]: %ld must equal to size of out[%ld]: %ld."),
         return false);
 
         auto outHd = outShape.GetDim(OUT_HD_DIM);
         OP_CHECK(goHd == outHd,
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of localOut[%ld]: %ld must equal to size of out[%ld]: %ld.",
-                                GO_HD_DIM, goHd, OUT_HD_DIM, outHd),
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of localOut[%ld]: %ld must equal to size of out[%ld]: %ld.", GO_HD_DIM, goHd, OUT_HD_DIM, outHd) > 0) ? reason : "Size of localOut[%ld]: %ld must equal to size of out[%ld]: %ld."),
         return false);
         if (updateType == 1) {
             auto lseOutShape = lseOut->GetViewShape();
             auto lseOutDimNum = lseOutShape.GetDimNum();
             OP_CHECK(lseOutDimNum  == LSE_DIM_NUM,
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lseOut should be %ld, but which is %ld.",
-                                                        LSE_DIM_NUM, lseOutDimNum),
+                char reason[512] = {0};
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of lseOut should be %ld, but which is %ld.", LSE_DIM_NUM, lseOutDimNum) > 0) ? reason : "Dim num of lseOut should be %ld, but which is %ld."),
                 return false);
 
             auto lseOutBshc = lseOutShape.GetDim(OUT_TOTAL_LENGTH_DIM);
             OP_CHECK(lseBshc == lseOutBshc,
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse[%ld]: %ld must equal to size of lseOut[%ld]: %ld.",
-                                    LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, lseOutBshc),
+                char reason[512] = {0};
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse[%ld]: %ld must equal to size of lseOut[%ld]: %ld.", LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, lseOutBshc) > 0) ? reason : "Size of lse[%ld]: %ld must equal to size of lseOut[%ld]: %ld."),
                 return false);
         }
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported updateType: %ld.", updateType);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Unsupported updateType: %ld.", updateType) > 0) ? reason : "Unsupported updateType: %ld.");
         return false;
     }
     return true;
@@ -205,12 +208,12 @@ static inline bool CheckShape_95(const aclTensorList *lse, const aclTensorList *
 
     // 检查go和lse维度
     OP_CHECK(lseShape.GetDimNum() == LSE_DIM_NUM,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lse should be %ld, but which is %ld.", LSE_DIM_NUM,
-                     lseShape.GetDimNum()),
+             char reason[512] = {0};
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of lse should be %ld, but which is %ld.", LSE_DIM_NUM, lseShape.GetDimNum()) > 0) ? reason : "Dim num of lse should be %ld, but which is %ld."),
              return false);
     OP_CHECK(goShape.GetDimNum() == GO_DIM_NUM,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lse should be %ld, but which is %ld.", GO_DIM_NUM,
-                     goShape.GetDimNum()),
+             char reason[512] = {0};
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of lse should be %ld, but which is %ld.", GO_DIM_NUM, goShape.GetDimNum()) > 0) ? reason : "Dim num of lse should be %ld, but which is %ld."),
              return false);
 
     // 检查go和lse的第1,2维
@@ -220,21 +223,21 @@ static inline bool CheckShape_95(const aclTensorList *lse, const aclTensorList *
     auto goHd = goShape.GetDim(GO_HD_DIM);
 
     OP_CHECK(goHd > 0 && goHd % HD_MULTIPLE == 0 && goHd <= HD_MAX,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "Size of localOut[1] must be a multiple of 8 and less than %ld, but which is %ld.", HD_MAX, goHd),
+             char reason[512] = {0};
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of localOut[1] must be a multiple of 8 and less than %ld, but which is %ld.", HD_MAX, goHd) > 0) ? reason : "Size of localOut[1] must be a multiple of 8 and less than %ld, but which is %ld."),
              return false);
 
     OP_CHECK(lseBshc == localOutBshc,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse[0]: %ld must equal to size of localOut[0]: %ld.", lseBshc,
-                     localOutBshc),
+             char reason[512] = {0};
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse[0]: %ld must equal to size of localOut[0]: %ld.", lseBshc, localOutBshc) > 0) ? reason : "Size of lse[0]: %ld must equal to size of localOut[0]: %ld."),
              return false);
 
     // 检查lse和go每个shape是否相同
     for (size_t i = 1; i < lse->Size(); i++) {
         OP_CHECK(lseShape == (*lse)[i]->GetViewShape(),
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The shape of every tensor of lse must be same."), return false);
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", "The shape of every tensor of lse must be same."), return false);
         OP_CHECK(goShape == (*localOut)[i]->GetViewShape(),
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The shape of every tensor of localOut must be same."), return false);
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", "The shape of every tensor of localOut must be same."), return false);
     }
 
     // 检查update，out，lseOut
@@ -243,20 +246,20 @@ static inline bool CheckShape_95(const aclTensorList *lse, const aclTensorList *
         auto outShape = out->GetViewShape();
         auto outDimNum = outShape.GetDimNum();
         OP_CHECK(outDimNum == ATTENTION_UPDATE_OUT_DIM_NUM,
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of out should be %ld, but which is %ld.",
-                         ATTENTION_UPDATE_OUT_DIM_NUM, outDimNum),
+                 char reason[512] = {0};
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of out should be %ld, but which is %ld.", ATTENTION_UPDATE_OUT_DIM_NUM, outDimNum) > 0) ? reason : "Dim num of out should be %ld, but which is %ld."),
                  return false);
 
         auto outBshc = outShape.GetDim(OUT_TOTAL_LENGTH_DIM);
         OP_CHECK(lseBshc == outBshc,
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse[%ld]: %ld must equal to size of out[%ld]: %ld.",
-                         LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, outBshc),
+                 char reason[512] = {0};
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse[%ld]: %ld must equal to size of out[%ld]: %ld.", LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, outBshc) > 0) ? reason : "Size of lse[%ld]: %ld must equal to size of out[%ld]: %ld."),
                  return false);
 
         auto outHd = outShape.GetDim(OUT_HD_DIM);
         OP_CHECK(goHd == outHd,
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of localOut[%ld]: %ld must equal to size of out[%ld]: %ld.",
-                         GO_HD_DIM, goHd, OUT_HD_DIM, outHd),
+                 char reason[512] = {0};
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of localOut[%ld]: %ld must equal to size of out[%ld]: %ld.", GO_HD_DIM, goHd, OUT_HD_DIM, outHd) > 0) ? reason : "Size of localOut[%ld]: %ld must equal to size of out[%ld]: %ld."),
                  return false);
 
         // 校验lseOut的维度，第1维
@@ -264,18 +267,19 @@ static inline bool CheckShape_95(const aclTensorList *lse, const aclTensorList *
             auto lseOutShape = lseOut->GetViewShape();
             auto lseOutDimNum = lseOutShape.GetDimNum();
             OP_CHECK(lseOutDimNum == LSE_DIM_NUM,
-                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim num of lseOut should be %ld, but which is %ld.", LSE_DIM_NUM,
-                             lseOutDimNum),
+                     char reason[512] = {0};
+                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Dim num of lseOut should be %ld, but which is %ld.", LSE_DIM_NUM, lseOutDimNum) > 0) ? reason : "Dim num of lseOut should be %ld, but which is %ld."),
                      return false);
 
             auto lseOutBshc = lseOutShape.GetDim(OUT_TOTAL_LENGTH_DIM);
             OP_CHECK(lseBshc == lseOutBshc,
-                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse[%ld]: %ld must equal to size of lseOut[%ld]: %ld.",
-                             LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, lseOutBshc),
+                     char reason[512] = {0};
+                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse[%ld]: %ld must equal to size of lseOut[%ld]: %ld.", LSE_TOTAL_LENGTH_DIM, lseBshc, OUT_TOTAL_LENGTH_DIM, lseOutBshc) > 0) ? reason : "Size of lse[%ld]: %ld must equal to size of lseOut[%ld]: %ld."),
                      return false);
         }
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported updateType: %ld.", updateType);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Unsupported updateType: %ld.", updateType) > 0) ? reason : "Unsupported updateType: %ld.");
         return false;
     }
 
@@ -288,14 +292,13 @@ static inline bool CheckSp_95(const aclTensorList *lse, const aclTensorList *loc
     auto localOutSp = localOut->Size();
 
     OP_CHECK(lseSp > 0 && lseSp <= SP_MAX,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "Size of lse must greater than zero and less than %ld,"
-                     "but which is %ld.",
-                     SP_MAX, lseSp),
+             char reason[512] = {0};
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse must greater than zero and less than %ld,but which is %ld.", SP_MAX, lseSp) > 0) ? reason : "Size of lse must greater than zero and less than %ld,but which is %ld."),
              return false);
     OP_CHECK(
         localOutSp == lseSp,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse: %ld must equal to size of localOut: %ld.", lseSp, localOutSp),
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "Size of lse: %ld must equal to size of localOut: %ld.", lseSp, localOutSp) > 0) ? reason : "Size of lse: %ld must equal to size of localOut: %ld."),
         return false);
     return true;
 }
@@ -303,16 +306,19 @@ static inline bool CheckSp_95(const aclTensorList *lse, const aclTensorList *loc
 static inline bool CheckUpdateTypeAndLseOut(int64_t updateType, const aclTensor *lseOut)
 {
     if (updateType == 0 && lseOut != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "lseOut should be nullptr when updateType is %ld.", updateType);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "lseOut should be nullptr when updateType is %ld.", updateType) > 0) ? reason : "lseOut should be nullptr when updateType is %ld.");
         return false;
     }
     if (updateType == 1 && lseOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "lseOut should not be nullptr when updateType is %ld.", updateType);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "lseOut should not be nullptr when updateType is %ld.", updateType) > 0) ? reason : "lseOut should not be nullptr when updateType is %ld.");
         return false;
     }
 
     if (updateType != 1 && updateType != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "updateType should be 0 or 1 but got %ld.", updateType);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "AttentionUpdate", (snprintf(reason, sizeof(reason), "updateType should be 0 or 1 but got %ld.", updateType) > 0) ? reason : "updateType should be 0 or 1 but got %ld.");
         return false;
     }
     return true;

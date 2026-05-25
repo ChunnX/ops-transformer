@@ -9,6 +9,7 @@
  */
 
 #include "prompt_flash_attention_inner.h"
+#include <cstdio>
 #include "prompt_flash_attention.h"
 #include "opdev/common_types.h"
 #include "opdev/fast_vector.h"
@@ -125,37 +126,37 @@ static aclnnStatus CheckDimsAndLayout(const aclTensor *query, const aclTensor *k
     auto kDimNum = key->GetViewShape().GetDimNum();
     auto vDimNum = value->GetViewShape().GetDimNum();
     if (qDimNum != kDimNum || qDimNum != vDimNum) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "the layout of q and k v must be same, but got q dim:%lu k dim:%lu v dim:%lu", qDimNum, kDimNum, vDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "the layout of q and k v must be same, but got q dim:%lu k dim:%lu v dim:%lu", qDimNum, kDimNum, vDimNum) > 0) ? reason : "the layout of q and k v must be same, but got q dim:%lu k dim:%lu v dim:%lu");
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_4) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_4 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'B' && inputLayout[LAYOUT_STR_LENGTH_1] == 'N' &&
         inputLayout[LAYOUT_STR_LENGTH_2] == 'S' && inputLayout[LAYOUT_STR_LENGTH_3] == 'D')) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "layout is BNSD, input shape dim should be 4, but got %lu", qDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "layout is BNSD, input shape dim should be 4, but got %lu", qDimNum) > 0) ? reason : "layout is BNSD, input shape dim should be 4, but got %lu");
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_4) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_4 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'B' && inputLayout[LAYOUT_STR_LENGTH_1] == 'S' &&
         inputLayout[LAYOUT_STR_LENGTH_2] == 'N' && inputLayout[LAYOUT_STR_LENGTH_3] == 'D')) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "layout is BSND, input shape dim should be 4, but got %lu", qDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "layout is BSND, input shape dim should be 4, but got %lu", qDimNum) > 0) ? reason : "layout is BSND, input shape dim should be 4, but got %lu");
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_3) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_3 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'N' && inputLayout[LAYOUT_STR_LENGTH_1] == 'S' &&
                inputLayout[LAYOUT_STR_LENGTH_2] == 'D')) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "layout is NSD, input shape dim should be 3, but got %lu", qDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "layout is NSD, input shape dim should be 3, but got %lu", qDimNum) > 0) ? reason : "layout is NSD, input shape dim should be 3, but got %lu");
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_3) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_3 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'T' && inputLayout[LAYOUT_STR_LENGTH_1] == 'N' &&
                 inputLayout[LAYOUT_STR_LENGTH_2] == 'D')) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "layout is TND, input shape dim should be 3, but got %lu", qDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "layout is TND, input shape dim should be 3, but got %lu", qDimNum) > 0) ? reason : "layout is TND, input shape dim should be 3, but got %lu");
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_3) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_3 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'N' && inputLayout[LAYOUT_STR_LENGTH_1] == 'T' &&
                 inputLayout[LAYOUT_STR_LENGTH_2] == 'D')) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "layout is NTD, input shape dim should be 3, but got %lu", qDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "layout is NTD, input shape dim should be 3, but got %lu", qDimNum) > 0) ? reason : "layout is NTD, input shape dim should be 3, but got %lu");
         return ACLNN_ERR_PARAM_INVALID;
     } else if ((qDimNum != DIM_NUM_2) && strnlen(inputLayout, LAYOUT_STR_LENGTH_4) >= LAYOUT_STR_LENGTH_2 && (inputLayout[LAYOUT_STR_LENGTH_0] == 'S' && inputLayout[LAYOUT_STR_LENGTH_1] == 'H')) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "layout is SH, input shape dim should be 2, but got %lu", qDimNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "layout is SH, input shape dim should be 2, but got %lu", qDimNum) > 0) ? reason : "layout is SH, input shape dim should be 2, but got %lu");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -177,7 +178,7 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         shapeInfo.inputLayout = InputLayout::NONE;
         shapeInfo.l0InputLayoutStr = "NONE";
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "inputLayout should not be null!");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "inputLayout should not be null!");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -187,9 +188,8 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         uint64_t dSize = qShape[1] / headNum;
         uint64_t dSizeV = headNumKV == 0 ? vShape[1] / headNum : vShape[1] / headNumKV;
         if (dSize == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input query shape is (S[%ld], H[%ld]), input num_head N is %ld, "
-                    "corresponding headsize D = H/N = %lu, is invalid.",
-                    qShape[0], qShape[1], headNum, dSize); // 0:S, 1:H
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Input query shape is (S[%ld], H[%ld]), input num_head N is %ld, corresponding headsize D = H/N = %lu, is invalid.", qShape[0], qShape[1], headNum, dSize) > 0) ? reason : "Input query shape is (S[%ld], H[%ld]), input num_head N is %ld, corresponding headsize D = H/N = %lu, is invalid."); // 0:S, 1:H
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -218,9 +218,8 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         }
 
         if (dSize == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input query shape is (B[%ld], S[%ld], H[%ld]), input num_head N is %ld, "
-                    "corresponding headsize D = H/N = %lu, is invalid.",
-                    qShape[0], qShape[1], qShape[2], headNum, dSize); // 0:B, 1:S, 2:H
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Input query shape is (B[%ld], S[%ld], H[%ld]), input num_head N is %ld, corresponding headsize D = H/N = %lu, is invalid.", qShape[0], qShape[1], qShape[2], headNum, dSize) > 0) ? reason : "Input query shape is (B[%ld], S[%ld], H[%ld]), input num_head N is %ld, corresponding headsize D = H/N = %lu, is invalid"); // 0:B, 1:S, 2:H
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -319,12 +318,14 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
     }
 
     if (shapeInfo.inputLayout == InputLayout::NONE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PFA inputLayout only supports BSH, BNSD, BSND, BNSD_BSND, TND, NTD, current layout: %s", inputLayout);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "PFA inputLayout only supports BSH, BNSD, BSND, BNSD_BSND, TND, NTD, current layout: %s", inputLayout) > 0) ? reason : "PFA inputLayout only supports BSH, BNSD, BSND, BNSD_BSND, TND, NTD, current layout: %s");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (shapeInfo.axes.d > 512 || shapeInfo.axes.dV > 512) { // 512: D is limited at 512
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "D should <= 512, but the D of query is %ld and the D of value is %ld.", shapeInfo.axes.d, shapeInfo.axes.dV);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "D should <= 512, but the D of query is %ld and the D of value is %ld.", shapeInfo.axes.d, shapeInfo.axes.dV) > 0) ? reason : "D should <= 512, but the D of query is %ld and the D of value is %ld.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
@@ -364,7 +365,8 @@ static aclnnStatus AnalysisInputShapeInfo(const aclTensor *query, const aclTenso
                                           const aclTensor *attentionOut)
 {
     if (headNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "head_num must > 0, but got %ld", headNum);
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "head_num must > 0, but got %ld", headNum) > 0) ? reason : "head_num must > 0, but got %ld");
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(CheckDimsAndLayout(query, key, value, inputLayout) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -382,8 +384,8 @@ static aclnnStatus AnalysisInputShapeInfo(const aclTensor *query, const aclTenso
     DataType outputDataType = attentionOut->GetDataType();
     if (shapeInfo.axes.d > shapeInfo.axes.dV) {
         if (outputDataType == DataType::DT_INT8) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Please check Input Tensor shape, when the D of query(%ld) is greater than D of value(%ld), "
-                    "the output type can't be int8.", shapeInfo.axes.d, shapeInfo.axes.dV);
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Please check Input Tensor shape, when the D of query(%ld) is greater than D of value(%ld), the output type can't be int8.", shapeInfo.axes.d, shapeInfo.axes.dV) > 0) ? reason : "Please check Input Tensor shape, when the D of query(%ld) is greater than D of value(%ld), the output type can't be int8");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if ((shapeInfo.inputLayout != InputLayout::TND && shapeInfo.inputLayout != InputLayout::NTD) && shapeInfo.axes.d > 128) {  // 128 : When D of query and value are different, D > 128, it should be aligned with 256, and D <= 128, it should be aligned with 32B.
@@ -425,7 +427,7 @@ static inline const aclTensor *GeneratePaddings(int32_t dimNum, int32_t padNum, 
 
     auto padArray = executor->AllocIntArray(padVec.data(), padVec.size());
     if (padArray == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc padVec failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "Try alloc padVec failed");
         return nullptr;
     }
 
@@ -618,7 +620,7 @@ static bool CheckNotNull(const aclTensor* query, const aclTensor* key, const acl
     OP_CHECK_NULL(value, return false);
     OP_CHECK_NULL(attentionOut, return false);
     if (inputLayout == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "expected a value of type char but got null for argument inputLayout.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "expected a value of type char but got null for argument inputLayout.");
         return false;
     }
     return true;
@@ -634,9 +636,8 @@ static bool CheckTensorDataType(const aclTensor* query, const aclTensor* key, co
 
     // In the current PFA scenario, the datatypes of q, k, and v must be the same.
     if ((queryDataType != keyDataType) || (queryDataType != valueDataType)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Please check input Tensor datatype. "
-            "The combination of [queryDataType]: %s, [keyDataType]: %s, [valueDataType]: %s is not supported by PFA.",
-            StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(keyDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(valueDataType)).c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Please check input Tensor datatype. The combination of [queryDataType]: %s, [keyDataType]: %s, [valueDataType]: %s is not supported by PFA.", StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(keyDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(valueDataType)).c_str()) > 0) ? reason : "Please check input Tensor datatype. The combination of [queryDataType]: %s, [keyDataType]: %s, [valueDataType]: %s is no");
         return false;
     }
     // map for dataType, {q/k/v, pseShift}
@@ -647,17 +648,15 @@ static bool CheckTensorDataType(const aclTensor* query, const aclTensor* key, co
     };
     // check dataType of q/k/v
     if (qkvAndPseTypeRangeMap.find(queryDataType) == qkvAndPseTypeRangeMap.end()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "query/value/key dataType(%s) is invalid, valid range is {%s, %s, %s}",
-            StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_FLOAT16)).c_str(),
-            StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_BF16)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_INT8)).c_str());
+        char reason[512] = {0};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "query/value/key dataType(%s) is invalid, valid range is {%s, %s, %s}", StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_FLOAT16)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_BF16)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_INT8)).c_str()) > 0) ? reason : "query/value/key dataType(%s) is invalid, valid range is {%s, %s, %s}");
         return false;
     }
     if (pseShift != nullptr) {
         const DataType pseDataType = pseShift->GetDataType(); // check dataType combination of q and pseShift
         if (pseDataType != qkvAndPseTypeRangeMap.at(queryDataType)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pseShift dataType(%s) is invalid, should be %s when q/k/v is %s",
-                StrDataTypePfa.at(ValidPfaAclDataType(pseDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(qkvAndPseTypeRangeMap.at(queryDataType))).c_str(),
-                StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str());
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "pseShift dataType(%s) is invalid, should be %s when q/k/v is %s", StrDataTypePfa.at(ValidPfaAclDataType(pseDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(qkvAndPseTypeRangeMap.at(queryDataType))).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str()) > 0) ? reason : "pseShift dataType(%s) is invalid, should be %s when q/k/v is %s");
             return false;
         }
     }
@@ -669,9 +668,8 @@ static bool CheckTensorDataType(const aclTensor* query, const aclTensor* key, co
         (queryDataType == DataType::DT_FLOAT16 && outputDataType == DataType::DT_INT8) ||
         (queryDataType == DataType::DT_BF16 && outputDataType == DataType::DT_INT8));
         if (!isQuant) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Please check input/output Tensor datatype. "
-                "The combination of [queryDataType]: %s, [outputDataType]: %s is not supported by PFA.",
-                StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(outputDataType)).c_str());
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Please check input/output Tensor datatype. The combination of [queryDataType]: %s, [outputDataType]: %s is not supported by PFA.", StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(outputDataType)).c_str()) > 0) ? reason : "Please check input/output Tensor datatype. The combination of [queryDataType]: %s, [outputDataType]: %s is not supported");
             return false;
         }
     }
@@ -682,16 +680,13 @@ static bool CheckTensorDataType(const aclTensor* query, const aclTensor* key, co
             DataType::DT_UINT8, DataType::DT_BOOL};
         const DataType attenMaskDataType = attenMask->GetDataType();
         if (validMaskType.find(attenMaskDataType) == validMaskType.end()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMask dataType(%s) is invalid, should be in range {%s, %s, %s, %s}",
-                StrDataTypePfa.at(ValidPfaAclDataType(attenMaskDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_FLOAT16)).c_str(),
-                StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_INT8)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_UINT8)).c_str(),
-                StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_BOOL)).c_str());
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "attenMask dataType(%s) is invalid, should be in range {%s, %s, %s, %s}", StrDataTypePfa.at(ValidPfaAclDataType(attenMaskDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_FLOAT16)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_INT8)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_UINT8)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(DataType::DT_BOOL)).c_str()) > 0) ? reason : "attenMask dataType(%s) is invalid, should be in range {%s, %s, %s, %s}");
             return false;
         }
         if ((queryDataType == DataType::DT_INT8) && (attenMaskDataType == DataType::DT_FLOAT16)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Please check Tensor datatype. "
-                "When input tensor datatype is %s, attenMaskDataType can not be %s.",
-                StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(attenMaskDataType)).c_str());
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Please check Tensor datatype. When input tensor datatype is %s, attenMaskDataType can not be %s.", StrDataTypePfa.at(ValidPfaAclDataType(queryDataType)).c_str(), StrDataTypePfa.at(ValidPfaAclDataType(attenMaskDataType)).c_str()) > 0) ? reason : "Please check Tensor datatype. When input tensor datatype is %s, attenMaskDataType can not be %s.");
             return false;
         }
     }
@@ -712,27 +707,27 @@ static bool CheckTensorFormat(const aclTensor* query, const aclTensor* key, cons
                                 const aclTensor *pseShift, const aclTensor* attenMask,
                                 const aclTensor* attentionOut) {
     if (CheckTensorFormatPrivate(query)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Query format only support ND.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "Query format only support ND.");
         return false;
     }
     if (CheckTensorFormatPrivate(key)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Key format only support ND.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "Key format only support ND.");
         return false;
     }
     if (CheckTensorFormatPrivate(value)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Value format only support ND.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "Value format only support ND.");
         return false;
     }
     if (pseShift != nullptr && CheckTensorFormatPrivate(pseShift)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "PseShift format only support ND.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "PseShift format only support ND.");
         return false;
     }
     if (attenMask != nullptr && CheckTensorFormatPrivate(attenMask)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AttenMask format only support ND.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "AttenMask format only support ND.");
         return false;
     }
     if (CheckTensorFormatPrivate(attentionOut)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AttentionOut format only support ND.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", "AttentionOut format only support ND.");
         return false;
     }
     return true;
@@ -743,8 +738,8 @@ static inline bool CheckResultOutShapePfa(const aclTensor *inferOut, const aclTe
     auto const &yShape = out->GetViewShape();
     if(xShape != yShape) {
         if(!(xShape.GetShapeSize() == 1 && yShape.GetShapeSize() == 1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out tensor's shape[%s] is not equal with Expect Out tensor's shape[%s], Please check the Out tensor's shape.",
-                op::ToString(out->GetViewShape()).GetString(), op::ToString(inferOut->GetViewShape()).GetString());
+            char reason[512] = {0};
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [%s] received bad params, the reason is: [%s]", "PromptFlashAttention", (snprintf(reason, sizeof(reason), "Out tensor's shape[%s] is not equal with Expect Out tensor's shape[%s], Please check the Out tensor's shape.", op::ToString(out->GetViewShape()).GetString(), op::ToString(inferOut->GetViewShape()).GetString()) > 0) ? reason : "Out tensor's shape[%s] is not equal with Expect Out tensor's shape[%s], Please check the Out tensor's shape.");
             return false;
         }
     }
