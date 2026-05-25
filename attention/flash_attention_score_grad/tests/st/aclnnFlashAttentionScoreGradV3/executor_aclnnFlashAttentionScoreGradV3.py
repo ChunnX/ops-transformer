@@ -469,21 +469,6 @@ class aclnnFlashAttentionScoreApi(AclnnBaseApi):
     def __call__(self):
         super().__call__()
 
-    def get_cpp_func_signature_type(self):
-        return "aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(\
-            const aclTensor *query, const aclTensor *keyIn, const aclTensor *value, const aclTensor *dy,\
-            const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,\
-            const aclTensor *attenMaskOptional, const aclTensor *softmaxMaxOptional, const aclTensor *softmaxSumOptional,\
-            const aclTensor *softmaxInOptional, const aclTensor *attentionInOptional, \
-            const aclTensor *sinkInOptional,const aclIntArray *prefixOptional,\
-            const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,\
-            double keepProb, int64_t preTokens, int64_t nextTokens,\
-            int64_t headNum, char *inputLayout, int64_t innerPrecise, int64_t sparseMode,\
-            int64_t pseType, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,\
-            const aclTensor *dpseOut, \
-            const aclTensor *dsinkOut,\
-            uint64_t *workspaceSize, aclOpExecutor **executor)"
-
     def init_by_input_data(self, input_data: InputDataset):
         input_args, output_packages = super().init_by_input_data(input_data)
         AclTensorPtr = ctypes.POINTER(AclTensor)  # tensor指针类型
