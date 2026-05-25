@@ -81,7 +81,8 @@ bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out,
         int64_t bias_dim = shape_bias_new.GetDimNum();
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) != UNKNOWN_DIM) {
             if (shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1)) {
-                std::string shapeStr = "n=" + std::to_string(shape_out->GetDim(1)) + ", bias=" + std::to_string(shape_bias_new.GetDim(bias_dim - 1));
+                std::string shapeStr = "n=" + std::to_string(shape_out->GetDim(1)) +
+                                       ", bias=" + std::to_string(shape_bias_new.GetDim(bias_dim - 1));
                 OP_LOGE_FOR_INVALID_SHAPE(op_name, "bias", shapeStr.c_str(), "n should equal bias");
                 return false;
             }
@@ -105,7 +106,8 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
         shape_x1 == nullptr || shape_x2 == nullptr || shape_out == nullptr || tensor_x1 == nullptr || attrs == nullptr,
         CUBE_INNER_ERR_REPORT(op_name, "shape or attrs is null"), return ge::GRAPH_FAILED);
     auto shape_bias = context->GetOptionalInputShape(MATMUL_BIAS_IDX);
-    if (CheckIsUnknownDimNum(*shape_x1) && CheckIsUnknownDimNum(*shape_x2) && (shape_bias == nullptr || CheckIsUnknownDimNum(*shape_bias))) {
+    if (CheckIsUnknownDimNum(*shape_x1) && CheckIsUnknownDimNum(*shape_x2) &&
+        (shape_bias == nullptr || CheckIsUnknownDimNum(*shape_bias))) {
         shape_out->SetDimNum(1);
         shape_out->SetDim(0, UNKNOWN_DIM_NUM);
         return ge::GRAPH_SUCCESS;

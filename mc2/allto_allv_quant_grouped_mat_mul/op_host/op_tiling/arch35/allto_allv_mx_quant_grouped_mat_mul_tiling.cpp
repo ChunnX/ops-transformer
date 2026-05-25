@@ -151,10 +151,12 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantGroupSize() const
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
-    OP_TILING_CHECK(((groupSizeM != MX_GROUP_SIZE_M && groupSizeM != 0) || 
-                    (groupSizeN != MX_GROUP_SIZE_N && groupSizeN != 0) || 
-                    (groupSizeK != MX_GROUP_SIZE_K && groupSizeK != 0)),
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupSize", std::to_string(*groupSizePtr).c_str(), "valid M/N/K fields"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(((groupSizeM != MX_GROUP_SIZE_M && groupSizeM != 0) ||
+                     (groupSizeN != MX_GROUP_SIZE_N && groupSizeN != 0) ||
+                     (groupSizeK != MX_GROUP_SIZE_K && groupSizeK != 0)),
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupSize",
+                                              std::to_string(*groupSizePtr).c_str(), "valid M/N/K fields"),
+                    return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckQuantGroupSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -169,8 +171,9 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
     // check gmmXQuantMode
     int64_t gmmXQuantMode = *gmmXQuantModePtr_;
     OP_TILING_CHECK(gmmXQuantMode != static_cast<int64_t>(MX_QUANT_MODE),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmXQuantMode", std::to_string(gmmXQuantMode).c_str(), "MX_QUANT_MODE"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmXQuantMode",
+                                              std::to_string(gmmXQuantMode).c_str(), "MX_QUANT_MODE"),
+                    return ge::GRAPH_FAILED);
     // check gmmWeightQuantMode null
     OP_TILING_CHECK(gmmWeightQuantModePtr_ == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeightQuantMode"),
@@ -178,7 +181,9 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
     // check gmmWeightQuantMode
     int64_t gmmWeightQuantMode = *gmmWeightQuantModePtr_;
     OP_TILING_CHECK(gmmWeightQuantMode != static_cast<int64_t>(MX_QUANT_MODE),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmWeightQuantMode", std::to_string(gmmWeightQuantMode).c_str(), "MX_QUANT_MODE"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmWeightQuantMode",
+                                              std::to_string(gmmWeightQuantMode).c_str(), "MX_QUANT_MODE"),
+                    return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // check mmXQuantMode null
         OP_TILING_CHECK(mmXQuantModePtr_ == nullptr,
@@ -186,15 +191,19 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
         // mmXQuantMode(same as gmmXQuantMode)
         int64_t mmXQuantMode = *mmXQuantModePtr_;
         OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode,
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mmXQuantMode", std::to_string(mmXQuantMode).c_str(), "same as gmmXQuantMode"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mmXQuantMode",
+                                                  std::to_string(mmXQuantMode).c_str(), "same as gmmXQuantMode"),
+                        return ge::GRAPH_FAILED);
         // check mmWeightQuantMode null
         OP_TILING_CHECK(mmWeightQuantModePtr_ == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeightQuantMode"), return ge::GRAPH_FAILED);
         // mmWeightQuantMode(same as gmmWeightQuantMode)
         int64_t mmWeightQuantMode = *mmWeightQuantModePtr_;
         OP_TILING_CHECK(mmWeightQuantMode != gmmWeightQuantMode,
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mmWeightQuantMode", std::to_string(mmWeightQuantMode).c_str(), "same as gmmWeightQuantMode"),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mmWeightQuantMode",
+                                                  std::to_string(mmWeightQuantMode).c_str(),
+                                                  "same as gmmWeightQuantMode"),
+                        return ge::GRAPH_FAILED);
     }
     ge::graphStatus status = CheckQuantGroupSize();
     if (status != ge::GRAPH_SUCCESS) {
@@ -213,12 +222,15 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckGmmScale() const
         return ge::GRAPH_FAILED);
     // check gmmXScale format
     OP_TILING_CHECK(gmmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmXScale", Ops::Base::ToString(gmmXScaleDesc->GetStorageFormat()).c_str(), "ND"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmXScale",
+                                               Ops::Base::ToString(gmmXScaleDesc->GetStorageFormat()).c_str(), "ND"),
+                    return ge::GRAPH_FAILED);
     // check gmmXScale dataType
     OP_TILING_CHECK(gmmXScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmXScale", Ops::Base::ToString(gmmXScaleDesc->GetDataType()).c_str(), "DT_FLOAT8_E8M0"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmXScale",
+                                              Ops::Base::ToString(gmmXScaleDesc->GetDataType()).c_str(),
+                                              "DT_FLOAT8_E8M0"),
+                    return ge::GRAPH_FAILED);
     // check gmmWeightScale null
     auto gmmWeightScaleDesc = context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX);
     OP_TILING_CHECK(gmmWeightScaleDesc == nullptr,
@@ -226,12 +238,16 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckGmmScale() const
         return ge::GRAPH_FAILED);
     // check gmmWeightScale format
     OP_TILING_CHECK(gmmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmWeightScale", Ops::Base::ToString(gmmWeightScaleDesc->GetStorageFormat()).c_str(), "ND"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmWeightScale",
+                                               Ops::Base::ToString(gmmWeightScaleDesc->GetStorageFormat()).c_str(),
+                                               "ND"),
+                    return ge::GRAPH_FAILED);
     // check gmmWeightScale dataType
     OP_TILING_CHECK(gmmWeightScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeightScale", Ops::Base::ToString(gmmWeightScaleDesc->GetDataType()).c_str(), "DT_FLOAT8_E8M0"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeightScale",
+                                              Ops::Base::ToString(gmmWeightScaleDesc->GetDataType()).c_str(),
+                                              "DT_FLOAT8_E8M0"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -245,12 +261,15 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScale() const
         return ge::GRAPH_FAILED);
     // check mmXScale format
     OP_TILING_CHECK(mmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmXScale", Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()).c_str(), "ND"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmXScale",
+                                               Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()).c_str(), "ND"),
+                    return ge::GRAPH_FAILED);
     // check mmXScale dataType(same as gmmXScale)
     OP_TILING_CHECK(mmXScaleDesc->GetDataType() != gmmXScaleDesc->GetDataType(),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmXScale", Ops::Base::ToString(mmXScaleDesc->GetDataType()).c_str(), "same as gmmXScale"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmXScale",
+                                              Ops::Base::ToString(mmXScaleDesc->GetDataType()).c_str(),
+                                              "same as gmmXScale"),
+                    return ge::GRAPH_FAILED);
     // check mmWeightScale null
     auto mmWeightScaleDesc = context_->GetOptionalInputDesc(MM_WEIGHT_SCALE_INDEX);
     auto gmmWeightScaleDesc = context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX);
@@ -259,12 +278,16 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScale() const
         return ge::GRAPH_FAILED);
     // check mmWeightScale format
     OP_TILING_CHECK(mmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmWeightScale", Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()).c_str(), "ND"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmWeightScale",
+                                               Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()).c_str(),
+                                               "ND"),
+                    return ge::GRAPH_FAILED);
     // check mmWeightScale dataType(same as gmmWeightScale)
     OP_TILING_CHECK(mmWeightScaleDesc->GetDataType() != gmmWeightScaleDesc->GetDataType(),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmWeightScale", Ops::Base::ToString(mmWeightScaleDesc->GetDataType()).c_str(), "same as gmmWeightScale"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmWeightScale",
+                                              Ops::Base::ToString(mmWeightScaleDesc->GetDataType()).c_str(),
+                                              "same as gmmWeightScale"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -274,18 +297,22 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmInputDtype(ge::DataType gmmXDa
     // // check mmX dataType(same as gmmX)
     ge::DataType mmXDataType = context_->GetOptionalInputDesc(MM_X_INDEX)->GetDataType();
     OP_TILING_CHECK((mmXDataType != gmmXDataType),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmX", Ops::Base::ToString(mmXDataType).c_str(), "same as gmmXDataType"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmX", Ops::Base::ToString(mmXDataType).c_str(),
+                                              "same as gmmXDataType"),
+                    return ge::GRAPH_FAILED);
     // check mmWeight dataType(same as gmmWeight)
     ge::DataType mmWeightDataType = context_->GetOptionalInputDesc(MM_WEIGHT_INDEX)->GetDataType();
     OP_TILING_CHECK((mmWeightDataType != gmmWeightDataType),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmWeight", Ops::Base::ToString(mmWeightDataType).c_str(), "same as gmmWeightDataType"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmWeight",
+                                              Ops::Base::ToString(mmWeightDataType).c_str(),
+                                              "same as gmmWeightDataType"),
+                    return ge::GRAPH_FAILED);
     // check mmY dataType(same as gmmY)
     ge::DataType mmYDataType = context_->GetOutputDesc(OUTPUT_MM_Y_INDEX)->GetDataType();
     OP_TILING_CHECK(mmYDataType != gmmYDataType,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmY", Ops::Base::ToString(mmYDataType).c_str(), "same as gmmYDataType"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "mmY", Ops::Base::ToString(mmYDataType).c_str(),
+                                              "same as gmmYDataType"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -296,22 +323,29 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckGmmInputDtype(ge::DataType gmmXD
         ge::DT_FLOAT4_E2M1};
     // check gmmX datatype
     OP_TILING_CHECK(std::find(legalDtypes.begin(), legalDtypes.end(), gmmXDataType) == legalDtypes.end(),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmX", Ops::Base::ToString(gmmXDataType).c_str(), "DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmX",
+                                              Ops::Base::ToString(gmmXDataType).c_str(),
+                                              "DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1"),
+                    return ge::GRAPH_FAILED);
     // check gmmWeight datatype
     OP_TILING_CHECK(std::find(legalDtypes.begin(), legalDtypes.end(), gmmWeightDataType) == legalDtypes.end(),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeight", Ops::Base::ToString(gmmWeightDataType).c_str(), "DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeight",
+                                              Ops::Base::ToString(gmmWeightDataType).c_str(),
+                                              "DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1"),
+                    return ge::GRAPH_FAILED);
     // check gmmY dataType
     OP_TILING_CHECK(gmmYDataType != ge::DT_FLOAT16 && gmmYDataType != ge::DT_BF16,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmY", Ops::Base::ToString(gmmYDataType).c_str(), "DT_FLOAT16 or DT_BF16"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmY",
+                                              Ops::Base::ToString(gmmYDataType).c_str(), "DT_FLOAT16 or DT_BF16"),
+                    return ge::GRAPH_FAILED);
     if (permuteOutFlag_) {
         // check permuteOut dtype
         ge::DataType permuteOutDataType = context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX)->GetDataType();
         OP_TILING_CHECK(permuteOutDataType != gmmXDataType,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "permuteOut", Ops::Base::ToString(permuteOutDataType).c_str(), "same as gmmXDataType"),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "permuteOut",
+                                                  Ops::Base::ToString(permuteOutDataType).c_str(),
+                                                  "same as gmmXDataType"),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -321,22 +355,31 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckFp4Input(ge::DataType gmmXDataTy
 {
     // mxfp4 gmmweight(same as gmmx)
     OP_TILING_CHECK(gmmXDataType != gmmWeightDataType,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeight", Ops::Base::ToString(gmmWeightDataType).c_str(), "same as gmmXDataType"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeight",
+                                              Ops::Base::ToString(gmmWeightDataType).c_str(), "same as gmmXDataType"),
+                    return ge::GRAPH_FAILED);
     // mxfp4 h1 is even and h1 not two
-    OP_TILING_CHECK(h1_ % 2 != 0 || h1_ == 2,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "H1", std::to_string(h1_).c_str(), "even and not 2"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        h1_ % 2 != 0 || h1_ == 2,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "H1", std::to_string(h1_).c_str(), "even and not 2"),
+        return ge::GRAPH_FAILED);
     // mxfp4 gmmweight not trans n1 is even
     OP_TILING_CHECK(!transGmmWeight_ && n1_ % 2 != 0,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "N1", std::to_string(n1_).c_str(), "even when !transGmmWeight_"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "N1", std::to_string(n1_).c_str(),
+                                              "even when !transGmmWeight_"),
+                    return ge::GRAPH_FAILED);
     // has mm
     if (hasSharedExpertFlag_) {
         // mxfp4 h2 is even and h2 not two
-        OP_TILING_CHECK(h2_ % 2 != 0 || h2_ == 2,
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "H2", std::to_string(h2_).c_str(), "even and not 2"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            h2_ % 2 != 0 || h2_ == 2,
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "H2", std::to_string(h2_).c_str(), "even and not 2"),
+            return ge::GRAPH_FAILED);
         // mxfp4 mmweight not trans n2 is even
         OP_TILING_CHECK(!transMmWeight_ && n2_ % 2 != 0,
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "N2", std::to_string(n2_).c_str(), "even when !transMmWeight_"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "N2", std::to_string(n2_).c_str(),
+                                                  "even when !transMmWeight_"),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -353,8 +396,14 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckGmmScaleShape() const
     uint64_t gmmXScaleDim0 = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t gmmXScaleDim1 = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     uint64_t gmmXScaleDim2 = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-    OP_TILING_CHECK((gmmXScaleDim0 != bsk_) || (gmmXScaleDim1 != gmmExpectedH) || (gmmXScaleDim2 != 2),
-        OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "gmmXScale", ("[" + std::to_string(gmmXScaleDim0) + "," + std::to_string(gmmXScaleDim1) + "," + std::to_string(gmmXScaleDim2) + "]").c_str(), ("[bsk_=" + std::to_string(bsk_) + ", gmmExpectedH=" + std::to_string(gmmExpectedH) + ", 2]").c_str()),
+    OP_TILING_CHECK(
+        (gmmXScaleDim0 != bsk_) || (gmmXScaleDim1 != gmmExpectedH) || (gmmXScaleDim2 != 2),
+        OP_LOGE_FOR_INVALID_SHAPE(
+            context_->GetNodeName(), "gmmXScale",
+            ("[" + std::to_string(gmmXScaleDim0) + "," + std::to_string(gmmXScaleDim1) + "," +
+             std::to_string(gmmXScaleDim2) + "]")
+                .c_str(),
+            ("[bsk_=" + std::to_string(bsk_) + ", gmmExpectedH=" + std::to_string(gmmExpectedH) + ", 2]").c_str()),
         return ge::GRAPH_FAILED);
     // check gmmWeightScale dimNum
     size_t gmmWeightScaleDimNum =
@@ -374,15 +423,29 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckGmmScaleShape() const
     uint64_t gmmWeightDimH = transGmmWeight_ ? gmmWeightScaleDim2 : gmmWeightScaleDim1;
     uint64_t gmmWeightDimN = transGmmWeight_ ? gmmWeightScaleDim1 : gmmWeightScaleDim2;
     if (transGmmWeight_) {
-        OP_TILING_CHECK((gmmWeightDimN != n1_) || (gmmWeightDimH != gmmExpectedH) ||
-            (gmmWeightScaleDim0 != e_) || (gmmWeightScaleDim3 != 2),
-            OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "gmmWeightScale (transposed)", ("[" + std::to_string(gmmWeightScaleDim0) + "," + std::to_string(gmmWeightScaleDim1) + "," + std::to_string(gmmWeightScaleDim2) + "," + std::to_string(gmmWeightScaleDim3) + "]").c_str(), ("[e_=" + std::to_string(e_) + ", n1_=" + std::to_string(n1_) + ", gmmExpectedH=" + std::to_string(gmmExpectedH) + ", 2]").c_str()),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((gmmWeightDimN != n1_) || (gmmWeightDimH != gmmExpectedH) || (gmmWeightScaleDim0 != e_) ||
+                            (gmmWeightScaleDim3 != 2),
+                        OP_LOGE_FOR_INVALID_SHAPE(
+                            context_->GetNodeName(), "gmmWeightScale (transposed)",
+                            ("[" + std::to_string(gmmWeightScaleDim0) + "," + std::to_string(gmmWeightScaleDim1) + "," +
+                             std::to_string(gmmWeightScaleDim2) + "," + std::to_string(gmmWeightScaleDim3) + "]")
+                                .c_str(),
+                            ("[e_=" + std::to_string(e_) + ", n1_=" + std::to_string(n1_) +
+                             ", gmmExpectedH=" + std::to_string(gmmExpectedH) + ", 2]")
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
     } else {
-        OP_TILING_CHECK((gmmWeightDimN != n1_) || (gmmWeightDimH != gmmExpectedH) ||
-            (gmmWeightScaleDim0 != e_) || (gmmWeightScaleDim3 != 2),
-            OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "gmmWeightScale", ("[" + std::to_string(gmmWeightScaleDim0) + "," + std::to_string(gmmWeightScaleDim1) + "," + std::to_string(gmmWeightScaleDim2) + "," + std::to_string(gmmWeightScaleDim3) + "]").c_str(), ("[e_=" + std::to_string(e_) + ", gmmExpectedH=" + std::to_string(gmmExpectedH) + ", n1_=" + std::to_string(n1_) + ", 2]").c_str()),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((gmmWeightDimN != n1_) || (gmmWeightDimH != gmmExpectedH) || (gmmWeightScaleDim0 != e_) ||
+                            (gmmWeightScaleDim3 != 2),
+                        OP_LOGE_FOR_INVALID_SHAPE(
+                            context_->GetNodeName(), "gmmWeightScale",
+                            ("[" + std::to_string(gmmWeightScaleDim0) + "," + std::to_string(gmmWeightScaleDim1) + "," +
+                             std::to_string(gmmWeightScaleDim2) + "," + std::to_string(gmmWeightScaleDim3) + "]")
+                                .c_str(),
+                            ("[e_=" + std::to_string(e_) + ", gmmExpectedH=" + std::to_string(gmmExpectedH) +
+                             ", n1_=" + std::to_string(n1_) + ", 2]")
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -391,18 +454,27 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
 {
     // check mmXScale dimNum
     size_t mmXScaleDimNum = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(mmXScaleDimNum != context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum(),
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "mmXScale",
-            (std::to_string(mmXScaleDimNum) + "D").c_str(),
-            (std::to_string(context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum()) + "D").c_str()),
+    OP_TILING_CHECK(
+        mmXScaleDimNum != context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum(),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context_->GetNodeName(), "mmXScale", (std::to_string(mmXScaleDimNum) + "D").c_str(),
+            (std::to_string(context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum()) + "D")
+                .c_str()),
         return ge::GRAPH_FAILED);
     // check mmXScale shape
     uint64_t mmExpectedH = Ops::Base::CeilDiv(h2_, MX_BASIC_FACTOR);
     uint64_t mmXScaleDim0 = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t mmXScaleDim1 = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     uint64_t mmXScaleDim2 = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-    OP_TILING_CHECK((mmXScaleDim0 != bs_) || (mmXScaleDim1 != mmExpectedH) || (mmXScaleDim2 != 2),
-        OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "mmXScale", ("[" + std::to_string(mmXScaleDim0) + "," + std::to_string(mmXScaleDim1) + "," + std::to_string(mmXScaleDim2) + "]").c_str(), ("[bs_=" + std::to_string(bs_) + ", mmExpectedH=" + std::to_string(mmExpectedH) + ", 2]").c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (mmXScaleDim0 != bs_) || (mmXScaleDim1 != mmExpectedH) || (mmXScaleDim2 != 2),
+        OP_LOGE_FOR_INVALID_SHAPE(
+            context_->GetNodeName(), "mmXScale",
+            ("[" + std::to_string(mmXScaleDim0) + "," + std::to_string(mmXScaleDim1) + "," +
+             std::to_string(mmXScaleDim2) + "]")
+                .c_str(),
+            ("[bs_=" + std::to_string(bs_) + ", mmExpectedH=" + std::to_string(mmExpectedH) + ", 2]").c_str()),
+        return ge::GRAPH_FAILED);
     // check mmWeightScale dimNum
     size_t mmWeightScaleDimNum = context_->GetOptionalInputShape(MM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(mmWeightScaleDimNum != DIM_THREE,
@@ -418,12 +490,24 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
     uint64_t mmWeightDimH = transMmWeight_ ? mmWeightScaleDim1 : mmWeightScaleDim0;
     uint64_t mmWeightDimN = transMmWeight_ ? mmWeightScaleDim0 : mmWeightScaleDim1;
     if (transMmWeight_) {
-        OP_TILING_CHECK((mmWeightDimN != n2_) || (mmWeightDimH != mmExpectedH) || (mmWeightScaleDim2 != 2),
-            OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "mmWeightScale (transposed)", ("[" + std::to_string(mmWeightScaleDim0) + "," + std::to_string(mmWeightScaleDim1) + "," + std::to_string(mmWeightScaleDim2) + "]").c_str(), ("[n2_=" + std::to_string(n2_) + ", mmExpectedH=" + std::to_string(mmExpectedH) + ", 2]").c_str()),
+        OP_TILING_CHECK(
+            (mmWeightDimN != n2_) || (mmWeightDimH != mmExpectedH) || (mmWeightScaleDim2 != 2),
+            OP_LOGE_FOR_INVALID_SHAPE(
+                context_->GetNodeName(), "mmWeightScale (transposed)",
+                ("[" + std::to_string(mmWeightScaleDim0) + "," + std::to_string(mmWeightScaleDim1) + "," +
+                 std::to_string(mmWeightScaleDim2) + "]")
+                    .c_str(),
+                ("[n2_=" + std::to_string(n2_) + ", mmExpectedH=" + std::to_string(mmExpectedH) + ", 2]").c_str()),
             return ge::GRAPH_FAILED);
     } else {
-        OP_TILING_CHECK((mmWeightDimN != n2_) || (mmWeightDimH != mmExpectedH) || (mmWeightScaleDim2 != 2),
-            OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "mmWeightScale", ("[" + std::to_string(mmWeightScaleDim0) + "," + std::to_string(mmWeightScaleDim1) + "," + std::to_string(mmWeightScaleDim2) + "]").c_str(), ("[mmExpectedH=" + std::to_string(mmExpectedH) + ", n2_=" + std::to_string(n2_) + ", 2]").c_str()),
+        OP_TILING_CHECK(
+            (mmWeightDimN != n2_) || (mmWeightDimH != mmExpectedH) || (mmWeightScaleDim2 != 2),
+            OP_LOGE_FOR_INVALID_SHAPE(
+                context_->GetNodeName(), "mmWeightScale",
+                ("[" + std::to_string(mmWeightScaleDim0) + "," + std::to_string(mmWeightScaleDim1) + "," +
+                 std::to_string(mmWeightScaleDim2) + "]")
+                    .c_str(),
+                ("[mmExpectedH=" + std::to_string(mmExpectedH) + ", n2_=" + std::to_string(n2_) + ", 2]").c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

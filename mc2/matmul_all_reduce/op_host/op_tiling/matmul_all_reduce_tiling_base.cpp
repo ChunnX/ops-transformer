@@ -1018,7 +1018,8 @@ bool MatmulAllReduceTilingBase::SetArgs(
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             opName_, "a/b/c/bias",
             (std::to_string(static_cast<int32_t>(aType)) + "/" + std::to_string(static_cast<int32_t>(bType)) + "/" +
-             std::to_string(static_cast<int32_t>(cType)) + "/" + std::to_string(static_cast<int32_t>(biasType))).c_str(),
+             std::to_string(static_cast<int32_t>(cType)) + "/" + std::to_string(static_cast<int32_t>(biasType)))
+                .c_str(),
             "Unsupported dtype combination");
         return false;
     }

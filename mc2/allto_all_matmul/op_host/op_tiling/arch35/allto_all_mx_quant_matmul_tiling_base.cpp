@@ -228,16 +228,18 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
                     OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"), return ge::GRAPH_FAILED);
     ge::DataType x1scaleDtype = x1ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK((x1scaleDtype != ge::DT_FLOAT8_E8M0),
-                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x1_scale", Ops::Base::ToString(x1scaleDtype).c_str(), "FLOAT8_E8M0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x1scaleDtype != ge::DT_FLOAT8_E8M0),
+        OP_LOGE_FOR_INVALID_DTYPE(opName, "x1_scale", Ops::Base::ToString(x1scaleDtype).c_str(), "FLOAT8_E8M0"),
+        return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
                     OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"), return ge::GRAPH_FAILED);
     ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK((x2scaleDtype != ge::DT_FLOAT8_E8M0),
-                    OP_LOGE_FOR_INVALID_DTYPE(opName, "x2_scale", Ops::Base::ToString(x2scaleDtype).c_str(), "FLOAT8_E8M0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2scaleDtype != ge::DT_FLOAT8_E8M0),
+        OP_LOGE_FOR_INVALID_DTYPE(opName, "x2_scale", Ops::Base::ToString(x2scaleDtype).c_str(), "FLOAT8_E8M0"),
+        return ge::GRAPH_FAILED);
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);

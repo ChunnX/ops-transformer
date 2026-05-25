@@ -65,12 +65,17 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBmmBiasInfo(const gert::TilingContext
     uint64_t batchBias0 = 1UL;
     // 先校验bias的尾值是否与output尾值相等
     if (biasShape[biasDims - FINAL_SHAPE_DIM] != outputShape[cDims - FINAL_SHAPE_DIM]) {
-        OP_LOGE_FOR_INVALID_SHAPE(args.opName, "bias", (std::string("[") + std::to_string(biasShape[biasDims - FINAL_SHAPE_DIM]) + "]").c_str(), (std::string("[") + std::to_string(outputShape[cDims - FINAL_SHAPE_DIM]) + "]").c_str());
+        OP_LOGE_FOR_INVALID_SHAPE(
+            args.opName, "bias",
+            (std::string("[") + std::to_string(biasShape[biasDims - FINAL_SHAPE_DIM]) + "]").c_str(),
+            (std::string("[") + std::to_string(outputShape[cDims - FINAL_SHAPE_DIM]) + "]").c_str());
         return ge::GRAPH_FAILED;
     }
     if (biasDims >= NUM_TWO) {
         if (biasShape[biasDims - NO_BATCH_SHAPE_DIM] != 1) { // bias的倒数第二维必须为1
-            OP_LOGE_FOR_INVALID_SHAPE(args.opName, "bias", (std::string("[") + std::to_string(biasShape[biasDims - NO_BATCH_SHAPE_DIM]) + "]").c_str(), "[1]");
+            OP_LOGE_FOR_INVALID_SHAPE(
+                args.opName, "bias",
+                (std::string("[") + std::to_string(biasShape[biasDims - NO_BATCH_SHAPE_DIM]) + "]").c_str(), "[1]");
             return ge::GRAPH_FAILED;
         }
     }
@@ -78,7 +83,8 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBmmBiasInfo(const gert::TilingContext
     if (biasDims > NUM_TWO) {
         if (batchInfo.batchA0 != batchInfo.batchB0 || batchInfo.batchA1 != batchInfo.batchB1 ||
             batchInfo.batchA2 != batchInfo.batchB2 || batchInfo.batchA3 != batchInfo.batchB3)  {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "batch dims of x1 and x2", "not equal", "in BatchBias scenario, batch dims of x1 and x2 must be equal");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "batch dims of x1 and x2", "not equal",
+                                                  "in BatchBias scenario, batch dims of x1 and x2 must be equal");
             return ge::GRAPH_FAILED;
         }
         batchBias3 = biasDims > NO_BATCH_SHAPE_DIM ? biasShape.GetDim(biasDims - ONE_BATCH_SHAPE_DIM) : 1UL;
@@ -87,7 +93,14 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBmmBiasInfo(const gert::TilingContext
         batchBias0 = biasDims > THREE_BATCH_SHAPE_DIM ? biasShape.GetDim(biasDims - FOUR_BATCH_SHAPE_DIM) : 1UL;
         if (!(batchBias3 == batchInfo.batchC3 && batchBias2 == batchInfo.batchC2 && batchBias1 == batchInfo.batchC1 &&
             batchBias0 == batchInfo.batchC0)) {
-            OP_LOGE_FOR_INVALID_SHAPE(args.opName, "bias", (std::string("[") + std::to_string(batchBias3) + "," + std::to_string(batchBias2) + "," + std::to_string(batchBias1) + "," + std::to_string(batchBias0) + "]").c_str(), (std::string("[") + std::to_string(batchInfo.batchC3) + "," + std::to_string(batchInfo.batchC2) + "," + std::to_string(batchInfo.batchC1) + "," + std::to_string(batchInfo.batchC0) + "]").c_str());
+            OP_LOGE_FOR_INVALID_SHAPE(
+                args.opName, "bias",
+                (std::string("[") + std::to_string(batchBias3) + "," + std::to_string(batchBias2) + "," +
+                 std::to_string(batchBias1) + "," + std::to_string(batchBias0) + "]")
+                    .c_str(),
+                (std::string("[") + std::to_string(batchInfo.batchC3) + "," + std::to_string(batchInfo.batchC2) + "," +
+                 std::to_string(batchInfo.batchC1) + "," + std::to_string(batchInfo.batchC0) + "]")
+                    .c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -107,8 +120,10 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
     size_t bDims = bShape.GetDimNum();
     size_t cDims = cShape.GetDimNum();
     if (aDims > BATCH_DIM_MAX || bDims > BATCH_DIM_MAX) {
-      OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(args.opName, "x1 and x2", (std::to_string(aDims) + "D and " + std::to_string(bDims) + "D").c_str(), "input dims must not exceed 6D");
-      return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            args.opName, "x1 and x2", (std::to_string(aDims) + "D and " + std::to_string(bDims) + "D").c_str(),
+            "input dims must not exceed 6D");
+        return ge::GRAPH_FAILED;
     }
     batchInfo.batchA3 = aDims > NO_BATCH_SHAPE_DIM ? aShape.GetDim(aDims - ONE_BATCH_SHAPE_DIM) : 1UL;
     batchInfo.batchA2 = aDims > ONE_BATCH_SHAPE_DIM ? aShape.GetDim(aDims - TWO_BATCH_SHAPE_DIM) : 1UL;
@@ -142,7 +157,8 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
     bool batch1Invalid = batchInfo.batchA1 != batchInfo.batchB1 && batchInfo.batchA1 != 1UL && batchInfo.batchB1 != 1UL;
     bool batch0Invalid = batchInfo.batchA0 != batchInfo.batchB0 && batchInfo.batchA0 != 1UL && batchInfo.batchB0 != 1UL;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "batch dims of x1 and x2", "M broadcast to N", "x1 and x2 batch dims must be equal or one must be 1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "batch dims of x1 and x2", "M broadcast to N",
+                                              "x1 and x2 batch dims must be equal or one must be 1");
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK((GetBmmBiasInfo(context, args, batchInfo) != ge::GRAPH_SUCCESS),
