@@ -62,50 +62,65 @@ constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
+constexpr int64_t L1_TILE_M = 256LL;
 } // namespace
 
-struct WorkspaceInfo {
-    GM_ADDR gmCtx;
-    GM_ADDR ptrA;
-    GM_ADDR ptrAScale;
-    GM_ADDR ptrA2;
-    GM_ADDR ptrA2Scale;
-    GM_ADDR ptrcumsumMM;
-    GM_ADDR expandedRowIdx;
-    GM_ADDR expandedRowIdxGather;
-    GM_ADDR ptrSumBeforeRank;
-    GM_ADDR ptrFlagSwiGluToGmm2;
-    GM_ADDR ptrFlagDispatchToGmm1;
+struct WorkspaceInfoOptimize {
+    GM_ADDR dispatchRevDataPtr;
+    GM_ADDR dispatchRevScalePtr;
+    GM_ADDR swigluQuantDataPtr;
+    GM_ADDR swigluQuantScalePtr;
+    GM_ADDR expertRevTokenNumsPtr;
+    GM_ADDR tripleInfoPtr;
+    GM_ADDR flagSwiGluToGmm2Ptr;
+    GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR ptrGmmOut;
+    GM_ADDR ptrGmm2RowReady;
+
     int64_t workspaceSize;
-    HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    HOST_DEVICE WorkspaceInfoOptimize() = default;
+    HOST_DEVICE WorkspaceInfoOptimize(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
         workspaceSize = 0;
-        ptrA = base;
+        dispatchRevDataPtr = base;
+
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
-        ptrAScale = base + workspaceSize;
+        dispatchRevScalePtr = base + workspaceSize;
+
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrA2 = base + workspaceSize;
+
+        swigluQuantDataPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
             tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
-        ptrA2Scale = base + workspaceSize;
+
+        swigluQuantScalePtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
             SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrcumsumMM = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
-            tilingData->expertPerRank, ALIGN_512);
-        expandedRowIdx = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
-            tilingData->topK;
-        ptrSumBeforeRank = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
-            tilingData->expertPerRank, ALIGN_128);
-        ptrFlagSwiGluToGmm2 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        ptrFlagDispatchToGmm1 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        expandedRowIdxGather = ptrA;
+
+        expertRevTokenNumsPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->expertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
+
+        tripleInfoPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
+
+        int64_t maxWavesPerExpert = (tilingData->maxOutputSize + L1_TILE_M - 1) / L1_TILE_M;
+        int64_t swigluElems = tilingData->expertPerRank * maxWavesPerExpert;
+        int64_t dispatchElems = tilingData->expertPerRank;
+        int64_t totalFlagElems =
+            Ops::Base::CeilAlign(static_cast<uint64_t>(swigluElems + dispatchElems), static_cast<uint64_t>(8));
+
+        flagSwiGluToGmm2Ptr = base + workspaceSize;
+        flagDispatchToGmm1Ptr = base + workspaceSize + SIZE_INT_32 * swigluElems;
+        workspaceSize += SIZE_INT_32 * totalFlagElems;
+
+        ptrGmmOut = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(2 * tilingData->maxOutputSize * tilingData->h), ALIGN_512);
+
+        ptrGmm2RowReady = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->aicNum), ALIGN_128);
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

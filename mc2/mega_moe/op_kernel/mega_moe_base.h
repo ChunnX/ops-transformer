@@ -37,29 +37,34 @@ struct GMMAddrInfo {
     GM_ADDR bScaleGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
+    GM_ADDR gmm2OutGlobal;
 };
 
-struct PeermemInfo {
-    GM_ADDR ptrBase;
-    GM_ADDR ptrTokenPerExpert;
-    GM_ADDR ptrA0;      // initrouting结果，包括data+scale
-    GM_ADDR ptrD;
-    __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+struct PeermemInfoOptimize {
+    GM_ADDR rankSyncInWorldPtr;
+    GM_ADDR topKInfoInWorldSizePtr;
+    GM_ADDR quantTokenScalePtr;      // initrouting结果，包括data+scale
+    GM_ADDR combineSendPtr;
+    __aicore__ inline PeermemInfoOptimize() = default;
+    __aicore__ inline PeermemInfoOptimize(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
-        ptrBase = base;
+        rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
-        ptrTokenPerExpert = base + offset;
-        offset += tilingData->epWorldSize * Ops::Base::CeilAlign(
-            (int64_t)(tilingData->epWorldSize * tilingData->expertPerRank), (int64_t)ALIGN_128) * sizeof(int32_t);
-        ptrA0 = base + offset;
-        offset += tilingData->bs * tilingData->topK *
-            (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
-        ptrD = base + offset;
+        topKInfoInWorldSizePtr = base + offset;
+        offset += tilingData->epWorldSize * 
+            Ops::Base::CeilAlign((int64_t)(tilingData->bs * tilingData->topK * sizeof(int32_t)), (int64_t)ALIGN_512);
+ 
+        quantTokenScalePtr = base + offset;
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+        uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        combineSendPtr = base + offset;
     }
 };
 
-struct Params {
+struct ParamsOptimize {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
     GM_ADDR bGmAddr;
@@ -69,8 +74,8 @@ struct Params {
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
-    WorkspaceInfo workspaceInfo;
-    PeermemInfo peermemInfo;
+    WorkspaceInfoOptimize workspaceInfo;
+    PeermemInfoOptimize peermemInfo;
     MegaMoeTilingData *tilingData;
 };
 
@@ -121,6 +126,30 @@ __aicore__ constexpr inline decltype(auto) Get(T&& t)
 {
     return Get<Second, Rest...>(AscendC::Std::get<First>(AscendC::Std::forward<T>(t)));
 }
+
+// MegaMoeTrace: 占位空实现，所有打点编译成 0 开销 inline 空函数
+namespace MegaMoeTrace {
+constexpr int P_KERNEL_ENTRY = 0;
+constexpr int P_ROUTING_DONE = 1;
+constexpr int P_CROSSRANK_DONE = 2;
+constexpr int P_EXPERT_LOOP_END = 3;
+constexpr int P_PROCESS_END = 4;
+constexpr int SP_WAVE_ENTRY = 0;
+constexpr int SP_GMM1_BEGIN = 1;
+constexpr int SP_GMM1_FIRST_WAIT_DONE = 2;
+constexpr int SP_GMM1_FIRST_TILE_DONE = 3;
+constexpr int SP_GMM1_LAST_TILE_DONE = 4;
+constexpr int SP_GMM1_END = 5;
+constexpr int SP_GMM2_BEGIN = 6;
+constexpr int SP_GMM2_FIRST_WAIT_DONE = 7;
+constexpr int SP_GMM2_FIRST_TILE_DONE = 8;
+constexpr int SP_GMM2_LAST_TILE_DONE = 9;
+constexpr int SP_GMM2_END = 10;
+constexpr int SP_WAVE_END = 11;
+__aicore__ inline void RecordTimestampAt(GM_ADDR, int) {}
+__aicore__ inline void RecordDispatchPoint(GM_ADDR, int, bool) {}
+__aicore__ inline void RecordWavePoint(GM_ADDR, int, int) {}
+} // namespace MegaMoeTrace
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(MoeInitRoutingV3::SIMT_THREAD_NUM)
 inline void ArgsortSimt(int64_t elements, int64_t indexBase, __gm__ int32_t *sortedExpertIndicesGmAddr,
