@@ -67,7 +67,10 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::MxCheckShapeDimensions(cons
 bool MxQuantGroupedMatmulAllToAllvTiling::IsCapable()
 {
     QuantModePair mode = GetQuantMode(context_, opName_);
-    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR, OP_LOGE_WITH_INVALID_ATTR(opName_, "quant mode", std::to_string(static_cast<int>(mode)).c_str(), "valid quant mode"), return false);
+    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR,
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "quant mode", std::to_string(static_cast<int>(mode)).c_str(),
+                                              "valid quant mode"),
+                    return false);
     OP_LOGD(opName_, "QuantMode=%d, expected MX mode=%d", mode, QUANT_PAIR_MX);
     if (mode == QUANT_PAIR_MX) {
         OP_LOGD(opName_, "MxQuantGroupedMatmulAllToAllvTiling MX mode capable.");
@@ -258,7 +261,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
     }
     auto mmXScaleDesc = context_->GetOptionalInputDesc(MM_X_SCALE_OPTIONAL_INDEX);
     auto mmWeightScaleDesc = context_->GetOptionalInputDesc(MM_WEIGHT_SCALE_OPTIONAL_INDEX);
-    OP_TILING_CHECK(mmXScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXScaleDesc"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmXScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXScaleDesc"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mmWeightScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScaleDesc"),
                     return ge::GRAPH_FAILED);
 
@@ -276,8 +280,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
         context_->GetOptionalInputShape(MM_WEIGHT_SCALE_OPTIONAL_INDEX);
     OP_TILING_CHECK(mmXScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXScaleStorageShape"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScaleStorageShape"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmWeightScaleStorageShape == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScaleStorageShape"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(localParams_.mmXQuantMode != QUANT_MX,
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "mmXQuantMode", localParams_.mmXQuantMode),
@@ -352,7 +356,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLoca
     auto groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_OPTIONAL_INDEX);
     OP_TILING_CHECK(groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "groupSize"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*groupSizePtr < 0, OP_LOGE_FOR_INVALID_VALUE(opName_, "groupSize", *groupSizePtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*groupSizePtr < 0, OP_LOGE_FOR_INVALID_VALUE(opName_, "groupSize", *groupSizePtr),
+                    return ge::GRAPH_FAILED);
 
     localParams_.groupSize = *groupSizePtr;
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;

@@ -97,15 +97,17 @@ bool Mc2GroupedQbmmTiling::AnalyzeAttrs()
         inputParams_.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams_.groupListType;
     }
     OP_CHECK_IF(inputParams_.groupType != SPLIT_M && inputParams_.groupType != SPLIT_K,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "groupType", std::to_string(inputParams_.groupType).c_str(),
-        "The groupType should be 0 or 2 when the dtype of x is " +
-        std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype))),
-        return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "groupType", std::to_string(inputParams_.groupType).c_str(),
+                    "The groupType should be 0 or 2 when the dtype of x is " +
+                        std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype))),
+                return false);
     OP_CHECK_IF((inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-        inputParams_.groupType != SPLIT_M,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "groupType", std::to_string(inputParams_.groupType).c_str(),
-        "The groupType should be 0 (split m) when the dtype of x is FLOAT4"),
-        return false);
+                    inputParams_.groupType != SPLIT_M,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "groupType", std::to_string(inputParams_.groupType).c_str(),
+                    "The groupType should be 0 (split m) when the dtype of x is FLOAT4"),
+                return false);
     if (inputParams_.groupType == SPLIT_M) {
         OP_CHECK_IF(inputParams_.transA,
             OP_LOGE_WITH_INVALID_ATTR(inputParams_.opName, "transA", "true", "false"), return false);
@@ -243,7 +245,8 @@ FLOAT4_E1M2}, actual is %s.",
     return true;
 }
 
-bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const
+bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape,
+                                                      const gert::Shape &wScaleShape) const
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
@@ -251,8 +254,9 @@ bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleS
         OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "scale", (std::to_string(wScaleDimNum) + "D").c_str(), "4D"),
         return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "pertokenScale", (std::to_string(xScaleDimNum) + "D").c_str(), "3D"),
-        return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "pertokenScale",
+                                             (std::to_string(xScaleDimNum) + "D").c_str(), "3D"),
+                return false);
     auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
     auto wScaleNDim = static_cast<uint64_t>(
         inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)); // 2 is index for the third dim
@@ -271,16 +275,18 @@ bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleS
         (std::string("(") + std::to_string(inputParams_.groupNum) + "," + std::to_string(inputParams_.nSize) + "," +
         std::to_string(expectedKDimValue) + ",2)").c_str()),
         return false);
-    OP_CHECK_IF(xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue ||
-        xScaleLastDim != MXFP_MULTI_BASE_SIZE,
-        OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "pertokenScale",
-        Ops::Base::ToString(xScaleShape).c_str(),
-        (std::string("(") + std::to_string(inputParams_.mSize) + "," + std::to_string(expectedKDimValue) + ",2)").c_str()),
+    OP_CHECK_IF(
+        xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPE(
+            inputParams_.opName, "pertokenScale", Ops::Base::ToString(xScaleShape).c_str(),
+            (std::string("(") + std::to_string(inputParams_.mSize) + "," + std::to_string(expectedKDimValue) + ",2)")
+                .c_str()),
         return false);
     return true;
 }
 
-bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const
+bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape,
+                                                      const gert::Shape &wScaleShape) const
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
@@ -288,8 +294,9 @@ bool Mc2GroupedQbmmTiling::CheckQuantParamsForMXTypeK(const gert::Shape &xScaleS
         OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "scale", (std::to_string(wScaleDimNum) + "D").c_str(), "3D"),
         return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "pertokenScale", (std::to_string(xScaleDimNum) + "D").c_str(), "3D"),
-        return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "pertokenScale",
+                                             (std::to_string(xScaleDimNum) + "D").c_str(), "3D"),
+                return false);
     auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
     auto xScaleKDim = static_cast<uint64_t>(
         inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(xScaleDimNum - LAST_SECOND_DIM_INDEX));
@@ -346,16 +353,18 @@ bool Mc2GroupedQbmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Sha
     auto wScaleDimNum = wScaleShape.GetDimNum();
     // dim num 1 for the shape (g,), dim num 2 for the shape (g,1) or (g,n)
     OP_CHECK_IF(wScaleDimNum != 1 && wScaleDimNum != 2,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "scale", (std::to_string(wScaleDimNum) + "D").c_str(), "1D or 2D"),
-        return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "scale", (std::to_string(wScaleDimNum) + "D").c_str(),
+                                             "1D or 2D"),
+                return false);
     return true;
 }
 
 bool Mc2GroupedQbmmTiling::CheckFp4Shape() const
 {
     OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
-        OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "kSize", std::to_string(inputParams_.kSize).c_str(), "even number"),
-        return false);
+                OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "kSize", std::to_string(inputParams_.kSize).c_str(),
+                                          "even number"),
+                return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
         OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "kSize", "2", "not 2"), return false);
@@ -377,10 +386,12 @@ bool Mc2GroupedQbmmTiling::CheckBiasShape(const gert::StorageShape *biasStorageS
         return false);
     auto biasEDim = static_cast<uint64_t>(biasShape.GetDim(0));
     auto biasNDim = static_cast<uint64_t>(biasShape.GetDim(1));
-    OP_CHECK_IF(biasEDim != inputParams_.groupNum || biasNDim != inputParams_.nSize,
-        OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "bias",
-        Ops::Base::ToString(biasStorageShape->GetStorageShape()).c_str(),
-        (std::string("(") + std::to_string(inputParams_.groupNum) + ", " + std::to_string(inputParams_.nSize) + ")").c_str()),
+    OP_CHECK_IF(
+        biasEDim != inputParams_.groupNum || biasNDim != inputParams_.nSize,
+        OP_LOGE_FOR_INVALID_SHAPE(
+            inputParams_.opName, "bias", Ops::Base::ToString(biasStorageShape->GetStorageShape()).c_str(),
+            (std::string("(") + std::to_string(inputParams_.groupNum) + ", " + std::to_string(inputParams_.nSize) + ")")
+                .c_str()),
         return false);
     return true;
 }
@@ -450,8 +461,10 @@ bool Mc2GroupedQbmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) cons
             return false);
     }
     OP_CHECK_IF(1 == inputParams_.kSize || 1 == inputParams_.nSize,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "nSize or kSize",
-        (std::to_string(inputParams_.nSize) + ", " + std::to_string(inputParams_.kSize)).c_str(), "not 1"), return false);
+                OP_LOGE_FOR_INVALID_VALUE(
+                    context_->GetNodeName(), "nSize or kSize",
+                    (std::to_string(inputParams_.nSize) + ", " + std::to_string(inputParams_.kSize)).c_str(), "not 1"),
+                return false);
     return true;
 }
 
@@ -521,11 +534,12 @@ bool Mc2GroupedQbmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const
         (std::to_string(wScaleDims) + "D").c_str(), "2D"),
         return false);
     OP_CHECK_IF(static_cast<uint64_t>(wScaleShape[0]) != inputParams_.groupNum ||
-        static_cast<uint64_t>(wScaleShape[1]) != inputParams_.nSize,
-        OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "Scale",
-        Ops::Base::ToString(wScaleShape).c_str(),
-        (std::string("(") + std::to_string(inputParams_.groupNum) + ", " + std::to_string(inputParams_.nSize) + ")").c_str()),
-        return false);
+                    static_cast<uint64_t>(wScaleShape[1]) != inputParams_.nSize,
+                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "Scale", Ops::Base::ToString(wScaleShape).c_str(),
+                                          (std::string("(") + std::to_string(inputParams_.groupNum) + ", " +
+                                           std::to_string(inputParams_.nSize) + ")")
+                                              .c_str()),
+                return false);
     if (inputParams_.nSize == 1) {
         inputParams_.bQuantMode = QuantMode::PERCHANNEL_MODE;
     }
@@ -551,8 +565,9 @@ bool Mc2GroupedQbmmTiling::AnalyzeInputs()
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(scaleDimNum < 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "scale", (std::to_string(scaleDimNum) + "D").c_str(), ">= 1D"),
-        return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opName, "scale", (std::to_string(scaleDimNum) + "D").c_str(),
+                                             ">= 1D"),
+                return false);
     auto xScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);

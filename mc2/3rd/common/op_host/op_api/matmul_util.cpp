@@ -217,7 +217,8 @@ static aclnnStatus SetMatmulOpSupportInfo(
         }
     }
 
-    if (CheckSupportSingleSplitKFp16Bf16(self, mat2, mmOpInfo.support_info.self_dtype, mmOpInfo.support_info.mat2_dtype)) {
+    if (CheckSupportSingleSplitKFp16Bf16(self, mat2, mmOpInfo.support_info.self_dtype,
+                                         mmOpInfo.support_info.mat2_dtype)) {
         OP_LOGI("Hit mat_mul_v3 ND fp16/bf16 single core splitK case channel.");
         mmOpInfo.support_info.output_format = Format::FORMAT_ND;
         mmOpInfo.support_info.self_format = Format::FORMAT_ND;
@@ -468,7 +469,8 @@ bool IsInputSupportFp32() {
   return true;
 }
 
-bool CheckBatchDimBroadcast(size_t batch1DimNum, size_t batch2DimNum, const op::Shape& batch1, const op::Shape& batch2) {
+bool CheckBatchDimBroadcast(size_t batch1DimNum, size_t batch2DimNum, const op::Shape &batch1, const op::Shape &batch2)
+{
     size_t batchIndex = MM_DIM;
     while (batch1DimNum > batchIndex && batch2DimNum > batchIndex) {
         if (batch1[batch1DimNum - batchIndex - 1] != 1 && batch2[batch1DimNum - batchIndex - 1] != 1 &&
@@ -546,22 +548,24 @@ bool NeedToConvertBias(const aclTensor *self, const aclTensor *mat1, const aclTe
 }
 
 // Nz fp16 in fp32 out experimental rules
-bool GetNzSplitKFlag(const aclTensor *self, const aclTensor *mat2, const Format selfSuppFormat, const Format outSuppFormat) {
-  if ((selfSuppFormat == Format::FORMAT_ND) && (outSuppFormat == Format::FORMAT_ND)) {
-    return true;
-  }
-  op::Shape selfShape = self->GetViewShape();
-  op::Shape mat2Shape = mat2->GetViewShape();
-  int64_t selfDimNum = static_cast<int64_t>(selfShape.GetDimNum());
-  // rightMove to distinguish different shape of mm and bmm
-  int64_t rightMove = 0;
-  rightMove = GetOffSet(selfDimNum);
+bool GetNzSplitKFlag(const aclTensor *self, const aclTensor *mat2, const Format selfSuppFormat,
+                     const Format outSuppFormat)
+{
+    if ((selfSuppFormat == Format::FORMAT_ND) && (outSuppFormat == Format::FORMAT_ND)) {
+        return true;
+    }
+    op::Shape selfShape = self->GetViewShape();
+    op::Shape mat2Shape = mat2->GetViewShape();
+    int64_t selfDimNum = static_cast<int64_t>(selfShape.GetDimNum());
+    // rightMove to distinguish different shape of mm and bmm
+    int64_t rightMove = 0;
+    rightMove = GetOffSet(selfDimNum);
 
-  int64_t m = selfShape.GetDim(rightMove);
-  int64_t k = selfShape.GetDim(rightMove + 1);
-  int64_t n = mat2Shape.GetDim(rightMove + 1);
-  bool mn_multi = m > n ? m < (MN_MULTI * n) : n < (MN_MULTI * m);
-  return (m * n * k < MKN_MAX) && mn_multi;
+    int64_t m = selfShape.GetDim(rightMove);
+    int64_t k = selfShape.GetDim(rightMove + 1);
+    int64_t n = mat2Shape.GetDim(rightMove + 1);
+    bool mn_multi = m > n ? m < (MN_MULTI * n) : n < (MN_MULTI * m);
+    return (m * n * k < MKN_MAX) && mn_multi;
 }
 
 bool IsSplitk(const TensorInfo* self, const TensorInfo* mat2) {
@@ -579,7 +583,9 @@ bool IsSplitk(const TensorInfo* self, const TensorInfo* mat2) {
 
   int64_t k_dim = selfShape.GetDim(1 + rightMove);
   bool dtype_correct = (self->dataType == DataType::DT_FLOAT16) && (mat2->dataType == DataType::DT_FLOAT16);
-  return dtype_correct && k_dim >= SPLIT_K_MULTI * std::max(selfShape.GetDim(rightMove), mat2Shape.GetDim(1 + rightMove)) && NzSplitKFlag;
+  return dtype_correct &&
+         k_dim >= SPLIT_K_MULTI * std::max(selfShape.GetDim(rightMove), mat2Shape.GetDim(1 + rightMove)) &&
+         NzSplitKFlag;
 }
 
 bool IsFormatSupportNd(const aclTensor *self, const aclTensor *mat2) {

@@ -63,14 +63,13 @@ ge::graphStatus WeightQuantTilingTransferHelperA5::GetShapeAttrsInfo()
     matmulInfoPtr_->quantType = tilingProcesser_.quantType_;
     matmulInfoPtr_->bFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(tilingProcesser_.mmrCtxInfo_.x2->GetStorageFormat()));
-    OP_TILING_CHECK(
-        (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) && (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            matmulInfoPtr_->opName,
-            "Nz weight input only supports per-channel scene, "
-            "current anti-quant type=%d.",
-            static_cast<int>(matmulInfoPtr_->antiQuantType)),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
+                        (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
+                    VECTOR_INNER_ERR_REPORT_TILING(matmulInfoPtr_->opName,
+                                                   "Nz weight input only supports per-channel scene, "
+                                                   "current anti-quant type=%d.",
+                                                   static_cast<int>(matmulInfoPtr_->antiQuantType)),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -136,7 +135,8 @@ WeightQuantMMAllReduceTilingKeyParams WeightQuantAsTilingTransferHelper::GetWeig
     return tplParam;
 }
 
-void WeightQuantAsTilingTransferHelper::PrintTilingInputParam(std::unique_ptr<Mc2WeightQuantBatchMatmulInfo>& matmulInfo)
+void WeightQuantAsTilingTransferHelper::PrintTilingInputParam(
+    std::unique_ptr<Mc2WeightQuantBatchMatmulInfo> &matmulInfo)
 {
     OP_LOGD(
         tilingProcesser_.opName_, "The transA_=%d, transB_=%d, hasBias_=%d, hasAntiQuantOffset_=%d.",
@@ -382,7 +382,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupName, const uint32_t reduceType)
+ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char *groupName,
+                                                                         const uint32_t reduceType)
 {
     const std::string algConfig = "AllReduce=level0:fullmesh";
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
