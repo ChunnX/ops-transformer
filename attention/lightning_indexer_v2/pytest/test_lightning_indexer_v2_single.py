@@ -24,10 +24,10 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()[f"param_{key}"] = value
     # 生成所有参数组合
     param_names = [
-        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
-        "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "act_seq_q","act_seq_k",
-        "query_quant_mode", "key_quant_mode", "layout_query","layout_key", "sparse_count", "sparse_mode", 
-        "query_datarange","key_datarange","weights_datarange","q_scale_datarange","k_scale_datarange","cmp_ratio"
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num", "head_dim", 
+        "block_size", "block_num", "qk_dtype", "cu_seqlens_q", "cu_seqlens_k", "seqused_q", "seqused_k", 
+        "cmp_residual_k","output_idx_offset", "layout_query", "layout_key", "topk", "mask_mode", 
+        "query_datarange","key_datarange","weights_datarange", "cmp_ratio", "return_value", "max_seqlen_q"
     ]
     param_values = [
         locals()["param_batch_size"],
@@ -41,17 +41,22 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_block_size"],
         locals()["param_block_num"],
         locals()["param_qk_dtype"],
-        locals()["param_actual_seq_dtype"],
-        locals()["param_act_seq_q"],
-        locals()["param_act_seq_k"],
+        locals()["param_cu_seqlens_q"],
+        locals()["param_cu_seqlens_k"],
+        locals()["param_seqused_q"],
+        locals()["param_seqused_k"],
+        locals()["param_cmp_residual_k"],
+        locals()["param_output_idx_offset"],
         locals()["param_layout_query"],
         locals()["param_layout_key"],
-        locals()["param_sparse_count"],
-        locals()["param_sparse_mode"],
+        locals()["param_topk"],
+        locals()["param_mask_mode"],
         locals()["param_query_datarange"],
         locals()["param_key_datarange"],
         locals()["param_weights_datarange"],
-        locals()["param_cmp_ratio"]
+        locals()["param_cmp_ratio"],
+        locals()["param_return_value"],
+        locals()["param_max_seqlen_q"],
     ]
 
     # 生成所有的组合，并转换为字典列表
