@@ -93,6 +93,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
+    static constexpr uint64_t MAX_EXPERT_IDX = 1024U;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
@@ -172,7 +173,7 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Process()
     GmmProcessAlltoallv();
     if ASCEND_IS_AIV {
         if (GetBlockIdx() == 0) {
-            for (uint64_t i = 0; i < expertNumInOneRank_; i++) {
+            for (uint64_t i = 0; i < tilingData_->commonTilingInfo.numAlltoAllvCalls; i++) {
                 hccl_.Wait(alltoAllvHandleId_[i]);
             }
         }
@@ -213,44 +214,106 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
     GMMCompute<gmmType> computeOp(gmm);
     computeOp.Init(gmmxGM_, gmmweightGM_, gmmOutGM_);
     GMMProcess<decltype(computeOp)> gmmOp(computeOp);
-    gmmOp.Init(tilingData_->matmulTiling.baseM, tilingData_->matmulTiling.baseN, tilingData_->commonTilingInfo.aicCoreNum);
+    gmmOp.Init(tilingData_->matmulTiling.baseM, tilingData_->matmulTiling.baseN,
+               tilingData_->commonTilingInfo.aicCoreNum);
     auto* sendCnt = &tilingData_->aicpuTilingInfo.sendCnt[0];
 
-    uint64_t mmInOffset[2] = {0};
-    uint64_t mmOutOffset[2] = {0};
-    uint64_t mmWeightOffset[2] = {0};
-    uint32_t tokenNum[2] = {0};
-    uint32_t processNum = 1;
+    uint64_t G = tilingData_->commonTilingInfo.expertGroupSize;
+    uint64_t numGroups = tilingData_->commonTilingInfo.numAlltoAllvCalls;
+    uint64_t E = expertNumInOneRank_;
 
-    uint64_t expertoffset[MAX_HANDLE_ID_NUM] = {0UL};
-    uint64_t gmmTokennum[MAX_HANDLE_ID_NUM] = {0UL};
-    for (uint64_t i = 0UL; i < expertNumInOneRank_; i++) {
-        uint64_t cur_gmmTokenNum = 0;
+    // Calculate total GMM output size to locate scratch area past it in workspace
+    uint64_t totalOutTokens = 0;
+    for (uint64_t e = 0; e < E; e++) {
+        for (uint64_t r = 0; r < rankDim_; r++) {
+            totalOutTokens += static_cast<uint64_t>(sendCnt[e + r * E]);
+        }
+    }
+    __gm__ uint8_t* scratch = reinterpret_cast<__gm__ uint8_t*>(gmmOutGM_) +
+        totalOutTokens * axisN1_ * sizeof(X_T);
+
+    // MAX_EXPERT_IDX-sized tables in GM workspace (not stack)
+    __gm__ uint64_t* expertTotalTokens = reinterpret_cast<__gm__ uint64_t*>(scratch);
+    __gm__ uint64_t* expertInputOffset = expertTotalTokens + MAX_EXPERT_IDX;
+
+    // Precompute per-expert total tokens and input offsets
+    for (uint64_t e = 0; e < E; e++) {
+        uint64_t total = 0;
         for (uint64_t j = 0; j < rankDim_; j++) {
-            cur_gmmTokenNum += static_cast<uint64_t>(sendCnt[i + j * expertNumInOneRank_]);
+            total += static_cast<uint64_t>(sendCnt[e + j * E]);
         }
-        gmmTokennum[i] = cur_gmmTokenNum; // 本专家的tokenNum
+        expertTotalTokens[e] = total;
     }
-    for (uint64_t i = 0UL; i < expertNumInOneRank_; i++) {
-        if (i >= 1UL) {
-            expertoffset[i] = expertoffset[i - 1] + gmmTokennum[i - 1] * axisH_;
+    expertInputOffset[0] = 0;
+    for (uint64_t e = 1; e < E; e++) {
+        expertInputOffset[e] = expertInputOffset[e - 1] + expertTotalTokens[e - 1];
+    }
+
+    // Stack arrays: MAX_EP_RANK_SIZE=128, small enough to stay on stack
+    uint64_t rankTotalTokens[MAX_EP_RANK_SIZE];
+    uint64_t rankOutputBase[MAX_EP_RANK_SIZE];
+    uint64_t expertContribOffset[MAX_EP_RANK_SIZE];
+
+    uint64_t groupOutputBase = 0;
+
+    for (uint64_t g = 0; g < numGroups; g++) {
+        uint64_t eStart = g * G;
+        uint64_t eEnd = (eStart + G < E) ? (eStart + G) : E;
+
+        for (uint64_t r = 0; r < rankDim_; r++) {
+            rankTotalTokens[r] = 0;
+            expertContribOffset[r] = 0;
         }
-    }
-    for (uint64_t i = 0UL; i < expertNumInOneRank_; i++) {
-        mmInOffset[0] = expertoffset[i];
-        mmOutOffset[0] = expertoffset[i] / axisH_ * axisN1_;
-        mmWeightOffset[0] = i * axisH_ * axisN1_;
-        tokenNum[0] = gmmTokennum[i];
-        if ASCEND_IS_AIC {
-            if (tokenNum[0] != 0) {
-                gmmOp.Process(this->rankId_, axisH_, axisN1_, mmInOffset, mmOutOffset, tokenNum, processNum, i);
+
+        for (uint64_t e = eStart; e < eEnd; e++) {
+            for (uint64_t r = 0; r < rankDim_; r++) {
+                rankTotalTokens[r] += static_cast<uint64_t>(sendCnt[e + r * E]);
             }
         }
+
+        rankOutputBase[0] = groupOutputBase;
+        for (uint64_t r = 1; r < rankDim_; r++) {
+            rankOutputBase[r] = rankOutputBase[r - 1] + rankTotalTokens[r - 1];
+        }
+
+        // Process each expert in this group with rank-major output layout
+        for (uint64_t e = eStart; e < eEnd; e++) {
+            uint64_t mmInOffset[MAX_EP_RANK_SIZE];
+            uint64_t mmOutOffset[MAX_EP_RANK_SIZE];
+            uint32_t tokenNum[MAX_EP_RANK_SIZE];
+
+            uint64_t inputBase = expertInputOffset[e];
+            uint64_t rankInSum = 0;
+
+            for (uint64_t r = 0; r < rankDim_; r++) {
+                uint64_t tok = static_cast<uint64_t>(sendCnt[e + r * E]);
+                mmInOffset[r] = (inputBase + rankInSum) * axisH_;
+                mmOutOffset[r] = (rankOutputBase[r] + expertContribOffset[r]) * axisN1_;
+                tokenNum[r] = static_cast<uint32_t>(tok);
+                rankInSum += tok;
+            }
+
+            if ASCEND_IS_AIC {
+                gmmOp.Process(this->rankId_, axisH_, axisN1_,
+                              mmInOffset, mmOutOffset, tokenNum,
+                              static_cast<uint16_t>(rankDim_), e);
+            }
+
+            for (uint64_t r = 0; r < rankDim_; r++) {
+                expertContribOffset[r] += static_cast<uint64_t>(sendCnt[e + r * E]);
+            }
+        }
+
         SyncAll<false>();
+
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
-                hccl_.Commit(alltoAllvHandleId_[i]);
+                hccl_.Commit(alltoAllvHandleId_[g]);
             }
+        }
+
+        for (uint64_t r = 0; r < rankDim_; r++) {
+            groupOutputBase += rankTotalTokens[r];
         }
     }
 
@@ -268,47 +331,74 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
 
         const auto* sendCnt = &tilingData_->aicpuTilingInfo.sendCnt[0];
         const auto* recvCnt = &tilingData_->aicpuTilingInfo.recvCnt[0];
-        for (uint64_t e = 0UL; e < expertNumInOneRank_; e++) {
+        uint64_t G = tilingData_->commonTilingInfo.expertGroupSize;
+        uint64_t numGroups = tilingData_->commonTilingInfo.numAlltoAllvCalls;
+        uint64_t E = expertNumInOneRank_;
+
+        for (uint64_t g = 0; g < numGroups; g++) {
+            uint64_t eStart = g * G;
+            uint64_t eEnd = (eStart + G < E) ? (eStart + G) : E;
+
             uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
             uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
             uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
             uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
-            // 计算sendcnts：根据偏移取sendCnt
-            for (uint64_t i = 0UL; i < rankDim_; i++) {
-                alltoAllvSendCnt[i] = static_cast<uint64_t>(sendCnt[e + i * expertNumInOneRank_]) * axisN1_;
-            }
-            // 计算sendoffset：本卡上专家数偏移+前面卡token数的和 -- 维护每张卡每个专家总长度
-            uint64_t expertOffset = 0UL; // 发送数据卡当前发送到第e个专家，前面e-1专家的偏移
-            for (uint64_t i = 0UL; i < e; i++) {            // 遍历专家
-                for (uint64_t j = 0UL; j < rankDim_; j++) { // 遍历每个专家所有卡上的token数
-                    expertOffset += static_cast<uint64_t>(sendCnt[i + j * expertNumInOneRank_]);
+
+            // Compute sendCounts: aggregate over all experts in this group
+            for (uint64_t i = 0; i < rankDim_; i++) {
+                uint64_t sumCnt = 0;
+                for (uint64_t e = eStart; e < eEnd; e++) {
+                    sumCnt += static_cast<uint64_t>(sendCnt[e + i * E]);
                 }
+                alltoAllvSendCnt[i] = sumCnt * axisN1_;
             }
-            // 要发送的专家内，发送到第i张卡，把前面i-1张卡偏掉,按卡数累加，每次只要上次的地址+上张卡的token偏移
-            alltoAllvSendOffset[0] = expertOffset * axisN1_;
-            for (uint64_t i = 1UL; i < rankDim_; i++) {
-                alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1] +
-                                         static_cast<uint64_t>(sendCnt[e + (i - 1) * expertNumInOneRank_]) * axisN1_;
-            }
-            // 计算recvcnts：根据偏移取recvCnt --- 0,4,8,12,...252; 1,5,9,13,...253; 2,6,10,14,...254; 3,7,11,15,...,255
-            for (uint64_t i = 0UL; i < rankDim_; i++) {
-                alltoAllvRecvCnt[i] = static_cast<uint64_t>(recvCnt[e + i * expertNumInOneRank_]) * axisN1_;
-            }
-            // 计算rcvoffset：前面专家token数和---确定e轮次，之后每卡向后偏移4个专家的token数
-            // 0,4,8,12,...252; 1,5,9,13,...253; 2,6,10,14,...254; 3,7,11,15,...,255
-            alltoAllvRecvOffset[0] = 0;
-            for (uint64_t i = 0UL; i < e; i++) { // 确定rank0的轮次，0/1/2/3，把前面的专家偏过去，确认起始地址
-                alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[i]) * axisN1_;
-            }
-            for (uint64_t i = 1UL; i < rankDim_; i++) { // 确定rank1~63的轮次，每次在上次的基础上向后偏4个专家的token数
-                alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
-                for (uint64_t j = 0UL; j < expertNumInOneRank_; j++) {
-                    alltoAllvRecvOffset[i] +=
-                        static_cast<uint64_t>(recvCnt[e + (i - 1) * expertNumInOneRank_ + j]) * axisN1_;
+
+            // Compute sendOffsets: rank-major layout, data for rank i is contiguous
+            uint64_t sendDataBase = 0;
+            for (uint64_t pg = 0; pg < g; pg++) {
+                uint64_t peStart = pg * G;
+                uint64_t peEnd = (peStart + G < E) ? (peStart + G) : E;
+                for (uint64_t e = peStart; e < peEnd; e++) {
+                    for (uint64_t r = 0; r < rankDim_; r++) {
+                        sendDataBase += static_cast<uint64_t>(sendCnt[e + r * E]);
+                    }
                 }
             }
 
-            alltoAllvHandleId_[e] = hccl_.AlltoAllV<false>(
+            alltoAllvSendOffset[0] = sendDataBase * axisN1_;
+            for (uint64_t i = 1; i < rankDim_; i++) {
+                alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1] + alltoAllvSendCnt[i - 1];
+            }
+
+            // Compute recvCounts: aggregate over all experts in this group
+            for (uint64_t i = 0; i < rankDim_; i++) {
+                uint64_t sumCnt = 0;
+                for (uint64_t e = eStart; e < eEnd; e++) {
+                    sumCnt += static_cast<uint64_t>(recvCnt[e + i * E]);
+                }
+                alltoAllvRecvCnt[i] = sumCnt * axisN1_;
+            }
+
+            // Compute recvOffsets
+            alltoAllvRecvOffset[0] = 0;
+            for (uint64_t pg = 0; pg < g; pg++) {
+                uint64_t peStart = pg * G;
+                uint64_t peEnd = (peStart + G < E) ? (peStart + G) : E;
+                for (uint64_t e = peStart; e < peEnd; e++) {
+                    for (uint64_t i = 0; i < rankDim_; i++) {
+                        alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[e + i * E]) * axisN1_;
+                    }
+                }
+            }
+            for (uint64_t i = 1; i < rankDim_; i++) {
+                alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
+                for (uint64_t e = eStart; e < eEnd; e++) {
+                    alltoAllvRecvOffset[i] +=
+                        static_cast<uint64_t>(recvCnt[e + (i - 1) * E]) * axisN1_;
+                }
+            }
+
+            alltoAllvHandleId_[g] = hccl_.AlltoAllV<false>(
                 (__gm__ uint8_t*)gmmOutGMTensor_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
                 (__gm__ uint8_t*)yOutGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
         }
