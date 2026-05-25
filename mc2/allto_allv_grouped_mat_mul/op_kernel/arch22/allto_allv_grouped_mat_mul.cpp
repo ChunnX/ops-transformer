@@ -57,12 +57,20 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    AscendC::printf("[V5-PREC] blk=%d fp16=%d gmmTrans=%d mmTrans=%d commMode=%d\n",
+        GetBlockIdx(), tilingData.isFp16 ? 1 : 0, TILINGKEY_GMM_WEIGHT_TRANSPOSE ? 1 : 0,
+        TILINGKEY_MM_WEIGHT_TRANSPOSE ? 1 : 0, TILINGKEY_COMM_MODE);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     TPipe pipe;
     GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
 
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
+    AscendC::printf("[V5-PREC] blk=%d BSK=%lu BS=%lu H1=%lu N1=%lu e=%lu epWorld=%lu isPermute=%d isNeedMM=%d\n",
+        GetBlockIdx(), tilingData.taskTilingInfo.BSK, tilingData.taskTilingInfo.BS,
+        tilingData.taskTilingInfo.H1, tilingData.taskTilingInfo.N1,
+        tilingData.taskTilingInfo.e, tilingData.taskTilingInfo.epWorldSize,
+        tilingData.isPermuteOut ? 1 : 0, tilingData.isNeedMM ? 1 : 0);
 
     if (!tilingData.isFp16) {
         using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, bfloat16_t,

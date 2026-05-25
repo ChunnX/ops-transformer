@@ -81,6 +81,9 @@ public:
         }
         // groupList和workspace共享同一片GM区域（groupList在开头，ptrTable紧跟，剩余给gmmASWKernel内部缓冲）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
+        AscendC::printf("[V5-PREC] scheduler wsOffset=%lu commOut=%llu computeWs=%llu isPermute=%d\n",
+            workspaceOffset, reinterpret_cast<uint64_t>(commOutGm_), reinterpret_cast<uint64_t>(computeWorkspaceGm_),
+            tilingData_->isPermuteOut ? 1 : 0);
         // localComputeOp和computeOp串行执行，共享同一份workspace（groupList/ptrTable在各自Process内写入和消费）
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,

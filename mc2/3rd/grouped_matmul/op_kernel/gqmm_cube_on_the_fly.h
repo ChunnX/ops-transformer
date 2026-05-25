@@ -103,6 +103,11 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     mmTilingData_ = mmTilingDataIn;
     gmmQuantParams_ = gmmBaseParamsIn;
     blockIdx_ = GetBlockIdx();
+    AscendC::printf("[V5-PREC] ASW Init blk=%d bM=%d bN=%d bK=%d sM=%d sN=%d K=%d cores=%d gN=%d gT=%d\n",
+        blockIdx_, mmTilingData_->baseM, mmTilingData_->baseN, mmTilingData_->baseK,
+        mmTilingData_->M, mmTilingData_->N, mmTilingData_->Ka,
+        mmTilingData_->usedCoreNum,
+        gmmQuantParams_->groupNum, gmmQuantParams_->groupType);
     mm_.SetSubBlockIdx(0);
     mm_.Init(mmTilingData_, que);
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);

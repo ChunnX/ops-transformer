@@ -79,6 +79,10 @@ public:
                 expertTokenNum_[e] += static_cast<uint64_t>(opCnt[e + i * expertNumInOneRank_]);
             }
         }
+        AscendC::printf("[V5-PREC] Init isLocal=%d e=%lu epW=%lu expertTokens[0]=%lu baseM=%d baseN=%d baseK=%d singleM=%d singleN=%d\n",
+            isLocal ? 1 : 0, expertNumInOneRank_, epWorldSize_, expertTokenNum_[0],
+            gmmTilingData->mmTilingData.baseM, gmmTilingData->mmTilingData.baseN, gmmTilingData->mmTilingData.baseK,
+            gmmTilingData->mmTilingData.M, gmmTilingData->mmTilingData.N);
     }
 
     __aicore__ inline void Process(uint32_t expertIdx)
