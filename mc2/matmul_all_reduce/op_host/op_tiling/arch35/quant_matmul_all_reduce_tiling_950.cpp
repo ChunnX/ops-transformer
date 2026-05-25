@@ -1017,7 +1017,6 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    auto &&param = MutableRCSTilingData();
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
