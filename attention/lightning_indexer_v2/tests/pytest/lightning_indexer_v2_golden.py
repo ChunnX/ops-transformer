@@ -19,7 +19,7 @@ import numpy as np
 import math
 import ctypes
 import copy
-import custom_ops as ops
+import npu_ops_transformer as ops
 
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, weights,
