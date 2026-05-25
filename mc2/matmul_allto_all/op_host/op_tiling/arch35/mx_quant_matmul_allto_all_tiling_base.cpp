@@ -529,7 +529,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const g
                                   std::to_string(x1ScaleDim1) + "," +
                                   std::to_string(x1ScaleDim2) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1_scale", actualShape.c_str(),
-            "The shape of input x1_scale should match the shape of input x1, " +
+            "The shape of input x1_scale should match the shape of input x1, "
             "where dim 1 should be ceil(x1Dim1/32) and dim 2 should be 2");
         return ge::GRAPH_FAILED;
     }
@@ -542,7 +542,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantScaleShapes(const g
                                   std::to_string(x2ScaleDim1) + "," +
                                   std::to_string(x2ScaleDim2) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2_scale", actualShape.c_str(),
-            "The shape of input x2_scale should match the shape of input x2, " +
+            "The shape of input x2_scale should match the shape of input x2, "
             "where dim 1 should be ceil(x2Dim1/32) and dim 2 should be 2");
         return ge::GRAPH_FAILED;
     }
