@@ -93,7 +93,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-    static constexpr uint64_t MAX_EXPERT_IDX = 1024U;
+    static constexpr uint64_t MAX_EXPERT_IDX = 256U;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
@@ -284,10 +284,10 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
         expertInputOffset[e] = expertInputOffset[e - 1] + expertTotalTokens[e - 1];
     }
 
-    // Stack arrays: MAX_EP_RANK_SIZE=128, small enough to stay on stack
-    uint64_t rankTotalTokens[MAX_EP_RANK_SIZE];
-    uint64_t rankOutputBase[MAX_EP_RANK_SIZE];
-    uint64_t expertContribOffset[MAX_EP_RANK_SIZE];
+    // Rank arrays in GM workspace (saves ~9KB stack for ascend910_93)
+    __gm__ uint64_t* rankTotalTokens = reinterpret_cast<__gm__ uint64_t*>(scratch + 2 * MAX_EXPERT_IDX * sizeof(uint64_t));
+    __gm__ uint64_t* rankOutputBase = rankTotalTokens + MAX_EP_RANK_SIZE;
+    __gm__ uint64_t* expertContribOffset = rankOutputBase + MAX_EP_RANK_SIZE;
 
     uint64_t groupOutputBase = 0;
 
@@ -412,14 +412,22 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
             return;
         }
 
+        // Reusable arrays at function scope (not per-iteration)
+        uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE];
+        uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE];
+        uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE];
+        uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE];
+
         for (uint64_t g = 0; g < numGroups; g++) {
             uint64_t eStart = g * G;
             uint64_t eEnd = (eStart + G < E) ? (eStart + G) : E;
 
-            uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-            uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-            uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-            uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+            for (uint64_t i = 0; i < rankDim_; i++) {
+                alltoAllvSendCnt[i] = 0UL;
+                alltoAllvSendOffset[i] = 0UL;
+                alltoAllvRecvCnt[i] = 0UL;
+                alltoAllvRecvOffset[i] = 0UL;
+            }
 
             // Compute sendCounts: aggregate over all experts in this group
             for (uint64_t i = 0; i < rankDim_; i++) {

@@ -78,7 +78,7 @@ constexpr uint32_t MAX_TURN_NUM = 24;
 constexpr int32_t MAX_BASE_K = 128;
 constexpr uint64_t COMM_TILE = 8; // 每卡数据分配几次计算
 constexpr uint64_t MAX_EXPERT_NUM = 16384;
-constexpr int64_t MAX_EXPERT_NUM_PER_RANK = 1024;
+constexpr int64_t MAX_EXPERT_NUM_PER_RANK = 256;
 constexpr int64_t MAX_DIM_VALUE = 65536;
 constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
@@ -426,7 +426,7 @@ static bool CheckCoreDimensionsAndCommunication(
 
     OP_TILING_CHECK(
         (eEp <= NUM_ZERO || eEp > MAX_EXPERT_NUM_PER_RANK),
-        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 1024]!", eEp), return false);
+        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 256]!", eEp), return false);
 
     OP_TILING_CHECK(
         !CheckSendCntAndRecvCnt(attrs, bsk, a, h, eEp, epWorldSize, context),
@@ -941,8 +941,11 @@ static ge::graphStatus SetWorkspace(gert::TilingContext* context, const GroupedM
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(C_INNER_DEBUG, "get workspace failed"), return ge::GRAPH_FAILED);
     uint64_t gmmOut = tilingData->commonTilingInfo.A * tilingData->commonTilingInfo.N1 * FP16_DATASIZE;
-    workspaces[0] = gmmOut + SYS_WORKSPACE_SIZE;
-    OP_LOGD(C_INNER_DEBUG, "workspaces[0] size is %ld. gmmOut is %lu.", workspaces[0], gmmOut);
+    // Extra space for extended sendCnt/recvCnt when expert count exceeds MAX_EXPERT_SIZE
+    uint64_t actualCntSize = tilingData->commonTilingInfo.E_ep * tilingData->commonTilingInfo.epWorldSize;
+    uint64_t extArraysSize = (actualCntSize > MAX_EXPERT_SIZE) ? (2 * actualCntSize * sizeof(uint16_t)) : 0;
+    workspaces[0] = gmmOut + SYS_WORKSPACE_SIZE + extArraysSize;
+    OP_LOGD(C_INNER_DEBUG, "workspaces[0] size is %ld. gmmOut is %lu. extArrays is %lu.", workspaces[0], gmmOut, extArraysSize);
 
     return ge::GRAPH_SUCCESS;
 }

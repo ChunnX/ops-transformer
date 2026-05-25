@@ -19,12 +19,12 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-constexpr uint32_t MAX_EXPERT_SIZE = 16384U; // 最大通信域专家的数量
-constexpr uint32_t MAX_EXPERT_PER_RANK = 1024U;
+constexpr uint32_t MAX_EXPERT_SIZE = 2048U; // 最大通信域专家的数量
+constexpr uint32_t MAX_EXPERT_PER_RANK = 256U;
 
 struct GmmAlltoAllvAicpuTiling {
-    uint16_t* sendCnt;
-    uint16_t* recvCnt;
+    uint16_t sendCnt[MAX_EXPERT_SIZE];
+    uint16_t recvCnt[MAX_EXPERT_SIZE];
 };
 
 struct GmmAlltoAllvCommonTilingInfo {
