@@ -588,7 +588,8 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
         OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
     transGmmWeight_ = *transGmmWeightPtr;
-    transMmWeight_ = *transMmWeightPtr;
+    // mmX为空时transMmWeight强制为false，避免base class GetMmWeightShapeInfo检查报错
+    transMmWeight_ = (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) ? *transMmWeightPtr : false;
 
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
     e_ = gmmWeightShape.GetDim(0);

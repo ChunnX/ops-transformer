@@ -103,11 +103,6 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     mmTilingData_ = mmTilingDataIn;
     gmmQuantParams_ = gmmBaseParamsIn;
     blockIdx_ = GetBlockIdx();
-    AscendC::printf("[V5-PREC] ASW Init blk=%d bM=%d bN=%d bK=%d sM=%d sN=%d K=%d cores=%d gN=%d gT=%d\n",
-        blockIdx_, mmTilingData_->baseM, mmTilingData_->baseN, mmTilingData_->baseK,
-        mmTilingData_->M, mmTilingData_->N, mmTilingData_->Ka,
-        mmTilingData_->usedCoreNum,
-        gmmQuantParams_->groupNum, gmmQuantParams_->groupType);
     mm_.SetSubBlockIdx(0);
     mm_.Init(mmTilingData_, que);
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
@@ -188,10 +183,6 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
     wGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<wType>(0, weightTensorPtr_) +
         block_.params_.bGroupAddrOffset);
     yGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<yType>(0, yTensorPtr_) + block_.params_.cGroupAddrOffset);
-    AscendC::printf("[LBH] UpdateAddr x=%llu w=%llu y=%llu aOff=%llu bOff=%llu cOff=%llu\n",
-        reinterpret_cast<uint64_t>(xGlobal_.GetPhyAddr()), reinterpret_cast<uint64_t>(wGlobal_.GetPhyAddr()),
-        reinterpret_cast<uint64_t>(yGlobal_.GetPhyAddr()),
-        block_.params_.aGroupAddrOffset, block_.params_.bGroupAddrOffset, block_.params_.cGroupAddrOffset);
     if (gmmQuantParams_->hasBias) {
         biasGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<biasType>(0, biasTensorPtr_) +
             block_.params_.biasGroupAddrOffset);
@@ -297,7 +288,6 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         int32_t kSize;
         // 更新group内的输入参数M,N,K
         SetMNK(groupIdx, mSize, nSize, kSize);
-        AscendC::printf("[LBH] mSize=%d nSize=%d kSize=%d\n", mSize, nSize, kSize);
         block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
         if (mSize <= 0 || kSize <= 0 || nSize <= 0) {
             continue;

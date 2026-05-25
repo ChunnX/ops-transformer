@@ -79,10 +79,6 @@ public:
                 expertTokenNum_[e] += static_cast<uint64_t>(opCnt[e + i * expertNumInOneRank_]);
             }
         }
-        AscendC::printf("[V5-PREC] Init isLocal=%d e=%lu epW=%lu expertTokens[0]=%lu baseM=%d baseN=%d baseK=%d singleM=%d singleN=%d\n",
-            isLocal ? 1 : 0, expertNumInOneRank_, epWorldSize_, expertTokenNum_[0],
-            gmmTilingData->mmTilingData.baseM, gmmTilingData->mmTilingData.baseN, gmmTilingData->mmTilingData.baseK,
-            gmmTilingData->mmTilingData.M, gmmTilingData->mmTilingData.N);
     }
 
     __aicore__ inline void Process(uint32_t expertIdx)
@@ -97,13 +93,6 @@ public:
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
-        AscendC::printf("[LBH] isLocal=%d expertIdx=%d xAddr=%llu wAddr=%llu yAddr=%llu grpToken=%llu grpListGm=%llu ptrTbl=%llu ws=%llu M=%d N=%d K=%d\n",
-            isLocal ? 1 : 0, expertIdx, reinterpret_cast<uint64_t>(xAddr),
-            reinterpret_cast<uint64_t>(wAddr), reinterpret_cast<uint64_t>(yAddr),
-            (isLocal ? bs_ : expertTokenNum_[expertIdx]),
-            reinterpret_cast<uint64_t>(groupListGm_), reinterpret_cast<uint64_t>(ptrTableBase_),
-            reinterpret_cast<uint64_t>(workspaceGM_),
-            gmmTilingData_->mmTilingData.M, gmmTilingData_->mmTilingData.N, gmmTilingData_->mmTilingData.Ka);
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
         GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
