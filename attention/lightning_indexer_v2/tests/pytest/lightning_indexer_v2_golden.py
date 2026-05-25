@@ -22,8 +22,8 @@ import copy
 import npu_ops_transformer as ops
 
 class GeneralizedLIV2:
-    def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, weights,
-                 output_idx_offset, head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, 
+    def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
+                 head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, 
                  seqused_q, seqused_k, cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio):
         self.batch_size = batch_size
         self.q_seq = q_seq
@@ -48,7 +48,6 @@ class GeneralizedLIV2:
         self.max_seqlen_q = max_seqlen_q
         self.mask_mode = mask_mode
         self.cmp_ratio = cmp_ratio
-        # self.output_idx_offset = output_idx_offset
 
         if layout_query == "BSND":
             self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
@@ -66,10 +65,10 @@ class GeneralizedLIV2:
 
         if layout_query == "BSND":
             self.out_shape = [batch_size, q_seq, k_head_num, sparse_count]
-            self.output_idx_offset_shape = [batch_size, q_seq, k_head_num, sparse_count]
+            self.output_idx_offset_shape = [batch_size, q_seq, k_head_num]
         elif layout_query == "TND":
             self.out_shape = [q_t_size, k_head_num, sparse_count]
-            self.output_idx_offset_shape = [q_t_size, k_head_num, sparse_count]
+            self.output_idx_offset_shape = [q_t_size, k_head_num]
 
     def cal_atten_bnsd(self):
         batch_size = self.batch_size
@@ -82,7 +81,6 @@ class GeneralizedLIV2:
         seqused_q = self.seqused_q
         seqused_k = self.seqused_k
         cmp_residual_k = self.cmp_residual_k
-        output_idx_offset = self.output_idx_offset
         q_bnsd_tensor = self.q_bnsd_tensor
         k_bnsd_tensor = self.k_bnsd_tensor
         wt_bnsd_tensor = self.wt_bnsd_tensor
@@ -211,7 +209,7 @@ class GeneralizedLIV2:
     def cal_atten_per_batch_fp16(self,b_idx):
         cur_q = self.cur_q
         cur_k = self.cur_k
-        cur_w = self.cur_w.to(dtype=torch.float32)
+        cur_w = self.cur_wt.to(dtype=torch.float32)
         sparse_count = self.topk
         sparse_mode = self.mask_mode
         cmp_ratio = self.cmp_ratio
@@ -270,7 +268,7 @@ class GeneralizedLIV2:
     def cal_atten_per_batch_bf16(self,b_idx):
         cur_q = self.cur_q
         cur_k = self.cur_k
-        cur_w = self.cur_w.to(dtype=torch.float16)
+        cur_w = self.cur_wt.to(dtype=torch.float16)
         sparse_count = self.topk
         sparse_mode = self.mask_mode
         cmp_ratio = self.cmp_ratio
@@ -539,7 +537,7 @@ def liv2_output_single(params):
     layout_query, layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
     q_scale_datarange, k_scale_datarange, cmp_ratio = params
 
-    test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, weights, output_idx_offset,
+    test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                                 head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlensk, seqused_q, seqused_k,
                                 cmp_residual_k, layout_query, layout_key, topk, max_seqlens_q, mask_mode, cmp_ratio)
 
