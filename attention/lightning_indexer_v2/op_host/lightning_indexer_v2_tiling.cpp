@@ -682,6 +682,7 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.batchSupperFlag = batchSupperFlag_;
     liInfo.maskMode = *opParamInfo_.maskMode;
     liInfo.topk = *opParamInfo_.topk;
+    liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
     liInfo.preTokens = *opParamInfo_.preTokens;
     liInfo.nextTokens = *opParamInfo_.nextTokens;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;

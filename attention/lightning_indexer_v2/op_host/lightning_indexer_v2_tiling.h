@@ -89,6 +89,7 @@ TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
 TILING_DATA_FIELD_DEF(uint32_t, s2Size)
 TILING_DATA_FIELD_DEF(uint32_t, topk)
+TILING_DATA_FIELD_DEF(uint32_t, maxSeqlenQ)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
@@ -125,6 +126,7 @@ struct LiV2ParaInfo {
     const int32_t *blockSize = nullptr;
     const int32_t *maskMode = nullptr;
     const int32_t *topk = nullptr;
+    const int32_t *maxSeqlenQ = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
     const int64_t *cmpRatio = nullptr;
@@ -154,6 +156,7 @@ public:
     int32_t maskMode = 0;
     // Others Flag
     uint32_t topk = 0;
+    int maxSeqlenQ = -1;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     int64_t cmpRatio = 1;

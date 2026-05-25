@@ -74,6 +74,7 @@ std::tuple<at::Tensor, at::Tensor> npu_lightning_indexer_v2(
     const c10::optional<at::Tensor> &block_table,
     const c10::optional<at::Tensor> &output_idx_offset,
     const c10::optional<at::Tensor> &metadata,
+    int64_t max_seqlen_q,
     c10::string_view layout_q, c10::string_view layout_k,
     int64_t mask_mode, int64_t cmp_ratio, int64_t return_value)
 {
@@ -94,7 +95,7 @@ std::tuple<at::Tensor, at::Tensor> npu_lightning_indexer_v2(
     char *key_layout_ptr = const_cast<char *>(key_layout_str.c_str());
 
     ACLNN_CMD(aclnnLightningIndexerV2, q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmpResidualK,
-              block_table, output_idx_offset, metadata, topk, query_layout_ptr, key_layout_ptr,
+              block_table, output_idx_offset, metadata, topk, max_seqlen_q, query_layout_ptr, key_layout_ptr,
               mask_mode, cmp_ratio, return_value, sparse_indices_out, sparse_values_out);
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }

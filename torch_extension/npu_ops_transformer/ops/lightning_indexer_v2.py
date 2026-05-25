@@ -28,7 +28,7 @@ class LightningIndexerV2OpBuilder(OpBuilder):
             "int topk, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None," \
             "Tensor? seqused_q=None, Tensor? seqused_k=None, " \
             "Tensor? cmp_residual_k=None, Tensor? block_table=None, " \
-            "Tensor? output_idx_offset=None, Tensor? metadata=None, " \
+            "Tensor? output_idx_offset=None, Tensor? metadata=None, int max_seqlen_q," \
             "str layout_query=\"BSND\", str layout_key=\"BSND\", int mask_mode=0, " \
             "int cmp_ratio=1," \
             "int return_value=0) -> (Tensor, Tensor)"
@@ -41,7 +41,7 @@ class LightningIndexerV2OpBuilder(OpBuilder):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_lightning_indexer_v2_meta(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                           seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None,
-                                          output_idx_offset=None, metadata=None,
+                                          output_idx_offset=None, metadata=None, max_seqlen_q=-1,
                                           layout_q="BSND", layout_k="BSND", mask_mode=0,
                                           cmp_ratio=1, return_value=0):
             key_head_num = key.shape[1] if layout_key == "TND" else key.shape[2]
@@ -70,13 +70,13 @@ op_module = npu_lightning_indexer_v2_op_builder.load()  # Compiles/loads the .so
 @impl(AS_LIBRARY, npu_lightning_indexer_v2_op_builder.name, "PrivateUse1")
 def npu_lightning_indexer_v2(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
                             seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None, 
-                            output_idx_offset=None, metadata=None, 
-                            layout_query="BSND", layout_key="BSND", mask_mode=0, 
+                            output_idx_offset=None, metadata=None, max_seqlen_q=-1,
+                            layout_q="BSND", layout_k="BSND", mask_mode=0, 
                             cmp_ratio=1, return_value=0):
     """
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.npu_lightning_indexer_v2(q, k, w, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, 
-                                              cmp_residual_k, block_table, output_idx_offset, metadata, layout_q, 
-                                              layout_k, mask_mode, cmp_ratio, return_value)
+                                              cmp_residual_k, block_table, output_idx_offset, metadata, max_seqlen_q, 
+                                              layout_q, layout_k, mask_mode, cmp_ratio, return_value)
