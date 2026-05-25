@@ -1364,14 +1364,16 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantAIterExpand(GlobalTensor<KV_T>
         Muls(tmpA2, tmpA2, antiquantExpandCoeff, calcSize);
         PipeBarrier<PIPE_V>();
     }
-    LocalTensor<KV_T> aResOutUbI8 = outputBuf1.Get<KV_T>();
+    LocalTensor<int8_t> aResOutUbI8 = outputBuf1.Get<int8_t>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     Cast(aResOutUbI8, tmpA2, RoundMode::CAST_ROUND, calcSize);
     PipeBarrier<PIPE_V>();
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     if constexpr (KVINT4) {
-        DataCopy(dstGm[outOffset], aResOutUbI8, calcSize >> 1);
+        GlobalTensor<int8_t> dstGmI8;
+        dstGmI8.SetGlobalBuffer(((__gm__ int8_t *)(dstGm[outOffset].GetPhyAddr())));
+        DataCopy<int8_t>(dstGmI8, aResOutUbI8, calcSize >> 1);
     } else {
         DataCopy(dstGm[outOffset], aResOutUbI8, calcSize);
     }

@@ -1885,7 +1885,7 @@ IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::AntiquantAIterExpand(GlobalTensor<
     PipeBarrier<PIPE_V>();
 
     // cast-int8
-    LocalTensor<KV_T> aResOutUbI8 = aResOutUb.template ReinterpretCast<KV_T>();
+    LocalTensor<int8_t> aResOutUbI8 = aResOutUb.template ReinterpretCast<int8_t>();
     aResOutUbI8.SetSize(aResOutUb.GetSize());
     Cast(aResOutUbI8, aResOutUb, RoundMode::CAST_ROUND, calcSize);
 
@@ -1893,7 +1893,9 @@ IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::AntiquantAIterExpand(GlobalTensor<
     outputQue1.template EnQue(aResOutUbI8);
     outputQue1.template DeQue<KV_T>();
     if constexpr (KVINT4) {
-        DataCopy(dstGm[outOffset], aResOutUbI8, calcSize >> 1);
+        GlobalTensor<int8_t> dstGmI8;
+        dstGmI8.SetGlobalBuffer(((__gm__ int8_t *)(dstGm[outOffset].GetPhyAddr())));
+        DataCopy<int8_t>(dstGmI8, aResOutUbI8, calcSize >> 1);
     } else {
         DataCopy(dstGm[outOffset], aResOutUbI8, calcSize);
     }
