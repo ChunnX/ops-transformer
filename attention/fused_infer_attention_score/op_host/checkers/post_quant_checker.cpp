@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <cstdio>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -36,11 +37,11 @@ ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
 {
     // QuantScale2 and quantOffset2 only support bf16/fp32 data type.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantScale2.desc, QUANT_SCALE2_NAME)) {
-        OP_LOGE(fiaInfo.opName, "QuantScale2 only support bf16/fp32 data type!");
+        OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QuantScale2 only support bf16/fp32 data type!");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantOffset2.desc, QUANT_OFFSET2_NAME)) {
-        OP_LOGE(fiaInfo.opName, "QuantOffset2 only support bf16/fp32 data type!");
+        OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QuantOffset2 only support bf16/fp32 data type!");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -52,14 +53,14 @@ ge::graphStatus PostQuantChecker::CheckExistenceQuantScale2(const FiaTilingInfo 
     // Post-quantization scenarios must include quantScale2.
     if (fiaInfo.isOutQuantEnable) {
         OP_CHECK_IF(fiaInfo.opParamInfo.quantScale2.tensor == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Quant_scale2 is nullptr in post quant scenario!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Quant_scale2 is nullptr in post quant scenario!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.quantScale2.desc == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Desc of quant_scale2 is nullptr in post quant scenario!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] missing [%s] parameter", fiaInfo.opName, "quant_scale2"); }),
                     return ge::GRAPH_FAILED);
         int64_t quantScale2ShapeSize = fiaInfo.opParamInfo.quantScale2.tensor->GetShapeSize();
         OP_CHECK_IF(quantScale2ShapeSize <= 0,
-                    OP_LOGE(fiaInfo.opName, "Shape size of quant_scale2 is nonpositive in post quant scenario!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "Shape size of quant_scale2 is nonpositive in post quant scenario!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -72,8 +73,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureAttenOut(const FiaTilingInfo &fiaI
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         OP_CHECK_IF(outputType != ge::DT_INT8 && outputType != ge::DT_FLOAT8_E4M3FN && outputType != ge::DT_HIFLOAT8,
-                    OP_LOGE(fiaInfo.opName,
-                    "The quantScale2 exists, output data type only supports int8/fp8_e4m3fn/hifloat8!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The quantScale2 exists, output data type only supports int8/fp8_e4m3fn/hifloat8!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -85,8 +85,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fi
     if (fiaInfo.isOutQuantEnable) {
         const ge::DataType quantScale2Type = fiaInfo.opParamInfo.quantScale2.tensor->GetDataType();
         OP_CHECK_IF(fiaInfo.inputQType != ge::DT_BF16 && quantScale2Type != ge::DT_FLOAT,
-                    OP_LOGE(fiaInfo.opName,
-                            "When query is not bf16, the post quant scale dtype only supports float32!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "When query is not bf16, the post quant scale dtype only supports float32!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -109,28 +108,18 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
         if (quantScale2Dim == 1) {
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != 1U),
-                            OP_LOGE(fiaInfo.opName,
-                                    "For post quant per-tensor, quant scale/offset only support [1], now is [%d]",
-                                    quantScale2ShapeSize),
+                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "For post quant per-tensor, quant scale/offset only support [1], now is [%d]", quantScale2ShapeSize) > 0) ? reason : "For post quant per-tensor, quant scale/offset only support [1], now is [%d]"); }),
                             return ge::GRAPH_FAILED);
             }
         } else {
             if (isSupportedLayout) {
                 OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
-                            OP_LOGE(fiaInfo.opName,
-                                    "For post quant per-channel, when layout is %s, "
-                                    "quantScale2/quantOffset2 dim multiply "
-                                    "result only support support qN * vD(%u * %u = %lu), now is (%ld).",
-                                    layoutString.c_str(), numHeads, fiaInfo.vHeadDim, quantScale2ShapeSizePerChannel,
-                                    quantScale2ShapeSize),
+                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply result only support support qN * vD(%u * %u = %lu), now is (%ld).", layoutString.c_str(), numHeads, fiaInfo.vHeadDim, quantScale2ShapeSizePerChannel, quantScale2ShapeSize) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply result only support support qN * vD"); }),
                             return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape() !=
                                 gert::Shape({numHeads, fiaInfo.vHeadDim}),
-                            OP_LOGE(fiaInfo.opName,
-                                    "For post quant per-channel, when layout is %s, "
-                                    "quantScale2/quantOffset2 expect shape is [%u, %u].",
-                                    layoutString.c_str(), numHeads, fiaInfo.vHeadDim),
+                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u].", layoutString.c_str(), numHeads, fiaInfo.vHeadDim) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u]."); }),
                             return ge::GRAPH_FAILED);
             }
         }
@@ -145,8 +134,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureOutputEqual(const FiaTilingInfo &f
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         OP_CHECK_IF(outputType != fiaInfo.inputKvType,
-                    OP_LOGE(fiaInfo.opName,
-                            "The quantScale2 exists, output data type only supports that matches the KV input type!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The quantScale2 exists, output data type only supports that matches the KV input type!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -158,7 +146,7 @@ ge::graphStatus PostQuantChecker::CheckFeaturePrefix(const FiaTilingInfo &fiaInf
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         OP_CHECK_IF(fiaInfo.sysPrefixFlag && outputType != ge::DT_INT8,
-                    OP_LOGE(fiaInfo.opName, "When prefix exists, the output data type only supports int8!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "When prefix exists, the output data type only supports int8!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -254,18 +242,14 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
     if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
-                    OP_LOGE(fiaInfo.opName,
-                            "When keyAntiquantMode and valueAntiquantMode are both 1, "
-                            "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
+                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "When keyAntiquantMode and valueAntiquantMode are both 1, if data type of key/value is FLOAT8_E4M3FN, post quant is not s"); }),
                     return ge::GRAPH_FAILED);
     }
 
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
-                    OP_LOGE(fiaInfo.opName,
-                            "When keyAntiquantMode and valueAntiquantMode are both 4, "
-                            "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
+                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "When keyAntiquantMode and valueAntiquantMode are both 4, if data type of key/value is FLOAT8_E4M3FN, post quant is not s"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -286,13 +270,13 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
         size_t quantOffset2Dim = fiaInfo.opParamInfo.quantOffset2.tensor->GetStorageShape().GetDimNum();
 
         OP_CHECK_IF(quantOffset2Datatype != quantScale2Type,
-                    OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dtype!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dtype!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(quantOffset2Dim != quantScale2Dim,
-                    OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dim!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dim!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(quantOffset2ShapeSize != quantScale2ShapeSize,
-                    OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same shape size!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QuantScale2 and quantOffset2 should have same shape size!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
