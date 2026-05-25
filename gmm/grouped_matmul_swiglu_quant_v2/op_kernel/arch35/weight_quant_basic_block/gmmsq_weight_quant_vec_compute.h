@@ -251,8 +251,8 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
     }
 
     // swiglu和gate N轴对半切分
-    uint64_t swishNOffset = offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE);
-    uint64_t gateNOffset = (offsetParam.nOffset + offsetParam.nSize / 2) * static_cast<uint64_t>(C0_SIZE);
+    uint64_t swishNOffset = offsetParam.nOffset / 2 * static_cast<uint64_t>(C0_SIZE);
+    uint64_t gateNOffset = (offsetParam.nOffset / 2 + offsetParam.nSize / 2) * static_cast<uint64_t>(C0_SIZE);
     uint64_t kOffset = (kGmOffset + kL1Offset) * offsetParam.nAlign;
 
     DataCopyPad2D(
