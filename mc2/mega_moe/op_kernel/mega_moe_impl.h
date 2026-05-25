@@ -120,10 +120,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
     GlobalTensor<ElementA> aGlobalTensor;
- 	GlobalTensor<ElementB> bGlobalTensor;
+    GlobalTensor<ElementB> bGlobalTensor;
 
     aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
- 	bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
+    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
 
     // Matrix A or Matrix B does not have duplicate data reads. Setting L2 Cache to Disable,
     // data reads will bypass L2 Cache.
@@ -301,10 +301,10 @@ __aicore__ inline void GroupMatmul2(
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
     GlobalTensor<ElementA> aGlobalTensor;
- 	GlobalTensor<ElementB> bGlobalTensor;
+    GlobalTensor<ElementB> bGlobalTensor;
 
     aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
- 	bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
+    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
 
     // Matrix A or Matrix B does not have duplicate data reads. Setting L2 Cache to Disable,
     // data reads will bypass L2 Cache.

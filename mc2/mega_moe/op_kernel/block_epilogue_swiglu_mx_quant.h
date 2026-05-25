@@ -574,7 +574,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
             AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
                 AscendC::MicroAPI::RegTensor<DataTypeIn> swishInput0, gateInput0, swishInput1, gateInput1;
- 	            AscendC::MicroAPI::RegTensor<float> swishData0, swishData1, gateData0, gateData1;
+                AscendC::MicroAPI::RegTensor<float> swishData0, swishData1, gateData0, gateData1;
 
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat; // 计算的数据的偏移量
                 AscendC::MicroAPI::DataCopy(swishInput0, firstSrc + l0cOutOffset); // swishInput0:x bf16
