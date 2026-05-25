@@ -39,12 +39,13 @@
 
 namespace ops {
 namespace {
-
 const std::string PASS_NAME = "MoeDistributeDispatchV2FusionPass";
-const std::string FUSED_OP_TYPE_V2 = "MoeDistributeDispatchV2";
-const std::string FUSED_OP_TYPE_V3 = "MoeDistributeDispatchV3";
+const std::string FUSED_OP_TYPE2 = "MoeDistributeDispatchV2";
+const std::string FUSED_OP_TYPE3 = "MoeDistributeDispatchV3";
 const std::string MOE_CONTEXT_TAG = "MOE_DISPATCH_COMBINE_V2_CONTEXT";
 const std::string MOE_EP_NAME = "group_ep";
+
+const uint32_t IDX_0 = 0;
 
 const std::vector<std::string> REQUIRED_INT_ATTRS = {
     "ep_world_size", "ep_rank_id", "moe_expert_num"
@@ -57,57 +58,179 @@ const std::vector<std::string> OPTIONAL_INT_ATTRS = {
 };
 
 const std::vector<std::string> OPTIONAL_STR_ATTRS = {"comm_alg"};
+}  // namespace
 
-ge::graphStatus CopyAttrToV3Node(ge::GNode &v2Node, ge::Operator &v3Op)
+ge::graphStatus MoeDistributeDispatchV2FusionPass::AddAttr(ge::GNode &moeDistributeDispatchNode,
+                                                           ge::GNode &fusionNode,
+                                                           int64_t &hccl_buff_size)
 {
-    int64_t intVal = 0;
+    OPS_LOG_D(PASS_NAME.c_str(), "start dispatch fusion AddAttr");
     ge::AscendString nameStr;
-    v2Node.GetName(nameStr);
+    moeDistributeDispatchNode.GetName(nameStr);
 
+    int64_t attrInt = 0;
     for (const auto &attrName : REQUIRED_INT_ATTRS) {
-        if (v2Node.GetAttr(ge::AscendString(attrName.c_str()), intVal) != ge::GRAPH_SUCCESS) {
+        if (moeDistributeDispatchNode.GetAttr(ge::AscendString(attrName.c_str()), attrInt) != ge::GRAPH_SUCCESS) {
             OPS_LOG_E(PASS_NAME.c_str(), "node %s: Get required attr %s failed", nameStr.GetString(), attrName.c_str());
             return ge::GRAPH_FAILED;
         }
-        v3Op.SetAttr(attrName, intVal);
-        OPS_LOG_D(PASS_NAME.c_str(), "node %s: set required attr %s=%ld", nameStr.GetString(), attrName.c_str(), intVal);
+        fusionNode.SetAttr(ge::AscendString(attrName.c_str()), attrInt);
     }
 
-    int optionalCopied = 0;
+    fusionNode.SetAttr(ge::AscendString("ccl_buffer_size"), hccl_buff_size);
+
     for (const auto &attrName : OPTIONAL_INT_ATTRS) {
-        if (v2Node.GetAttr(ge::AscendString(attrName.c_str()), intVal) == ge::GRAPH_SUCCESS) {
-            v3Op.SetAttr(attrName, intVal);
-            optionalCopied++;
+        if (moeDistributeDispatchNode.GetAttr(ge::AscendString(attrName.c_str()), attrInt) == ge::GRAPH_SUCCESS) {
+            fusionNode.SetAttr(ge::AscendString(attrName.c_str()), attrInt);
         }
     }
 
     ge::AscendString strVal;
     for (const auto &attrName : OPTIONAL_STR_ATTRS) {
-        if (v2Node.GetAttr(ge::AscendString(attrName.c_str()), strVal) == ge::GRAPH_SUCCESS) {
-            v3Op.SetAttr(attrName, std::string(strVal.GetString()));
-            optionalCopied++;
+        if (moeDistributeDispatchNode.GetAttr(ge::AscendString(attrName.c_str()), strVal) == ge::GRAPH_SUCCESS) {
+            fusionNode.SetAttr(ge::AscendString(attrName.c_str()), strVal);
         }
     }
-    OPS_LOG_D(PASS_NAME.c_str(), "node %s: %d optional attrs copied", nameStr.GetString(), optionalCopied);
-
+    OPS_LOG_D(PASS_NAME.c_str(), "end dispatch fusion AddAttr");
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ReplaceDispatchV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
+ge::graphStatus MoeDistributeDispatchV2FusionPass::CreateFusionNode(
+    ge::Graph &graph, ge::GNode &moeDistributeDispatchNode,
+    int64_t &hccl_buff_size, ge::GNode &fusionNode)
 {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     ge::AscendString nameStr;
-    v2Node.GetName(nameStr);
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: start V2->V3 replacement", nameStr.GetString());
+    moeDistributeDispatchNode.GetName(nameStr);
+    OPS_LOG_D(PASS_NAME.c_str(), "start dispatch fusion CreateFusionNode");
+
+    std::string v3NodeName = std::string(nameStr.GetString()) + "_V3";
+    auto fusionOp = ge::OperatorFactory::CreateOperator(v3NodeName, FUSED_OP_TYPE3);
+    if (fusionOp.IsEmpty()) {
+        OPS_LOG_E(PASS_NAME.c_str(), "node %s: %s op not found in factory", nameStr.GetString(),
+                  FUSED_OP_TYPE3.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    // 从 V2 拷贝所有输入描述到 V3（V3.port = V2.port + 1）
+    constexpr size_t kV2TotalInputs = 7;
+    size_t copiedCount = 0;
+    for (size_t v2Port = 0; v2Port < kV2TotalInputs; v2Port++) {
+        ge::TensorDesc v2Desc;
+        if (moeDistributeDispatchNode.GetInputDesc(static_cast<int32_t>(v2Port), v2Desc) == ge::GRAPH_SUCCESS) {
+            fusionOp.UpdateInputDesc(static_cast<uint32_t>(v2Port + 1), v2Desc);
+            copiedCount++;
+        }
+    }
+    OPS_LOG_D(PASS_NAME.c_str(), "node %s: %zu V2 input descs copied to V3", nameStr.GetString(), copiedCount);
+
+    fusionNode = graph.AddNodeByOp(fusionOp);
+
+    if (AddAttr(moeDistributeDispatchNode, fusionNode, hccl_buff_size) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddAttr failed", nameStr.GetString());
+        return ge::GRAPH_FAILED;
+    }
+    OPS_LOG_D(PASS_NAME.c_str(), "end dispatch fusion CreateFusionNode");
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(
+    ge::Graph &graph, ge::GNode &moeNodePtr, ge::GNode &fusionNode,
+    ge::GNode &contextNodePtr)
+{
+    OPS_LOG_D(PASS_NAME.c_str(), "start to add dispatch edge for fusion node");
+
+    constexpr size_t kV2TotalInputs = 7;
+    constexpr size_t kV2TotalOutputs = 7;
+    ge::graphStatus edgeRet;
+
+    // V2 输入源 → V3 (V3.port = V2.port + 1)
+    size_t wiredInputs = 0;
+    for (size_t i = IDX_0; i < kV2TotalInputs; i++) {
+        auto srcPair = moeNodePtr.GetInDataNodesAndPortIndexs(static_cast<int32_t>(i));
+        if (srcPair.first == nullptr) continue;
+        size_t v3Port = i + 1;
+        edgeRet = graph.AddDataEdge(*srcPair.first, srcPair.second,
+                                    fusionNode, static_cast<int32_t>(v3Port));
+        if (edgeRet != ge::GRAPH_SUCCESS) {
+            ge::AscendString srcName;
+            srcPair.first->GetName(srcName);
+            OPS_LOG_E(PASS_NAME.c_str(), "dispatch AddDataEdge from %s.port%d→V3.port%zu failed",
+                      srcName.GetString(), srcPair.second, v3Port);
+            return ge::GRAPH_FAILED;
+        }
+        wiredInputs++;
+    }
+    OPS_LOG_I(PASS_NAME.c_str(), "dispatch: %zu input edges wired", wiredInputs);
+
+    // 收集 V2 输出消费者 → 删除 V2 → 重连 V3 输出到消费者
+    std::vector<std::vector<std::pair<ge::GNodePtr, int32_t>>> outputConsumers(kV2TotalOutputs);
+    for (size_t i = IDX_0; i < kV2TotalOutputs; i++) {
+        outputConsumers[i] = moeNodePtr.GetOutDataNodesAndPortIndexs(static_cast<int32_t>(i));
+    }
+
+    graph.RemoveNode(moeNodePtr);
+
+    size_t wiredOutputs = 0;
+    for (size_t i = IDX_0; i < kV2TotalOutputs; i++) {
+        for (auto &outPair : outputConsumers[i]) {
+            edgeRet = graph.AddDataEdge(fusionNode, static_cast<int32_t>(i),
+                                        *outPair.first, outPair.second);
+            if (edgeRet != ge::GRAPH_SUCCESS) {
+                ge::AscendString consumerName;
+                outPair.first->GetName(consumerName);
+                OPS_LOG_E(PASS_NAME.c_str(), "dispatch AddEdge V3.port%zu→%s.port%d failed",
+                          i, consumerName.GetString(), outPair.second);
+                return ge::GRAPH_FAILED;
+            }
+            wiredOutputs++;
+        }
+    }
+    OPS_LOG_I(PASS_NAME.c_str(), "dispatch: %zu output edges wired", wiredOutputs);
+
+    // contextNode → V3.0（最后加，和 MultiInOne 后手动补一致）
+    edgeRet = graph.AddDataEdge(contextNodePtr, static_cast<int32_t>(IDX_0),
+                                fusionNode, static_cast<int32_t>(IDX_0));
+    if (edgeRet != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "dispatch AddEdge for context failed");
+        return ge::GRAPH_FAILED;
+    }
+    OPS_LOG_D(PASS_NAME.c_str(), "dispatch end to add edge for fusion node");
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeDispatchV2FusionPass::FusionNode(
+    ge::Graph &graph, ge::GNode &moeDistributeDispatchNode,
+    ge::GNode &contextNode, int64_t &hccl_buff_size)
+{
+    OPS_LOG_I(PASS_NAME.c_str(), "Using MoeDistributeDispatchV2 FusionPass, Fussion Node start !");
+    ge::GNode fusionNode;
+    if (CreateFusionNode(graph, moeDistributeDispatchNode, hccl_buff_size, fusionNode) !=
+        ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "dispatch CreateFusionNode failed");
+        return ge::GRAPH_FAILED;
+    }
+    if (AddEdge(graph, moeDistributeDispatchNode, fusionNode, contextNode) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "dispatch fusion AddEdge failed");
+        return ge::GRAPH_FAILED;
+    }
+    OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeDispatchV2FusionPass fun end !");
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeDispatchV2FusionPass::Fusion(
+    ge::Graph &graph, ge::GNode &moeDistributeDispatchNode)
+{
+    OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeDispatchV2FusionPass fun start !");
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    ge::GNode contextNode;
+    int64_t hccl_buff_size = 0;
 
     Mc2MoeContext mc2Ctx;
-    int64_t cclBufferSize = 0;
-    if (MoeContextManager::GetMc2ContextA5(MOE_CONTEXT_TAG, MOE_EP_NAME, v2Node,
-                                           mc2Ctx, cclBufferSize) != ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(PASS_NAME.c_str(), "node %s: GetMc2ContextA5 failed, keep V2", nameStr.GetString());
-        return ge::GRAPH_SUCCESS;
+    if (MoeContextManager::GetMc2ContextA5(MOE_CONTEXT_TAG, MOE_EP_NAME, moeDistributeDispatchNode,
+                                           mc2Ctx, hccl_buff_size) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_I(PASS_NAME.c_str(), "GetMc2ContextA5 doesn't support current case, dispatch Failed");
+        return ge::GRAPH_SUCCESS;  // 回退（无变化）
     }
-    OPS_LOG_D(PASS_NAME.c_str(), "node %s: context obtained, cclBufferSize=%ld", nameStr.GetString(), cclBufferSize);
 
     ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
@@ -115,197 +238,27 @@ ge::graphStatus ReplaceDispatchV2WithV3(ge::Graph &graph, ge::GNode &v2Node)
 
     auto constOp = ge::OperatorFactory::CreateOperator("mc2_moe_context", "Const");
     if (constOp.IsEmpty()) {
-        OPS_LOG_E(PASS_NAME.c_str(), "node %s: Const op not found in factory", nameStr.GetString());
+        OPS_LOG_E(PASS_NAME.c_str(), "Const op not found in factory");
         return ge::GRAPH_SUCCESS;
     }
     constOp.SetAttr("value", tensorValue);
+    constOp.UpdateOutputDesc("y", tensorDesc);
 
-    std::string v3NodeName = std::string(nameStr.GetString()) + "_V3";
-    auto v3Op = ge::OperatorFactory::CreateOperator(v3NodeName, FUSED_OP_TYPE_V3);
-    if (v3Op.IsEmpty()) {
-        OPS_LOG_E(PASS_NAME.c_str(), "node %s: %s op not found in factory", nameStr.GetString(),
-                  FUSED_OP_TYPE_V3.c_str());
-        return ge::GRAPH_SUCCESS;
-    }
+    contextNode = graph.AddNodeByOp(constOp);
 
-    if (CopyAttrToV3Node(v2Node, v3Op) != ge::GRAPH_SUCCESS) {
-        OPS_LOG_E(PASS_NAME.c_str(), "node %s: CopyAttrToV3Node failed", nameStr.GetString());
+    if (FusionNode(graph, moeDistributeDispatchNode, contextNode, hccl_buff_size) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "Dispatch FusionNode failed");
         return ge::GRAPH_FAILED;
     }
-    v3Op.SetAttr("ccl_buffer_size", cclBufferSize);
-
-    // Mark connected OPTIONAL_INPUT descriptors valid for FE_TransInsert.
-    static const struct { size_t v2Port; const char *v3Name; ge::DataType dtype; } kOptMapping[] = {
-        {2, "scales", ge::DT_FLOAT},           {3, "x_active_mask", ge::DT_BOOL},
-        {4, "expert_scales", ge::DT_FLOAT},
-    };
-    for (auto &m : kOptMapping) {
-        auto srcPair = v2Node.GetInDataNodesAndPortIndexs(static_cast<int32_t>(m.v2Port));
-        if (srcPair.first == nullptr) continue;
-        ge::TensorDesc validDesc(ge::Shape({1}), ge::FORMAT_ND, m.dtype);
-        v3Op.UpdateInputDesc(m.v3Name, validDesc);
-        OPS_LOG_D(PASS_NAME.c_str(), "node %s: validated V3 input '%s' (V2.port%zu connected)",
-                  nameStr.GetString(), m.v3Name, m.v2Port);
-    }
-
-    OPS_LOG_D(PASS_NAME.c_str(), "node %s: attrs set, adding nodes to graph (ccl_buffer_size=%ld)...",
-              nameStr.GetString(), static_cast<long>(cclBufferSize));
-
-    auto constGNode = graph.AddNodeByOp(constOp);
-    auto v3GNode = graph.AddNodeByOp(v3Op);
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: Const + V3 nodes added to graph", nameStr.GetString());
-
-    size_t v2ValidInputs = v2Node.GetInputsSize();
-    size_t v2ValidOutputs = v2Node.GetOutputsSize();
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [SIZE] V2(valid_in=%zu,valid_out=%zu)",
-              nameStr.GetString(), v2ValidInputs, v2ValidOutputs);
-
-    // V3 total inputs from REG_OP: 3 INPUT + 5 OPTIONAL_INPUT = 8
-    // V2 total inputs from REG_OP: 2 INPUT + 5 OPTIONAL_INPUT = 7
-    constexpr size_t kV3TotalInputs = 8;
-    constexpr size_t kV2TotalInputs = 7;
-    constexpr size_t kV2TotalOutputs = 7;
-    ge::graphStatus edgeRet;
-
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [1/5] wiring Const→V3.0 ...", nameStr.GetString());
-    edgeRet = graph.AddDataEdge(constGNode, 0, v3GNode, 0);
-    if (edgeRet != ge::GRAPH_SUCCESS) {
-        OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge Const→V3.0 FAILED (ret=%d)", nameStr.GetString(), edgeRet);
-        return ge::GRAPH_FAILED;
-    }
-
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [2/5] wiring V2 inputs→V3 (type-based ordered matching) ...",
-              nameStr.GetString());
-
-    // V3 proto port layout: port0=context(already wired), port1=x, port2=expert_ids,
-    //   port3=scales, port4=x_active_mask, port5=expert_scales, port6=elastic_info, port7=performance_info
-    struct V3Port { int64_t idx; std::vector<ge::DataType> types; };
-    const V3Port v3Ports[] = {
-        {1, {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
-             ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2}},  // x
-        {2, {ge::DT_INT32}},                                               // expert_ids
-        {3, {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0}},                          // scales (optional)
-        {4, {ge::DT_BOOL}},                                                // x_active_mask
-        {5, {ge::DT_FLOAT}},                                               // expert_scales (optional)
-        {6, {ge::DT_INT32}},                                               // elastic_info (optional)
-        {7, {ge::DT_INT64}},                                               // performance_info (optional)
-    };
-
-    // Collect all V2 source nodes (source+port → feeds V2)
-    std::vector<std::pair<ge::GNode, int32_t>> v2Sources;
-    ge::AscendString v2NameStr;
-    v2Node.GetName(v2NameStr);
-    for (auto &srcNode : graph.GetDirectNode()) {
-        ge::AscendString sn;
-        srcNode.GetName(sn);
-        if (sn == v2NameStr) continue;
-        size_t outSize = srcNode.GetOutputsSize();
-        for (size_t op = 0; op < outSize; op++) {
-            auto consumers = srcNode.GetOutDataNodesAndPortIndexs(static_cast<int32_t>(op));
-            for (auto &c : consumers) {
-                ge::AscendString cn;
-                c.first->GetName(cn);
-                if (cn == v2NameStr) {
-                    v2Sources.push_back({srcNode, static_cast<int32_t>(op)});
-                }
-            }
-        }
-    }
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: found %zu sources feeding V2",
-              nameStr.GetString(), v2Sources.size());
-
-    auto typeMatches = [](ge::DataType src, const std::vector<ge::DataType> &acceptable) -> bool {
-        for (auto t : acceptable) {
-            if (src == t) return true;
-        }
-        return false;
-    };
-
-    // Ordered match: iterate V3 ports, consume first unused V2 source of matching type
-    int wiredInputs = 0;
-    int skippedInputs = 0;
-    for (auto &v3p : v3Ports) {
-        bool matched = false;
-        for (auto it = v2Sources.begin(); it != v2Sources.end(); ++it) {
-            ge::TensorDesc srcDesc;
-            if (it->first.GetOutputDesc(it->second, srcDesc) != ge::GRAPH_SUCCESS) continue;
-            if (typeMatches(srcDesc.GetDataType(), v3p.types)) {
-                ge::AscendString sn;
-                it->first.GetName(sn);
-                OPS_LOG_I(PASS_NAME.c_str(), "node %s: type-match %s.port%d→V3.port%ld",
-                          nameStr.GetString(), sn.GetString(), it->second, v3p.idx);
-                edgeRet = graph.AddDataEdge(it->first, it->second, v3GNode, v3p.idx);
-                if (edgeRet != ge::GRAPH_SUCCESS) {
-                    OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge to V3.port%ld FAILED",
-                              nameStr.GetString(), v3p.idx);
-                    return ge::GRAPH_FAILED;
-                }
-                wiredInputs++;
-                v2Sources.erase(it);
-                matched = true;
-                break;
-            }
-        }
-        if (!matched) skippedInputs++;
-    }
-    skippedInputs += static_cast<int>(v2Sources.size());
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: input wiring done - %d OK, %d unmatched/skipped",
-              nameStr.GetString(), wiredInputs, skippedInputs);
-
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [3/5] collecting V2 output consumers (probing up to %zu ports) ...",
-              nameStr.GetString(), kV2TotalOutputs);
-    std::vector<std::vector<std::pair<ge::GNodePtr, int32_t>>> v2OutputConsumers(kV2TotalOutputs);
-    int totalConsumers = 0;
-    for (size_t i = 0; i < kV2TotalOutputs; i++) {
-        v2OutputConsumers[i] = v2Node.GetOutDataNodesAndPortIndexs(static_cast<int32_t>(i));
-        totalConsumers += static_cast<int>(v2OutputConsumers[i].size());
-        for (auto &outPair : v2OutputConsumers[i]) {
-            ge::AscendString consumerName;
-            outPair.first->GetName(consumerName);
-            OPS_LOG_D(PASS_NAME.c_str(), "node %s: V2.port%zu→%s.port%d", nameStr.GetString(), i,
-                      consumerName.GetString(), outPair.second);
-        }
-    }
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: %d output consumers recorded across %zu probes",
-              nameStr.GetString(), totalConsumers, kV2TotalOutputs);
-
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [4/5] removing V2 node ...", nameStr.GetString());
-    graph.RemoveNode(v2Node);
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: V2 removed from graph", nameStr.GetString());
-
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: [5/5] wiring V3 outputs→%d consumers (probing %zu ports) ...",
-              nameStr.GetString(), totalConsumers, kV2TotalOutputs);
-    int totalOutputEdges = 0;
-    for (size_t i = 0; i < kV2TotalOutputs; i++) {
-        for (auto &outPair : v2OutputConsumers[i]) {
-            ge::AscendString consumerName;
-            outPair.first->GetName(consumerName);
-            OPS_LOG_I(PASS_NAME.c_str(), "node %s: wiring V3.port%zu → %s.port%d ...",
-                      nameStr.GetString(), i, consumerName.GetString(), outPair.second);
-            edgeRet = graph.AddDataEdge(v3GNode, static_cast<int32_t>(i), *outPair.first, outPair.second);
-            if (edgeRet != ge::GRAPH_SUCCESS) {
-                OPS_LOG_E(PASS_NAME.c_str(), "node %s: AddDataEdge V3.port%zu→%s.port%d FAILED (ret=%d)",
-                          nameStr.GetString(), i, consumerName.GetString(), outPair.second, edgeRet);
-                return ge::GRAPH_FAILED;
-            }
-            OPS_LOG_I(PASS_NAME.c_str(), "node %s:   V3.port%zu → %s.port%d OK", nameStr.GetString(),
-                      i, consumerName.GetString(), outPair.second);
-            totalOutputEdges++;
-        }
-    }
-    OPS_LOG_I(PASS_NAME.c_str(), "node %s: output wiring done - %d OK (expected %d). fusion COMPLETE!",
-              nameStr.GetString(), totalOutputEdges, totalConsumers);
-#else
-    OPS_LOG_I(PASS_NAME.c_str(), "HCOMM not available, skip V3 fusion");
 #endif
+    OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeDispatchV2FusionPass fun end !");
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace
-
 ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::CustomPassContext &pass_context)
 {
-    OPS_LOG_I(PASS_NAME.c_str(), "Run start! total direct nodes = %zu", graph->GetDirectNode().size());
+    OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeDispatchV2FusionPass fun start !");
+    (void)pass_context;
 
     if (IsTargetPlatformSocVersion(PASS_NAME.c_str(), PLATFORM_A2)) {
         OPS_LOG_I(PASS_NAME.c_str(), "A2 platform detected, skip V3 fusion");
@@ -316,11 +269,10 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
         OPS_LOG_I(PASS_NAME.c_str(), "Non-A5 platform detected, skip V3 fusion");
         return ge::GRAPH_SUCCESS;
     }
-    OPS_LOG_I(PASS_NAME.c_str(), "A5 platform confirmed, scanning for V2 nodes...");
 
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
-        if (gNode.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType != FUSED_OP_TYPE_V2.c_str()) {
+        if (gNode.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType != FUSED_OP_TYPE2.c_str()) {
             continue;
         }
 
@@ -331,19 +283,19 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
         ge::AscendString commAlg;
         if (gNode.GetAttr(ge::AscendString("comm_alg"), commAlg) == ge::GRAPH_SUCCESS &&
             std::string(commAlg.GetString()) == "ccu") {
-            OPS_LOG_I(PASS_NAME.c_str(), "node %s: comm_alg=ccu, skip V3 fusion (delegated to V1)", nameStr.GetString());
+            OPS_LOG_I(PASS_NAME.c_str(), "comm_alg is ccu, skip V3 fusion (delegated to V1)");
             continue;
         }
 
-        auto ret = ReplaceDispatchV2WithV3(*graph, gNode);
+        auto ret = Fusion(*graph, gNode);
         if (ret == ge::GRAPH_SUCCESS) {
             OPS_LOG_I(PASS_NAME.c_str(), "node %s: V2->V3 fusion SUCCESS", nameStr.GetString());
         } else {
-            OPS_LOG_I(PASS_NAME.c_str(), "node %s: V2->V3 fusion FAILED (ret=%d), V2 kept", nameStr.GetString(), ret);
+            OPS_LOG_I(PASS_NAME.c_str(), "node %s: V2->V3 fusion FAILED (ret=%d)", nameStr.GetString(), ret);
         }
     }
 
-    OPS_LOG_I(PASS_NAME.c_str(), "Run end!");
+    OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeDispatchV2FusionPass fun end !");
     return ge::GRAPH_SUCCESS;
 }
 
