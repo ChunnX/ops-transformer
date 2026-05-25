@@ -827,10 +827,10 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 
 ge::graphStatus AlltoAllvGmmTilingBase::DoLibApiTiling()
 {
-    if (GetShapeInfo() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "GetShapeInfo failed.");
-        return ge::GRAPH_FAILED;
-    }
+    // 非量化算子的输入索引(index 4/5)与量化base class的索引(index 6/7)不同，
+    // GetShapeInfo()用量化索引读取mmWeight会读到null，导致误判。
+    // 非量化算子的shape信息已在GetShapeAttrsInfo()和GetContextAttr()中用正确索引处理，
+    // 此处直接返回成功，跳过base class的GetShapeInfo()检查。
     return ge::GRAPH_SUCCESS;
 }
 
