@@ -271,7 +271,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         armAvgFactor_ = ONE / n_;
         epsilon_ = EPSILON;
         // PRINTF("[DBG] AIV rank=%u core=%u m=%u n=%u baseN=%u\n", rankId_, coreVid_, m_, n_, params.qbmmParams.baseN);
-        if (coreVid_ == 0) { PRINTF("[DBG_ND] rank%u core%u n_=%u m_=%u tpWorldSize=%u\n", rankId_, coreVid_, n_, m_, tpWorldSize_); }
+        // if (coreVid_ == 0) { PRINTF("[DBG_ND] rank%u core%u n_=%u m_=%u tpWorldSize=%u\n", rankId_, coreVid_, n_, m_, tpWorldSize_); }
 
         yGM_.SetGlobalBuffer(yGmAddr_);
         gammaGM_.SetGlobalBuffer(gammaGmAddr_);

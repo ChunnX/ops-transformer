@@ -46,9 +46,9 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(
 
     if (TILING_KEY_IS(0)) {
         // ND layout: TransA=false, TransB=true
-        if(AscendC::GetBlockIdx() == 0) {
-            printf("enter nd mode\n");
-        }
+        // if(AscendC::GetBlockIdx() == 0) {
+        //     printf("enter nd mode\n");
+        // }
         using LayoutA = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
         using LayoutB = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::DNExtLayoutPtn>;
         using LayoutC = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
@@ -95,9 +95,9 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(
 
     if (TILING_KEY_IS(1)) {
         // NZ layout: TransA=false, TransB=false, NZLayoutPtn
-        if(AscendC::GetBlockIdx() == 0) {
-            printf("enter nz mode\n");
-        }
+        // if(AscendC::GetBlockIdx() == 0) {
+        //     printf("enter nz mode\n");
+        // }
         using LayoutA = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
         using LayoutB = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<C0_SIZE>>;
         using LayoutC = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
