@@ -398,6 +398,12 @@ public:
         auto layoutL0C = AscendC::Te::FrameLayoutFormat<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<C0_SIZE_L0C>>{}(
             tileL1L0Param.curM, tileL1L0Param.curN);
         tensorL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<Location::L0C, float>(l0cOffset), layoutL0C);
+        // 仅当输出落在 GM（GMM2 GM-direct 路径）时：进 mmad 之前等上一轮 L0c->GM 的 fixpipe 把 L0c 读完，
+        // 否则本轮 mmad 会在 fixpipe 还在读 L0c 时改写 L0c，硬件检测到 L0c scalar 冲突会报
+        // "scalar to access internal buffer out of bounds"。GMM1（输出到 UB）不走这条 sync。
+        if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::GM>) {
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
+        }
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             uint64_t l1BufId = abL1LoopCnt_ & (l1BufNum_ - 1);
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
@@ -457,6 +463,8 @@ public:
             // C L0C->GM
             auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
             AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+            // 配对上面的 WaitFlag<FIX_M>: fixpipe 完成后置位，下一轮 mmad 才能进
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         }
 
         if (enableL0cPingPong_) {
