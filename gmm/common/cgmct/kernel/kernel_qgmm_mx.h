@@ -268,7 +268,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
     TupleShape l0Shape{static_cast<int64_t>(gmmParams.baseM), static_cast<int64_t>(gmmParams.baseN),
                        static_cast<int64_t>(gmmParams.baseK)};
     L1Params l1Params{static_cast<uint64_t>(gmmParams.kAL1), static_cast<uint64_t>(gmmParams.kBL1),
-                      static_cast<uint64_t>(gmmParams.scaleKAL1), 2UL};
+                      static_cast<uint64_t>(gmmParams.scaleKAL1)};
     mmadOp_.Init(problemShape_, l0Shape, l1Params, isBias_, gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
 }
 

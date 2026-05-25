@@ -40,8 +40,8 @@ constexpr static uint16_t INPUT_BUFFER_FLAG_0 = 0;
 constexpr static uint16_t INPUT_BUFFER_FLAG_1 = 1;
 constexpr static uint16_t INPUT_BUFFER_FLAG_2 = 2;
 constexpr static uint16_t INPUT_BUFFER_FLAG_3 = 3;
-constexpr static uint16_t SCALE_BUFFER_FLAG_0 = 4;
-constexpr static uint16_t SCALE_BUFFER_FLAG_1 = 5;
+constexpr static uint16_t INPUT_BUFFER_FLAG_4 = 4;
+constexpr static uint16_t INPUT_BUFFER_FLAG_5 = 5;
 
 struct TileL1L0Param {
     uint64_t curM = 0;
@@ -59,15 +59,16 @@ struct TileL1L0Param {
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
           class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
-          class Enable = void>
+          uint64_t L1BufferNum_ = 2UL, class Enable = void>
 class BlockMmadMx {
     static_assert(AscendC::Std::always_false_v<DispatchPolicy_>, "Should not be here!");
 };
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
-          class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_>
+          class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
+          uint64_t L1BufferNum_>
 class BlockMmadMx<DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_,
-                  BiasType_, LayoutBias_, TileCopy_,
+                  BiasType_, LayoutBias_, TileCopy_, L1BufferNum_,
                   AscendC::Std::enable_if_t<
                       AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_> ||
                       AscendC::Std::is_base_of_v<MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, A_FULL_LOAD_MODE>,
@@ -95,6 +96,11 @@ public:
     constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT;
     constexpr static int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
     constexpr static int32_t BIAS_C0 = AscendC::AuxGetC0Size<BiasType>();
+    constexpr static uint64_t L1_BUFFER_NUM = L1BufferNum_;
+    constexpr static uint16_t INNER_INPUT_BUFFER_FLAG_0 = static_cast<uint16_t>(L1_BUFFER_NUM);
+    constexpr static uint16_t SCALE_BUFFER_FLAG_0 = static_cast<uint16_t>(L1_BUFFER_NUM * SCALE_BUFFER_NUM);
+    constexpr static uint16_t SCALE_BUFFER_FLAG_1 = SCALE_BUFFER_FLAG_0 + 1;
+    static_assert(L1_BUFFER_NUM == 2UL || L1_BUFFER_NUM == 3UL, "BlockMmadMx only supports 2 or 3 L1 buffers.");
 
     struct Params {
         GM_ADDR aGmAddr{nullptr};
@@ -110,7 +116,6 @@ public:
         uint64_t kAL1;
         uint64_t kBL1;
         uint64_t scaleKL1;
-        uint64_t l1BufNum;
     };
 
     __aicore__ inline BlockMmadMx()
@@ -119,6 +124,10 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
+        if constexpr (L1_BUFFER_NUM == 3UL) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_4);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_5);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
         AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
@@ -130,12 +139,63 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
+        if constexpr (L1_BUFFER_NUM == 3UL) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_4);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_5);
+        }
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
         AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
     }
 
 public:
+    __aicore__ inline static uint64_t ToL1ByteOffset(uint64_t offset)
+    {
+        if constexpr (IS_FP4) {
+            return offset >> 1;
+        }
+        return offset;
+    }
+
+    __aicore__ inline static uint64_t ToL1ABOffset(uint64_t byteOffset)
+    {
+        if constexpr (IS_FP4) {
+            return byteOffset << 1;
+        }
+        return byteOffset;
+    }
+
+    __aicore__ inline static uint64_t GetL1BufId(uint64_t loopCnt)
+    {
+        if constexpr (L1_BUFFER_NUM == 2UL) {
+            return loopCnt & 1UL;
+        }
+        return loopCnt % L1_BUFFER_NUM;
+    }
+
+    __aicore__ inline void InitL1BufferOffsets()
+    {
+        uint64_t halfL1Offset = IS_FP4 ? AscendC::TOTAL_L1_SIZE : (AscendC::TOTAL_L1_SIZE >> 1);
+        l1BufferAOffset_[0] = 0UL;
+        l1BufferBOffset_[0] = aL1OneBuffer_;
+        l1BufferAOffset_[1] = halfL1Offset;
+        l1BufferBOffset_[1] = halfL1Offset + aL1OneBuffer_;
+        for (int32_t bufferId = 0; bufferId < SCALE_BUFFER_NUM; bufferId++) {
+            l1BufferScaleAOffset_[bufferId] = ToL1ByteOffset(l1BufferBOffset_[bufferId] + bL1OneBuffer_);
+            l1BufferScaleBOffset_[bufferId] = l1BufferScaleAOffset_[bufferId] + scaleAL1OneBuffer_;
+            l1BufferBiasOffset_[bufferId] = l1BufferScaleBOffset_[bufferId] + scaleBL1OneBuffer_;
+        }
+        if constexpr (L1_BUFFER_NUM == 3UL) {
+            // 3 buffer: A0|B0|AScale0|BScale0|A2|bias0 ... A1|B1|AScale1|BScale1|B2|bias1
+            uint64_t extraAByteOffset = l1BufferScaleBOffset_[0] + scaleBL1OneBuffer_;
+            uint64_t extraBByteOffset = l1BufferScaleBOffset_[1] + scaleBL1OneBuffer_;
+            l1BufferAOffset_[2] = ToL1ABOffset(extraAByteOffset);
+            l1BufferBOffset_[2] = ToL1ABOffset(extraBByteOffset);
+            l1BufferBiasOffset_[0] = ToL1ByteOffset(l1BufferAOffset_[2] + aL1OneBuffer_);
+            l1BufferBiasOffset_[1] = ToL1ByteOffset(l1BufferBOffset_[2] + bL1OneBuffer_);
+        }
+    }
+
     __aicore__ inline void Init(const TupleShape &problemShape, const BlockShape &l0TileShape, const L1Params &l1Params,
                                 bool isBias, bool dbL0C)
     {
@@ -151,7 +211,6 @@ public:
         orderAL1BL1_ = l1Params.kAL1 >= l1Params.kBL1;
         minKL1_ = Min(l1Params.kAL1, l1Params.kBL1);
         isBias_ = isBias;
-        l1BufNum_ = l1Params.l1BufNum;
         enableL0cPingPong_ = dbL0C;
         bL1OneBuffer_ = baseN_ * Cgmct::Gemm::Align(kBL1_, MXFP_DIVISOR_SIZE);
         mxScaleKL1B16_ = Cgmct::Gemm::CeilDiv(scaleKL1_, MXFP_DIVISOR_SIZE);
@@ -162,22 +221,7 @@ public:
         }
         aL1OneBuffer_ = baseM_ * Cgmct::Gemm::Align(kAL1_, MXFP_DIVISOR_SIZE);
         scaleAL1OneBuffer_ = baseM_ * mxScaleKL1;
-        for (int32_t bufferId = 0; bufferId < l1BufNum_; bufferId++) {
-            // 2 buffer: L1 space is : A0|B0|AScale0|BScale0|bias0|...|A1|B1|AScale1|BScale1|bias1|...
-            // l1Offset represents element count
-            uint64_t l1Offset =
-                IS_FP4 ? AscendC::TOTAL_L1_SIZE * (bufferId & 1) : (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
-            l1BufferAOffset_[bufferId] = l1Offset + aL1OneBuffer_ * (bufferId >> 1);
-            l1BufferBOffset_[bufferId] = l1Offset + aL1OneBuffer_ * (l1BufNum_ >> 1) + bL1OneBuffer_ * (bufferId >> 1);
-        }
-        for (int32_t bufferId = 0; bufferId < SCALE_BUFFER_NUM; bufferId++) {
-            // l1BufferScaleAOffset_[bufferId]: byte count when B8, element count when B4
-            l1BufferScaleAOffset_[bufferId] =
-                IS_FP4 ? ((l1BufferBOffset_[bufferId] + bL1OneBuffer_ * (l1BufNum_ >> 1)) >> 1) :
-                         (l1BufferBOffset_[bufferId] + bL1OneBuffer_ * (l1BufNum_ >> 1));
-            l1BufferScaleBOffset_[bufferId] = l1BufferScaleAOffset_[bufferId] + scaleAL1OneBuffer_;
-            l1BufferBiasOffset_[bufferId] = l1BufferScaleBOffset_[bufferId] + scaleBL1OneBuffer_;
-        }
+        InitL1BufferOffsets();
     }
 
     __aicore__ inline void UpdateParamsForNextProblem(const TupleShape &problemShape)
@@ -585,7 +629,7 @@ public:
                                           const TileL1L0Param &tileL1L0Param, uint64_t kL1Offset, uint64_t scaleL1BufId)
     {
         if (kL1Offset % scaleKL1_ == 0) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + scaleL1BufId);
             CopyInScaleA(scaleAGlobal, scaleAL1Local_[l1BufferScaleAOffset_[scaleL1BufId]], tileL1L0Param.curM,
                          kL1Offset);
             CopyInScaleB(scaleBGlobal, scaleBL1Local_[l1BufferScaleBOffset_[scaleL1BufId]], tileL1L0Param.curN,
@@ -659,7 +703,7 @@ public:
     {
         for (uint64_t kOuter = 0; kOuter < k_; kOuter += kBL1_) {
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
-            uint64_t bL1BufId = bL1LoopCnt_ & (l1BufNum_ - 1);
+            uint64_t bL1BufId = GetL1BufId(bL1LoopCnt_);
             CopyScalesInL1(scaleAGlobal, scaleBGlobal, tileL1L0Param, kOuter, scaleL1BufId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(bL1BufId);
             biasBufId_ = scaleL1BufId;
@@ -670,20 +714,20 @@ public:
                            tileL1L0Param.curN);
             }
             for (uint64_t kInner = kOuter; kInner < Min(kOuter + kBL1_, k_); kInner += kAL1_) {
-                uint64_t aL1BufId = aL1LoopCnt_ & (l1BufNum_ - 1);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + aL1BufId);
+                uint64_t aL1BufId = GetL1BufId(aL1LoopCnt_);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INNER_INPUT_BUFFER_FLAG_0 + aL1BufId);
                 UpdateKAL1(tileL1L0Param, kInner);
                 CopyAInL1(aGlobal, tileL1L0Param, aL1BufId, kInner);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(aL1BufId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(aL1BufId);
                 Iterate(tileL1L0Param, mmadParams, kInner, aL1BufId, bL1BufId, scaleL1BufId, l0cOffset, 0,
                         kInner - kOuter);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + aL1BufId);
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INNER_INPUT_BUFFER_FLAG_0 + aL1BufId);
                 aL1LoopCnt_++;
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(bL1BufId);
             if ((kOuter + kBL1_) % scaleKL1_ == 0 || kOuter + kBL1_ >= k_) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + scaleL1BufId);
                 scaleLoopCnt_++;
             }
             bL1LoopCnt_++;
@@ -700,7 +744,7 @@ public:
     {
         for (uint64_t kOuter = 0; kOuter < k_; kOuter += kAL1_) {
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
-            uint64_t aL1BufId = aL1LoopCnt_ & (l1BufNum_ - 1);
+            uint64_t aL1BufId = GetL1BufId(aL1LoopCnt_);
             CopyScalesInL1(scaleAGlobal, scaleBGlobal, tileL1L0Param, kOuter, scaleL1BufId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(aL1BufId);
             biasBufId_ = scaleL1BufId;
@@ -711,20 +755,20 @@ public:
                            tileL1L0Param.curN);
             }
             for (uint64_t kInner = kOuter; kInner < Min(kOuter + kAL1_, k_); kInner += kBL1_) {
-                uint64_t bL1BufId = bL1LoopCnt_ & (l1BufNum_ - 1);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
+                uint64_t bL1BufId = GetL1BufId(bL1LoopCnt_);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INNER_INPUT_BUFFER_FLAG_0 + bL1BufId);
                 UpdateKBL1(tileL1L0Param, kInner);
                 CopyBInL1(bGlobal, tileL1L0Param, bL1BufId, kInner);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
                 Iterate(tileL1L0Param, mmadParams, kInner, aL1BufId, bL1BufId, scaleL1BufId, l0cOffset, kInner - kOuter,
                         0);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INNER_INPUT_BUFFER_FLAG_0 + bL1BufId);
                 bL1LoopCnt_++;
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(aL1BufId);
             if ((kOuter + kAL1_) % scaleKL1_ == 0 || kOuter + kAL1_ >= k_) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + scaleL1BufId);
                 scaleLoopCnt_++;
             }
             aL1LoopCnt_++;
@@ -804,15 +848,14 @@ private:
     uint64_t bL1OneBuffer_ = 0UL;
     uint64_t scaleAL1OneBuffer_ = 0UL;
     uint64_t scaleBL1OneBuffer_ = 0UL;
-    uint64_t l1BufferAOffset_[2] = {0UL};      // default 2 buffer
-    uint64_t l1BufferBOffset_[2] = {0UL};      // default 2 buffer
-    uint64_t l1BufferScaleAOffset_[2] = {0UL}; // default 2 buffer
-    uint64_t l1BufferScaleBOffset_[2] = {0UL}; // default 2 buffer
-    uint64_t l1BufferBiasOffset_[2] = {0UL};   // default 2 buffer
+    uint64_t l1BufferAOffset_[L1_BUFFER_NUM] = {0UL};
+    uint64_t l1BufferBOffset_[L1_BUFFER_NUM] = {0UL};
+    uint64_t l1BufferScaleAOffset_[SCALE_BUFFER_NUM] = {0UL};
+    uint64_t l1BufferScaleBOffset_[SCALE_BUFFER_NUM] = {0UL};
+    uint64_t l1BufferBiasOffset_[SCALE_BUFFER_NUM] = {0UL};
     uint64_t m_;
     uint64_t n_;
     uint64_t k_;
-    uint64_t l1BufNum_{1};
     uint64_t kAL1_{1};
     uint64_t kBL1_{1};
     uint64_t minKL1_{1};
