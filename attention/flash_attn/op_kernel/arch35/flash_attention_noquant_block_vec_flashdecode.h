@@ -84,7 +84,10 @@ private:
     uint32_t preLoadNum = 2U;
     uint32_t dSizeV_Align;
     static constexpr bool attenMaskFlag = hasAtten;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t dBasicBlock;
     // 基本块大小
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
 
@@ -131,7 +134,6 @@ protected:
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
     uint32_t blockIdx = 0U;
-    const ConstInfoX &constInfo;
     const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
     TaskInfo taskInfo{};
     FDparamsX fdParams_;
@@ -158,7 +160,8 @@ private:
     LocalTensor<T> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecode(uint32_t aicIdx_, uint32_t aivIdx_, uint8_t subBlockIdx_, uint32_t dBasicBlock_)
+        : aicIdx(aicIdx_), aivIdx(aivIdx_), subBlockIdx(subBlockIdx_), dBasicBlock(dBasicBlock_){};
 
     template <typename U> // 避免重名用U
     __aicore__ inline U Align(U num, U rnd)
@@ -611,7 +614,6 @@ public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using SINK_T = bfloat16_t;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
     __aicore__ inline FiaBlockVecFlashDecodeDummy(){};
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm) {};

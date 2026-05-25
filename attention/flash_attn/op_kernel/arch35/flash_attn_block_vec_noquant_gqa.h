@@ -80,11 +80,10 @@ public:
 
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
 
-    using flashdecodeGmType = GlobalTensor<float>;
+using flashdecodeGmType = GlobalTensor<float>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
-    __aicore__ inline VecBlockBase(ConstInfoX &constInfo){};
+    __aicore__ inline VecBlockBase(){}; 
+    __aicore__ inline VecBlockBase(uint32_t aicIdx_, uint32_t aivIdx_, uint8_t subBlockIdx_, uint32_t dBasicBlock_){};
 };
 
 template <
@@ -109,10 +108,10 @@ public:
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2;
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U;
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -121,7 +120,7 @@ public:
             LAYOUT_Q::SG :
             LAYOUT_Q::GS;
 
-    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
+    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
@@ -133,7 +132,10 @@ public:
 
     using flashdecodeGmType = GlobalTensor<float>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t dBasicBlock;
 
     // gm
     TPipe *tPipe;
@@ -181,17 +183,16 @@ public:
     TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
     bool learnableSinkFlag = false;
 
-    const ConstInfoX &constInfo;
     const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
     T negativeFloatScalar;
     int64_t bmm2SubBlockOffset = 0;
     int64_t vec2SubBlockOffset = 0;
     bool isFd = false;
 
-    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo)
+    __aicore__ inline FANoQuantGqaBlockVec(uint32_t aicIdx_, uint32_t aivIdx_, uint8_t subBlockIdx_, uint32_t dBasicBlock_)
         : VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
-                       dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD>(constInfo),
-          constInfo(constInfo){};
+                       dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD>(),
+          aicIdx(aicIdx_), aivIdx(aivIdx_), subBlockIdx(subBlockIdx_), dBasicBlock(dBasicBlock_){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attenMask,
@@ -229,8 +230,8 @@ public:
 
         if constexpr (splitD) {
             int64_t vec2ResultSize = mBaseSize * tilingData->flashAttnBaseParams.dSizeV;
-            vec2SubBlockOffset = constInfo.subBlockIdx * vec2ResultSize >> 1;
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * vec2ResultSize; // 3为preload次数
+            vec2SubBlockOffset = subBlockIdx * vec2ResultSize >> 1;
+            int64_t prevCoretotalOffset = aicIdx * 3 * vec2ResultSize; // 3为preload次数
             vec2ResGm[0].SetGlobalBuffer((__gm__ T *)workspace + prevCoretotalOffset);
             vec2ResGm[1].SetGlobalBuffer((__gm__ T *)workspace + prevCoretotalOffset + vec2ResultSize);
             vec2ResGm[2].SetGlobalBuffer((__gm__ T *)workspace + prevCoretotalOffset + 2 * vec2ResultSize);
@@ -300,7 +301,7 @@ public:
         int64_t totalOutputSize = tSize * tilingData->flashAttnBaseParams.n2Size * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.dSizeV;
         int64_t singleCoreSize =
             (totalOutputSize + (2 * tilingData->flashAttnBaseParams.coreNum) - 1) / (2 * tilingData->flashAttnBaseParams.coreNum); // 2 means c:v = 1:2
-        int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
+        int64_t tailSize = totalOutputSize - aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
@@ -308,9 +309,9 @@ public:
             if constexpr (IsSameType<OUTPUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
-                matmul::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
+                matmul::InitOutput<half>(attentionOutTmpGm[aivIdx * singleCoreSize], singleInitOutputSize, 0);
             } else {
-                matmul::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
+                matmul::InitOutput<OUTPUT_T>(attentionOutGm[aivIdx * singleCoreSize], singleInitOutputSize,
                     0);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
@@ -326,12 +327,12 @@ public:
         int64_t totalOutputSize = tSize * tilingData->flashAttnBaseParams.n2Size * tilingData->flashAttnBaseParams.gSize;
         int64_t singleCoreSize =
             (totalOutputSize + (2 * tilingData->flashAttnBaseParams.coreNum) - 1) / (2 * tilingData->flashAttnBaseParams.coreNum); // 2 means c:v = 1:2
-        int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
+        int64_t tailSize = totalOutputSize - aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
+            matmul::InitOutput<float>(softmaxLseGm[aivIdx * singleCoreSize], singleInitOutputSize,
                                       3e+99); // 3e+99: set the value of invalid batch to inf
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
@@ -374,17 +375,17 @@ public:
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
         if (runInfo.actSingleLoopS2Size > vec1S2CopyLenDn) {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
+            DataCopy(mm2AL1Tensor[subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
                      stage1CastTensor,
                      {vec1S2CopyCountDn, vec1S2CopyLenDn, 1,
                       static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign - vec1S2CopyLenDn)});
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign +
+            DataCopy(mm2AL1Tensor[subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign +
                                   vec1S2strideDn],
                      stage1CastTensor[vec1ResOffsetDn],
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign - vec1S2CopyLenDn),
                       static_cast<uint16_t>(s2BaseSize - runInfo.actSingleLoopS2SizeAlign + 1), vec1S2CopyLenDn});
         } else {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
+            DataCopy(mm2AL1Tensor[subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
                      stage1CastTensor,
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
@@ -482,7 +483,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
     {
         LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
         int64_t sinkOffset =
-            runInfo.n2Idx * tilingData->flashAttnBaseParams.gSize + constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize);
+            runInfo.n2Idx * tilingData->flashAttnBaseParams.gSize + subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize);
         DataCopyExtParams sinkCopyParams;
         sinkCopyParams.blockCount = 1;                                   // 进行一次连续拷贝
         sinkCopyParams.blockLen = runInfo.actVecMSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
@@ -601,7 +602,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
         if (likely(runInfo.actVecMSize != 0)) {
-            DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
+            DataCopy(mm2AL1Tensor[subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
                                   (runInfo.actMSize - runInfo.actVecMSize)],
                      stage1CastTensor,
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
@@ -668,7 +669,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
         LocalTensor<OUTPUT_T> attenOut;
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         if constexpr (splitD) {
-            dSizeAligned64 = constInfo.dBasicBlock;
+            dSizeAligned64 = dBasicBlock;
         }
 
         attenOut.SetAddr(vec2ResUb.address_);
@@ -685,7 +686,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
     __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, const RunInfoXVec &runInfo)
     {
         // bmm2 result is on GM and global update data on UB
-        uint32_t subMBase = 8192 / constInfo.dBasicBlock;
+        uint32_t subMBase = 8192 / dBasicBlock;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -702,7 +703,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                 subMRealsize = runInfo.actVecMSize - mIdx;
             }
 
-            int64_t vec2CalcSize = subMRealsize * constInfo.dBasicBlock;
+            int64_t vec2CalcSize = subMRealsize * dBasicBlock;
             // Gm地址偏移是按照实际DSize实现的，虽然我们设置了KC=192
             int64_t mm2ResInnerOffset = mIdx * dTemplateAlign64;
             SetFlag<HardEvent::V_MTE2>(vToMte2);
@@ -712,7 +713,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                     DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
                     DataCopy(bmm2Ub,
-                             mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) *
+                             mmRes[subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) *
                                        (int64_t)dVTemplateType +
                                    mm2ResInnerOffset],
                              vec2CalcSize);
@@ -729,7 +730,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                                 dataCopyPadParams);
                 } else {
                     DataCopyPad(bmm2Ub,
-                                mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) *
+                                mmRes[subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) *
                                           (int64_t)dVTemplateType +
                                       mm2ResInnerOffset],
                                 dataCopyParams, dataCopyPadParams);
@@ -737,7 +738,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
             }
 
             // 经过了跳读，UB上每行是按照dTemplateAlign64对齐的
-            int64_t vec2ResInnerOffset = mIdx * constInfo.dBasicBlock;
+            int64_t vec2ResInnerOffset = mIdx * dBasicBlock;
             if (vec2LoopLimit > 1) {
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
@@ -746,9 +747,9 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                              vec2CalcSize);
                 } else {
                     DataCopy(vec2ResUb,
-                             this->vec2ResGm[runInfo.loop % DB][constInfo.subBlockIdx *
+                             this->vec2ResGm[runInfo.loop % DB][subBlockIdx *
                                                                     (runInfo.actMSize - runInfo.actVecMSize) *
-                                                                    constInfo.dBasicBlock +
+                                                                    dBasicBlock +
                                                                 vec2ResInnerOffset],
                              vec2CalcSize);
                 }
@@ -764,14 +765,14 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                     softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[vec2ExpBufOffset];
                 if (!runInfo.isLastS2Loop) {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, 0xFF, false, false>(vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb,
-                                                                             subMRealsize, constInfo.dBasicBlock, 0.0F,
+                                                                             subMRealsize, dBasicBlock, 0.0F,
                                                                              deSCalePreVValue);
                 } else {
                     int64_t vec2SumBufOffset = mIdx;
                     LocalTensor<float> sumUb =
                         this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, 0xFF, false, false>(
-                        vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb, sumUb, subMRealsize, constInfo.dBasicBlock, 0.0F,
+                        vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb, sumUb, subMRealsize, dBasicBlock, 0.0F,
                         deSCalePreVValue);
                 }
             }
@@ -782,7 +783,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                     LocalTensor<float> sumUb =
                         this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
                     LastDivNew<T, INPUT_T, OUTPUT_T, 0xFF, false>(vec2ResUb, vec2ResUb, sumUb, subMRealsize,
-                                                                  constInfo.dBasicBlock, 0.0F);
+                                                                  dBasicBlock, 0.0F);
                 }
                 CopyOutAttentionOut(runInfo, vec2ResUb, mIdx, subMRealsize);
             } else if (vec2LoopLimit > 1) {
@@ -792,9 +793,9 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                     DataCopy(this->vec2ResGm[runInfo.loop % DB][vec2SubBlockOffset + vec2ResInnerOffset], vec2ResUb,
                              vec2CalcSize);
                 } else {
-                    DataCopy(this->vec2ResGm[runInfo.loop % DB][constInfo.subBlockIdx *
+                    DataCopy(this->vec2ResGm[runInfo.loop % DB][subBlockIdx *
                                                                     (runInfo.actMSize - runInfo.actVecMSize) *
-                                                                    constInfo.dBasicBlock +
+                                                                    dBasicBlock +
                                                                 vec2ResInnerOffset],
                              vec2ResUb, vec2CalcSize);
                 }
@@ -955,7 +956,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         if constexpr (splitD) {
-            dSizeAligned64 = constInfo.dBasicBlock;
+            dSizeAligned64 = dBasicBlock;
         }
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
@@ -1024,7 +1025,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                     DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
                     DataCopy(bmm2Ub,
-                             mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * tilingData->flashAttnBaseParams.dSizeV +
+                             mmRes[subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * tilingData->flashAttnBaseParams.dSizeV +
                                    mm2ResInnerOffset],
                              vec2CalcSize);
                 }
@@ -1041,7 +1042,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
                 } else {
                     DataCopyPad(
                         bmm2Ub,
-                        mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * tilingData->flashAttnBaseParams.dSizeV +
+                        mmRes[subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * tilingData->flashAttnBaseParams.dSizeV +
                               mm2ResInnerOffset],
                         dataCopyParams, dataCopyPadParams);
                 }

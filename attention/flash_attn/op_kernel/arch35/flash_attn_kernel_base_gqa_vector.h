@@ -46,7 +46,7 @@ public:
         if ASCEND_IS_AIV {
             vectorData.vecFaBlock.InitBuffers(vectorData.SharedBuffer1, vectorData.SharedBuffer2, vectorData.SharedBuffer3);
             vectorData.vecFaBlock.AllocEventID();
-            if (vectorData.ctx->constInfo.aicIdx < vectorData.ctx->tilingData->flashAttnBaseParams.coreNum) {
+            if (vectorData.ctx->aicIdx < vectorData.ctx->tilingData->flashAttnBaseParams.coreNum) {
                 FlashAttentionVector(sectionIdx);
             }
             FlashDecodeVector(sectionIdx);
@@ -58,7 +58,7 @@ private:
     __aicore__ inline void FlashAttentionVector(uint32_t sectionIdx)
     {
         if ASCEND_IS_AIV {
-            if (vectorData.ctx->constInfo.aicIdx >= vectorData.ctx->tilingData->flashAttnBaseParams.coreNum) {
+            if (vectorData.ctx->aicIdx >= vectorData.ctx->tilingData->flashAttnBaseParams.coreNum) {
                 return;
             }
 
@@ -79,7 +79,7 @@ private:
             vectorData.ctx->prevGS1Idx = gS1Cur;
             
             vectorData.coreFirstTmpOutWsPos_ = vectorData.ctx->faMetaDataGm.GetValue(
-                vectorData.ctx->GetFAMetaDataIndex(vectorData.ctx->constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
+                vectorData.ctx->GetFAMetaDataIndex(vectorData.ctx->aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
 
             bool shouldDispatchTask = true;
             bool shouldExecuteTask = false;
@@ -365,7 +365,7 @@ private:
 
             info.actVecMSize = (info.actMSize + 1) >> 1;
             info.vecMbaseIdx = 0;
-            if (vectorData.ctx->constInfo.subBlockIdx == 1) {
+            if (vectorData.ctx->subBlockIdx == 1) {
                 info.vecMbaseIdx = info.actVecMSize;
                 info.actVecMSize = info.actMSize - info.actVecMSize;
             }

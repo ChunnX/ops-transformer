@@ -68,7 +68,7 @@ public:
 
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSizeCalc = mBaseSize * this->tilingData->flashAttnBaseParams.dSizeV;
-            int64_t prevCoretotalOffset = this->constInfo.aicIdx * 3 * mm2ResultSizeCalc;
+            int64_t prevCoretotalOffset = this->aicIdx * 3 * mm2ResultSizeCalc;
             workspace = workspace + this->tilingData->flashAttnBaseParams.coreNum * 3 * mm2ResultSizeCalc * sizeof(T);
         }
     }
@@ -249,7 +249,7 @@ public:
     __aicore__ inline void Process()
     {
         if ASCEND_IS_AIV {
-            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
+            if (this->aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 vectorProc.CrossCoreBufferInit();
             }
         }
@@ -263,7 +263,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
+            if (this->aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 cubeProc.CrossCoreBufferUnInit();
             }
         }

@@ -58,7 +58,10 @@ public:
     GlobalTensor<uint32_t> faMetaDataGm;
     __gm__ uint8_t *keyPtr = nullptr;
 
-    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t dBasicBlock;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
@@ -99,13 +102,13 @@ public:
 __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
-            constInfo.aicIdx = GetBlockIdx();
+            aicIdx = GetBlockIdx();
         } else {
-            constInfo.aivIdx = GetBlockIdx();
-            constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
-            constInfo.subBlockIdx = GetSubBlockIdx();
+            aivIdx = GetBlockIdx();
+            aicIdx = GetBlockIdx() / GetSubBlockNum();
+            subBlockIdx = GetSubBlockIdx();
         }
-        constInfo.dBasicBlock = Align64Func((uint16_t)this->tilingData->flashAttnBaseParams.dSizeV);
+        dBasicBlock = Align64Func((uint16_t)this->tilingData->flashAttnBaseParams.dSizeV);
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -115,12 +118,12 @@ __aicore__ inline void InitConstInfo()
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
-        bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
-        gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
-        s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
+        bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
+        gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
+        s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
     }
 };
 
@@ -150,7 +153,6 @@ public:
 
     using INPUT_T = typename CubeBlockType::Q_T;
     using T = typename CubeBlockType::MM_T;
-    using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
     using QCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
                                                            ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true>,
@@ -169,7 +171,8 @@ public:
     CubeBlockType cubeBlock;
     FlashAttentionGqaContext* ctx;
 
-    __aicore__ inline FlashAttentionCubeData(FlashAttentionGqaContext* c) : cubeBlock(c->constInfo), ctx(c){};
+    __aicore__ inline FlashAttentionCubeData(FlashAttentionGqaContext* c)
+        : cubeBlock(c->aicIdx, c->aivIdx, c->subBlockIdx, c->dBasicBlock), ctx(c){};
 };
 
 template <typename VecFaBlockType, typename VecFdBlockType, typename InputT, LayOutTypeEnum LayoutQ = LayOutTypeEnum::None, bool PageAttention = false>
@@ -194,7 +197,6 @@ public:
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
 
     using INPUT_T = InputT;
-    using ConstInfoX = typename VecFaBlockType::ConstInfoX;
 
     using QCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
                                                            ActualSeqLensParser<Q_MODE, int32_t, true>,
@@ -220,7 +222,10 @@ public:
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
     TBuf<> SharedBuffer3;
 
-    __aicore__ inline FlashAttentionVectorData(FlashAttentionGqaContext* c) : vecFaBlock(c->constInfo), vecFdBlock(c->constInfo), ctx(c){};
+    __aicore__ inline FlashAttentionVectorData(FlashAttentionGqaContext* c)
+        : vecFaBlock(c->aicIdx, c->aivIdx, c->subBlockIdx, c->dBasicBlock),
+          vecFdBlock(c->aicIdx, c->aivIdx, c->subBlockIdx, c->dBasicBlock),
+          ctx(c){};
 };
 
 } // namespace BaseApi

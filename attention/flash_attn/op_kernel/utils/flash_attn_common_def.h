@@ -276,17 +276,4 @@ struct RunInfoXVec {
 };
 
 
-struct CommonConstInfo {
-    uint32_t aicIdx;
-    uint32_t aivIdx;
-    uint8_t subBlockIdx;
-    uint32_t dBasicBlock;
-};
-
-template <FiaKernelType>
-struct ConstInfo_t;
-
-template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo {};
-
 #endif // FLASH_ATTN_COMMON_DEF_H_

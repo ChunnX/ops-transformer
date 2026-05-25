@@ -44,7 +44,7 @@ public:
         if ASCEND_IS_AIC {
             cubeData.cubeBlock.InitBuffers();
             cubeData.cubeBlock.AllocEventID();
-            if (cubeData.ctx->constInfo.aicIdx < cubeData.ctx->tilingData->flashAttnBaseParams.coreNum) {
+            if (cubeData.ctx->aicIdx < cubeData.ctx->tilingData->flashAttnBaseParams.coreNum) {
                 FlashAttentionCube(sectionIdx);
             }
             cubeData.cubeBlock.FreeEventID();
@@ -55,7 +55,7 @@ private:
     __aicore__ inline void FlashAttentionCube(uint32_t sectionIdx)
     {
         if ASCEND_IS_AIC {
-            if (cubeData.ctx->constInfo.aicIdx >= cubeData.ctx->tilingData->flashAttnBaseParams.coreNum) {
+            if (cubeData.ctx->aicIdx >= cubeData.ctx->tilingData->flashAttnBaseParams.coreNum) {
                 return;
             }
 

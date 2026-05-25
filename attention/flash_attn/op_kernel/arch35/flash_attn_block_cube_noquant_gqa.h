@@ -189,9 +189,8 @@ public:
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
-    __aicore__ inline CubeBlockBase(ConstInfoX &constInfo){};
+    __aicore__ inline CubeBlockBase(){}; 
+    __aicore__ inline CubeBlockBase(uint32_t aicIdx_, uint32_t aivIdx_, uint8_t subBlockIdx_, uint32_t dBasicBlock_){};
 };
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -269,8 +268,6 @@ public:
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
     static constexpr bool IS_TND_LAYOUT =
         (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD);
     static constexpr bool Q_NEEDS_WZH = (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND);
@@ -320,13 +317,16 @@ public:
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
-    const ConstInfoX &constInfo;
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t dBasicBlock;
     const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
 
-    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
+    __aicore__ inline FANoQuantGqaBlockCube(uint32_t aicIdx_, uint32_t aivIdx_, uint8_t subBlockIdx_, uint32_t dBasicBlock_)
         : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType,
-                        useDn, bmm2Write2Ub, splitD>(constInfo),
-          constInfo(constInfo){};
+                        useDn, bmm2Write2Ub, splitD>(),
+          aicIdx(aicIdx_), aivIdx(aivIdx_), subBlockIdx(subBlockIdx_), dBasicBlock(dBasicBlock_){};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
