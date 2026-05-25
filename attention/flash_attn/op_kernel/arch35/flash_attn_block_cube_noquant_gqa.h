@@ -158,7 +158,7 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t l1BaseD = 128;
+    static constexpr uint32_t l1BaseD = (dBaseSize > 128) ? 128 : dBaseSize;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
@@ -238,7 +238,7 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t l1BaseD = 128;
+    static constexpr uint32_t l1BaseD = dBaseSize
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
@@ -691,7 +691,7 @@ public:
             MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size, realK, false,
                                         true, k == 0, k == 0);
 
-            MatmulFull<Q_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN>(
+            MatmulFull<Q_T, KV_T, T, (uint32_t)dTemplateType, (uint32_t)dTemplateType, baseK, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<Q_T>()[k * l1BaseKOffset], mm1BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm1ResL0C.GetTensor<T>(), param);
 
@@ -877,7 +877,7 @@ public:
                 param.realM = (uint32_t)runInfo.actMSize;
             }
             mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MatmulFull<Q_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN>(
+            MatmulFull<Q_T, KV_T, T, (uint32_t)dTemplateType, baseN, (uint32_t)dVTemplateType, ABLayout::MK, ABLayout::KN>(
                 mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
 
             mm2B.Set<HardEvent::MTE1_MTE2>();
@@ -950,10 +950,10 @@ public:
                 mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
         } else {
             if constexpr (s2BaseSize == 128) {
-                MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                MatmulFull<Q_T, KV_T, T, (uint32_t)dTemplateType, (uint32_t)dVTemplateType, (uint32_t)dTemplateType, ABLayout::MK, ABLayout::KN>(
                     mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
             } else {
-                MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                MatmulBase<Q_T, KV_T, T, (uint32_t)dTemplateType, (uint32_t)dVTemplateType, (uint32_t)dTemplateType, ABLayout::MK, ABLayout::KN>(
                     mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
             }
         }
