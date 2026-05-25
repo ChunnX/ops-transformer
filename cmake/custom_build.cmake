@@ -104,7 +104,9 @@ if (BUILD_OPEN_PROJECT)
     endif()
 
     # op proto
-    add_library(cust_proto SHARED)
+    add_library(cust_proto SHARED
+        $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
+    )
     target_compile_options(cust_proto PRIVATE
             $<$<COMPILE_LANGUAGE:CXX>:-std=c++11>
             -fvisibility=hidden
