@@ -1139,7 +1139,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer && hasAtten) {
-        if (!constInfo.isRowInvalid || \
+        if (!constInfo.isRowInvalid && \
             attenMaskInfo.compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
             return;
         }
