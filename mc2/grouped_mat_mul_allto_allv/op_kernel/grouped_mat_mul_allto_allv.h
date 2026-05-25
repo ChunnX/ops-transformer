@@ -222,6 +222,39 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
     uint64_t numGroups = tilingData_->commonTilingInfo.numAlltoAllvCalls;
     uint64_t E = expertNumInOneRank_;
 
+    // G=1 fast path: exact original logic (known correct for all cases 1-18)
+    if (G == 1) {
+        uint64_t expertoffset = 0UL;
+        uint64_t mmInOffset = 0;
+        uint64_t mmOutOffset = 0;
+        uint32_t tokenNumVal = 0;
+        uint32_t processNum = 1;
+        for (uint64_t i = 0UL; i < E; i++) {
+            uint64_t curTokenNum = 0;
+            for (uint64_t j = 0; j < rankDim_; j++) {
+                curTokenNum += static_cast<uint64_t>(sendCnt[i + j * E]);
+            }
+            mmInOffset = expertoffset;
+            mmOutOffset = expertoffset / axisH_ * axisN1_;
+            tokenNumVal = static_cast<uint32_t>(curTokenNum);
+            if ASCEND_IS_AIC {
+                if (tokenNumVal != 0) {
+                    gmmOp.Process(this->rankId_, axisH_, axisN1_, &mmInOffset, &mmOutOffset, &tokenNumVal, processNum, i);
+                }
+            }
+            SyncAll<false>();
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    hccl_.Commit(alltoAllvHandleId_[i]);
+                }
+            }
+            expertoffset += curTokenNum * axisH_;
+        }
+        ShareMatMulCompute();
+        SyncAll<false>();
+        return;
+    }
+
     // Calculate total GMM output size to locate scratch area past it in workspace
     uint64_t totalOutTokens = 0;
     for (uint64_t e = 0; e < E; e++) {
