@@ -101,9 +101,9 @@ class DispatchFFNCombine : public OpDef {
     this->Attr("num_max_token_per_rank").AttrType(OPTIONAL).Int(0);
     this->Attr("activation").AttrType(OPTIONAL).String("");
     this->Attr("activation_clamp").AttrType(OPTIONAL).Float(0.0f);
+    this->Attr("gmm2_x_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
     this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
-    this->Attr("gmm2_x_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;

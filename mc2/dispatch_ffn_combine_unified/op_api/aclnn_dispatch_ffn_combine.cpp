@@ -63,7 +63,6 @@ aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_dispatch_ffn_combine WorkspaceSize start");
-
     OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(topkIds, return ACLNN_ERR_PARAM_NULLPTR);

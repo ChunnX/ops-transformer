@@ -64,7 +64,7 @@ struct DispatchFFNCombineConfig {
     uint32_t yIndex                  = 0U;
     uint32_t expertTokenNumsIndex    = 1U;
 
-      // ----------------------------------------------------------------
+    // ----------------------------------------------------------------
     // Attribute indices (matching def order):
     //   0: moe_expert_num            (REQUIRED Int)
     //   1: ep_world_size             (REQUIRED Int)

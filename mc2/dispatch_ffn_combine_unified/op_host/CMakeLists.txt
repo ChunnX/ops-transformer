@@ -35,7 +35,7 @@ if (BUILD_OPEN_PROJECT)  # custom
 
     add_ops_compile_options(
         OP_NAME DispatchFFNCombine
-        OPTIONS --cce-auto-sync=off
+        OPTIONS --cce-auto-sync=on
         OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
         OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
         OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
