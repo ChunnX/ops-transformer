@@ -9,11 +9,11 @@
  */
 
 /* !
- * \file tool.h
+ * \file gmm_finalize_routing_weight_quant_tool.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
+#ifndef GMM_FINALIZE_ROUTING_WEIGHT_QUANT_TOOL_H
+#define GMM_FINALIZE_ROUTING_WEIGHT_QUANT_TOOL_H
 
 #include "kernel_operator.h"
 
