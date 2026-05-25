@@ -154,10 +154,10 @@ aclnnStatus Mc2Context::GetHcclCommLink(const HcclComm &hcclHandle, uint32_t net
         }
     }
     if (index == netLinkNum) {
-        OP_LOGE(ACLNN_ERR_INNER, "No matching communication protocol found in HCCL links protocol is %d", protocol);
+        OP_LOGE(ACLNN_ERR_INNER, "No matching communication protocol found in HCCL links protocol is %u", protocol);
         return ACLNN_ERR_INNER;
     }
-    OP_LOGD("Get HCCL communication link success, protocol is: %d", protocol);
+    OP_LOGD("Get HCCL communication link success, protocol is: %u", protocol);
     return ACLNN_SUCCESS;
 }
 
@@ -400,10 +400,10 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
         OP_LOGE(ACLNN_ERR_INNER, "CheckProtocolSupport Get rank ID failed");
         return ACLNN_ERR_INNER;
     }
-    OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
+    OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
 
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        OP_LOGD("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+        OP_LOGD("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
         hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE(ACLNN_ERR_INNER, "Get rank IDs by layer failed");
@@ -421,13 +421,13 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                 return ACLNN_ERR_INNER;
             }
             if (netLinkNum == 0) {
-                OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found, srcRankID %d, dstRankID %d layer is %d",
+                OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u",
                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
             if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
-                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support UB_MEM srcRankID %d, dstRankID %d layer is %d",
-                        srcRankId, dstRankId, layerList[layerIndex]);
+                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
+                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
             layerMap[rankIdLists[rankId]] = layerList[layerIndex];
@@ -448,12 +448,12 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        OP_LOGI("HCCL communication layerNum is %d,so set protocol to UB_MEM", layerNum);
+        OP_LOGI("HCCL communication layerNum is %u,so set protocol to UB_MEM", layerNum);
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return ACLNN_SUCCESS;
     }
 
-    OP_LOGD("start CheckProtocolSupport, layerNum is %d", layerNum);
+    OP_LOGD("start CheckProtocolSupport, layerNum is %u", layerNum);
 
     auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum);
     if (aclnnRet != ACLNN_SUCCESS) {
@@ -468,7 +468,7 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
 aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
 {
     if (mc2ContextTag.size() > MAX_CONTEXT_TAG_SIZE) {
-        OP_LOGE(ACLNN_ERR_INNER, "Mc2ContextTag is too long, max size is %d, but current size is %d",
+        OP_LOGE(ACLNN_ERR_INNER, "Mc2ContextTag is too long, max size is %u, but current size is %u",
                 MAX_CONTEXT_TAG_SIZE, mc2ContextTag.size());
         return ACLNN_ERR_INNER;
     }
