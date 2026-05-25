@@ -334,29 +334,35 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
 
     // 1. tilingData
     MoeDistributeDispatchA2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchA2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "tilingData is nullptr."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        tilingData == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "parameter", CreateErrorMsg("tilingData is nullptr.").data(), "valid"),
+        return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "MoeDistributeDispatchA2 get tilingData.");
     MoeDistributeDispatchA2Info &info = tilingData->moeDistributeDispatchInfo;
     OP_LOGI(nodeName, "MoeDistributeDispatchA2 get tilingData info.");
 
     bool isLayered = MoeDistributeDispatchA2IsLayered();
-    OP_TILING_CHECK(
-        MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                   "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
+    OP_TILING_CHECK(MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "parameter",
+                        CreateErrorMsg("MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed").data(), "valid"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        MoeDistributeDispatchA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeDispatchA2 CheckWinSize Failed"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "parameter",
+                        CreateErrorMsg("MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed").data(), "valid"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "parameter",
+                        CreateErrorMsg("MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed").data(), "valid"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeDispatchA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "parameter",
+                                              CreateErrorMsg("MoeDistributeDispatchA2 CheckWinSize Failed").data(),
+                                              "valid"),
+                    return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -368,8 +374,10 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     context->SetTilingKey(tilingKey);
     // 2. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "workSpaces is nullptr."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        workSpaces == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "parameter", CreateErrorMsg("workSpaces is nullptr.").data(), "valid"),
+        return ge::GRAPH_FAILED);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + USER_WORKSPACE_A2;
 
     // 3. communication

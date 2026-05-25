@@ -883,8 +883,10 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckHcclBuffSize()
 ge::graphStatus MoeDistributeDispatchSetupTilingBase::SetWorkspace()
 {
     size_t *workspace = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName_, "get workspace failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        workspace == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "parameter", CreateErrorMsg("get workspace failed").data(), "valid"),
+        return ge::GRAPH_FAILED);
     workspace[0] = static_cast<size_t>(SYSTEM_NEED_WORKSPACE) + SDMA_NEED_WORKSPACE;
     OP_LOGD(nodeName_, "workspce[0] size is %lu", workspace[0]);
     return ge::GRAPH_SUCCESS;

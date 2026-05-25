@@ -223,7 +223,10 @@ void PrintMoeInitRoutingV3Arch35TilingData(const MoeInitRoutingV3Arch35TilingDat
 
 void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    OP_TILING_CHECK(tilingData == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "tilingData is nullptr."), return);
+    OP_TILING_CHECK(
+        tilingData == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "parameter", CreateErrorMsg("tilingData is nullptr.").data(), "valid"),
+        return);
 
     OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
 

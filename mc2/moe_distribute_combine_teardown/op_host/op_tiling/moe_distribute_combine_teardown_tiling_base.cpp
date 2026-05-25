@@ -845,8 +845,10 @@ void MoeDistributeCombineTeardownTilingBase::SetPlatformInfo()
 ge::graphStatus MoeDistributeCombineTeardownTilingBase::SetWorkspace()
 {
     size_t *workspace = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName_, "get workspace failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        workspace == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "parameter", CreateErrorMsg("get workspace failed").data(), "valid"),
+        return ge::GRAPH_FAILED);
     workspace[0] = static_cast<size_t>(SYSTEM_NEED_WORKSPACE) + SDMA_NEED_WORKSPACE; // 可能的URMA适配点
     OP_LOGD(nodeName_, "workspce[0] size is %ld", workspace[0]);
     return ge::GRAPH_SUCCESS;
@@ -879,12 +881,14 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::MoeDistributeCombineTear
     SetDimsToTilingData();
 
     OP_TILING_CHECK(CheckHcclBuffsize() != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "Tiling set hccl failed"),
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "parameter",
+                                              CreateErrorMsg("Tiling set hccl failed").data(), "valid"),
                     return ge::GRAPH_FAILED);
     SetPlatformInfo();
 
     OP_TILING_CHECK(SetWorkspace() != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "Tiling set workspace failed"),
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "parameter",
+                                              CreateErrorMsg("Tiling set workspace failed").data(), "valid"),
                     return ge::GRAPH_FAILED);
 
     SetTilingKey();
