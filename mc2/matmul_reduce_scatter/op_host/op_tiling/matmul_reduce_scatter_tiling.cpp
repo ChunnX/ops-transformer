@@ -58,7 +58,8 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
     constexpr uint64_t minN = 7168;
     // mata 交织场景
     if (dValue % mataD == 0 && nValue >= minN && ubSize == UB_SIZE &&
-        (args.aType == matmul_tiling::DataType::DT_FLOAT16 || args.aType == matmul_tiling::DataType::DT_BF16) && args.aicCoreNum >= 24) {  // 24 核最小核数
+        (args.aType == matmul_tiling::DataType::DT_FLOAT16 || args.aType == matmul_tiling::DataType::DT_BF16) &&
+        args.aicCoreNum >= 24) { // 24 核最小核数
         baseN = 96;   // baseN 经验值 96
         baseD = 512;  // baseD 经验值 512
         return;
@@ -74,8 +75,12 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
         baseD = std::max(ops::CeilAlign(dValue, c0), uint64_t(1));
         uint64_t nDim = vectorCoreNum;
         baseN = ubSize / NUMBER_TWO / dtypeSize / baseD;
-        uint64_t round = std::max(Ops::Transformer::MathUtil::CeilDivision(Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), baseN), 1UL);
-        baseN = std::max(Ops::Transformer::MathUtil::CeilDivision(Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), round), NCALC_THRES);
+        uint64_t round = std::max(
+            Ops::Transformer::MathUtil::CeilDivision(Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), baseN),
+            1UL);
+        baseN = std::max(
+            Ops::Transformer::MathUtil::CeilDivision(Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), round),
+            NCALC_THRES);
         while (baseN > NCALC_THRES) {
             if (CheckUbOverFlowMC2(ubSize, nAligned16, nValue, baseN, baseD, dtypeSize)) {
                 baseN--;
@@ -94,7 +99,8 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
         uint64_t dLoop = Ops::Transformer::MathUtil::CeilDivision(dAlignedC0, baseD);
         uint64_t dTail = dAlignedC0 % baseD;
         if (dTail > 0 && dTail < (MIN_TAIL / dtypeSize)) {
-            if (baseD * dtypeSize == CALC_ND_BASIC.at(0)) {  // if dtail < 0.5K && baseD == 3k, give up and return bestbase
+            if (baseD * dtypeSize ==
+                CALC_ND_BASIC.at(0)) { // if dtail < 0.5K && baseD == 3k, give up and return bestbase
                 continue;
             }
             dLoop--;
@@ -525,7 +531,8 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
     // 为通信而进行调整搬运
     if (args.cmdType == mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER) {
         if (args.rankDim <= 0 || static_cast<bool>(args.orgMValue % args.rankDim)) {
-            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "rankDim", std::to_string(args.rankDim).c_str(), "> 0 and divisible by orgMValue");
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "rankDim", std::to_string(args.rankDim).c_str(),
+                                      "> 0 and divisible by orgMValue");
             return ge::GRAPH_FAILED;
         }
         args.mValue /= args.rankDim; // 必须能够整数切分, 并且不能切K

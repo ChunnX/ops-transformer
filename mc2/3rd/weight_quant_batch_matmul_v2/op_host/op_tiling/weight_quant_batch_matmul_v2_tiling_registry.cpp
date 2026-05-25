@@ -40,9 +40,11 @@ constexpr int32_t ANTI_REG_PRIORITY = 8;
 constexpr int32_t ASW_PRIORITY = 9;
 
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingSplitK, SPLIT_K_PRIORITY);
-REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingMsdGroup, MSD_GROUP_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingMsdGroup,
+                             MSD_GROUP_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2Msd, MSD_PRIORITY);
-REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2CustomNzSplitK, CUSTOM_SPLITK_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2CustomNzSplitK,
+                             CUSTOM_SPLITK_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingCustom, CUSTOM_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingFixpipe, FIXPIPE_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2WeightNz, WEIGHT_NZ_PRIORITY);
