@@ -192,8 +192,8 @@ def mega_moe(
     l1_weights_sf: Optional[List[torch.Tensor]] = None,
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
-    weight1_type: Optional[int] = 28,
-    weight2_type: Optional[int] = 28
+    weight1_type: Optional[int] = None,
+    weight2_type: Optional[int] = None
 ):
 
     return torch.ops.npu_ops_transformer.npu_mega_moe(
