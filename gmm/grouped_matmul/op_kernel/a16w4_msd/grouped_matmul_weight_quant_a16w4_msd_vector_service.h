@@ -18,7 +18,7 @@
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block_config.h"
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
-#include "tool.h"
+#include "a16w4_msd_tool.h"
 
 using AscendC::RoundMode;
 

@@ -19,7 +19,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "static_diag_constant.h"
-#include "tool.h"
+#include "a16w4_msd_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 #define GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM template <typename mm1InputType, typename mm1OutputType>
