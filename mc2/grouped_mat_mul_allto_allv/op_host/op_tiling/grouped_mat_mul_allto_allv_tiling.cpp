@@ -285,6 +285,32 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus GroupedMatmulAllToAllvTiling::GetPlatformInfo()
+{
+    auto status = Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon::GetPlatformInfo();
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Failed to get platform info."), return ge::GRAPH_FAILED);
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    return ge::GRAPH_SUCCESS;
+}
+
+uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
+{
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (npuArch_ != NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    }
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
+                                                  localParams_.isMmWeightTrans, commMode);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+    return tilingKey;
+}
+
 static ge::graphStatus GroupedMatMulAlltoAllvTilingFunc(gert::TilingContext *context)
 {
     return TilingRegistry::GetInstance().DoTilingImpl(context);
