@@ -36,6 +36,7 @@ constexpr size_t MX_SPLIT_K_SINGLE_X_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
 constexpr size_t MX_SPLIT_K_SCALE_DIM = 3UL;
 constexpr size_t MX_SPLIT_K_PER_TOKEN_SCALE_DIM = 3UL;
+constexpr size_t MX_SCALE_NZ_TAIL_DIM = 5UL;
 
 constexpr size_t MX_TUPLE_X_DIM_INDEX = 0UL;
 constexpr size_t MX_TUPLE_WEIGHT_DIM_INDEX = 1UL;
@@ -49,6 +50,7 @@ constexpr int64_t CUBE_BLOCK_SIZE_64 = 64L;
 constexpr int64_t PERTILE_GROUP_SIZE = 128L;
 constexpr int64_t MXFP_DIVISOR_SIZE = 64L;
 constexpr int64_t MXFP_MULTI_BASE_SIZE = 2L;
+constexpr int64_t MX_SCALE_NZ_C0_SIZE = 16L;
 constexpr int64_t EVEN_FACTOR = 2L;
 constexpr int64_t LAST_TWO_DIM_INDEX = 2L;
 
