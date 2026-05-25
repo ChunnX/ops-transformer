@@ -31,8 +31,7 @@ aclnnStatus AclnnGroupedMatmulNoQuantDAV3510Checker::CheckTensorListLength(
       groupSize = tensorList->Size();
   }
   if (groupSize > MAX_LENGTH) {
-      OP_LOGE_FOR_INVALID_LISTSIZE("aclnnGroupedMatmulGetWorkspaceSize", paramName,
-                                   std::to_string(groupSize).c_str(),
+      OP_LOGE_FOR_INVALID_LISTSIZE("aclnnGroupedMatmulGetWorkspaceSize", paramName, std::to_string(groupSize).c_str(),
                                    ("no more than " + std::to_string(MAX_LENGTH)).c_str());
       return ACLNN_ERR_PARAM_INVALID;
   }
