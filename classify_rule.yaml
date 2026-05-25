@@ -427,7 +427,16 @@ mc2_moe@ops-transformer:
     src:  
         release:
             huawei_style: 
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/arch35/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_tiling_helper.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_tiling_helper.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_tiling_v2.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_v2_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/moe_distribute_dispatch_v2_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/moe_distribute_dispatch_v2_infershape.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_graph/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/CMakeLists.txt
@@ -446,7 +455,15 @@ mc2_moe@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_base.h
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_constant.h
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_kernel/quantize_functions.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/op_tiling/arch35/
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_v2_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_v2_tiling_base.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/moe_distribute_combine_v2_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/moe_distribute_combine_v2_infershape.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_graph/
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/CMakeLists.txt
