@@ -49,6 +49,9 @@ private:
     aclnnStatus CheckGroupedMatmulMxfp8() const;
     aclnnStatus CheckGroupedMatmulMxfp4() const;
     aclnnStatus CheckGroupedMatmulFp4MxDimValue() const;
+    bool IsScaleNz(size_t index = 0) const;
+    aclnnStatus CheckMxScaleNzStorageShape(size_t index, int64_t nDimValue, int64_t kDimValue,
+                                           int64_t groupNum) const;
 
     aclnnStatus CheckNonPerGroupQuantDim() const;
     aclnnStatus CheckNonPerGroupQuantPertokenShape() const;

@@ -227,7 +227,8 @@ public:
         }
     }
 
-    template <GroupedMatmul::QuantMode aQuantMode, int64_t bC0Align = MATMUL_MNK_ALIGN_INT8>
+    template <GroupedMatmul::QuantMode aQuantMode, int64_t bC0Align = MATMUL_MNK_ALIGN_INT8,
+              CubeFormat layoutScaleB = CubeFormat::ND>
     __aicore__ inline AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
     GetQuantOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0)
     {
@@ -253,7 +254,10 @@ public:
             } else {
                 Get<2>(offset) = mOffset * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE; // 2: idx of x1Scale
             }
-            if constexpr (isTransB) {
+            if constexpr (layoutScaleB == CubeFormat::NZ) {
+                const int64_t scaleGroupKAlign = CeilAlign(CeilDiv(k, MXFP_DIVISOR_SIZE), OUTER_SIZE);
+                Get<3>(offset) = (nOffset / OUTER_SIZE) * scaleGroupKAlign * OUTER_SIZE * MXFP_MULTI_BASE_SIZE;
+            } else if constexpr (isTransB) {
                 Get<3>(offset) = nOffset * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE; // 3: idx of x2Scale
             } else {
                 Get<3>(offset) = nOffset * MXFP_MULTI_BASE_SIZE; // 3: idx of x2Scale

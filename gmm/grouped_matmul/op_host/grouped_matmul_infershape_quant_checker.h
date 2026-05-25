@@ -52,6 +52,7 @@ private:
     ge::graphStatus CheckPertokenShapeInNormalQuantMode(const gert::InferShapeContext *context,
                                                         const GMMAttrs &gmmAttrs,
                                                         const gert::Shape *perTokenScaleShape) const;
+    bool IsScaleNz(const gert::InferShapeContext *context) const;
     bool IsDoubleScaleScenario(const gert::Shape *scaleShape, const gert::Shape *perTokenScaleShape) const;
     bool IsPerTileQuantMode(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs) const;
     bool IsDoubleScaleScenario(const gert::Shape *scaleShape, const gert::Shape *perTokenScaleShape);
