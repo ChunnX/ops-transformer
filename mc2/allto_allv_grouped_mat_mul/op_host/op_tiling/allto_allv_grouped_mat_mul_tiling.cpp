@@ -796,6 +796,10 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     if (transMmWeightPtr_ != nullptr) {
         transMmWeight_ = *transMmWeightPtr_;
     }
+    // mmX为空时transMmWeight强制为false，避免base class GetMmWeightShapeInfo报错
+    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) == nullptr) {
+        transMmWeight_ = false;
+    }
     permuteOutFlagPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
     if (permuteOutFlagPtr_ != nullptr) {
         permuteOutFlag_ = *permuteOutFlagPtr_;
