@@ -72,20 +72,11 @@
 
 ### 3.1 接口功能概览
 
-实现分组矩阵乘计算：$y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i] + bias_i,\ i=1...g$，其中 $g$ 为分组数。
-
-- **M 轴分组（groupType=0）**：$k_i,n_i$ 各组相同，$m_i$ 可不同。
-- **K 轴分组（groupType=2）**：$m_i,n_i$ 各组相同，$k_i$ 可不同。
-- **不分组（groupType=-1）**：各组 shape 完全独立。
+实现分组矩阵乘计算。分组方式和计算公式详见 [GroupedMatmul README - 功能说明](../README.md#3-功能说明)。
 
 > 详细计算公式和量化原理请参见 [GroupedMatmul README - 计算公式](../README.md#32-计算公式)。
 
-**版本演进：**
-
-| 版本变化 | Atlas A3/A2 | Ascend 950PR/950DT |
-|----------|-------------|---------------------|
-| V4 → V5 | 增加可选参数 `tuningConfigOptional`（[0]=预期 token 数，[1]=A8W4 weight NZ 格式使能，[2]=额外内存上限） | — |
-| V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight 转置；x/weight/y 单 Tensor 非量化 FLOAT32；伪量化 weight=INT4 perchannel/pergroup | 支持分组轴；非量化 x/weight 转置；静态量化 T-C/T-T；动态量化 K-C/K-T/T-T/T-C/MX/G-B；伪量化 weight=INT4/FLOAT8 系列（仅 perchannel） |
+> 版本演进详见 [GroupedMatmul README - 版本演进](../README.md#33-版本演进)。
 
 ### 3.2 两段式接口说明
 
@@ -340,7 +331,107 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
   - 非量化/伪量化仅支持 0。
   - 全量化下 x/weight=INT8、静态 T-C 或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
 
-> 各类场景的数据类型组合表格请参见 [GroupedMatmul README - Ascend 950PR/950DT 约束说明](../README.md#52-ascend-950prascend-950dt)。
+#### 非量化场景数据类型
+
+| groupType | x | weight | biasOptional | out |
+|:---:|:---:|:---:|:---|:---|
+| -1/0/2 | BFLOAT16 | BFLOAT16 | BFLOAT16/FLOAT32/null | BFLOAT16 |
+| -1/0/2 | FLOAT16 | FLOAT16 | FLOAT16/FLOAT32/null | FLOAT16 |
+| -1/0/2 | FLOAT32 | FLOAT32 | FLOAT32/null | FLOAT32 |
+
+#### 静态量化场景数据类型
+
+| groupType | x | weight | biasOptional | scaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|
+| 0 | INT8 | INT8 | INT32/null | UINT64/INT64 | BFLOAT16/FLOAT16/INT8 |
+| 0 | INT8 | INT8 | INT32/null | null/UINT64/INT64 | INT32 |
+| 0 | INT8 | INT8 | INT32/BFLOAT16/FLOAT32/null | BFLOAT16/FLOAT32 | BFLOAT16 |
+| 0 | INT8 | INT8 | INT32/FLOAT16/FLOAT32/null | FLOAT32 | FLOAT16 |
+| 0 | HIFLOAT8 | HIFLOAT8 | null | UINT64/INT64 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | UINT64/INT64 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+
+- **scaleOptional shape**（$g$=分组数）：
+
+| groupType | 子场景 | shape |
+|:---:|:---|:---|
+| 0/2 | perchannel | `(g, N)` |
+| 0/2 | pertensor | `(g, 1)` 或 `(g,)` |
+
+#### 动态量化（T-T/T-C/K-T/K-C）场景数据类型
+
+| groupType | x | weight | biasOptional | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|:---|
+| 0 | INT8 | INT8 | INT32/BFLOAT16/FLOAT32/null | BFLOAT16/FLOAT32 | FLOAT32 | BFLOAT16 |
+| 0 | INT8 | INT8 | INT32/FLOAT16/FLOAT32/null | FLOAT32 | FLOAT32 | FLOAT16 |
+| 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+
+- **scaleOptional shape**：同上表。
+- **perTokenScaleOptional shape**：
+
+| groupType | 子场景 | shape |
+|:---:|:---|:---|
+| 0 | pertoken | `(M,)` |
+| 0 | pertensor | `(g, 1)` 或 `(g,)` |
+| 2 | pertoken | `(g, M)` |
+| 2 | pertensor | `(g, 1)` 或 `(g,)` |
+
+#### 动态量化（MX）场景
+
+| groupType | x | weight | biasOptional | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT8_E8M0 | FLOAT8_E8M0 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0 | FLOAT4_E2M1 | FLOAT4_E2M1 | FLOAT32/null | FLOAT8_E8M0 | FLOAT8_E8M0 | BFLOAT16/FLOAT16/FLOAT32 |
+
+- **scaleOptional shape**：
+
+| groupType | shape |
+|:---:|:---|
+| 0 | `(g, N, ceil(K/64), 2)`（weight 转置）/ `(g, ceil(K/64), N, 2)`（weight 不转置） |
+| 2 | `(K/64 + g, N, 2)` |
+
+- **perTokenScaleOptional shape**：
+
+| groupType | shape |
+|:---:|:---|
+| 0 | `(M, ceil(K/64), 2)` |
+| 2 | `(K/64 + g, M, 2)` |
+
+- x 为 FLOAT4_E2M1 时，K 须为偶数且 K≠2；weight 非转置时 N 须为偶数。
+
+#### 动态量化（G-B）场景
+
+| groupType | x | weight | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|
+| 0/2 | HIFLOAT8 | HIFLOAT8 | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+
+- **scaleOptional shape**（$g$=分组数）：
+
+| groupType | shape |
+|:---:|:---|
+| 0 | `(g, ceil(N/gsN), ceil(K/gsK))`（转置）/ `(g, ceil(K/gsK), ceil(N/gsN))`（非转置），gsN=gsK=128 |
+| 2 | `(K/gsK + g, ceil(N/gsN))` |
+
+- **perTokenScaleOptional shape**：
+
+| groupType | shape |
+|:---:|:---|
+| 0 | `(M, ceil(K/gsK))` |
+| 2 | `(K/gsK + g, M)` |
+
+#### 伪量化场景数据类型
+
+| groupType | x | weight | biasOptional | antiquantScaleOptional | antiquantOffsetOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|:---|
+| -1/0 | BFLOAT16 | INT8/INT4 | BFLOAT16/FLOAT32/null | BFLOAT16 | BFLOAT16/null | BFLOAT16 |
+| -1/0 | FLOAT16 | INT8/INT4 | FLOAT16/null | FLOAT16 | FLOAT16/null | FLOAT16 |
+| 0 | BFLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | BFLOAT16/FLOAT32/null | BFLOAT16 | null | BFLOAT16 |
+| 0 | FLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16/null | FLOAT16 | null | FLOAT16 |
+
+- weight 为 FLOAT8 系列时，antiquantOffsetOptional 仅支持空指针或空 TensorList，weight 仅支持转置。
 
 #### groupType 支持场景
 
