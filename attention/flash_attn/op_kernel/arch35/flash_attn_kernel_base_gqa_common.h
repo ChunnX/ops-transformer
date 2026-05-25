@@ -56,10 +56,7 @@ public:
     GlobalTensor<int32_t> seqUsedGmQ;
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
-    GlobalTensor<uint32_t> fdMetaDataGm;
-    GlobalTensor<float> softmaxLseGm;
     __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
 
     ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
 
@@ -91,7 +88,6 @@ public:
     uint32_t dealZerosMSize = 0;
 
     uint32_t sectionNum_;
-    bool isFd;
 
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -99,13 +95,6 @@ public:
     uint32_t gS1OEnd_;
     uint32_t s2OStart_;
     uint32_t s2OEnd_;
-    uint32_t coreFirstTmpOutWsPos_;
-
-    FDparamsX fdParams_;
-
-    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2];
-    TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
-    TBuf<> SharedBuffer3;
 
 __aicore__ inline void InitConstInfo()
     {
@@ -124,11 +113,6 @@ __aicore__ inline void InitConstInfo()
         return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
     }
 
-    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
-    {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
-    }
-
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
         bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
@@ -137,25 +121,6 @@ __aicore__ inline void InitConstInfo()
         bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
-        coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
-    }
-
-    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
-    {
-        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
-        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
-        if (!fdParams_.fdCoreEnable) {
-            return;
-        }
-        fdParams_.fdBN2Idx =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
-        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
-        fdParams_.fdWorkspaceIdx =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
-        fdParams_.fdS2SplitNum =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 };
 
@@ -248,6 +213,12 @@ public:
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
     FlashAttentionGqaContext* ctx;
+
+    bool isFd = false;
+    uint32_t coreFirstTmpOutWsPos_ = 0;
+    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2];
+    TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
+    TBuf<> SharedBuffer3;
 
     __aicore__ inline FlashAttentionVectorData(FlashAttentionGqaContext* c) : vecFaBlock(c->constInfo), vecFdBlock(c->constInfo), ctx(c){};
 };

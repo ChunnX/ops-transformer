@@ -29,6 +29,8 @@
 #include "../../../common/op_kernel/memory_copy.h"
 #include "flash_attn_tiling_data.h"
 
+using namespace optiling;
+
 namespace BaseApi {
 struct TaskInfo {
     uint32_t bIdx;
@@ -132,6 +134,8 @@ protected:
     const ConstInfoX &constInfo;
     const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
     TaskInfo taskInfo{};
+    FDparamsX fdParams_;
+    GlobalTensor<uint32_t> fdMetaDataGm;
 
 private:
     // ================================FD Local Buffer区====================================
@@ -178,6 +182,31 @@ public:
     {
         this->qActSeqLensParser = &qParser;
         this->kvActSeqLensParser = &kvParser;
+    }
+
+    __aicore__ inline void SetFdMetaDataGm(__gm__ uint32_t *fdMetaDataPtr, uint32_t sectionNum)
+    {
+        this->fdMetaDataGm.SetGlobalBuffer(fdMetaDataPtr, FA_AIV_CORE_NUM * 16U * sectionNum);
+    }
+
+    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t aivIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * aivIdx + metaIdx;
+    }
+
+    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
+    {
+        uint32_t aivIdx = GetBlockIdx();
+        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
+        if (!fdParams_.fdCoreEnable) {
+            return;
+        }
+        fdParams_.fdBN2Idx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
+        fdParams_.fdWorkspaceIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
+        fdParams_.fdS2SplitNum = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
+        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
@@ -473,26 +502,26 @@ int64_t safePreToken = tilingData->flashAttnAttenMaskParams.winLefts;
     }
 
 public:
-    __aicore__ inline void FlashDecode(FDparamsX &fd)
+    __aicore__ inline void FlashDecode()
     {
-        if (!fd.fdCoreEnable) {
+        if (!fdParams_.fdCoreEnable) {
             return;
         }
         uint32_t fdBalanceMBaseSize = 8U;
-        uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
+        uint32_t fdBalanceMSplitNum = (fdParams_.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
         uint32_t fdBalanceMTailSize =
-            (fd.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fd.mLen % fdBalanceMBaseSize;
+            (fdParams_.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fdParams_.mLen % fdBalanceMBaseSize;
 
         uint32_t reduceGlobaLoop = 0;
         uint32_t reduceMLoop = 0;
 
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
-        taskInfo.bIdx = fd.fdBN2Idx / tilingData->flashAttnBaseParams.n2Size;
-        taskInfo.n2Idx = fd.fdBN2Idx % tilingData->flashAttnBaseParams.n2Size;
-        taskInfo.gS1Idx = fd.fdMIdx * s1BaseSize;
-        taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
-        uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
+        taskInfo.bIdx = fdParams_.fdBN2Idx / tilingData->flashAttnBaseParams.n2Size;
+        taskInfo.n2Idx = fdParams_.fdBN2Idx % tilingData->flashAttnBaseParams.n2Size;
+        taskInfo.gS1Idx = fdParams_.fdMIdx * s1BaseSize;
+        taskInfo.actualCombineLoopSize = fdParams_.fdS2SplitNum; // 当前规约任务kv方向有几份
+        uint64_t combineTaskPrefixSum = fdParams_.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * s1BaseSize;
 
         for (uint32_t fdS1gOuterMIdx = tmpFdS1gOuterMStart; fdS1gOuterMIdx <= tmpFdS1gOuterMEnd;
@@ -501,7 +530,7 @@ public:
             if (fdS1gOuterMIdx == fdBalanceMSplitNum - 1) {
                 actualGSplitSize = fdBalanceMTailSize;
             }
-            uint32_t startRow = fd.mStart + fdS1gOuterMIdx * fdBalanceMBaseSize;
+            uint32_t startRow = fdParams_.mStart + fdS1gOuterMIdx * fdBalanceMBaseSize;
 
             LocalTensor<T> lseExp = fdLseExpBuf;
             LocalTensor<T> reduceOut = fdReduceBuf;
