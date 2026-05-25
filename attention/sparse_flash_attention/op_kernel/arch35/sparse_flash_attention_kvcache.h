@@ -139,7 +139,9 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
         if constexpr (IS_SPLIT_G) {
-            runParam.mRealSize = runParam.mRealSize >> 1;
+            uint32_t firstHalfG = (constInfo.gSize + 1) >> 1;
+            uint32_t secondHalfG = constInfo.gSize - firstHalfG;
+            runParam.mRealSize = runParam.s1RealSize * ((constInfo.aicIdx % 2 == 0) ? firstHalfG : secondHalfG);
         }
     }
 
@@ -196,9 +198,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                     runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
                     runParam.sOuterOffset * constInfo.gSize;
             }
-            uint32_t aicIdx = constInfo.aivIdx >> 1U;
-            if (IS_SPLIT_G && aicIdx % 2U != 0) {
-                runParam.softmaxLseOffset += 64; // splitG时，需要偏移64
+            if (IS_SPLIT_G && constInfo.aicIdx % 2U != 0) {
+                runParam.softmaxLseOffset += (constInfo.gSize + 1U) >> 1U; // splitG时，需要偏移前一半G
             }
             if (constInfo.subBlockIdx == 1) {
                 runParam.softmaxLseOffset += runParam.firstHalfMRealSize;

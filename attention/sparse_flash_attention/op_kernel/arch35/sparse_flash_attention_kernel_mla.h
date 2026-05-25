@@ -141,10 +141,12 @@ template <typename CubeBlockType, typename VecBlockType>
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
+        constInfo.aicIdx = this->aicIdx;
         constInfo.aivIdx = 0;
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
+        constInfo.aicIdx = this->aicIdx;
         this->tilingData = tiling;
     }
 
@@ -642,7 +644,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64; // N1=128场景，相邻cube核处理一个s1，第一个cube核承担0-63行g，第二个cube核承担后64行g
+        uint32_t firstHalfG = (constInfo.gSize + 1) >> 1;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : firstHalfG; // N1>64场景，相邻cube核处理一个s1，第一个cube核承担前一半，第二个cube核承担后一半
     } else {
         runParam.goIdx = 0;
     }
