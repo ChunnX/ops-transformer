@@ -12,6 +12,7 @@ from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
 from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
+from .combine_normal import npu_moe_combine_normal
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
