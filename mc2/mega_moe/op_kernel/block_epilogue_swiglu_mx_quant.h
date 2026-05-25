@@ -47,7 +47,7 @@ constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
 constexpr uint32_t BLOCK_SIZE = 32;
-constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
+constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
@@ -573,23 +573,45 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
             uint32_t elementNum = nSize;
             AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
-                AscendC::MicroAPI::RegTensor<bfloat16_t> vreg7;
-                AscendC::MicroAPI::RegTensor<float> swishInput, gateInput;
-                AscendC::MicroAPI::RegTensor<float> vreg1, vreg2, vreg3, vreg4, vreg5, vreg6, swishOutput;
+                AscendC::MicroAPI::RegTensor<DataTypeIn> swishInput0, gateInput0, swishInput1, gateInput1;
+                AscendC::MicroAPI::RegTensor<float> swishData0, swishData1, gateData0, gateData1;
 
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat; // 计算的数据的偏移量
+                AscendC::MicroAPI::DataCopy(swishInput0, firstSrc + l0cOutOffset); // swishInput0:x bf16
+                AscendC::MicroAPI::DataCopy(gateInput0, secondSrc + l0cOutOffset); // gateInput0:y  bf16
+                // 1.交错数据，为cast做准备
+                AscendC::MicroAPI::Interleave(swishInput0, swishInput1, swishInput0, swishInput1);
+                AscendC::MicroAPI::Interleave(gateInput0, gateInput1, gateInput0, gateInput1);
+                // 2.数据类型转换
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(swishData0, swishInput0, mask);
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(swishData1, swishInput1, mask);
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(gateData0, gateInput0, mask);
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(gateData1, gateInput1, mask);
+                // 计算
+                uint16_t calBlockNum = sizeof(float) / sizeof(DataTypeIn); // 2
+                uint16_t calBlockSize = sizePerRepeat / calBlockNum; // 128/2 = 64
+                for (uint16_t i = 0; i < calBlockNum; i++) {
+                    AscendC::MicroAPI::RegTensor<bfloat16_t> output; // output:swish(x)*y
+                    AscendC::MicroAPI::RegTensor<float> swishData = i == 0 ? swishData0 : swishData1;
+                    AscendC::MicroAPI::RegTensor<float> gateData = i == 0 ? gateData0 : gateData1;
+                    AscendC::MicroAPI::RegTensor<float> verg2, verg3, verg4, verg5, verg6, swishOutput;
+                    
+                    // swish
+                    AscendC::MicroAPI::Muls(verg2, swishData, -(scalarOne), mask); // verg2:-x
+                    AscendC::MicroAPI::Exp(verg3, verg2, mask);                     // verg3:exp(-x)
+                    AscendC::MicroAPI::Adds(verg4, verg3, scalarOne, mask);         // verg4:exp(-x)+1
+                    AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishData, verg4,
+                                                            mask); // swishOutput:swish(x)=x/(exp(-x)+1)
+                    // swish * gate
+                    AscendC::MicroAPI::Mul(verg6, swishOutput, gateData, mask); // verg6:swish(x)*y
 
-                AscendC::MicroAPI::DataCopy(swishInput, firstSrc + l0cOutOffset);
-                AscendC::MicroAPI::Muls(vreg2, swishInput, -(scalarOne), mask);
-                AscendC::MicroAPI::Exp(vreg3, vreg2, mask);
-                AscendC::MicroAPI::Adds(vreg4, vreg3, scalarOne, mask);
-                AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishInput, vreg4, mask);
-                AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset);
-                AscendC::MicroAPI::Mul(vreg6, swishOutput, gateInput, mask);
-                AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(vreg7, vreg6, mask);
-                uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat; // 计算的数据的偏移量
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    gluResAddr + dstUbOffset, vreg7, mask);
+                    AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(output, verg6,
+                                                                                mask); // verg7:verg6转为bfloat16
+                    // 计算的数据的偏移量
+                    uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat + i * calBlockSize;
+                    AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                        gluResAddr + dstUbOffset, output, mask); // gluRes:swish(x)*y 搬运到目标地址
+                }
             }
         }
     }

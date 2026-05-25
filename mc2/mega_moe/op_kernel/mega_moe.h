@@ -178,7 +178,8 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
+        QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
 
@@ -224,7 +225,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     groupList_ = cumsumInWorkSpace_[(worldSize_ - 1) * expertPerRank_];
     groupFlagListWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
     epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
-        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
     perRankStridesInTokenPerExpert_ = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ = params_.peermemInfo.ptrTokenPerExpert +
@@ -766,7 +767,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }

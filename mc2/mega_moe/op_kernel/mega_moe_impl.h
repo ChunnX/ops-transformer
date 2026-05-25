@@ -35,13 +35,13 @@ using namespace AscendC;
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
 constexpr uint32_t ALIGN32 = 32U;
-constexpr uint32_t L1_TILE_M = 128;
+constexpr uint32_t L1_TILE_M = 256;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
 constexpr uint32_t SCALE_K_L1_RATE = 2;
 constexpr uint32_t SWIGLU_N_HALF = 2;
-constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
+constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
@@ -118,6 +118,25 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+
+    GlobalTensor<ElementA> aGlobalTensor;
+    GlobalTensor<ElementB> bGlobalTensor;
+
+    aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
+    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
+
+    // Matrix A or Matrix B does not have duplicate data reads. Setting L2 Cache to Disable,
+    // data reads will bypass L2 Cache.
+    if (CeilDiv(m, L1_TILE_M) == 1) {
+        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    } else {
+        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+    }
+    if (CeilDiv(n, L1_TILE_N) == 1) {
+        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    } else {
+        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+    }
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -280,6 +299,25 @@ __aicore__ inline void GroupMatmul2(
     ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
     LocalTensor<ElementC> l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+
+    GlobalTensor<ElementA> aGlobalTensor;
+    GlobalTensor<ElementB> bGlobalTensor;
+
+    aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
+    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
+
+    // Matrix A or Matrix B does not have duplicate data reads. Setting L2 Cache to Disable,
+    // data reads will bypass L2 Cache.
+    if (CeilDiv(m, L1_TILE_M) == 1) {
+        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    } else {
+        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+    }
+    if (CeilDiv(n, L1_TILE_N) == 1) {
+        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    } else {
+        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+    }
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
