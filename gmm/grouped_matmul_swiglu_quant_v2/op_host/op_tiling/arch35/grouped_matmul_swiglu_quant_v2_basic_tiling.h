@@ -71,12 +71,12 @@ private:
     bool IsFp8Input();
     bool IsMxFp4WeightNz() const;
     bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
-    ge::graphStatus CalMxFp4WeightNzL1Tiling();
-    ge::graphStatus CalMxFp4WeightNzL1Depth(uint64_t leftL1Size);
-    uint64_t GetMxFp4WeightNzDepthWithHighBW(uint64_t mnL1) const;
-    void ModifyMxFp4WeightNzDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
+    ge::graphStatus CalWeightNzL1Tiling();
+    ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
+    uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
+    void ModifyWeightNzDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
                                             uint64_t baseScaleABSize);
-    ge::graphStatus CalMxFp4WeightNzScaleFactors();
+    ge::graphStatus CalWeightNzScaleFactors();
     // add for pertoken quant mode
     bool AnalyzeAttrsPertoken();
     bool IsB8(ge::DataType dtype);
