@@ -449,7 +449,7 @@ static MatmulAlltoAllTestParam g_testCases[] = {
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {176, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-    "group", 2, 0, 0, 0, 0, 0, 0, true, false, 0,
+    "group", 2, 0, 0, 0, 0, 0, 0, true, false, 0, "default",
     "Ascend910_93", 24,
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
