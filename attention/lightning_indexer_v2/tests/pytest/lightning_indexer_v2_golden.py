@@ -533,9 +533,9 @@ def trans_prefix_actseq(self,list):
 def liv2_output_single(params):
     # TODO
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
-    qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, \
-    layout_query, layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
-    q_scale_datarange, k_scale_datarange, cmp_ratio = params
+    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, \
+    layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange,\
+    cmp_ratio, return_value, max_seqlen_q = params
 
     test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                                 head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlensk, seqused_q, seqused_k,
