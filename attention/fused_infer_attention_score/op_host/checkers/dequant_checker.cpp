@@ -1426,11 +1426,12 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
                     return ge::GRAPH_FAILED);
     } else if (enableMxfp8FullQuant_) {
         OP_CHECK_IF(
-            (fiaInfo.qkHeadDim != NUM_128 || fiaInfo.vHeadDim != NUM_128),
+            !((fiaInfo.qkHeadDim == NUM_128 && fiaInfo.vHeadDim == NUM_128) ||
+            (fiaInfo.qkHeadDim == NUM_64 && fiaInfo.vHeadDim == NUM_64)),
             OP_LOGE(fiaInfo.opName,
                     "In the MXFP8 full quant scenario, the D axis of query and key (%u) and the D axis of value "
-                    "(%u) are only support %u.",
-                    fiaInfo.qkHeadDim, fiaInfo.vHeadDim, NUM_128),
+                    "(%u) are only support %u or %u.",
+                    fiaInfo.qkHeadDim, fiaInfo.vHeadDim, NUM_128, NUM_64),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF((fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < NUM1),

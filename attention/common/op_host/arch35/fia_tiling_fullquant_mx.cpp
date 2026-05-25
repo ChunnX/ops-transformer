@@ -617,7 +617,7 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyQuantMode()
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyHasRope()
 {
     tilingKeyInfo_.hasRope = false;
-    if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D128) {
+    if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
         tilingKeyInfo_.hasRope = true;
     }
 }
