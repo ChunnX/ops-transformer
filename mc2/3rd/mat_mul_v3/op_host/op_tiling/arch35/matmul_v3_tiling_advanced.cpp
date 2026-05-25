@@ -192,10 +192,10 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
     uint64_t kIdxB = args.isBTrans ? 1ULL : 0ULL;
     int64_t k = mkDims[kIdxA];
     if (k != knDims[kIdxB]) {
-      std::string valStr = std::to_string(k) + " and " + std::to_string(knDims[kIdxB]);
-      OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "x1 and x2",
-          valStr.c_str(), "k dims of x1 and x2 should be equal");
-      return ge::GRAPH_FAILED;
+        std::string valStr = std::to_string(k) + " and " + std::to_string(knDims[kIdxB]);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "x1 and x2",
+            valStr.c_str(), "k dims of x1 and x2 should be equal");
+        return ge::GRAPH_FAILED;
     }
     uint64_t mIdx = args.isATrans ? 1ULL : 0ULL;
     uint64_t nIdx = args.isBTrans ? 0ULL : 1ULL;
