@@ -525,7 +525,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
         SyncAll<true>();
         return;
     }
-    PRINTF("AIVID %d epRankID %d, startExpertId_ = %d, endExpertId_ = %d, sendExpertNum_ = %d\n", aivId_, epRankId_, startExpertId_, endExpertId_, sendExpertNum_);
+    // PRINTF("AIVID %d epRankID %d, startExpertId_ = %d, endExpertId_ = %d, sendExpertNum_ = %d\n", aivId_, epRankId_, startExpertId_, endExpertId_, sendExpertNum_);
 
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
@@ -674,7 +674,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
             WaitDispatch();      // 步骤3: 等待所有rank完成发送
-            //LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
+            LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();
