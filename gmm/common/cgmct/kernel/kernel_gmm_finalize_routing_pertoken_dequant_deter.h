@@ -296,12 +296,17 @@ public:
             int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
             int64_t tileMOffset = y / n;
             uint64_t absMEnd = cumulativeGroupM_ + tileMOffset + Get<MNK_M>(singleShape);
-            while (isDeter_ && absMEnd > deterSync_.lowBoundM) {
-                deterSync_.curGroupM = cumulativeGroupM_ + tileMOffset;
-                SyncAll<false>();
-                FinalFlush(params);
-                SyncAll<false>();
+            if ASCEND_IS_AIV {
+                printf("[DETER-WHILE] blk=%u cumM=%llu tileMOff=%lld absMEnd=%llu lowBound=%llu winStart=%llu enter=%d\n",
+                    GetBlockIdx(), cumulativeGroupM_, tileMOffset, absMEnd, deterSync_.lowBoundM,
+                    deterSync_.windowStartM, (int)(isDeter_ && absMEnd > deterSync_.lowBoundM));
             }
+            // while (isDeter_ && absMEnd > deterSync_.lowBoundM) {
+            //     deterSync_.curGroupM = cumulativeGroupM_ + tileMOffset;
+            //     SyncAll<false>();
+            //     FinalFlush(params);
+            //     SyncAll<false>();
+            // }
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
