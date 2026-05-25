@@ -23,7 +23,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "all_gather_formulaic_tiling.h"
+#include "all_gather_matmul_v2_formulaic_tiling.h"
 #include "all_gather_matmul_tiling_base.h"
 #include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 #include "graph/utils/type_utils.h"
@@ -670,17 +670,20 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling& rcsCfg)
     uint64_t nd2nzLen = 0;
     uint64_t storageA = 0;
 
-    // step1: ND2NZ
-    if (gatherIndex == 0U) {  // 转置B
-        // 计算ND2NZ需使用空间方法保持与MMV3 tiling计算逻辑一致
-        uint64_t alignByte = 256 / args_.inputDtypeSize;  // 256B 对齐shape
-        uint64_t kALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankK), alignByte);
-        uint64_t nALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankN), alignByte);
-        nd2nzLen = kALign * nALign * args_.inputDtypeSize;
-    } else {
-        auto alignM = rcsCfg.rankM + 16;
-        auto alignK = rcsCfg.rankK + 16;
-        nd2nzLen = mc2tiling::AlignUp(alignM * alignK * args_.inputDtypeSize, alignAddrLen);
+    // DAV_3510 全场景未使用nd2nzLen这个空间，无需申请
+    if (npuArch_ != NpuArch::DAV_3510) {
+        // step1: ND2NZ
+        if (gatherIndex == 0U) {  // 转置B
+            // 计算ND2NZ需使用空间方法保持与MMV3 tiling计算逻辑一致
+            uint64_t alignByte = 256 / args_.inputDtypeSize;  // 256B 对齐shape
+            uint64_t kALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankK), alignByte);
+            uint64_t nALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankN), alignByte);
+            nd2nzLen = kALign * nALign * args_.inputDtypeSize;
+        } else {
+            auto alignM = rcsCfg.rankM + 16;
+            auto alignK = rcsCfg.rankK + 16;
+            nd2nzLen = mc2tiling::AlignUp(alignM * alignK * args_.inputDtypeSize, alignAddrLen);
+        }
     }
 
     if (args_.cmdType == mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER) {

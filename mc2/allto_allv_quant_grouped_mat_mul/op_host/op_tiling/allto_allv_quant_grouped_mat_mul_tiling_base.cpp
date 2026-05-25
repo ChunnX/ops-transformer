@@ -214,19 +214,21 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
 ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsValue()
 {
     // check sendCounts range
-    for (uint64_t index = 0U; index < e_ * epWorldSize_; index++) {
-        OP_TILING_CHECK((sendCounts[index] < SEND_COUNTS_MIN_VALUE) || (sendCounts[index] > bsk_),
-            OP_LOGE(context_->GetNodeName(), "sendCounts[%lu] should be in [0, %lu], but get %lu", index, bsk_,
-            sendCounts[index]),
+    for (uint64_t idx = 0U; idx < e_ * epWorldSize_; idx++) {
+        OP_TILING_CHECK((sendCounts[idx] < SEND_COUNTS_MIN_VALUE) || (sendCounts[idx] > bsk_),
+            OP_LOGE(context_->GetNodeName(), "sendCounts[%lu] should be in [0, %lu], but get %lu", idx, bsk_,
+            sendCounts[idx]),
             return ge::GRAPH_FAILED);
     }
+
     // check recvCounts range
-    for (uint64_t index = 0U; index < e_ * epWorldSize_; index++) {
-        OP_TILING_CHECK((recvCounts[index] < DIM_ZERO) || (recvCounts[index] > a_),
-            OP_LOGE(context_->GetNodeName(), "recvCounts[%lu] should be in [0, %lu], but get %lu", index, a_,
-            recvCounts[index]),
+    for (uint64_t i = 0U; i < e_ * epWorldSize_; i++) {
+        OP_TILING_CHECK((recvCounts[i] < DIM_ZERO) || (recvCounts[i] > a_),
+            OP_LOGE(context_->GetNodeName(), "recvCounts[%lu] should be in [0, %lu], but get %lu", i, a_,
+            recvCounts[i]),
             return ge::GRAPH_FAILED);
     }
+
     uint64_t sendCountsSize = sendCountsPtr_->GetSize();
     uint64_t recvCountsSize = recvCountsPtr_->GetSize();
     // check sum(sendCounts) = BSK
@@ -234,6 +236,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsValue()
     OP_TILING_CHECK(sendCountsSum != bsk_,
         OP_LOGE(context_->GetNodeName(), "The sum of sendCounts %lu should be equal to BSK %lu!", sendCountsSum, bsk_),
         return ge::GRAPH_FAILED);
+
     // check sum(recvCounts) = A
     uint64_t recvCountsSum = std::accumulate(recvCounts, recvCounts + recvCountsSize, 0ULL);
     OP_TILING_CHECK(recvCountsSum != a_,
@@ -246,21 +249,27 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsValue()
 ge::graphStatus AlltoAllvQuantGmmTilingBase::GetShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetShapeInfo.");
+    // Get GMM input X shape info
     if (GetGmmXShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (GetGmmWeightShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // Get counts tensor shape info
     if (GetCountsTensorShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // Get MM related shape info
     if (GetMmxShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (GetMmWeightShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // Get output shape info
     if (GetGmmYShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -277,21 +286,27 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetShapeInfo()
 ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckShapeInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckShapeInfo.");
+    // Check GMM input shape info
     if (CheckGmmXShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckGmmWeightShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // Check counts tensor shape info
     if (CheckCountsTensorShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // Check MM related shape info
     if (CheckMmxShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckMmWeightShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // Check output shape info
     if (CheckGmmYShapeInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

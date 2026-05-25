@@ -42,7 +42,6 @@ namespace l0op {
  * @param layoutKv            kv布局字符串
  * @param layoutOut           输出布局字符串
  * @param returnSoftmaxLse    是否输出softmax_lse（int64_t）
- * @param deterministic       是否确定性计算（int64_t）
  * @param executor            op执行器
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         任意元素为nullptr表示对应输出的InferShape或Launch失败。
@@ -69,7 +68,6 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const char *layoutKv,
     const char *layoutOut,
     int32_t returnSoftmaxLse,
-    int32_t deterministic,
     aclOpExecutor *executor);
 
 }  // namespace l0op
