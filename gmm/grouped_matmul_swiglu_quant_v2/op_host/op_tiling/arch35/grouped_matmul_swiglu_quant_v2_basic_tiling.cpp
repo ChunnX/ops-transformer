@@ -166,6 +166,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
     auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
     inputParams_.bFormat = weightFormat;
+    if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
+        return CheckDtypePertoken();
+    }
     if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
         const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
 
@@ -194,9 +197,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                     OP_LOGE(context_->GetNodeName(), "CheckQuantDtypeByFormat failed."), return false);
     }
     
-    if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
-        return CheckDtypePertoken();
-    }
     return CheckDtype();
 }
 
@@ -457,7 +457,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     CalBasicBlock();
     auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
-    ge::graphStatus l1TilingStatus = IsMxFp4WeightNz() ? CalMxFp4WeightNzL1Tiling() : CalL1Tiling();
+    ge::graphStatus l1TilingStatus = IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling();
     OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.set_M(inputParams_.mSize);
@@ -498,7 +498,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzL1Tiling()
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzL1Tiling()
 {
     InitCommonL1TilingFields();
     if (inputParams_.kSize == 0) {
@@ -507,10 +507,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzL1Tiling()
     uint64_t leftL1Size = 0;
     OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
-    return CalMxFp4WeightNzL1Depth(leftL1Size);
+    return CalWeightNzL1Depth(leftL1Size);
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzL1Depth(uint64_t leftL1Size)
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzL1Depth(uint64_t leftL1Size)
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
@@ -524,20 +524,20 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzL1Depth(uin
                 return ge::GRAPH_FAILED);
 
     uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
-    basicTiling_.depthA1 = GetMxFp4WeightNzDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
-    basicTiling_.depthB1 = GetMxFp4WeightNzDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+    basicTiling_.depthA1 = GetWeightNzDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+    basicTiling_.depthB1 = GetWeightNzDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
     if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
             std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize) >
         leftL1Size) {
         basicTiling_.depthA1 = depthInit;
         basicTiling_.depthB1 = depthInit;
     }
-    ModifyMxFp4WeightNzDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    ModifyWeightNzDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
     CalStepKs();
-    return CalMxFp4WeightNzScaleFactors();
+    return CalWeightNzScaleFactors();
 }
 
-uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetMxFp4WeightNzDepthWithHighBW(uint64_t mnL1) const
+uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetWeightNzDepthWithHighBW(uint64_t mnL1) const
 {
     uint64_t baseKSize = GetSizeWithDataType(basicTiling_.baseK, inputParams_.aDtype);
     uint64_t depth = GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(MTE2_MIN_LOAD_SIZE_V120, mnL1),
@@ -550,7 +550,7 @@ uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetMxFp4WeightNzDepthWithHighBW(ui
     return std::min(pow2Depth, GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.baseK) * DB_SIZE);
 }
 
-void GroupedMatmulSwigluQuantV2Tiling950::ModifyMxFp4WeightNzDepthForUnalign(uint64_t leftL1Size,
+void GroupedMatmulSwigluQuantV2Tiling950::ModifyWeightNzDepthForUnalign(uint64_t leftL1Size,
                                                                              uint64_t baseASize,
                                                                              uint64_t baseBSize,
                                                                              uint64_t baseScaleABSize)
@@ -591,7 +591,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::ModifyMxFp4WeightNzDepthForUnalign(uin
     }
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzScaleFactors()
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
