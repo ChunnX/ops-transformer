@@ -157,7 +157,6 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
-    opParamInfo_.keyStride0 = attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE0_INDEX);
 
     if (opParamInfo_.layOut != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOut);
@@ -195,10 +194,9 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_LOGE(opName_, "input attr layout_key only supported PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOut) != "BSND") && (std::string(opParamInfo_.layOut) != "TND")),
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= SPARSE_LIMIT)) &&
- 	                *opParamInfo_.topk % 1024 != 0),
- 	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192. And when topk > 2048,"
-                    " topk must be an interger multiple of 1024."),
+    // TODO
+    OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX)) ),
+ 	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192."),
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
@@ -688,7 +686,6 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.nextTokens = *opParamInfo_.nextTokens;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     liInfo.returnValue = *opParamInfo_.returnValue;
-    liInfo.keyStride0 = *opParamInfo_.keyStride0;
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 }
@@ -750,7 +747,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     constexpr uint32_t V1_DECODE_PARAM_NUM = 16;      // Decode参数个数
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;        // Decode每个核需要存储头和尾部两块数据
     constexpr uint32_t S1_BASE_SIZE = 8;              // S1轴基本块的大小
-    constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
+    constexpr uint32_t TOPK_MAX_SIZE = 8192;          // TopK选取个数
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
     uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
@@ -777,7 +774,6 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_returnValue(tilingInfo->returnValue);
-    tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -792,9 +788,8 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint32_t inputQLayout = static_cast<uint32_t>(tilingInfo->inputQLayout);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
     uint32_t weightTypeFlag = 0;
-    uint32_t topkScorePrecision = 1;
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
-                                            inputQLayout, inputKLayout, weightTypeFlag, topkScorePrecision);
+                                            inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);
 
     return ge::GRAPH_SUCCESS;

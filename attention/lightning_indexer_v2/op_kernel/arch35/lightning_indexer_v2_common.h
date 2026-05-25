@@ -115,9 +115,9 @@ struct ConstInfo {
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     int64_t cmpRatio = 1;
+    int64_t cmpResidualK = 0;
     bool batchSupperFlag = false;  // Qactual_seq长度是否为B+1
     bool returnValue = false;
-    int64_t keyStride0 = 0;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度

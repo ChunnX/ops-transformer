@@ -154,7 +154,7 @@ protected:
                                                GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                   GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                  uint32_t defaultSeqLen, uint32_t cmpRatio);
+                                                  uint32_t defaultSeqLen, uint32_t cmpRatio, uint32_t cmpResidualK);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
                                                uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -176,7 +176,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
     constInfo.topk = tilingData->topk;
     constInfo.cmpRatio = tilingData->cmpRatio;
     constInfo.batchSupperFlag = tilingData->batchSupperFlag;
-    constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.outputLayout = LAYOUT_T;  // 输出和输入形状一致
     if (LAYOUT_T == LI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -258,10 +257,11 @@ template <typename LIT>
 __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                              bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                             uint32_t defaultSeqLen, uint32_t cmpRatio)
+                                                             uint32_t defaultSeqLen, uint32_t cmpRatio,
+                                                             uint32_t cmpResidualK)
 {
     if (actualLenDims == 0) {
-        return defaultSeqLen * cmpRatio;
+        return defaultSeqLen * cmpRatio + cmpResidualK;
     } else if (isAccumSeq && bIdx > 0) {
         return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
     } else {
@@ -280,7 +280,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::GetS1S2ActualSeqLen(uint32
     // 压缩前的actS2Size
     actS2SizeOrig =
         GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2,
-                           actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio);
+                           actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio, constInfo.cmpResidualK);
     // 真实使用的压缩后S2长度
     actS2Size = actS2SizeOrig / constInfo.cmpRatio;
 }

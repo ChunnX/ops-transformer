@@ -259,8 +259,9 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::KeyNd2NzForPA(uint64_
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
         uint64_t keyGmOffset =
-            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 +
-                s2BlkOffset * constInfo_.headDim;
+            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * 
+                                 constInfo_.kCacheBlockSize * constInfo_.kHeadNum * constInfo_.headDim +
+                                 s2BlkOffset * constInfo_.headDim;
 
         uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
         s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset
@@ -360,28 +361,27 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-    if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
-        // L0C->UB
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
-        fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
-        // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-        fixpipeParams.mSize = (s1gL0RealSize + 1) >> 1 << 1;
-        // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-        fixpipeParams.dstStride = constInfo_.s2BaseSize;
-        // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        // 将matmul结果从L0C搬运到UB
-        Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(
-            mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
-                       CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
-                       cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
-    }
+    // L0C->UB
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+    // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
+    fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
+    // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+    fixpipeParams.mSize = (s1gL0RealSize + 1) >> 1 << 1;
+    // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+    // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
+    fixpipeParams.dstStride = constInfo_.s2BaseSize;
+    // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipeParams.dualDstCtl = 1;
+    fixpipeParams.params.ndNum = 1;
+    fixpipeParams.params.srcNdStride = 0;
+    fixpipeParams.params.dstNdStride = 0;
+    // 将matmul结果从L0C搬运到UB
+    Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(
+        mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
+                    CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
+                    cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
+    
 }
 
 template <typename LIT>

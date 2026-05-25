@@ -31,8 +31,7 @@ using namespace LIV2Kernel;
         op.Process();                                                                                            \
     } while (0)
 
-template <int DT_Q, int DT_K, int DT_OUT, int PAGE_ATTENTION, int LAYOUT_T, int K_LAYOUT_T, int DT_W_FLAG,
-          int TOPK_SCORE_PRECISION>
+template <int DT_Q, int DT_K, int DT_OUT, int PAGE_ATTENTION, int LAYOUT_T, int K_LAYOUT_T, int DT_W_FLAG>
 __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
                                                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,

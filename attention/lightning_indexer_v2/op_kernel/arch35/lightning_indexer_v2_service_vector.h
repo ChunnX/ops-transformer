@@ -307,67 +307,67 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const LIV2Common::RunInfo &info)
 {
-    if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
-        // CV同步
-        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
-            LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   // V核等C核计算完mm1，mm1Res已搬运到UB
-        
-        int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
-        int64_t curS2Idx = info.s2Idx * s2BaseSize_;
-        int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
-        int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-        int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
+    // CV同步
+    // TODO uint32 bank冲突
+    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
+        LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   // V核等C核计算完mm1，mm1Res已搬运到UB
+    
+    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+    int64_t curS2Idx = info.s2Idx * s2BaseSize_;
+    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+    int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
+    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
 
-        if (curAivS1ProcNum == 0) {
-            // V核处理完，通知C核可以把mm1Res搬运到UB
-            CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
-                LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);
-            return;
-        }
-        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
-        // weightsGm --> weightUB_
-        int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-        DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
-        DataCopyExtParams qwDataCopyExtParams;
-        qwDataCopyExtParams.blockCount = 1;
-        qwDataCopyExtParams.blockLen = curAivS1ProcNum * gSize_* sizeof(W_T);
-        qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = 0;
-        DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_],
-                    weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
-
-        SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
-        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
-        WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
-        for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
-            liV2Vector1::MulWeightAndReduceSum(
-                    vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
-                    resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ +
-                               s1IdxTmp * gSize_ * s2BaseSize_],
-                    weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_ + s1IdxTmp * gSize_],
-                    gSize_);
-        }
-        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
-        SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
-        WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
-        // outUB_ --->  scoreGm
-        int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx :
-                                CeilDiv(s1BaseSize_, 2) * LIV2Common::Align(
-                                    (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
-        DataCopyExtParams copyOutParams;
-        copyOutParams.blockCount = curAivS1ProcNum;
-        copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-        copyOutParams.srcStride = 0;
-        copyOutParams.dstStride = (LIV2Common::Align((uint64_t)constInfo_.kSeqSize,
-                                                     (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
-
-        DataCopyPad(scoreGm[vec1OutGmOffset],
-                    vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_], copyOutParams);
-        SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
+    if (curAivS1ProcNum == 0) {
         // V核处理完，通知C核可以把mm1Res搬运到UB
         CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
             LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);
+        return;
     }
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
+    // weightsGm --> weightUB_
+    int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
+    DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
+    DataCopyExtParams qwDataCopyExtParams;
+    qwDataCopyExtParams.blockCount = 1;
+    qwDataCopyExtParams.blockLen = curAivS1ProcNum * gSize_* sizeof(W_T);
+    qwDataCopyExtParams.srcStride = 0;
+    qwDataCopyExtParams.dstStride = 0;
+    DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_],
+                weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
+
+    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
+    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
+    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
+    for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
+        liV2Vector1::MulWeightAndReduceSum(
+                vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
+                resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ +
+                            s1IdxTmp * gSize_ * s2BaseSize_],
+                weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_ + s1IdxTmp * gSize_],
+                gSize_);
+    }
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
+    SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
+    WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
+    // outUB_ --->  scoreGm
+    int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx :
+                            CeilDiv(s1BaseSize_, 2) * LIV2Common::Align(
+                                (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
+    DataCopyExtParams copyOutParams;
+    copyOutParams.blockCount = curAivS1ProcNum;
+    copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
+    copyOutParams.srcStride = 0;
+    copyOutParams.dstStride = (LIV2Common::Align((uint64_t)constInfo_.kSeqSize,
+                                                    (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
+
+    DataCopyPad(scoreGm[vec1OutGmOffset],
+                vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_], copyOutParams);
+    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
+    // V核处理完，通知C核可以把mm1Res搬运到UB
+    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
+        LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);
+
 }
 
 template <typename LIT>

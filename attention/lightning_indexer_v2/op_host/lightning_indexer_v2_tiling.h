@@ -65,7 +65,6 @@ constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 3;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 4;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 5;
-constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 6;
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -79,6 +78,7 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
+constexpr uint32_t TOPK_MAX = 8192;
 constexpr uint32_t METADATA_LIMIT = 1024;
 
 // -----------算子TilingData定义---------------
@@ -98,7 +98,6 @@ TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(bool, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
-TILING_DATA_FIELD_DEF(int64_t, keyStride0)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexerV2, LIV2TilingData)
 
@@ -130,7 +129,6 @@ struct LiV2ParaInfo {
     const int64_t *nextTokens = nullptr;
     const int64_t *cmpRatio = nullptr;
     const bool *returnValue = nullptr;
-    const int64_t *keyStride0 = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -161,7 +159,6 @@ public:
     int64_t cmpRatio = 1;
     bool batchSupperFlag = false;
     bool returnValue = false;
-    int64_t keyStride0 = 1;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
