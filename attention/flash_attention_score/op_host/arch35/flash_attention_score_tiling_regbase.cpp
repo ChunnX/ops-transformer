@@ -13,6 +13,7 @@
 
 namespace optiling {
 namespace FA {
+using namespace Ops::Base;
 ge::graphStatus FlashAttentionScoreTilingRegbase::CheckContext()
 {
     auto attrs = context_->GetAttrs();
@@ -111,9 +112,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDtype()
             calcTypeSize = ge::GetSizeByDataType(ge::DT_FLOAT);
             isHighPercision = false;
             break;
-        default:
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "not support input dtype: %s for now",
-                                        ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str());
+default:
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "query",
+                ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str(),
+                "The dtype of input query should be FLOAT16, BFLOAT16 or FLOAT");
             return false;
     }
 
@@ -206,8 +208,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
     if (attrs->GetAttrNum() > idx) {
         auto outDtypePtr = attrs->GetAttrPointer<int64_t>(idx++);
         outDtype = *outDtypePtr;
-        OP_CHECK_IF(outDtype < 0 || outDtype >= 2,
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "outDtype value is out of range"), return false);
+        if (outDtype < 0 || outDtype >= 2) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "out_dtype",
+                std::to_string(static_cast<int64_t>(outDtype)).c_str(), "0 or 1");
+            return false;
+        }
         outDtype = outDtype + 1; // 外部合法是0或1, 内部对应使用1和2,如果没有量化参数, 后面会刷成0, 1表示fp16, 2表示bf16
     }
     if (attrs->GetAttrNum() > idx) {
@@ -508,17 +513,17 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout() || !AnalyzeOptionalInput(),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF((inputDtype == ge::DT_HIFLOAT8) && (hasAttenMask || hasPse || hasDropOut || hasRope ||
+    if ((inputDtype == ge::DT_HIFLOAT8) && (hasAttenMask || hasPse || hasDropOut || hasRope ||
                 tilingKeyLayout != LayoutType::LAYOUT_BSND ||
                 bSize != 1 || n1Size != n2Size || dSize != 128 || dSizeV != 128 ||
-                !((s1Size == 57600 && s2Size == 57600 && n1Size == 5) || (s1Size == 7200 && s2Size == 512 && n1Size == 40))),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
-                "and the input shape must be: "
-                "query:[1, 57600, 5, 128] key:[1, 57600, 5, 128] value:[1, 57600, 5, 128] or "
-                "query:[1, 7200, 40, 128] key:[1, 512, 40, 128] value:[1, 512, 40, 128]."
-                "[hasAttenMask:%d, hasPse:%d, hasDropOut:%d, hasRope:%d, input_layout:%s, bSize:%d, s1Size:%d, s2Size:%d, "
-                "n1Size:%d, n2Size:%d, dSize:%d, dSizeV:%d]", hasAttenMask, hasPse, hasDropOut, hasRope, inputLayout,
-                bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+                !((s1Size == 57600 && s2Size == 57600 && n1Size == 5) || (s1Size == 7200 && s2Size == 512 && n1Size == 40)))) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "query",
+            ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str(),
+            "HIFLOAT8 only supports layout BSND without optional inputs, and the input shape must be "
+            "query:[1,57600,5,128] key:[1,57600,5,128] value:[1,57600,5,128] or "
+            "query:[1,7200,40,128] key:[1,512,40,128] value:[1,512,40,128]");
+        return ge::GRAPH_FAILED;
+    }
 
     if (hasRope && (dSize != 128 || dSizeRope != 64)) {
         OPS_REPORT_VECTOR_INNER_ERR(opName, "MLA concat only support dSize=128, dSizeRope=64.");
@@ -717,10 +722,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
     if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0) {
         hasAttenMask = true;
         auto attenMaskType = attenMaskInput->GetDataType();
-        OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid attenMask dtype[%s], only support bool or uint8.",
-                                               ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
-                   return false);
+        if (attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "atten_mask",
+                ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str(), "BOOL or UINT8");
+            return false;
+        }
 
         inputParamsRegbase_->set_attenMaskDataType(1);
         // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
@@ -759,10 +765,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
             return false;
         }
         auto dropMaskDtype = dropMaskInput->GetDataType();
-        OP_CHECK_IF(dropMaskDtype != ge::DT_UINT8,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dropMask dtype[%s], only support uint8.",
-                                               ge::TypeUtils::DataTypeToSerialString(dropMaskDtype).c_str()),
-                   return false);
+        if (dropMaskDtype != ge::DT_UINT8) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "drop_mask",
+                ge::TypeUtils::DataTypeToSerialString(dropMaskDtype).c_str(), "UINT8");
+            return false;
+        }
         int64_t dimNum = dropMaskShape->GetStorageShape().GetDimNum();
         int64_t dropMaskShapeSize = 1;
         int64_t shapeSize = 0;
@@ -804,10 +811,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     auto dScaleQInput = context_->GetOptionalInputDesc(D_Q_SCALE_INDEX);
     if (dScaleQInput != nullptr && dScaleQShape != nullptr && dScaleQShape->GetStorageShape().GetDimNum() != 0) {
         auto dScaleQDtype = dScaleQInput->GetDataType();
-        OP_CHECK_IF(dScaleQDtype != ge::DT_FLOAT,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleQ dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(dScaleQDtype).c_str()),
-                   return false);
+        if (dScaleQDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "d_scale_q",
+                ge::TypeUtils::DataTypeToSerialString(dScaleQDtype).c_str(), "FLOAT");
+            return false;
+        }
         int64_t dimNum = dScaleQShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_4,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleQ dimNum [%ld], only support 4 dims.", dimNum),
@@ -827,10 +835,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     auto dScaleKInput = context_->GetOptionalInputDesc(D_K_SCALE_INDEX);
     if (dScaleKInput != nullptr && dScaleKShape != nullptr && dScaleKShape->GetStorageShape().GetDimNum() != 0) {
         auto dScaleKDtype = dScaleKInput->GetDataType();
-        OP_CHECK_IF(dScaleKDtype != ge::DT_FLOAT,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleK dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(dScaleKDtype).c_str()),
-                   return false);
+        if (dScaleKDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "d_scale_k",
+                ge::TypeUtils::DataTypeToSerialString(dScaleKDtype).c_str(), "FLOAT");
+            return false;
+        }
         int64_t dimNum = dScaleKShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_4,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleK dimNum [%ld], only support 4 dims.", dimNum),
@@ -851,10 +860,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     auto dScaleVInput = context_->GetOptionalInputDesc(D_V_SCALE_INDEX);
     if (dScaleVInput != nullptr && dScaleVShape != nullptr && dScaleVShape->GetStorageShape().GetDimNum() != 0) {
         auto dScaleVDtype = dScaleVInput->GetDataType();
-        OP_CHECK_IF(dScaleVDtype != ge::DT_FLOAT,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleV dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(dScaleVDtype).c_str()),
-                   return false);
+        if (dScaleVDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "d_scale_v",
+                ge::TypeUtils::DataTypeToSerialString(dScaleVDtype).c_str(), "FLOAT");
+            return false;
+        }
         int64_t dimNum = dScaleVShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_4,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleV dimNum [%ld], only support 4 dims.", dimNum),
@@ -874,10 +884,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     auto pScaleInput = context_->GetOptionalInputDesc(P_SCALE_INDEX);
     if (pScaleInput != nullptr && pScaleShape != nullptr && pScaleShape->GetStorageShape().GetDimNum() != 0) {
         auto pScaleDtype = pScaleInput->GetDataType();
-        OP_CHECK_IF(pScaleDtype != ge::DT_FLOAT,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(pScaleDtype).c_str()),
-                return false);
+        if (pScaleDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "p_scale",
+                ge::TypeUtils::DataTypeToSerialString(pScaleDtype).c_str(), "FLOAT");
+            return false;
+        }
         int64_t dimNum = pScaleShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_1,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dimNum [%ld], only support 1 dim.", dimNum),
@@ -899,10 +910,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
         auto shape = sinkShapePtr->GetStorageShape();
         int64_t dimNum = shape.GetDimNum();
         auto sinkDtype = sinkInputPtr->GetDataType();
-        OP_CHECK_IF(sinkDtype != ge::DT_FLOAT,
-            OP_LOGE(opName, "invalid sink dtype[%s], only support float.",
-                ge::TypeUtils::DataTypeToSerialString(sinkDtype).c_str()),
-            return false);
+        if (sinkDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "sink",
+                ge::TypeUtils::DataTypeToSerialString(sinkDtype).c_str(), "FLOAT");
+            return false;
+        }
 
         std::string sinkShape = "";
         for (int i = 0; i < dimNum; ++i) {
@@ -922,9 +934,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
             expectedSinkSize, actualSinkShapeSize),
             return false);
 
-        OP_CHECK_IF(!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16),
-            OP_LOGE(opName, "invalid input dtype, other tensor`s dtype only support float16 and bf16."),
-            return false);
+        if (!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16)) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "query",
+                ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str(), "FLOAT16 or BFLOAT16");
+            return false;
+        }
     }
     return true;
 }
