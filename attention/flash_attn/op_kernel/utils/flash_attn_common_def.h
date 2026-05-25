@@ -283,43 +283,10 @@ struct CommonConstInfo {
     uint32_t dBasicBlock;
 };
 
-struct PAConstInfo {
-};
-
-struct LseConstInfo {
-};
-
-struct SinkConstInfo {
-    bool learnableSinkFlag = false;
-};
-
-struct PseConstInfo {
-};
-
-struct TensorListConstInfo {
-};
-
-struct PostQuantConstInfo {
-};
-
-struct LeftPaddingConstInfo {
-};
-
-struct SysPrefixConstInfo {
-};
-
 template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo,
-                                              PseConstInfo,
-                                              TensorListConstInfo,
-                                              PostQuantConstInfo,
-                                              LeftPaddingConstInfo,
-                                              SysPrefixConstInfo {};
+struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo {};
 
 #endif // FLASH_ATTN_COMMON_DEF_H_
