@@ -320,7 +320,7 @@ public:
                     tileMOffset,
                     tileMOffset};
                 WaitForCube();
-                // epilogueDequantOp_(epilogueShape, epilogueOffset);
+                epilogueDequantOp_(epilogueShape, epilogueOffset);
                 NotifyCube();
             }
         }
@@ -406,25 +406,15 @@ public:
                 continue;
             }
             if (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
-                if ASCEND_IS_AIV {
-                    if (GetBlockIdx() < 2) {
-                        printf("[MF-A] blk=%u gi=%u cumM=%llu lowBound=%llu\n",
-                            GetBlockIdx(), groupIdx, cumulativeGroupM_, deterSync_.lowBoundM);
-                    }
-                }
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
-                if ASCEND_IS_AIV {
-                    FinalFlush(params);
-                }
-                if ASCEND_IS_AIC {
-                    deterSync_.windowStartM = deterSync_.curGroupM;
-                    deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
-                }
+                // 不调 FinalFlush，只重置窗口防止溢出
+                deterSync_.windowStartM = deterSync_.curGroupM;
+                deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
                 if ASCEND_IS_AIV {
                     if (GetBlockIdx() < 2) {
-                        printf("[MF-B] blk=%u gi=%u flush done winStart=%llu lowBound=%llu\n",
+                        printf("[MF-SKIP] blk=%u gi=%u winStart=%llu lowBound=%llu\n",
                             GetBlockIdx(), groupIdx, deterSync_.windowStartM, deterSync_.lowBoundM);
                     }
                 }
@@ -436,8 +426,8 @@ public:
 
         if (isDeter_) {
             SyncAll<false>();
+            // if ASCEND_IS_AIV { FinalFlush(params); }
             if ASCEND_IS_AIV {
-                FinalFlush(params);
                 if (GetBlockIdx() < 2) {
                     uint64_t totalM = deterSync_.curGroupM - deterSync_.windowStartM;
                     printf("[FF-FINAL] blk=%u totalM=%llu winStart=%llu\n",

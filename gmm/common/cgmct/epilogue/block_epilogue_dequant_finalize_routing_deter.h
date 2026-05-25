@@ -226,10 +226,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         constexpr uint32_t SYS_WS_SIZE = 16 * 1024 * 1024U;
         mmQuantOutGm_.SetGlobalBuffer(
             reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM) + SYS_WS_SIZE / sizeof(DataTypeOut));
-        printf("[DETER-WS] wsBase=%p mmQuantOut=%p offset=%u\n",
-            params_->workspaceGM,
-            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM) + SYS_WS_SIZE / sizeof(DataTypeOut),
-            SYS_WS_SIZE);
     }
 }
 
@@ -289,10 +285,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
-        if ((wsRow < 3 || (wsRow >= 254 && wsRow <= 260) || (wsRow >= 510 && wsRow <= 515)) && yOffset == 0) {
-            printf("[DETER-WSIDX] blk=%u groupAccumM=%llu offsetM=%llu i=%u wsRow=%llu\n",
-                GetBlockIdx(), groupAccumM_, offsetM, i, wsRow);
-        }
         DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
     }
 }
@@ -542,10 +534,6 @@ __aicore__ inline void
 BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::DeterministicFlushRow(
     uint64_t mOffset, uint64_t outRow, uint64_t nSize)
 {
-    if (mOffset < 3 || (mOffset >= 256 && mOffset <= 258)) {
-        printf("[DETER-FROW] mOff=%llu outRow=%llu nSize=%llu wsReadIdx=%llu yGmIdx=%llu\n",
-            mOffset, outRow, nSize, mOffset * nSize, outRow * nSize);
-    }
     constexpr uint64_t baseN = DETER_UB_SIZED / sizeof(DataTypeOut);
     for (uint64_t nOff = 0; nOff < nSize; nOff += baseN) {
         uint64_t curN = (nOff + baseN > nSize) ? (nSize - nOff) : baseN;
@@ -554,13 +542,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         DataCopyPad(local, mmQuantOutGm_[mOffset * nSize + nOff], copyParams, DataCopyPadExtParams<DataTypeOut>{});
         deterDmaQue_.EnQue(local);
         auto readLocal = deterDmaQue_.DeQue<DataTypeOut>();
-        if ((mOffset < 3 || (mOffset >= 256 && mOffset <= 258)) && nOff == 0) {
-            printf("[DETER-FLUSH] blk=%u mOff=%llu wsRead[0..2]=%f %f %f\n",
-                GetBlockIdx(), mOffset,
-                static_cast<float>(readLocal.GetValue(0)),
-                static_cast<float>(readLocal.GetValue(1)),
-                static_cast<float>(readLocal.GetValue(2)));
-        }
         SetAtomicAdd<float>();
         DataCopyPad(yGlobal_[outRow * nSize + nOff], readLocal, copyParams);
         SetAtomicNone();
@@ -604,13 +585,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
     VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
-    if (groupAccumM_ + logitOffset < 3 && yOffset == 0) {
-        printf("[DETER-DUMP] blk=%u logitOff=%llu mOff=%llu singleMInVec=%llu alignN=%llu singleN=%llu\n",
-            GetBlockIdx(), logitOffset, mOffset, singleMInVec, alignN_, singleN_);
-        AscendC::DumpTensor(l0cOutUb_, 1001, singleN_ * sizeof(DataTypeIn));
-        AscendC::DumpTensor(l0cOutUbFloat_, 1002, singleN_ * sizeof(float));
-        AscendC::DumpTensor(logitUb, 1003, static_cast<uint32_t>(singleMInVec * sizeof(float)));
-    }
     logitPingPongID_ = (logitPingPongID_ + 1) & 1;
     uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UBSD);
     for (uint32_t i = 0; i < loopNumY; i++) {
@@ -623,9 +597,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
-        if (groupAccumM_ + logitOffset < 3 && yOffset == 0 && i == 0) {
-            AscendC::DumpTensor(yLocal, 1004, singleN_ * sizeof(DataTypeOut));
-        }
         LinearWriteToWorkspace(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UBSD, yOffset, yLocal);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         yPingPongID_ = (yPingPongID_ + 1) & 1;
