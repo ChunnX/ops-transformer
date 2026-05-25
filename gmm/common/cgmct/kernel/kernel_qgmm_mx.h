@@ -320,7 +320,7 @@ QGMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline bool KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::IfNeedSplit(const BlockSchedulerOp &bs)
 {
     // Consider tail split only when at least half of the cores are still available.
-    return (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() / 2;
+    return (bs.GetEndBlockIdx() + 1) <= (AscendC::GetBlockNum() >> 1);
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
