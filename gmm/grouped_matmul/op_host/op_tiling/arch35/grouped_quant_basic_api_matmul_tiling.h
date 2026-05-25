@@ -37,6 +37,7 @@ protected:
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override;
+    uint64_t GetTilingKey() const override;
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
     void PrintQuantParams() override;
@@ -48,6 +49,8 @@ private:
     uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
     void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleABSize);
     ge::graphStatus CalScaleFactors();
+    bool CanEnableThreeL1Buffer() const;
+    uint64_t l1BufferNumKey_{0};
     GroupedMatmulTilingData::GMMQuantBasicApiTilingData tilingData_;
 };
 } // namespace optiling
