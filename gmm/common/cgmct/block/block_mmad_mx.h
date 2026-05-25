@@ -59,28 +59,39 @@ struct TileL1L0Param {
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
 <<<<<<< HEAD
+<<<<<<< HEAD
           class LayoutB_, class LayoutScaleB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_,
           class TileCopy_, uint64_t L1BufferNum_ = 2UL, class Enable = void>
 =======
           class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
           uint64_t L1BufferNum_ = 2UL, class Enable = void>
 >>>>>>> 3edc80d27 (Support 3-buffer L1 layout for qgmm)
+=======
+          class LayoutB_, class LayoutScaleB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_,
+          class TileCopy_, uint64_t L1BufferNum_ = 2UL, class Enable = void>
+>>>>>>> 674535582 (add weight scale Nz)
 class BlockMmadMx {
     static_assert(AscendC::Std::always_false_v<DispatchPolicy_>, "Should not be here!");
 };
 
 template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class AType_, class LayoutA_, class BType_,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 674535582 (add weight scale Nz)
           class LayoutB_, class LayoutScaleB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_,
           class TileCopy_, uint64_t L1BufferNum_>
 class BlockMmadMx<DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, LayoutScaleB_,
                   CType_, LayoutC_, BiasType_, LayoutBias_, TileCopy_, L1BufferNum_,
+<<<<<<< HEAD
 =======
           class LayoutB_, class CType_, class LayoutC_, class BiasType_, class LayoutBias_, class TileCopy_,
           uint64_t L1BufferNum_>
 class BlockMmadMx<DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_,
                   BiasType_, LayoutBias_, TileCopy_, L1BufferNum_,
 >>>>>>> 3edc80d27 (Support 3-buffer L1 layout for qgmm)
+=======
+>>>>>>> 674535582 (add weight scale Nz)
                   AscendC::Std::enable_if_t<
                       AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_> ||
                       AscendC::Std::is_base_of_v<MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, A_FULL_LOAD_MODE>,
