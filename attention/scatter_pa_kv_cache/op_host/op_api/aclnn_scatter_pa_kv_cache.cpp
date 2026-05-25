@@ -42,7 +42,12 @@ static const std::initializer_list<op::DataType> KEY_VALUE_DTYPE_SUPPORT_LIST = 
     DataType::DT_INT8, DataType::DT_UINT8,
     DataType::DT_INT16, DataType::DT_UINT16,
     DataType::DT_INT32, DataType::DT_UINT32,
-    DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN
+    DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN,
+    DataType::DT_FLOAT4_E1M2, DataType::DT_FLOAT4_E2M1
+};
+
+static const std::initializer_list<op::DataType> KEY_VALUE_DTYPE_SUPPORT_LIST_910 = {
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8
 };
 
 static const std::initializer_list<op::DataType> INDEX_DTYPE_SUPPORT_LIST = {
@@ -81,8 +86,14 @@ static aclnnStatus CheckDtypeValid(
     const aclTensor *compressSeqOffsetOptional,
     const aclTensor *seqLensOptional)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(key, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(keyCacheRef, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    auto& platformInfo = op::GetCurrentPlatformInfo();
+    auto socVersion = platformInfo.GetCurNpuArch();
+    bool is910 = (socVersion == NpuArch::ASCEND910 || socVersion == NpuArch::ASCEND910B);
+
+    auto dtypeSupportList = is910 ? KEY_VALUE_DTYPE_SUPPORT_LIST_910 : KEY_VALUE_DTYPE_SUPPORT_LIST;
+
+    OP_CHECK_DTYPE_NOT_SUPPORT(key, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(keyCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SUPPORT(slotMapping, INDEX_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
 
     auto keyDtype = key->GetDataType();
@@ -96,8 +107,8 @@ static aclnnStatus CheckDtypeValid(
     }
 
     if (value != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(value, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT(valueCacheRef, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK_DTYPE_NOT_SUPPORT(value, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK_DTYPE_NOT_SUPPORT(valueCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
 
         auto valueDtype = value->GetDataType();
         auto valueCacheDtype = valueCacheRef->GetDataType();
