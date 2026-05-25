@@ -713,7 +713,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckLocalParams()
     OP_TILING_CHECK((localParams_.Bs == 0) || (localParams_.BsK % localParams_.Bs != 0),
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "BsK/Bs relation",
                         std::to_string(localParams_.BsK).c_str(),
-                        (std::to_string(localParams_.Bs) + " should divide " + std::to_string(localParams_.BsK)).c_str()),
+                        (std::to_string(localParams_.Bs) + " should divide " +
+                         std::to_string(localParams_.BsK)).c_str()),
                     return ge::GRAPH_FAILED);
     uint64_t k = localParams_.BsK / localParams_.Bs;
     OP_TILING_CHECK((k < MIN_K_VALUE) || (k > MAX_K_VALUE),
