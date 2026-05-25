@@ -512,6 +512,12 @@ namespace SplitFuse {
             uint64_t gmOffsetO = oBOffset +
                 static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
                 static_cast<uint64_t>(qNStartIdx * embedV);
+            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
+                gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
+            }
+            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+                gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
+            }
             uint64_t gmOffsetLse = lseBOffset +
                 static_cast<uint64_t>(lseTokenOffset + qNStartIdx);
             uint64_t gmOffsetSink = qNStartIdx;
@@ -618,6 +624,20 @@ namespace SplitFuse {
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, stackSeqTile);
                 LayoutV layoutVTemp(stackSeqTile, strideV);
+                uint32_t kRow = strideK;
+                uint32_t kCol = stackSeqTile;
+                uint32_t vRow = stackSeqTile;
+                uint32_t vCol = strideV;
+                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
+                    kRow = blockStackNum * strideK;
+                    kCol = pagedBlockSize;
+                    layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
+                }
+                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+                    vRow = pagedBlockSize;
+                    vCol = blockStackNum * strideV;
+                    layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+                }
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);

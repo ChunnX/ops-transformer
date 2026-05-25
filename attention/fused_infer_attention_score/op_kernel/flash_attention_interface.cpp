@@ -20,6 +20,8 @@ using namespace NpuArch;
 
 namespace SplitFuse {
     template <
+        class LAYOUT_K = layout::ColumnMajor,
+        class LAYOUT_V = layout::RowMajor,
         typename InputDtypeQ = half,
         typename InputDtypeKv = half,
         typename IntermCalcPrec = float,
@@ -48,9 +50,9 @@ namespace SplitFuse {
         using ElementQ = InputDtypeQ;
         using LayoutQ = layout::RowMajor;
         using ElementK = InputDtypeKv;
-        using LayoutK = layout::ColumnMajor;
+        using LayoutK = LAYOUT_K;
         using ElementV = InputDtypeKv;
-        using LayoutV = layout::RowMajor;
+        using LayoutV = LAYOUT_V;
         using ElementS = IntermCalcPrec;
         using LayoutS = layout::RowMajor;
         using ElementSink = InputDtypeQ;
