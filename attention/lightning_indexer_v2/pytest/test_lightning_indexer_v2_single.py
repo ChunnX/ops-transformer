@@ -15,7 +15,7 @@ import torch
 import torch_npu
 from test_lightning_indexer_v2_paramset import ENABLED_PARAMS
 import result_compare_method
-import quant_lightning_indexer_golden
+import lightning_indexer_v2_golden
 import pytest
 
 for _, params in enumerate(ENABLED_PARAMS):
