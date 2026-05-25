@@ -335,6 +335,48 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
         uint64_t numGroups = tilingData_->commonTilingInfo.numAlltoAllvCalls;
         uint64_t E = expertNumInOneRank_;
 
+        // G=1: use EXACT original per-expert recvOffset logic (known correct)
+        if (G == 1) {
+            for (uint64_t e = 0UL; e < E; e++) {
+                uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+                uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+                uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+                uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+                for (uint64_t i = 0UL; i < rankDim_; i++) {
+                    alltoAllvSendCnt[i] = static_cast<uint64_t>(sendCnt[e + i * E]) * axisN1_;
+                }
+                uint64_t expertOffset = 0UL;
+                for (uint64_t i = 0UL; i < e; i++) {
+                    for (uint64_t j = 0UL; j < rankDim_; j++) {
+                        expertOffset += static_cast<uint64_t>(sendCnt[i + j * E]);
+                    }
+                }
+                alltoAllvSendOffset[0] = expertOffset * axisN1_;
+                for (uint64_t i = 1UL; i < rankDim_; i++) {
+                    alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1] +
+                                             static_cast<uint64_t>(sendCnt[e + (i - 1) * E]) * axisN1_;
+                }
+                for (uint64_t i = 0UL; i < rankDim_; i++) {
+                    alltoAllvRecvCnt[i] = static_cast<uint64_t>(recvCnt[e + i * E]) * axisN1_;
+                }
+                alltoAllvRecvOffset[0] = 0;
+                for (uint64_t i = 0UL; i < e; i++) {
+                    alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCnt[i]) * axisN1_;
+                }
+                for (uint64_t i = 1UL; i < rankDim_; i++) {
+                    alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
+                    for (uint64_t j = 0UL; j < E; j++) {
+                        alltoAllvRecvOffset[i] +=
+                            static_cast<uint64_t>(recvCnt[e + (i - 1) * E + j]) * axisN1_;
+                    }
+                }
+                alltoAllvHandleId_[e] = hccl_.AlltoAllV<false>(
+                    (__gm__ uint8_t*)gmmOutGMTensor_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+                    (__gm__ uint8_t*)yOutGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+            }
+            return;
+        }
+
         for (uint64_t g = 0; g < numGroups; g++) {
             uint64_t eStart = g * G;
             uint64_t eEnd = (eStart + G < E) ? (eStart + G) : E;
