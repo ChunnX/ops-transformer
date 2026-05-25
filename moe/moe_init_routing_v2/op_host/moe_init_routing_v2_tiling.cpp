@@ -312,16 +312,16 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
             moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
     OP_LOGI(
         opName,
-            "SrcToDstComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_needCoreNum(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_activateRows(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreRows(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCorePerLoopRows(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreLastLoopRows(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreRows(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCorePerLoopRows(),
-            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreLastLoopRows());
+        "SrcToDstComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
+        "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_needCoreNum(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_activateRows(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreRows(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCorePerLoopRows(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreLastLoopRows(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreRows(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCorePerLoopRows(),
+        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreLastLoopRows());
     OP_LOGI(opName,
             "SrcToDstComputeCapacityTilingData is needCoreNum:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
             "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
@@ -785,7 +785,6 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
     bool useGatherMode = colsAligned && (cols * inuptXDtypeSize_ < ubRowsThresholdVal) && (ubRowsVal >= NUM_TWO) &&
                          (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
-
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
         int64_t actualActivateRows = tilingData->get_activateRows();
