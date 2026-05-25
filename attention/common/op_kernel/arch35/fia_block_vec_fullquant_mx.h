@@ -441,9 +441,10 @@ public:
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset = prefixBS1 * constInfo.realN2Size * constInfo.realGSize + runInfo.realN2Idx * constInfo.realGSize;
-            DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                       constInfo);
+            uint64_t bN2Offset = prefixBS1 * constInfo.realN2Size * constInfo.realGSize + 
+                                 runInfo.realN2Idx * constInfo.realGSize;
+            DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
+                                                                 runInfo.actVecMSize, constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);

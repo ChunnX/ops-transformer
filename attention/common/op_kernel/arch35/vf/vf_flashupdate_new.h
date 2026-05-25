@@ -491,7 +491,8 @@ __aicore__ inline void InvalidLineUpdate(const LocalTensor<T>& dstTensor, const 
 }
 
 template <typename T>
-__simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb, const uint32_t dealCount, const uint32_t min = 0xFF7FFFFF)
+__simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb, 
+    const uint32_t dealCount, const uint32_t min = 0xFF7FFFFF)
 {
     MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregMax;
