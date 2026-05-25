@@ -379,7 +379,7 @@ class GeneralizedLI:
 def li_output_single(params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query, layout_key, sparse_count, \
-    sparse_mode, query_datarange, key_datarange, weights_datarange = params
+    sparse_mode, query_datarange, key_datarange, weights_datarange, return_value = params
     import ml_dtypes
 
     test_li = GeneralizedLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,
@@ -455,7 +455,7 @@ def li_output_single(params):
     cpu_result, topk_value = test_li.forward(query, key_cpu, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
     cpu_result, _ = torch.sort(cpu_result)
 
-    npu_result, _ = torch_npu.npu_lightning_indexer(query, key, weights,
+    npu_result, sparse_value = torch_npu.npu_lightning_indexer(query, key, weights,
                                                     actual_seq_lengths_query = actual_seq_lengths_query,
                                                     actual_seq_lengths_key = actual_seq_lengths_key,
                                                     block_table = block_table,
@@ -465,4 +465,4 @@ def li_output_single(params):
                                                     sparse_mode = sparse_mode)
     torch.npu.synchronize()
     npu_result, _ = torch.sort(npu_result)
-    return cpu_result, npu_result, topk_value
+    return cpu_result, npu_result, topk_value, sparse_value
