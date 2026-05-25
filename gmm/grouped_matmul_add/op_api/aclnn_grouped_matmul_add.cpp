@@ -28,6 +28,8 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
+#include "gmm/common/op_host/op_tiling/log_format_util.h"
 
 #include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "grouped_matmul_add_util.h"
@@ -109,13 +111,21 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         auto groupNum = params.groupList->GetViewShape().GetDim(0);
         auto yDimNum = params.yRef->GetViewShape().GetDimNum();
-        CHECK_COND(yDimNum == 3, ACLNN_ERR_PARAM_INVALID, // DAV3510 y tensor need 3 dim
-                   "The dimension of y should be 3 , but actual is %zu.", yDimNum);
+        if (yDimNum != 3) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatmulAddGetWorkspaceSize", "y", FormatString("%zu", yDimNum).c_str(),
+                                                     FormatString("The shape dim of %s must be %d.", "y", 3).c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         auto groupNumY = params.yRef->GetViewShape().GetDim(0);
-        CHECK_COND(groupNum == groupNumY, ACLNN_ERR_PARAM_INVALID,
-                   "groupNum should be equal between groupListTensor and yTensor when group_type is 2, but actual "
-                   "groupListTensor[%ld], yTensor[%ld].",
-                   groupNum, groupNumY);
+        if (groupNum != groupNumY) {
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                "aclnnGroupedMatmulAddGetWorkspaceSize", "groupList", FormatString("%ld", groupNum).c_str(),
+                FormatString(
+                    "When %s is %s, the shape size of %s must be equal to the size (%ld) of the %s axis of %s.",
+                    "group_type", "2", "groupList", groupNumY, "first", "y")
+                    .c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     return ACLNN_SUCCESS;
 }
