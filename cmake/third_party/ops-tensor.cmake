@@ -10,7 +10,8 @@
 
 include_guard(GLOBAL)
 
-set(OPTENSOR_TAG_ID 355dcd1d4b998f8a4e93ca8038e76d93808ca1b3)
+set(OPTENSOR_TAG_ID gmmtensor)
+set(OPTENSOR_GIT_URL "https://gitcode.com/zhangzhizhuo/ops-tensor.git")
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -20,15 +21,19 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
+
   execute_process(
-    COMMAND git checkout ${OPTENSOR_TAG_ID}
+    COMMAND git -c pull.ff=only pull origin ${OPTENSOR_TAG_ID} --depth=1
     WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+    TIMEOUT 10
     RESULT_VARIABLE EXEC_RESULT
     OUTPUT_VARIABLE EXEC_INFO
     ERROR_VARIABLE EXEC_ERROR
   )
-  if(${EXEC_RESULT})
-    message(FATAL_ERROR "Git checkout failed! error: ${EXEC_ERROR}")
+  if("${EXEC_RESULT}" STREQUAL "0")
+    message(STATUS "ops-tensor updated")
+  else()
+    message(WARNING "Git pull failed (network unavailable?), using cached ops-tensor code. ${EXEC_ERROR}")
   endif()
 else()
   if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild")
@@ -38,7 +43,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(
     ops-tensor
-    GIT_REPOSITORY https://gitcode.com/zhangzhizhuo/ops-tensor.git
+    GIT_REPOSITORY ${OPTENSOR_GIT_URL}
     GIT_TAG ${OPTENSOR_TAG_ID}
     GIT_PROGRESS TRUE
     SOURCE_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
@@ -47,6 +52,3 @@ else()
   set(OPTENSOR_SOURCE_PATH ${CANN_3RD_LIB_PATH}/ops-tensor)
   message(STATUS "Fetch ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 endif()
-
-set(OPS_TENSOR_SOURCE_PATH ${OPTENSOR_SOURCE_PATH})
-
