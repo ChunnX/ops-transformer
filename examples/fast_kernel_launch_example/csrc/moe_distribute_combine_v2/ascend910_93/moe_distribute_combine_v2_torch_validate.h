@@ -86,6 +86,7 @@ struct MoeDistributeCombineV2ValidateParams {
  * @param expert_scales 专家缩放张量 [bs, k]
  * @param x_active_mask 可选: 激活掩码张量
  * @param shared_expert_x 可选: 共享专家输入张量
+ * @param elastic_info 可选: elastic信息张量
  * @param ori_x 可选: 原始输入张量 [bs, h]
  * @param const_expert_alpha_1 可选: 常数专家alpha1张量
  * @param const_expert_alpha_2 可选: 常数专家alpha2张量
@@ -102,6 +103,7 @@ bool ValidateMoeDistributeCombineV2Input(
     const at::Tensor& expert_scales,
     const c10::optional<at::Tensor>& x_active_mask,
     const c10::optional<at::Tensor>& shared_expert_x,
+    const c10::optional<at::Tensor>& elastic_info,
     const c10::optional<at::Tensor>& ori_x,
     const c10::optional<at::Tensor>& const_expert_alpha_1,
     const c10::optional<at::Tensor>& const_expert_alpha_2,

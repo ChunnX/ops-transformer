@@ -209,6 +209,7 @@ static void ValidateDimValues(const at::Tensor& expand_x,
 
 static void ValidateOptionalDims(const c10::optional<at::Tensor>& x_active_mask,
                                const c10::optional<at::Tensor>& shared_expert_x,
+                               const c10::optional<at::Tensor>& elastic_info,
                                const c10::optional<at::Tensor>& ori_x,
                                const c10::optional<at::Tensor>& const_alpha1,
                                const c10::optional<at::Tensor>& const_alpha2,
@@ -235,7 +236,16 @@ static void ValidateOptionalDims(const c10::optional<at::Tensor>& x_active_mask,
         TORCH_CHECK((sxp.dim() == 2) || (sxp.dim() == 3),
                     "shared_expert_x dim invalid: 2D or 3D, got ", sxp.dim());
     }
-    
+
+    // elastic_info验证
+    if (elastic_info.has_value()) {
+        const auto& elastic = elastic_info.value();
+        TORCH_CHECK(elastic.dim() == 1,
+                    "elastic_info dim invalid: 1D required, got ", elastic.dim());
+        TORCH_CHECK(elastic.scalar_type() == at::kInt,
+                    "elastic_info dtype invalid: Int32 required, got ", c10::toString(elastic.scalar_type()));
+    }
+
     // ori_x验证
     if (ori_x.has_value()) {
         const auto& ox = ori_x.value();
@@ -354,6 +364,7 @@ bool ValidateMoeDistributeCombineV2Input(
     const at::Tensor& expert_scales,
     const c10::optional<at::Tensor>& x_active_mask,
     const c10::optional<at::Tensor>& shared_expert_x,
+    const c10::optional<at::Tensor>& elastic_info,
     const c10::optional<at::Tensor>& ori_x,
     const c10::optional<at::Tensor>& const_expert_alpha_1,
     const c10::optional<at::Tensor>& const_expert_alpha_2,
@@ -373,7 +384,7 @@ bool ValidateMoeDistributeCombineV2Input(
     int64_t bs, h, k;
     ValidateRequiredTensorDims(expand_x, expert_ids, assist_info_for_combine, ep_send_counts, expert_scales);
     ValidateDimValues(expand_x, expert_ids, params, bs, h, k);
-    ValidateOptionalDims(x_active_mask, shared_expert_x, ori_x, 
+    ValidateOptionalDims(x_active_mask, shared_expert_x, elastic_info, ori_x,
                        const_expert_alpha_1, const_expert_alpha_2, const_expert_v,
                        performance_info, bs, h, k, params);
     

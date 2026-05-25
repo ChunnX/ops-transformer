@@ -40,6 +40,7 @@ struct MoeDistributeCombineV2Info {
     bool isExpertMask;             // input active mask 2dims or not
     bool hasSharedExpertX;         // input shared expert x or not
     bool isPerformance;            // whether performance or not
+    bool hasElasticInfo;           // whether has elastic info or not
     bool reserved0;
     bool reserved1;
     bool reserved2;
