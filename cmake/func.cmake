@@ -481,6 +481,11 @@ function(add_ops_src_copy)
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
         )
+        if(FOLDER_NAME STREQUAL "grouped_matmul" OR FOLDER_NAME STREQUAL "grouped_matmul_finalize_routing_apt")
+            list(APPEND SYNC_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E create_symlink ../common ${SRC_COPY_DST}/common
+            )
+        endif()
         if (BELONG_MC2_OPS)
             list(APPEND SYNC_COMMANDS
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
