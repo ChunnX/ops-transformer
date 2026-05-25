@@ -179,6 +179,7 @@ public:
 
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
     TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
+    bool learnableSinkFlag = false;
 
     const ConstInfoX &constInfo;
     const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
@@ -415,7 +416,7 @@ public:
             }
         }
 
-        if (constInfo.learnableSinkFlag) {
+        if (learnableSinkFlag) {
             this->Vec1SinkComputeGSFused(runInfo, sumUb, maxUb);
         }
     }
@@ -1135,7 +1136,7 @@ FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, ru
             this->tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
         }
 
-        if (constInfo.learnableSinkFlag) {
+        if (learnableSinkFlag) {
             this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
         }
         stage1OutQue[0] = SharedBuffer1[0];
