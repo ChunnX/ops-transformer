@@ -326,7 +326,7 @@ public:
                         oldGA, newGA, oldGA + tileMOffset, newGA + tileMOffset);
                 }
                 epilogueDequantOp_.SetWorkspaceGroupOffset(
-                    cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
+                    cumulativeGroupM_ - deterSync_.windowStartM);
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                     nOffset,
                     Get<DETER_IDX_BIAS_OFFSETS>(blockOffset_),
