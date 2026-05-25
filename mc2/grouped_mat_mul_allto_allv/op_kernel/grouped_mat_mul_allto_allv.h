@@ -429,6 +429,14 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
         uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE];
         uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE];
 
+        // Precompute global rank totals for recvOffset (1KB on stack, safe)
+        uint64_t globalRankData[MAX_EP_RANK_SIZE] = {0UL};
+        for (uint64_t r = 0; r < rankDim_; r++) {
+            for (uint64_t e = 0; e < E; e++) {
+                globalRankData[r] += static_cast<uint64_t>(recvCnt[e + r * E]) * axisN1_;
+            }
+        }
+
         for (uint64_t g = 0; g < numGroups; g++) {
             uint64_t eStart = g * G;
             uint64_t eEnd = (eStart + G < E) ? (eStart + G) : E;
@@ -475,9 +483,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
                 alltoAllvRecvCnt[i] = sumCnt * axisN1_;
             }
 
-            // Compute recvOffsets: match original per-expert pattern
-            // recvOffset[0] = rank 0 data from all previous groups
-            // recvOffset[i] = recvOffset[i-1] + ALL groups' rank (i-1) data (constant stride)
+            // Compute recvOffsets matching G=1 global rank-major layout
+            // recvOffset[i] = (sum of all prev ranks, all experts) + (rank i from prev groups)
             alltoAllvRecvOffset[0] = 0;
             for (uint64_t pg = 0; pg < g; pg++) {
                 uint64_t peStart = pg * G;
@@ -487,13 +494,15 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
                 }
             }
             for (uint64_t i = 1; i < rankDim_; i++) {
-                alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
-                for (uint64_t pg = 0; pg < numGroups; pg++) {
+                alltoAllvRecvOffset[i] = 0;
+                for (uint64_t s = 0; s < i; s++) {
+                    alltoAllvRecvOffset[i] += globalRankData[s];
+                }
+                for (uint64_t pg = 0; pg < g; pg++) {
                     uint64_t peStart = pg * G;
                     uint64_t peEnd = (peStart + G < E) ? (peStart + G) : E;
                     for (uint64_t e = peStart; e < peEnd; e++) {
-                        alltoAllvRecvOffset[i] +=
-                            static_cast<uint64_t>(recvCnt[e + (i - 1) * E]) * axisN1_;
+                        alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCnt[e + i * E]) * axisN1_;
                     }
                 }
             }
