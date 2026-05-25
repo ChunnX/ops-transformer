@@ -38,10 +38,11 @@ struct PrologueTraits<void> {
     using Params = EmptyType;
 
     template <class... Args>
-    CATLASS_DEVICE
-    PrologueTraits(Args...) {}
+    CATLASS_DEVICE PrologueTraits(Args...)
+    {
+    }
 };
 
-}  //namespace Catlass::Gemm::Tile
+} // namespace Catlass::Gemm::Tile
 
-#endif
+#endif // GMM_GEMM_PROLOGUE_TRATIS_HPP

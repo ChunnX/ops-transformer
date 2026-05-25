@@ -405,4 +405,4 @@ private:
 };
 
 } // namespace Catlass
-#endif
+#endif // GROUPED_MATMUL_FIXAXISMOVE_REGULAR_H
