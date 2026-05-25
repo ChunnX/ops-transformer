@@ -233,8 +233,8 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
 
     // Copy weightScale part1
-    uint64_t swishNOffset = param.nOffset * scaleKGmSize;
-    uint64_t gateNOffset = (param.nOffset + param.nSize / 2) * scaleKGmSize;
+    uint64_t swishNOffset = param.nOffset / 2 * scaleKGmSize;
+    uint64_t gateNOffset = (param.nOffset / 2 + param.nSize / 2) * scaleKGmSize;
     uint64_t kScaleOffset = kbL1Offset / MX_GROUPSIZE;
 
     Dn2NzParams scaleBdn2NzParamsSwish;
