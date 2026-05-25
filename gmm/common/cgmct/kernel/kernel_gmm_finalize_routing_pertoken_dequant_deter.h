@@ -349,7 +349,14 @@ public:
                         cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
                 }
                 WaitForCube();
-                epilogueDequantOp_(epilogueShape, epilogueOffset);
+                // epilogueDequantOp_(epilogueShape, epilogueOffset);
+                {
+                    int64_t wsRowStart = (int64_t)(cumulativeGroupM_ - deterSync_.windowStartM) + tileMOffset;
+                    printf("[DETER-WSCHECK] blk=%u cumM=%llu winStart=%llu tileMOff=%lld wsRowStart=%lld tileM=%lld winSize=%llu overflow=%d\n",
+                        GetBlockIdx(), cumulativeGroupM_, deterSync_.windowStartM, tileMOffset,
+                        wsRowStart, Get<MNK_M>(singleShape), deterSync_.windowSize,
+                        (int)(wsRowStart + Get<MNK_M>(singleShape) > (int64_t)deterSync_.windowSize));
+                }
                 NotifyCube();
             }
         }
@@ -426,6 +433,13 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
+            if ASCEND_IS_AIV {
+                printf("[DETER-GROUP] blk=%u gi=%u cumM=%llu groupM=%lld nextCumM=%llu winSize=%llu lowBound=%llu needFlush=%d\n",
+                    GetBlockIdx(), groupIdx, cumulativeGroupM_, Get<MNK_M>(problemShape_),
+                    cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_),
+                    deterSync_.windowSize, deterSync_.lowBoundM,
+                    (int)(isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM));
+            }
             ProcessSingleGroup(params, bs, groupIdx);
             cumulativeGroupM_ += Get<MNK_M>(problemShape_);
             deterSync_.curGroupM = cumulativeGroupM_;
@@ -434,7 +448,12 @@ public:
         if (isDeter_) {
             SyncAll<false>();
             if ASCEND_IS_AIV {
-                FinalFlush(params);
+                // FinalFlush(params);
+                {
+                    uint64_t totalM = deterSync_.curGroupM - deterSync_.windowStartM;
+                    printf("[DETER-FLUSHCHECK] blk=%u totalM=%llu winSize=%llu overflow=%d\n",
+                        GetBlockIdx(), totalM, deterSync_.windowSize, (int)(totalM > deterSync_.windowSize));
+                }
             }
             SyncAll<false>();
         }
