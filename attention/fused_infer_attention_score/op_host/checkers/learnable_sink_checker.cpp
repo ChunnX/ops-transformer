@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -41,19 +42,19 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
         if (fiaInfo.npuArch == NpuArch::DAV_3510) {
             OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_FLOAT16 &&
                         learnableSinkDesc->GetDataType() != ge::DT_BF16,
-                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support FP16/BF16.",
-                    DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
+                OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(learnableSinkDesc->GetDataType() != fiaInfo.inputQType,
-                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s).",
-                    DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str(), 
-                    DataTypeToSerialString(fiaInfo.inputQType).c_str()),
+                ({ std::ostringstream oss; oss << "When learnable sink enable, the datatype(";
+        oss << DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str();
+        oss << ") of sink should be equal to query(";
+        oss << DataTypeToSerialString(fiaInfo.inputQType).c_str();
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_BF16,
-                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink only support BF16.",
-                    DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
+                OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
         }
     }
@@ -68,37 +69,36 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     }
     // sink 不支持左padding
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, left padding is not supported."),
+        ({ std::ostringstream oss; oss << "When learnable sink enable, left padding is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, system prefix is not supported."),
+        ({ std::ostringstream oss; oss << "When learnable sink enable, system prefix is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
-        OP_LOGE(fiaInfo.opName, "When learnable sink enable, pseType = 2/3 is not supported."),
+        ({ std::ostringstream oss; oss << "When learnable sink enable, pseType = 2/3 is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, pse is not supported."),
+        ({ std::ostringstream oss; oss << "When learnable sink enable, pse is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
-        OP_LOGE(fiaInfo.opName, "When learnable sink enable, post quant is not supported."),
+        ({ std::ostringstream oss; oss << "When learnable sink enable, post quant is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.innerPrecise != HIGH_PRECISION,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, innerPrecise(%u) only support %u.", fiaInfo.innerPrecise, HIGH_PRECISION),
+        ({ std::ostringstream oss; oss << "When learnable sink enable, innerPrecise(";
+        oss << fiaInfo.innerPrecise;
+        oss << ") only support ";
+        oss << HIGH_PRECISION;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     // 仅支持GQA 非量化
     OP_CHECK_IF(!(enableNonQuant_ && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512),
-        OP_LOGE(fiaInfo.opName,
-                "Learnable sink only supports no-quantized GQA mode."),
+        ({ std::ostringstream oss; oss << "Learnable sink only supports no-quantized GQA mode."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -112,11 +112,15 @@ ge::graphStatus LearnableSinkChecker::CheckSinkShapeSupport(const FiaTilingInfo 
     uint32_t sinkDimNum = fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape().GetDimNum();
     uint32_t sinkDim0 = fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(sinkDimNum != 1,
-        OP_LOGE(fiaInfo.opName, " When learnable sink enable, the dimension(%u) of sink must be 1!", sinkDimNum),
+        ({ std::ostringstream oss; oss << " When learnable sink enable, the dimension(";
+        oss << sinkDimNum;
+        oss << ") of sink must be 1!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sinkDim0 != fiaInfo.n1Size, OP_LOGE(fiaInfo.opName,
-        "When learnable sink enable, the shape([%u]) of sink must be equal to axis N(%u) of query.",
-        sinkDim0, fiaInfo.n1Size),
+    OP_CHECK_IF(sinkDim0 != fiaInfo.n1Size, ({ std::ostringstream oss; oss << "When learnable sink enable, the shape([";
+        oss << sinkDim0;
+        oss << "]) of sink must be equal to axis N(";
+        oss << fiaInfo.n1Size;
+        oss << ") of query."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -129,12 +133,14 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
     }
 
     OP_CHECK_IF(fiaInfo.qkHeadDim != NUM_192 && fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_64,
-        OP_LOGE(fiaInfo.opName, " When learnable sink enable, the head dim(%u) of query should be in range of "
-            "{192, 128, 64}.", fiaInfo.qkHeadDim),
+        ({ std::ostringstream oss; oss << " When learnable sink enable, the head dim(";
+        oss << fiaInfo.qkHeadDim;
+        oss << ") of query should be in range of {192, 128, 64}."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.vHeadDim != NUM_128 && fiaInfo.vHeadDim != NUM_64,
-        OP_LOGE(fiaInfo.opName, " When learnable sink enable, the head dim(%u) of value should be in range of "
-            "{128, 64}.", fiaInfo.vHeadDim),
+        ({ std::ostringstream oss; oss << " When learnable sink enable, the head dim(";
+        oss << fiaInfo.vHeadDim;
+        oss << ") of value should be in range of {128, 64}."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

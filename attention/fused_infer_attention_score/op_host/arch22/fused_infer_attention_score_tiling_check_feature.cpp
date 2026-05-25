@@ -14,6 +14,7 @@
  */
 
 #include <numeric>
+#include <sstream>
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_check.h"
 
@@ -36,30 +37,40 @@ ge::graphStatus FiaTilingCheck::CheckFeatureNoQuantDtype() const
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
-        OP_LOGE(opName_, "In %s situation, query dtype only support %s and %s, but got %s",
-            QuantModeToSerialString(quantMode_).c_str(),
-            FusedDataTypeToSerialString(ge::DT_BF16).c_str(), FusedDataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-            FusedDataTypeToSerialString(inputQType_).c_str()),
+        OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", FusedDataTypeToSerialString(inputQType_).c_str()),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(inputQType_ != inputKvType_,
-        OP_LOGE(opName_, "In %s situation, key and value dtype(%s) must equal to query dtype(%s)",
-            QuantModeToSerialString(quantMode_).c_str(),
-            FusedDataTypeToSerialString(inputQType_).c_str(),
-            FusedDataTypeToSerialString(inputKvType_).c_str()),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, key and value dtype(";
+        oss << FusedDataTypeToSerialString(inputQType_).c_str();
+        oss << ") must equal to query dtype(";
+        oss << FusedDataTypeToSerialString(inputKvType_).c_str();
+        oss << ")"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF((opParamInfo_.queryRope.desc->GetDataType() != opParamInfo_.query.desc->GetDataType()),
-            OP_LOGE(opName_, "%s(%s) and %s(%s) must have same dType",
-                QUERY_ROPE_NAME.c_str(), FusedDataTypeToSerialString(opParamInfo_.queryRope.desc->GetDataType()).c_str(),
-                QUERY_NAME.c_str(), FusedDataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str()),
+            ({ std::ostringstream oss; oss << QUERY_ROPE_NAME.c_str();
+        oss << "(";
+        oss << FusedDataTypeToSerialString(opParamInfo_.queryRope.desc->GetDataType()).c_str();
+        oss << ") and ";
+        oss << QUERY_NAME.c_str();
+        oss << "(";
+        oss << FusedDataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str();
+        oss << ") must have same dType"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF((opParamInfo_.keyRope.desc->GetDataType() != opParamInfo_.key.desc->GetDataType()),
-            OP_LOGE(opName_, "%s(%s) and %s(%s) must have same dType",
-                KEY_ROPE_NAME.c_str(), FusedDataTypeToSerialString(opParamInfo_.keyRope.desc->GetDataType()).c_str(),
-                KEY_NAME.c_str(), FusedDataTypeToSerialString(opParamInfo_.key.desc->GetDataType()).c_str()),
+            ({ std::ostringstream oss; oss << KEY_ROPE_NAME.c_str();
+        oss << "(";
+        oss << FusedDataTypeToSerialString(opParamInfo_.keyRope.desc->GetDataType()).c_str();
+        oss << ") and ";
+        oss << KEY_NAME.c_str();
+        oss << "(";
+        oss << FusedDataTypeToSerialString(opParamInfo_.key.desc->GetDataType()).c_str();
+        oss << ") must have same dType"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -70,20 +81,33 @@ ge::graphStatus FiaTilingCheck::CheckFeatureBlockSize() const
     constexpr int32_t BLOCK_SIZE_ALIGN_SIZE = 16;
     constexpr int32_t BLOCK_SIZE_MAX_SIZE = 1024;
     if (blockSize_ % BLOCK_SIZE_ALIGN_SIZE != 0) {
-        OP_LOGE(opName_, "In %s situation, %s should aligned to 16, but got %d.",
-            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str(), blockSize_);
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, ";
+        oss << BLOCK_SIZE_NAME.c_str();
+        oss << " should aligned to 16, but got ";
+        oss << blockSize_;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
     }
 
     if (blockSize_ > BLOCK_SIZE_MAX_SIZE) {
-        OP_LOGE(opName_, "In %s situation, %s should less equal than 1024, but got %d.",
-            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str(), blockSize_);
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, ";
+        oss << BLOCK_SIZE_NAME.c_str();
+        oss << " should less equal than 1024, but got ";
+        oss << blockSize_;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
     }
 
     if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && blockSize_ == 0) {
-        OP_LOGE(opName_, "In %s and storage mode is page attention, %s should not be 0",
-            QuantModeToSerialString(quantMode_).c_str(), BLOCK_SIZE_NAME.c_str());
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " and storage mode is page attention, ";
+        oss << BLOCK_SIZE_NAME.c_str();
+        oss << " should not be 0"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -106,17 +130,12 @@ ge::graphStatus FiaTilingCheck::CheckFeatureTensorList() const
         };
         std::string layout = opParamInfo_.layOut;
         if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-            OP_LOGE(opName_,
-                "when the tensor number of key/value is greater than 1 (this scenario is called tensor list), "
-                "input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s", layout.c_str());
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
 
         OP_CHECK_IF(ropeMode_ != RopeMode::NO_ROPE,
-            OP_LOGE(opName_,
-                "when the tensor number of key/value is greater than 1 (this scenario is called tensor list), "
-                "query_rope and key_rope should be not exist and the head_dim(D) dimension of query and key should be "
-                "equal to the head_dim(D) dimension of value."),
+            ({ std::ostringstream oss; oss << "when the tensor number of key/value is greater than 1 (this scenario is called tensor list), query_rope and key_rope should be not exist and the head_dim(D) dimension of query and key should be equal to the head_dim(D) dimension of value."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -125,8 +144,11 @@ ge::graphStatus FiaTilingCheck::CheckFeatureTensorList() const
 ge::graphStatus FiaTilingCheck::CheckFeatureMlaNoquant()
 {
     OP_CHECK_IF(socVersion_ == platform_ascendc::SocVersion::ASCEND310P,
-        OP_LOGE(opName_, "In %s %s situation, Ascend310P is not supported",
-            RopeModeToSerialString(ropeMode_).c_str(), QuantModeToSerialString(quantMode_).c_str()),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << RopeModeToSerialString(ropeMode_).c_str();
+        oss << " ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, Ascend310P is not supported"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     if (ge::GRAPH_SUCCESS != CheckFeatureTensorList() ||
         ge::GRAPH_SUCCESS != CheckFeatureBlockSize() ||
@@ -176,33 +198,41 @@ ge::graphStatus FiaTilingCheck::CheckFeatureSparseMode() const
     if (sparseMode == SPARSE_MODE_TREE) {
         // 特性校验
         OP_CHECK_IF(ropeMode_ != RopeMode::ROPE_SPLIT,
-            OP_LOGE(opName_,
-                    "In %s situation, when query_rope and key_rope not exist, %s does not support sparse(%d).", 
-                    QuantModeToSerialString(quantMode_).c_str(), SPARSE_MODE_NAME.c_str(), sparseMode),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when query_rope and key_rope not exist, ";
+        oss << SPARSE_MODE_NAME.c_str();
+        oss << " does not support sparse(";
+        oss << sparseMode;
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo_.qPaddingSizeFlag || fiaInfo_.kvPaddingSizeFlag,
-            OP_LOGE(opName_,
-                    "In %s situation, when sparse is %d, query_padding_size or kv_padding_size should be not exist.", 
-                    QuantModeToSerialString(quantMode_).c_str(), sparseMode),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when sparse is ";
+        oss << sparseMode;
+        oss << ", query_padding_size or kv_padding_size should be not exist."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo_.pseShiftFlag,
-            OP_LOGE(opName_, 
-                    "In %s situation, when sparse is %d, pse_shift should be not exist.", 
-                    QuantModeToSerialString(quantMode_).c_str(), sparseMode),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when sparse is ";
+        oss << sparseMode;
+        oss << ", pse_shift should be not exist."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo_.sysPrefixFlag,
-            OP_LOGE(opName_, 
-                    "In %s situation, when sparse is %d, key_shared_prefix and key_shared_prefix should be not exist.",
-                    QuantModeToSerialString(quantMode_).c_str(), sparseMode),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when sparse is ";
+        oss << sparseMode;
+        oss << ", key_shared_prefix and key_shared_prefix should be not exist."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(outputType_ == ge::DT_INT8,
-            OP_LOGE(opName_, 
-                    "In %s situation, when sparse is %d, output dtype %d is not currently supported.", 
-                    QuantModeToSerialString(quantMode_).c_str(), sparseMode, static_cast<int32_t>(outputType_)),
+            OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", static_cast<int32_t>(outputType_)),
             return ge::GRAPH_FAILED);
 
         // s2 >= s1拦截
@@ -217,10 +247,19 @@ ge::graphStatus FiaTilingCheck::CheckFeatureSparseMode() const
                 continue;
             }
             OP_CHECK_IF(qSize[i] > kvSize[i],
-                OP_LOGE(opName_,
-                        "In %s situation, when sparse is %d, qSize[%d] should less than or equal to kvSize[%d],"
-                        "but got qSize %d and kvSize %d.",
-                        QuantModeToSerialString(quantMode_).c_str(), sparseMode, i, i, qSize[i], kvSize[i]),
+                ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when sparse is ";
+        oss << sparseMode;
+        oss << ", qSize[";
+        oss << i;
+        oss << "] should less than or equal to kvSize[";
+        oss << i;
+        oss << "],but got qSize ";
+        oss << qSize[i];
+        oss << " and kvSize ";
+        oss << kvSize[i];
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         }
     }
@@ -234,8 +273,13 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
     }
 
     if ((!attenMaskFlag_) && (fiaInfo_.sparseMode != SPARSE_MODE_NO_MASK)) {
-        OP_LOGE(opName_, "when %s is %d, it not 0, %s should not be null.",
-            SPARSE_MODE_NAME.c_str(), fiaInfo_.sparseMode, ATTEN_MASK_NAME.c_str());
+        ({ std::ostringstream oss; oss << "when ";
+        oss << SPARSE_MODE_NAME.c_str();
+        oss << " is ";
+        oss << fiaInfo_.sparseMode;
+        oss << ", it not 0, ";
+        oss << ATTEN_MASK_NAME.c_str();
+        oss << " should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
 
@@ -249,15 +293,12 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
                 };
                 std::string layout = opParamInfo_.layOut;
                 OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                    OP_LOGE(opName_,
-                        "In %s situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, "
-                        "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
-                        QuantModeToSerialString(quantMode_).c_str(), layout.c_str()),
+                    OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str()),
                     return ge::GRAPH_FAILED);
             } else {
-                OP_LOGE(opName_,
-                        "In %s situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.",
-                        QuantModeToSerialString(quantMode_).c_str());
+                ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
                 return ge::GRAPH_FAILED;
             }
         }
@@ -267,10 +308,15 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
         int32_t sparseMode = fiaInfo_.sparseMode;
         if (sparseMode != SPARSE_MODE_NO_MASK && sparseMode != SPARSE_MODE_RIGHT_DOWN && 
             sparseMode != SPARSE_MODE_BAND && sparseMode != SPARSE_MODE_TREE) {
-            OP_LOGE(opName_,
-                    "In %s situation, when query_rope and key_rope exsists and the head dim of value is %u, %s only "
-                    "support 0/3/4/9, but got %d.",
-                    QuantModeToSerialString(quantMode_).c_str(), vHeadDim_, SPARSE_MODE_NAME.c_str(), sparseMode);
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when query_rope and key_rope exsists and the head dim of value is ";
+        oss << vHeadDim_;
+        oss << ", ";
+        oss << SPARSE_MODE_NAME.c_str();
+        oss << " only support 0/3/4/9, but got ";
+        oss << sparseMode;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
         }
     }
@@ -283,11 +329,11 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
         return ge::GRAPH_SUCCESS;
     }
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
-        OP_LOGE(opName_, "postquant do not support qkHeadDim = vHeadDim and rope exist");
+        ({ std::ostringstream oss; oss << "postquant do not support qkHeadDim = vHeadDim and rope exist"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) {
-        OP_LOGE(opName_, "postquant do not support qkHeadDim != vHeadDim");
+        ({ std::ostringstream oss; oss << "postquant do not support qkHeadDim != vHeadDim"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
     const std::vector<std::string> layoutSupportList = {
@@ -295,10 +341,7 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
     };
     std::string layout = opParamInfo_.layOut;
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-        OP_LOGE(opName_,
-                "when enable postquant, input_layout only supports BSH, BSND, BNSD, "
-                "and BNSD_BSND, but got %s",
-                layout.c_str());
+        OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str());
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo_.isLegacyIfa) {
@@ -306,9 +349,11 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
     }
     OP_CHECK_IF(
         (fiaInfo_.sparseMode == SPARSE_MODE_BAND && (fiaInfo_.preToken < 0 || fiaInfo_.nextToken < 0)),
-        OP_LOGE(opName_,
-                "When output type is int8, sparse mode = 4, preTokens (%ld) or nextTokens (%ld) cannot be negative.",
-                fiaInfo_.preToken, fiaInfo_.nextToken),
+        ({ std::ostringstream oss; oss << "When output type is int8, sparse mode = 4, preTokens (";
+        oss << fiaInfo_.preToken;
+        oss << ") or nextTokens (";
+        oss << fiaInfo_.nextToken;
+        oss << ") cannot be negative."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     bool checkPostQuantOffset =
         (fiaInfo_.outputType == ge::DT_INT8) &&
@@ -384,14 +429,13 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePostQuant() const
                                                static_cast<int64_t>(fiaInfo_.systemPrefixLen) - actualSeqLengths[i] <
                                            0) ||
                                           (nextTokensPerbatch < 0))),
-                OP_LOGE(opName_,
-                        "When sparse mode = %d, output dtype is int8, the output's dequant offset "
-                        "is not null or empty tensor, "
-                        "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
-                        "participate in the calculation, "
-                        "the accuracy of the final result will be incorrect. Please see the "
-                        "documentation for more details.",
-                        fiaInfo_.sparseMode, preTokens, nextTokens),
+                ({ std::ostringstream oss; oss << "When sparse mode = ";
+        oss << fiaInfo_.sparseMode;
+        oss << ", output dtype is int8, the output's dequant offset is not null or empty tensor, preTokens = ";
+        oss << preTokens;
+        oss << " and nextTokens = ";
+        oss << nextTokens;
+        oss << ", some rows of the matrix do not participate in the calculation, the accuracy of the final result will be incorrect. Please see the documentation for more details."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -405,47 +449,36 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLeftPadding() const
         };
         std::string layout = opParamInfo_.layOut;
         if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-            OP_LOGE(opName_,
-                    "when query_padding_size or kv_padding_size exists, input_layout only supports BSH, BSND, BNSD, "
-                    "and BNSD_BSND, but got %s",
-                    layout.c_str());
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
 
         OP_CHECK_IF(ropeMode_ != RopeMode::NO_ROPE,
-            OP_LOGE(opName_,
-                    "when query_padding_size or kv_padding_size exists, query_rope and key_rope should be not exist "
-                    "and the "
-                    "head_dim(D) dimension of query and key should be equal to the head_dim(D) dimension of value."),
+            ({ std::ostringstream oss; oss << "when query_padding_size or kv_padding_size exists, query_rope and key_rope should be not exist and the head_dim(D) dimension of query and key should be equal to the head_dim(D) dimension of value."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvStorageMode_ == KvStorageMode::TENSOR_LIST,
-            OP_LOGE(opName_,
-                "when query_padding_size or kv_padding_size exists, key/value tensorlist is not supported; in this "
-                "case, the tensor number of key/value should be 1"),
+            ({ std::ostringstream oss; oss << "when query_padding_size or kv_padding_size exists, key/value tensorlist is not supported; in this case, the tensor number of key/value should be 1"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvStorageMode_ == KvStorageMode::PAGE_ATTENTION,
-            OP_LOGE(opName_,
-                "when query_padding_size or kv_padding_size exists, page attention is not supported; in this case, "
-                "block_table should exist and block_size is not 0"),
+            ({ std::ostringstream oss; oss << "when query_padding_size or kv_padding_size exists, page attention is not supported; in this case, block_table should exist and block_size is not 0"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo_.sysPrefixFlag,
-            OP_LOGE(opName_,
-                    "when query_padding_size exists, key_shared_prefix and key_shared_prefix should be not exist."),
+            ({ std::ostringstream oss; oss << "when query_padding_size exists, key_shared_prefix and key_shared_prefix should be not exist."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo_.qPaddingSizeFlag) {
         OP_CHECK_IF(!(fiaInfo_.actualLenQDims != 0U),
-            OP_LOGE(opName_, "when query_padding_size exists, the query's actual sequence lengths are required."),
+            ({ std::ostringstream oss; oss << "when query_padding_size exists, the query's actual sequence lengths are required."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo_.kvPaddingSizeFlag) {
         OP_CHECK_IF(!(fiaInfo_.actualLenDims != 0U),
-            OP_LOGE(opName_, "when kv_padding_size exists, the key/value's actual sequence lengths are required."),
+            ({ std::ostringstream oss; oss << "when kv_padding_size exists, the key/value's actual sequence lengths are required."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -459,15 +492,12 @@ ge::graphStatus FiaTilingCheck::CheckFeaturePSE() const
         };
         std::string layout = opParamInfo_.layOut;
         if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-            OP_LOGE(opName_,
-                    "when pse_shift exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s",
-                    layout.c_str());
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
 
         OP_CHECK_IF(ropeMode_ != RopeMode::NO_ROPE,
-            OP_LOGE(opName_, "when pse_shift exists, query_rope and key_rope should be not exist and the head_dim(D) "
-                             "dimension of query and key should be equal to the head_dim(D) dimension of value."),
+            ({ std::ostringstream oss; oss << "when pse_shift exists, query_rope and key_rope should be not exist and the head_dim(D) dimension of query and key should be equal to the head_dim(D) dimension of value."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -486,11 +516,15 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLearnableSink() const
 
     uint32_t sinkDim = opParamInfo_.learnableSink.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(sinkDim != fiaInfo_.n1Size,
-        OP_LOGE(opName_, "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!", sinkDim, fiaInfo_.n1Size),
+        ({ std::ostringstream oss; oss << "learnable_sink enable, sink shape(";
+        oss << sinkDim;
+        oss << ") must be same equal queryN(";
+        oss << fiaInfo_.n1Size;
+        oss << ")!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((opParamInfo_.learnableSink.desc->GetDataType() != ge::DT_BF16),
-            OP_LOGE(opName_, "When learnable_sink enable, sink dtype must be bf16!"),
+            ({ std::ostringstream oss; oss << "When learnable_sink enable, sink dtype must be bf16!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
             
     return ge::GRAPH_SUCCESS;
@@ -503,48 +537,69 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
     };
     std::string layout = opParamInfo_.layOut;
     OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-        OP_LOGE(opName_, "In %s %s situation, layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
-            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()),
+        OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str()),
         return ge::GRAPH_FAILED);
 
     if (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
         OP_CHECK_IF(kvLayout_ != FiaLayout::BSH && kvLayout_ != FiaLayout::BSND && kvLayout_ != FiaLayout::BNSD &&
             kvLayout_ != FiaLayout::TND && kvLayout_ != FiaLayout::NTD,
-            OP_LOGE(opName_, "In %s %s situation, key/value's layout only support BSH, BSND, BNSD, TND and NTD in batch continuous scene, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), LayoutToSerialString(kvLayout_).c_str()),
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", LayoutToSerialString(kvLayout_).c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvLayout_ != qLayout_,
-            OP_LOGE(opName_, "In %s %s situation, key/value's layout and query's layout should be same in batch continuous scene.",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, key/value's layout and query's layout should be same in batch continuous scene."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     } else if (kvStorageMode_ == KvStorageMode::TENSOR_LIST) {
         OP_CHECK_IF(kvLayout_ != FiaLayout::BSH && kvLayout_ != FiaLayout::BSND && kvLayout_ != FiaLayout::BNSD,
-            OP_LOGE(opName_, "In %s %s situation, key/value's layout only support BSH, BSND and BNSD in tensor list scene, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), LayoutToSerialString(kvLayout_).c_str()),
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", LayoutToSerialString(kvLayout_).c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvLayout_ != qLayout_,
-            OP_LOGE(opName_, "In %s %s situation, key/value's layout and query's layout should be same in tensor list scene.",
-            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, key/value's layout and query's layout should be same in tensor list scene."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     } else if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(kvLayout_ == FiaLayout::BnBsH && (qLayout_ != FiaLayout::BSH && qLayout_ != FiaLayout::BSND &&
                         qLayout_ != FiaLayout::BNSD && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD),
-            OP_LOGE(opName_, "In %s %s situation, the key/value's layout is BnBsH, %s layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, the key/value's layout is BnBsH, ";
+        oss << QUERY_NAME.c_str();
+        oss << " layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got ";
+        oss << LayoutToSerialString(qLayout_).c_str(); OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvLayout_ == FiaLayout::BnNBsD && (qLayout_ != FiaLayout::BSH && qLayout_ != FiaLayout::BSND &&
                         qLayout_ != FiaLayout::BNSD && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD),
-            OP_LOGE(opName_, "In %s %s situation, the key/value's layout is BnNBsD, %s layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, the key/value's layout is BnNBsD, ";
+        oss << QUERY_NAME.c_str();
+        oss << " layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got ";
+        oss << LayoutToSerialString(qLayout_).c_str(); OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(kvLayout_ == FiaLayout::NZ && (qLayout_ != FiaLayout::BSH && qLayout_ != FiaLayout::BSND &&
                         qLayout_ != FiaLayout::BNSD && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD),
-            OP_LOGE(opName_, "In %s %s situation, the key/value's layout is BnNBsD, %s layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, the key/value's layout is BnNBsD, ";
+        oss << QUERY_NAME.c_str();
+        oss << " layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got ";
+        oss << LayoutToSerialString(qLayout_).c_str(); OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
 
@@ -576,60 +631,84 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
         if (vHeadDim_ == HEAD_DIM_512) {
             OP_CHECK_IF(std::find(splitRopeLayoutSupportList.begin(), splitRopeLayoutSupportList.end(), layout) == splitRopeLayoutSupportList.end(),
-            OP_LOGE(opName_, "In %s %s situation, when value headDim = 512, layout only supports BSH, BSND, BNSD, TND, BNSD_NBSD, BSND_NBSD, BSH_NBSD, TND_NTD, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()),
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str()),
             return ge::GRAPH_FAILED);
         }
         if (vHeadDim_ == HEAD_DIM_128) {
             OP_CHECK_IF(std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) == restrictedLayoutSupportList.end(),
-            OP_LOGE(opName_, "In %s %s situation, when value headDim = 128, layout only supports BSH, BSND, BNSD, BNSD_BSND, TND, NTD, BSH_BNSD, BSND_BNSD, NTD_TND, but got %s",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()),
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str()),
             return ge::GRAPH_FAILED);
         }
     } else if (fiaInfo_.ropeMode == RopeMode::NO_ROPE) {
         OP_CHECK_IF(std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) == restrictedLayoutSupportList.end(),
-            OP_LOGE(opName_, "In %s %s situation, layout only supports BSH、BSND、BNSD、BNSD_BSND、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND, but got %s.",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()),
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str()),
             return ge::GRAPH_FAILED);
 
         if (!fiaInfo_.isLegacyIfa && (vHeadDim_ % ALIGN_SIZE_16 != 0)) {
             OP_CHECK_IF(std::find(noRopeLayoutSupportListA.begin(), noRopeLayoutSupportListA.end(), layout) != noRopeLayoutSupportListA.end(),
-            OP_LOGE(opName_, "In %s %s situation, when Qs>1 and input_layout is %s, headDim of query|key|value should be align to 16.",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when Qs>1 and input_layout is ";
+        oss << layout.c_str();
+        oss << ", headDim of query|key|value should be align to 16."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(std::find(noRopeLayoutSupportListB.begin(), noRopeLayoutSupportListB.end(), layout) != noRopeLayoutSupportListB.end(),
-            OP_LOGE(opName_, "In %s %s situation, when Qs>1 and input_layout is %s, headDim of query|key|value should be align to 16.",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str()),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when Qs>1 and input_layout is ";
+        oss << layout.c_str();
+        oss << ", headDim of query|key|value should be align to 16."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         }
         if (fiaInfo_.isLegacyIfa && (vHeadDim_ != HEAD_DIM_64 && vHeadDim_ != HEAD_DIM_128)) {
             OP_CHECK_IF(std::find(noRopeLayoutSupportListB.begin(), noRopeLayoutSupportListB.end(), layout) != noRopeLayoutSupportListB.end(),
-            OP_LOGE(opName_, "In %s %s situation, when Qs=1 and input_layout is BNSD_BSND, only query|key|value headDim = 64/128 are supported, but got %u",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when Qs=1 and input_layout is BNSD_BSND, only query|key|value headDim = 64/128 are supported, but got ";
+        oss << vHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         }
         if (std::find(noRopeLayoutSupportListC.begin(), noRopeLayoutSupportListC.end(), layout) != noRopeLayoutSupportListC.end()) {
             OP_CHECK_IF(vHeadDim_ != HEAD_DIM_64 && vHeadDim_ != HEAD_DIM_128,
-            OP_LOGE(opName_, "In %s %s situation, when input_layout is NTD, BSH_BNSD, BSND_BNSD, NTD_TND, only query|key|value headDim = 64/128 are supported, but got %u",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when input_layout is NTD, BSH_BNSD, BSND_BNSD, NTD_TND, only query|key|value headDim = 64/128 are supported, but got ";
+        oss << vHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         }
         if (std::find(noRopeLayoutSupportListD.begin(), noRopeLayoutSupportListD.end(), layout) != noRopeLayoutSupportListD.end()) {
             OP_CHECK_IF(vHeadDim_ != HEAD_DIM_64 && vHeadDim_ != HEAD_DIM_128 && vHeadDim_ != HEAD_DIM_192,
-            OP_LOGE(opName_, "In %s %s situation, when input_layout is TND, only query|key|value headDim = 64/128/192 are supported, but got %u",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when input_layout is TND, only query|key|value headDim = 64/128/192 are supported, but got ";
+        oss << vHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         }
     } else if (fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) {
         if (std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) != restrictedLayoutSupportList.end()) {
             OP_CHECK_IF(qkHeadDim_ != HEAD_DIM_192 || vHeadDim_ != HEAD_DIM_128,
-            OP_LOGE(opName_, "In %s %s situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, BSH_BNSD, BSND_BNSD, NTD_TND, and the headDim shared by query and key is not equal to that of value, only query|key headDim = 192, value headDim = 128 are supported, but got query|key headDim: %u, value headDim: %u",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), qkHeadDim_, vHeadDim_),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, BSH_BNSD, BSND_BNSD, NTD_TND, and the headDim shared by query and key is not equal to that of value, only query|key headDim = 192, value headDim = 128 are supported, but got query|key headDim: ";
+        oss << qkHeadDim_;
+        oss << ", value headDim: ";
+        oss << vHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(opName_, "In %s %s situation, layout only supports BSH、BSND、BNSD、BNSD_BSND、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND, but got %s.",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), layout.c_str());
+            OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -642,19 +721,28 @@ ge::graphStatus FiaTilingCheck::CheckFeatureAxisInfo() const
     constexpr uint32_t MAX_B_SIZE = 256U;
 
     OP_CHECK_IF(actualSeqLengthsQSize_ > MAX_ACTUAL_SEQ_LEN_BYTE,
-    OP_LOGE(opName_, "In %s situation, actual sequence length q should be smaller or equal to 64K, but got %u",
-        QuantModeToSerialString(quantMode_).c_str(), actualSeqLengthsQSize_),
+    ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, actual sequence length q should be smaller or equal to 64K, but got ";
+        oss << actualSeqLengthsQSize_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
     return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(actualSeqLengthsKvSize_ > MAX_ACTUAL_SEQ_LEN_BYTE,
-    OP_LOGE(opName_, "In %s situation, actual sequence length kv should be smaller or equal to 64K, but got %u",
-        QuantModeToSerialString(quantMode_).c_str(), actualSeqLengthsKvSize_),
+    ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, actual sequence length kv should be smaller or equal to 64K, but got ";
+        oss << actualSeqLengthsKvSize_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
     return ge::GRAPH_FAILED);
 
     if (kvStorageMode_ == KvStorageMode::TENSOR_LIST) {
         OP_CHECK_IF(bSize_ > MAX_B_SIZE,
-            OP_LOGE(opName_, "In %s situation, batch size(%u) cannot be greater than %u in tensor list scene.",
-                QuantModeToSerialString(quantMode_).c_str(), bSize_, MAX_B_SIZE),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, batch size(";
+        oss << bSize_;
+        oss << ") cannot be greater than ";
+        oss << MAX_B_SIZE;
+        oss << " in tensor list scene."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     }
 
@@ -664,13 +752,15 @@ ge::graphStatus FiaTilingCheck::CheckFeatureAxisInfo() const
 
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT && vHeadDim_ == HEAD_DIM_512) {
         OP_CHECK_IF(std::find(ropeSplitgSizeSupportList.begin(), ropeSplitgSizeSupportList.end(), gSize_) == ropeSplitgSizeSupportList.end(),
-        OP_LOGE(opName_, "In %s %s situation, when query|key|value headDim = 512, layout only supports 1, 2, 4, 8, 16, 32, 64, 128, but got %u",
-            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), gSize_),
+        OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", gSize_),
         return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(n2Size_ != HEAD_NUM_ONE,
-        OP_LOGE(opName_, "In %s %s situation, when query|key|value headDim = 512, kvN should be equals to 1.",
-            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when query|key|value headDim = 512, kvN should be equals to 1."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -686,9 +776,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureGqaPrefix() const
     };
     std::string layout = opParamInfo_.layOut;
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-        OP_LOGE(opName_,
-                "when system prefix exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s",
-                layout.c_str());
+        OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", layout.c_str());
         return ge::GRAPH_FAILED;
     }
     int32_t sparseMode = *opParamInfo_.sparseMode;
@@ -697,27 +785,31 @@ ge::graphStatus FiaTilingCheck::CheckFeatureGqaPrefix() const
         uint32_t maskS2 = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         uint32_t totalLen = fiaInfo_.systemPrefixLen + fiaInfo_.maxActualseq;
         if (totalLen > maskS2) {
-            OP_LOGE(opName_, "s2Size + systemPrefix (%u) is greater than mask s2 size (%u)", totalLen, maskS2);
+            ({ std::ostringstream oss; oss << "s2Size + systemPrefix (";
+        oss << totalLen;
+        oss << ") is greater than mask s2 size (";
+        oss << maskS2;
+        oss << ")"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
         }
     }
     if (fiaInfo_.ropeMode !=  RopeMode::NO_ROPE) {
-        OP_LOGE(opName_, "system prefix do not support rope");
+        ({ std::ostringstream oss; oss << "system prefix do not support rope"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
 
     if (fiaInfo_.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        OP_LOGE(opName_, "system prefix do not support PAGE_ATTENTION");
+        ({ std::ostringstream oss; oss << "system prefix do not support PAGE_ATTENTION"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo_.kvStorageMode == KvStorageMode::TENSOR_LIST && fiaInfo_.s1Size > 1) {
-        OP_LOGE(opName_, "system prefix do not support qs > 1 and enable TENSORLIST");
+        ({ std::ostringstream oss; oss << "system prefix do not support qs > 1 and enable TENSORLIST"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
 
     if (fiaInfo_.pseShiftFlag) {
         if (fiaInfo_.s2Size + fiaInfo_.systemPrefixLen > fiaInfo_.pseShiftS2) {
-            OP_LOGE(opName_, "when enable pse and system prefix, pse s2 Size greater than kv s2size + systemPrefixLen");
+            ({ std::ostringstream oss; oss << "when enable pse and system prefix, pse s2 Size greater than kv s2size + systemPrefixLen"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;   
         }
     }
@@ -730,44 +822,78 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
     constexpr uint32_t MAX_ROPE_DIM = 64;
 
     OP_CHECK_IF(vHeadDim_ > MAX_HEAD_DIM,
-    OP_LOGE(opName_, "In %s situation, headDim of value should be smaller or equal to 512, but got %u",
-        QuantModeToSerialString(quantMode_).c_str(), vHeadDim_),
+    ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, headDim of value should be smaller or equal to 512, but got ";
+        oss << vHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
     return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT || fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) && ropeHeadDim_ != MAX_ROPE_DIM,
-    OP_LOGE(opName_, "In %s situation, headDim of Rope should be equal to 64, but got %u",
-        QuantModeToSerialString(quantMode_).c_str(), ropeHeadDim_),
+    ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, headDim of Rope should be equal to 64, but got ";
+        oss << ropeHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
     return ge::GRAPH_FAILED);
 
     constexpr int32_t D_ALIGN_SIZE = 16;
     if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && kvLayout_ == FiaLayout::NZ) {
         OP_CHECK_IF((vHeadDim_ % D_ALIGN_SIZE != 0) || (qkHeadDim_ % D_ALIGN_SIZE != 0),
-        OP_LOGE(opName_, "In %s situation, when the dim of key&value is 5, headDim of query|key|value should be align to 16, but got keyHeadDim:%u, queryHeadDim and keyHeadDim:%u",
-            QuantModeToSerialString(quantMode_).c_str(), vHeadDim_, qkHeadDim_),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, when the dim of key&value is 5, headDim of query|key|value should be align to 16, but got keyHeadDim:";
+        oss << vHeadDim_;
+        oss << ", queryHeadDim and keyHeadDim:";
+        oss << qkHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo_.ropeMode == RopeMode::NO_ROPE) {
         if (!fiaInfo_.isLegacyIfa) {
             OP_CHECK_IF((!fiaInfo_.isOutQuantEnable && (vHeadDim_ % ALIGN_SIZE_16 != 0)),
-            OP_LOGE(opName_, "In %s %s situation, when Qs>1, headDim of query|key|value should be align to 16, but got value headDim:%u, query|key headDim:%u",
-                QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_, qkHeadDim_),
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when Qs>1, headDim of query|key|value should be align to 16, but got value headDim:";
+        oss << vHeadDim_;
+        oss << ", query|key headDim:";
+        oss << qkHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
             OP_CHECK_IF((fiaInfo_.isOutQuantEnable && (vHeadDim_ % ALIGN_SIZE_32 != 0)),
- 	        OP_LOGE(opName_, "In %s %s situation, when Qs>1 and enable postquant, headDim of query|key|value should be align to 32, but got value headDim:%u, query|key headDim:%u",
- 	            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_, qkHeadDim_),
+ 	        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when Qs>1 and enable postquant, headDim of query|key|value should be align to 32, but got value headDim:";
+        oss << vHeadDim_;
+        oss << ", query|key headDim:";
+        oss << qkHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
  	        return ge::GRAPH_FAILED);
         }
     } else if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF(!(vHeadDim_ == HEAD_DIM_512 && ropeHeadDim_ == HEAD_DIM_64) && !(vHeadDim_ == HEAD_DIM_128 && ropeHeadDim_ == HEAD_DIM_64),
-        OP_LOGE(opName_, "In %s %s situation, only value matrix headDim = 128/512 and rope headDim = 64 are supported, but got value matrix headDim:%u, rope headDim:%u.",
-            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_, ropeHeadDim_),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, only value matrix headDim = 128/512 and rope headDim = 64 are supported, but got value matrix headDim:";
+        oss << vHeadDim_;
+        oss << ", rope headDim:";
+        oss << ropeHeadDim_;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     } else if (fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) {
         OP_CHECK_IF(!(vHeadDim_ == HEAD_DIM_128 && ropeHeadDim_ == HEAD_DIM_64),
-        OP_LOGE(opName_, "In %s %s situation, only value matrix headDim = 128 and rope headDim = 64 are supported, but got value matrix headDim:%u, rope headDim:%u.",
-            QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_, ropeHeadDim_),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, only value matrix headDim = 128 and rope headDim = 64 are supported, but got value matrix headDim:";
+        oss << vHeadDim_;
+        oss << ", rope headDim:";
+        oss << ropeHeadDim_;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     }
     if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && kvLayout_ == FiaLayout::NZ &&
@@ -777,12 +903,14 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
                 nzNoRopeDSupportList.end() ||
             std::find(nzNoRopeDSupportList.begin(), nzNoRopeDSupportList.end(), vHeadDim_) ==
                 nzNoRopeDSupportList.end()) {
-            OP_LOGE(opName_,
-                    "In %s %s situation, when the dim of key&value is 5, and the headDim shared by query and key is "
-                    "equal to that of value. The headDim of query|key|value should be 64 | "
-                    "128, but got valueHeadDim:%u, queryHeadDim and keyHeadDim:%u",
-                    QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), vHeadDim_,
-                    qkHeadDim_);
+            ({ std::ostringstream oss; oss << "In ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " ";
+        oss << SituationToSerialString(ropeMode_).c_str();
+        oss << " situation, when the dim of key&value is 5, and the headDim shared by query and key is equal to that of value. The headDim of query|key|value should be 64 | 128, but got valueHeadDim:";
+        oss << vHeadDim_;
+        oss << ", queryHeadDim and keyHeadDim:";
+        oss << qkHeadDim_; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
         }
     }
@@ -792,8 +920,11 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
 ge::graphStatus FiaTilingCheck::CheckFeatureGqaNoquant()
 {
     OP_CHECK_IF(socVersion_ == platform_ascendc::SocVersion::ASCEND310P,
-        OP_LOGE(opName_, "In %s %s situation, Ascend310P is not supported",
-            RopeModeToSerialString(ropeMode_).c_str(), QuantModeToSerialString(quantMode_).c_str()),
+        ({ std::ostringstream oss; oss << "In ";
+        oss << RopeModeToSerialString(ropeMode_).c_str();
+        oss << " ";
+        oss << QuantModeToSerialString(quantMode_).c_str();
+        oss << " situation, Ascend310P is not supported"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     if (ge::GRAPH_SUCCESS != CheckFeatureTensorList() ||
         ge::GRAPH_SUCCESS != CheckFeatureBlockSize() ||
@@ -841,32 +972,56 @@ ge::graphStatus FiaTilingCheck::CheckFeatureActualSeqLensExistence() const
 {
     if ((qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD)) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
-            OP_LOGE(opName_, "when %s's layout is %s, %s should not be null.", QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(),
-                ACTUAL_SEQ_Q_LEN_NAME.c_str()),
+            ({ std::ostringstream oss; oss << "when ";
+        oss << QUERY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(qLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << " should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
-            OP_LOGE(opName_, "when %s's layout is %s, %s should not be null.", KEY_NAME.c_str(), LayoutToSerialString(kvLayout_).c_str(),
-                ACTUAL_SEQ_KV_LEN_NAME.c_str()),
+            ({ std::ostringstream oss; oss << "when ";
+        oss << KEY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(kvLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << " should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
 
         if (!fiaInfo_.isMaxWorkspace) {
             OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr,
-                OP_LOGE(opName_, "when %s's layout is %s, %s data should not be null.", QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(),
-                    ACTUAL_SEQ_Q_LEN_NAME.c_str()),
+                ({ std::ostringstream oss; oss << "when ";
+        oss << QUERY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(qLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << " data should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr,
-                OP_LOGE(opName_, "when %s's layout is %s, %s data should not be null.", KEY_NAME.c_str(), LayoutToSerialString(kvLayout_).c_str(),
-                    ACTUAL_SEQ_KV_LEN_NAME.c_str()),
+                ({ std::ostringstream oss; oss << "when ";
+        oss << KEY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(kvLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << " data should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
         }
     } else {
         if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION) {
             OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
-                OP_LOGE(opName_, "In page attention scene, %s should not be null.", ACTUAL_SEQ_KV_LEN_NAME.c_str()),
+                ({ std::ostringstream oss; oss << "In page attention scene, ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << " should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
             if (!fiaInfo_.isMaxWorkspace) {
                 OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr,
-                    OP_LOGE(opName_, "In page attention scene, %s data should not be null.", ACTUAL_SEQ_KV_LEN_NAME.c_str()),
+                    ({ std::ostringstream oss; oss << "In page attention scene, ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << " data should not be null."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
             }
         }
@@ -879,14 +1034,21 @@ ge::graphStatus FiaTilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::
     const FiaLayout &layout, const std::string &actualSeqLenName, const std::string &attrName)
 {
     if (tensor == nullptr) {
-        OP_LOGE(opName_, "when layout of %s is %s, %s must be provided.",
-            attrName.c_str(), LayoutToSerialString(layout).c_str(), actualSeqLenName.c_str());
+        ({ std::ostringstream oss; oss << "when layout of ";
+        oss << attrName.c_str();
+        oss << " is ";
+        oss << LayoutToSerialString(layout).c_str();
+        oss << ", ";
+        oss << actualSeqLenName.c_str();
+        oss << " must be provided."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "%s shape size is %ld, it should be greater than 0.",
-            actualSeqLenName.c_str(), shapeSize);
+        ({ std::ostringstream oss; oss << actualSeqLenName.c_str();
+        oss << " shape size is ";
+        oss << shapeSize;
+        oss << ", it should be greater than 0."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -916,16 +1078,37 @@ ge::graphStatus FiaTilingCheck::CheckFeatureActualSeqLensQData()
         int64_t tmpS1 = 0;
         if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
             OP_CHECK_IF(actualSeq[i] < 0,
-                OP_LOGE(opName_, "when %s's layout is %s, %s[%u] should not be a negative number, but got %ld.",
-                    QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(),
-                    ACTUAL_SEQ_Q_LEN_NAME.c_str(), i, actualSeq[i]),
+                ({ std::ostringstream oss; oss << "when ";
+        oss << QUERY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(qLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << "[";
+        oss << i;
+        oss << "] should not be a negative number, but got ";
+        oss << actualSeq[i];
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(i > 0U && (actualSeq[i] < actualSeq[i - 1U]),
-                OP_LOGE(opName_, "when %s's layout is %s, %s[%u](%ld) should not be less than %s[%u](%ld).",
-                    QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(),
-                    ACTUAL_SEQ_Q_LEN_NAME.c_str(), i, actualSeq[i],
-                    ACTUAL_SEQ_Q_LEN_NAME.c_str(), (i - 1U), actualSeq[i - 1U]),
+                ({ std::ostringstream oss; oss << "when ";
+        oss << QUERY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(qLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << "[";
+        oss << i;
+        oss << "](";
+        oss << actualSeq[i];
+        oss << ") should not be less than ";
+        oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << "[";
+        oss << (i - 1U);
+        oss << "](";
+        oss << actualSeq[i - 1U];
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
 
             tmpS1 = (i == 0U) ? actualSeq[0] : (actualSeq[i] - actualSeq[i - 1U]);
@@ -933,18 +1116,31 @@ ge::graphStatus FiaTilingCheck::CheckFeatureActualSeqLensQData()
             tmpS1 = actualSeq[i];
         }
         if (tmpS1 > static_cast<int64_t>(s1Size_) || tmpS1 < 0) {
-            OP_LOGE(opName_,
-                "%s[%u] computed is %ld, it should be in range [0, Q_S(%u)].",
-                ACTUAL_SEQ_Q_LEN_NAME.c_str(), i, tmpS1, s1Size_);
+            ({ std::ostringstream oss; oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << "[";
+        oss << i;
+        oss << "] computed is ";
+        oss << tmpS1;
+        oss << ", it should be in range [0, Q_S(";
+        oss << s1Size_;
+        oss << ")]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
             return ge::GRAPH_FAILED;
         }
         qSize.push_back(tmpS1);
     }
 
     OP_CHECK_IF((qLayout_ == FiaLayout::TND) && (qTSize_ != actualSeq[actualSeqLengthsQSize_ - 1]),
-        OP_LOGE(opName_, "when %s's layout is %s, T(%u) should be equal to the last element of %s(%ld).",
-            QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(), qTSize_, ACTUAL_SEQ_Q_LEN_NAME.c_str(),
-            actualSeq[actualSeqLengthsQSize_ - 1]),
+        ({ std::ostringstream oss; oss << "when ";
+        oss << QUERY_NAME.c_str();
+        oss << "'s layout is ";
+        oss << LayoutToSerialString(qLayout_).c_str();
+        oss << ", T(";
+        oss << qTSize_;
+        oss << ") should be equal to the last element of ";
+        oss << ACTUAL_SEQ_Q_LEN_NAME.c_str();
+        oss << "(";
+        oss << actualSeq[actualSeqLengthsQSize_ - 1];
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
@@ -973,16 +1169,33 @@ ge::graphStatus FiaTilingCheck::CheckFeatureActualSeqLensKvData()
         int64_t tmpS2 = 0;
         if (kvLayout_ == FiaLayout::TND || kvLayout_ == FiaLayout::NTD) {
             OP_CHECK_IF(actualSeq[i] < 0,
-                OP_LOGE(opName_, "when kv's layout is %s, %s[%u] should not be a negative number, but got %ld.",
-                    LayoutToSerialString(kvLayout_).c_str(),
-                    ACTUAL_SEQ_KV_LEN_NAME.c_str(), i, actualSeq[i]),
+                ({ std::ostringstream oss; oss << "when kv's layout is ";
+        oss << LayoutToSerialString(kvLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << "[";
+        oss << i;
+        oss << "] should not be a negative number, but got ";
+        oss << actualSeq[i];
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(i > 0U && (actualSeq[i] < actualSeq[i - 1U]),
-                OP_LOGE(opName_, "when kv's layout is %s, %s[%u](%ld) should not be less than %s[%u](%ld).",
-                    LayoutToSerialString(kvLayout_).c_str(),
-                    ACTUAL_SEQ_KV_LEN_NAME.c_str(), i, actualSeq[i],
-                    ACTUAL_SEQ_KV_LEN_NAME.c_str(), (i - 1U), actualSeq[i - 1U]),
+                ({ std::ostringstream oss; oss << "when kv's layout is ";
+        oss << LayoutToSerialString(kvLayout_).c_str();
+        oss << ", ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << "[";
+        oss << i;
+        oss << "](";
+        oss << actualSeq[i];
+        oss << ") should not be less than ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << "[";
+        oss << (i - 1U);
+        oss << "](";
+        oss << actualSeq[i - 1U];
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
 
             tmpS2 = (i == 0U) ? actualSeq[0] : (actualSeq[i] - actualSeq[i - 1U]);
@@ -991,16 +1204,28 @@ ge::graphStatus FiaTilingCheck::CheckFeatureActualSeqLensKvData()
         }
 
         OP_CHECK_IF(tmpS2 < 0 || tmpS2 > s2Size_,
-            OP_LOGE(opName_, "%s(%u) is %ld, it should be in range [0, KV_S(%ld)].",
-                ACTUAL_SEQ_KV_LEN_NAME.c_str(), i, tmpS2, s2Size_),
+            ({ std::ostringstream oss; oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << "(";
+        oss << i;
+        oss << ") is ";
+        oss << tmpS2;
+        oss << ", it should be in range [0, KV_S(";
+        oss << s2Size_;
+        oss << ")]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
         kvSize.push_back(tmpS2);
     }
 
     OP_CHECK_IF((kvLayout_ == FiaLayout::TND) && (kTSize_ != actualSeq[actualSeqLengthsKvSize_ - 1]),
-        OP_LOGE(opName_, "when kv's layout is %s, T(%u) should be equal to the last element of %s(%ld).",
-            LayoutToSerialString(kvLayout_).c_str(), kTSize_, ACTUAL_SEQ_KV_LEN_NAME.c_str(),
-            actualSeq[actualSeqLengthsKvSize_ - 1]),
+        ({ std::ostringstream oss; oss << "when kv's layout is ";
+        oss << LayoutToSerialString(kvLayout_).c_str();
+        oss << ", T(";
+        oss << kTSize_;
+        oss << ") should be equal to the last element of ";
+        oss << ACTUAL_SEQ_KV_LEN_NAME.c_str();
+        oss << "(";
+        oss << actualSeq[actualSeqLengthsKvSize_ - 1];
+        oss << ")."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1020,8 +1245,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureInOutDtype() const
 
     std::pair<ge::DataType, ge::DataType> inOutDtypePair = {inputQType_, outputType_};
     if (!VecContains(inOutDtypePairSupported, inOutDtypePair)) {
-        OP_LOGE(opName_, "input dtype %d with output dtype %d is not currently supported.", static_cast<int32_t>(inputQType_),
-                  static_cast<int32_t>(outputType_));
+        OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", static_cast<int32_t>(outputType_));
         return ge::GRAPH_FAILED;
     }
 

@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -36,8 +37,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo
     // SoftmaxLse only supports output FP32
     if (fiaInfo.softmaxLseFlag) {
         OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.lseOut.desc, SOFTMAX_LSE_NAME),
-                    OP_LOGE(fiaInfo.opName, "SoftmaxLse only support dtype FP32, but got %s",
-                            DataTypeToSerialString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str()),
+                    OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", DataTypeToSerialString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -50,10 +50,10 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     if (fiaInfo.softmaxLseFlag) {
         const gert::StorageShape *lseShape = fiaInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseShape == nullptr,
-                    OP_LOGE(fiaInfo.opName, "SoftmaxLse shape is nullptr but softmaxLseFlag is true!"),
+                    OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "shape"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.lseOut.desc == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Desc of lseOut tensor is nullptr!"), return ge::GRAPH_FAILED);
+                    OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "tensor"), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -69,31 +69,40 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
         std::shared_ptr<FiaTilingShapeCompare> softmaxLseShapeCmp_ = nullptr;
         if (fiaInfo.outLayout == FiaLayout::TND || fiaInfo.outLayout == FiaLayout::NTD) {
             OP_CHECK_IF(lseShape->GetStorageShape().GetDimNum() != DIM_NUM_3,
-                        OP_LOGE(fiaInfo.opName, "TND/NTD SoftmaxLse shape dim(%zu) should be 3!",
-                                lseShape->GetStorageShape().GetDimNum()),
+                        ({ std::ostringstream oss; oss << "TND/NTD SoftmaxLse shape dim(";
+        oss << lseShape->GetStorageShape().GetDimNum();
+        oss << ") should be 3!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!",
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_0),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_1),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_2)),
+                        ({ std::ostringstream oss; oss << "SoftmaxLse shape[";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_0);
+        oss << ", ";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_1);
+        oss << ", ";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_2);
+        oss << "] does not match TN1!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(lseShape->GetStorageShape().GetDimNum() != DIM_NUM_4,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape dim(%zu) should be 4!",
-                                lseShape->GetStorageShape().GetDimNum()),
+                        ({ std::ostringstream oss; oss << "SoftmaxLse shape dim(";
+        oss << lseShape->GetStorageShape().GetDimNum();
+        oss << ") should be 4!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!",
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_0),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_1),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_2),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_3)),
+                        ({ std::ostringstream oss; oss << "SoftmaxLse shape[";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_0);
+        oss << ", ";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_1);
+        oss << ", ";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_2);
+        oss << ", ";
+        oss << lseShape->GetStorageShape().GetDim(DIM_NUM_3);
+        oss << "] does not match [B, N, Q_S, 1]!"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -124,8 +133,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInf
     }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
-        OP_LOGE(fiaInfo.opName,
-            "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."),
+        ({ std::ostringstream oss; oss << "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

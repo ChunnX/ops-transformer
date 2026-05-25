@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <sstream>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -49,7 +50,9 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
     int64_t pseType = *fiaInfo.opParamInfo.pseType;
     // pseType支持范围为0
     OP_CHECK_IF((pseType != PSE_OUTER_MUL_ADD_TYPE),
-                OP_LOGE(fiaInfo.opName, "pseType(%ld) is not supported. pseType must be 0.", pseType),
+                ({ std::ostringstream oss; oss << "pseType(";
+        oss << pseType;
+        oss << ") is not supported. pseType must be 0."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -66,32 +69,26 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi，pseShift的数据类型必须为FLOAT32
         OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of pseShift(%s) is not FLOAT32. "
-                            "The datatype of pseShift must be FLOAT32 when "
-                            "pseType is 2 or 3.",
-                            DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()),
+                    ({ std::ostringstream oss; oss << "The datatype of pseShift(";
+        oss << DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str();
+        oss << ") is not FLOAT32. The datatype of pseShift must be FLOAT32 when pseType is 2 or 3."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     } else {
         // 不使能alibi
         // query的datatype为FLOAT16、INT8时，pseShift的datatype应为FLOAT16
         if (fiaInfo.inputQType == ge::DT_FLOAT16 || fiaInfo.inputQType == ge::DT_INT8) {
             OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT16),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of pseShift(%s) is not FLOAT16. "
-                                "The datatype of pseShift must be FLOAT16 when "
-                                "the datatype of query is FLOAT16 or INT8 and pseType is 0.",
-                                DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()),
+                        ({ std::ostringstream oss; oss << "The datatype of pseShift(";
+        oss << DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str();
+        oss << ") is not FLOAT16. The datatype of pseShift must be FLOAT16 when the datatype of query is FLOAT16 or INT8 and pseType is 0."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         }
         // query的datatype为BFLOAT16时，pseShift的datatype应为BFLOAT16
         if (fiaInfo.inputQType == ge::DT_BF16) {
             OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_BF16),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of pseShift(%s) is not BFLOAT16. "
-                                "The datatype of pseShift must be BFLOAT16 when "
-                                "the datatype of query is BFLOAT16 and pseType is 0.",
-                                DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()),
+                        ({ std::ostringstream oss; oss << "The datatype of pseShift(";
+        oss << DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str();
+        oss << ") is not BFLOAT16. The datatype of pseShift must be BFLOAT16 when the datatype of query is BFLOAT16 and pseType is 0."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -112,10 +109,9 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         uint32_t numHeads = *fiaInfo.opParamInfo.numHeads;
         gert::Shape expectedShapeN = gert::Shape({numHeads});
         OP_CHECK_IF((pseShiftShape != expectedShapeN),
-                    OP_LOGE(fiaInfo.opName,
-                            "The shape of pseShift is not supported. The shape of pseShift must be [N]([%u]) when "
-                            "pseType is 2 or 3.",
-                            numHeads),
+                    ({ std::ostringstream oss; oss << "The shape of pseShift is not supported. The shape of pseShift must be [N]([";
+        oss << numHeads;
+        oss << "]) when pseType is 2 or 3."; OP_LOGE(kFiaOpName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", kFiaOpName, "tensor", oss.str().c_str(), "see log"); }),
                     return ge::GRAPH_FAILED);
     } else {
         uint32_t batchSize = fiaInfo.bSize;
@@ -125,10 +121,9 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         // pseShift的维度必须为4
         uint32_t pseShiftDimNum = pseShiftShape.GetDimNum();
         OP_CHECK_IF(pseShiftDimNum != DIM_NUM_4,
-                    OP_LOGE(fiaInfo.opName,
-                            "The dimension number of pseShift must be 4 when pseType is 0, but "
-                            "the current dimensioin number of pseShift is %u.",
-                            pseShiftDimNum),
+                    ({ std::ostringstream oss; oss << "The dimension number of pseShift must be 4 when pseType is 0, but the current dimensioin number of pseShift is ";
+        oss << pseShiftDimNum;
+        oss << "."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
         uint32_t pseShiftBatch = pseShiftShape.GetDim(DIM_NUM_0);
         uint32_t pseShiftN = pseShiftShape.GetDim(DIM_NUM_1);
@@ -145,21 +140,43 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
             // P_S1 > 1分支
             OP_CHECK_IF((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
                             (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen),
-                        OP_LOGE(fiaInfo.opName,
-                                "pseShift shape must be [1 or %u,%u,>=%u,>=%u], "
-                                "but now is [%u,%u,%u,%u].",
-                                batchSize, n1Size, s1Size, s2Size + actualSharedPrefixLen, pseShiftBatch, pseShiftN,
-                                pseShiftS1, pseShiftS2),
+                        ({ std::ostringstream oss; oss << "pseShift shape must be [1 or ";
+        oss << batchSize;
+        oss << ",";
+        oss << n1Size;
+        oss << ",>=";
+        oss << s1Size;
+        oss << ",>=";
+        oss << s2Size + actualSharedPrefixLen;
+        oss << "], but now is [";
+        oss << pseShiftBatch;
+        oss << ",";
+        oss << pseShiftN;
+        oss << ",";
+        oss << pseShiftS1;
+        oss << ",";
+        oss << pseShiftS2;
+        oss << "]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         } else {
             // P_S1 = 1分支
             OP_CHECK_IF((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
                             (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen),
-                        OP_LOGE(fiaInfo.opName,
-                                "The shape of pseShift must be [1 or %u,%u,1,>=%u], "
-                                "but now is [%u,%u,%u,%u].",
-                                batchSize, n1Size, s2Size + actualSharedPrefixLen, pseShiftBatch, pseShiftN, pseShiftS1,
-                                pseShiftS2),
+                        ({ std::ostringstream oss; oss << "The shape of pseShift must be [1 or ";
+        oss << batchSize;
+        oss << ",";
+        oss << n1Size;
+        oss << ",1,>=";
+        oss << s2Size + actualSharedPrefixLen;
+        oss << "], but now is [";
+        oss << pseShiftBatch;
+        oss << ",";
+        oss << pseShiftN;
+        oss << ",";
+        oss << pseShiftS1;
+        oss << ",";
+        oss << pseShiftS2;
+        oss << "]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -173,13 +190,13 @@ ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.enableAlibiPse) {
         // pseType为2或3时，使能alibi，pseShift必须传
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.tensor == nullptr),
-                    OP_LOGE(fiaInfo.opName, "pseShift does not exist. pseShift must exist when pseType is 2 or 3."),
+                    ({ std::ostringstream oss; oss << "pseShift does not exist. pseShift must exist when pseType is 2 or 3."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     // 校验pseShift的desc的存在性，若pseShift存在，其desc也必须存在
     if (fiaInfo.opParamInfo.pseShift.tensor != nullptr) {
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.desc == nullptr),
-                    OP_LOGE(fiaInfo.opName, "pseShift exists, but its datatype does not exist."),
+                    ({ std::ostringstream oss; oss << "pseShift exists, but its datatype does not exist."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -198,12 +215,13 @@ ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
         int32_t blockSize = fiaInfo.blockSize;
         uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
         OP_CHECK_IF(pseShiftS2 < maxBlockNumPerBatch * blockSize,
-                    OP_LOGE(fiaInfo.opName,
-                            "The last dimension(%u) of pseShift is less than "
-                            "maxBlockNumPerBatch(%u) * blockSize(%u). The last dimension of pseShift should be "
-                            "larger than or equal to maxBlockNumPerBatch * blockSize when "
-                            "page attention is enabled.",
-                            pseShiftS2, maxBlockNumPerBatch, blockSize),
+                    ({ std::ostringstream oss; oss << "The last dimension(";
+        oss << pseShiftS2;
+        oss << ") of pseShift is less than maxBlockNumPerBatch(";
+        oss << maxBlockNumPerBatch;
+        oss << ") * blockSize(";
+        oss << blockSize;
+        oss << "). The last dimension of pseShift should be larger than or equal to maxBlockNumPerBatch * blockSize when page attention is enabled."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -216,15 +234,14 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
     if (fiaInfo.enableAlibiPse || fiaInfo.pseShiftFlag) {
         // D不等长时，不支持pse
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-                    OP_LOGE(fiaInfo.opName,
-                            "pseShift is not supported when query and key headdim is not equal to value headdim."),
+                    ({ std::ostringstream oss; oss << "pseShift is not supported when query and key headdim is not equal to value headdim."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi时，MLA不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
-                    OP_LOGE(fiaInfo.opName, "MLA do not support pseShift."), return ge::GRAPH_FAILED);
+                    ({ std::ostringstream oss; oss << "MLA do not support pseShift."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }), return ge::GRAPH_FAILED);
     } else if (fiaInfo.pseShiftFlag) {
         if (fiaInfo.isMaxWorkspace) {
             return ge::GRAPH_SUCCESS;
@@ -232,12 +249,11 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
         // 非alibi时，MLA，不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
-                    OP_LOGE(fiaInfo.opName, "MLA do not support pseShift."), return ge::GRAPH_FAILED);
+                    ({ std::ostringstream oss; oss << "MLA do not support pseShift."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }), return ge::GRAPH_FAILED);
         // pse使能时，若inputLayout为BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD，不支持pse
         OP_CHECK_IF(layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD" || layoutStr == "TND" || layoutStr == "NTD" ||
                         layoutStr == "NTD_TND" || layoutStr == "TND_NTD",
-                    OP_LOGE(fiaInfo.opName,
-                            "pse is not supported when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD."),
+                    ({ std::ostringstream oss; oss << "pse is not supported when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -257,10 +273,9 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
         if (qStartIdxs != nullptr) {
             qStartIdx = qStartIdxs[0];
             OP_CHECK_IF(qStartIdx > INT32_MAX || qStartIdx < INT32_MIN,
-                        OP_LOGE(fiaInfo.opName,
-                                "qStartIdx(%ld) is not supported. "
-                                "qStartIdx should belongs to [-2147483648, 2147483647].",
-                                qStartIdx),
+                        ({ std::ostringstream oss; oss << "qStartIdx(";
+        oss << qStartIdx;
+        oss << ") is not supported. qStartIdx should belongs to [-2147483648, 2147483647]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -270,19 +285,17 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
         if (kvStartIdxs != nullptr) {
             kvStartIdx = kvStartIdxs[0];
             OP_CHECK_IF(kvStartIdx > INT32_MAX || kvStartIdx < INT32_MIN,
-                        OP_LOGE(fiaInfo.opName,
-                                "kvStartIdx(%ld) is not supported. "
-                                "kvStartIdx should belongs to [-2147483648, 2147483647].",
-                                kvStartIdx),
+                        ({ std::ostringstream oss; oss << "kvStartIdx(";
+        oss << kvStartIdx;
+        oss << ") is not supported. kvStartIdx should belongs to [-2147483648, 2147483647]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                         return ge::GRAPH_FAILED);
         }
     }
     // kvStartIdx - qStartIdx的取值范围应满足[-1048576, 1048576]
     OP_CHECK_IF((kvStartIdx - qStartIdx > PSE_SHIFT_MAX) || (kvStartIdx - qStartIdx) < PSE_SHIFT_MIN,
-                OP_LOGE(fiaInfo.opName,
-                        "kvStartIdx - qStartIdx(%ld) is not supported. "
-                        "kvStartIdx - qStartIdx should belongs to [-1048576, 1048576].",
-                        kvStartIdx - qStartIdx),
+                ({ std::ostringstream oss; oss << "kvStartIdx - qStartIdx(";
+        oss << kvStartIdx - qStartIdx;
+        oss << ") is not supported. kvStartIdx - qStartIdx should belongs to [-1048576, 1048576]."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

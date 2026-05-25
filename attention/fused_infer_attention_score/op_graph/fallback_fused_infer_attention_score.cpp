@@ -14,14 +14,18 @@
  */
 
 #include "log/log.h"
+#include <sstream>
 #include "log/error_code.h"
 #include "fallback/fallback_comm.h"
 #include "fallback/fallback.h"
+#include "../op_host/fused_infer_attention_score_tiling_constants.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 namespace fallback {
+
+using optiling::kFiaOpName;
 
 using namespace ge;
 using namespace gert;
@@ -115,21 +119,19 @@ struct FusedInferHostTensorParams {
 static graphStatus FiaFillTensorParams(const OpExecuteContext *host_api_ctx, FusedInferHostTensorParams &fiaTensors)
 {
     fiaTensors.query = host_api_ctx->GetInputTensor(QUERY_INDEX);
-    OP_CHECK_IF(fiaTensors.query == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "query is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(fiaTensors.query == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "query"), return GRAPH_FAILED);
     
     fiaTensors.key = host_api_ctx->GetDynamicInputTensor(KEY_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.key == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "key is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(fiaTensors.key == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "key"), return GRAPH_FAILED);
     
     fiaTensors.value = host_api_ctx->GetDynamicInputTensor(VALUE_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.value == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "value is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(fiaTensors.value == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "value"), return GRAPH_FAILED);
     
     fiaTensors.output = host_api_ctx->GetOutputTensor(ATTENTION_OUT_INDEX);
-    OP_CHECK_IF(fiaTensors.output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(fiaTensors.output == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "output"), return GRAPH_FAILED);
     
     fiaTensors.softmaxLse = host_api_ctx->GetOutputTensor(SOFTMAX_LSE_INDEX);
-    OP_CHECK_IF(fiaTensors.softmaxLse == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "softmaxLse is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(fiaTensors.softmaxLse == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "softmaxlse"), return GRAPH_FAILED);
 
     fiaTensors.pseShiftGe = host_api_ctx->GetOptionalInputTensor(PSE_SHIFT_INDEX);
     fiaTensors.attenMaskGe = host_api_ctx->GetOptionalInputTensor(ATTEN_MASK_INDEX);
@@ -269,10 +271,10 @@ static void GetFusedInferHostScalarParams(const FusedInferHostAttrPtrs &attrPoin
 
 static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
 {
-    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "host_api_ctx"), return GRAPH_FAILED);
     FusedInferHostTensorParams fiaTensors{};
     auto apiRet = FiaFillTensorParams(host_api_ctx, fiaTensors);
-    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "Input Tensors invalid"), return GRAPH_FAILED);
+    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, ({ std::ostringstream oss; oss << "Input Tensors invalid"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }), return GRAPH_FAILED);
 
     std::vector<const gert::Tensor *> ge_tenserListKey;
     ge_tenserListKey.push_back(fiaTensors.key);
@@ -285,26 +287,28 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
 
     FusedInferHostAttrPtrs attrPointers{};
     auto attrs = host_api_ctx->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx Attrs is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(kFiaOpName, "The op [%s] missing [%s] parameter", kFiaOpName, "attrs"), return GRAPH_FAILED);
     FillAttrPointers(attrs, attrPointers);
 
     FusedInferHostScalarParams scalarParams{};
     GetFusedInferHostScalarParams(attrPointers, scalarParams);
 
     if (scalarParams.innerPrecise < 0 || scalarParams.innerPrecise > 3) { // innerPrecise=2,3 corresponds to rows with invalid high precision and high performance
-        OP_LOGE(host_api_ctx->GetNodeName(), "invalid innerPrecise(%ld). Only support 0~3 now.", scalarParams.innerPrecise);
+        ({ std::ostringstream oss; oss << "invalid innerPrecise(";
+        oss << scalarParams.innerPrecise;
+        oss << "). Only support 0~3 now."; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); });
         return GRAPH_FAILED;
     }
-    OP_LOGD(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",
+    OP_LOGD(kFiaOpName, "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",
               scalarParams.numHeads, scalarParams.dScaleValue);
-    OP_LOGD(host_api_ctx->GetNodeName(),
+    OP_LOGD(kFiaOpName,
               "preTokens = %ld, nextTokens = %ld, kvHeadNum = %ld, sparseMode = %ld, innerPrecise = %ld", scalarParams.preTokens,
               scalarParams.nextTokens, scalarParams.kvHeadNum, scalarParams.sparseMode, scalarParams.innerPrecise);
 
     if (scalarParams.sparseMode >= 10 && scalarParams.sparseMode <= 14) { // 10: min  14: max
         scalarParams.innerPrecise = 0;
         scalarParams.sparseMode -= 10; // subtract 10 to modify sparseMode
-        OP_LOGD(host_api_ctx->GetNodeName(),
+        OP_LOGD(kFiaOpName,
                   "because sparseMode in range [10, 14], after modification, sparseMode = %ld, innerPrecise = %ld.",
                   scalarParams.sparseMode, scalarParams.innerPrecise);
     }
@@ -324,7 +328,8 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
         scalarParams.softmaxLseFlag, scalarParams.keyAntiquantMode, scalarParams.valueAntiquantMode,
         scalarParams.queryQuantMode, scalarParams.pseType, fiaTensors.output, fiaTensors.softmaxLse);
 
-    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "apiRet faild:%u", apiRet), return GRAPH_FAILED);
+    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, ({ std::ostringstream oss; oss << "apiRet faild:";
+        oss << apiRet; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }), return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }

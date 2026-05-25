@@ -927,7 +927,7 @@ bool RouteToFia(gert::TilingContext *context)
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     if ((aicNum != aivNum) && (aicNum * 2U != aivNum)) {
-        OP_LOGI(context->GetNodeName(), "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.", aicNum, aivNum);
+        OP_LOGI(kFiaOpName, "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.", aicNum, aivNum);
         return false;
     }
 

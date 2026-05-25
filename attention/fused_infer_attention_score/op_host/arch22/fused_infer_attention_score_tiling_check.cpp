@@ -51,7 +51,7 @@ std::string FusedDataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", type);
         return "UNDEFINED";
     }
 }

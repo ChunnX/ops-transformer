@@ -17,6 +17,7 @@
 
 #include "../../../common/op_host/fia_tiling_info.h"
 #include "../../../common/op_host/fia_tiling_shape.h"
+#include "../fused_infer_attention_score_tiling_constants.h"
 
 namespace optiling {
 constexpr int32_t INNER_PRECISE_HIGH_PRECISION = 0;
