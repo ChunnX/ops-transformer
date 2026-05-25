@@ -179,6 +179,8 @@ struct FagConstInfo {
     int64_t cmpRatio = 1;
     int64_t halfGRealSize = 0;
     int64_t firstHalfGRealSize = 0;    
+    /** \brief metadata分核信息 */
+    uint32_t totalNum;
 };
 
 // fp8反量化因子

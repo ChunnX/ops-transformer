@@ -39,6 +39,7 @@ public:
     __aicore__ inline void SetOptionalInfo();
     template <const bool IS_ORI_KV = true>
     __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId);
+    template <const bool IS_ORI_KV = true>
     __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId);
     __aicore__ inline void Process();
     template <bool IS_MM1_MM2 = true>
@@ -149,7 +150,7 @@ protected:
     int64_t nextUsedT1Offset = 0;
     int64_t bIndex = HasUsedSeqQ ? -1 : 0;
     int64_t s1Index = 0;
- 
+    int64_t formerCoreProcessS1Num;
     SFagTilingType tilingData;
     FagConstInfo constInfo;
     AttenMaskInfo attenMaskInfo;
@@ -263,8 +264,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     // pass params to vector block
     vecBlock.SetVecBlockParams(pipeIn, tilingData, vBlockIdx, cBlockIdx, vSubBlockIdx, constInfo, attenMaskInfo, pseInfo);
     vecBlock.InitUbBuffer(constInfo);
-    vecBlock.InitGlobalBuffer(ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, softmax_lse, sinks, dsinks, ori_softmax_l1, cmp_softmax_l1, dq, dori_kv, dcmp_kv, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, workspace, constInfo);
- 
+    vecBlock.InitGlobalBuffer(ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, softmax_lse, sinks,
+                            dsinks, ori_softmax_l1, cmp_softmax_l1, dq, dori_kv, dcmp_kv, cu_seqlens_q, cu_seqlens_ori_kv,
+                            cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+                            ori_topk_length, cmp_topk_length, workspace, constInfo);
     // pass params to cube block
     cubeBlock.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);
     cubeBlock.InitCubeBuffer(constInfo);
@@ -292,10 +295,10 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
     int64_t selectedKWorkSpaceOffset = tilingData->baseParams.selectedKWorkSpaceOffset / sizeof(INPUT_TYPE) + cBlockIdx * CUBE_BASEN * constInfo.commonConstInfo.dSize * 3;
     selectedKWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)workspace + selectedKWorkSpaceOffset);
     if constexpr (IsDETER) {
- 	         mm4ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
- 	                                                 tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float));
- 	         mm5ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
- 	                                                 tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float));
+        mm4ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                                tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float));
+        mm5ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                                tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float));
     } else {
         int64_t mm4ResWorkSpaceOffset = tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float) + cBlockIdx * Max<int64_t>(constInfo.selectedBlockCount, 128) * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSize * 2;	 
         mm4ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResWorkSpaceOffset);	 
@@ -402,8 +405,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     }
     GetDerived()->SetUniqueConstInfo(constInfo);
 
+    constInfo.totalNum = ((__gm__ uint32_t *)metadataGm)[0];
     int64_t totalNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[0]);
     int64_t formerCoreProcessNNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[1]);
+    formerCoreProcessS1Num = formerCoreProcessNNum;
     int64_t remainCoreProcessNNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[2]);
     int64_t remainCoreNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[3]);
     usedCoreNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[4]);
@@ -520,31 +525,30 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         }
     }
     runInfo.mm4ResWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
-    runInfo.mm5ResWsAddr = runInfo.mm4ResWsAddr;
     if constexpr (IsDETER) {
-        runInfo.sTaskId = sTaskId;
-        runInfo.sTaskIdMod2 = sTaskId & 1;
-        runInfo.mm4ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * constInfo.dTotalSize * coreNum +
-                            cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize +
-                            runInfo.blkCntOffset * constInfo.dTotalSize;
-        runInfo.mm5ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount *
-                            constInfo.commonConstInfo.dSizeV * coreNum +
-                            cBlockIdx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV +
-                            runInfo.blkCntOffset * constInfo.commonConstInfo.dSizeV;
+        if constexpr (IS_ORI_KV) {
+            runInfo.mm4ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount  * constInfo.dTotalSize * coreNum +
+                                cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize +
+                                runInfo.blkCntOffset * constInfo.dTotalSize;
+        } else {
+            runInfo.mm4ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * constInfo.dTotalSize * coreNum +
+                                cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize + constInfo.oriSelectedBlockCount * constInfo.dTotalSize +
+                                runInfo.blkCntOffset * constInfo.dTotalSize;
+        }
     }
+    runInfo.mm5ResWsAddr = runInfo.mm4ResWsAddr;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+template <const bool IS_ORI_KV>
 __aicore__ inline void
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetDeterRunInfo(FagRunInfo &runInfo,
                                                                                             int64_t sTaskId)
 {
     runInfo.sTaskId = sTaskId;
     runInfo.sTaskIdMod2 = sTaskId & 1;
-    if constexpr (!IS_TND) {
-        runInfo.commonRunInfo.actualS1Size = constInfo.commonConstInfo.s1Size;
-        runInfo.commonRunInfo.actualS2Size = constInfo.commonConstInfo.s2Size;
-    }
+    runInfo.isOriKV = IS_ORI_KV;
+    runInfo.isSparse = IS_ORI_KV ? IsOriKVSparse : IsCmpKVSparse;
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
