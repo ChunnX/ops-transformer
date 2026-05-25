@@ -194,6 +194,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     TBuf<> tempBuffer_;
     tpipe_->InitBuffer(tempBuffer_, 1024);
     LocalTensor<uint8_t> tempTensor = tempBuffer_.Get<uint8_t>();
+    hcomm_.Init((__ubuf__ uint8_t*)tempTensor.GetPhyAddr(), 1024);
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     totalWinSizeEp_ = 800UL * 1024 * 1024; //TODO:
