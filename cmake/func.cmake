@@ -480,6 +480,7 @@ function(add_ops_src_copy)
         set(SYNC_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
+            COMMAND ${CMAKE_COMMAND} -E create_symlink ../common ${SRC_COPY_DST}/common
         )
         if (BELONG_MC2_OPS)
             list(APPEND SYNC_COMMANDS
