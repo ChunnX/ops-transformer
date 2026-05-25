@@ -27,6 +27,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
+// host-side mega_moe.h（同目录，定义 MegaMoeConfig 等 host 配置），不是已删除的 device-side mega_moe.h
 #include "mega_moe.h"
 #include "../../op_kernel/mega_moe_tiling.h"
 #include "../../op_kernel/mega_moe_tiling_key.h"
@@ -249,17 +250,18 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     OP_LOGD(nodeName, "transW2 is %s", (tilingData->transW2 ? "True" : "False"));
 }
 
-void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
+void printWorkspaceInfoOptimize(const struct WorkspaceInfoOptimize *info, const char *nodeName)
 {
-    OP_LOGD(nodeName, "ptrA:                        %ld\n", info->ptrA);
-    OP_LOGD(nodeName, "ptrAScale:                   %ld\n", info->ptrAScale);
-    OP_LOGD(nodeName, "ptrA2:                       %ld\n", info->ptrA2);
-    OP_LOGD(nodeName, "ptrA2Scale:                  %ld\n", info->ptrA2Scale);
-    OP_LOGD(nodeName, "ptrcumsumMM:                 %ld\n", info->ptrcumsumMM);
-    OP_LOGD(nodeName, "expandedRowIdx:              %ld\n", info->expandedRowIdx);
-    OP_LOGD(nodeName, "ptrSumBeforeRank:            %ld\n", info->ptrSumBeforeRank);
-    OP_LOGD(nodeName, "ptrFlagSwiGluToGmm2:         %ld\n", info->ptrFlagSwiGluToGmm2);
-    OP_LOGD(nodeName, "ptrFlagDispatchToGmm1:       %ld\n", info->ptrFlagDispatchToGmm1);
+    OP_LOGD(nodeName, "dispatchRevDataPtr:          %ld\n", (long)info->dispatchRevDataPtr);
+    OP_LOGD(nodeName, "dispatchRevScalePtr:         %ld\n", (long)info->dispatchRevScalePtr);
+    OP_LOGD(nodeName, "swigluQuantDataPtr:          %ld\n", (long)info->swigluQuantDataPtr);
+    OP_LOGD(nodeName, "swigluQuantScalePtr:         %ld\n", (long)info->swigluQuantScalePtr);
+    OP_LOGD(nodeName, "expertRevTokenNumsPtr:       %ld\n", (long)info->expertRevTokenNumsPtr);
+    OP_LOGD(nodeName, "tripleInfoPtr:               %ld\n", (long)info->tripleInfoPtr);
+    OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:         %ld\n", (long)info->flagSwiGluToGmm2Ptr);
+    OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:       %ld\n", (long)info->flagDispatchToGmm1Ptr);
+    OP_LOGD(nodeName, "ptrGmmOut:                   %ld\n", (long)info->ptrGmmOut);
+    OP_LOGD(nodeName, "ptrGmm2RowReady:             %ld\n", (long)info->ptrGmm2RowReady);
     OP_LOGD(nodeName, "workspaceSize:               %ld\n", info->workspaceSize);
 }
 
@@ -975,7 +977,7 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
 }
 
 static ge::graphStatus SetWorkspace(
-    gert::TilingContext *context, WorkspaceInfo& workspaceInfo, const char *nodeName)
+    gert::TilingContext *context, int64_t kernelWorkspaceSize, const char *nodeName)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int64_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -983,16 +985,16 @@ static ge::graphStatus SetWorkspace(
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr, OP_LOGE(nodeName, "workspace is nullptr."),
         return ge::GRAPH_FAILED);
-    
-    OP_TILING_CHECK(workspaceInfo.workspaceSize == 0LL,
-        OP_LOGE(nodeName, "workspaceSize from tilingData is 0."),
+
+    OP_TILING_CHECK(kernelWorkspaceSize == 0LL,
+        OP_LOGE(nodeName, "kernelWorkspaceSize is 0."),
         return ge::GRAPH_FAILED);
 
-    int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE;
-    workspace[0] = workspaceSize;
+    int64_t totalWorkspaceSize = sysWorkspaceSize + kernelWorkspaceSize + RESERVED_WORKSPACE_SIZE;
+    workspace[0] = totalWorkspaceSize;
 
-    OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
-    OP_LOGD(nodeName, "mega_moe_tiling workspaceSize: %ld \n", workspaceSize);
+    OP_LOGI(nodeName, "[WS] sysWorkspaceSize=%ld kernelWorkspaceSize=%ld total=%ld\n",
+            sysWorkspaceSize, kernelWorkspaceSize, totalWorkspaceSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1540,21 +1542,14 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
-    // WorkspaceSize
-    // 同时算 legacy WorkspaceInfo 和 optimize 路径的 WorkspaceInfoOptimize，取两者较大者作为
-    // 实际分配大小。optimize 路径多了 ptrGmmOut（2 * maxOutputSize * h * sizeof(bf16)）和
-    // ptrGmm2RowReady 等字段；如果只按 legacy 大小分配，kernel 写 ptrGmmOut 时会 MTE OOB。
-    WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
+    // WorkspaceSize：kernel 只走 optimize 路径，只算 WorkspaceInfoOptimize 一份
     WorkspaceInfoOptimize workspaceInfoOpt((uint8_t*)0, tilingData);
-    if (workspaceInfoOpt.workspaceSize > workspaceInfo.workspaceSize) {
-        workspaceInfo.workspaceSize = workspaceInfoOpt.workspaceSize;
-    }
-    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+    OP_TILING_CHECK(SetWorkspace(context, workspaceInfoOpt.workspaceSize, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
     // Print Info
     PrintMegaMoeTilingData(tilingData, nodeName);
-    printWorkspaceInfo(&workspaceInfo, nodeName);
+    printWorkspaceInfoOptimize(&workspaceInfoOpt, nodeName);
     printPeermemInfo(tilingData, nodeName);
 
     return ge::GRAPH_SUCCESS;
