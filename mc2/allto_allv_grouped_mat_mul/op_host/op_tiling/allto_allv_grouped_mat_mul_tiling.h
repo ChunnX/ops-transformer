@@ -79,20 +79,20 @@ protected:
     ge::graphStatus setNumBlocks(gert::TilingContext* context);
 
 private:
-    int32_t maxM_;
-    int32_t maxN_;
-    int32_t maxK_;
-    int32_t baseM_;
-    int32_t baseN_;
-    int32_t baseK_;
-    uint32_t mmDataTypeSize;
+    int32_t maxM_ = 0;
+    int32_t maxN_ = 0;
+    int32_t maxK_ = 0;
+    int32_t baseM_ = 0;
+    int32_t baseN_ = 0;
+    int32_t baseK_ = 0;
+    uint32_t mmDataTypeSize = 0;
 
-    int32_t maxMForMM_;
-    int32_t maxNForMM_;
-    int32_t maxKForMM_;
-    int32_t baseMForMM_;
-    int32_t baseNForMM_;
-    int32_t baseKForMM_;
+    int32_t maxMForMM_ = 0;
+    int32_t maxNForMM_ = 0;
+    int32_t maxKForMM_ = 0;
+    int32_t baseMForMM_ = 0;
+    int32_t baseNForMM_ = 0;
+    int32_t baseKForMM_ = 0;
 };
 
 class AlltoAllvGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
