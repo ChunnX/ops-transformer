@@ -284,10 +284,16 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
         expertInputOffset[e] = expertInputOffset[e - 1] + expertTotalTokens[e - 1];
     }
 
-    // Rank arrays in GM workspace (saves ~9KB stack for ascend910_93)
-    __gm__ uint64_t* rankTotalTokens = reinterpret_cast<__gm__ uint64_t*>(scratch + 2 * MAX_EXPERT_IDX * sizeof(uint64_t));
-    __gm__ uint64_t* rankOutputBase = rankTotalTokens + MAX_EP_RANK_SIZE;
-    __gm__ uint64_t* expertContribOffset = rankOutputBase + MAX_EP_RANK_SIZE;
+    // All per-rank arrays at function scope (reused across iterations)
+    uint64_t rankTotalTokens[MAX_EP_RANK_SIZE];
+    uint64_t rankOutputBase[MAX_EP_RANK_SIZE];
+    uint64_t expertContribOffset[MAX_EP_RANK_SIZE];
+    uint64_t mmInOffset[MAX_EP_RANK_SIZE];
+    uint64_t mmOutOffset[MAX_EP_RANK_SIZE];
+    uint32_t tokenNum[MAX_EP_RANK_SIZE];
+    uint64_t compactInOffset[MAX_EP_RANK_SIZE];
+    uint64_t compactOutOffset[MAX_EP_RANK_SIZE];
+    uint32_t compactTokenNum[MAX_EP_RANK_SIZE];
 
     uint64_t groupOutputBase = 0;
 
@@ -312,11 +318,9 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
         }
 
         // Process each expert in this group with rank-major output layout
-        for (uint64_t e = eStart; e < eEnd; e++) {
-            uint64_t mmInOffset[MAX_EP_RANK_SIZE];
-            uint64_t mmOutOffset[MAX_EP_RANK_SIZE];
-            uint32_t tokenNum[MAX_EP_RANK_SIZE];
 
+        for (uint64_t e = eStart; e < eEnd; e++) {
+            uint16_t validRanks = 0;
             uint64_t inputBase = expertInputOffset[e];
             uint64_t rankInSum = 0;
 
@@ -326,12 +330,20 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
                 mmOutOffset[r] = (rankOutputBase[r] + expertContribOffset[r]) * axisN1_;
                 tokenNum[r] = static_cast<uint32_t>(tok);
                 rankInSum += tok;
+                if (tok > 0) {
+                    compactInOffset[validRanks] = mmInOffset[r];
+                    compactOutOffset[validRanks] = mmOutOffset[r];
+                    compactTokenNum[validRanks] = static_cast<uint32_t>(tok);
+                    validRanks++;
+                }
             }
 
             if ASCEND_IS_AIC {
-                gmmOp.Process(this->rankId_, axisH_, axisN1_,
-                              mmInOffset, mmOutOffset, tokenNum,
-                              static_cast<uint16_t>(rankDim_), e);
+                if (validRanks > 0) {
+                    gmmOp.Process(this->rankId_, axisH_, axisN1_,
+                                  compactInOffset, compactOutOffset, compactTokenNum,
+                                  validRanks, e);
+                }
             }
 
             for (uint64_t r = 0; r < rankDim_; r++) {
