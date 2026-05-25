@@ -198,7 +198,9 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
+        bool isSmallBsh = context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4;
+        bool isOverlapTh = context_->layout == LayoutType::LAYOUT_TH && coff == 2;
+        if (baseParams_->tokenSize <= 256 && (isSmallBsh || isOverlapTh)) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
