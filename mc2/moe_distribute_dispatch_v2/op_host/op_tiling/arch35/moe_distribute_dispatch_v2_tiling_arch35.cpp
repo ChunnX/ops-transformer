@@ -1224,13 +1224,37 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     config.isMc2Context = false;
     // MTE 调用 A5 V2 tiling 实现
     DispatchV2TilingCtx tc;
-    return MoeDistributeDispatchA5TilingFuncImplPublicV2(context, config, tc);
+    return MoeDistributeDispatchA5TilingFuncImplPublicV2(context, config, tc,
+        [this](gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return CheckQuantModeMatchScales(ctx, name, t, cfg);
+        },
+        [this](const DispatchV2TilingCtx &t) { return CalTilingKey(t); },
+        [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return CheckTensorDataType(ctx, name, t, cfg);
+        },
+        [this](const int64_t *ptr, const char *name) { return CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return CheckCommAlgPtr(ptr, name); });
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
 {
     ge::graphStatus ret = MoeDistributeDispatchTilingFuncImpl(context);
     return ret;
+}
+
+ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchA3TilingFuncImplPublic(
+    gert::TilingContext *context, DispatchV2Config &config)
+{
+    return ::optiling::MoeDistributeDispatchA3TilingFuncImplPublic(context, config,
+        [this](gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return CheckQuantModeMatchScales(ctx, name, t, cfg);
+        },
+        [this](const DispatchV2TilingCtx &t) { return CalTilingKey(t); },
+        [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return CheckTensorDataType(ctx, name, t, cfg);
+        },
+        [this](const int64_t *ptr, const char *name) { return CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return CheckCommAlgPtr(ptr, name); });
 }
 
 uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const DispatchV2TilingCtx &tc)

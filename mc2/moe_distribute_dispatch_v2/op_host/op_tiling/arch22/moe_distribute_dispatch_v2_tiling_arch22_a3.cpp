@@ -30,7 +30,7 @@ using namespace ge;
 
 namespace optiling {
 
-uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const DispatchV2TilingCtx &tc)
+uint64_t MoeDistributeDispatchV2TilingFuncA3::CalTilingKey(const DispatchV2TilingCtx &tc)
 {
     uint32_t templateDispatch = TILINGKEY_NO_FULLMESH;
     bool tp = false;
@@ -55,7 +55,7 @@ uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const DispatchV2Til
     return tilingKey;
 }
 
-bool MoeDistributeDispatchV2TilingFuncA2A3::CheckTensorDataType(
+bool MoeDistributeDispatchV2TilingFuncA3::CheckTensorDataType(
     const gert::TilingContext *context, const char *nodeName,
     DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
@@ -98,7 +98,7 @@ bool MoeDistributeDispatchV2TilingFuncA2A3::CheckTensorDataType(
     return true;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales(
+ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::CheckQuantModeMatchScales(
     gert::TilingContext *context, const char *nodeName,
     DispatchV2TilingCtx &tc, DispatchV2Config &config)
 {
@@ -113,7 +113,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName)
+ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName)
 {
     OP_TILING_CHECK(((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
         (strcmp(commAlgPtr, "fullmesh_v2")  != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)),
@@ -124,7 +124,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const cha
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModePtr(const int64_t* quantModePtr,
+ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::CheckQuantModePtr(const int64_t* quantModePtr,
     const char *nodeName)
 {
     OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
@@ -134,13 +134,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModePtr(const i
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context)
-{
-    (void)context;
-    return ge::GRAPH_FAILED;
-}
-
-ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
 {
     DispatchV2Config config;
     config.xIndex = 0U;
@@ -169,7 +163,16 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchV2Ti
     config.attrConstExpertNumIndex = 16;
     config.isMc2Context = false;
     DispatchV2TilingCtx tc;
-    return MoeDistributeDispatchA3TilingFuncImplPublicV2(context, config, tc);
+    return MoeDistributeDispatchA3TilingFuncImplPublicV2(context, config, tc,
+        [this](gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return CheckQuantModeMatchScales(ctx, name, t, cfg);
+        },
+        [this](const DispatchV2TilingCtx &t) { return CalTilingKey(t); },
+        [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return CheckTensorDataType(ctx, name, t, cfg);
+        },
+        [this](const int64_t *ptr, const char *name) { return CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return CheckCommAlgPtr(ptr, name); });
 }
 
 struct MoeDistributeDispatchCompileInfo {};
@@ -181,7 +184,7 @@ static ge::graphStatus TilingParseForMoeDistributeDispatchV2(gert::TilingParseCo
 
 static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext* context)
 {
-    MoeDistributeDispatchV2TilingFuncA2A3 impl;
+    MoeDistributeDispatchV2TilingFuncA3 impl;
     return impl.MoeDistributeDispatchV2TilingFunc(context);
 }
 

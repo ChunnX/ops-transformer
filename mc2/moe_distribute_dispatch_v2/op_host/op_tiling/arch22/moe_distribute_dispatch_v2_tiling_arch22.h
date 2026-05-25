@@ -22,6 +22,7 @@
 
 namespace optiling {
 
+// A2A3 类保留供 A2 和 V3 使用（A2 仍继承基类，V3 仍创建 A2A3 对象调用旧入口）
 class MoeDistributeDispatchV2TilingFuncA2A3 : public MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) override;
@@ -33,6 +34,19 @@ public:
         DispatchV2TilingCtx &tc, DispatchV2Config &config) override;
     ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName) override;
     ge::graphStatus CheckQuantModePtr(const int64_t* quantModePtr, const char *nodeName) override;
+};
+
+// A3 独立类：不继承基类（原则5：架构差异通过参数/回调传递）
+class MoeDistributeDispatchV2TilingFuncA3 {
+public:
+    ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context);
+    bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName,
+        DispatchV2TilingCtx &tc, DispatchV2Config &config);
+    uint64_t CalTilingKey(const DispatchV2TilingCtx &tc);
+    ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName,
+        DispatchV2TilingCtx &tc, DispatchV2Config &config);
+    ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName);
+    ge::graphStatus CheckQuantModePtr(const int64_t* quantModePtr, const char *nodeName);
 };
 } // namespace optiling
 
