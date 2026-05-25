@@ -33,16 +33,31 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-#if ((ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT) && (ORIG_DTYPE_GMM_X == DT_HIFLOAT8))
-#define MX_QUANT_MODE false
-#else
+// MX_QUANT_MODE: 决定是否启用 MX quant scale 通信处理
+// 正确逻辑：只有当 DTYPE_GMM_X_SCALE 是 MX 类型（如 fp8_e8m0）时才为 true
+// 非量化算子不定义 DTYPE_GMM_X_SCALE，或 scaleType 为 float，此时应为 false
+#if defined(DTYPE_GMM_X_SCALE) && (DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0)
 #define MX_QUANT_MODE true
+#else
+#define MX_QUANT_MODE false
 #endif
 
 #if ((ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT) && (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1))
 #define PACK_FACTOR 2U
 #else
 #define PACK_FACTOR 1U
+#endif
+
+// X_TYPE_SIZE: x数据类型的字节大小，用于workspace字节数计算
+// 量化8bit类型=1字节，FP16/BF16=2字节
+#if (ORIG_DTYPE_GMM_X == DT_FLOAT16 || ORIG_DTYPE_GMM_X == DT_BF16)
+#define X_TYPE_SIZE 2U
+#elif (ORIG_DTYPE_GMM_X == DT_INT8 || ORIG_DTYPE_GMM_X == DT_HIFLOAT8 || ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)
+#define X_TYPE_SIZE 1U
+#elif (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1)
+#define X_TYPE_SIZE 1U  // fp4: 2 elements packed in 1 byte, PACK_FACTOR handles this
+#else
+#define X_TYPE_SIZE 1U  // default fallback
 #endif
 
 }
