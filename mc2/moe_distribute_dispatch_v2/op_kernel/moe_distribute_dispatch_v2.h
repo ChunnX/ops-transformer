@@ -26,6 +26,7 @@
 #include "moe_distribute_v2_constant.h"
 #include "moe_distribute_dispatch_v2_quant.h"
 #include "moe_distribute_elastic.h"
+#include "../../common/utils/mc2_kernel_timing.h"
 
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
@@ -45,6 +46,19 @@ using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
+
+// Timing slot definitions — each slot holds the total time spent in that phase.
+enum DispatchTimingSlot {
+    TIMING_ALLTOALL_DISPATCH = 0,
+    TIMING_SET_STATUS = 1,
+    TIMING_WAIT_DISPATCH = 2,
+    TIMING_LOCAL_WINDOW_COPY = 3,
+    TIMING_SET_EXPERT_TOKEN_NUMS = 4,
+    TIMING_ALLGATHER_SET_STATUS = 5,
+    TIMING_ALLGATHER_PROCESS_OUT = 6,
+    TIMING_ALLGATHER_SET_TOKEN_NUMS = 7,
+};
+
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
 public:
@@ -302,6 +316,7 @@ private:
     MoeDistributeDispatchV2Quant<XInType, ExpandXOutType,
                 XOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather> quantInst_;
     MoeDistributeElastic elasticInst_;
+    Mc2Kernel::KernelTiming kernelTiming_;
 };
 
 template <TemplateDispatchV2TypeClass>
@@ -581,6 +596,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     scaleOutParams_ = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U, 0U};
 
     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
+
+    kernelTiming_.Init(expandXOut);
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -1578,18 +1595,41 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::AllG
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Process()
 {
-    if ASCEND_IS_AIV { // 全aiv处理	 
-        AlltoAllDispatch();	 
-        SetStatus();	 
-        WaitDispatch();	 
-        LocalWindowCopy();	 
-        if constexpr (!IsNeedAllgather) {	 
-            SetExpertTokenNums(); 
-        } else { 
-            AllGatherSetStatusAndWait();	 
-            AllgatherProcessOut();	 
-            AllGatherSetExpertTokenNumsAndTpRecvCount(); 
+    if ASCEND_IS_AIV { // 全aiv处理
+        kernelTiming_.StartTiming(TIMING_ALLTOALL_DISPATCH);
+        AlltoAllDispatch();
+        kernelTiming_.StopTiming(TIMING_ALLTOALL_DISPATCH);
+
+        kernelTiming_.StartTiming(TIMING_SET_STATUS);
+        SetStatus();
+        kernelTiming_.StopTiming(TIMING_SET_STATUS);
+
+        kernelTiming_.StartTiming(TIMING_WAIT_DISPATCH);
+        WaitDispatch();
+        kernelTiming_.StopTiming(TIMING_WAIT_DISPATCH);
+
+        kernelTiming_.StartTiming(TIMING_LOCAL_WINDOW_COPY);
+        LocalWindowCopy();
+        kernelTiming_.StopTiming(TIMING_LOCAL_WINDOW_COPY);
+
+        if constexpr (!IsNeedAllgather) {
+            kernelTiming_.StartTiming(TIMING_SET_EXPERT_TOKEN_NUMS);
+            SetExpertTokenNums();
+            kernelTiming_.StopTiming(TIMING_SET_EXPERT_TOKEN_NUMS);
+        } else {
+            kernelTiming_.StartTiming(TIMING_ALLGATHER_SET_STATUS);
+            AllGatherSetStatusAndWait();
+            kernelTiming_.StopTiming(TIMING_ALLGATHER_SET_STATUS);
+
+            kernelTiming_.StartTiming(TIMING_ALLGATHER_PROCESS_OUT);
+            AllgatherProcessOut();
+            kernelTiming_.StopTiming(TIMING_ALLGATHER_PROCESS_OUT);
+
+            kernelTiming_.StartTiming(TIMING_ALLGATHER_SET_TOKEN_NUMS);
+            AllGatherSetExpertTokenNumsAndTpRecvCount();
+            kernelTiming_.StopTiming(TIMING_ALLGATHER_SET_TOKEN_NUMS);
         }
+        kernelTiming_.WriteTimingToOutput(aivId_, tpipe_);
     }
 }
 } // MoeDistributeDispatchV2Impl
