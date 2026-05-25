@@ -644,9 +644,10 @@ public:
         }
         mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
-        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
 
+        // ── 优化：两个独立等待并列，让 Cube→L0C 完成与 cross-core UB释放 并行 ──
         outputBuf.WaitCrossCore();
+        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
 
         set_mark(0x40040000); // FixpipeMm1开始
         FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
@@ -760,9 +761,11 @@ public:
         mm1A.Set<HardEvent::MTE1_MTE2>();
 
         mm1ResL0C.Set<HardEvent::M_FIX>();
+
+        // ── 优化：两个独立等待并列，让 Cube→L0C 完成与 cross-core UB释放 并行 ──
+        outputBuf.WaitCrossCore();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
-        outputBuf.WaitCrossCore();
         FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
@@ -821,9 +824,11 @@ public:
         mm1A.Set<HardEvent::MTE1_MTE2>();
 
         mm1ResL0C.Set<HardEvent::M_FIX>();
+
+        // ── 优化：两个独立等待并列，让 Cube→L0C 完成与 cross-core UB释放 并行 ──
+        outputBuf.WaitCrossCore();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
-        outputBuf.WaitCrossCore();
         FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
         mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
         outputBuf.SetCrossCore();
@@ -857,16 +862,54 @@ public:
     __aicore__ inline void IterateBmm2L1SplitN(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         MM2_ABUF_T mm2A = inputBuf.Get();
-        mm2A.WaitCrossCore();
+
+        // ── 优化：第一片 V DMA 提前到 WaitCrossCore 之前，MTE2 与 Scalar 等待并行 ──
+        constexpr uint32_t baseN = l1BaseD;
+        uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN;
+        uint32_t realN = baseN;
+        if (nLoops == 1) {
+            uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseN;
+            realN = tailSize ? tailSize : baseN;
+        }
+        // 预取第一片 V（MTE2 异步，与 WaitCrossCore 并行）
+        Buffer<BufferType::L1> mm2B0 = l1VBuffers.Get();
+        mm2B0.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<KV_T> mm2B0Tensor = mm2B0.GetTensor<KV_T>();
+        CopyValueSlice(mm2B0Tensor, 0, realN, runInfo);
+        mm2B0.Set<HardEvent::MTE2_MTE1>();
+
+        mm2A.WaitCrossCore(); // Scalar 等待 L1P，MTE2 V搬运并行执行
 
         // dVTemplateType > 256, L1切N, 左矩阵不变，右矩阵每次循环搬运S2 * 128
         if constexpr (bmm2Write2Ub) {
             outputBuf.WaitCrossCore();
         }
-        constexpr uint32_t baseN = l1BaseD;
-        uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN; // 尾块处理
-        uint32_t realN = baseN;
-        for (uint32_t n = 0; n < nLoops; ++n) {
+
+        // 第一片走预取的 buffer
+        {
+            Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
+            mm2ResL0C.Wait<HardEvent::FIX_M>();
+
+            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
+                                        useDn, false);
+            if constexpr (!useDn) {
+                param.realM = (uint32_t)runInfo.actMSize;
+            }
+            mm2B0.Wait<HardEvent::MTE2_MTE1>();
+            MatmulFull<Q_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN>(
+                mm2A.GetTensor<Q_T>(), mm2B0Tensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+
+            mm2B0.Set<HardEvent::MTE1_MTE2>();
+            mm2ResL0C.Set<HardEvent::M_FIX>();
+            mm2ResL0C.Wait<HardEvent::M_FIX>();
+
+            FixpipeMm2PartialN(outputBuf.template GetTensor<T>()[0], mm2ResL0C.GetTensor<T>(), realN, runInfo);
+            mm2ResL0C.Set<HardEvent::FIX_M>();
+        }
+
+        // 后续分片正常处理
+        realN = baseN;
+        for (uint32_t n = 1; n < nLoops; ++n) {
             if (n == nLoops - 1) {
                 uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseN;
                 realN = tailSize ? tailSize : baseN;
@@ -934,13 +977,15 @@ public:
     {
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
-        mm2A.WaitCrossCore();
+        // ── 优化：V DMA 提前到 WaitCrossCore 之前，利用 MTE2/Scalar 流水并行 ──
+        // MTE2 引擎异步搬运 V 数据，同时 Scalar 引擎等待 Vec1 产出 L1P（softmax 结果）
         set_mark(0x60010000); // CopyV开始
         mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
         LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
         CopyValueTile(mm2BTensor, runInfo);
         mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
         set_mark(0x600100FF); // CopyV结束
+        mm2A.WaitCrossCore(); // Scalar 等待 L1P，此时 MTE2 V搬运已完成或正在并行执行
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
@@ -974,11 +1019,12 @@ public:
 
         mm2B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
-        mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
+        // ── 优化：两个独立等待并列，让 Cube→L0C 完成与 cross-core UB释放 并行 ──
         if constexpr (bmm2Write2Ub) {
             outputBuf.WaitCrossCore();
         }
+        mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待 Matmul 写完 L0C
 
         set_mark(0x60030000); // FixpipeMm2开始
         FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);

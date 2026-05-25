@@ -414,6 +414,7 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum) {
             return;
         }
+        AscendC::ICachePreLoad(2); // 预热指令缓存，减少首次执行的取指延迟
 
         GetFASectionInfo(sectionIdx);
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
