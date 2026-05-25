@@ -283,6 +283,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     /* 依次执行dispatchV2及combineV2算子 */
     // 调用dispatchV2算子第一阶段接口
+    uint64_t shmemBuffer = (uint64_t)custom_ptr;
     ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
         x, expertIds, 
         (quantMode > 0 ? scales : nullptr), nullptr, 
@@ -290,7 +291,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
         hcomEpName, EP_WORLD_SIZE, args.epRankId,
         moeExpertNum, hcomTpName, TP_WORLD_SIZE,
         args.tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBS,
+        sharedExpertRankNum, quantMode, globalBS, shmemBuffer,
         expertTokenNumsType, commAlg.c_str(),
         expandX, dynamicScales,
         expandIdx, expertTokenNums,

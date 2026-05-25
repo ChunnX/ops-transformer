@@ -33,7 +33,7 @@ aclnnStatus aclnnMoeDistributeDispatchV5GetWorkspaceSize(const aclTensor* contex
     const aclTensor* performanceInfoOptional, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, int64_t cclBufferSize, int64_t tpWorldSize,
     int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, 
-    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
+    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, uint64_t shmemBuffer,
     int64_t expertTokenNumsType, const char* commAlg,
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* expandXOut, aclTensor* dynamicScalesOut,
@@ -47,7 +47,7 @@ aclnnStatus aclnnMoeDistributeDispatchV5GetWorkspaceSize(const aclTensor* contex
         context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
         elasticInfoOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum,
         cclBufferSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
+        sharedExpertRankNum, quantMode, globalBs, shmemBuffer, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
         copyExpertNum, constExpertNum, yDtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
         expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 

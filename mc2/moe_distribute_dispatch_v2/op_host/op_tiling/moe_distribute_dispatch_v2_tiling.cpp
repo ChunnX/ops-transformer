@@ -843,6 +843,9 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
         tilingData.moeDistributeDispatchV2Info.globalBs = static_cast<uint32_t>(*globalBsPtr);
     }
 
+    auto shmemBufferPtr = attrs->GetAttrPointer<uint64_t>(config.attrShmemBufferIndex);
+    tilingData.moeDistributeDispatchV2Info.shmemBuffer = static_cast<uint64_t>(*shmemBufferPtr);
+
     return ge::GRAPH_SUCCESS;
 }
 

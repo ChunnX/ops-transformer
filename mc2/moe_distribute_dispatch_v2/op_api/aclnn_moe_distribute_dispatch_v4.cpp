@@ -43,7 +43,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4GetWorkspaceSize(
         x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
         elasticInfoOptional, performanceInfoOptional, groupEp, epWorldSize, epRankId, moeExpertNum,
         groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg,
+        sharedExpertRankNum, quantMode, globalBs, 0, expertTokenNumsType, commAlg,
         zeroExpertNum, copyExpertNum, constExpertNum, expandXOut,
         dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
         expandScalesOut, workspaceSize, executor);

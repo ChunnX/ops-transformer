@@ -56,11 +56,12 @@ ge::graphStatus MoeDistributeDispatchV3TilingFuncBase::MoeDistributeDispatchV3Ti
     config.attrSharedExpertRankNumIndex = 8; // 8: 根据dispatchV3算子原型标志位初始化sharedExpertRankNum索引
     config.attrQuantModeIndex = 9; // 9: 根据dispatchV3算子原型标志位初始化quantMode索引
     config.attrGlobalBsIndex = 10; // 10: 根据dispatchV3算子原型标志位初始化globalBs索引
-    config.attrExpertTokenNumsTypeIndex = 11; // 11: 根据dispatchV3算子原型标志位初始化expertTokenNumType索引
-    config.attrCommAlgIndex = 12; // 12: 根据dispatchV3算子原型标志位初始化commAlg索引
-    config.attrZeroExpertNumIndex = 13; // 13: 根据dispatchV3算子原型标志位初始化zeroExpertNumIndex索引
-    config.attrCopyExpertNumIndex = 14; // 14: 根据dispatchV3算子原型标志位初始化copyExpertNumIndex索引
-    config.attrConstExpertNumIndex = 15; // 15: 根据dispatchV3算子原型标志位初始化constExpertNumIndex索引
+    config.attrShmemBufferIndex = 11; // 11: shmem 通信 Buffer
+    config.attrExpertTokenNumsTypeIndex = 12; // 12: 根据dispatchV3算子原型标志位初始化expertTokenNumType索引
+    config.attrCommAlgIndex = 13; // 13: 根据dispatchV3算子原型标志位初始化commAlg索引
+    config.attrZeroExpertNumIndex = 14; // 14: 根据dispatchV3算子原型标志位初始化zeroExpertNumIndex索引
+    config.attrCopyExpertNumIndex = 15; // 15: 根据dispatchV3算子原型标志位初始化copyExpertNumIndex索引
+    config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV3算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = true;
 
     const char *nodeName = context->GetNodeName();

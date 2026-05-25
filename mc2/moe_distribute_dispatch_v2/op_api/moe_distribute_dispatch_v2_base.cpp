@@ -48,7 +48,7 @@ extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *xActiveMask, const aclTensor *expertScales, const aclTensor *elasticInfo,
     const aclTensor *performanceInfo, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
     int64_t cclBufferSize, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
-    int64_t shareExpertRankNum, int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg,
+    int64_t shareExpertRankNum, int64_t quantMode, int64_t globalBs, uint64_t shmemBuffer, int64_t expertTokenNumsType, const char *commAlg,
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, int64_t ydtype, aclTensor *expandX,
     aclTensor *dynamicScales, aclTensor *assist_info_for_combine, aclTensor *expertTokensNums, aclTensor *epRecvCounts,
     aclTensor *tpRecvCounts, aclTensor *expandScales, uint64_t *workspaceSize, aclOpExecutor **executor);
@@ -133,7 +133,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const aclTensor *elasticInfoOptional,
     const aclTensor *performanceInfoOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
-    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
+    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, uint64_t shmemBuffer, 
     int64_t expertTokenNumsType, const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum,
     int64_t constExpertNum, aclTensor *expandXOut, aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut,
     aclTensor *expertTokenNumsOut, aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut,
@@ -174,7 +174,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
-            tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
+            tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, shmemBuffer, expertTokenNumsType,
             const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
             dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
             expandScalesOut, workspaceSize, executor);

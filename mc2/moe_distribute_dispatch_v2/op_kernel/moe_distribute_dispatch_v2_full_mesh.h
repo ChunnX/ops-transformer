@@ -323,6 +323,7 @@ private:
     uint32_t maxSize_{0};
     uint32_t expertIdsSize_{0};
     uint32_t globalBS_{0};
+    uint64_t shmemBuffer_{0};
     uint32_t copyInAxisH_{0};
     uint32_t copyOutAxisH_{0};
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
@@ -506,6 +507,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};
     expertIdsSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+
+    shmemBuffer_ = tilingData->moeDistributeDispatchV2Info.shmemBuffer;
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1684,6 +1687,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
         AscendC::printf("====================== zzz In moe_distribute_dispatch_v2 ==========================\n");
         AscendC::printf("Shmem Interface my_pe: %d \n", aclshmem_my_pe());
+        AscendC::printf("Shmem Buffer: %d \n", shmemBuffer_);
 
         AscendC::TBuf<AscendC::TPosition::VECOUT> buf;
         tpipe_->InitBuffer(buf, UB_ALIGN_SIZE * 2);
