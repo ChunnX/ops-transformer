@@ -51,7 +51,6 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
     // 参数检查
-    OP_CHECK_NULL(permuteTokens, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(unpermutedTokensGrad, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(permutedTokensGradOut, return ACLNN_ERR_PARAM_NULLPTR);
@@ -67,8 +66,11 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
     CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());
-    CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const aclTensor* permuteTokensContiguous = nullptr;
+    if (permuteTokens != nullptr) {
+        permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());
+        CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
     
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
@@ -77,9 +79,16 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     }
 
     // 获取activeNum
-    auto permuteTokensShape = permuteTokens->GetViewShape();
-    CHECK_RET(permuteTokensShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
-    int64_t activeNum = permuteTokensShape.GetDim(0);
+    int64_t activeNum = 0;
+    if (permuteTokens != nullptr) {
+        auto permuteTokensShape = permuteTokens->GetViewShape();
+        CHECK_RET(permuteTokensShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
+        activeNum = permuteTokensShape.GetDim(0);
+    } else {
+        auto sortedIndicesShape = sortedIndicesContiguous->GetViewShape();
+        CHECK_RET(sortedIndicesShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
+        activeNum = sortedIndicesShape.GetDim(0);
+    }
 
     // 调用l0接口进行计算
     auto result = l0op::MoeFinalizeRoutingV2Grad(unpermutedTokensGradContiguous, sortedIndicesContiguous,

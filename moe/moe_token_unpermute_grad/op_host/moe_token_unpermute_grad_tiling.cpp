@@ -287,16 +287,35 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteGrad(gert::TilingContext* context
 {
     OP_LOGD("MoeTokenUnpermuteGradTiling tiling start");
     MoeTokenUnpermuteGradTilingData tiling;
-    const gert::StorageShape* permutedTokensShape = context->GetInputShape(INPUT_PERMUTED_TOKENS_IDX);
     const gert::StorageShape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokensShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
+
+    auto permutedTokensTensor = context->GetOptionalInputTensor(INPUT_PERMUTED_TOKENS_IDX);
+    const gert::StorageShape* permutedTokensShape =
+        (permutedTokensTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
+
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     const gert::StorageShape* probShape = (probTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PROB_IDX);
+
+    OP_CHECK_IF(
+        permutedTokensTensor == nullptr && probTensor != nullptr,
+        OP_LOGE(
+            context->GetNodeName(),
+            "[MoeTokenUnpermuteGrad] permuted_tokens is None but probs is not None, cannot compute prob_grad."),
+        return ge::GRAPH_FAILED);
+
     int64_t tokensNum = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_0);
     int64_t hiddenSize = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_1);
     int64_t topK = (probShape == nullptr) ? 1 : probShape->GetStorageShape().GetDim(DIM_1);
-    int64_t numOutTokens = permutedTokensShape->GetStorageShape().GetDim(DIM_0);
+
+    int64_t numOutTokens;
+    if (permutedTokensShape != nullptr) {
+        numOutTokens = permutedTokensShape->GetStorageShape().GetDim(DIM_0);
+    } else {
+        const gert::StorageShape* sortedIndicesShape = context->GetInputShape(INPUT_ROWIDMAP_IDX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, sortedIndicesShape);
+        numOutTokens = sortedIndicesShape->GetStorageShape().GetDim(DIM_0);
+    }
     tiling.set_tokensNum(tokensNum);
     tiling.set_topK(topK);
     tiling.set_hiddenSize(hiddenSize);
