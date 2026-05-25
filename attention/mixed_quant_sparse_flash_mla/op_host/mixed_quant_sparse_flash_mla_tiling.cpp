@@ -458,6 +458,19 @@ ge::graphStatus KvQuantSASInfoParser::GetSinks()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus KvQuantSASInfoParser::GetKvstride()
+{
+    if(opParamInfo_.oriKv.tensor != nullptr){
+        oriKvStride_ = opParamInfo_.oriKv.tensor->GetShapeSize() /
+                    opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0);
+    }
+    if(opParamInfo_.cmpKv.tensor != nullptr){
+        cmpKvStride_ = opParamInfo_.cmpKv.tensor->GetShapeSize() /
+                    opParamInfo_.cmpKv.tensor->GetStorageShape().GetDim(0);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
 {
     sasInfo.opName = opName_;
@@ -482,6 +495,8 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.dSize = dSizeQ_;
     sasInfo.dSizeV = 512;
     sasInfo.dSizeVInput = dSizeKV_;
+    sasInfo.oriKvStride = oriKvStride_;
+    sasInfo.cmpKvStride = cmpKvStride_;
 
     sasInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
         opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
@@ -502,8 +517,6 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.tileSize = 64;
     sasInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     sasInfo.softmaxScale = *opParamInfo_.softmaxScale;
-    sasInfo.oriKvStride = 81920;
-    sasInfo.cmpKvStride = 0;
     sasInfo.cmpRatio = *opParamInfo_.cmpRatio;
     sasInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     sasInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
@@ -547,6 +560,7 @@ ge::graphStatus KvQuantSASInfoParser::Parse(KvQuantSASTilingInfo &sasInfo)
         ge::GRAPH_SUCCESS != GetQkHeadDim() ||
         ge::GRAPH_SUCCESS != GetSparseBlockCount() ||
         ge::GRAPH_SUCCESS != GetDSizeQ() ||
+        ge::GRAPH_SUCCESS != GetKvstride() ||
         ge::GRAPH_SUCCESS != GetDSizeKV()) {
         return ge::GRAPH_FAILED;
     }

@@ -40,7 +40,6 @@
 |seqused_kv|可选输入|表示不同Batch中ori_kv的有效token数，维度为B|INT32|ND|
 |sinks|可选输入|注意力下沉tensor，当前必须传入|FLOAT32|ND|
 |metadata|可选输入|aicpu算子（npu_mixed_quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
-|tile_size|可选属性|表示量化粒度，必须满足nope_head_dim能被tile_size整除，默认值为None，当前仅支持64|INT32|-|
 |rope_head_dim|可选属性|默认值为None，当前仅支持64|INT32|-|
 |softmax_scale|可选属性|默认值为None，当前为必传，代表缩放系数，作为q与ori_kv和cmp_kv矩阵乘后Muls的scalar值|FLOAT32|-|
 |cmp_ratio|可选属性|表示对ori_kv的压缩率，默认值为None，kv压缩场景支持4/128，非kv压缩场景仅支持传1|INT32|-|

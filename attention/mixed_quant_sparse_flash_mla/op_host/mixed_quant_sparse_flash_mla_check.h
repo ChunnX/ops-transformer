@@ -353,6 +353,7 @@ public:
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
+    ge::graphStatus GetKvstride();
     ge::graphStatus GetSinks();
     void GenerateInfo(KvQuantSASTilingInfo &sasInfo);
     ge::graphStatus Parse(KvQuantSASTilingInfo &sasInfo);
@@ -386,6 +387,8 @@ public:
     uint32_t actualLenDimsQ_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
+    uint32_t oriKvStride_ = 0;
+    uint32_t cmpKvStride_ = 0;
     // Layout
     SASLayout qLayout_ = SASLayout::BSND;
     SASLayout outLayout_ = SASLayout::BSND;
@@ -525,6 +528,8 @@ private:
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
     uint32_t sparseBlockSize_ = 0;
+    uint32_t oriKvStride_ = 0;
+    uint32_t cmpKvStride_ = 0;
 
     uint32_t oriBlockNum_ = 0;
     uint32_t cmpBlockNum_ = 0;
