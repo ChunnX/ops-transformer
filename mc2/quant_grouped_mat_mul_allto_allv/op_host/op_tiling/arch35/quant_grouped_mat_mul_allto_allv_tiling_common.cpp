@@ -174,7 +174,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsG
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmWeightStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmWeightStorageShape"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "yStorageShape"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "yStorageShape"),
+                    return ge::GRAPH_FAILED);
     auto status = CheckShapeDimensions(gmmXStorageShape, DIM_TWO, "gmmXShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
@@ -221,10 +222,12 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsM
     const gert::StorageShape *mmXStorageShape = context_->GetOptionalInputShape(MM_X_OPTIONAL_INDEX);
     const gert::StorageShape *mmWeightStorageShape = context_->GetOptionalInputShape(MM_WEIGHT_OPTIONAL_INDEX);
     const gert::StorageShape *mmYStorageShape = context_->GetOutputShape(OUTPUT_MM_Y_OPTIONAL_INDEX);
-    OP_TILING_CHECK(mmXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXStorageShape"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXStorageShape"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mmWeightStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightStorageShape"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mmYStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmYStorageShape"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmYStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmYStorageShape"),
+                    return ge::GRAPH_FAILED);
     auto status = CheckShapeDimensions(mmXStorageShape, DIM_TWO, "mmXShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
@@ -284,7 +287,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsA
                     return ge::GRAPH_FAILED);
 
     auto mmXQuantModeptr = attrs->GetAttrPointer<int64_t>(ATTR_MM_X_QUANT_MODE_INDEX);
-    OP_TILING_CHECK(mmXQuantModeptr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXQuantMode"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmXQuantModeptr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXQuantMode"),
+                    return ge::GRAPH_FAILED);
     localParams_.mmXQuantMode = *mmXQuantModeptr;
     auto mmWeightQuantModeptr = attrs->GetAttrPointer<int64_t>(ATTR_MM_WEIGHT_QUANT_MODE_INDEX);
     OP_TILING_CHECK(mmWeightQuantModeptr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightQuantMode"),
@@ -407,8 +411,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsRelationGmm(
     const gert::StorageShape *gmmWeightScaleStorageShape = context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX);
     OP_TILING_CHECK(gmmXScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmXScaleStorageShape"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gmmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmWeightScaleStorageShape"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightScaleStorageShape == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmWeightScaleStorageShape"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         localParams_.gmmXQuantMode != QUANT_PERTENSOR,
@@ -480,8 +484,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsRelationMm()
         context_->GetOptionalInputShape(MM_WEIGHT_SCALE_OPTIONAL_INDEX);
     OP_TILING_CHECK(mmXScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmXScaleStorageShape"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScaleStorageShape"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmWeightScaleStorageShape == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScaleStorageShape"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         localParams_.mmXQuantMode != QUANT_PERTENSOR,
@@ -520,7 +524,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return ge::GRAPH_FAILED);
     int64_t rankDim = 0;
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "epWorldSize"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "epWorldSize"),
+                    return ge::GRAPH_FAILED);
     if (*epWorldSizePtr == RANK_DEFAULT_NUM) {
         OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankDim), OP_LOGE(opName_, "GetRankSize failed."),
                         return ge::GRAPH_FAILED);
@@ -566,8 +571,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetSendRecvCoun
     uint64_t expertNum = localParams_.ep * localParams_.epWorldSize;
     auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(sendCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sendCounts"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "recvCounts"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sendCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sendCounts"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "recvCounts"),
+                    return ge::GRAPH_FAILED);
     uint64_t sendCountsSize = sendCountsPtr->GetSize();
     uint64_t recvCountsSize = recvCountsPtr->GetSize();
     OP_TILING_CHECK(sendCountsSize != recvCountsSize,

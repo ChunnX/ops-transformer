@@ -48,7 +48,8 @@ protected:
             return (dim > 0) && (dim <= INT32_MAX);
         };
         if (!isValidDimValue(args_.mValue) || !isValidDimValue(args_.kValue) || !isValidDimValue(args_.nValue)) {
-            std::string valStr = "m=" + std::to_string(args_.mValue) + ", k=" + std::to_string(args_.kValue) + ", n=" + std::to_string(args_.nValue);
+            std::string valStr = "m=" + std::to_string(args_.mValue) + ", k=" + std::to_string(args_.kValue) +
+                                 ", n=" + std::to_string(args_.nValue);
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args_.opName, "m, k and n", valStr.c_str(),
                 "m, k and n must be positive");
             return ge::GRAPH_FAILED;
@@ -203,7 +204,8 @@ protected:
 
         mm.SetBufferSpace(compileInfo_.l1Size, compileInfo_.l0CSize, compileInfo_.ubSize);
         if (mm.GetTiling(tCubeTiling) == -1) {
-            std::string valStr = "m=" + std::to_string(args_.mValue) + ", n=" + std::to_string(args_.nValue) + ", k=" + std::to_string(args_.kValue);
+            std::string valStr = "m=" + std::to_string(args_.mValue) + ", n=" + std::to_string(args_.nValue) +
+                                 ", k=" + std::to_string(args_.kValue);
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args_.opName, "m, n, k", valStr.c_str(),
                 "Failed to get tiling data from matmul tiling config");
             return ge::GRAPH_FAILED;

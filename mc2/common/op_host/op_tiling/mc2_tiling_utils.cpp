@@ -399,7 +399,8 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
       scaleMValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
         mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 2);
     }
-    OP_TILING_CHECK(scaleMValue == 0, OP_LOGE_FOR_INVALID_SHAPE(mmInfo.opName, "x1Scale", "0", "positive"), return false);
+    OP_TILING_CHECK(scaleMValue == 0, OP_LOGE_FOR_INVALID_SHAPE(mmInfo.opName, "x1Scale", "0", "positive"),
+                    return false);
     OP_TILING_CHECK((mValue % scaleMValue) != 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(mmInfo.opName, "x1 and x1Scale",
       (std::to_string(mValue) + " and " + std::to_string(scaleMValue)).c_str(),
       "The m dimension of x1 should be divisible by the m dimension of x1Scale"), return false);
@@ -413,7 +414,8 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
     }
     auto nValue = mmInfo.x2Shape->GetStorageShape().GetDim(nIdx);
     auto scaleNValue = mmInfo.x2ScaleShape->GetStorageShape().GetDim(nIdx);
-    OP_TILING_CHECK(scaleNValue == 0, OP_LOGE_FOR_INVALID_SHAPE(mmInfo.opName, "x2Scale", "0", "positive"), return false);
+    OP_TILING_CHECK(scaleNValue == 0, OP_LOGE_FOR_INVALID_SHAPE(mmInfo.opName, "x2Scale", "0", "positive"),
+                    return false);
     OP_TILING_CHECK((nValue % scaleNValue) != 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(mmInfo.opName, "x2 and x2Scale",
       (std::to_string(nValue) + " and " + std::to_string(scaleNValue)).c_str(),
       "The n dimension of x2 should be divisible by the n dimension of x2Scale"), return false);
@@ -431,7 +433,8 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
       scaleKValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
         mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 1);
     }
-    OP_TILING_CHECK(scaleKValue == 0, OP_LOGE_FOR_INVALID_SHAPE(mmInfo.opName, "x1Scale", "0", "positive"), return false);
+    OP_TILING_CHECK(scaleKValue == 0, OP_LOGE_FOR_INVALID_SHAPE(mmInfo.opName, "x1Scale", "0", "positive"),
+                    return false);
     OP_TILING_CHECK((kValue % scaleKValue) != 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(mmInfo.opName, "x1 and x1Scale",
       (std::to_string(kValue) + " and " + std::to_string(scaleKValue)).c_str(),
       "The k dimension of x1 should be divisible by the k dimension of x1Scale"), return false);
