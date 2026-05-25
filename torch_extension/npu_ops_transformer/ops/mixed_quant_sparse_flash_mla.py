@@ -27,7 +27,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, "        \
                                 "Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, "           \
                                 "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, "         \
-                                "Tensor? cmp_residual_kv=None, "                                      \
+                                "Tensor? cmp_residual_kv=None, "                                     \
                                 "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "       \
                                 "Tensor? sinks=None, Tensor? metadata=None, "                        \
                                 "int quant_mode = 1, int rope_head_dim=64, "                         \
@@ -36,6 +36,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "int ori_win_left=127, int ori_win_right=0, "                        \
                                 "str layout_q=\"BSND\", str layout_kv=\"PA_ND\", "                   \
                                 "int topk_value_mode=1, bool return_softmax_lse=False, "             \
+                                "int batch_invariant=0, "                                            \
                                 "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -50,7 +51,8 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 ori_block_table=None, cmp_block_table=None,
                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
                                 quant_mode = 1, rope_head_dim=64,
@@ -59,6 +61,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 ori_win_left=127, ori_win_right=0,
                                 layout_q='BSND', layout_kv='PA_ND',
                                 topk_value_mode=1, return_softmax_lse=False,
+                                batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
             if layout_q == "BSND":
                 ## 添加softmax_lse
@@ -90,7 +93,8 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_block_table=None, cmp_block_table=None,
                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
                                 quant_mode = 1, rope_head_dim=64,
@@ -99,6 +103,7 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_win_left=127, ori_win_right=0,
                                 layout_q='BSND', layout_kv='PA_ND',
                                 topk_value_mode=1, return_softmax_lse=False,
+                                batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
     """
     dispatcher implementation for NPU.zhe
@@ -110,7 +115,8 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_block_table, cmp_block_table,
                                 cu_seqlens_q, cu_seqlens_ori_kv,
                                 cu_seqlens_cmp_kv, seqused_q,
-                                seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+                                seqused_ori_kv, seqused_cmp_kv,
+                                cmp_residual_kv,
                                 ori_topk_length, cmp_topk_length,
                                 sinks, metadata,
                                 quant_mode, rope_head_dim,
@@ -119,4 +125,5 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_win_left, ori_win_right,
                                 layout_q, layout_kv,
                                 topk_value_mode, return_softmax_lse,
+                                batch_invariant,
                                 key_dtype, value_dtype)

@@ -99,7 +99,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     const c10::optional<at::Tensor> &ori_block_table, const c10::optional<at::Tensor> &cmp_block_table,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_ori_kv,
     const c10::optional<at::Tensor> &cu_seqlens_cmp_kv, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &seqused_ori_kv, const c10::optional<at::Tensor> &seqused_cmp_kv, const c10::optional<at::Tensor> &cmp_residual_kv,
+    const c10::optional<at::Tensor> &seqused_ori_kv, const c10::optional<at::Tensor> &seqused_cmp_kv,
+    const c10::optional<at::Tensor> &cmp_residual_kv,
     const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length,
     const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &metadata,
     int64_t quant_mode, int64_t rope_head_dim,
@@ -108,6 +109,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     int64_t ori_win_left, int64_t ori_win_right,
     c10::string_view layout_q, c10::string_view layout_kv,
     int64_t topk_value_mode, bool return_softmax_lse,
+    int64_t batch_invariant,
     c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
@@ -142,7 +144,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
                 ori_block_table, cmp_block_table,
                 cu_seqlens_q, cu_seqlens_ori_kv,
                 cu_seqlens_cmp_kv, seqused_q,
-                seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+                seqused_ori_kv, seqused_cmp_kv,
+                cmp_residual_kv,
                 ori_topk_length, cmp_topk_length,
                 sinks, metadata,
                 quant_mode, rope_head_dim,
@@ -151,6 +154,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
                 ori_win_left, ori_win_right,
                 layout_q_ptr, layout_kv_ptr,
                 topk_value_mode, return_softmax_lse,
+                batch_invariant,
                 atten_out, softmax_lse);
     printf("ACLNN_CMD end =========== \n");
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
