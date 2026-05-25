@@ -394,8 +394,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     
     // ============ 计算当前核处理的token范围 ============
 
-    //PRINTF("start SendToMoeExpert aivid is %d\n", aivId_);
-
     uint32_t startRankId, endRankId, sendRankNum;
     SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
     if (startRankId >= endRankId || sendRankNum == 0) { 
@@ -459,15 +457,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
-        // PipeBarrier<PIPE_ALL>();
-        // if (dstRankId == epRankId_) {
-        //     PRINTF("AIVID %d epRankID %d, dstRankId = %d, rankGM[0] = %d, rankGM[1] = %d, rankGM %p\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1), rankGM);
-        // }
     }
     PipeBarrier<PIPE_ALL>();
-    // rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
-    // PRINTF("AIVID end  %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", aivId_, epRankId_, epRankId_, rankGMTensor(0), rankGMTensor(1));
-
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
         if (dstRankId == epRankId_) { 
@@ -477,7 +468,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-        //PRINTF("AIVID %d epRankID %d, dstRankId = %d, srcRankGM[0] = %d, dstRankGM[1] = %d\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1));
         auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
         hcomm_.Wait(handle);
     }
@@ -504,17 +494,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::BufferI
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
 {
-    // int32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
-    // GlobalTensor<int32_t> rankGMTensor;
-    // PipeBarrier<PIPE_ALL>();
-    // rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
-    // uint32_t index = epRankId_ * stateOffset_ / sizeof(float);
-    // PRINTF("WaitDispatch  end index %d, aivid %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", index, aivId_, epRankId_, epRankId_, windowInStatusFp32Tensor_(index), windowInStatusFp32Tensor_(index + 1));
-    
-
     // 等待所有rank完成数据发送
     // 通过轮询状态区，等待所有rank的状态flag变为1.0f
-    PRINTF("WaitDispatch start\n");
     BufferInit();
     startExpertId_ = startStatusIndex_;
     endExpertId_ = startExpertId_ + recStatusNumPerCore_;
@@ -525,7 +506,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
         SyncAll<true>();
         return;
     }
-    // PRINTF("AIVID %d epRankID %d, startExpertId_ = %d, endExpertId_ = %d, sendExpertNum_ = %d\n", aivId_, epRankId_, startExpertId_, endExpertId_, sendExpertNum_);
 
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
@@ -549,15 +529,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
                   1, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
-        waitCount++;
-        if (waitCount % 10000 == 0) {
-            PRINTF("AIVID %d epRankID %d, sumOfFlag = %f\n", aivId_, epRankId_, sumOfFlag);
-            PRINTF("WaitDispatch  statusFp32Tensor_ aivid %d epRankID %d, startStatusIndex_ = %d, statusFp32Tensor_[0] = %f, statusFp32Tensor_[1] = %f\n", aivId_, epRankId_, startStatusIndex_, statusFp32Tensor_[0], statusFp32Tensor_[1]);
-        }
-        if (waitCount > 1000000) {
-            PRINTF("AIVID %d epRankID %d, sumOfFlag = %f, WaitDispatch timeout\n", aivId_, epRankId_, sumOfFlag);
-            break;
-        }
     }
 
     // ============ 清零状态区，为下一次通信做准备 ============
