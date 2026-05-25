@@ -428,12 +428,13 @@ public:
                     deterSync_.windowSize, deterSync_.lowBoundM,
                     (int)(isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM));
             }
-            if (isDeter_ && ASCEND_IS_AIV &&
-                (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
-                printf("[DETER-MIDFLUSH-WOULD] blk=%u gi=%u cumM=%llu groupM=%lld nextCumM=%llu winStart=%llu lowBound=%llu\n",
-                    GetBlockIdx(), groupIdx, cumulativeGroupM_, Get<MNK_M>(problemShape_),
-                    cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_),
-                    deterSync_.windowStartM, deterSync_.lowBoundM);
+            if ASCEND_IS_AIV {
+                if (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
+                    printf("[DETER-MIDFLUSH-WOULD] blk=%u gi=%u cumM=%llu groupM=%lld nextCumM=%llu winStart=%llu lowBound=%llu\n",
+                        GetBlockIdx(), groupIdx, cumulativeGroupM_, Get<MNK_M>(problemShape_),
+                        cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_),
+                        deterSync_.windowStartM, deterSync_.lowBoundM);
+                }
             }
             ProcessSingleGroup(params, bs, groupIdx);
             cumulativeGroupM_ += Get<MNK_M>(problemShape_);
