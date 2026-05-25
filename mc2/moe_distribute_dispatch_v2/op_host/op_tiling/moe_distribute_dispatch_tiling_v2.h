@@ -92,8 +92,70 @@ struct DispatchV2Config {
     uint32_t attrCopyExpertNumIndex = 15; // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
     uint32_t attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     bool isMc2Context = false;
+    uint32_t maxQuantMode = 0; // A3: PERTOKEN_DYNAMIC_QUANT, A5: MX_QUANT
+    uint32_t tilingKeyArch = 0; // TILINGKEY_TPL_A3 or TILINGKEY_TPL_A5
 };
+
+// DispatchV2Config 默认初始化（公共索引映射）
+static inline void InitDispatchV2ConfigDefault(DispatchV2Config &config)
+{
+    config.xIndex = 0U;
+    config.expertIdsIndex = 1U;
+    config.scalesIndex = 2U;
+    config.xActiveMaskIndex = 3U;
+    config.expertScalesIndex = 4U;
+    config.elasticInfoIndex = 5U;
+    config.performanceInfoIndex = 6U;
+    config.attrGroupEpIndex = 0;
+    config.attrEpWorldSizeIndex = 1;
+    config.attrEpRankIdIndex = 2;
+    config.attrMoeExpertNumIndex = 3;
+    config.attrGroupTpIndex = 4;
+    config.attrTpWorldSizeIndex = 5;
+    config.attrTpRankIdIndex = 6;
+    config.attrExpertSharedTypeIndex = 7;
+    config.attrSharedExpertNumIndex = 8;
+    config.attrSharedExpertRankNumIndex = 9;
+    config.attrQuantModeIndex = 10;
+    config.attrGlobalBsIndex = 11;
+    config.attrExpertTokenNumsTypeIndex = 12;
+    config.attrCommAlgIndex = 13;
+    config.attrZeroExpertNumIndex = 14;
+    config.attrCopyExpertNumIndex = 15;
+    config.attrConstExpertNumIndex = 16;
+    config.isMc2Context = false;
+}
 using namespace Ops::Transformer::OpTiling;
+
+static inline void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2TilingData &tilingData)
+{
+    auto &info = tilingData.moeDistributeDispatchV2Info;
+    OP_LOGD(nodeName, "epWorldSize is %u.", info.epWorldSize);
+    OP_LOGD(nodeName, "tpWorldSize is %u.", info.tpWorldSize);
+    OP_LOGD(nodeName, "epRankId is %u.", info.epRankId);
+    OP_LOGD(nodeName, "tpRankId is %u.", info.tpRankId);
+    OP_LOGD(nodeName, "expertShardType is %u.", info.expertShardType);
+    OP_LOGD(nodeName, "sharedExpertNum is %u.", info.sharedExpertNum);
+    OP_LOGD(nodeName, "sharedExpertRankNum is %u.", info.sharedExpertRankNum);
+    OP_LOGD(nodeName, "moeExpertNum is %u.", info.moeExpertNum);
+    OP_LOGD(nodeName, "quantMode is %u.", info.quantMode);
+    OP_LOGD(nodeName, "globalBs is %u.", info.globalBs);
+    OP_LOGD(nodeName, "bs is %u.", info.bs);
+    OP_LOGD(nodeName, "k is %u.", info.k);
+    OP_LOGD(nodeName, "h is %u.", info.h);
+    OP_LOGD(nodeName, "aivNum is %u.", info.aivNum);
+    OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
+    OP_LOGD(nodeName, "totalWinSizeEP is %lu.", info.totalWinSizeEp);
+    OP_LOGD(nodeName, "totalWinSizeTP is %lu.", info.totalWinSizeTp);
+    OP_LOGD(nodeName, "hasElastic is %d.", info.hasElasticInfo);
+    OP_LOGD(nodeName, "isPerformance is %d.", info.isPerformance);
+    OP_LOGD(nodeName, "zeroComputeExpertNum is %d.", info.zeroComputeExpertNum);
+    OP_LOGD(nodeName, "expertTokenNumsType is %u.", info.expertTokenNumsType);
+    OP_LOGD(nodeName, "scalesCol is %lu.", info.scalesCol);
+    OP_LOGD(nodeName, "scalesRow is %lu.", info.scalesRow);
+    OP_LOGD(nodeName, "scalesTypeSize is %u.", info.scalesTypeSize);
+    OP_LOGD(nodeName, "scalesCount is %lu.", info.scalesCount);
+}
 
 // 架构差异回调类型（原则5：通过参数传递，而非继承）
 using CheckTensorDataTypeFn = std::function<bool(const gert::TilingContext*, const char*, DispatchV2TilingCtx&, DispatchV2Config&)>;
@@ -117,13 +179,9 @@ ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const ch
 ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context, const char *nodeName,
     MoeDistributeDispatchV2TilingData &tilingData, DispatchV2TilingCtx &tc, DispatchV2Config &config,
     const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
-ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
+ge::graphStatus MoeDistributeDispatchV2TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
     DispatchV2TilingCtx &tc, const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
-    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
-    const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
-ge::graphStatus MoeDistributeDispatchA5TilingFuncImplPublicV2(gert::TilingContext *context, DispatchV2Config &config,
-    DispatchV2TilingCtx &tc, const CheckQuantModeMatchScalesFn &checkQuantModeMatchScales,
-    const CalTilingKeyFn &calTilingKey, const CheckTensorDataTypeFn &checkTensorDataType,
+    const CheckTensorDataTypeFn &checkTensorDataType,
     const CheckQuantModePtrFn &checkQuantModePtr, const CheckCommAlgPtrFn &checkCommAlgPtr);
 
 ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config,
