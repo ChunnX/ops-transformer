@@ -14,6 +14,7 @@
  */
 #include "rotate_half.h"
 #include "rotate_half_bf16.h"
+#include "rotate_half_rope_fullLoad_xd.h"
 
 #if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
 #include "rotate_interleaved_split_s.h"
@@ -22,7 +23,6 @@
 #include "rotate_interleaved_split_s_pad.h"
 #include "rotate_interleaved_split_bs_pad.h"
 #include "rotate_interleaved_split_bsn_pad.h"
-#include "rotate_half_rope_fullLoad_xd.h"
 using namespace RotateInterleavedN;
 #endif
 
