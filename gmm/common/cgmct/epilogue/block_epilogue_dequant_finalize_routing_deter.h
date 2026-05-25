@@ -550,19 +550,28 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint64_t nOff = 0; nOff < nSize; nOff += baseN) {
         uint64_t curN = (nOff + baseN > nSize) ? (nSize - nOff) : baseN;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(curN * sizeof(DataTypeOut)), 0, 0, 0};
+        if (mOffset < 3 && nOff == 0) {
+            printf("[DETER-FLUSH-PRE] blk=%u mOff=%llu nOff=%llu readIdx=%llu blockLen=%u baseN=%llu nSize=%llu\n",
+                GetBlockIdx(), mOffset, nOff, mOffset * nSize + nOff,
+                static_cast<uint32_t>(curN * sizeof(DataTypeOut)), baseN, nSize);
+        }
         DataCopyPad(deterDmaUb_, mmQuantOutGm_[mOffset * nSize + nOff], copyParams, {});
+        if (mOffset < 3 && nOff == 0) {
+            printf("[DETER-FLUSH-CPY] blk=%u mOff=%llu nOff=%llu DataCopyPad done\n",
+                GetBlockIdx(), mOffset, nOff);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        if (mOffset < 3 && nOff == 0) {
+            printf("[DETER-FLUSH-SFLAG] blk=%u mOff=%llu SetFlag MTE2_V(0) done\n",
+                GetBlockIdx(), mOffset);
+        }
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
         if (mOffset < 3 && nOff == 0) {
-            printf("[DETER-FLUSH-READ] blk=%u mOff=%llu wsRead[0..4]=%f %f %f %f %f\n",
+            printf("[DETER-FLUSH-WFLAG] blk=%u mOff=%llu WaitFlag MTE2_V(0) done, wsRead[0..2]=%f %f %f\n",
                 GetBlockIdx(), mOffset,
-                static_cast<float>(deterDmaUb_.GetValue(0)), static_cast<float>(deterDmaUb_.GetValue(1)),
-                static_cast<float>(deterDmaUb_.GetValue(2)), static_cast<float>(deterDmaUb_.GetValue(3)),
-                static_cast<float>(deterDmaUb_.GetValue(4)));
-            printf("[DETER-FLUSH-READ] blk=%u mOff=%llu wsRead[252..255]=%f %f %f %f\n",
-                GetBlockIdx(), mOffset,
-                static_cast<float>(deterDmaUb_.GetValue(252)), static_cast<float>(deterDmaUb_.GetValue(253)),
-                static_cast<float>(deterDmaUb_.GetValue(254)), static_cast<float>(deterDmaUb_.GetValue(255)));
+                static_cast<float>(deterDmaUb_.GetValue(0)),
+                static_cast<float>(deterDmaUb_.GetValue(1)),
+                static_cast<float>(deterDmaUb_.GetValue(2)));
         }
         SetAtomicAdd<float>();
         DataCopyPad(yGlobal_[outRow * nSize + nOff], deterDmaUb_, copyParams);
