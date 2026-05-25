@@ -376,8 +376,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_[COMM_EP_IDX]);
     }
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    uint64_t totalStatusSize = static_cast<uint64_t>(epWorldSize_) * STATE_OFFSET * 2;
-    OOMCheckAddrRange<float>((__gm__ float*)statusDataSpaceGm_,totalStatusSize);
+    for (int tempEpRankId = 0; tempEpRankId < epWorldSize_; tempEpRankId++) {
+        OOMCheckAddrRange<XOutType>((__gm__ XOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempEpRankId)),
+                                          totalWinSizeEp_);
+        OOMCheckAddrRange<float>((__gm__ float*)(GetWindStateAddrByRankId(COMM_EP_IDX, tempEpRankId)), STATE_SIZE);
+    }
 #endif
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
