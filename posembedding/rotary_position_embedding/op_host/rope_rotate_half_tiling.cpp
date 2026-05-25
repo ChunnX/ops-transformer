@@ -478,7 +478,7 @@ inline bool RotateHalfTiling::CalcFullLoadXDTiling(
 inline bool RotateHalfTiling::CheckRotHalfFullLoadXDConds(const ge::DataType &origType, const uint64_t ubSize)
 {
     // FullLoadXD kernel only supports 910B and 910C
-    if (socVersion != platform_ascendc::SocVersion::ASCEND910_93 && 
+    if (socVersion != platform_ascendc::SocVersion::ASCEND910_93 &&
         socVersion != platform_ascendc::SocVersion::ASCEND910B) {
         return false;
     }
