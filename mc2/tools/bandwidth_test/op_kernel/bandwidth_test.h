@@ -96,7 +96,7 @@ private:
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<XType> xGMTensor_;              // 输入数据 x
-    GlobalTensor<int32_t> dstRankGMTensor_;     // 专家ID (用于确定目标rank)
+    GlobalTensor<int32_t> dstRankIdGMTensor_;     // 目标卡ID (用于确定目标rank)
     GlobalTensor<YType> yGMTensor_;              // 输出数据 y
     GlobalTensor<int32_t> receiveCntGMTensor_;   // 接收到的token计数
     GlobalTensor<float> windowInStatusFp32Tensor_; // 窗口状态区(用于同步)
