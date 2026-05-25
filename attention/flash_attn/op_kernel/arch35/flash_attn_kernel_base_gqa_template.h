@@ -432,35 +432,42 @@ public:
         prevBN2Idx = bN2Cur;
         prevGS1Idx = gS1Cur;
 
-        bool shouldDispatchTask = true;
-        bool shouldExecuteTask = false;
-        while (shouldDispatchTask || shouldExecuteTask) {
-            // 分发任务
-            shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
-            if (shouldDispatchTask) {
-                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    // 创建任务
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
-                    createdTaskCount++;
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    if ASCEND_IS_AIV {
-                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
-                    }
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                    continue;
-                } else {
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                    continue;
+        while (ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur) &&
+               createdTaskCount - executedTaskCount < PRELOAD_TASK_CACHE_SIZE) {
+            TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
+            if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+                CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                createdTaskCount++;
+            } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+                if ASCEND_IS_AIV {
+                    vecFaBlock.DealZeroActSeqLen(bN2Cur);
                 }
             }
-            // 执行任务
-            shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
+            UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+        }
+
+        bool shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
+        bool shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
+        while (shouldExecuteTask || shouldDispatchTask) {
             if (shouldExecuteTask) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
             }
+            while (ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur) &&
+                   createdTaskCount - executedTaskCount < PRELOAD_TASK_CACHE_SIZE) {
+                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
+                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    createdTaskCount++;
+                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+                    if ASCEND_IS_AIV {
+                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
+                    }
+                }
+                UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+            }
+            shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
+            shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
         }
     }
 
