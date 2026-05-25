@@ -638,7 +638,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
             gmmXDataType_, gmmWeightDataType_, gmmXDataType_));
         GE_ASSERT_GRAPH_SUCCESS(gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
-        OP_LOGI(A_INNER_DEBUG, "[V5-PREC] gmmQuant: M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d singleM=%d singleN=%d singleK=%d usedCore=%d groupNum=%u aQuant=%u bQuant=%u",
+        OP_LOGI(A_INNER_DEBUG, "[LBH] gmmQuant: M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d singleM=%d singleN=%d singleK=%d usedCore=%d groupNum=%u aQuant=%u bQuant=%u",
             tilingData->gmmQuantTilingData.mmTilingData.M,
             tilingData->gmmQuantTilingData.mmTilingData.N,
             tilingData->gmmQuantTilingData.mmTilingData.Ka,
@@ -660,7 +660,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
             mmXDataType_, mmWeightDataType_, mmXDataType_));
         GE_ASSERT_GRAPH_SUCCESS(mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
-        OP_LOGI(A_INNER_DEBUG, "[V5-PREC] mmQuant: M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d singleM=%d singleN=%d singleK=%d usedCore=%d groupNum=%u aQuant=%u bQuant=%u n2=%lu bs=%lu",
+        OP_LOGI(A_INNER_DEBUG, "[LBH] mmQuant: M=%d N=%d K=%d baseM=%d baseN=%d baseK=%d singleM=%d singleN=%d singleK=%d usedCore=%d groupNum=%u aQuant=%u bQuant=%u n2=%lu bs=%lu",
             tilingData->mmQuantTilingData.mmTilingData.M,
             tilingData->mmQuantTilingData.mmTilingData.N,
             tilingData->mmQuantTilingData.mmTilingData.Ka,
@@ -723,8 +723,21 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
 
 ge::graphStatus AlltoAllvGmmTilingHelper::Process()
 {
+    OP_LOGI(A_INNER_DEBUG, "[LBH] Helper Process before DoOpTiling: mSize=%lu nSize=%lu kSize=%lu transA=%d transB=%d aDtype=%s bDtype=%s aQuant=%u bQuant=%u kernelType=%lu",
+        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize,
+        inputParams_.transA ? 1 : 0, inputParams_.transB ? 1 : 0,
+        ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+        ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
+        static_cast<uint32_t>(inputParams_.aQuantMode), static_cast<uint32_t>(inputParams_.bQuantMode),
+        inputParams_.kernelType);
     GE_ASSERT_GRAPH_SUCCESS(DoOpTiling());
     GE_ASSERT_GRAPH_SUCCESS(DoLibApiTiling());
+    OP_LOGI(A_INNER_DEBUG, "[LBH] Helper Process after DoLibApiTiling: basicTiling baseM=%lu baseN=%lu baseK=%lu singleM=%lu singleN=%lu singleK=%lu depthA1=%lu depthB1=%lu stepM=%lu stepN=%lu stepKa=%lu stepKb=%lu",
+        basicTiling_.baseM, basicTiling_.baseN, basicTiling_.baseK,
+        basicTiling_.singleCoreM, basicTiling_.singleCoreN, basicTiling_.singleCoreK,
+        basicTiling_.depthA1, basicTiling_.depthB1,
+        basicTiling_.stepM, basicTiling_.stepN,
+        basicTiling_.stepKa, basicTiling_.stepKb);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -863,7 +876,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     tilingData->isPermuteOut = permuteOutFlag_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
 
-    OP_LOGI(context_->GetNodeName(), "[V5-PREC] PostTiling: gmmQuant baseM=%d baseN=%d baseK=%d M=%d N=%d K=%d singleM=%d singleN=%d singleK=%d",
+    OP_LOGI(context_->GetNodeName(), "[LBH] PostTiling: gmmQuant baseM=%d baseN=%d baseK=%d M=%d N=%d K=%d singleM=%d singleN=%d singleK=%d",
         tilingData->gmmQuantTilingData.mmTilingData.baseM,
         tilingData->gmmQuantTilingData.mmTilingData.baseN,
         tilingData->gmmQuantTilingData.mmTilingData.baseK,
@@ -873,7 +886,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
         tilingData->gmmQuantTilingData.mmTilingData.singleCoreM,
         tilingData->gmmQuantTilingData.mmTilingData.singleCoreN,
         tilingData->gmmQuantTilingData.mmTilingData.singleCoreK);
-    OP_LOGI(context_->GetNodeName(), "[V5-PREC] PostTiling: mmQuant baseM=%d baseN=%d baseK=%d M=%d N=%d K=%d singleM=%d singleN=%d singleK=%d",
+    OP_LOGI(context_->GetNodeName(), "[LBH] PostTiling: mmQuant baseM=%d baseN=%d baseK=%d M=%d N=%d K=%d singleM=%d singleN=%d singleK=%d",
         tilingData->mmQuantTilingData.mmTilingData.baseM,
         tilingData->mmQuantTilingData.mmTilingData.baseN,
         tilingData->mmQuantTilingData.mmTilingData.baseK,
@@ -883,9 +896,9 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
         tilingData->mmQuantTilingData.mmTilingData.singleCoreM,
         tilingData->mmQuantTilingData.mmTilingData.singleCoreN,
         tilingData->mmQuantTilingData.mmTilingData.singleCoreK);
-    OP_LOGI(context_->GetNodeName(), "[V5-PREC] PostTiling: structSizes AlltoAllv=%zu GMMQuant=%zu TCube=%zu",
+    OP_LOGI(context_->GetNodeName(), "[LBH] PostTiling: structSizes AlltoAllv=%zu GMMQuant=%zu TCube=%zu",
         sizeof(AlltoAllvGmmTilingData), sizeof(Mc2GroupedMatmulTilingData::GMMQuantTilingData), sizeof(TCubeTiling));
-    OP_LOGI(context_->GetNodeName(), "[V5-PREC] PostTiling: offsets gmmQuant=%zu mmQuant=%zu",
+    OP_LOGI(context_->GetNodeName(), "[LBH] PostTiling: offsets gmmQuant=%zu mmQuant=%zu",
         offsetof(AlltoAllvGmmTilingData, gmmQuantTilingData),
         offsetof(AlltoAllvGmmTilingData, mmQuantTilingData));
 
