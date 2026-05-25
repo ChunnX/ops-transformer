@@ -52,6 +52,7 @@
 #endif
 
 namespace BandwidthTestImpl {
+#define HCOMM_INIT_SIZE 512UL * 1024UL
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -126,6 +127,7 @@ private:
     LocalTensor<int32_t> dstExpIdTensor_;
     LocalTensor<int32_t> subExpIdTensor_;
     LocalTensor<float> workLocalTensor_;
+     LocalTensor<uint8_t> hcommTensor_;
     TBuf<> expertIdsBuf_;      // expert_id 缓冲区
     TBuf<> statusBuf_;         // 状态缓冲区
     TBuf<> waitStatusBuf_;     // 等待状态缓冲区
@@ -134,6 +136,7 @@ private:
     TBuf<> tokenNumBuf_;       // token数量缓冲区
     TBuf<> dstExpBuf_;
     TBuf<> subExpBuf_;
+    TBuf<> hcommBuf_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
 
     // ==================== 全局内存地址 ====================
@@ -191,10 +194,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     // epRankId_ = tilingData->rank_id; // 获取当前rank ID
     localUrmaWorkspace_ = workspaceGM;
 
-    TBuf<> tempBuffer_;
-    tpipe_->InitBuffer(tempBuffer_, 1024);
-    LocalTensor<uint8_t> tempTensor = tempBuffer_.Get<uint8_t>();
-    hcomm_.Init((__ubuf__ uint8_t*)tempTensor.GetPhyAddr(), 1024);
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    hcomm_.Init((__ubuf__ uint8_t*)hcommTensor_.GetPhyAddr(), HCOMM_INIT_SIZE);
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
@@ -304,35 +306,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-
-    if (epRankId_ == 0) {
-        GlobalTensor<int32_t> rankGMTensor;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetWindStateAddrByRankId(epRankId_)));
-        for (uint32_t i = 0; i < 8; i++) {
-            rankGMTensor(i) = i + 1;
-        }
-        PipeBarrier<PIPE_ALL>();
-        for (uint32_t i = 0; i < 8; i++) {
-            PRINTF("write rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
-        }
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[0], GetUrmaStateAddrByRankId(1), GetWindStateAddrByRankId(epRankId_), UB_ALIGN);
-        hcomm_.Wait(handle);
-    }
-    if (epRankId_ == 1) {
-        int a =0;
-        while (a < 1000000) {
-            a++;
-            if (a % 100000 == 0) {
-                PRINTF("a = %d\n", a);
-            }
-        }
-        GlobalTensor<int32_t> rankGMTensor;
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_)));
-        for (uint32_t i = 0; i < 8; i++) {
-            PRINTF("read rankGMTensor[%d] = %d\n", i, rankGMTensor(i));
-        }
-    }
-
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -486,14 +459,14 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
-        PipeBarrier<PIPE_ALL>();
-        if (dstRankId == epRankId_) {
-            PRINTF("AIVID %d epRankID %d, dstRankId = %d, rankGM[0] = %d, rankGM[1] = %d, rankGM %p\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1), rankGM);
-        }
+        // PipeBarrier<PIPE_ALL>();
+        // if (dstRankId == epRankId_) {
+        //     PRINTF("AIVID %d epRankID %d, dstRankId = %d, rankGM[0] = %d, rankGM[1] = %d, rankGM %p\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1), rankGM);
+        // }
     }
     PipeBarrier<PIPE_ALL>();
-    rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
-    PRINTF("AIVID end  %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", aivId_, epRankId_, epRankId_, rankGMTensor(0), rankGMTensor(1));
+    // rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
+    // PRINTF("AIVID end  %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", aivId_, epRankId_, epRankId_, rankGMTensor(0), rankGMTensor(1));
 
     for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
         uint32_t dstRankId = expertIndex;
@@ -504,7 +477,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-        PRINTF("AIVID %d epRankID %d, dstRankId = %d, srcRankGM[0] = %d, dstRankGM[1] = %d\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1));
+        //PRINTF("AIVID %d epRankID %d, dstRankId = %d, srcRankGM[0] = %d, dstRankGM[1] = %d\n", aivId_, epRankId_, dstRankId, rankGMTensor(0), rankGMTensor(1));
         auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
         hcomm_.Wait(handle);
     }
@@ -531,12 +504,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::BufferI
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
 {
-    int32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
-    GlobalTensor<int32_t> rankGMTensor;
-    PipeBarrier<PIPE_ALL>();
-    rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
-    uint32_t index = epRankId_ * stateOffset_ / sizeof(float);
-    PRINTF("WaitDispatch  end index %d, aivid %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", index, aivId_, epRankId_, epRankId_, windowInStatusFp32Tensor_(index), windowInStatusFp32Tensor_(index + 1));
+    // int32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
+    // GlobalTensor<int32_t> rankGMTensor;
+    // PipeBarrier<PIPE_ALL>();
+    // rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) + offset));
+    // uint32_t index = epRankId_ * stateOffset_ / sizeof(float);
+    // PRINTF("WaitDispatch  end index %d, aivid %d epRankID %d, epRankId = %d, rankGM[0] = %d, rankGM[1] = %d\n", index, aivId_, epRankId_, epRankId_, windowInStatusFp32Tensor_(index), windowInStatusFp32Tensor_(index + 1));
     
 
     // 等待所有rank完成数据发送
@@ -701,7 +674,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
             WaitDispatch();      // 步骤3: 等待所有rank完成发送
-            LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
+            //LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();
