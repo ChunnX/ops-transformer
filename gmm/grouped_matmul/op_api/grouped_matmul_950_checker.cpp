@@ -137,6 +137,21 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckQuantCasesFormat() const
         CHECK_COND(!op::IsPrivateFormat(GetInputTensor(gmmParams_.y, i)->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                    "The format of %s[%zu] %s is invalid. It should only be ND.", yName_.c_str(), i,
                    op::ToString(GetInputTensor(gmmParams_.y, i)->GetStorageFormat()).GetString());
+        if (gmmParams_.scaleOptional != nullptr) {
+            auto scaleFormat = static_cast<op::Format>(
+                ge::GetPrimaryFormat(GetInputTensor(gmmParams_.scaleOptional, i)->GetStorageFormat()));
+            auto weightFormat = static_cast<op::Format>(
+                ge::GetPrimaryFormat(GetInputTensor(gmmParams_.weight, i)->GetStorageFormat()));
+            bool isMxScaleNz = GetInputTensor(gmmParams_.scaleOptional, i)->GetDataType() == DataType::DT_FLOAT8_E8M0 &&
+                               weightFormat == op::Format::FORMAT_FRACTAL_NZ &&
+                               scaleFormat == op::Format::FORMAT_FRACTAL_NZ;
+            CHECK_COND(!op::IsPrivateFormat(GetInputTensor(gmmParams_.scaleOptional, i)->GetStorageFormat()) ||
+                           isMxScaleNz,
+                       ACLNN_ERR_PARAM_INVALID,
+                       "The format of %s[%zu] %s is invalid. It should be ND, or FRACTAL_NZ in mx weightNz case.",
+                       scaleName_.c_str(), i,
+                       op::ToString(GetInputTensor(gmmParams_.scaleOptional, i)->GetStorageFormat()).GetString());
+        }
     }
     return ACLNN_SUCCESS;
 }
@@ -265,6 +280,51 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxDtype() con
 }
 
 template <typename T>
+bool AclnnGroupedMatmulDAV3510Checker<T>::IsScaleNz(size_t index) const
+{
+    return gmmParams_.scaleOptional != nullptr &&
+           static_cast<op::Format>(ge::GetPrimaryFormat(GetInputTensor(gmmParams_.scaleOptional, index)
+                                                            ->GetStorageFormat())) ==
+               op::Format::FORMAT_FRACTAL_NZ;
+}
+
+template <typename T>
+aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxScaleNzStorageShape(size_t index, int64_t nDimValue,
+                                                                             int64_t kDimValue,
+                                                                             int64_t groupNum) const
+{
+    const auto scaleStorageShape = GetInputTensor(gmmParams_.scaleOptional, index)->GetStorageShape();
+    const auto scaleStorageDim = scaleStorageShape.GetDimNum();
+    CHECK_COND(scaleStorageDim >= MX_SCALE_NZ_TAIL_DIM + 1, ACLNN_ERR_PARAM_INVALID,
+               "In mx quant mode, when %s is FRACTAL_NZ, storage dim num should be at least 6, but actual is %zu.",
+               scaleName_.c_str(), scaleStorageDim);
+    const int64_t expectN1 = (nDimValue + MX_SCALE_NZ_C0_SIZE - 1) / MX_SCALE_NZ_C0_SIZE;
+    const int64_t expectK1 =
+        (((kDimValue + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE) + MX_SCALE_NZ_C0_SIZE - 1) /
+        MX_SCALE_NZ_C0_SIZE;
+    CHECK_COND(scaleStorageShape.GetDim(scaleStorageDim - MX_SCALE_NZ_TAIL_DIM - 1) == groupNum,
+               ACLNN_ERR_PARAM_INVALID,
+               "In mx quant mode, the group dim of %s storage shape should be %ld, but actual is %ld.",
+               scaleName_.c_str(), groupNum,
+               scaleStorageShape.GetDim(scaleStorageDim - MX_SCALE_NZ_TAIL_DIM - 1));
+    CHECK_COND(scaleStorageShape.GetDim(scaleStorageDim - LAST_FIRST_DIM_INDEX) == MXFP_MULTI_BASE_SIZE &&
+                   scaleStorageShape.GetDim(scaleStorageDim - LAST_SECOND_DIM_INDEX) == MX_SCALE_NZ_C0_SIZE &&
+                   scaleStorageShape.GetDim(scaleStorageDim - LAST_THIRD_DIM_INDEX) == MX_SCALE_NZ_C0_SIZE &&
+                   scaleStorageShape.GetDim(scaleStorageDim - LAST_FOURTH_DIM_INDEX) == expectK1 &&
+                   scaleStorageShape.GetDim(scaleStorageDim - MX_SCALE_NZ_TAIL_DIM) == expectN1,
+               ACLNN_ERR_PARAM_INVALID,
+               "In mx quant mode, %s FRACTAL_NZ storage shape should end with [%ld, %ld, 16, 16, 2], "
+               "but actual tail is [%ld, %ld, %ld, %ld, %ld].",
+               scaleName_.c_str(), expectN1, expectK1,
+               scaleStorageShape.GetDim(scaleStorageDim - MX_SCALE_NZ_TAIL_DIM),
+               scaleStorageShape.GetDim(scaleStorageDim - LAST_FOURTH_DIM_INDEX),
+               scaleStorageShape.GetDim(scaleStorageDim - LAST_THIRD_DIM_INDEX),
+               scaleStorageShape.GetDim(scaleStorageDim - LAST_SECOND_DIM_INDEX),
+               scaleStorageShape.GetDim(scaleStorageDim - LAST_FIRST_DIM_INDEX));
+    return ACLNN_SUCCESS;
+}
+
+template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim() const
 {
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.x); i++) {
@@ -286,7 +346,9 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
         if (gmmParams_.groupType == SPLIT_M) {
             DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional, i)->GetDataType();
             if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
-                CHECK_COND(scaleDimNumber == MX_SPLIT_M_SCALE_DIM, ACLNN_ERR_PARAM_INVALID,
+                CHECK_COND((IsScaleNz(i) && scaleDimNumber >= MX_SPLIT_M_SCALE_DIM) ||
+                               (!IsScaleNz(i) && scaleDimNumber == MX_SPLIT_M_SCALE_DIM),
+                           ACLNN_ERR_PARAM_INVALID,
                            "When split m, the dim num of %s[%zu] should be equal 4 in mx quant mode.",
                            scaleName_.c_str(), scaleDimNumber);
                 CHECK_COND(perTokenDimNumber == MX_SPLIT_M_PER_TOKEN_SCALE_DIM, ACLNN_ERR_PARAM_INVALID,
@@ -346,33 +408,44 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
     auto pertokenScaleLastDimValue =
         GetInputTensor(gmmParams_.perTokenScaleOptional, index)->GetViewShape().GetDim(pertokenScaleDimNum - 1);
     auto weightNDimValue = GetInputTensor(gmmParams_.weight, index)->GetViewShape().GetDim(weightNIndex);
-    auto scaleNDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(weightNIndex);
-    auto scaleGDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(0);
-    auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(1);
-    auto scaleLastDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(scaleDimNum - 1);
     CHECK_COND(CheckMxBiasInputShape(dimInfo, index) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "CheckMxBiasInputShape failed.");
     CHECK_COND(xMDimValue == pertokenMDimValue, ACLNN_ERR_PARAM_INVALID,
                "The m dim of %s[%ld] and m dim of %s[%ld] should be equal.", xName_.c_str(), xMDimValue,
                perTokenScaleName_.c_str(), pertokenMDimValue);
-    CHECK_COND(weightNDimValue == scaleNDimValue, ACLNN_ERR_PARAM_INVALID,
-               "The n dim of %s[%ld] and n dim of %s[%ld] should be equal.", weightName_.c_str(), weightNDimValue,
-               scaleName_.c_str(), scaleNDimValue);
-    CHECK_COND(scaleGDimValue == groupNum, ACLNN_ERR_PARAM_INVALID,
-               "The group dim of %s[%ld] and group number[%ld] should be equal.", scaleName_.c_str(), scaleGDimValue,
-               groupNum);
     auto inferedScaleKDimValue = (xKDimValue + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE;
-    CHECK_COND(scaleKDimValue == inferedScaleKDimValue, ACLNN_ERR_PARAM_INVALID,
-               "The k dim of %s[%ld] should be equal to ceil(k/64), which is [%ld].", scaleName_.c_str(),
-               scaleKDimValue, inferedScaleKDimValue);
     CHECK_COND(pertokenScaleKDimValue == inferedScaleKDimValue, ACLNN_ERR_PARAM_INVALID,
                "The k dim of %s[%ld] should be equal to ceil(k/64), which is [%ld].", perTokenScaleName_.c_str(),
                pertokenScaleKDimValue, inferedScaleKDimValue);
     CHECK_COND(pertokenScaleLastDimValue == MXFP_MULTI_BASE_SIZE, ACLNN_ERR_PARAM_INVALID,
                "The last dim of %s should be equal to 2, but the actual is [%ld].", perTokenScaleName_.c_str(),
                pertokenScaleLastDimValue);
+    if (IsScaleNz(index)) {
+        CHECK_COND(static_cast<op::Format>(ge::GetPrimaryFormat(GetInputTensor(gmmParams_.weight, index)
+                                                                    ->GetStorageFormat())) ==
+                       op::Format::FORMAT_FRACTAL_NZ,
+                   ACLNN_ERR_PARAM_INVALID, "scaleNz is only supported when %s is FRACTAL_NZ.",
+                   weightName_.c_str());
+        CHECK_COND(CheckMxScaleNzStorageShape(index, weightNDimValue, xKDimValue, groupNum) == ACLNN_SUCCESS,
+                   ACLNN_ERR_PARAM_INVALID, "CheckMxScaleNzStorageShape failed.");
+        return ACLNN_SUCCESS;
+    }
+    auto scaleNDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(weightNIndex);
+    auto scaleGDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(0);
+    auto scaleKDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(1);
+    auto scaleLastDimValue = GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(scaleDimNum - 1);
+    CHECK_COND(weightNDimValue == scaleNDimValue, ACLNN_ERR_PARAM_INVALID,
+               "The n dim of %s[%ld] and n dim of %s[%ld] should be equal.", weightName_.c_str(), weightNDimValue,
+               scaleName_.c_str(), scaleNDimValue);
+    CHECK_COND(scaleGDimValue == groupNum, ACLNN_ERR_PARAM_INVALID,
+               "The group dim of %s[%ld] and group number[%ld] should be equal.", scaleName_.c_str(), scaleGDimValue,
+               groupNum);
+    CHECK_COND(scaleKDimValue == inferedScaleKDimValue, ACLNN_ERR_PARAM_INVALID,
+               "The k dim of %s[%ld] should be equal to ceil(k/64), which is [%ld].", scaleName_.c_str(),
+               scaleKDimValue, inferedScaleKDimValue);
     CHECK_COND(scaleLastDimValue == MXFP_MULTI_BASE_SIZE, ACLNN_ERR_PARAM_INVALID,
-               "The last dim of %s should be equal to 2, but the actual is [%ld].", scaleName_.c_str(), scaleLastDimValue);
+               "The last dim of %s should be equal to 2, but the actual is [%ld].", scaleName_.c_str(),
+               scaleLastDimValue);
     return ACLNN_SUCCESS;
 }
 
@@ -385,6 +458,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxFp8TypeKCaseInputShape(c
     size_t scaleDimNum = dimInfo.scaleDimNum;
     size_t pertokenScaleDimNum = dimInfo.pertokenScaleDimNum;
     int64_t groupNum = dimInfo.groupNum;
+    CHECK_COND(!IsScaleNz(index), ACLNN_ERR_PARAM_INVALID,
+               "scaleNz is only supported when groupType is 0 (split M) in mx quant mode.");
     // split k, x is (m,k), weight is (k,n), scale is (k//64+g, n, 2), pertoken is (m, k//64+g, 2)
     CHECK_COND(xDimNum == MX_SPLIT_K_SINGLE_X_DIM, ACLNN_ERR_PARAM_INVALID,
                "The %s dim num should be 2 when split k, but actual is [%zu].", xName_.c_str(), xDimNum);
@@ -474,9 +549,9 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsSpecialMXCase(const T *tensorList) c
 template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxScaleTranspose() const
 {
-    bool transposeScale = IsTransposeForMxShape(GetInputTensor(gmmParams_.scaleOptional));
+    bool transposeScale = !IsScaleNz() && IsTransposeForMxShape(GetInputTensor(gmmParams_.scaleOptional));
     bool transposePerTokenScale = IsTransposeForMxShape(GetInputTensor(gmmParams_.perTokenScaleOptional));
-    if (!IsSpecialMXCase(gmmParams_.scaleOptional)) {
+    if (!IsScaleNz() && !IsSpecialMXCase(gmmParams_.scaleOptional)) {
         CHECK_COND(transposeScale == gmmParams_.transposeWeight, ACLNN_ERR_PARAM_INVALID,
                    "The transposition of %s/%s should be equal, but actual transpositions are %s/%s in mx case.",
                    scaleName_.c_str(), weightName_.c_str(), transposeScale ? "true" : "false",
