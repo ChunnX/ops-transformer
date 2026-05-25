@@ -14,8 +14,10 @@
  */
 
 #include <map>
+#include <sstream>
 #include <numeric>
 #include "tiling/tiling_api.h"
+#include "fused_infer_attention_score_tiling_constants.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
 #include "base_checker.h"
 namespace optiling {
@@ -31,8 +33,8 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
-                    OP_LOGE("FusedInferAttentionScore",
-                            "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+                    ({ std::ostringstream oss; oss << name;
+        oss << " datatype support list should be specify in DTYPE_SUPPORT_MAP"; OP_LOGE(kFiaOpName, "The op [%s] received bad params, the reason is: [%s]", kFiaOpName, oss.str().c_str()); }),
                     return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
@@ -47,7 +49,7 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-                    OP_LOGE("FusedInferAttentionScore", "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()),
+                    OP_LOGE(kFiaOpName, "In op [%s], the format of [%s] is not supported, got [%s]", kFiaOpName, "input_layout", name.c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -69,7 +71,7 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        OP_LOGE(kFiaOpName, "In op [%s], the data type of [%s] is not supported, got [%s]", kFiaOpName, "tensor", type);
         return "UNDEFINED";
     }
 }
