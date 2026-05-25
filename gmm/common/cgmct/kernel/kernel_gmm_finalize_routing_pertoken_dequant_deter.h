@@ -317,6 +317,12 @@ public:
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
                                                                                       Get<MNK_N>(singleShape), 0, 0};
                 int64_t nOffset = y - tileMOffset * n;
+                if (cumulativeGroupM_ + tileMOffset < 5) {
+                    printf("[DETER-GOFF] cumM=%llu tileMOff=%lld winStart=%llu result=%lld blk=%u\n",
+                        cumulativeGroupM_, tileMOffset, deterSync_.windowStartM,
+                        cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM,
+                        GetBlockIdx());
+                }
                 epilogueDequantOp_.SetWorkspaceGroupOffset(
                     cumulativeGroupM_ + tileMOffset - deterSync_.windowStartM);
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -336,6 +342,11 @@ public:
     __aicore__ inline void FinalFlush(const Params &params)
     {
         if ASCEND_IS_AIC return;
+
+        printf("[DETER-FLUSH] winStart=%llu curGroupM=%llu totalM=%llu coreNumVec=%llu blk=%u\n",
+            deterSync_.windowStartM, deterSync_.curGroupM,
+            deterSync_.curGroupM - deterSync_.windowStartM,
+            params.gmmParams.coreNum * GetTaskRation(), GetBlockIdx());
 
         epilogueDequantOp_.ResetRowIndexAddr();
 
@@ -374,6 +385,11 @@ public:
             deterSync_.windowSize = params.gmmParams.deterWorkspaceSize /
                 (params.gmmParams.matmulTiling->N * sizeof(CType));
             deterSync_.lowBoundM = deterSync_.windowSize;
+            if ASCEND_IS_AIV {
+                AscendC::PRINTF("[DETER-INIT] blk=%u wsSize=%u N=%d winSize=%llu\n",
+                    GetBlockIdx(), params.gmmParams.deterWorkspaceSize,
+                    params.gmmParams.matmulTiling->N, deterSync_.windowSize);
+            }
         }
 
         SyncAll<false>();

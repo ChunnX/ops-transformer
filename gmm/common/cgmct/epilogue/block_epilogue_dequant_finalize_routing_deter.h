@@ -227,6 +227,10 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         constexpr uint32_t SYS_WS_SIZE = 16 * 1024 * 1024U;
         mmQuantOutGm_.SetGlobalBuffer(
             reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM) + SYS_WS_SIZE / sizeof(DataTypeOut));
+        printf("[DETER-WS] wsBase=%p mmQuantOut=%p offset=%u\n",
+            params_->workspaceGM,
+            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM) + SYS_WS_SIZE / sizeof(DataTypeOut),
+            SYS_WS_SIZE);
     }
 }
 
@@ -282,6 +286,11 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset,
     LocalTensor<DataTypeOut> &yLocal)
 {
+    if (groupAccumM_ + offsetM < 5 && yOffset == 0) {
+        printf("[DETER-WRITE] groupAccumM=%llu offsetM=%llu n=%lld yOff=%lld wsIdx=%llu\n",
+            groupAccumM_, offsetM, n_, yOffset,
+            (groupAccumM_ + offsetM) * n_ + yOffset);
+    }
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         DataCopyPad(mmQuantOutGm_[(groupAccumM_ + offsetM + i) * n_ + yOffset], yLocal[i * alignN_], paramsOut);
@@ -533,6 +542,10 @@ __aicore__ inline void
 BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::DeterministicFlushRow(
     uint64_t mOffset, uint64_t outRow, uint64_t nSize)
 {
+    if (mOffset < 3) {
+        printf("[DETER-FROW] mOff=%llu outRow=%llu nSize=%llu wsReadIdx=%llu yGmIdx=%llu\n",
+            mOffset, outRow, nSize, mOffset * nSize, outRow * nSize);
+    }
     constexpr uint64_t baseN = DETER_UB_SIZED / sizeof(DataTypeOut);
     for (uint64_t nOff = 0; nOff < nSize; nOff += baseN) {
         uint64_t curN = (nOff + baseN > nSize) ? (nSize - nOff) : baseN;
