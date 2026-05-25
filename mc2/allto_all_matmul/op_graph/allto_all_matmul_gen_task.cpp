@@ -25,7 +25,8 @@
 
 namespace ops {
 
-ge::Status AlltoAllMatmulGenTaskCallback(const gert::ExeResGenerationContext *context, std::vector<std::vector<uint8_t>> &tasks)
+ge::Status AlltoAllMatmulGenTaskCallback(const gert::ExeResGenerationContext *context,
+                                         std::vector<std::vector<uint8_t>> &tasks)
 {
     return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
 }

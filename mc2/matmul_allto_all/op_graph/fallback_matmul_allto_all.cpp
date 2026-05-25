@@ -139,7 +139,8 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
                                    const gert::RuntimeAttrs* attrs, AttrParas& para)
 {
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
-    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"),
+              return ge::GRAPH_FAILED);
 
     const bool* transX2Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X2);
     const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
@@ -168,7 +169,8 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
     const int64_t* commQuantModePtr = attrs->GetInt(INDEX_ATTR_COMMON_QUANT_MODE);
     para.commQuantMode = (commQuantModePtr != nullptr ? *commQuantModePtr : 0);
     const int64_t* commQuantDtypePtr = attrs->GetInt(INDEX_ATTR_COMMON_QUANT_DTYPE);
-    para.commQuantDtype = (commQuantDtypePtr != nullptr ? *commQuantDtypePtr : static_cast<uint64_t>(ge::DataType::DT_UNDEFINED));
+    para.commQuantDtype =
+        (commQuantDtypePtr != nullptr ? *commQuantDtypePtr : static_cast<uint64_t>(ge::DataType::DT_UNDEFINED));
     const bool* transX1Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X1);
     para.transposeX1 = (transX1Ptr != nullptr ? *transX1Ptr : false);
     para.transposeX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
@@ -186,12 +188,15 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
 static ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api_ctx, QuantMatmulParas& para)
 {
     const auto x1Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_SCALE);
-    OPS_CHECK(x1Scale == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1scale"), return ge::GRAPH_FAILED);
+    OPS_CHECK(x1Scale == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1scale"),
+              return ge::GRAPH_FAILED);
     para.x1ScaleAcl = ConvertMmType(x1Scale, false);
-    OPS_CHECK(para.x1ScaleAcl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1Scale"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x1ScaleAcl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1Scale"),
+              return ge::GRAPH_FAILED);
 
     const auto x2Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_SCALE);
-    OPS_CHECK(x2Scale == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2scale"), return ge::GRAPH_FAILED);
+    OPS_CHECK(x2Scale == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2scale"),
+              return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
 
     // 获取x1_quant_mode和x2_quant_mode
@@ -211,7 +216,8 @@ static ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api
         const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
         para.x2ScaleAcl = ConvertMmType(x2Scale, transX2);
     }
-    OPS_CHECK(para.x2ScaleAcl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2Scale"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x2ScaleAcl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2Scale"),
+              return ge::GRAPH_FAILED);
 
     return ge::SUCCESS;
 }
@@ -234,7 +240,8 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
         retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get common matmul input paras."),
         return ge::GRAPH_FAILED);
     const auto output = host_api_ctx->GetOutputTensor(INDEX_OUT);
-    OPS_CHECK(output == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "output"), return ge::GRAPH_FAILED);
+    OPS_CHECK(output == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "output"),
+              return ge::GRAPH_FAILED);
     AttrParas attrParas;
     OPS_CHECK(GetAttrPara(host_api_ctx, attrs, attrParas) != ge::SUCCESS,
               OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
@@ -253,8 +260,9 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     const int64_t* x2QuantModePtr = attrs->GetInt(INDEX_ATTR_X2_QUANT_MODE);
     const int64_t x2QuantMode = (x2QuantModePtr != nullptr ? *x2QuantModePtr : 0);
     if (x1QuantMode == 0 && x2QuantMode == 0) {
-        const auto ret = EXEC_OPAPI_CMD(aclnnMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, actSeqArray, attrParas.group, attrParas.transposeX1,
-                                        attrParas.transposeX2, output);
+        const auto ret =
+            EXEC_OPAPI_CMD(aclnnMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, actSeqArray,
+                           attrParas.group, attrParas.transposeX1, attrParas.transposeX2, output);
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
                    OPS_LOG_E(MatmulAlltoAllInfo, "Aclnn matmul allto all api error code %d", ret),
                    return ge::GRAPH_FAILED);
@@ -265,10 +273,12 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
         OPS_CHECK(
             retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get quant matmul input paras."),
             return ge::GRAPH_FAILED);
-        const auto ret = EXEC_OPAPI_CMD(aclnnQuantMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl,
-                                        attrParas.commScaleOptional, attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, actSeqArray, attrParas.group,
-                                        x1QuantMode, x2QuantMode, attrParas.commQuantMode, attrParas.commQuantDtype, attrParas.groupSize, attrParas.transposeX1, attrParas.transposeX2,
-                                        output);
+        const auto ret =
+            EXEC_OPAPI_CMD(aclnnQuantMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias,
+                           quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl, attrParas.commScaleOptional,
+                           attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, actSeqArray, attrParas.group,
+                           x1QuantMode, x2QuantMode, attrParas.commQuantMode, attrParas.commQuantDtype,
+                           attrParas.groupSize, attrParas.transposeX1, attrParas.transposeX2, output);
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
                    OPS_LOG_E(MatmulAlltoAllInfo, "Aclnn quant matmul allto all api error code %d", ret),
                    return ge::GRAPH_FAILED);

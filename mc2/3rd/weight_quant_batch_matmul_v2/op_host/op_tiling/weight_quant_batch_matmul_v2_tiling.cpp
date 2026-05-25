@@ -201,16 +201,16 @@ void Mc2WeightQuantBatchMatmulV2Tiling::SetCommonTilingKeyElement(Mc2TilingKeyCo
     tilingKeyConfigure.antiquantType = static_cast<uint8_t>(matmulInfoPtr_->antiQuantType);
     tilingKeyConfigure.quantType = static_cast<uint8_t>(Mc2QuantType::NONE);
     tilingKeyConfigure.optionInputSituation = (static_cast<uint16_t>(matmulInfoPtr_->hasAntiQuantOffset) << 1);
-    tilingKeyConfigure.weightFormat =
-        static_cast<uint8_t>(matmulInfoPtr_->bFormat == ge::FORMAT_ND ? Mc2WeightFormat::ND : Mc2WeightFormat::FRACTAL_NZ);
+    tilingKeyConfigure.weightFormat = static_cast<uint8_t>(
+        matmulInfoPtr_->bFormat == ge::FORMAT_ND ? Mc2WeightFormat::ND : Mc2WeightFormat::FRACTAL_NZ);
     tilingKeyConfigure.apiConstexpr = 0;
 }
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2Tiling::GetPlatformInfo()
 {
-    auto compileInfoPtr = compileInfoPtr_ ?
-                              compileInfoPtr_.get() :
-                              reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
+    auto compileInfoPtr =
+        compileInfoPtr_ ? compileInfoPtr_.get() :
+                          reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo *>(context_->GetCompileInfo());
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr is null");
 
     if (compileInfoPtr_ == nullptr) {
@@ -537,7 +537,8 @@ The function is check the shape limit:
     6. nk must <= 65535, m <= 65535(trans_a) or int32_max(not trans_a);
     7. group_size < k, align to 32
 */
-bool CheckShape(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
+bool CheckShape(gert::TilingContext *context, Mc2WeightQuantBatchMatmulInfo *inputParams,
+                platform_ascendc::SocVersion socVersion)
 {
     size_t idx = 0;
     auto xShape = context->GetInputShape(idx++);
@@ -687,9 +688,11 @@ bool CheckAntiQuantDtype(
                 return false);
         }
     } else {
-        OP_LOGE_FOR_INVALID_DTYPE(inputParams->opName, "antiquant_scale",
+        OP_LOGE_FOR_INVALID_DTYPE(
+            inputParams->opName, "antiquant_scale",
             ge::TypeUtils::DataTypeToSerialString(inputParams->antiQuantScaleDtype).c_str(),
-            (std::string("int64/uint64 or ") + ge::TypeUtils::DataTypeToSerialString(inputParams->aDtype).c_str()).c_str());
+            (std::string("int64/uint64 or ") + ge::TypeUtils::DataTypeToSerialString(inputParams->aDtype).c_str())
+                .c_str());
         return false;
     }
     return true;
@@ -833,12 +836,12 @@ bool CheckTempLimit(Mc2WeightQuantBatchMatmulInfo* inputParams)
     // A16F4 support Mx and pergroup
     if (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
         inputParams->bDtype == ge::DT_FLOAT) {
-        OP_TILING_CHECK(
-            inputParams->antiQuantType == Mc2QuantType::PER_TENSOR || inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant_type",
-                "per-tensor or per-channel",
-                "A16F4 only support Mx and pergroup"),
-            return false);
+        OP_TILING_CHECK(inputParams->antiQuantType == Mc2QuantType::PER_TENSOR ||
+                            inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant_type",
+                                                              "per-tensor or per-channel",
+                                                              "A16F4 only support Mx and pergroup"),
+                        return false);
     }
 
     if (inputParams->antiQuantType == Mc2QuantType::PER_GROUP &&
@@ -861,18 +864,18 @@ bool CheckNzSupportedScenarios(Mc2WeightQuantBatchMatmulInfo* inputParams, NpuAr
         // WeightNZ only support the following scenarios:
         // (1) Weight in int4 dtye with per-channel or per-group quantization without transA, transB or C8.
         // (2) Weight in fp4 dtye with per-group or MX quantization without transA, transB or C8.
-        OP_TILING_CHECK(
-            (inputParams->transB || inputParams->transA || inputParams->cDtype == ge::DT_INT8 ||
-             !(((inputParams->antiQuantType == Mc2QuantType::PER_GROUP ||
-                 inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL) &&
-                (inputParams->bDtype == ge::DT_INT4 || inputParams->bDtype == ge::DT_INT32)) ||
-               ((inputParams->antiQuantType == Mc2QuantType::MX || inputParams->antiQuantType == Mc2QuantType::PER_GROUP) &&
-                (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
-                 inputParams->bDtype == ge::DT_FLOAT)))),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "input params",
-                "unsupported combination",
-                "WeightNZ supports S4/FP4 with non-transposed A/B, no C8, excludes per-tensor"),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((inputParams->transB || inputParams->transA || inputParams->cDtype == ge::DT_INT8 ||
+                         !(((inputParams->antiQuantType == Mc2QuantType::PER_GROUP ||
+                             inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL) &&
+                            (inputParams->bDtype == ge::DT_INT4 || inputParams->bDtype == ge::DT_INT32)) ||
+                           ((inputParams->antiQuantType == Mc2QuantType::MX ||
+                             inputParams->antiQuantType == Mc2QuantType::PER_GROUP) &&
+                            (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
+                             inputParams->bDtype == ge::DT_FLOAT)))),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            inputParams->opName, "input params", "unsupported combination",
+                            "WeightNZ supports S4/FP4 with non-transposed A/B, no C8, excludes per-tensor"),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             (inputParams->antiQuantType == Mc2QuantType::PER_GROUP && inputParams->transA &&

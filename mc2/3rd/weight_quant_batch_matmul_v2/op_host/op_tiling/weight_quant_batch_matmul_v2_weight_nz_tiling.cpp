@@ -276,9 +276,9 @@ void Mc2WeightQuantBatchMatmulV2WeightNz::GetubFactorTiling()
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetPlatformInfo()
 {
-    auto compileInfoPtr = compileInfoPtr_ ?
-                              compileInfoPtr_.get() :
-                              reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo*>(context_->GetCompileInfo());
+    auto compileInfoPtr =
+        compileInfoPtr_ ? compileInfoPtr_.get() :
+                          reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo *>(context_->GetCompileInfo());
     OP_LOGE_IF(compileInfoPtr == nullptr, ge::GRAPH_FAILED, context_->GetNodeName(), "compileInfoPtr is null");
     if (compileInfoPtr_ == nullptr) {
         compileInfoPtr_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo>(
@@ -831,7 +831,8 @@ void Mc2WeightQuantBatchMatmulV2WeightNz::Reset()
     aFormat = ge::FORMAT_ND;
     bFormat = ge::FORMAT_ND;
     inputParams_.antiQuantType = Mc2QuantType::NONE;
-    inputParams_.quantType = Mc2QuantType::PER_TENSOR; // set default value as per tensor, kernel can detect ydtype firstly
+    inputParams_.quantType =
+        Mc2QuantType::PER_TENSOR; // set default value as per tensor, kernel can detect ydtype firstly
     inputParams_.opName = nullptr;
 }
 
@@ -843,8 +844,8 @@ void Mc2WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
         return;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    compileInfoPtr_ =
-        std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo>(new (std::nothrow) Mc2WeightQuantBatchMatmulV2CompileInfo());
+    compileInfoPtr_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2CompileInfo>(
+        new (std::nothrow) Mc2WeightQuantBatchMatmulV2CompileInfo());
     OP_TILING_CHECK(
         compileInfoPtr_ == nullptr,
         OP_LOGE(context_->GetNodeName(), "failed to instantiate compile info"), return);
@@ -866,7 +867,8 @@ void Mc2WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
     OP_LOGD(context_->GetNodeName(), "MatmulAllReduce Init Quant Tiling Compile Info Success");
 }
 
-static void GetMatmulTilingFromCache(AscendC::tiling::TCubeTiling& matmulTiling, const Mc2WeightNzTilingCache& weightNzTilingCache)
+static void GetMatmulTilingFromCache(AscendC::tiling::TCubeTiling &matmulTiling,
+                                     const Mc2WeightNzTilingCache &weightNzTilingCache)
 {
     matmulTiling.M = weightNzTilingCache.m_;
     matmulTiling.N = weightNzTilingCache.n_;
@@ -1391,7 +1393,8 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::PostTiling()
     context_->SetBlockDim(usedAicNum);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), tilingData_, tilingDataSize);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+                           tilingData_, tilingDataSize);
     if (ret != EOK){
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;

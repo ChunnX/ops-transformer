@@ -457,8 +457,10 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
 
         OP_TILING_CHECK(
             (quantType != SUPPORT_QUANT_MODE),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1_quant_mode and x2_quant_mode",
-                (std::to_string(quantType / X1_QUANT_SIGN) + " and " + std::to_string(quantType % X1_QUANT_SIGN)).c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_, "x1_quant_mode and x2_quant_mode",
+                (std::to_string(quantType / X1_QUANT_SIGN) + " and " + std::to_string(quantType % X1_QUANT_SIGN))
+                    .c_str(),
                 "Current quant mode only supports x1 PerToken[3] and x2 PerChannel[2]"),
             return ge::GRAPH_FAILED);
     }

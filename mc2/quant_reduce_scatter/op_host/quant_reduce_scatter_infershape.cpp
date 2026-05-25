@@ -93,7 +93,8 @@ static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantReduce
 
     // 通过attr获取卡数
     const int *rankSize = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
-    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "Get rank_size failed in quant_reduce_scatter");
+    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(),
+               "Get rank_size failed in quant_reduce_scatter");
     OP_TILING_CHECK(std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
                     OP_LOGE_FOR_INVALID_VALUE(INNER_DEBUG, "rankSize", std::to_string(*rankSize).c_str(),
                     VectorToString(SUPPORT_RANK_SIZE).c_str()),
@@ -146,7 +147,8 @@ static ge::graphStatus InferShapeQuantReduceScatter(gert::InferShapeContext *con
             output_shape->SetDim(1, shapeInfo.hidden_size);
         }
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", (std::to_string(shapeInfo.x_dim) + "D").c_str(), "2D or 3D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", (std::to_string(shapeInfo.x_dim) + "D").c_str(),
+                                     "2D or 3D");
         ge::GRAPH_FAILED;
     }
 

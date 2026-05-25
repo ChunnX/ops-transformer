@@ -208,7 +208,8 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
         return (dim > 0) && (dim <= INT32_MAX);
     };
     if (!isValidDimValue(args.mValue) || !isValidDimValue(args.kValue) || !isValidDimValue(args.nValue)) {
-        std::string valStr = "m=" + std::to_string(args.mValue) + ", k=" + std::to_string(args.kValue) + ", n=" + std::to_string(args.nValue);
+        std::string valStr = "m=" + std::to_string(args.mValue) + ", k=" + std::to_string(args.kValue) +
+                             ", n=" + std::to_string(args.nValue);
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(args.opName, "m, k and n", valStr.c_str(),
             "m, k and n must be positive");
         return ge::GRAPH_FAILED;
