@@ -214,7 +214,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "default") == 0) {
+        } else if (std::strcmp(commModeStr, "") == 0) {
             // default：小于等于8P走CCU，否则走AICPU
             // 获取卡数
             uint32_t rankSize = 0;
@@ -224,13 +224,13 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
 #endif
             commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'aicpu'.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         // 910B和910_93只支持default
-        if (std::strcmp(commModeStr, "default") != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default'.");
+        if (std::strcmp(commModeStr, "") != 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support empty string ''.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

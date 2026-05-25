@@ -37,7 +37,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (commModeStr == ge::AscendString("aicpu")) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (commModeStr == ge::AscendString("default")) {
+    } else if (commModeStr == ge::AscendString("")) {
         int64_t worldSize = 0;
         if (!context->GetIntAttrVal("world_size", worldSize) || worldSize <= 0) {
             OPS_LOG_E(context->GetNodeName(), "Failed to get valid world_size for default comm_mode.");
