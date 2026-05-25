@@ -26,6 +26,8 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include <cmath>
+#include <limits>
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling.h"
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 
@@ -75,12 +77,55 @@ constexpr uint32_t SYS_WORKSPACE_SIZE = 16U * 1024U * 1024U;
 constexpr uint32_t MAX_TURN_NUM = 24;
 constexpr int32_t MAX_BASE_K = 128;
 constexpr uint64_t COMM_TILE = 8; // 每卡数据分配几次计算
-constexpr uint64_t MAX_EXPERT_NUM = 256;
-constexpr int64_t MAX_EXPERT_NUM_PER_RANK = 32;
+constexpr uint64_t MAX_EXPERT_NUM = 16384;
+constexpr int64_t MAX_EXPERT_NUM_PER_RANK = 1024;
 constexpr int64_t MAX_DIM_VALUE = 65536;
 constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
 constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
+
+// HCCL AlltoAllv AIV 性能插值表
+struct HcclPerfPoint { uint64_t bytes; double timeUs; };
+static const HcclPerfPoint g_hcclAivPerfTable[] = {
+    {8, 25.17}, {16, 26.88}, {32, 28.07}, {64, 28.56}, {128, 27.95}, {256, 28.62},
+    {512, 28.22}, {1024, 28.05}, {2048, 28.53}, {4096, 28.26}, {8192, 28.11},
+    {16384, 27.92}, {32768, 28.31}, {65536, 28.30}, {131072, 30.96}, {262144, 30.66},
+    {524288, 31.83}, {1048576, 32.29}, {2097152, 29.61}, {4194304, 38.24},
+    {8388608, 58.50}, {16777216, 105.49}, {33554432, 199.72}, {67108864, 395.27},
+    {134217728, 987.55}, {268435456, 1883.42}, {536870912, 3735.30},
+    {1073741824, 7457.42}, {2147483648, 14874.86}, {4294967296, 29706.15}
+};
+static constexpr uint64_t HCCL_PERF_TABLE_SIZE = sizeof(g_hcclAivPerfTable) / sizeof(g_hcclAivPerfTable[0]);
+
+static double HcclEstimateTimeUs(uint64_t bytes) {
+    if (bytes <= g_hcclAivPerfTable[0].bytes) return g_hcclAivPerfTable[0].timeUs;
+    for (uint64_t i = 1; i < HCCL_PERF_TABLE_SIZE; i++) {
+        if (bytes <= g_hcclAivPerfTable[i].bytes) {
+            double t = (std::log2(static_cast<double>(bytes)) - std::log2(static_cast<double>(g_hcclAivPerfTable[i-1].bytes))) /
+                       (std::log2(static_cast<double>(g_hcclAivPerfTable[i].bytes)) - std::log2(static_cast<double>(g_hcclAivPerfTable[i-1].bytes)));
+            return g_hcclAivPerfTable[i-1].timeUs + t * (g_hcclAivPerfTable[i].timeUs - g_hcclAivPerfTable[i-1].timeUs);
+        }
+    }
+    return g_hcclAivPerfTable[HCCL_PERF_TABLE_SIZE - 1].timeUs;
+}
+
+static uint64_t ComputeOptimalGroupSize(uint64_t eEp, uint64_t perExpertBytes, uint64_t n1) {
+    (void)n1;
+    double t0 = HcclEstimateTimeUs(perExpertBytes);
+    if (t0 <= 0.0) t0 = 1.0;
+    uint64_t bestG = 1;
+    double bestTotalTime = std::numeric_limits<double>::max();
+    for (uint64_t g = 1; g <= eEp; g <<= 1) {
+        uint64_t numCalls = (eEp + g - 1) / g;
+        if (numCalls > 64) continue;
+        uint64_t groupBytes = g * perExpertBytes;
+        double tComm = HcclEstimateTimeUs(groupBytes);
+        double tStage = (g * t0 > tComm) ? (g * t0) : tComm;
+        double tTotal = static_cast<double>(numCalls) * tStage;
+        if (tTotal < bestTotalTime) { bestTotalTime = tTotal; bestG = g; }
+    }
+    return bestG;
+}
 
 const char* C_INNER_DEBUG = "GroupedMatMulAlltoAllv Tiling Debug";
 const char* C_INNER_PRINT = "GroupedMatMulAlltoAllv Tiling Print";
@@ -347,10 +392,10 @@ static bool CheckCommunicationConfig(
     size_t sendSize = sendCountsPtr->GetSize();
     OP_TILING_CHECK(
         recvSize <= 0 || recvSize > MAX_EXPERT_NUM,
-        OP_LOGE(C_INNER_DEBUG, "The length of recvCnts[%lu] should be in (0, 256]", recvSize), return false);
+        OP_LOGE(C_INNER_DEBUG, "The length of recvCnts[%lu] should be in (0, 16384]", recvSize), return false);
     OP_TILING_CHECK(
         sendSize <= 0 || sendSize > MAX_EXPERT_NUM,
-        OP_LOGE(C_INNER_DEBUG, "The length of sendCnts[%lu] should be in (0, 256]", sendSize), return false);
+        OP_LOGE(C_INNER_DEBUG, "The length of sendCnts[%lu] should be in (0, 16384]", sendSize), return false);
     return true;
 }
 
@@ -381,7 +426,7 @@ static bool CheckCoreDimensionsAndCommunication(
 
     OP_TILING_CHECK(
         (eEp <= NUM_ZERO || eEp > MAX_EXPERT_NUM_PER_RANK),
-        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 32]!", eEp), return false);
+        OP_LOGE(C_INNER_DEBUG, "E_ep[%ld] should be in (0, 1024]!", eEp), return false);
 
     OP_TILING_CHECK(
         !CheckSendCntAndRecvCnt(attrs, bsk, a, h, eEp, epWorldSize, context),
@@ -979,6 +1024,20 @@ static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* c
     UpdateTilingKey(tilingKey, tilingData, context);
     OP_LOGD(nodeName, "Computed tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
+    // Compute optimal expert group size for multi-expert optimization
+    {
+        const auto* sendCnt = &tilingData->aicpuTilingInfo.sendCnt[0];
+        uint64_t eEp = tilingData->commonTilingInfo.E_ep;
+        uint64_t n1 = tilingData->commonTilingInfo.N1;
+        uint64_t totalSend = 0;
+        for (uint64_t i = 0; i < eEp * tilingData->commonTilingInfo.epWorldSize; i++) {
+            totalSend += sendCnt[i];
+        }
+        uint64_t perExpertBytes = (eEp > 0 && totalSend > 0) ? (totalSend / eEp) * n1 * 2 : n1 * 2;
+        uint64_t optG = ComputeOptimalGroupSize(eEp, perExpertBytes, n1);
+        tilingData->commonTilingInfo.expertGroupSize = optG;
+        tilingData->commonTilingInfo.numAlltoAllvCalls = (eEp + optG - 1) / optG;
+    }
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD("GroupedMatMulAlltoAllv", "tiling process finished successfully!!!");
 
