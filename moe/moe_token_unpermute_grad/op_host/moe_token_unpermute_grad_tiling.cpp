@@ -297,13 +297,6 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteGrad(gert::TilingContext* context
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     const gert::StorageShape* probShape = (probTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PROB_IDX);
 
-    OP_CHECK_IF(
-        permutedTokensTensor == nullptr && probTensor != nullptr,
-        OP_LOGE(
-            context->GetNodeName(),
-            "[MoeTokenUnpermuteGrad] permuted_tokens is None but probs is not None, cannot compute prob_grad."),
-        return ge::GRAPH_FAILED);
-
     int64_t tokensNum = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_0);
     int64_t hiddenSize = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_1);
     int64_t topK = (probShape == nullptr) ? 1 : probShape->GetStorageShape().GetDim(DIM_1);
