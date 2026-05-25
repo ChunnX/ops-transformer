@@ -283,7 +283,7 @@ public:
 
     __aicore__ inline bool IsInitAttentionOutGm()
     {
-        return constInfo.seqUsedQSize > 0;
+        return constInfo.seqUsedQSize > 0 || (constInfo.s1Size > constInfo.s2Size);
     }
 
     __aicore__ inline void InitOutputSingleCore()

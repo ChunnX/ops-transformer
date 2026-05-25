@@ -31,7 +31,9 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     REGISTER_TILING_DEFAULT(optiling::FlashAttnTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-
+    if constexpr (inOutLayoutType == InOutLayoutType_TND) {
+        dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensQ), 0);
+    }
     // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
 #if (ORIG_DTYPE_Q == DT_BF16)
     flash_attn_kernel_run<bfloat16_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config>(
