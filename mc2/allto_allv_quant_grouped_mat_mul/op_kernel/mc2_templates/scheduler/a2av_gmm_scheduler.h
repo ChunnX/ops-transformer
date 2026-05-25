@@ -49,7 +49,8 @@ public:
         // x通信输出区域：isPermuteOut=true时不占用workspace
         if (!tilingData_->isPermuteOut) {
             uint64_t commOutLen =
-                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR) * X_TYPE_SIZE,
+                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
+                              PACK_FACTOR) * X_TYPE_SIZE,
                       TENSOR_LIST_SIZE);
             commOutGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += commOutLen;
@@ -81,14 +82,14 @@ public:
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
-            localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
-                                isA2avGmmFlag);
+            localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM,
+                mmyOptionalGM, computeWorkspaceGm_, computeWorkspaceGm_,
+                tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe, isA2avGmmFlag);
         }
         // computeOp.Init
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM,
-                       computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe,
-                       isA2avGmmFlag);
+                       computeWorkspaceGm_, computeWorkspaceGm_,
+                       tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
     __aicore__ inline void Process()

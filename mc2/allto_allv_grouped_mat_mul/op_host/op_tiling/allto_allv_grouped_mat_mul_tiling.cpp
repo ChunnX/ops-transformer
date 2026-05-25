@@ -163,13 +163,15 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* co
 
     uint64_t H1 = context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(1);
     if (H1 <= NUM_ZERO || H1 >= MAX_SHAPE_SIZE) {
-        OP_LOGE(A_INNER_DEBUG, "H1 value is %llu, expected in range [1, %llu).", H1, static_cast<uint64_t>(MAX_SHAPE_SIZE));
+        OP_LOGE(A_INNER_DEBUG, "H1 value is %llu, expected in range [1, %llu).",
+            H1, static_cast<uint64_t>(MAX_SHAPE_SIZE));
         return ge::GRAPH_FAILED;
     }
 
     uint64_t N1 = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(1);
     if (N1 <= NUM_ZERO || N1 >= MAX_SHAPE_SIZE) {
-        OP_LOGE(A_INNER_DEBUG, "N1 value is %llu, expected in range [1, %llu).", N1, static_cast<uint64_t>(MAX_SHAPE_SIZE));
+        OP_LOGE(A_INNER_DEBUG, "N1 value is %llu, expected in range [1, %llu).",
+            N1, static_cast<uint64_t>(MAX_SHAPE_SIZE));
         return ge::GRAPH_FAILED;
     }
 
@@ -192,7 +194,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
 
     uint64_t sendCountsSize = sendCountsPtr->GetSize();
     uint64_t recvCountsSize = recvCountsPtr->GetSize();
-
     if (sendCountsSize != recvCountsSize) {
         OP_LOGE(A_INNER_DEBUG, "SendCounts size is %llu, recvCounts size is %llu, expected equal.",
             sendCountsSize, recvCountsSize);
@@ -251,7 +252,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     uint64_t H1 = gmmXShape.GetDim(1);
     uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
     uint64_t H2 = gmmWeightShape.GetDim(h1DimIndex);
-
     if (H1 != H2) {
         OP_LOGE(A_INNER_DEBUG, "GmmX H1 is %llu, gmmWeight H1 is %llu, expected equal.",
             H1, H2);
@@ -264,7 +264,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         uint64_t H = mmXShape.GetDim(1);
         uint64_t h2DimIndex = transMmWeight_ ? DIM_ONE : DIM_ZERO;
         uint64_t H2MM = mmWeightShape.GetDim(h2DimIndex);
-
         if (H != H2MM) {
             OP_LOGE(A_INNER_DEBUG, "MmX H2 is %llu, mmWeight H2 is %llu, expected equal.",
                 H, H2MM);
@@ -347,7 +346,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
 {
     ge::DataType gmmXDtype = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
     ge::DataType gmmWeightDtype = context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
-
     if (gmmXDtype != gmmWeightDtype) {
         OP_LOGE(A_INNER_DEBUG, "GmmX dtype is %s, gmmWeight dtype is %s, expected same dtype.",
             ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str(),
@@ -364,7 +362,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
     if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
         ge::DataType mmXDtype = context->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
         ge::DataType mmWeightDtype = context->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
-
         if (mmXDtype != mmWeightDtype) {
             OP_LOGE(A_INNER_DEBUG, "MmX dtype is %s, mmWeight dtype is %s, expected same dtype.",
                 ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str(),
@@ -409,9 +406,13 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     std::string alltoAllvConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
     const uint32_t alltoAllvReduceType = 0u;
 
-    mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
+    mc2tiling::HcclDataType alltoallvHcclDataType =
+        mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
     OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(context_->GetNodeName(), "GmmX dtype[%s] is unsupported by HCCL, expected INT8/UINT8/INT16/UINT16/INT32/UINT32/FLOAT16/FLOAT/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2.",
+        OP_LOGE(context_->GetNodeName(),
+            "GmmX dtype[%s] is unsupported by HCCL, "
+            "expected INT8/UINT8/INT16/UINT16/INT32/UINT32/"
+            "FLOAT16/FLOAT/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2.",
             ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str()),
         return ge::GRAPH_FAILED);
     uint8_t alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
@@ -496,10 +497,12 @@ ge::graphStatus AlltoAllvGmmTiling::Init()
         CheckAttrsShapeSize(context_) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Attrs shape size check failed."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        CheckAttrsShapeRelation(context_) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Attrs shape relation check failed."),
+        CheckAttrsShapeRelation(context_) != ge::GRAPH_SUCCESS,
+        OP_LOGE(A_INNER_DEBUG, "Attrs shape relation check failed."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        CheckSendRecvDataVolumn(context_) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Send/recv data volume check failed."),
+        CheckSendRecvDataVolumn(context_) != ge::GRAPH_SUCCESS,
+        OP_LOGE(A_INNER_DEBUG, "Send/recv data volume check failed."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         CheckMKN(context_) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "MKN check failed."),
@@ -529,7 +532,6 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 
 ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* context)
 {
-
     OP_TILING_CHECK(
         SetHcclTiling(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "HCCL tiling config failed."),
         return ge::GRAPH_FAILED);
@@ -645,7 +647,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
 }
 
 ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-                                                          ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype)
+    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype)
 {
     GetPlatformInfo();
     inputParams_.opName = context_->GetNodeName();
