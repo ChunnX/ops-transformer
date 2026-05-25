@@ -91,7 +91,7 @@ def _extract_field(arr: np.ndarray, core_num: int, offset: int):
 
 
 def get_islayer_ep(arr: np.ndarray, core_num: int, d_c: str):
-    islayer = _extract_field(arr, core_num, 11)
+    islayer = _extract_field(arr, core_num, 11) # 魔鬼数字11见moe_distribute_a2_constant.h
     logging.info("[A2] 1.1 %s各核islayer:%s\n", d_c, islayer)
     max_islayer = max(Counter(islayer), key=Counter(islayer).get)
     diff_islayer = [i for i, v in enumerate(islayer) if v != max_islayer]
@@ -102,7 +102,7 @@ def get_islayer_ep(arr: np.ndarray, core_num: int, d_c: str):
 
 
 def get_bs_ep(arr: np.ndarray, core_num: int, d_c: str):
-    bs = _extract_field(arr, core_num, 10)
+    bs = _extract_field(arr, core_num, 10) # 魔鬼数字10见moe_distribute_a2_constant.h
     logging.info("[A2] 1.1 %s各核bs:%s\n", d_c, bs)
     max_bs = max(Counter(bs), key=Counter(bs).get)
     diff_bs = [i for i, v in enumerate(bs) if v != max_bs]
@@ -113,7 +113,7 @@ def get_bs_ep(arr: np.ndarray, core_num: int, d_c: str):
 
 
 def get_h_ep(arr: np.ndarray, core_num: int, d_c: str):
-    h = _extract_field(arr, core_num, 13)
+    h = _extract_field(arr, core_num, 13) # 魔鬼数字13见moe_distribute_a2_constant.h
     logging.info("[A2] 1.1 %s各核h:%s\n", d_c, h)
     max_h = max(Counter(h), key=Counter(h).get)
     diff_h = [i for i, v in enumerate(h) if v != max_h]
@@ -142,6 +142,7 @@ def get_send_and_recv_info(arr: np.ndarray, core_num: int,
 
 def _get_raw_send_or_recv(arr: np.ndarray, core_num: int,
                           islayer: int, ep_worldsize: int):
+    # 魔鬼数字14见moe_distribute_a2_constant.h
     raw = [arr[14 + i * PER_CORE: (i + 1) * PER_CORE] for i in range(core_num)]
     fullmesh_num_tokens = []
     if islayer == 0:

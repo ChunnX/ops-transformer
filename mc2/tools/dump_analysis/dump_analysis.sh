@@ -351,7 +351,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_910B" ]; then
     elif find "$TARGET_DIR" -maxdepth 2 -name "mc2_exception_info*" | grep -q .; then
         echo "开始解析多卡dump数据"
         # 获取所有数字文件夹
-        card_dirs=( "$TARGET_DIR"[0-9]*/ )
+        card_dirs=( "$TARGET_DIR"/[0-9]*/ )
         file_num=${#card_dirs[@]}
         for card_dir in "${card_dirs[@]}"; do
             card_num=$(basename "$card_dir")
