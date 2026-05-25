@@ -59,6 +59,7 @@ public:
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus GetShapeInfo(); // 使用非量化索引重写，替代base class的GetShapeInfo
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;

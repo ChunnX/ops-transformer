@@ -323,24 +323,6 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
         return;
     }
     mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
-        mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
-        mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
-    } else {
-        // Non-quant mode: aQuantMode == DEFAULT && bQuantMode == DEFAULT, skip quant param setting
-        if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT) &&
-            gmmQuantParams_->bQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
-            // Non-quant mode: do not set quant params
-        } else if (gmmQuantParams_->bQuantMode ==
-            static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
-            mm_.SetQuantScalar(scaleScalar_);
-        } else {
-            mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
-        }
-    }
-    if (gmmQuantParams_->hasBias) {
-        mm_.SetBias(biasGlobal_[block_.offset_.offsetBias]);
-    }
     mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
     mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);
     mm_.Iterate();

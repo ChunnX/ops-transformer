@@ -19,12 +19,10 @@
 #endif
 #include "../allto_allv_grouped_mat_mul_tiling.h"
 #include "../allto_allv_grouped_mat_mul_tiling_key.h"
-#if __has_include("../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h")
-#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
-#elif __has_include("../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h")
-#include "../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h"
-#else
+#if __has_include("../../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h")
 #include "../../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h"
+#else
+#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 #endif
 
 using namespace AscendC;
@@ -61,24 +59,46 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     TPipe pipe;
-    
+    GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
+
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
-    
-    using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+
+    if (!tilingData.isFp16) {
+        using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, bfloat16_t,
+            bfloat16_t, float, bfloat16_t, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+            false, true>;
+        using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, bfloat16_t,
+            bfloat16_t, float, bfloat16_t, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
+            true, true>;
+        A2avGmmScheduler<HcclA2avOp<bfloat16_t, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
+            AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler;
+
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
+            gmmArray, gmmArrayAddr_, tilingGM);
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
+            gmmArray, mmArrayAddr_, tilingGM);
+
+        a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, nullptr, nullptr,
+            gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true);
+        a2avGmmScheduler.Process();
+        return;
+    }
+
+    using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, half,
+        half, float, half, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
         false, true>;
-    using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-        DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
+    using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, half,
+        half, float, half, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
         true, true>;
-    A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
+    A2avGmmScheduler<HcclA2avOp<half, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
         AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler;
-    
+
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
         gmmArray, gmmArrayAddr_, tilingGM);
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
         gmmArray, mmArrayAddr_, tilingGM);
-    
+
     a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, nullptr, nullptr,
         gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true);
     a2avGmmScheduler.Process();

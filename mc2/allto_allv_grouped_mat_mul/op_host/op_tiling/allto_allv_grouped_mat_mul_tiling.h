@@ -32,7 +32,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
-#include "allto_allv_grouped_mat_mul_tiling_base.h"
+#include "../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 
 namespace optiling {
 class AlltoAllvGmmTilingStruct : public AlltoAllvGmmTilingBase
@@ -47,9 +47,10 @@ protected:
 
 class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase
 {
+    friend class AlltoAllvGmmTilingHelper;
 public:
     explicit AlltoAllvGmmTiling(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context) {}
-    
+
     AlltoAllvGmmTilingData* tilingData;
 
     ge::graphStatus Init();
@@ -74,9 +75,6 @@ protected:
     ge::graphStatus SetHcclTiling(const gert::TilingContext* context) const;
 
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
-    void SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData) const;
-    void SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K) const;
-    void SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, bool transB) const;
     uint64_t GetTilingKey() const override;
     ge::graphStatus setNumBlocks(gert::TilingContext* context);
 
@@ -95,6 +93,22 @@ private:
     int32_t baseMForMM_;
     int32_t baseNForMM_;
     int32_t baseKForMM_;
+};
+
+class AlltoAllvGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
+public:
+    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling& parent)
+        : Mc2GroupedQbmmTiling(parent.context_), parent_(parent) {}
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData& GetAlltoAllvQuantHelperData() const { return tilingData_; }
+    bool AnalyzeAttrs() override { return true; }
+    bool AnalyzeDtype() override { return true; }
+    bool AnalyzeInputs() override { return true; }
+    void Reset() override {}
+    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
+                                    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype);
+    ge::graphStatus Process();
+private:
+    AlltoAllvGmmTiling& parent_;
 };
 } // namespace optiling
 #endif
