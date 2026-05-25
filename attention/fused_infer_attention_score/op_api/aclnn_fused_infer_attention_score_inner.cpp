@@ -19,6 +19,7 @@ extern "C" {
 #endif
 
 namespace {
+static const char kOpName[] = "FusedInferAttentionScore";
 
 const uint64_t INT4_NUMS_IN_INT32 = 8;
 
@@ -112,7 +113,7 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
         outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
                                     0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
         if (outTensor == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", kOpName, "Try alloc tensor failed");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }

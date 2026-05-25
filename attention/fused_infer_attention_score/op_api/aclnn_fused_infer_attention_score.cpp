@@ -20,6 +20,7 @@ extern "C" {
 #endif
 
 namespace {
+static const char kOpName[] = "FusedInferAttentionScore";
 aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value, const aclTensor *pseShift,
     const aclTensor *attenMask, const aclIntArray *actualSeqLengths, const aclIntArray *actualSeqLengthsKv,
@@ -31,7 +32,7 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "In op [%s], [%s] is not supported, got [%s]", kOpName, "aclnnFusedInferAttentionScore V1 to V4", "Ascend950");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -62,7 +63,7 @@ aclnnStatus aclnnFusedInferAttentionScore(void *workspace, uint64_t workspaceSiz
                                           const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "In op [%s], [%s] is not supported, got [%s]", kOpName, "aclnnFusedInferAttentionScore V1 to V4", "Ascend950");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
