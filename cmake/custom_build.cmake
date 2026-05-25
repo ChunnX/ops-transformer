@@ -1082,7 +1082,10 @@ if (ALL_COMMON_SRC_DIRS)
     list(REMOVE_DUPLICATES ALL_COMMON_SRC_DIRS)
 
     set(_COMMON_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
-    set(_COMMON_OUT_SRC_DIR ${ASCEND_BINARY_OUT_DIR}/${_COMMON_COMPUTE_UNIT}/src/common)
+    # Kernel adapt scripts resolve shared headers from ../ascendc/common relative
+    # to each generated per-op source directory, so binary staging must mirror
+    # that layout instead of copying into src/common.
+    set(_COMMON_OUT_SRC_DIR ${ASCEND_BINARY_OUT_DIR}/${_COMMON_COMPUTE_UNIT}/src/ascendc/common)
 
     set(ALL_COMMON_FILES "")
     set(COMMON_COPY_COMMANDS "")
