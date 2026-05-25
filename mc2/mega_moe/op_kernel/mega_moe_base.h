@@ -161,5 +161,17 @@ inline void ArgsortSimt(int64_t elements, int64_t indexBase, __gm__ int32_t *sor
         expandedRowIdxGmAddr[outIndices] = indexBase + index;
     }
 }
- 
+
+// 静态 eventId 版本的 Set/Wait pair：不依赖 TPipe（AllocEventID/FetchEventID）。
+// 用法：SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, 0>();
+// 约束：eventId ∈ [0, 5]（6/7 保留给硬件）。同一 HardEvent 类型下不同调用点用不同 id，
+// 防止 Set 还没被 Wait 消费就被下一次 Set 覆盖。Set 紧跟 Wait 的场景任何 id 都安全。
+template<AscendC::HardEvent event, int32_t eventId>
+__aicore__ inline void SyncFuncStatic()
+{
+    static_assert(eventId >= 0 && eventId <= 5, "SyncFuncStatic eventId must be in [0, 5]");
+    AscendC::SetFlag<event>(static_cast<event_t>(eventId));
+    AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
+}
+
 #endif

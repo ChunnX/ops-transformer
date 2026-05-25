@@ -64,13 +64,13 @@ public:
         .AutoContiguous();
     this->Input("scales")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
     this->Output("y")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+        .DataTypeList({ge::DT_BF16})
         .FormatList({ge::FORMAT_ND});
     this->Output("expert_token_nums")
         .ParamType(REQUIRED)

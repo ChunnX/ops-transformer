@@ -696,10 +696,10 @@ __aicore__ inline void GroupMatmul2Optimize(
 
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-            event_t eventIdFIX_S = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_S>());
-            SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
-            WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
+
+            SyncFuncStatic<AscendC::HardEvent::FIX_S, 0>();
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {
             while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
