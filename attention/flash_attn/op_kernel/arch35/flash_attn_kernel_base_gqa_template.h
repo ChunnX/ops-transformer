@@ -591,8 +591,13 @@ public:
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
-            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
+            if (constInfo.gSize == 1) {
+                s1FirstToken = s1GFirstToken;
+                s1LastToken  = s1GLastToken;
+            } else {
+                s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
+                s1LastToken  = static_cast<int64_t>(s1GLastToken  / constInfo.gSize);
+            }
         } else {
             if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
                 // start and end locate in one G
@@ -774,8 +779,8 @@ public:
         // ── tile 级字段（每个 S2 tile 都不同）──
         info.s2Idx = s2Cur * s2BaseSize;
         info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
+        if ((info.s2Idx + s2BaseSize) > info.actS2Size) {
+            info.actSingleLoopS2Size = static_cast<uint32_t>(info.actS2Size) - info.s2Idx;
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
