@@ -121,13 +121,13 @@ ge::graphStatus KvQuantSASTilingCheck::CheckBlockTable() const
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
-    
+
     uint32_t oriBlockTableBatch = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(oriBlockTableBatch != bSize_,
         OP_LOGE(opName_, "oriBlockTableBatch's first dimension(%u) should be equal to batch size(%u)",
             oriBlockTableBatch, bSize_),
         return ge::GRAPH_FAILED);
-    
+
     uint32_t cmpBlockTableBatch = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(cmpBlockTableBatch != bSize_,
         OP_LOGE(opName_, "cmpBlockTableBatch's first dimension(%u) should be equal to batch size(%u)",

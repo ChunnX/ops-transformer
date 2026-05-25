@@ -67,21 +67,21 @@ __aicore__ inline void GmCopyInToL1(LocalTensor<L1Type>& L1Tensor, GlobalTensor<
 // GM的行、列、列的stride（D or ND）BNSD 和 BSH的区别
 template<typename L1Type>
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
-                                        uint32_t rowAct, 
+                                        uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col, // D
                                         uint32_t colStride) // D or N*D
 {
     Nd2NzParams nd2nzPara;
-    nd2nzPara.ndNum = 1; 
+    nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = rowAct; // 行数
 
-    nd2nzPara.dValue = col; 
-    nd2nzPara.srcDValue = colStride; 
-    nd2nzPara.dstNzC0Stride = rowAlign; 
-    nd2nzPara.dstNzNStride = 1; 
-    nd2nzPara.srcNdMatrixStride = 0; 
-    nd2nzPara.dstNzMatrixStride = 0; 
+    nd2nzPara.dValue = col;
+    nd2nzPara.srcDValue = colStride;
+    nd2nzPara.dstNzC0Stride = rowAlign;
+    nd2nzPara.dstNzNStride = 1;
+    nd2nzPara.srcNdMatrixStride = 0;
+    nd2nzPara.dstNzMatrixStride = 0;
     DataCopy(l1Tensor, gmTensor, nd2nzPara);
 }
 
@@ -108,7 +108,7 @@ __aicore__ inline void DataCopyGmNZToL1(LocalTensor<L1Type>& l1Tensor, GlobalTen
 template<typename L1Type>
 __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, LocalTensor<L1Type>& ropeTensor,
                                 GlobalTensor<L1Type>& nopeGmTensor, GlobalTensor<L1Type>& ropeGmTensor,
-                                GlobalTensor<int32_t>& blockTableGm, KVLAYOUT KvLayout, 
+                                GlobalTensor<int32_t>& blockTableGm, KVLAYOUT KvLayout,
                                 const PAShape &shape,
                                 const PAShape &ropeShape,
                                 const Position &startPos)
@@ -190,7 +190,7 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
         if (KvLayout == KVLAYOUT::NZ) {
             offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
-            
+
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);

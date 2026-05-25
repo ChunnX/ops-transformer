@@ -24,8 +24,8 @@ using namespace regbaseutil;
 namespace SCFaVectorApi {
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
-    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, 
-    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride, 
+    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
+    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride,
     const uint16_t m, const T scale, const T minValue, uint32_t pltOriginalN, uint32_t pltSrcN)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_min;
@@ -82,7 +82,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
                     vreg_exp_bf16, vreg_exp_bf16);
             AscendC::MicroAPI::StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_dst_even_bf16, blockStride, repeatStride, preg_src_n_b16);
-        } 
+        }
     }
     AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
@@ -91,7 +91,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
 // no update, originN <= 64
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __aicore__ inline void ProcessVec1NoUpdateImpl64(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {

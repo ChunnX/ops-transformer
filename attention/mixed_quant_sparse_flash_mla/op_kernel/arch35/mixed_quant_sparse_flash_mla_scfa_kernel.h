@@ -175,7 +175,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         constInfo.oriMaxBlockNumPerBatch = mixedQuantSparseFlashMlaBaseParams.oriMaxBlockNumPerBatch;
         constInfo.cmpMaxBlockNumPerBatch = mixedQuantSparseFlashMlaBaseParams.cmpMaxBlockNumPerBatch;
     }
-    
+
     // actQ->TND, actKV pa场景任意layout均有
     constInfo.isActualLenDimsKVNull = false;
 
@@ -185,7 +185,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         GlobalTensor<int32_t> actualSeqLengthsKVGm;
         actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
         s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
-    
+
         int64_t s1Size;
         if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
             GlobalTensor<int32_t> cuSeqlensQGm;
@@ -253,7 +253,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
     }
 }
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {

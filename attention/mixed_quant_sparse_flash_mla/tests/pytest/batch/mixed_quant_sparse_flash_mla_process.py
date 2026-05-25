@@ -27,8 +27,8 @@ class Network(torch.nn.Module):
     def __init__(self):
         super(Network, self).__init__()
 
-    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
-        cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, rope_head_dim, 
+    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table,
+        cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, rope_head_dim,
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
         npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
                                 q=q,
@@ -147,7 +147,7 @@ def test_sas_quant_process_ci(test_data, device_id=0):
     input = test_data['input']
     cpu_output = test_data['cpu_output']
     torch_npu.npu.set_device(device_id)
-    
+
     print("test_data:", params)
     print("npu_mixed_quant_sparse_flash_mla_metadata...")
     metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(

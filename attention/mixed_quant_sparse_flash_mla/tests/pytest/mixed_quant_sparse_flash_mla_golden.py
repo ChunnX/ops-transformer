@@ -583,7 +583,7 @@ def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = 
     tensor_shape_size = in_tensor.numel()
     if tensor_shape_size == 1.0:
         tensor_shape_size = int(tensor_shape_size)
-    
+
     out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
@@ -674,7 +674,7 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
 def trans_hifuint8_tensor_to_float(in_tensor):
     tensor_shape = in_tensor.shape
     tensor_shape_size = in_tensor.numel()
-    
+
     out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
@@ -867,15 +867,15 @@ def save_test_case(input_data, output_dir):
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
     case_name = input_data['Testcase_Name']
-    
+
     # 生成文件名
     input_filename = f"sas_case_{case_name}.pt"
     input_filepath = os.path.join(output_dir, input_filename)
-    
+
     # 保存数据
     torch.save(input_data, input_filepath)
     print(f"测试用例已保存到: {input_filepath}")
-    
+
     return input_filepath
 
 def generate_and_save_testdata(params, save_pt=False, save_path=""):
@@ -968,7 +968,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
     cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
-    
+
     print("mode:%s\n",template_run_mode)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
@@ -994,8 +994,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'num_heads_q': N1,
             'num_heads_kv': N2,
             'head_dim': D,
-            'cu_seqlens_q': cu_seqlens_q, 
-            'seqused_kv': seqused_kv,    
+            'cu_seqlens_q': cu_seqlens_q,
+            'seqused_kv': seqused_kv,
             'batch_size': B,
             'max_seqlen_q': max_seqlen_q,
             'max_seqlen_kv': max_seqlen_kv,
@@ -1038,7 +1038,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         'cpu_output': cpu_result
     }
 
-    if save_pt:  
+    if save_pt:
         save_test_case(input_data, save_path)
-        
+
     return input_data

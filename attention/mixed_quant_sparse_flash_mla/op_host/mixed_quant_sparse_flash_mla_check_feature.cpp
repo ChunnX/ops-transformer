@@ -40,7 +40,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantShape() const
     OP_CHECK_IF(bSize_ <= 0,
         OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
         return ge::GRAPH_FAILED);
-        
+
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == SASLayout::TND),
             OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
             return ge::GRAPH_FAILED);
@@ -117,7 +117,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
             OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got DT_FLOAT8_E4M3FN"),
             return ge::GRAPH_FAILED);
     }
-    
+
     OP_CHECK_IF(*opParamInfo_.ropeHeadDim != 64, // 64:当前不泛化
         OP_LOGE(opName_, "rope_head_dim only support 64, but got %ld",
         *opParamInfo_.ropeHeadDim),

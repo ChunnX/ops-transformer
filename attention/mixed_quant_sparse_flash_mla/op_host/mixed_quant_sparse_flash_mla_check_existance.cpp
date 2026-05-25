@@ -45,7 +45,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckParaExistenceAntiquant() const
 
 ge::graphStatus KvQuantSASTilingCheck::CheckParaExistence()
 {
-    if (ge::GRAPH_SUCCESS != CheckCmpSparseIndicesExistence() || 
+    if (ge::GRAPH_SUCCESS != CheckCmpSparseIndicesExistence() ||
         ge::GRAPH_SUCCESS != CheckSWAExistence() ||
         ge::GRAPH_SUCCESS != CheckCFAExistence() ||
         ge::GRAPH_SUCCESS != CheckSCFAExistence() ||

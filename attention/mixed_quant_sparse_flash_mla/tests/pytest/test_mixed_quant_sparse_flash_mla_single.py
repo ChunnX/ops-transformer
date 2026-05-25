@@ -131,7 +131,7 @@ def sas(param_combinations):   # 初始化参数和tensor
     if Testcase_Name ==None :
         Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
 
-    # 生成actLen 
+    # 生成actLen
     QS = [0]
     KVS = []
     if cu_seqlens_q == None or seqused_kv == None:
@@ -178,7 +178,7 @@ def sas(param_combinations):   # 初始化参数和tensor
         cmp_block_num_sum += cur_cmp_kv_block_num
     block_num1 = ori_block_num_sum
     block_num2 = cmp_block_num_sum
-    
+
     params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
              block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
              cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode
@@ -204,10 +204,10 @@ def sas(param_combinations):   # 初始化参数和tensor
     case_id += 1
 
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
-    
+
     if(result == "NPU ERROR"):
         pytest.fail(f"用例执行失败:{test_data['Testcase_Name']}")
-    
+
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
 def test_mixed_quant_sparse_flash_mla(param_combinations):

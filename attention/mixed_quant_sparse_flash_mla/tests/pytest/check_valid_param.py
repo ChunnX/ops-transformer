@@ -12,7 +12,7 @@
 
 import math
 import random
-import logging 
+import logging
 import torch
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)

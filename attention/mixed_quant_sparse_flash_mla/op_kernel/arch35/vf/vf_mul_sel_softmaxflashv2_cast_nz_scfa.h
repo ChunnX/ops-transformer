@@ -40,7 +40,7 @@ enum class OriginNRange {
 };
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_SCFA>
 __aicore__ inline void ProcessVec1NoUpdate(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
@@ -58,7 +58,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
 
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_SCFA>
 __aicore__ inline void ProcessVec1Update(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
@@ -76,7 +76,7 @@ __aicore__ inline void ProcessVec1Update(
 
 template <typename T, typename T2, bool isUpdate = false, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128, OriginNRange oriNRange = OriginNRange::EQ_128_SCFA>
 __aicore__ inline void ProcessVec1Vf(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {

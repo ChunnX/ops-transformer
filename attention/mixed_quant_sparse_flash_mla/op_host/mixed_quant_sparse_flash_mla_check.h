@@ -292,7 +292,7 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
-    
+
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -551,7 +551,7 @@ private:
     uint32_t dSize_ = sasInfo_.dSize;
     uint32_t dSizeV_ = sasInfo_.dSizeV;
     uint32_t dSizeVInput_ = sasInfo_.dSizeVInput;
-    
+
     uint32_t dSizeOriKvInput_ = 0;
     uint32_t dSizeCmpKvInput_ = 0;
 

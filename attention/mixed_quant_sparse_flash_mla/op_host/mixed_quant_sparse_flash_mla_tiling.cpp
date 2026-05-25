@@ -655,7 +655,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(KvQuantSASTilingInfo 
             ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 

@@ -116,7 +116,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
  * @param [in] srcD, input colums, 32 bytes align
  */
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor, 
+__aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
     const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& expSumTensor, uint16_t m)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
