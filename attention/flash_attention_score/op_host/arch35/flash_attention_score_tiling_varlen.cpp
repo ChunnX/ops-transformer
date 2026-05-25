@@ -106,13 +106,15 @@ protected:
                 if (actualSeqLenData[0] - actualSeqLenKvData[0] + qStartIdx - kvStartIdx == 0) {
                     continue;
                 } else {
-                    OP_LOGE(context_, "Inner pse sparse mode 8 is only supported when actualSeqLenData[0] %ld + qStartIdx %ld - actualSeqLenKvData[0] %ld - kvStartIdx %ld == 0.",
-                    actualSeqLenData[0], qStartIdx, actualSeqLenKvData[0], kvStartIdx);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "qStartIdx - kvStartIdx",
+                        std::to_string(qStartIdx - kvStartIdx).c_str(),
+                        "The value of qStartIdx - kvStartIdx should be equal to actualSeqLenKvData[0] - actualSeqLenData[0] for inner pse sparse mode 8.");
                     return false;
                 }
             }
             if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
-                OP_LOGE(context_, "Inner pse sparse mode 8 is only supported when actualSeqQLen[%ld] %ld and actualSeqKvLen[%ld] %ld are equal.", i, actualSeqLenData[i], i, actualSeqLenKvData[i]);
+                OP_LOGE_FOR_INVALID_VALUE(opName, "actualSeqQLen[" + std::to_string(i) + "]",
+                    std::to_string(actualSeqLenData[i]).c_str(), "equal to actualSeqKvLen[" + std::to_string(i) + "](" + std::to_string(actualSeqLenKvData[i]) + ")");
                 return false;
             }
         }
@@ -136,7 +138,8 @@ protected:
             }
             for (int64_t i = 0L; i < bSize; ++i) {
                 if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
-                    OP_LOGE(context_, "Inner pse alibi is only support when actualSeqQLen and actualSeqKvLen are equal.");
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "actualSeqQLen[" + std::to_string(i) + "]",
+                        std::to_string(actualSeqLenData[i]).c_str(), "equal to actualSeqKvLen[" + std::to_string(i) + "](" + std::to_string(actualSeqLenKvData[i]) + ")");
                     return false;
                 }
             }
@@ -151,7 +154,8 @@ protected:
         if (pseS1Size == PSE_ALIBI_S_SIZE) {
             for (int64_t i = 0L; i < bSize; ++i) {
                 if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
-                    OP_LOGE(context_, "Pse alibi only support when actualSeqQLen and actualSeqKvLen are equal.");
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "actualSeqQLen[" + std::to_string(i) + "]",
+                        std::to_string(actualSeqLenData[i]).c_str(), "equal to actualSeqKvLen[" + std::to_string(i) + "](" + std::to_string(actualSeqLenKvData[i]) + ")");
                     return false;
                 }
             }
