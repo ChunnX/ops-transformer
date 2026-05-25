@@ -26,7 +26,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     param_names = [
         "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num", "head_dim", 
         "block_size", "block_num", "qk_dtype", "cu_seqlens_q", "cu_seqlens_k", "seqused_q", "seqused_k", 
-        "cmp_residual_k","output_idx_offset", "layout_query", "layout_key", "topk", "mask_mode", 
+        "cmp_residual_k","output_idx_offset", "layout_q", "layout_k", "topk", "mask_mode", 
         "query_datarange","key_datarange","weights_datarange", "cmp_ratio", "return_value", "max_seqlen_q"
     ]
     param_values = [
@@ -47,8 +47,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_seqused_k"],
         locals()["param_cmp_residual_k"],
         locals()["param_output_idx_offset"],
-        locals()["param_layout_query"],
-        locals()["param_layout_key"],
+        locals()["param_layout_q"],
+        locals()["param_layout_k"],
         locals()["param_topk"],
         locals()["param_mask_mode"],
         locals()["param_query_datarange"],
