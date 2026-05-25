@@ -42,13 +42,14 @@ ge::graphStatus WeightQuantTilingTransferHelper::GetShapeAttrsInfo()
     matmulInfoPtr_->quantType = tilingProcesser_.quantType_;
     matmulInfoPtr_->bFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(tilingProcesser_.mmrCtxInfo_.x2->GetStorageFormat()));
-    OP_TILING_CHECK((matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
-                        (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                        "bFormat and antiQuantType",
-                        ("FORMAT_FRACTAL_NZ and " + std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType))).c_str(),
-                        "Nz weight input only supports per-channel scene"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
+            (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "bFormat and antiQuantType",
+            ("FORMAT_FRACTAL_NZ and " + std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType))).c_str(),
+            "Nz weight input only supports per-channel scene"),
+        return ge::GRAPH_FAILED);
     PrintTilingInputParam(*matmulInfoPtr_);
     return ge::GRAPH_SUCCESS;
 }

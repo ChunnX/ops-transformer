@@ -70,9 +70,9 @@ struct QuantParas {
     Mc2QuantType type;
 };
 
-inline ge::graphStatus GetQuantPara(
-    const gert::OpExecuteContext* host_api_ctx, size_t scale_idx, size_t offset_idx, size_t dequant_idx, size_t pertoken_idx,
-    size_t comm_quant_scale_1_idx, size_t comm_quant_scale_2_idx, QuantParas& para)
+inline ge::graphStatus GetQuantPara(const gert::OpExecuteContext *host_api_ctx, size_t scale_idx, size_t offset_idx,
+                                    size_t dequant_idx, size_t pertoken_idx, size_t comm_quant_scale_1_idx,
+                                    size_t comm_quant_scale_2_idx, QuantParas &para)
 {
     const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "Attrs is null"), return ge::GRAPH_FAILED);
@@ -127,7 +127,8 @@ inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, C
     OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
 
     para.group = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP));
-    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"),
+              return ge::GRAPH_FAILED);
 
     para.op = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_OP));
     para.op = (para.op == nullptr ? "sum" : para.op);

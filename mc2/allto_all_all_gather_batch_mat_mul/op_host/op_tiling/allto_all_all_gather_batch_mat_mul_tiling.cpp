@@ -231,7 +231,8 @@ static void InitTileInfoInCommonTiling(AlltoAllAllGatherBatchMatMulTilingData *t
     tilingData->commonTiling.domesticTileC.tailLen = 0;
 }
 
-static void UpdateTileInfo(BMM_TileInfo &tileInfo, uint64_t tileCnt, uint64_t tileLen, uint64_t tailCnt, uint64_t tailLen)
+static void UpdateTileInfo(BMM_TileInfo &tileInfo, uint64_t tileCnt, uint64_t tileLen, uint64_t tailCnt,
+                           uint64_t tailLen)
 {
     tileInfo.tailCnt = tailCnt;
     tileInfo.tailLen = tailLen;
@@ -365,11 +366,15 @@ static uint64_t UpdateTilingKey(AlltoAllAllGatherBatchMatMulTilingData *tilingDa
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(xShardFlag, isWeightTrans, isBias, y2Flag, y3Flag);
 
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : xShardFlag is %u.", xShardFlag);
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Weight Transpose is %d.", isWeightTrans);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : xShardFlag is %u.",
+            xShardFlag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Weight Transpose is %d.",
+            isWeightTrans);
     OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Bias is %d.", isBias);
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y2 output need is %d.", y2Flag);
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y3 output need is %d.", y3Flag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y2 output need is %d.",
+            y2Flag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y3 output need is %d.",
+            y3Flag);
 
     OP_LOGD("AlltoAllAllGatherBatchMatMul", "The final tiling key is %lu.", tilingKey);
     return tilingKey;
@@ -594,8 +599,8 @@ static ge::graphStatus SetMatmulTilingAlltoAllAllGatherBatchMatMul(gert::TilingC
                                tilingData->commonTiling.domesticTileC.tileLen,
                            tilingData->commonTiling.MOverTp, tilingData->commonTiling.H,
                            tilingData->commonTiling.domesticTileE.tailLen);
-        AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticTailE(context, tilingData->domesticTailETiling.bmmTilingData,
-                                                                  BMMV3BatchInfo, MMV3ArgsInfo);
+        AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticTailE(
+            context, tilingData->domesticTailETiling.bmmTilingData, BMMV3BatchInfo, MMV3ArgsInfo);
         if (bmmTilingDomesticTailE.DoTiling() != ge::GRAPH_SUCCESS) {
             OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under shard-0 domestic tail C section.");
             return ge::GRAPH_FAILED;
@@ -681,8 +686,10 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
         }
         // x[X_DIM_H] = H / tp, w[wDimH] = H, 所以 x[X_DIM_H] * tp 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) {
-            OP_LOGE_FOR_INVALID_SHAPE(nodeName, "x or weight dim-H",
-                (std::to_string(xShape->GetDim(X_DIM_H) * tpSize) + " vs " + std::to_string(weightShape->GetDim(wDimH))).c_str(),
+            OP_LOGE_FOR_INVALID_SHAPE(
+                nodeName, "x or weight dim-H",
+                (std::to_string(xShape->GetDim(X_DIM_H) * tpSize) + " vs " + std::to_string(weightShape->GetDim(wDimH)))
+                    .c_str(),
                 "should be equal");
             return false;
         }
@@ -734,8 +741,10 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
     }
 
     if (biasShape->GetDim(biasLastDimIdx) != weightShape->GetDim(wDimM)) {
-        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "bias",
-            (std::to_string(biasShape->GetDim(biasLastDimIdx)) + " vs " + std::to_string(weightShape->GetDim(wDimM))).c_str(),
+        OP_LOGE_FOR_INVALID_SHAPE(
+            nodeName, "bias",
+            (std::to_string(biasShape->GetDim(biasLastDimIdx)) + " vs " + std::to_string(weightShape->GetDim(wDimM)))
+                .c_str(),
             "should equal weight dim-M");
         return false;
     }
