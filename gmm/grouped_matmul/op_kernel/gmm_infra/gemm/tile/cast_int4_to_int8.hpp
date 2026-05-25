@@ -14,7 +14,7 @@
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
 #include "../../../gmm_infra/gmm_coord.hpp"
-#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
 #include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
 #include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
@@ -54,7 +54,7 @@ struct TileCastInt4ToInt8 {
     struct Params {};
 
     /// Construct
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileCastInt4ToInt8(Arch::Resource<ArchTag> const &resource, Params const &params) {
         if constexpr (g_coreType == AscendC::AIV) {
             uint32_t ubOffset = 0;
@@ -78,7 +78,7 @@ struct TileCastInt4ToInt8 {
     }
 
     /// Destructor
-    GMM_DEVICE
+    CATLASS_DEVICE
     ~TileCastInt4ToInt8() {
         if constexpr (g_coreType == AscendC::AIV) {
             for (uint32_t i = 0; i < STAGES; i++) {
@@ -88,7 +88,7 @@ struct TileCastInt4ToInt8 {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementDst> const &gmDst, LayoutDst const &layoutDst,
         AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc

@@ -13,7 +13,7 @@
 
 #include "../../gmm_infra/base_defs.hpp"
 #include "../../gmm_infra/detail/gmm_alignment.hpp"
-#include "../../gmm_infra/conv_gmm_coord.hpp"
+#include "../../gmm_infra/conv_coord.hpp"
 
 namespace Catlass::layout {
 

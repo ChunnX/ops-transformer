@@ -38,7 +38,7 @@ struct PrologueTraits<void> {
     using Params = EmptyType;
 
     template <class... Args>
-    GMM_DEVICE
+    CATLASS_DEVICE
     PrologueTraits(Args...) {}
 };
 

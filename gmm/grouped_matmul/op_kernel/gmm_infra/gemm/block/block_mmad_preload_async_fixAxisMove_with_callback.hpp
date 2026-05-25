@@ -15,7 +15,7 @@
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
 #include "../../../gmm_infra/gmm_coord.hpp"
 #include "../../../gmm_infra/detail/gmm_callback.hpp"
-#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
 #include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
 #include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
@@ -102,7 +102,7 @@ public:
     static constexpr auto L1A_LAYOUT = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
     static constexpr auto L1B_LAYOUT = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
     {
         InitL1(resource, l1BufAddrStart);
@@ -111,7 +111,7 @@ public:
         InitL0C(resource);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     ~BlockMmad()
     {
         SynchronizeBlock();
@@ -131,7 +131,7 @@ public:
     }
 
     // 左矩阵分四块copy
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementA> const &gmBlockA, LayoutA const &layoutA,
                     AscendC::GlobalTensor<ElementB> const &gmBlockB, LayoutB const &layoutB,
                     AscendC::GlobalTensor<ElementC> const &gmBlockC, LayoutC const &layoutC,
@@ -239,7 +239,7 @@ public:
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void SynchronizeBlock()
     {
         while (preloadCount > 0) {
@@ -270,11 +270,11 @@ private:
         Callback callbackBeforeFixpipe;
         Callback callbackAfterFixpipe;
 
-        GMM_DEVICE
+        CATLASS_DEVICE
         L1TileMmadParams() = default;
     };
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void InitL1(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart)
     {
         uint32_t l1AOffset = l1BufAddrStart;
@@ -293,7 +293,7 @@ private:
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void InitL0A(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0A_STAGES; ++i) {
@@ -303,7 +303,7 @@ private:
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void InitL0B(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0B_STAGES; ++i) {
@@ -313,7 +313,7 @@ private:
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void InitL0C(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0C_STAGES; ++i) {
@@ -323,7 +323,7 @@ private:
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void L1TileMmad(L1TileMmadParams const &params)
     {
         uint32_t mPartLoop = CeilDiv<L0TileShape::M>(params.mRound);

@@ -14,7 +14,7 @@
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
 #include "../../../gmm_infra/gmm_coord.hpp"
-#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
 #include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
 #include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
@@ -49,10 +49,10 @@ struct TileCastInt8ToFp16Dequant {
         half deqScalar;
         half deqZeroPoint;
 
-        GMM_HOST_DEVICE
+        CATLASS_HOST_DEVICE
         Params() = default;
 
-        GMM_HOST_DEVICE
+        CATLASS_HOST_DEVICE
         Params(half deqScalar_, half deqZeroPoint_)
         {
             deqScalar = deqScalar_;
@@ -61,7 +61,7 @@ struct TileCastInt8ToFp16Dequant {
     };
 
     /// Construct
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileCastInt8ToFp16Dequant(Arch::Resource<ArchTag> const &resource, Params const &params_) : params(params_)
     {
         if constexpr (g_coreType == AscendC::AIV) {
@@ -83,7 +83,7 @@ struct TileCastInt8ToFp16Dequant {
     }
 
     /// Destructor
-    GMM_DEVICE
+    CATLASS_DEVICE
     ~TileCastInt8ToFp16Dequant() {
         if constexpr (g_coreType == AscendC::AIV) {
             for (uint32_t i = 0; i < STAGES; i++) {
@@ -93,7 +93,7 @@ struct TileCastInt8ToFp16Dequant {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementDst> const &gmDst, LayoutDst const &layoutDst,
         AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc

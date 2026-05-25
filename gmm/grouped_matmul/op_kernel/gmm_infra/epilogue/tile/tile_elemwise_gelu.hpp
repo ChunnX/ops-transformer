@@ -29,10 +29,10 @@ struct TileElemWiseGelu {
     const float NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715;
     const float TANH_APPROX_FACTOR = 1 / 0.044715;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileElemWiseGelu() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator () (AscendC::LocalTensor<ElementCompute> const & dstLocal,
         AscendC::LocalTensor<ElementCompute> const & srcLocal)
     {

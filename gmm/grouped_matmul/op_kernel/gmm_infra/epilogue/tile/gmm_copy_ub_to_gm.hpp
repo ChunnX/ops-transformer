@@ -33,10 +33,10 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyUb2Gm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -63,10 +63,10 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>> {
 
     static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyUb2Gm() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -103,10 +103,10 @@ struct CopyUb2GmAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
     static constexpr uint32_t MAX_REPEAT = 4095;
     static constexpr uint32_t STRIDE_LIMIT = 65536;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyUb2GmAligned() = default;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,

@@ -14,7 +14,7 @@
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_resource.hpp"
 #include "../../../gmm_infra/gmm_coord.hpp"
-#include "../../../gmm_infra/gemm_gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
 #include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
 #include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
@@ -43,10 +43,10 @@ struct TileCastFp8ToFp16Dequant {
         half scalar;
         half zeroPoint;
 
-        GMM_HOST_DEVICE
+        CATLASS_HOST_DEVICE
         Params() = default;
 
-        GMM_HOST_DEVICE
+        CATLASS_HOST_DEVICE
         Params(half scalar_, half zeroPoint_)
         {
             scalar = scalar_;
@@ -54,11 +54,11 @@ struct TileCastFp8ToFp16Dequant {
         }
     };
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileCastFp8ToFp16Dequant()
     {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_) : params(params_)
     {
         int64_t bufferOffset = 0;
@@ -79,7 +79,7 @@ struct TileCastFp8ToFp16Dequant {
         InitLocalMaskVec(resource, bufferOffset);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator() (
         AscendC::GlobalTensor<ElementDst> gmDst, LayoutDst const &layoutDst,
         AscendC::GlobalTensor<ElementSrc> gmSrc, LayoutSrc const &layoutSrc,
@@ -197,7 +197,7 @@ struct TileCastFp8ToFp16Dequant {
     /*
      * DATAFLOW: gmSrc<float> -> ubInTensor -> ubOutTensor -> gmDst
     */
-    GMM_DEVICE
+    CATLASS_DEVICE
     void EpCastFp32ToFp16 (
         AscendC::GlobalTensor<half> gmDst, LayoutRowMajor layoutDst,
         AscendC::GlobalTensor<float> gmSrc, LayoutRowMajor layoutSrc
@@ -316,7 +316,7 @@ struct TileCastFp8ToFp16Dequant {
         }
     }
 private:
-    GMM_DEVICE
+    CATLASS_DEVICE
     void InitLocalMaskVec(Arch::Resource<ArchTag> &resource, int64_t &bufferOffset)
     {
         int16_t value_uint = 0x4000;
@@ -334,7 +334,7 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void Dequant(AscendC::LocalTensor<int8_t> &src, AscendC::LocalTensor<half> &dst,
         AscendC::LocalTensor<int16_t> &value_vector1, AscendC::LocalTensor<int16_t> &value_vector2,
         AscendC::LocalTensor<half> &workspace)

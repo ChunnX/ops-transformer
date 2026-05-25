@@ -29,10 +29,10 @@ struct TileElemWiseAdd {
 
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileElemWiseAdd() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,

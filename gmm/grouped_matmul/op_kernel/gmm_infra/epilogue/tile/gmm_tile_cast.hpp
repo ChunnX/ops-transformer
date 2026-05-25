@@ -30,10 +30,10 @@ struct TileCast {
     using ElementSrc = typename SrcType_::Element;
     using TileShape = TileShape_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileCast() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementDst> const &ubOut,
         AscendC::LocalTensor<ElementSrc> const &ubIn

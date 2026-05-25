@@ -24,12 +24,12 @@ struct TileMuls {
 
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileMuls()
     {
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,

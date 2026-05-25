@@ -13,8 +13,8 @@
 
 #include "../../../gmm_infra/base_defs.hpp"
 #include "../../../gmm_infra/detail/gmm_alignment.hpp"
-#include "../../../gmm_infra/gemm_gmm_coord.hpp"
-#include "../../../gmm_infra/matrix_gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
+#include "../../../gmm_infra/gmm_matrix_coord.hpp"
 
 namespace Catlass::Gemm::Block {
 
@@ -31,25 +31,25 @@ struct GemmIdentityBlockSwizzle {
 
     /// Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmIdentityBlockSwizzle()
     {
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
         : problemShape(problemShape_), tileMN(tileMN_)
     {
         loopsMN = CeilDiv(MatrixCoord(problemShape.GetCoordMN()), tileMN);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
         : problemShape(problemShape_), tileMN(tileMN_), loopsMN(loopsMN_)
     {
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void Update(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
     {
         problemShape = problemShape_;
@@ -58,7 +58,7 @@ struct GemmIdentityBlockSwizzle {
         loopsMN = CeilDiv(MatrixCoord(problemShape.GetCoordMN()), tileMN);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void Update(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
     {
         problemShape = problemShape_;
@@ -66,19 +66,19 @@ struct GemmIdentityBlockSwizzle {
         loopsMN = loopsMN_;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetCoreLoops() const
     {
         return loopsMN.row() * loopsMN.column();
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetBatchIdx(uint32_t taskIdx)
     {
         return taskIdx / (GetCoreLoops());
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetBlockCoord(uint32_t taskIdx)
     {
         uint32_t innerIdx = taskIdx % GetCoreLoops();
@@ -115,7 +115,7 @@ struct GemmIdentityBlockSwizzle {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetActualBlockShape(GemmCoord blockCoord)
     {
         uint32_t mActual =
@@ -140,12 +140,12 @@ struct SplitkGemmIdentityBlockSwizzle {
 
     /// Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     SplitkGemmIdentityBlockSwizzle()
     {
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     SplitkGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
                                    uint32_t splitkFactor_ = 1)
         : problemShape(problemShape_), tileShape(tileShape_), splitkFactor(splitkFactor_)
@@ -153,7 +153,7 @@ struct SplitkGemmIdentityBlockSwizzle {
         loopsMNK = CeilDiv(problemShape, tileShape);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetKIdxBySplitkSliceIdx(uint32_t splitkSliceIdx) const
     {
         if (splitkSliceIdx < loopsMNK.k() % splitkFactor) {
@@ -163,26 +163,26 @@ struct SplitkGemmIdentityBlockSwizzle {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetSplitkSliceIdx(uint32_t taskIdx) const
     {
         uint32_t mnLoops = loopsMNK.m() * loopsMNK.n();
         return taskIdx % GetCoreLoops() / mnLoops;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetCoreLoops() const
     {
         return loopsMNK.m() * loopsMNK.n() * splitkFactor;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetBatchIdx(uint32_t taskIdx)
     {
         return taskIdx / GetCoreLoops();
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetBlockCoord(uint32_t taskIdx)
     {
         uint32_t splitkSliceIdx = GetSplitkSliceIdx(taskIdx);
@@ -222,7 +222,7 @@ struct SplitkGemmIdentityBlockSwizzle {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetActualBlockShape(GemmCoord blockCoord, uint32_t splitkSliceIdx)
     {
         uint32_t splitkSliceLen;
@@ -267,12 +267,12 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     uint32_t beginBlockIdex = 0;
     
     /// Methods
-    GMM_DEVICE
+    CATLASS_DEVICE
     SplitkInOneCoreGemmIdentityBlockSwizzle()
     {
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     SplitkInOneCoreGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
                                             uint32_t splitkFactor_ = 1)
         : problemShape(problemShape_), tileShape(tileShape_), splitkFactor(splitkFactor_)
@@ -280,20 +280,20 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         loopsMNK = CeilDiv(problemShape, tileShape);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetKIdxBySplitkSliceIdx(uint32_t splitkSliceIdx) const
     {
         return kPerLoop * splitkSliceIdx;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetSplitkSliceIdx(uint32_t taskIdx) const
     {
         uint32_t mnLoops = loopsMNK.m() * loopsMNK.n();
         return taskIdx % splitkFactor;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetCoreLoops(uint32_t coreIdx) const
     {
         uint32_t blockCntTmp = blockCntPerCore;
@@ -305,19 +305,19 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         return blockCntTmp;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetCoreLoops() const
     {
         return blockCnt;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetBatchIdx(uint32_t taskIdx)
     {
         return taskIdx % splitkFactor;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetBlockCoord(uint32_t taskIdx)
     {
         uint32_t splitkSliceIdx = GetSplitkSliceIdx(taskIdx);
@@ -357,7 +357,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetActualBlockShape(GemmCoord blockCoord, uint32_t splitkSliceIdx)
     {
         uint32_t mActual = (blockCoord.m() == (loopsMNK.m() - 1)) ?
@@ -371,7 +371,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         return GemmCoord{mActual, nActual, kActual};
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     GemmCoord GetActualBlockTailBefore(GemmCoord blockCoord, uint32_t splitkSliceIdx)
     {
         uint32_t mActual = (blockCoord.m() == (loopsMNK.m() - 1)) ?
@@ -393,7 +393,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         return GemmCoord{mActual, nActual, kActual};
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void Update(GemmCoord const &problemShape_, GemmCoord const &tileShape_, uint32_t splitkFactor_,
                 uint32_t maxKValue_)
     {
@@ -406,7 +406,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         kPerLoop = maxKValue / tileShape.k();
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void SetBlockIdx(uint32_t coreNum, uint32_t coreIdx)
     {
         uint32_t blockDimM = loopsMNK.m();
@@ -445,7 +445,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void SetBeginBlockIdx(uint32_t coreNum, uint32_t coreIdx)
     {
         for (uint32_t i = 0; i < coreIdx; i++) {
@@ -453,19 +453,19 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetCoreBlockIdx(uint32_t index)
     {
         return blockIdexList[index];
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint32_t GetCoreBeginBlockIdx()
     {
         return beginBlockIdex;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint8_t GetNeedLeftCopyFlag(uint32_t index)
     {
         uint32_t curBlockLine = 0;
@@ -483,7 +483,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         return 0;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     uint8_t GetNeedLeftCopyFlag(uint32_t index, uint32_t curBlockIdex)
     {
         uint32_t curBlockLine = 0;
@@ -501,7 +501,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         return 0;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void Update(GemmCoord const &problemShape_, GemmCoord const &tileShape_, uint32_t splitkFactor_,
                 uint32_t maxKValue_, uint32_t groupIdx, uint32_t coreNum, uint32_t coreIdx)
     {
@@ -523,7 +523,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
         SetBlockIdx(coreNum, coreIdx);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void UpdateEx(GemmCoord const &problemShape_, GemmCoord const &tileShape_, uint32_t splitkFactor_,
                   uint32_t maxKValue_, uint32_t groupIdx, uint32_t coreNum, uint32_t coreIdx)
     {

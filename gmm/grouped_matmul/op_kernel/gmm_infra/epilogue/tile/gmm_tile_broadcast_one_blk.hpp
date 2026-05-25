@@ -25,10 +25,10 @@ struct TileBroadcastOneBlk {
     using ElementCompute = typename ComputeType_::Element;
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_LENGTH_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileBroadcastOneBlk() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn

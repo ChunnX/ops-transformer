@@ -40,10 +40,10 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::zN, AscendC
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = BytesToBits(BYTE_PER_FRACTAL) / SizeOfBits<Element>::value;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A(){}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -71,10 +71,10 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::nN, AscendC
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A(){}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -102,10 +102,10 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<float, layout::nN, AscendC::
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A(){}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -131,10 +131,10 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<int8_t, layout::nZ, AscendC:
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A(){}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -166,7 +166,7 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::NDC1HWC0, A
 
     // Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A(uint32_t strideW = 0,
                 uint32_t strideH = 0,
                 uint32_t filterW = 0,
@@ -184,7 +184,7 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::NDC1HWC0, A
         loadData3Dv2Params.dilationFilterH = dilationFilterH;
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     static CopyL1ToL0A MakeCopyL1ToL0A(
         uint32_t strideW = 0,
         uint32_t strideH = 0,
@@ -196,7 +196,7 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::NDC1HWC0, A
         return CopyL1ToL0A(strideW, strideH, filterW, filterH, dilationFilterW, dilationFilterH);
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
@@ -228,10 +228,10 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
 
     // Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A() {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -265,10 +265,10 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::zN, AscendC::TPosition
 
     // Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A() {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -298,10 +298,10 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = BytesToBits(BYTE_PER_FRACTAL) / SizeOfBits<Element>::value;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A() {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -335,10 +335,10 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<int8_t, layout::nZ, AscendC::TPositio
 
     // Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A() {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
@@ -372,10 +372,10 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::nZ, AscendC::TPosition
 
     // Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     CopyL1ToL0A() {};
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,

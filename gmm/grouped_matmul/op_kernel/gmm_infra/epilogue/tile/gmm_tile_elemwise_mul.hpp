@@ -28,10 +28,10 @@ struct TileElemwiseMul {
     using ElementCompute = typename ComputeType_::Element;
     using TileShape = TileShape_;
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileElemwiseMul() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,

@@ -35,10 +35,10 @@ struct TileMmad {
 
     // Methods
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     TileMmad() {}
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
          AscendC::LocalTensor<ElementA> const &l0ATensor,
          AscendC::LocalTensor<ElementB> const &l0BTensor,
@@ -68,7 +68,7 @@ struct TileMmad {
         }
     }
 
-    GMM_DEVICE
+    CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
          AscendC::LocalTensor<ElementA> const &l0ATensor,
          AscendC::LocalTensor<ElementB> const &l0BTensor,
