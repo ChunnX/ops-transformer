@@ -46,6 +46,7 @@ private:
     GlobalTensor<uint8_t> xUint8tGm_;
     GlobalTensor<float> xGscaleGm_;
     GlobalTensor<int32_t> sortedExpertIdxGm_;
+    GlobalTensor<int32_t> expandDstToSrcRowGm_;
     GlobalTensor<T> expandedXGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<float> expandedScaleGm_;
@@ -169,13 +170,18 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Init(GM_ADDR x, GM_ADDR scale, GM
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
                                        Align(curCoreIndicesElements_, sizeof(int32_t)));
 
+    int64_t length = Align(n_ * k_, sizeof(int32_t));
+    expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + length +
+                                             blockIdx_ * perCoreIndicesElements_,
+                                         Align(curCoreIndicesElements_, sizeof(int32_t)));
+
     if (rowIdxType_ == SCATTER) {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreIndicesElements_,
                                           Align(curCoreIndicesElements_, sizeof(int32_t)));
     } else {
-        expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) +
-                                              blockIdx_ * perCoreIndicesElements_,
-                                          Align(curCoreIndicesElements_, sizeof(int32_t)));
+        // GATHER模式下，expandedRowIdx以全局排序位置为索引，row_idx_gather_droppad用全局索引写入
+        expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx,
+                                          Align(n_ * k_, sizeof(int32_t)));
     }
 }
 
@@ -240,26 +246,26 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         int64_t curLoopElements = curCorePerLoopIndicesElements_;
+        int64_t globalOffsetBase = blockIdx_ * perCoreIndicesElements_;
         for (int64_t indicesLoop = 0; indicesLoop < indicesLoops_; indicesLoop++) {
             if (indicesLoop == indicesLoops_ - 1) {
                 curLoopElements = curCoreLastLoopIndicesElements_;
             }
             int64_t curExpertLoopOffset = indicesLoop * curCorePerLoopIndicesElements_;
+            int64_t globalReadOffset = globalOffsetBase + curExpertLoopOffset;
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            CopyExpertIn(curExpertLoopOffset, curLoopElements);
+            CopyExpertIn(globalReadOffset, curLoopElements);
 
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
-                int64_t outPosition = subRowIdxLocal.GetValue(indicesIndex); // 输出位置索引
+                int64_t outPosition = subRowIdxLocal.GetValue(indicesIndex);
                 if (outPosition == -1) {
-                    continue; // 被drop的token，跳过
+                    continue;
                 }
-                // 输入位置：基于排序后的序号（curExpertLoopOffset + indicesIndex）
-                int64_t sortIdx = curExpertLoopOffset + indicesIndex;
-                int64_t xSrcOffset = sortIdx / k_ * cols_;
-                int64_t scaleSrcOffset = sortIdx / k_;
-                // 输出位置：基于expandedRowIdx中的值（专家内位置）
+                int64_t globalSortIdx = globalReadOffset + indicesIndex;
+                int64_t xSrcOffset = globalSortIdx / k_ * cols_;
+                int64_t scaleSrcOffset = globalSortIdx / k_;
                 int64_t xDstOffset = outPosition * cols_;
                 int64_t scaleDstOffset = outPosition;
                 SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
