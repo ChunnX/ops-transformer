@@ -644,7 +644,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     </tr>
     <tr>
         <td>BS</td>
-        <td>表示本卡最终输出token数。<ul><li>Atlas A2 训练系列产品/Atlas A2 推理系列产品：依commAlg取值，"fullmesh"取值范围为 (0 &lt; BS ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为 (0 &lt; BS ≤ 512)；</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：0 &lt; BS ≤512。</li></ul></td>
+        <td>表示本卡最终输出token数。<ul><li>Atlas A2 训练系列产品/Atlas A2 推理系列产品：依commAlg取值，"fullmesh"取值范围为 (0 &lt; BS ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为 (0 &lt; BS ≤ 512)；</li><li>Atlas A3 训练系列产品/Atlas A3 推理系列产品：依commAlg取值，"fullmesh_v2"和"hierarchy"取值范围为 (0 < BS ≤ 256), "fullmesh_v1"和""取值范围为 (0 < BS ≤ 512)。</li></ul></td>
     </tr>
     <tr>
         <td>K</td>
@@ -675,6 +675,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
   - **HCCL_INTRA_PCIE_ENABLE**和**HCCL_INTRA_ROCE_ENABLE**：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。
+  - **HCCL_LOGIC_SUPERPOD_ID**
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当commAlg配置"hierarchy"需根据不同的超节点配置该环境变量，例如两机分别设为`export HCCL_LOGIC_SUPERPOD_ID=0`和`export HCCL_LOGIC_SUPERPOD_ID=1`。
 
 - **通信域使用约束**：
   - 一个模型中的CombineV4系列算子和`aclnnMoeDistributeDispatchV4`仅支持相同EP通信域，且该通信域中不允许有其他算子。
