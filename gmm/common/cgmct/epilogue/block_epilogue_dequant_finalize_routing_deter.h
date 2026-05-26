@@ -284,10 +284,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
-        if (GetBlockIdx() < 2 && (i == 0 || i == curVecBaseM - 1)) {
-            printf("[WS] blk=%u gaM=%llu offM=%llu i=%u/%u row=%llu idx=%llu n=%llu yOff=%llu\n",
-                GetBlockIdx(), groupAccumM_, offsetM, i, curVecBaseM - 1, wsRow, wsIdx, n_, yOffset);
-        }
         DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
     }
 }
@@ -570,10 +566,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     auto repeatTimesRe = CeilDiv(singleN_, vlForFloatNumber_);
     uint64_t logitOffset = Get<LOGIT_IDXSD>(blockCoord) + mOffset;
     uint64_t yOffset = Get<Y_IDXD>(blockCoord);
-    if (GetBlockIdx() < 2) {
-        printf("[EPI] blk=%u singleM=%llu singleN=%llu singleMInVec=%llu logitOff=%llu yOffset=%llu groupAccumM=%llu\n",
-            GetBlockIdx(), singleM_, singleN_, singleMInVec, logitOffset, yOffset, groupAccumM_);
-    }
     uint16_t remainRepeatTimesLogit =
         (singleMInVec % MAX_OUTPUT_M_UBSD != 0) ? singleMInVec % MAX_OUTPUT_M_UBSD : MAX_OUTPUT_M_UBSD;
     blockCoord_ = blockCoord;

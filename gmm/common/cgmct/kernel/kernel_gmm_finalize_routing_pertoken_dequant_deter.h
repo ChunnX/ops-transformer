@@ -332,31 +332,23 @@ public:
             return;
         }
         if (GetBlockIdx() < 2) {
-            printf("[FF-1] blk=%u totalM=%llu winStart=%llu\n",
-                GetBlockIdx(), totalM, deterSync_.windowStartM);
+            printf("[FF] blk=%u totalM=%llu winStart=%llu curGroupM=%llu\n",
+                GetBlockIdx(), totalM, deterSync_.windowStartM, deterSync_.curGroupM);
         }
         epilogueDequantOp_.ResetRowIndexAddr();
         if (GetBlockIdx() < 2) {
-            printf("[FF-2] blk=%u ResetRow done\n", GetBlockIdx());
+            printf("[FF] blk=%u ResetRow done\n", GetBlockIdx());
         }
-
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
 
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
             if (outRow % coreNumVec != GetBlockIdx()) continue;
-            if (mOffset == 0 && GetBlockIdx() < 2) {
-                printf("[FF-3] blk=%u mOff=0 outRow=%llu coreNumVec=%llu\n",
-                    GetBlockIdx(), outRow, coreNumVec);
-            }
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
-            if (mOffset == 0 && GetBlockIdx() < 2) {
-                printf("[FF-4] blk=%u FlushRow(0) done\n", GetBlockIdx());
-            }
         }
         if (GetBlockIdx() < 2) {
-            printf("[FF-5] blk=%u loop done\n", GetBlockIdx());
+            printf("[FF] blk=%u flush loop done\n", GetBlockIdx());
         }
 
         deterSync_.windowStartM = deterSync_.curGroupM;
@@ -407,16 +399,8 @@ public:
             if (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
-                // 不调 FinalFlush，只重置窗口防止溢出
-                deterSync_.windowStartM = deterSync_.curGroupM;
-                deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
+                if ASCEND_IS_AIV { FinalFlush(params); }
                 SyncAll<false>();
-                if ASCEND_IS_AIV {
-                    if (GetBlockIdx() < 2) {
-                        printf("[MF-SKIP] blk=%u gi=%u winStart=%llu lowBound=%llu\n",
-                            GetBlockIdx(), groupIdx, deterSync_.windowStartM, deterSync_.lowBoundM);
-                    }
-                }
             }
             ProcessSingleGroup(params, bs, groupIdx);
             cumulativeGroupM_ += Get<MNK_M>(problemShape_);
@@ -426,13 +410,6 @@ public:
         if (isDeter_) {
             SyncAll<false>();
             // if ASCEND_IS_AIV { FinalFlush(params); }
-            if ASCEND_IS_AIV {
-                if (GetBlockIdx() < 2) {
-                    uint64_t totalM = deterSync_.curGroupM - deterSync_.windowStartM;
-                    printf("[FF-FINAL] blk=%u totalM=%llu winStart=%llu\n",
-                        GetBlockIdx(), totalM, deterSync_.windowStartM);
-                }
-            }
             SyncAll<false>();
         }
 
