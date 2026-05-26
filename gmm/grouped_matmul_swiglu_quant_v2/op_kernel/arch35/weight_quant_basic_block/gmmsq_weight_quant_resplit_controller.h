@@ -201,6 +201,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
                 tiling_->nSize - offsetParam[ctrlParam.processId].nOffset :
                 basicBlockSize;
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
+        offsetParam[ctrlParam.processId].yScaleGmAddr = reinterpret_cast<GM_ADDR>(yScaleGm_);
 
         offsetParam[ctrlParam.processId].kbL1Size =
             (offsetParam[ctrlParam.processId].mL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 &&
