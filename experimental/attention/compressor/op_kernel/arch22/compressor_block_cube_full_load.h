@@ -80,8 +80,8 @@ private:
     bool isExistSeqUsed = false;
 
     // =================================L1 Buffer=================================
-    static constexpr uint32_t L1_X_SIZE = 128 * 1024;
-    static constexpr uint32_t L1_W_SIZE = 128 * 1024;
+    static constexpr uint32_t L1_X_SIZE = 64 * 1024;
+    static constexpr uint32_t L1_W_SIZE = 64 * 1024;
     // L1 Buffer
     TBuf<TPosition::A1> xBufL1;
     TBuf<TPosition::A1> wBufL1;
@@ -100,6 +100,8 @@ private:
     // mte2 <> mte1 EventID
     static constexpr uint32_t X_EVENT0 = EVENT_ID0;
     static constexpr uint32_t X_EVENT1 = EVENT_ID1;
+    static constexpr uint32_t X_EVENT2 = EVENT_ID2;
+    static constexpr uint32_t X_EVENT3 = EVENT_ID3;
     uint32_t xBufId = 0;    // 用于DB计数
     static constexpr uint32_t W_EVENT0 = EVENT_ID4;
     static constexpr uint32_t W_EVENT1 = EVENT_ID5;
@@ -163,10 +165,10 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::InitBuffers(TPipe *pip
     // L1
     // 1. coff=1时, mBase=256, kL1=256, X单次拷贝到L1的数据量最大为mBase*kL1*sizeof(BF16/FP16)=256*256*2=128K
     // 2. coff=2时, mBase=128, kL1=256, r最大为128, X单次拷贝到L1的最大数据量为(128+r)*kL1*sizeof(BF16/FP16)<=128K
-    pipe->InitBuffer(xBufL1, L1_X_SIZE * 2);
+    pipe->InitBuffer(xBufL1, L1_X_SIZE * 4);
     // dBaseSize<=64, wkv和wgate各一份, kL1=256, 右矩阵为dBaseSize*2*sizeof(BF16/FP16)<=64K
     // cur和pre循环使用, 2份buffer就足够
-    pipe->InitBuffer(wBufL1, L1_W_SIZE * 2);
+    pipe->InitBuffer(wBufL1, L1_W_SIZE * 4);
 
     // L0
     pipe->InitBuffer(tmpBufL0A, L0A_PP_SIZE * 2);
@@ -187,6 +189,8 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::AllocEventID(TPipe *pi
 {
     SetFlag<HardEvent::MTE1_MTE2>(X_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(X_EVENT1);
+    SetFlag<HardEvent::MTE1_MTE2>(X_EVENT2);
+    SetFlag<HardEvent::MTE1_MTE2>(X_EVENT3);
 
     SetFlag<HardEvent::MTE1_MTE2>(W_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(W_EVENT1);
@@ -197,7 +201,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::AllocEventID(TPipe *pi
     SetFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
 
     SetFlag<HardEvent::FIX_M>(L0C_EVENT0);
-    SetFlag<HardEvent::FIX_M>(L0C_EVENT1);\
+    SetFlag<HardEvent::FIX_M>(L0C_EVENT1);
 }
 
 template <typename COMP>
@@ -205,6 +209,8 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::FreeEventID(TPipe *pip
 {
     WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT1);
+    WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT2);
+    WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT3);
 
     WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT1);
@@ -215,7 +221,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::FreeEventID(TPipe *pip
     WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
 
     WaitFlag<HardEvent::FIX_M>(L0C_EVENT0);
-    WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);\
+    WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
 }
 
 template <typename COMP>
@@ -238,15 +244,28 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
     uint32_t hIdx, uint32_t kBase, uint32_t coffId)
 {
-    uint64_t gmOffset = coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
-    uint32_t wkvL1Offset = 0;
-    uint32_t wgateL1Offset = constInfo_.dBaseSize * (32 / sizeof(X_T)); // wgate与wkv的起始点相隔dBaseSize个32B
-    uint32_t nValue = constInfo_.dBaseSize;
-    uint32_t dValue = kBase;
-    uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
-    CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-    CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset],  nValue, dValue, srcDValue, dstNzC0Stride);
+    if constexpr (COMP::coff == COFF::DISABLE) {
+        uint64_t gmOffset = coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
+        uint32_t wkvL1Offset = 0;
+        uint32_t wgateL1Offset = constInfo_.dBaseSize * Align(kBase, 16U); // wgate与wkv的起始点相隔dBaseSize个32B
+        uint32_t nValue = constInfo_.dBaseSize;
+        uint32_t dValue = kBase;
+        uint32_t srcDValue = constInfo_.hSize;
+        uint32_t dstNzC0Stride = constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+        CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+        CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset],  nValue, dValue, srcDValue, dstNzC0Stride);
+
+    } else {
+        uint64_t gmOffset = coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
+        uint32_t wkvL1Offset = 0;
+        uint32_t wgateL1Offset = constInfo_.dBaseSize * (32 / sizeof(X_T)); // wgate与wkv的起始点相隔dBaseSize个32B
+        uint32_t nValue = constInfo_.dBaseSize;
+        uint32_t dValue = kBase;
+        uint32_t srcDValue = constInfo_.hSize;
+        uint32_t dstNzC0Stride = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+        CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+        CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset],  nValue, dValue, srcDValue, dstNzC0Stride);
+    }
 }
 
 template <typename COMP>
@@ -277,7 +296,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<
     uint32_t nSize = nDealSize;
 
     uint32_t nSizeAlign = Align(nSize, 16U);
-    uint64_t wTensorOffset = nSizeAlign * kStart + nStart * (32 / sizeof(X_T));
+    uint64_t wTensorOffset = nStart * Align(kBase, 16U);
 
     LoadData2DParams loadData2DParams;
     loadData2DParams.startIndex = 0;
@@ -315,8 +334,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::CopyOutMm1Res(const Ru
     fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
     fixParams.ndNum = 1;
 
-    uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
-    uint64_t gmOffset = constInfo_.nStart + coffId * constInfo_.headDim + mStart * fixParams.dstStride + dbOffset;
+    uint64_t gmOffset = constInfo_.nStart + coffId * constInfo_.headDim + mStart * fixParams.dstStride;
     uint32_t kvOffset = (mDealSize + 15) / 16 * 16 * nStart;
     uint32_t scoreOffset = (mDealSize + 15) / 16 * 16 * ((nStart + constInfo_.dBaseSize) % (2 * constInfo_.dBaseSize));
 
@@ -421,10 +439,10 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
             }
 
             SetFlag<HardEvent::MTE1_MTE2>(W_EVENT0 + wBufId);
-            wBufId = (wBufId + 1) % 2;
+            wBufId = (wBufId + 1) % 4;
         }
         SetFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
-        xBufId = (xBufId + 1) % 2;
+        xBufId = (xBufId + 1) % 4;
     }
 }
 

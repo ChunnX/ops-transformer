@@ -62,8 +62,7 @@ private:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline void ComputeMm1(const RunInfo &info);
-    __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
-    __aicore__ inline void ComputeVec2(const Vec2RunInfo &info);
+    __aicore__ inline void ComputeVec();
 
     __aicore__ inline bool IsNeedExcuteC1(RunInfo info);
     __aicore__ inline bool IsNeedSyncAll(uint32_t curBasicBlockIdx);
@@ -303,28 +302,38 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitWorkspace(__gm__ uint
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeMm1(const RunInfo &info) {
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + info.cubeDbIdx);
     blockCube_.ComputeMm1(info);
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG + info.cubeDbIdx);
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
 }
 
-template <typename COMP>
-__aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1(const Vec1RunInfo &info) {
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
-    CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
-    blockVec_.ComputeVec1();
-    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
-    CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + info.c1v1DbIdx);
-    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG2 + (info.c1v1DbIdx + 1) % constInfo.dbWorkspaceRatio);
-}
+// template <typename COMP>
+// __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1() {
+//     blockVec_.PrepareForComputeVec();
+//     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
+//     blockVec_.ComputeVec1();
+// }
+
+// template <typename COMP>
+// __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec2() {
+// }
+
 
 template <typename COMP>
-__aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec2(const Vec2RunInfo &info) {
-    blockVec_.ComputeVec2();
+__aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec() {
+    
+    blockVec_.PrepareForComputeVec();
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
+    if (blockVec_.IsUseSingleCore()) {
+        blockVec_.ComputeVec();
+    } else {
+        blockVec_.ComputeVec1();
+        SyncAll();
+        blockVec_.ComputeVec2();
+    }
 }
+
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::AllocEventID()
@@ -333,10 +342,10 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::AllocEventID()
         blockCube_.AllocEventID(pipe_);
     } else {
         blockVec_.AllocEventID();
-        for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-            CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
-        }
-        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG2);
+        // for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
+        //     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
+        // }
+        // CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG2);
     }
 }
 
@@ -344,12 +353,12 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::FreeEventID()
 {
     if ASCEND_IS_AIC {
-        for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-            CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + i);
-        }
+        // for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
+        //     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + i);
+        // }
         blockCube_.FreeEventID(pipe_);
     } else {
-        CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + loopTimes % constInfo.dbWorkspaceRatio);
+        // CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + loopTimes % constInfo.dbWorkspaceRatio);
         blockVec_.FreeEventID();
     }
 }
@@ -457,12 +466,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Process()
         if ASCEND_IS_AIC {
             ComputeMm1(extraInfo0);
         } else {
-            ComputeVec1(vec1Info);
-            UpdateVec2Info(vec2Info, i, vec1Info);
-            SyncAll();
-            if (IsNeedExcuteV2(vec2Info)) {
-                ComputeVec2(vec2Info);
-            }
+            ComputeVec();
         }
     }
     FreeEventID();
