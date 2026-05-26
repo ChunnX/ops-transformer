@@ -102,8 +102,8 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
         cmpSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
     }
 
-    ACLNN_CMD(aclnnSparseFlashMlaGrad, q, ori_kv_const, cmp_kv_const, dout, attn_out, softmax_lse, 
-              ori_sparse_indices_const, cmp_sparse_indices_const, 
+    ACLNN_CMD(aclnnSparseFlashMlaGrad, q, dout, attn_out, softmax_lse, 
+              ori_kv_const, cmp_kv_const, ori_sparse_indices_const, cmp_sparse_indices_const, 
               cu_seqlens_q_const, cu_seqlens_ori_kv_const, cu_seqlens_cmp_kv_const, 
               seqused_q_const, seqused_ori_kv_const, seqused_cmp_kv_const, cmp_residual_kv_const, 
               ori_topk_length_const, cmp_topk_length_const, sinks_const, metadata_const,

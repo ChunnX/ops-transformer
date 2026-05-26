@@ -33,8 +33,8 @@ using namespace AscendC;
 
 template<int LAYOUT, int MODE>
 __global__ __aicore__ void
-sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv,
-                            __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse, 
+sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse, 
+                            __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv,
                             __gm__ uint8_t *ori_sparse_indices, __gm__ uint8_t *cmp_sparse_indices, 
                             __gm__ uint8_t *cu_seqlens_q, __gm__ uint8_t *cu_seqlens_ori_kv, __gm__ uint8_t *cu_seqlens_cmp_kv, 
                             __gm__ uint8_t *seqused_q, __gm__ uint8_t *seqused_ori_kv, __gm__ uint8_t *seqused_cmp_kv,
