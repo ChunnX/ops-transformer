@@ -127,13 +127,74 @@ __aicore__ constexpr inline decltype(auto) Get(T&& t)
     return Get<Second, Rest...>(AscendC::Std::get<First>(AscendC::Std::forward<T>(t)));
 }
 
-// MegaMoeTrace: 占位空实现，所有打点编译成 0 开销 inline 空函数
+// ============================================================================
+// MegaMoe trace 编译期开关
+// ============================================================================
+// 取消注释下一行（或者 -DMEGA_MOE_TRACE_ENABLE）启用 us 时间戳打点。启用后：
+//   1) 所有打点用 AscendC::GetSystemCycle() / 1000 写到 y2GmAddr（即 op 的 y 输出）；
+//   2) 解析脚本 scripts/parse_trace.py 读 csv，做 stage / dispatch / wave 表；
+//   3) 精度对比会 FAIL（y 是 trace，不是 unpermute 结果）—— 这是预期行为；
+//   4) host 侧需把 y2GmAddr 内容 dump 到 csv（保持与 parse_trace.py 表头一致）。
+//
+#define MEGA_MOE_TRACE_ENABLE
+
+// ============================================================================
+// MegaMoeTrace: 时间戳打点（写到 y2GmAddr，bs>=64 时 y 足够大）
+// ============================================================================
+// y 视为 uint64[POINTS_PER_CORE * (MAX_AIC + MAX_AIV)]，行 = core，列 = point。
+//   globalCoreIdx 分配：
+//     AIC blockIdx          ∈ [0,           MAX_AIC_CORES)
+//     AIV blockIdx + 36     ∈ [MAX_AIC_CORES, MAX_AIC_CORES + MAX_AIV_CORES)
+//
+// 容量（bs=512, h=4096 → y = 512*4096*2 = 4MB = 524288 个 uint64）：
+//   108 core × 260 point × 8B = 219 KB ≪ 4MB ✓
+//
+// Layout 分三段：
+//   [P_STAGE_BASE,    +5)    stage 级（Process 全局）
+//   [P_DISPATCH_BASE, +16)   per-expert dispatch 起止（AIV1 only，最多 8 expert）
+//   [P_WAVE_BASE,     +240)  per-wave 12 sub-point × 最多 19 wave / core
 namespace MegaMoeTrace {
+constexpr int POINTS_PER_CORE = 260;
+constexpr int MAX_AIC_CORES = 36;
+constexpr int MAX_AIV_CORES = 72;
+// 写入单位：cycle / CYCLES_PER_US = us（按 ~1GHz 计），后续 csv 直接做加减得 us 差值
+constexpr uint64_t CYCLES_PER_US = 1000UL;
+
+// ----- Stage 级（每核固定 1 个） -----
 constexpr int P_KERNEL_ENTRY = 0;
 constexpr int P_ROUTING_DONE = 1;
 constexpr int P_CROSSRANK_DONE = 2;
 constexpr int P_EXPERT_LOOP_END = 3;
 constexpr int P_PROCESS_END = 4;
+constexpr int P_STAGE_NUM = 5;
+
+// ----- Per-expert dispatch（仅 AIV1=subBlock1 上有效） -----
+constexpr int P_DISPATCH_BASE = P_STAGE_NUM;     // 5
+constexpr int MAX_EXPERTS_TRACED = 8;
+constexpr int DISPATCH_PTS_PER_EXPERT = 2;       // 0=begin, 1=end
+constexpr int P_DISPATCH_SLOTS = MAX_EXPERTS_TRACED * DISPATCH_PTS_PER_EXPERT;  // 16
+
+// ----- Per-wave sub-points -----
+constexpr int P_WAVE_BASE = P_DISPATCH_BASE + P_DISPATCH_SLOTS;                 // 21
+constexpr int WAVE_POINTS_PER_ITER = 12;
+constexpr int MAX_WAVES_TRACED = (POINTS_PER_CORE - P_WAVE_BASE) / WAVE_POINTS_PER_ITER;  // (260-21)/12 = 19
+
+// 单 wave 内 sub-point 含义（AIC / AIV 视角）：
+//
+//  sp  | 位置                | AIC 含义                                     | AIV0 (sub0)                        | AIV1 (sub1)
+//  ----+---------------------+----------------------------------------------+------------------------------------+-----------------------------
+//   0  | wave loop body      | wave loop iteration 入口                     | 同左                               | 同左
+//   1  |                     | GMM1 函数调用前                              | 同左 (不进 GMM1 时 idle)           | 不进 GMM1，标记位置参考
+//   2  | impl.h GMM1         | 第一个 tile：等 dispatch flag 完成           | 第一个 tile WaitForCube 完成       | -
+//   3  | impl.h GMM1         | 第一个 tile：mmad 发出 + NotifyVector 后     | 第一个 tile epi + NotifyCube 后    | -
+//   4  | impl.h GMM1         | 最后一个 tile：mmad 发出 + NotifyVector 后   | 最后一个 tile epi + NotifyCube 后  | -
+//   5  | wave loop body      | GMM1 + EndSync 之后                          | 同左                               | 同左
+//   6  |                     | GMM2 函数调用前                              | (sub0 不进 GMM2 combine)           | GMM2 combine 进入前
+//   7  | impl.h GMM2         | 第一个 tile：等 GMM1 swiglu flag 完成        | -                                  | 第一个 tile 等 rowReady 完成
+//   8  | impl.h GMM2         | 第一个 tile：mmad+atomic_add 后              | -                                  | 第一个 tile combine MTE3 后
+//   9  | impl.h GMM2         | 最后一个 tile                                | -                                  | 最后一个 tile combine MTE3 后
+//  10  | wave loop body      | GMM2 函数返回后                              | 同左                               | 同左
+//  11  | wave loop body      | wave loop iteration 出口                     | 同左                               | 同左
 constexpr int SP_WAVE_ENTRY = 0;
 constexpr int SP_GMM1_BEGIN = 1;
 constexpr int SP_GMM1_FIRST_WAIT_DONE = 2;
@@ -146,9 +207,65 @@ constexpr int SP_GMM2_FIRST_TILE_DONE = 8;
 constexpr int SP_GMM2_LAST_TILE_DONE = 9;
 constexpr int SP_GMM2_END = 10;
 constexpr int SP_WAVE_END = 11;
-__aicore__ inline void RecordTimestampAt(GM_ADDR, int) {}
-__aicore__ inline void RecordDispatchPoint(GM_ADDR, int, bool) {}
-__aicore__ inline void RecordWavePoint(GM_ADDR, int, int) {}
+
+__aicore__ inline int GetGlobalCoreIdx()
+{
+    int coreIdx = GetBlockIdx();
+    if constexpr (g_coreType == AIC) {
+        return (coreIdx < MAX_AIC_CORES) ? coreIdx : -1;
+    } else {
+        return (coreIdx < MAX_AIV_CORES) ? (MAX_AIC_CORES + coreIdx) : -1;
+    }
+}
+
+// 核心写入函数：把当前时刻（单位 us）写到 y[globalCoreIdx * POINTS_PER_CORE + pointIndex]。
+//   关闭 MEGA_MOE_TRACE_ENABLE 时函数体为空，inline 后调用被编译器消除，零运行开销。
+__aicore__ inline void RecordTimestampAt(GM_ADDR baseAddr, int pointIndex)
+{
+#ifdef MEGA_MOE_TRACE_ENABLE
+    int globalCoreIdx = GetGlobalCoreIdx();
+    if (globalCoreIdx < 0 || pointIndex < 0 || pointIndex >= POINTS_PER_CORE) {
+        return;
+    }
+    GlobalTensor<uint64_t> output;
+    output.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(baseAddr));
+    PipeBarrier<PIPE_ALL>();
+    uint64_t us = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
+    output.SetValue(static_cast<uint64_t>(globalCoreIdx) *
+                    static_cast<uint64_t>(POINTS_PER_CORE) +
+                    static_cast<uint64_t>(pointIndex), us);
+#else
+    (void)baseAddr; (void)pointIndex;
+#endif
+}
+
+// 便捷封装：dispatch begin / end，AIV1 (subBlock1) 上调用。
+__aicore__ inline void RecordDispatchPoint(GM_ADDR baseAddr, int expertIdx, bool isEnd)
+{
+#ifdef MEGA_MOE_TRACE_ENABLE
+    if (expertIdx < 0 || expertIdx >= MAX_EXPERTS_TRACED) return;
+    int idx = P_DISPATCH_BASE + expertIdx * DISPATCH_PTS_PER_EXPERT + (isEnd ? 1 : 0);
+    RecordTimestampAt(baseAddr, idx);
+#else
+    (void)baseAddr; (void)expertIdx; (void)isEnd;
+#endif
+}
+
+// 便捷封装：wave-level / tile-level sub-point。
+//   waveTraceIdx 是本核连续累计的 wave iteration 序号（跨 expert 累加），从 0 开始。
+//   超过 MAX_WAVES_TRACED 的 wave 不打点（数据丢失，Python 端通过 0 值识别）。
+__aicore__ inline void RecordWavePoint(GM_ADDR baseAddr, int waveTraceIdx, int subPoint)
+{
+#ifdef MEGA_MOE_TRACE_ENABLE
+    if (waveTraceIdx < 0 || waveTraceIdx >= MAX_WAVES_TRACED) return;
+    if (subPoint < 0 || subPoint >= WAVE_POINTS_PER_ITER) return;
+    int idx = P_WAVE_BASE + waveTraceIdx * WAVE_POINTS_PER_ITER + subPoint;
+    RecordTimestampAt(baseAddr, idx);
+#else
+    (void)baseAddr; (void)waveTraceIdx; (void)subPoint;
+#endif
+}
+
 } // namespace MegaMoeTrace
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(MoeInitRoutingV3::SIMT_THREAD_NUM)
