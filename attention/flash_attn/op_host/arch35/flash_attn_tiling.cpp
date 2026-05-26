@@ -385,7 +385,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     // 3、带mask且S2小于S1
     if (seqUsedQFlag_ || seqUsedKvFlag_ ||
        ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
-            tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = true;
+        tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = true;
     } else {
         tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = false;
     }
