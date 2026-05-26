@@ -437,12 +437,12 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 #endif
 
     // 获取通信引擎参数
-    if (std::strcmp(commMode, "aicpu") == 0) {
+    if (std::strncmp(commMode, "aicpu", 5) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strcmp(commMode, "ccu") == 0) {
+    } else if (std::strncmp(commMode, "ccu", 3) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    } else if (commMode[0] == '\0') {
-        // 空字符串: rankSize 小于等于8走CCU，否则走AICPU
+    } else if (std::strncmp(commMode, "", 0) == 0) {
+        // 空字符串: rankSize 小于等于8走CCU，否则走AICPU 
         commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "comm_mode only support empty string, 'ccu' or 'aicpu', current comm_mode is %s", commMode);

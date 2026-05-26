@@ -733,11 +733,9 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
     // Non-A5 platform must use AICPU mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     if (npuArch_ == NpuArch::DAV_3510) {    
-        if (commMode_ == "ccu") {
+        if (std::strncmp(commMode_, "ccu", 3) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (commMode_ == "aicpu") {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
-        } else {
+        } else if (std::strncmp(commMode_, "", 0) == 0) { // empty string
             if (rankSize_ <= 8){
                 commMode = Mc2Comm::COMM_MODE_CCU;
             }
