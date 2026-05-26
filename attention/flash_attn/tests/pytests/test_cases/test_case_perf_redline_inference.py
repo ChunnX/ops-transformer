@@ -9,12 +9,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
-DefaultCase = {
-    'q_range': [(-1.0, 1.0)],
-    'k_range': [(-1.0, 1.0)],
-    'v_range': [(-1.0, 1.0)],
-}
-
 TestCases = {
     'Decode_BF16_BF16_L0_40_16_16_1_158_128_BNSD_000000': {
         'layout_q': ['BNSD'],

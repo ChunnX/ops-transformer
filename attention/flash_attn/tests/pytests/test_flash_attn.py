@@ -14,7 +14,6 @@ import sys
 import argparse
 import importlib
 import itertools
-import gc
 import torch
 import numpy as np
 from backends.cpu_impl import tforward
@@ -22,8 +21,9 @@ from test_utils.data import generate_qkv, generate_npu_mask, trans_bnsd_to_layou
 from test_utils.compare import data_compare_benchmark_new, Result, check_result, analyze_fail_distribution
 from test_utils.io import save_tensor_to_txt, load_tensor_from_txt
 
-_DEFAULT_CASE_FILES = ["test_cases.test_case", "test_cases.test_case_fia_STC", "test_cases.test_case_functional_single",
-                        "test_cases.test_case_redline_fa_TND", "test_cases.test_case_redline_fa", "test_cases.test_case_redline_fia"]
+_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single",
+                        "test_case_redline_fa_TND", "test_case_redline_fa", "test_case_redline_fia",
+                        "test_case_perf_redline_inference"]
 
 # ─────────────────── 动态导入 GPU / NPU 实现 ───────────────────
 GPU_AVAILABLE = False
@@ -358,9 +358,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FlashAttn 精度测试（CPU vs GPU vs NPU）")
     parser.add_argument("--case_files", type=str, default=",".join(_DEFAULT_CASE_FILES),
                         help=f"逗号分隔的 test case 模块名（不含 .py）")
-    parser.add_argument("--case", type=str, default="all",
-                        choices=["all", "base", "fia", "TestCases", "TestCasesFIA"],
-                        help="选择测试集，覆盖 --case_files (default: all)")
     parser.add_argument("--case_id",      type=str,            default="all", help="case名称，多个用逗号分隔")
     parser.add_argument("--device_id",    type=int,            default=0,    help="NPU device id")
     parser.add_argument("--use_gpu",      action="store_true", help="使用 GPU 进行计算")
@@ -405,14 +402,8 @@ if __name__ == "__main__":
         except ImportError:
             print("[ERROR] torch_npu 未安装。"); sys.exit(1)
 
-    if args.case in ("base", "TestCases"):
-        case_files = "test_cases.test_case"
-    elif args.case in ("fia", "TestCasesFIA"):
-        case_files = "test_cases.test_case_fia_STC"
-    else:
-        case_files = args.case_files
-
-    module_names = [x.strip() for x in case_files.split(",")]
+    case_files = args.case_files
+    module_names = ["test_cases." + x.strip() for x in case_files.split(",")]
     all_cases = load_case_modules(module_names)
     run_cases = resolve_case_ids(args.case_id, all_cases)
     if not run_cases:
@@ -420,10 +411,9 @@ if __name__ == "__main__":
 
     results = {}
     for name in run_cases:
-        gc.collect()
         if NPU_AVAILABLE:
             torch.npu.synchronize()
-            torch.npu.empty_cache()
+            # torch.npu.empty_cache()
 
         config = all_cases[name]
         try:
