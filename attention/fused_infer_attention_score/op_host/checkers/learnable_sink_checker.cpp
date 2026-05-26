@@ -42,15 +42,15 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
         if (fiaInfo.npuArch == NpuArch::DAV_3510) {
             OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_FLOAT16 &&
                         learnableSinkDesc->GetDataType() != ge::DT_BF16,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When learnable sink enable, the datatype(%s) of sink only support FP16/BF16.", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()) > 0) ? reason : "When learnable sink enable, the datatype(%s) of sink only support FP16/BF16."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "learnable_sink", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()); }),
             return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(learnableSinkDesc->GetDataType() != fiaInfo.inputQType,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s).", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()) > 0) ? reason : "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data types of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "query, learnable_sink", (snprintf(reason, sizeof(reason), "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s).", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()) > 0) ? reason : "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s)."); }),
             return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(learnableSinkDesc->GetDataType() != ge::DT_BF16,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When learnable sink enable, the datatype(%s) of sink only support BF16.", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()) > 0) ? reason : "When learnable sink enable, the datatype(%s) of sink only support BF16."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "learnable_sink", DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str()); }),
             return ge::GRAPH_FAILED);
         }
     }
@@ -104,9 +104,9 @@ ge::graphStatus LearnableSinkChecker::CheckSinkShapeSupport(const FiaTilingInfo 
     uint32_t sinkDimNum = fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape().GetDimNum();
     uint32_t sinkDim0 = fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(sinkDimNum != 1,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), " When learnable sink enable, the dimension(%u) of sink must be 1!", sinkDimNum) > 0) ? reason : " When learnable sink enable, the dimension(%u) of sink must be 1!"); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "learnable_sink", (snprintf(reason, sizeof(reason), " When learnable sink enable, the dimension(%u) of sink must be 1!", sinkDimNum) > 0) ? reason : " When learnable sink enable, the dimension(%u) of sink must be 1!", " When learnable sink enable, the dimension(%u) of sink must be 1!"); }),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sinkDim0 != fiaInfo.n1Size, ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When learnable sink enable, the shape([%u]) of sink must be equal to axis N(%u) of query.", sinkDim0, fiaInfo.n1Size) > 0) ? reason : "When learnable sink enable, the shape([%u]) of sink must be equal to axis N(%u) of query."); }),
+    OP_CHECK_IF(sinkDim0 != fiaInfo.n1Size, ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "learnable_sink, query", (snprintf(reason, sizeof(reason), "When learnable sink enable, the shape([%u]) of sink must be equal to axis N(%u) of query.", sinkDim0, fiaInfo.n1Size) > 0) ? reason : "When learnable sink enable, the shape([%u]) of sink must be equal to axis N(%u) of query."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -119,10 +119,10 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
     }
 
     OP_CHECK_IF(fiaInfo.qkHeadDim != NUM_192 && fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_64,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), " When learnable sink enable, the head dim(%u) of query should be in range of {192, 128, 64}.", fiaInfo.qkHeadDim) > 0) ? reason : " When learnable sink enable, the head dim(%u) of query should be in range of {192, 128, 64}."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), " When learnable sink enable, the head dim(%u) of query should be in range of {192, 128, 64}.", fiaInfo.qkHeadDim) > 0) ? reason : " When learnable sink enable, the head dim(%u) of query should be in range of {192, 128, 64}.", " When learnable sink enable, the head dim(%u) of query should be in range of {192, 128, 64}."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.vHeadDim != NUM_128 && fiaInfo.vHeadDim != NUM_64,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), " When learnable sink enable, the head dim(%u) of value should be in range of {128, 64}.", fiaInfo.vHeadDim) > 0) ? reason : " When learnable sink enable, the head dim(%u) of value should be in range of {128, 64}."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "value", (snprintf(reason, sizeof(reason), " When learnable sink enable, the head dim(%u) of value should be in range of {128, 64}.", fiaInfo.vHeadDim) > 0) ? reason : " When learnable sink enable, the head dim(%u) of value should be in range of {128, 64}.", " When learnable sink enable, the head dim(%u) of value should be in range of {128, 64}."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

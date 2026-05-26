@@ -55,7 +55,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
 
     // check dim num
     OP_CHECK_IF(blockTableShape.GetDimNum() != 2,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the dim num(%zu) of blockTable should be 2.", blockTableShape.GetDimNum()) > 0) ? reason : "When page attention enable, the dim num(%zu) of blockTable should be 2."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "block_table", (snprintf(reason, sizeof(reason), "When page attention enable, the dim num(%zu) of blockTable should be 2.", blockTableShape.GetDimNum()) > 0) ? reason : "When page attention enable, the dim num(%zu) of blockTable should be 2.", "When page attention enable, the dim num(%zu) of blockTable should be 2."); }),
             return ge::GRAPH_FAILED);
 
     // check blockTable each dim cannot be 0
@@ -73,7 +73,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaIn
             return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(fiaInfo.blockSize <= 0,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, blockSize(%d) should be > 0.", fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blockSize(%d) should be > 0."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, blockSize(%d) should be > 0.", fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blockSize(%d) should be > 0.", "When page attention enable, blockSize(%d) should be > 0."); }),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -152,7 +152,7 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
         uint32_t attenMaskDimNum = attenMaskShape.GetDimNum();
         OP_CHECK_IF(attenMaskDimNum > 0 &&
             (attenMaskShape.GetDim(attenMaskDimNum-1) < maxBlockNumPerBatch * fiaInfo.blockSize),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable and attenMask enable (sparseMode = %u), the last dimension of attenMask(%ld) shoule be greater than maxBlockNumPerBatch(%ld) * blockSize(%d).", fiaInfo.sparseMode, attenMaskShape.GetDim(attenMaskDimNum-1), maxBlockNumPerBatch, fiaInfo.blockSize) > 0) ? reason : "When page attention enable and attenMask enable (sparseMode = %u), the last dimension of attenMask(%ld) shoule be greate"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "atten_mask", (snprintf(reason, sizeof(reason), "When page attention enable and attenMask enable (sparseMode = %u), the last dimension of attenMask(%ld) shoule be greater than maxBlockNumPerBatch(%ld) * blockSize(%d).", fiaInfo.sparseMode, attenMaskShape.GetDim(attenMaskDimNum-1), maxBlockNumPerBatch, fiaInfo.blockSize) > 0) ? reason : "When page attention enable and attenMask enable (sparseMode = %u), the last dimension of attenMask(%ld) shoule be greater than maxBlockNumPerBatch(%ld) * blockSize(%d).", "When page attention enable and attenMask enable (sparseMode = %u), the last dimension of attenMask(%ld) shoule be greater than maxBlockNumPerBatch(%ld) * blockSize(%d)."); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -183,24 +183,24 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
         tempBlockSize = tempShape.GetDim(DIM_NUM_1);
         tempH = tempShape.GetDim(DIM_NUM_2);
         OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, blocksize of %s(%u) should be %u", inputName.c_str(), tempBlockSize, fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blocksize of %s(%u) should be %u"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, blocksize of %s(%u) should be %u", inputName.c_str(), tempBlockSize, fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blocksize of %s(%u) should be %u", "When page attention enable, blocksize of %s(%u) should be %u"); }),
             return ge::GRAPH_FAILED);
 
         if (fiaInfo.inputKvType == ge::DT_INT4) {
             OP_CHECK_IF(tempH != fiaInfo.n2Size * compareD,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, if input kv dataType is INT32, the axis H of %s(%u) should be %u, if input kv dataType is INT4, the axis H of %s(%u) should be %u", inputName.c_str(), tempH / NUM8, fiaInfo.n2Size * compareD / NUM8, inputName.c_str(), tempH, fiaInfo.n2Size * compareD) > 0) ? reason : "When page attention enable, if input kv dataType is INT32, the axis H of %s(%u) should be %u, if input kv dataType is IN"); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "input", fiaInfo.n2Size * compareD); }),
                 return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(tempH > H_LIMIT,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable and layout is BSH, if input kv dataType is INT32, the axis H of %s(%ld) should not > %u.if input kv dataType is INT4, the axis H of %s(%ld) should not > %u.", inputName.c_str(), tempH / NUM8, H_LIMIT / NUM8, inputName.c_str(), tempH, H_LIMIT) > 0) ? reason : "When page attention enable and layout is BSH, if input kv dataType is INT32, the axis H of %s(%ld) should not > %u.if in"); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable and layout is BSH, if input kv dataType is INT32, the axis H of %s(%ld) should not > %u.if input kv dataType is INT4, the axis H of %s(%ld) should not > %u.", inputName.c_str(), tempH / NUM8, H_LIMIT / NUM8, inputName.c_str(), tempH, H_LIMIT) > 0) ? reason : "When page attention enable and layout is BSH, if input kv dataType is INT32, the axis H of %s(%ld) should not > %u.if input kv dataType is INT4, the axis H of %s(%ld) should not > %u.", "When page attention enable and layout is BSH, if input kv dataType is INT32, the axis H of %s(%ld) should not > %u.if input kv dataType is INT4, the axis H of %s(%ld) should not > %u."); }),
                 return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(tempH != fiaInfo.n2Size * compareD,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis H(%u) of kvCache should be %u", tempH, fiaInfo.n2Size * compareD) > 0) ? reason : "When page attention enable, the axis H(%u) of kvCache should be %u"); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, the axis H(%u) of kvCache should be %u", tempH, fiaInfo.n2Size * compareD) > 0) ? reason : "When page attention enable, the axis H(%u) of kvCache should be %u", "When page attention enable, the axis H(%u) of kvCache should be %u"); }),
                 return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(tempH > H_LIMIT,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable and layout is BSH, the axis H of %s(%ld) should not > %u.", inputName.c_str(), tempH, H_LIMIT) > 0) ? reason : "When page attention enable and layout is BSH, the axis H of %s(%ld) should not > %u."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable and layout is BSH, the axis H of %s(%ld) should not > %u.", inputName.c_str(), tempH, H_LIMIT) > 0) ? reason : "When page attention enable and layout is BSH, the axis H of %s(%ld) should not > %u.", "When page attention enable and layout is BSH, the axis H of %s(%ld) should not > %u."); }),
                 return ge::GRAPH_FAILED);
         }
     } else if (shapeDim == DIM_NUM_4) { // [blockNums, N, blockSize, D] or [blockNums, blockSize, N, D]
@@ -209,20 +209,20 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
         tempD = tempShape.GetDim(DIM_NUM_3);
 
         OP_CHECK_IF(tempN != fiaInfo.n2Size,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis N(%u) of kvCache should be %u", tempN, fiaInfo.n2Size) > 0) ? reason : "When page attention enable, the axis N(%u) of kvCache should be %u"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, the axis N(%u) of kvCache should be %u", tempN, fiaInfo.n2Size) > 0) ? reason : "When page attention enable, the axis N(%u) of kvCache should be %u", "When page attention enable, the axis N(%u) of kvCache should be %u"); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, blocksize(%u) of kvCache should be %u", tempBlockSize, fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blocksize(%u) of kvCache should be %u"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, blocksize(%u) of kvCache should be %u", tempBlockSize, fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blocksize(%u) of kvCache should be %u", "When page attention enable, blocksize(%u) of kvCache should be %u"); }),
             return ge::GRAPH_FAILED);
         
         if (fiaInfo.inputKvType == ge::DT_INT4) {
             OP_CHECK_IF(tempD != compareD,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, if input kv dataType is INT32, the axis D of %s(%u) should be %u, if input kv dataType is INT4, the axis D of %s(%u) should be %u", inputName.c_str(), tempD / NUM8, compareD / NUM8, inputName.c_str(), tempD, compareD) > 0) ? reason : "When page attention enable, if input kv dataType is INT32, the axis D of %s(%u) should be %u, if input kv dataType is IN"); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "input", compareD); }),
                 return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(tempD != compareD,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis D of %s(%u) should be %u", inputName.c_str(), tempD, compareD) > 0) ? reason : "When page attention enable, the axis D of %s(%u) should be %u"); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, the axis D of %s(%u) should be %u", inputName.c_str(), tempD, compareD) > 0) ? reason : "When page attention enable, the axis D of %s(%u) should be %u", "When page attention enable, the axis D of %s(%u) should be %u"); }),
                 return ge::GRAPH_FAILED);
         }
     } else { // [blockNums, N, D1, blocksize, D0]
@@ -234,22 +234,22 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
         uint32_t d0Size = NUM_16; // D0 = 16
 
         OP_CHECK_IF(tempN != fiaInfo.n2Size,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis N of %s(%u) should be %u", inputName.c_str(), tempN, fiaInfo.n2Size) > 0) ? reason : "When page attention enable, the axis N of %s(%u) should be %u"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, the axis N of %s(%u) should be %u", inputName.c_str(), tempN, fiaInfo.n2Size) > 0) ? reason : "When page attention enable, the axis N of %s(%u) should be %u", "When page attention enable, the axis N of %s(%u) should be %u"); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, blocksize of %s(%u) should be %u", inputName.c_str(), tempBlockSize, fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blocksize of %s(%u) should be %u"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, blocksize of %s(%u) should be %u", inputName.c_str(), tempBlockSize, fiaInfo.blockSize) > 0) ? reason : "When page attention enable, blocksize of %s(%u) should be %u", "When page attention enable, blocksize of %s(%u) should be %u"); }),
             return ge::GRAPH_FAILED);
 
         if (enableAntiQuant_) {
             d0Size = NUM_16;
             if (fiaInfo.inputKvType == ge::DT_INT4) {
                 OP_CHECK_IF(tempD0 != d0Size,
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When PA_NZ enable, if input kv dataType is INT32, the last dim of kvCache(%u) should be %u; if input kv dataType is INT4, the last dim of %s(%u) should be %u", tempD0/NUM8, d0Size/NUM8, inputName.c_str(), tempD0, d0Size) > 0) ? reason : "When PA_NZ enable, if input kv dataType is INT32, the last dim of kvCache(%u) should be %u; if input kv dataType is INT4"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "input", d0Size); }),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(tempD0 != d0Size,
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When PA_NZ enable, the last dim of %s(%u) should be %u", inputName.c_str(), tempD0, d0Size) > 0) ? reason : "When PA_NZ enable, the last dim of %s(%u) should be %u"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When PA_NZ enable, the last dim of %s(%u) should be %u", inputName.c_str(), tempD0, d0Size) > 0) ? reason : "When PA_NZ enable, the last dim of %s(%u) should be %u", "When PA_NZ enable, the last dim of %s(%u) should be %u"); }),
                     return ge::GRAPH_FAILED);
             }
         } else {
@@ -271,12 +271,12 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
 
             d0Size = BYTE_BLOCK / dataTypeSizeValue;
             OP_CHECK_IF(tempD0 != d0Size,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When PA_NZ enable, in %s %s situation, the last dim of %s(%u) should be %u", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), inputName.c_str(), tempD0, d0Size) > 0) ? reason : "When PA_NZ enable, in %s %s situation, the last dim of %s(%u) should be %u"); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When PA_NZ enable, in %s %s situation, the last dim of %s(%u) should be %u", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), inputName.c_str(), tempD0, d0Size) > 0) ? reason : "When PA_NZ enable, in %s %s situation, the last dim of %s(%u) should be %u", "When PA_NZ enable, in %s %s situation, the last dim of %s(%u) should be %u"); }),
                 return ge::GRAPH_FAILED);
         }
 
         OP_CHECK_IF(tempD1 != compareD / d0Size,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When PA_NZ enable, in %s %s situation, the third dim of %s(%u) should be %u", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), inputName.c_str(), tempD1, compareD / d0Size) > 0) ? reason : "When PA_NZ enable, in %s %s situation, the third dim of %s(%u) should be %u"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When PA_NZ enable, in %s %s situation, the third dim of %s(%u) should be %u", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), inputName.c_str(), tempD1, compareD / d0Size) > 0) ? reason : "When PA_NZ enable, in %s %s situation, the third dim of %s(%u) should be %u", "When PA_NZ enable, in %s %s situation, the third dim of %s(%u) should be %u"); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -305,7 +305,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShape(const FiaTilingInfo 
     int64_t maxBlockNumPerBatch = GetMaxBlockNumPerBatch(fiaInfo);
     const gert::Shape blockTableShape = fiaInfo.opParamInfo.blockTable.tensor->GetStorageShape();
     OP_CHECK_IF(((blockTableShape.GetDim(0) != fiaInfo.bSize) || (blockTableShape.GetDim(1) < maxBlockNumPerBatch)),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, block table shape should be [%u, >=%ld], now is [%ld, %ld].", fiaInfo.bSize, maxBlockNumPerBatch, blockTableShape.GetDim(0), blockTableShape.GetDim(1)) > 0) ? reason : "When page attention enable, block table shape should be [%u, >=%ld], now is [%ld, %ld]."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When page attention enable, block table shape should be [%u, >=%ld], now is [%ld, %ld].", fiaInfo.bSize, maxBlockNumPerBatch, blockTableShape.GetDim(0), blockTableShape.GetDim(1)) > 0) ? reason : "When page attention enable, block table shape should be [%u, >=%ld], now is [%ld, %ld].", "When page attention enable, block table shape should be [%u, >=%ld], now is [%ld, %ld]."); }),
         return ge::GRAPH_FAILED);
 
     // check key cache shape
@@ -339,46 +339,46 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
             if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
                 OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range o"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
             } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
                 OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
             } else {
                 // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
                 OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be i"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
                 // GQA D != 64/128, QS = 1 [16, 512]且16对齐
                 OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX) > 0) ? reason : "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be i"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX) > 0) ? reason : "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
             }
         } else {
             if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
                 OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range o"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
             } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
                 OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
             } else {
                 // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
                 OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be i"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_MAX_FOR_NO_QUANT) > 0) ? reason : "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
                 // GQA D != 64/128, QS = 1 [16, 512]且16对齐
                 OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
                     fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
-                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX) > 0) ? reason : "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be i"); }),
+                    ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX) > 0) ? reason : "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u]."); }),
                     return ge::GRAPH_FAILED);
             }
         }
@@ -400,18 +400,18 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         // 伪量化, 与Dtype相关
         OP_CHECK_IF((fiaInfo.blockSize > BLOCK_SIZE_MAX || 
             fiaInfo.blockSize < blockSizeAlign || fiaInfo.blockSize % blockSizeAlign != 0),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In antiquant scenario, when page attention enable, if kvCache datatype is %s, blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].", DataTypeToSerialString(fiaInfo.inputKvType).c_str(), fiaInfo.blockSize, blockSizeAlign, blockSizeAlign, BLOCK_SIZE_MAX) > 0) ? reason : "In antiquant scenario, when page attention enable, if kvCache datatype is %s, blockSize(%d) should be a multiple of %u, "); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "input", BLOCK_SIZE_MAX); }),
             return ge::GRAPH_FAILED);
     } else { // 全量化
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.blockSize != NUM_128,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In MLA fullquant scenario, when page attention enable, blockSize(%d) should be 128.", fiaInfo.blockSize) > 0) ? reason : "In MLA fullquant scenario, when page attention enable, blockSize(%d) should be 128."); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In MLA fullquant scenario, when page attention enable, blockSize(%d) should be 128.", fiaInfo.blockSize) > 0) ? reason : "In MLA fullquant scenario, when page attention enable, blockSize(%d) should be 128.", "In MLA fullquant scenario, when page attention enable, blockSize(%d) should be 128."); }),
             return ge::GRAPH_FAILED);
 
         // mxfp8 仅支持blocksize等于512或者1024
         OP_CHECK_IF(
             fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT &&
             (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In MXFP8 fullquant scenario, when page attention enable, blockSize(%d) should be %u or %u.", fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8) > 0) ? reason : "In MXFP8 fullquant scenario, when page attention enable, blockSize(%d) should be %u or %u."); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "In MXFP8 fullquant scenario, when page attention enable, blockSize(%d) should be %u or %u.", fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8) > 0) ? reason : "In MXFP8 fullquant scenario, when page attention enable, blockSize(%d) should be %u or %u.", "In MXFP8 fullquant scenario, when page attention enable, blockSize(%d) should be %u or %u."); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -428,23 +428,23 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum == 3, ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "In MXFP8 fullquant scenario, PA BnBsH is not supported."); }),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
-        OP_CHECK_IF(dimNum == 4, ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable and input layout is %s, PA BnNBsD is not supported.", inputLayout.c_str()) > 0) ? reason : "When page attention enable and input layout is %s, PA BnNBsD is not supported."); }),
+        OP_CHECK_IF(dimNum == 4, ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "page_attention", inputLayout.c_str()); }),
             return ge::GRAPH_FAILED);
     }
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
         OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::BnBsH && (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In %s %s situation, the key/value's layout is BnBsH, query layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got %s", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()) > 0) ? reason : "In %s %s situation, the key/value's layout is BnBsH, query layout must be BSH, BSND, BNSD TND and TND in page attention "); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "page_attention", LayoutToSerialString(fiaInfo.qLayout).c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::BnNBsD && (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In %s %s situation, the key/value's layout is BnNBsD, query layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got %s", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()) > 0) ? reason : "In %s %s situation, the key/value's layout is BnNBsD, query layout must be BSH, BSND, BNSD TND and TND in page attention"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "page_attention", LayoutToSerialString(fiaInfo.qLayout).c_str()); }),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::NZ && (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In %s %s situation, the key/value's layout is BnNBsD, query layout must be BSH, BSND, BNSD TND and TND in page attention scene, but got %s", QuantModeToSerialString(fiaInfo.quantMode).c_str(), SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()) > 0) ? reason : "In %s %s situation, the key/value's layout is BnNBsD, query layout must be BSH, BSND, BNSD TND and TND in page attention"); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "page_attention", LayoutToSerialString(fiaInfo.qLayout).c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

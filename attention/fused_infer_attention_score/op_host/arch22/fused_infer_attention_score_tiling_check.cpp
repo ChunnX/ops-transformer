@@ -53,7 +53,7 @@ std::string FusedDataTypeToSerialString(ge::DataType type)
         return it->second;
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "datatype %d not support", type) > 0) ? reason : "datatype %d not support");
+        OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "input", type);
         return "UNDEFINED";
     }
 }

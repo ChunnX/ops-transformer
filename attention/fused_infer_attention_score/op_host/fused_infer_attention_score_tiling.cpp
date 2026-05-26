@@ -1141,13 +1141,13 @@ ge::graphStatus CheckFAILearnableSink(const gert::TilingContext *context)
 
     auto sinkDim = learnableSinkShape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(sinkDim != 1U,
-                ({ char reason[512] = {0}; OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "learnable_sink enable, sink shape dim(%u) must be 1!", sinkDim) > 0) ? reason : "learnable_sink enable, sink shape dim(%u) must be 1!"); }),
+                ({ char reason[512] = {0}; OP_LOGE(context->GetNodeName(), "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", context->GetNodeName(), "learnable_sink", (snprintf(reason, sizeof(reason), "learnable_sink enable, sink shape dim(%u) must be 1!", sinkDim) > 0) ? reason : "learnable_sink enable, sink shape dim(%u) must be 1!", "learnable_sink enable, sink shape dim(%u) must be 1!"); }),
                 return ge::GRAPH_FAILED);
 
     auto sinkDimValue = learnableSinkShape->GetStorageShape().GetDim(DIM_0);
     auto queryN = queryShape->GetStorageShape().GetDim(DIM_1);
     OP_CHECK_IF(sinkDimValue != queryN,
-                ({ char reason[512] = {0}; OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!", sinkDimValue, queryN) > 0) ? reason : "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!"); }),
+                ({ char reason[512] = {0}; OP_LOGE(context->GetNodeName(), "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", context->GetNodeName(), "query", (snprintf(reason, sizeof(reason), "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!", sinkDimValue, queryN) > 0) ? reason : "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!", "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!"); }),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((tempInnerPrecise == 1 || tempInnerPrecise == 2 || tempInnerPrecise == 3),

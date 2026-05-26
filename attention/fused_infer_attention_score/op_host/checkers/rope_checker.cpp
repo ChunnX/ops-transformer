@@ -38,11 +38,11 @@ ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF((fiaInfo.inputQRopeType != ge::DT_BF16 && fiaInfo.inputQRopeType != ge::DT_FLOAT16),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16.", DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()) > 0) ? reason : "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "query_rope", DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((fiaInfo.inputKRopeType != ge::DT_BF16 && fiaInfo.inputKRopeType != ge::DT_FLOAT16),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When rope exist, the datatype(%s) of keyRope only support BF16 or FLOAT16.", DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()) > 0) ? reason : "When rope exist, the datatype(%s) of keyRope only support BF16 or FLOAT16."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data type of [%s] is not supported, got [%s]", fiaInfo.opName, "key_rope", DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -54,7 +54,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF((fiaInfo.ropeHeadDim != NUM_64),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When rope exist, the d size of rope must be 64, but current is %u.", fiaInfo.ropeHeadDim) > 0) ? reason : "When rope exist, the d size of rope must be 64, but current is %u."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "When rope exist, the d size of rope must be 64, but current is %u.", fiaInfo.ropeHeadDim) > 0) ? reason : "When rope exist, the d size of rope must be 64, but current is %u.", "When rope exist, the d size of rope must be 64, but current is %u."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -63,11 +63,11 @@ ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
     if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In MXFP8 fullquant scenario, when rope exist, the d size of query and key must be 64 or 128, but current is %u.", fiaInfo.qkHeadDim) > 0) ? reason : "In MXFP8 fullquant scenario, when rope exist, the d size of query and key must be 64 or 128, but current is %u."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), "In MXFP8 fullquant scenario, when rope exist, the d size of query and key must be 64 or 128, but current is %u.", fiaInfo.qkHeadDim) > 0) ? reason : "In MXFP8 fullquant scenario, when rope exist, the d size of query and key must be 64 or 128, but current is %u.", "In MXFP8 fullquant scenario, when rope exist, the d size of query and key must be 64 or 128, but current is %u."); }),
         return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", fiaInfo.qkHeadDim) > 0) ? reason : "When rope exist, the d size of query and key must be 128 or 512, but current is %u."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", fiaInfo.qkHeadDim) > 0) ? reason : "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", "When rope exist, the d size of query and key must be 128 or 512, but current is %u."); }),
         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -103,10 +103,10 @@ ge::graphStatus RopeChecker::CheckRopeDtypeConsistency(const FiaTilingInfo &fiaI
 {
     if (enableNonQuant_) {
         OP_CHECK_IF((fiaInfo.inputQRopeType != fiaInfo.inputQType),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The datatype of query rope(%s) should be equal to query(%s).", DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()) > 0) ? reason : "The datatype of query rope(%s) should be equal to query(%s)."); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data types of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), "The datatype of query rope(%s) should be equal to query(%s).", DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()) > 0) ? reason : "The datatype of query rope(%s) should be equal to query(%s)."); }),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.inputKRopeType != fiaInfo.inputKvType),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The datatype of key rope(%s) should be equal to key(%s).", DataTypeToSerialString(fiaInfo.inputKRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputKvType).c_str()) > 0) ? reason : "The datatype of key rope(%s) should be equal to key(%s)."); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the data types of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The datatype of key rope(%s) should be equal to key(%s).", DataTypeToSerialString(fiaInfo.inputKRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputKvType).c_str()) > 0) ? reason : "The datatype of key rope(%s) should be equal to key(%s)."); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -124,12 +124,12 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
     const uint32_t ropeDimNum = ropeShape.GetDimNum();
 
     OP_CHECK_IF(dimNum != ropeDimNum,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The dim num of %s(%u) should be equal to %s(%u).", inputRopeName.c_str(), ropeDimNum, inputName.c_str(), dimNum) > 0) ? reason : "The dim num of %s(%u) should be equal to %s(%u)."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "The dim num of %s(%u) should be equal to %s(%u).", inputRopeName.c_str(), ropeDimNum, inputName.c_str(), dimNum) > 0) ? reason : "The dim num of %s(%u) should be equal to %s(%u)."); }),
         return ge::GRAPH_FAILED);
     
     for (uint32_t i = 0; i < dimNum - 1; i++) {
         OP_CHECK_IF(shape.GetDim(i) != ropeShape.GetDim(i),
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The %uth dim of %s(%ld) should be equal to %s(%ld).", i, inputRopeName.c_str(), ropeShape.GetDim(i), inputName.c_str(), shape.GetDim(i)) > 0) ? reason : "The %uth dim of %s(%ld) should be equal to %s(%ld)."); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "The %uth dim of %s(%ld) should be equal to %s(%ld).", i, inputRopeName.c_str(), ropeShape.GetDim(i), inputName.c_str(), shape.GetDim(i)) > 0) ? reason : "The %uth dim of %s(%ld) should be equal to %s(%ld)."); }),
             return ge::GRAPH_FAILED);
     }
 
@@ -137,7 +137,7 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
         uint32_t tmpN = static_cast<uint32_t>(shape.GetDim(dimNum - 1) / fiaInfo.qkHeadDim);
         uint32_t ropeN = static_cast<uint32_t>(ropeShape.GetDim(ropeDimNum - 1) / fiaInfo.ropeHeadDim);
         OP_CHECK_IF(tmpN != ropeN,
-            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis N of %s(%u) should be equal to %s(%u).", inputRopeName.c_str(), ropeN, inputName.c_str(), tmpN) > 0) ? reason : "The axis N of %s(%u) should be equal to %s(%u)."); }),
+            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "The axis N of %s(%u) should be equal to %s(%u).", inputRopeName.c_str(), ropeN, inputName.c_str(), tmpN) > 0) ? reason : "The axis N of %s(%u) should be equal to %s(%u)."); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -154,7 +154,7 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
     const uint32_t keyDimNum = keyShape.GetDimNum();
     const uint32_t keyRopeDimNum = keyRopeShape.GetDimNum();
     OP_CHECK_IF(keyDimNum != keyRopeDimNum,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The dim num of keyRope(%u) should be equal to key(%u).", keyRopeDimNum, keyDimNum) > 0) ? reason : "The dim num of keyRope(%u) should be equal to key(%u)."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The dim num of keyRope(%u) should be equal to key(%u).", keyRopeDimNum, keyDimNum) > 0) ? reason : "The dim num of keyRope(%u) should be equal to key(%u)."); }),
         return ge::GRAPH_FAILED);
 
     uint32_t keyBlockNum = 0;
@@ -188,13 +188,13 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
     }
 
     OP_CHECK_IF(keyBlockNum != keyRopeBlockNum,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis blockNum of keyRope(%u) should be equal to key(%u).", keyRopeBlockNum, keyBlockNum) > 0) ? reason : "When page attention enable, the axis blockNum of keyRope(%u) should be equal to key(%u)."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "When page attention enable, the axis blockNum of keyRope(%u) should be equal to key(%u).", keyRopeBlockNum, keyBlockNum) > 0) ? reason : "When page attention enable, the axis blockNum of keyRope(%u) should be equal to key(%u)."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyBlockSize != keyRopeBlockSize,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis blockSize of keyRope(%u) should be equal to key(%u).", keyRopeBlockSize, keyBlockSize) > 0) ? reason : "When page attention enable, the axis blockSize of keyRope(%u) should be equal to key(%u)."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "When page attention enable, the axis blockSize of keyRope(%u) should be equal to key(%u).", keyRopeBlockSize, keyBlockSize) > 0) ? reason : "When page attention enable, the axis blockSize of keyRope(%u) should be equal to key(%u)."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(keyN != keyRopeN,
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "When page attention enable, the axis N of keyRope(%u) should be equal to key(%u).", keyRopeN, keyN) > 0) ? reason : "When page attention enable, the axis N of keyRope(%u) should be equal to key(%u)."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "When page attention enable, the axis N of keyRope(%u) should be equal to key(%u).", keyRopeN, keyN) > 0) ? reason : "When page attention enable, the axis N of keyRope(%u) should be equal to key(%u)."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -213,7 +213,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
     // b = len(kCache)
     const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
     OP_CHECK_IF(fiaInfo.kCache.size() != keyRopeShape.GetDim(DIM_NUM_0),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis B of keyRope(%u) should be equal to the tensor number of key(%u).", keyRopeShape.GetDim(DIM_NUM_0), fiaInfo.kCache.size()) > 0) ? reason : "The axis B of keyRope(%u) should be equal to the tensor number of key(%u)."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis B of keyRope(%u) should be equal to the tensor number of key(%u).", keyRopeShape.GetDim(DIM_NUM_0), fiaInfo.kCache.size()) > 0) ? reason : "The axis B of keyRope(%u) should be equal to the tensor number of key(%u)."); }),
         return ge::GRAPH_FAILED);
 
     // k_s = krope_s
@@ -226,10 +226,10 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeS,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis S of keyRope(%ld) should be equal to key(%ld).", keyRopeS, keyShape.GetDim(DIM_NUM_2)) > 0) ? reason : "The axis S of keyRope(%ld) should be equal to key(%ld)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis S of keyRope(%ld) should be equal to key(%ld).", keyRopeS, keyShape.GetDim(DIM_NUM_2)) > 0) ? reason : "The axis S of keyRope(%ld) should be equal to key(%ld)."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeN,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis N of keyRope(%ld) should be equal to key(%ld).", keyRopeN, keyShape.GetDim(DIM_NUM_1)) > 0) ? reason : "The axis N of keyRope(%ld) should be equal to key(%ld)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis N of keyRope(%ld) should be equal to key(%ld).", keyRopeN, keyShape.GetDim(DIM_NUM_1)) > 0) ? reason : "The axis N of keyRope(%ld) should be equal to key(%ld)."); }),
                 return ge::GRAPH_FAILED);
         }
     } else if (inputLayout == "BSH") {
@@ -238,10 +238,10 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis S of keyRope(%ld) should be equal to key(%ld).", keyRopeS, keyShape.GetDim(DIM_NUM_1)) > 0) ? reason : "The axis S of keyRope(%ld) should be equal to key(%ld)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis S of keyRope(%ld) should be equal to key(%ld).", keyRopeS, keyShape.GetDim(DIM_NUM_1)) > 0) ? reason : "The axis S of keyRope(%ld) should be equal to key(%ld)."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis N of keyRope(%ld) should be equal to key(%ld).", keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim) > 0) ? reason : "The axis N of keyRope(%ld) should be equal to key(%ld)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis N of keyRope(%ld) should be equal to key(%ld).", keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim) > 0) ? reason : "The axis N of keyRope(%ld) should be equal to key(%ld)."); }),
                 return ge::GRAPH_FAILED);
         }
     } else if (inputLayout == "BSND") {
@@ -250,10 +250,10 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis S of keyRope(%ld) should be equal to key(%ld).", keyRopeS, keyShape.GetDim(DIM_NUM_1)) > 0) ? reason : "The axis S of keyRope(%ld) should be equal to key(%ld)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis S of keyRope(%ld) should be equal to key(%ld).", keyRopeS, keyShape.GetDim(DIM_NUM_1)) > 0) ? reason : "The axis S of keyRope(%ld) should be equal to key(%ld)."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeN,
-                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "The axis N of keyRope(%ld) should be equal to key(%ld).", keyRopeN, keyShape.GetDim(DIM_NUM_2)) > 0) ? reason : "The axis N of keyRope(%ld) should be equal to key(%ld)."); }),
+                ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "The axis N of keyRope(%ld) should be equal to key(%ld).", keyRopeN, keyShape.GetDim(DIM_NUM_2)) > 0) ? reason : "The axis N of keyRope(%ld) should be equal to key(%ld)."); }),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -359,11 +359,11 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
     
 
     OP_CHECK_IF((fiaInfo.s1Size < NUM1),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0.", fiaInfo.s1Size) > 0) ? reason : "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0.", fiaInfo.s1Size) > 0) ? reason : "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0.", "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0."); }),
         return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(enableFullQuant_ && (fiaInfo.s1Size > maxQuerySeqLenForMLAFullquant),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u].", fiaInfo.s1Size, maxQuerySeqLenForMLAFullquant) > 0) ? reason : "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u]."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u].", fiaInfo.s1Size, maxQuerySeqLenForMLAFullquant) > 0) ? reason : "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u].", "In the Decode MLA fullquant scenario, sequence length(%u) of query should be in range of [1, %u]."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -376,11 +376,11 @@ ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo)
     }
     static const std::set<uint32_t> supportNumHeadForMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
     OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In the Decode MLA scenario, the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}.", fiaInfo.n1Size) > 0) ? reason : "In the Decode MLA scenario, the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "query", (snprintf(reason, sizeof(reason), "In the Decode MLA scenario, the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}.", fiaInfo.n1Size) > 0) ? reason : "In the Decode MLA scenario, the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}.", "In the Decode MLA scenario, the heads num(%u) of query should be in range of {1, 2, 4, 8, 16, 32, 64, 128}."); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((*fiaInfo.opParamInfo.kvHeadNums != NUM1),
-        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "In the Decode MLA scenario, the heads num(%d) of key should be 1.", *fiaInfo.opParamInfo.kvHeadNums) > 0) ? reason : "In the Decode MLA scenario, the heads num(%d) of key should be 1."); }),
+        ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "key", (snprintf(reason, sizeof(reason), "In the Decode MLA scenario, the heads num(%d) of key should be 1.", *fiaInfo.opParamInfo.kvHeadNums) > 0) ? reason : "In the Decode MLA scenario, the heads num(%d) of key should be 1.", "In the Decode MLA scenario, the heads num(%d) of key should be 1."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -108,12 +108,12 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
 
         if (queryShape->GetDimNum() != queryDim) {
             char reason[512] = {0};
-            OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Layout %s, query's dim(%zu) must be %zu!", queryLayout.c_str(), queryShape->GetDimNum(), queryDim) > 0) ? reason : "Layout %s, query's dim(%zu) must be %zu!");
+            OP_LOGE("FusedInferAttentionScore", "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", "FusedInferAttentionScore", "query", (snprintf(reason, sizeof(reason), "Layout %s, query's dim(%zu) must be %zu!", queryLayout.c_str(), queryShape->GetDimNum(), queryDim) > 0) ? reason : "Layout %s, query's dim(%zu) must be %zu!", "%zu");
             return ge::GRAPH_FAILED;
         }
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Only support layout BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, but got %s.", *inputLayoutPtr) > 0) ? reason : "Only support layout BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, ");
+        OP_LOGE("FusedInferAttentionScore", "In op [%s], [%s] is not supported, got [%s]", "FusedInferAttentionScore", "input_layout", *inputLayoutPtr);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -150,7 +150,7 @@ static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
         d1 = (*queryShape)[FIA_LAYOUT_DIM2];
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Layout %s is not supported in GetQueryBSND function!", queryLayout.c_str()) > 0) ? reason : "Layout %s is not supported in GetQueryBSND function!");
+        OP_LOGE("FusedInferAttentionScore", "In op [%s], [%s] is not supported, got [%s]", "FusedInferAttentionScore", "feature", queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -170,7 +170,7 @@ static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
         d1 = (*queryShape)[FIA_LAYOUT_DIM2];
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Layout %s is not supported in GetQueryTND function!", queryLayout.c_str()) > 0) ? reason : "Layout %s is not supported in GetQueryTND function!");
+        OP_LOGE("FusedInferAttentionScore", "In op [%s], [%s] is not supported, got [%s]", "FusedInferAttentionScore", "feature", queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -191,13 +191,13 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
             valueD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
         } else {
             char reason[512] = {0};
-            OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.", valueShape->GetDimNum()) > 0) ? reason : "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.");
+            OP_LOGE("FusedInferAttentionScore", "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", "FusedInferAttentionScore", "value", (snprintf(reason, sizeof(reason), "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.", valueShape->GetDimNum()) > 0) ? reason : "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.", "3/4/5");
             return ge::GRAPH_FAILED;
         }
     } else { // 非PA场景
         if (valueShape->GetDimNum() != queryShape->GetDimNum()) {
             char reason[512] = {0};
-            OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!", valueShape->GetDimNum(), queryShape->GetDimNum()) > 0) ? reason : "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!");
+            OP_LOGE("FusedInferAttentionScore", "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", "FusedInferAttentionScore", "query", (snprintf(reason, sizeof(reason), "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!", valueShape->GetDimNum(), queryShape->GetDimNum()) > 0) ? reason : "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!", "see operator documentation");
             return ge::GRAPH_FAILED;
         }
         if (queryLayout == "BSH") {
@@ -393,7 +393,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
             if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
                 char reason[512] = {0};
-                OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "Fia graph mode do not support post quant output data type: %s.", it->second.c_str()) > 0) ? reason : "Fia graph mode do not support post quant output data type: %s.");
+                OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "input", it->second.c_str());
                 return ge::GRAPH_FAILED;
             }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);

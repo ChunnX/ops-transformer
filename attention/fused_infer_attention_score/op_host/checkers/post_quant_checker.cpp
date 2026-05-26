@@ -108,18 +108,18 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
         if (quantScale2Dim == 1) {
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != 1U),
-                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "For post quant per-tensor, quant scale/offset only support [1], now is [%d]", quantScale2ShapeSize) > 0) ? reason : "For post quant per-tensor, quant scale/offset only support [1], now is [%d]"); }),
+                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "For post quant per-tensor, quant scale/offset only support [1], now is [%d]", quantScale2ShapeSize) > 0) ? reason : "For post quant per-tensor, quant scale/offset only support [1], now is [%d]", "For post quant per-tensor, quant scale/offset only support [1], now is [%d]"); }),
                             return ge::GRAPH_FAILED);
             }
         } else {
             if (isSupportedLayout) {
                 OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel),
-                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply result only support support qN * vD(%u * %u = %lu), now is (%ld).", layoutString.c_str(), numHeads, fiaInfo.vHeadDim, quantScale2ShapeSizePerChannel, quantScale2ShapeSize) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 dim multiply result only support support qN * vD"); }),
+                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "input_layout", layoutString.c_str()); }),
                             return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape() !=
                                 gert::Shape({numHeads, fiaInfo.vHeadDim}),
-                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u].", layoutString.c_str(), numHeads, fiaInfo.vHeadDim) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u]."); }),
+                            ({ char reason[512] = {0}; OP_LOGE(fiaInfo.opName, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", fiaInfo.opName, "input", (snprintf(reason, sizeof(reason), "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u].", layoutString.c_str(), numHeads, fiaInfo.vHeadDim) > 0) ? reason : "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u].", "For post quant per-channel, when layout is %s, quantScale2/quantOffset2 expect shape is [%u, %u]."); }),
                             return ge::GRAPH_FAILED);
             }
         }

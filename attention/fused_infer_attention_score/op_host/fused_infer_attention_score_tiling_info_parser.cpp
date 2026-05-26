@@ -96,7 +96,7 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
         (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() != 0 &&
          opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() == 0)) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while the other is not", opParamInfo_.query.shape->GetStorageShape().GetShapeSize(), opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize()) > 0) ? reason : "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while the other is not");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "query", (snprintf(reason, sizeof(reason), "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while the other is not", opParamInfo_.query.shape->GetStorageShape().GetShapeSize(), opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize()) > 0) ? reason : "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while the other is not", "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while the other is not");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0 &&
@@ -108,7 +108,7 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
         if ((opParamInfo_.lseOut.shape == nullptr) ||
             (opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize() == 0)) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "lse Flag is %u, but lse shape size is 0 byte", *opParamInfo_.softmaxLseFlag) > 0) ? reason : "lse Flag is %u, but lse shape size is 0 byte");
+            OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "lse Flag is %u, but lse shape size is 0 byte", *opParamInfo_.softmaxLseFlag) > 0) ? reason : "lse Flag is %u, but lse shape size is 0 byte", "lse Flag is %u, but lse shape size is 0 byte");
             return ge::GRAPH_FAILED;
         }
     }
@@ -161,13 +161,13 @@ ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(), ACTUAL_SEQ_Q_LEN_NAME.c_str()) > 0) ? reason : "when %s's layout is %s, %s must be provided.");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(), LayoutToSerialString(qLayout_).c_str(), ACTUAL_SEQ_Q_LEN_NAME.c_str()) > 0) ? reason : "when %s's layout is %s, %s must be provided.", "when %s's layout is %s, %s must be provided.");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
     if (shapeSize <= 0) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s's shape size is %ld, it should be greater than 0.", ACTUAL_SEQ_Q_LEN_NAME.c_str(), shapeSize) > 0) ? reason : "%s's shape size is %ld, it should be greater than 0.");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "%s's shape size is %ld, it should be greater than 0.", ACTUAL_SEQ_Q_LEN_NAME.c_str(), shapeSize) > 0) ? reason : "%s's shape size is %ld, it should be greater than 0.", "%s's shape size is %ld, it should be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -629,7 +629,7 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
             kvLayout_ = FiaLayout::NZ;
         } else {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.", KEY_NAME.c_str(), keyDimNum) > 0) ? reason : "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.");
+            OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.", KEY_NAME.c_str(), keyDimNum) > 0) ? reason : "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.", "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -715,7 +715,7 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
         uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
         if (dimNum != 2U) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum) > 0) ? reason : "the dim num of %s is %u, it should be 2.");
+            OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum) > 0) ? reason : "the dim num of %s is %u, it should be 2.", "the dim num of %s is %u, it should be 2.");
             return ge::GRAPH_FAILED;
         }
         maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -754,7 +754,7 @@ ge::graphStatus FiaInfoParser::GetBlockSize()
     blockSize_ = *(opParamInfo_.blockSize);
     if (blockSize_ <= 0) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "blockSize is %d, it should be > 0.", blockSize_) > 0) ? reason : "blockSize is %d, it should be > 0.");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "blockSize is %d, it should be > 0.", blockSize_) > 0) ? reason : "blockSize is %d, it should be > 0.", "blockSize is %d, it should be > 0.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -765,7 +765,7 @@ ge::graphStatus FiaInfoParser::GetBlockTableDim2()
     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
     if (dimNum != 2U) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum) > 0) ? reason : "the dim num of %s is %u, it should be 2.");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum) > 0) ? reason : "the dim num of %s is %u, it should be 2.", "the dim num of %s is %u, it should be 2.");
         return ge::GRAPH_FAILED;
     }
     blockTableDim2_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -830,12 +830,12 @@ ge::graphStatus FiaInfoParser::GetRopeMode()
     }
     if (qkHeadDim_ < vHeadDim_) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)", qkHeadDim_, vHeadDim_) > 0) ? reason : "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "query", (snprintf(reason, sizeof(reason), "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)", qkHeadDim_, vHeadDim_) > 0) ? reason : "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)", "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)");
         return ge::GRAPH_FAILED;
     } else if (qkHeadDim_ > vHeadDim_) {
         if (existSplitRopeTensor) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ", QUERY_ROPE_NAME.c_str(), qkHeadDim_, vHeadDim_) > 0) ? reason : "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ");
+            OP_LOGE(opName_, "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]", opName_, "query, value", (snprintf(reason, sizeof(reason), "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ", QUERY_ROPE_NAME.c_str(), qkHeadDim_, vHeadDim_) > 0) ? reason : "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ");
             return ge::GRAPH_FAILED;
         } else {
             ropeMode_ = RopeMode::ROPE_COMBINE;
@@ -931,7 +931,7 @@ ge::graphStatus FiaInfoParser::GetN1Size()
     int32_t numHeads = *(opParamInfo_.numHeads);
     if (numHeads <= 0) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s is %d, it should be greater than 0.", QUERY_HEADS_NUM_NAME.c_str(), numHeads) > 0) ? reason : "%s is %d, it should be greater than 0.");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "%s is %d, it should be greater than 0.", QUERY_HEADS_NUM_NAME.c_str(), numHeads) > 0) ? reason : "%s is %d, it should be greater than 0.", "%s is %d, it should be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     n1Size_ = static_cast<uint32_t>(numHeads);
@@ -944,7 +944,7 @@ ge::graphStatus FiaInfoParser::GetN2Size()
     int32_t kvHeadNums = *(opParamInfo_.kvHeadNums);
     if (kvHeadNums < 0) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s is %d, it should be greater than or equal to 0.", KV_HEADS_NUM_NAME.c_str(), kvHeadNums) > 0) ? reason : "%s is %d, it should be greater than or equal to 0.");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "%s is %d, it should be greater than or equal to 0.", KV_HEADS_NUM_NAME.c_str(), kvHeadNums) > 0) ? reason : "%s is %d, it should be greater than or equal to 0.", "%s is %d, it should be greater than or equal to 0.");
         return ge::GRAPH_FAILED;
     }
     n2Size_ = (kvHeadNums == 0) ? n1Size_ : static_cast<uint32_t>(kvHeadNums);
@@ -965,7 +965,7 @@ ge::graphStatus FiaInfoParser::GetGSize()
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
         char reason[512] = {0};
-        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s(%u) should be a multiple of %s(%u).", QUERY_HEADS_NUM_NAME.c_str(), n1Size_, KV_HEADS_NUM_NAME.c_str(), n2Size_) > 0) ? reason : "%s(%u) should be a multiple of %s(%u).");
+        OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "%s(%u) should be a multiple of %s(%u).", QUERY_HEADS_NUM_NAME.c_str(), n1Size_, KV_HEADS_NUM_NAME.c_str(), n2Size_) > 0) ? reason : "%s(%u) should be a multiple of %s(%u).", "%s(%u) should be a multiple of %s(%u).");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -985,7 +985,7 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskStride_ = 1;
         } else {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "When layout is TND/NTD, Tree mask(%u) matrix dim only support 1.", *opParamInfo_.sparseMode) > 0) ? reason : "When layout is TND/NTD, Tree mask(%u) matrix dim only support 1.");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", *opParamInfo_.sparseMode);
         }
     } else {
         if (maskDimNum == 3U) {
@@ -994,7 +994,7 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.", *opParamInfo_.sparseMode) > 0) ? reason : "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "input_layout", *opParamInfo_.sparseMode);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1030,20 +1030,20 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
         if (systemPrefixFlag_) {
             if (tmpAntiquant.GetDimNum() != 5) {
                 char reason[512] = {0};
-                OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.", tmpAntiquant.GetDimNum()) > 0) ? reason : "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.");
+                OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.", tmpAntiquant.GetDimNum()) > 0) ? reason : "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.", "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.");
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
     } else if (tmpAntiquantMode == 1) {
         if (tmpAntiquant.GetDimNum() != 2 && tmpAntiquant.GetDimNum() != 3) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.", tmpAntiquant.GetDimNum()) > 0) ? reason : "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.");
+            OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.", tmpAntiquant.GetDimNum()) > 0) ? reason : "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.", "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.");
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
         if (tmpAntiquant.GetDimNum() != 3) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.", tmpAntiquant.GetDimNum()) > 0) ? reason : "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.");
+            OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.", tmpAntiquant.GetDimNum()) > 0) ? reason : "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.", "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.");
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
     }
@@ -1056,7 +1056,7 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
     if (attenMaskFlag_) {
         if (*opParamInfo_.sparseMode == 9U && npuArch_ == NpuArch::DAV_3510) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "NpuArch[%d] currently does not support sparse9.", static_cast<int32_t>(npuArch_)) > 0) ? reason : "NpuArch[%d] currently does not support sparse9.");
+            OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "sparse_mode", static_cast<int32_t>(npuArch_));
             return ge::GRAPH_FAILED;
         }
         if (*opParamInfo_.sparseMode == 9U) {
@@ -1132,7 +1132,7 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
         OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
-                    ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "PseType(%ld) is not supported, pseType must be 0.", pseType_) > 0) ? reason : "PseType(%ld) is not supported, pseType must be 0."); }),
+                    ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], [%s] is not supported, got [%s]", opName_, "feature", pseType_); }),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
