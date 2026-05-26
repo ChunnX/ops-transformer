@@ -16,6 +16,7 @@
 
 namespace Ops {
 namespace Transformer {
+namespace Gmm {
 constexpr std::size_t FORMAT_STRING_BUFFER_SIZE = 1024U;
 
 inline std::string FormatString(const char *format, ...)
@@ -31,7 +32,6 @@ inline std::string FormatString(const char *format, ...)
     return std::string(buffer);
 }
 
+} // namespace Gmm
 } // namespace Transformer
 } // namespace Ops
-
-using Ops::Transformer::FormatString;
