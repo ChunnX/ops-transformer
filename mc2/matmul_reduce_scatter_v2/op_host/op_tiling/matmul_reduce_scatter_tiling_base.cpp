@@ -540,8 +540,8 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 };
 
-void MatmulReduceScatterTilingBase::SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg, 
-                                                   ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
+void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg,
+                                                   const ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling,
                                                    uint32_t debugMode)
 {
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算

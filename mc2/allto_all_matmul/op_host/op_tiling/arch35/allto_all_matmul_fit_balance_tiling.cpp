@@ -12,7 +12,6 @@
  * \file allto_all_matmul_fit_balance_tiling.cpp
  * \brief Arch35 formulaic tiling implementation for AlltoAllMatmul
  */
-#include <iostream>
 #include <vector>
 #include "mc2_log.h"
 #include "./allto_all_matmul_fit_balance_tiling.h"

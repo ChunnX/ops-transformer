@@ -92,9 +92,9 @@ aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchSetupGetWorkspaceSize(
-        x, expertIds, scalesOptional, xActiveMaskOptional, const_cast<char*>(groupEp), epWorldSize, epRankId,
+        x, expertIds, scalesOptional, xActiveMaskOptional, groupEp, epWorldSize, epRankId,
         moeExpertNum, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, commType,
-        const_cast<char*>(commAlg), yOut, expandIdxOut, commCmdInfoOut, workspaceSize, executor);
+        commAlg, yOut, expandIdxOut, commCmdInfoOut, workspaceSize, executor);
     return ret;
 }
 

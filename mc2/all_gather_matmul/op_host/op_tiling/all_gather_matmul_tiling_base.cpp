@@ -13,6 +13,7 @@
  * \brief
  */
 #include "all_gather_matmul_tiling_base.h"
+#include "ops_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -133,7 +134,7 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
 
 static bool CheckOutputParamDim0(gert::TilingContext* context)
 {
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
+    const Mc2Tiling::AllGatherMatmulTilingData* tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     auto outputShape = context->GetOutputShape(OUTPUT_IDX);
     uint64_t outputDim0 = outputShape->GetStorageShape().GetDim(DIM0_IDX);
     const gert::StorageShape* x1Shape = context->GetInputShape(INPUT_X1_IDX);
@@ -263,7 +264,7 @@ ge::graphStatus AllGatherMatmulTilingBase::MCSpliteM(gert::TilingContext* ctx,
     return ge::GRAPH_SUCCESS;
 }
 
-static void UpdateTilingKey(uint64_t& tilingKey, Mc2Tiling::AllGatherMatmulTilingData& tilingData, bool isBias)
+static void UpdateTilingKey(uint64_t& tilingKey, const Mc2Tiling::AllGatherMatmulTilingData& tilingData, bool isBias)
 {
     bool allGatherMatmulFullMesh = true;
     bool allGatherMatmulNd2nzOpt = false;

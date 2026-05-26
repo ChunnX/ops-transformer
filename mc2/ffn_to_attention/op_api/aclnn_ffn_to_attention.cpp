@@ -75,7 +75,7 @@ aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(const aclTensor* x, const aclTen
     auto retParam = CheckParams(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets,
-        actualTokenNum, attnRankTable, const_cast<char*>(group), worldSize, tokenInfoTableShape, tokenDataShape,
+        actualTokenNum, attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape,
         workspaceSize, executor);
     return ret;
 }
