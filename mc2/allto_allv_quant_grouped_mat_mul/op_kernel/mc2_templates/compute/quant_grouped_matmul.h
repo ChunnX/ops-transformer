@@ -81,8 +81,7 @@ public:
         }
     }
 
-    // 11-param overload for backward compatibility with quantgmmalltoallv
-    // In that context: param5(yGM)=workspaceGM_full, param6(workspaceGM)=gmmGroupListGM
+    // 11-param overload for backward compatibility
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM,
         GM_ADDR yGM, GM_ADDR workspaceGM,
         const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
