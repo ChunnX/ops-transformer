@@ -22,20 +22,36 @@
 #include "op_common/log/log.h"
 
 #undef OpLogErrSub
+#undef OpLogSub
 #undef D_OP_LOGE
+#undef D_OP_LOGD
+#undef D_OP_LOGW
+#undef D_OP_LOGI
 #undef OP_LOGE_WITHOUT_REPORT
 #undef OP_LOGE
+#undef OP_LOGD
+#undef OP_LOGW
+#undef OP_LOGI
 
 #define OpLogErrSub(moduleId, level, op_info, errno, fmt, ...)                                                  \
     DOplogSub(static_cast<int32_t>(moduleId), OPAPI_SUBMOD_NAME, level, "[%s][%lu] errno[%d] %s" fmt,           \
             __FUNCTION__, op::OpLog::GetTid(), errno, op_info, ##__VA_ARGS__)
+#define OpLogSub(moduleId, level, opname, fmt, ...)                                                             \
+    DOplogSub(static_cast<int32_t>(moduleId), OPAPI_SUBMOD_NAME, level, "[%s][%lu] OpName:[%s] " fmt,           \
+            __FUNCTION__, op::OpLog::GetTid(), opname, ##__VA_ARGS__)
 #define D_OP_LOGE(opname, errno, fmt, ...) OpLogErrSub(OP_ID, OP_LOG_ERROR, opname, errno, fmt, ##__VA_ARGS__)
+#define D_OP_LOGD(opname, fmt, ...) OpLogSub(OP_ID, OP_LOG_DEBUG, opname, fmt, ##__VA_ARGS__)
+#define D_OP_LOGW(opname, fmt, ...) OpLogSub(OP_ID, OP_LOG_WARN, opname, fmt, ##__VA_ARGS__)
+#define D_OP_LOGI(opname, fmt, ...) OpLogSub(OP_ID, OP_LOG_INFO, opname, fmt, ##__VA_ARGS__)
 #define OP_LOGE_WITHOUT_REPORT(errno, ...) D_OP_LOGE(GetOpName().c_str(), errno, __VA_ARGS__)
 #define OP_LOGE(errno, ...)                                                                                     \
     do {                                                                                                         \
         OP_LOGE_WITHOUT_REPORT(errno, __VA_ARGS__);                                                             \
         REPORT_ERROR_MESSAGE(errno, __VA_ARGS__);                                                               \
     } while (false)
+#define OP_LOGD(...) D_OP_LOGD(GetOpName().c_str(), __VA_ARGS__)
+#define OP_LOGW(...) D_OP_LOGW(GetOpName().c_str(), __VA_ARGS__)
+#define OP_LOGI(...) D_OP_LOGI(GetOpName().c_str(), __VA_ARGS__)
 
 using namespace op;
 
@@ -431,15 +447,16 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
         std::string dtypeStr = op::ToString(DataType(qDtype)).GetString();
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
             "query, key and value", dtypeStr.c_str(),
-            "The dtype of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
+            "The dtypes of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (pseType == PSE_INNER_MUL_ADD || pseType == PSE_INNER_MUL_ADD_SQRT) {
         // Inner pse alibi, dtype must be fp32
         if (realShiftOptional == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When pseType is 2 or 3, pseShape cannot be null.");
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "pseShape",
+                "The input pseShape cannot be nullptr when the mode of pse is 2 or 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto pseDtype = realShiftOptional->GetDataType();
@@ -494,9 +511,9 @@ static aclnnStatus InputDtypeCheckQuant(const aclTensor *query, const aclTensor 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
         std::string dtypeStr = op::ToString(DataType(qDtype)).GetString();
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
             "query, key and value", dtypeStr.c_str(),
-            "The dtype of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
+            "The dtypes of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -684,74 +701,87 @@ static aclnnStatus Contiguous(const aclTensor *&query, const aclTensor *&key, co
 {
     query = l0op::Contiguous(query, executor);
     OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query",
+            "Try contiguous query failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     key = l0op::Contiguous(key, executor);
     OP_CHECK(key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key",
+            "Try contiguous key failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     value = l0op::Contiguous(value, executor);
     OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "value",
+            "Try contiguous value failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     if (realShiftOptional) {
         realShiftOptional = l0op::Contiguous(realShiftOptional, executor);
         OP_CHECK(realShiftOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if realShiftOptional is present, the realShiftOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "real_shift",
+                "Try contiguous real_shift failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dropMaskOptional) {
         dropMaskOptional = l0op::Contiguous(dropMaskOptional, executor);
         OP_CHECK(dropMaskOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dropMaskOptional is present, the dropMaskOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "drop_mask",
+                "Try contiguous drop_mask failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (paddingMaskOptional) {
         paddingMaskOptional = l0op::Contiguous(paddingMaskOptional, executor);
         OP_CHECK(paddingMaskOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if paddingMaskOptional is present, the paddingMaskOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "padding_mask",
+                "Try contiguous padding_mask failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (attenMaskOptional) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);
         OP_CHECK(attenMaskOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if attenMaskOptional is present, the attenMaskOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "atten_mask",
+                "Try contiguous atten_mask failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (queryRope != nullptr) {
         queryRope = l0op::Contiguous(queryRope, executor);
         OP_CHECK(queryRope != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if queryRope is present, the queryRope cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query_rope",
+                "Try contiguous query_rope failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (keyRope != nullptr) {
         keyRope = l0op::Contiguous(keyRope, executor);
         OP_CHECK(keyRope != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if keyRope is present, the keyRope cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key_rope",
+                "Try contiguous key_rope failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (sinkOptional != nullptr) {
         sinkOptional = l0op::Contiguous(sinkOptional, executor);
         OP_CHECK(sinkOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if sinkOptional is present, the sinkOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "sink",
+                "Try contiguous sink failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dScaleQOptional) {
         dScaleQOptional = l0op::Contiguous(dScaleQOptional, executor);
         OP_CHECK(dScaleQOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dScaleQOptional is present, the dScaleQOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "d_scale_q",
+                "Try contiguous d_scale_q failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dScaleKOptional) {
         dScaleKOptional = l0op::Contiguous(dScaleKOptional, executor);
         OP_CHECK(dScaleKOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dScaleKOptional is present, the dScaleKOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "d_scale_k",
+                "Try contiguous d_scale_k failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dScaleVOptional) {
         dScaleVOptional = l0op::Contiguous(dScaleVOptional, executor);
         OP_CHECK(dScaleVOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dScaleVOptional is present, the dScaleVOptional cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "d_scale_v",
+                "Try contiguous d_scale_v failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     return ACLNN_SUCCESS;
@@ -763,31 +793,38 @@ static aclnnStatus ContiguousQuant(const aclTensor *&query, const aclTensor *&ke
 {
     query = l0op::Contiguous(query, executor);
     OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query",
+            "Try contiguous query failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     key = l0op::Contiguous(key, executor);
     OP_CHECK(key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key",
+            "Try contiguous key failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     value = l0op::Contiguous(value, executor);
     OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "value",
+            "Try contiguous value failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     dScaleQ = l0op::Contiguous(dScaleQ, executor);
     OP_CHECK(dScaleQ != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The dScaleQ cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "d_scale_q",
+            "Try contiguous d_scale_q failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     dScaleK = l0op::Contiguous(dScaleK, executor);
     OP_CHECK(dScaleK != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The dScaleK cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "d_scale_k",
+            "Try contiguous d_scale_k failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     dScaleV = l0op::Contiguous(dScaleV, executor);
     OP_CHECK(dScaleV != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The dScaleV cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "d_scale_v",
+            "Try contiguous d_scale_v failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     pScale = l0op::Contiguous(pScale, executor);
     OP_CHECK(pScale != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The pScale cannot be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "p_scale",
+            "Try contiguous p_scale failed"),
         return ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
@@ -803,21 +840,24 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
             query, executor->AllocIntArray(shapeInfo.reshapedQueryShape.data(), shapeInfo.reshapedQueryShape.size()),
             executor);
         OP_CHECK(query != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query",
+                "Try reshape query failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
         key = l0op::Reshape(
             key,
             executor->AllocIntArray(shapeInfo.reshapedKeyShape.data(), shapeInfo.reshapedKeyShape.size()),
             executor);
         OP_CHECK(key != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key",
+                "Try reshape key failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
         value = l0op::Reshape(
             value,
             executor->AllocIntArray(shapeInfo.reshapedValueBefore.data(), shapeInfo.reshapedValueBefore.size()),
             executor);
         OP_CHECK(value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "value",
+                "Try reshape value failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -828,17 +868,20 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
         if (shapeInfo.padNum != 0) {
             query = l0op::Pad(query, qkPaddings, executor);
             OP_CHECK(query != nullptr,
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+                OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query",
+                    "Try pad query failed"),
                 return ACLNN_ERR_PARAM_NULLPTR);
             key = l0op::Pad(key, qkPaddings, executor);
             OP_CHECK(key != nullptr,
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+                OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key",
+                    "Try pad key failed"),
                 return ACLNN_ERR_PARAM_NULLPTR);
         }
         if (shapeInfo.padNumv != 0) {
             value = l0op::Pad(value, vPaddings, executor);
             OP_CHECK(value != nullptr,
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+                OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "value",
+                    "Try pad value failed"),
                 return ACLNN_ERR_PARAM_NULLPTR);
         }
     }
@@ -848,15 +891,18 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
         auto perm = executor->AllocIntArray(shapeInfo.perm_in.data(), shapeInfo.perm_in.size());
         query = l0op::Transpose(query, perm, executor);
         OP_CHECK(query != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query",
+                "Try transpose query failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
         key = l0op::Transpose(key, perm, executor);
         OP_CHECK(key != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key",
+                "Try transpose key failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
         value = l0op::Transpose(value, perm, executor);
         OP_CHECK(value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "value",
+                "Try transpose value failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -874,15 +920,18 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
 
         query = l0op::Reshape(query, executor->AllocIntArray(queryShape.data(), queryShape.size()), executor);
         OP_CHECK(query != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "query",
+                "Try reshape query failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
         key = l0op::Reshape(key, executor->AllocIntArray(keyShape.data(), keyShape.size()), executor);
         OP_CHECK(key != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "key",
+                "Try reshape key failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
         value = l0op::Reshape(value, executor->AllocIntArray(ValueShape.data(), ValueShape.size()), executor);
         OP_CHECK(value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT(op::internal::GetLogApiInfo().c_str(), "value",
+                "Try reshape value failed"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     return ACLNN_SUCCESS;
