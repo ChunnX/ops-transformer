@@ -363,6 +363,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<floa
                                                            const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     __ubuf__ float *yAddr = (__ubuf__ float *)yF32.GetPhyAddr();
@@ -384,6 +387,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeMaxExp(const LocalTens
                                                                   const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nHalfSize = param.nL1Size / 2;
 
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
@@ -404,6 +410,9 @@ GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeScale(const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
@@ -432,6 +441,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeDataForQuantTargetFp8(
                                                                                  const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
@@ -456,6 +468,9 @@ GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * param.mL1Size / 2) * (param.nSize / DIVISOR_FACTOR_TWO) + param.nOffset / 2;
@@ -472,7 +487,10 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const Bas
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = param.mL1Size / 2;
+    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nGroupCount = CeilDivide(param.nL1Size / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
     uint64_t nTotalGroupCount = CeilDivide(param.nSize / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
 
@@ -491,7 +509,10 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const Basi
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::TransMxScaleLayout(const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = param.mL1Size / 2;
+    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if(mRealSize == 0 || param.mL1Size == 0){
+        return;
+    }
     uint64_t nHalfSize = param.nL1Size / 2;
     uint64_t scaleBlockN = CeilDivide(nHalfSize, static_cast<uint64_t>(64)) * DIVISOR_FACTOR_TWO;
 
