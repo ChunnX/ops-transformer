@@ -934,7 +934,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext* context, const GroupedM
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(C_INNER_DEBUG, "get workspace failed"), return ge::GRAPH_FAILED);
     uint64_t gmmOut = tilingData->commonTilingInfo.A * tilingData->commonTilingInfo.N1 * FP16_DATASIZE;
-    uint64_t permuteSize = (tilingData->commonTilingInfo.expertsPerComm > 1) ? gmmOut : 0;
+    uint64_t permuteSize = gmmOut;
     workspaces[0] = gmmOut + permuteSize + SYS_WORKSPACE_SIZE;
     OP_LOGD(C_INNER_DEBUG, "workspaces[0] size is %ld. gmmOut is %lu. permuteSize is %lu.", workspaces[0], gmmOut,
              permuteSize);
@@ -1006,7 +1006,10 @@ static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* c
         OP_LOGE(C_INNER_DEBUG, "Set matmul tiling Failed!"), return ge::GRAPH_FAILED);
 
     // Calculate expertsPerComm and commGroupNum
-    uint64_t avgTokensPerExpert = tilingData->commonTilingInfo.A / tilingData->commonTilingInfo.E_ep;
+    // Use BsK instead of A to ensure all ranks compute the same value,
+    // since A (per-rank input tokens) can vary across ranks while BsK
+    // (per-rank output tokens) is guaranteed to be consistent.
+    uint64_t avgTokensPerExpert = tilingData->commonTilingInfo.BsK / tilingData->commonTilingInfo.E_ep;
     tilingData->commonTilingInfo.expertsPerComm =
         CalcExpertsPerComm(tilingData->commonTilingInfo.E_ep, avgTokensPerExpert, tilingData->commonTilingInfo.N1);
     tilingData->commonTilingInfo.commGroupNum = tilingData->commonTilingInfo.E_ep / tilingData->commonTilingInfo.expertsPerComm;

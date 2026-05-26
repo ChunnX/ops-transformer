@@ -57,10 +57,9 @@ public:
     using sharedmmType = ALLTO_ALLV_GMM::MMImplType<aType, mmBType, cType, biasType, CFG_MDL>;
 
 private:
-    __aicore__ inline void HcclAlltoAllvPrepare();
     __aicore__ inline void HcclFinalize();
     __aicore__ inline void GmmProcessAlltoallv();
-    __aicore__ inline void PermuteGroup(uint64_t groupId);
+    __aicore__ inline void PermuteGroup(uint64_t groupId, uint64_t groupOffset);
     __aicore__ inline void ShareMatMulCompute();
 
     GM_ADDR gmmxGM_;
@@ -74,7 +73,6 @@ private:
     GM_ADDR workspaceGM_;
     const GroupedMatMulAlltoAllvTilingData* tilingData_ = nullptr;
     TCubeTiling matmulTiling_;
-    TCubeTiling sharedMatmulTiling_;
 
     TPipe* tPipe_;
     uint64_t rankId_{0};
@@ -91,6 +89,7 @@ private:
     uint64_t expertsPerComm_ = 1U;
     uint64_t commGroupNum_ = 1U;
     GM_ADDR permuteBufferGM_ = nullptr;
+    TBuf<TPosition::VECCALC> permuteUbBuf_;
 
     // alltoallv 流程数据结构
     static constexpr uint64_t MAX_EP_RANK_SIZE = 128U;
@@ -152,13 +151,11 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
     expertsPerComm_ = tilingData_->commonTilingInfo.expertsPerComm;
     commGroupNum_ = tilingData_->commonTilingInfo.commGroupNum;
     matmulTiling_ = tilingData_->matmulTiling;
-    sharedMatmulTiling_ = tilingData_->sharedExpMatmulTiling;
 
-    if (expertsPerComm_ > 1) {
-        uint64_t gmmOutSize = axisA_ * axisN1_ * sizeof(X_T);
-        permuteBufferGM_ = reinterpret_cast<GM_ADDR>(
-            reinterpret_cast<__gm__ uint8_t*>(workspaceGM_) + gmmOutSize);
-    }
+    uint64_t gmmOutSize = axisA_ * axisN1_ * sizeof(X_T);
+    permuteBufferGM_ = reinterpret_cast<GM_ADDR>(
+        reinterpret_cast<__gm__ uint8_t*>(workspaceGM_) + gmmOutSize);
+    tPipe_->InitBuffer(permuteUbBuf_, TOTAL_UBSIZE * sizeof(X_T));
 
     if (AscendC::IsSameType<X_T, bfloat16_t>::value) {
         hcclDataType_ = HcclDataType::HCCL_DATA_TYPE_BFP16;
@@ -179,7 +176,6 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
 template <typename GMMATAV>
 __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Process()
 {
-    HcclAlltoAllvPrepare(); // alltoall prepare
     // gmm + alltoall，做完一块gmm下发一块alltoall
     GmmProcessAlltoallv();
     if ASCEND_IS_AIV {
@@ -189,21 +185,22 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Process()
             }
         }
     }
+    SyncAll<false>();
     HcclFinalize();
 }
 
 template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::PermuteGroup(uint64_t groupId)
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::PermuteGroup(uint64_t groupId, uint64_t groupOffset)
 {
-    if (expertsPerComm_ <= 1) {
-        return;
-    }
     if ASCEND_IS_AIV {
         auto* sendCnt = &tilingData_->aicpuTilingInfo.sendCnt[0];
         GlobalTensor<X_T> srcGm;
         GlobalTensor<X_T> dstGm;
         srcGm.SetGlobalBuffer((__gm__ X_T*)gmmOutGM_);
         dstGm.SetGlobalBuffer((__gm__ X_T*)permuteBufferGM_);
+
+        LocalTensor<X_T> ubTensor = permuteUbBuf_.Get<X_T>();
+        const uint64_t maxBatchSize = TOTAL_UBSIZE;
 
         uint64_t blockIdxLocal = GetBlockIdx();
         uint64_t blockNumLocal = GetBlockNum();
@@ -216,7 +213,7 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::PermuteGroup(uint64_t gr
 
         // Each AIV block handles a subset of ranks via round-robin
         for (uint64_t r = blockIdxLocal; r < rankDim_; r += blockNumLocal) {
-            uint64_t dstRankOffset = 0;
+            uint64_t dstRankOffset = groupOffset;
             for (uint64_t prevR = 0; prevR < r; ++prevR) {
                 for (uint64_t e = gStart; e < gEnd; ++e) {
                     dstRankOffset += static_cast<uint64_t>(sendCnt[e + prevR * expertNumInOneRank_]) * axisN1_;
@@ -240,8 +237,18 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::PermuteGroup(uint64_t gr
                     continue;
                 }
 
-                for (uint64_t i = 0; i < dataSize; ++i) {
-                    dstGm[dstRankOffset + i] = srcGm[srcExpertOffset + i];
+                uint64_t remaining = dataSize;
+                uint64_t srcOffset = srcExpertOffset;
+                uint64_t dstOffset = dstRankOffset;
+                while (remaining > 0) {
+                    uint64_t batchSize = (remaining > maxBatchSize) ? maxBatchSize : remaining;
+                    DataCopy(ubTensor, srcGm[srcOffset], static_cast<uint32_t>(batchSize));
+                    PipeBarrier<PIPE_ALL>();
+                    DataCopy(dstGm[dstOffset], ubTensor, static_cast<uint32_t>(batchSize));
+                    PipeBarrier<PIPE_ALL>();
+                    remaining -= batchSize;
+                    srcOffset += batchSize;
+                    dstOffset += batchSize;
                 }
                 dstRankOffset += dataSize;
             }
@@ -323,120 +330,86 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
                     gmmOp.Process(this->rankId_, axisH_, axisN1_, mmInOffset, mmOutOffset, tokenNum, processNum, i);
                 }
             }
+            PipeBarrier<PIPE_ALL>();
         }
         SyncAll<false>();
 
-        // AIV: permute when group has multiple experts
-        if (expertsPerComm_ > 1) {
-            PermuteGroup(g);
-            SyncAll<true>();
+        // Compute group offset in permuteBuffer for this group
+        uint64_t groupOffset = 0UL;
+        for (uint64_t prevG = 0UL; prevG < g; ++prevG) {
+            uint64_t prevGStart = prevG * expertsPerComm_;
+            uint64_t prevGEnd = (prevG + 1) * expertsPerComm_;
+            if (prevGEnd > expertNumInOneRank_) {
+                prevGEnd = expertNumInOneRank_;
+            }
+            for (uint64_t r = 0UL; r < rankDim_; ++r) {
+                for (uint64_t e = prevGStart; e < prevGEnd; ++e) {
+                    groupOffset += static_cast<uint64_t>(sendCnt[e + r * expertNumInOneRank_]) * axisN1_;
+                }
+            }
         }
 
-        // AIV block0: commit alltoallv for the group
+        // AIV: permute (always needed: GMM output is expert-major, alltoallv expects rank-major)
+        PermuteGroup(g, groupOffset);
+        SyncAll<false>();
+
+        // AIV block0: launch alltoallv for the group (using <true> to avoid stale stack array issue)
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
-                hccl_.Commit(alltoAllvHandleId_[g]);
+                const auto* a2aSendCnt = &tilingData_->aicpuTilingInfo.sendCnt[0];
+                const auto* a2aRecvCnt = &tilingData_->aicpuTilingInfo.recvCnt[0];
+
+                uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+                uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+                uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+                uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+
+                // sendCnt per rank: sum across all experts in the group
+                for (uint64_t r = 0UL; r < rankDim_; r++) {
+                    for (uint64_t e = gStart; e < gEnd; e++) {
+                        alltoAllvSendCnt[r] += static_cast<uint64_t>(a2aSendCnt[e + r * expertNumInOneRank_]);
+                    }
+                    alltoAllvSendCnt[r] *= axisN1_;
+                }
+
+                // sendOffset: permuteBufferGM_ is always rank-major after PermuteGroup
+                alltoAllvSendOffset[0] = groupOffset;
+                for (uint64_t r = 1UL; r < rankDim_; r++) {
+                    alltoAllvSendOffset[r] = alltoAllvSendOffset[r - 1] + alltoAllvSendCnt[r - 1];
+                }
+
+                // recvCnt per rank: sum across all experts in the group
+                for (uint64_t r = 0UL; r < rankDim_; r++) {
+                    for (uint64_t e = gStart; e < gEnd; e++) {
+                        alltoAllvRecvCnt[r] += static_cast<uint64_t>(a2aRecvCnt[e + r * expertNumInOneRank_]);
+                    }
+                    alltoAllvRecvCnt[r] *= axisN1_;
+                }
+
+                // recvOffset: y is rank-major (all experts from rank 0, then rank 1, etc.)
+                for (uint64_t r = 0UL; r < rankDim_; r++) {
+                    uint64_t offset = 0UL;
+                    for (uint64_t prevR = 0; prevR < r; ++prevR) {
+                        for (uint64_t e = 0; e < expertNumInOneRank_; ++e) {
+                            offset += static_cast<uint64_t>(a2aRecvCnt[e + prevR * expertNumInOneRank_]) * axisN1_;
+                        }
+                    }
+                    for (uint64_t e = 0; e < gStart; ++e) {
+                        offset += static_cast<uint64_t>(a2aRecvCnt[e + r * expertNumInOneRank_]) * axisN1_;
+                    }
+                    alltoAllvRecvOffset[r] = offset;
+                }
+
+                GM_ADDR sendBuffer = permuteBufferGM_;
+                alltoAllvHandleId_[g] = hccl_.AlltoAllV<true>(
+                    (__gm__ uint8_t*)sendBuffer, alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+                    (__gm__ uint8_t*)yOutGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
             }
         }
     }
 
     ShareMatMulCompute();
     SyncAll<false>();
-}
-
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
-{
-    if ASCEND_IS_AIV {
-        if (GetBlockIdx() != 0) {
-            return;
-        }
-
-        const auto* sendCnt = &tilingData_->aicpuTilingInfo.sendCnt[0];
-        const auto* recvCnt = &tilingData_->aicpuTilingInfo.recvCnt[0];
-
-        for (uint64_t g = 0UL; g < commGroupNum_; g++) {
-            uint64_t gStart = g * expertsPerComm_;
-            uint64_t gEnd = (g + 1) * expertsPerComm_;
-            if (gEnd > expertNumInOneRank_) {
-                gEnd = expertNumInOneRank_;
-            }
-
-            uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-            uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-            uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-            uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
-
-            // sendCnt per rank: sum across all experts in the group
-            for (uint64_t r = 0UL; r < rankDim_; r++) {
-                for (uint64_t e = gStart; e < gEnd; e++) {
-                    alltoAllvSendCnt[r] += static_cast<uint64_t>(sendCnt[e + r * expertNumInOneRank_]);
-                }
-                alltoAllvSendCnt[r] *= axisN1_;
-            }
-
-            // sendOffset: rank-continuous layout in permuteBuffer (or expert-continuous in gmmOut for size==1)
-            // For expertsPerComm_ == 1, preserve original expert-major offsets
-            if (expertsPerComm_ == 1) {
-                uint64_t e = gStart;
-                uint64_t expertOffset = 0UL;
-                for (uint64_t i = 0UL; i < e; i++) {
-                    for (uint64_t j = 0UL; j < rankDim_; j++) {
-                        expertOffset += static_cast<uint64_t>(sendCnt[i + j * expertNumInOneRank_]);
-                    }
-                }
-                alltoAllvSendOffset[0] = expertOffset * axisN1_;
-                for (uint64_t r = 1UL; r < rankDim_; r++) {
-                    alltoAllvSendOffset[r] = alltoAllvSendOffset[r - 1] +
-                                             static_cast<uint64_t>(sendCnt[e + (r - 1) * expertNumInOneRank_]) * axisN1_;
-                }
-            } else {
-                alltoAllvSendOffset[0] = 0;
-                for (uint64_t r = 1UL; r < rankDim_; r++) {
-                    alltoAllvSendOffset[r] = alltoAllvSendOffset[r - 1] + alltoAllvSendCnt[r - 1];
-                }
-            }
-
-            // recvCnt per rank: sum across all experts in the group
-            for (uint64_t r = 0UL; r < rankDim_; r++) {
-                for (uint64_t e = gStart; e < gEnd; e++) {
-                    alltoAllvRecvCnt[r] += static_cast<uint64_t>(recvCnt[e + r * expertNumInOneRank_]);
-                }
-                alltoAllvRecvCnt[r] *= axisN1_;
-            }
-
-            // recvOffset: y is rank-sorted
-            if (g == 0UL) {
-                alltoAllvRecvOffset[0] = 0;
-            } else {
-                uint64_t prevGroupOffset = 0;
-                for (uint64_t prevG = 0; prevG < g; prevG++) {
-                    uint64_t prevStart = prevG * expertsPerComm_;
-                    uint64_t prevEnd = (prevG + 1) * expertsPerComm_;
-                    if (prevEnd > expertNumInOneRank_) {
-                        prevEnd = expertNumInOneRank_;
-                    }
-                    for (uint64_t r = 0; r < rankDim_; r++) {
-                        for (uint64_t e = prevStart; e < prevEnd; e++) {
-                            prevGroupOffset += static_cast<uint64_t>(recvCnt[e + r * expertNumInOneRank_]) * axisN1_;
-                        }
-                    }
-                }
-                alltoAllvRecvOffset[0] = prevGroupOffset;
-            }
-            for (uint64_t r = 1UL; r < rankDim_; r++) {
-                alltoAllvRecvOffset[r] = alltoAllvRecvOffset[r - 1];
-                for (uint64_t e = gStart; e < gEnd; e++) {
-                    alltoAllvRecvOffset[r] += static_cast<uint64_t>(recvCnt[e + (r - 1) * expertNumInOneRank_]) * axisN1_;
-                }
-            }
-
-            GM_ADDR srcAddr = (expertsPerComm_ > 1) ? permuteBufferGM_ : gmmOutGM_;
-            alltoAllvHandleId_[g] = hccl_.AlltoAllV<false>(
-                (__gm__ uint8_t*)srcAddr, alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
-                (__gm__ uint8_t*)yOutGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-        }
-    }
 }
 
 template <typename GMMATAV>
