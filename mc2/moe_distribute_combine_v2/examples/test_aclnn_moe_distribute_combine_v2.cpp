@@ -61,7 +61,7 @@ struct Args {
 const uint32_t MACHINE_NUM = 1;
 // const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-uint32_t EP_WORLD_SIZE = 2;
+uint32_t EP_WORLD_SIZE = 4;
 uint32_t TP_WORLD_SIZE = 1;
 uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
@@ -129,7 +129,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     // 设置场景
     int64_t BS = 8;
     int64_t H = 7168;
-    int64_t K = 1;
+    int64_t K = 2;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
@@ -261,6 +261,9 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
             expandIdxHostData[index * 3 + 2] = i % (BS * K) % K; // topkId
             index++;
         }
+    }
+    for(int i = 0; i < index; i++) {
+	    std::cout << expandIdxHostData[i * 3] << " " << expandIdxHostData[i * 3 + 1] << " " << expandIdxHostData[i * 3 + 2] << std::endl;
     }
     // for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
     //     // 每个token发给moe专家{0, 1, ... k - 1}
