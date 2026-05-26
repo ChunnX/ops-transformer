@@ -22,15 +22,21 @@ constexpr int64_t DIM_TWO = 2;
 
 at::Tensor npu_moe_combine_normal(const at::Tensor &recv_x, const at::Tensor &token_src_info,
                                   const at::Tensor &ep_recv_counts, const at::Tensor &recv_topk_weights,
-                                  const c10::optional<at::Tensor> &tp_recv_counts, const std::string &ep_group_name,
-                                  int64_t ep_world_size, int64_t ep_rank_id, int64_t moe_expert_num,
-                                  const std::string &tp_group_name, int64_t tp_world_size, int64_t tp_rank_id,
-                                  int64_t global_bs, const c10::optional<at::Tensor> &combine_send_cost_stats)
+                                  const at::Tensor &token_idx, const c10::optional<at::Tensor> &tp_recv_counts,
+                                  const std::string &ep_group_name, int64_t ep_world_size, int64_t ep_rank_id,
+                                  int64_t moe_expert_num, const std::string &tp_group_name, int64_t tp_world_size,
+                                  int64_t tp_rank_id, int64_t real_max_bs, int32_t round, int32_t per_round_tokens,
+                                  const c10::optional<at::Tensor> &combine_send_cost_stats)
 {
     TORCH_CHECK(recv_x.dim() == DIM_TWO, "recv_x must be 2D tensor (num_recv_tokens, H).");
     TORCH_CHECK(token_src_info.dim() == 1, "token_src_info must be 1D tensor.");
     TORCH_CHECK(ep_recv_counts.dim() == 1, "ep_recv_counts must be 1D tensor.");
     TORCH_CHECK(recv_topk_weights.dim() == DIM_TWO, "recv_topk_weights must be 2D tensor (BS, K).");
+    TORCH_CHECK(token_idx.dim() == DIM_TWO, "token_idx must be 2D tensor.");
+    TORCH_CHECK(token_idx.scalar_type() == at::kInt, "token_idx dtype must be int32.");
+    TORCH_CHECK(round > 0, "round must be greater than 0, but got round=", round, ".");
+    TORCH_CHECK(per_round_tokens > 0,
+                "per_round_tokens must be greater than 0, but got per_round_tokens=", per_round_tokens, ".");
     TORCH_CHECK((ep_rank_id >= 0) && (ep_rank_id < ep_world_size),
                 "ep_rank_id should be in [0, ep_world_size), but got ep_world_size=", ep_world_size,
                 ", ep_rank_id=", ep_rank_id, ".");
@@ -87,9 +93,9 @@ at::Tensor npu_moe_combine_normal(const at::Tensor &recv_x, const at::Tensor &to
     const char *ep_group_name_ptr = ep_group_name.c_str();
     const char *tp_group_name_ptr = tp_group_name.c_str();
 
-    ACLNN_CMD(aclnnMoeCombineNormal, recv_x, token_src_info, ep_recv_counts, recv_topk_weights, tp_recv_counts_tensor,
-              ep_group_name_ptr, ep_world_size, ep_rank_id, moe_expert_num, tp_group_name_ptr, tp_world_size,
-              tp_rank_id, global_bs, x, combine_send_cost_stats_tensor);
+    ACLNN_CMD(aclnnMoeCombineNormal, recv_x, token_src_info, ep_recv_counts, recv_topk_weights, token_idx,
+            tp_recv_counts_tensor, ep_group_name_ptr, ep_world_size, ep_rank_id, tp_group_name_ptr, tp_world_size,
+            tp_rank_id, moe_expert_num, real_max_bs, round, per_round_tokens, x, combine_send_cost_stats_tensor);
 
     return x;
 }

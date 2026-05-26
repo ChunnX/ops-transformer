@@ -15,7 +15,7 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
-class CombineNormalOpBuilder(OpBuilder):
+ class CombineNormalOpBuilder(OpBuilder):
     def __init__(self):
         super(CombineNormalOpBuilder, self).__init__("npu_moe_combine_normal")
 
@@ -25,18 +25,20 @@ class CombineNormalOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "npu_moe_combine_normal(Tensor recv_x, Tensor token_src_info, Tensor ep_recv_counts, "
-            "Tensor recv_topk_weights, str ep_group_name, int ep_world_size, int ep_rank_id, int moe_expert_num, "
-            "Tensor? tp_recv_counts=None, *, str tp_group_name='', int tp_world_size=0, int tp_rank_id=0, "
-            "int global_bs=0, Tensor? combine_send_cost_stats=None) -> Tensor"
+            "Tensor recv_topk_weights, Tensor token_idx, str ep_group_name, int ep_world_size, int ep_rank_id, "
+            "int moe_expert_num, Tensor? tp_recv_counts=None, *, str tp_group_name='', int tp_world_size=0, "
+            "int tp_rank_id=0, int real_max_bs=0, int round=4, int per_round_tokens=1024, "
+            "Tensor? combine_send_cost_stats=None) -> Tensor"
         )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_moe_combine_normal_meta(
-            recv_x, token_src_info, ep_recv_counts, recv_topk_weights, 
+            recv_x, token_src_info, ep_recv_counts, recv_topk_weights, token_idx,
             ep_group_name, ep_world_size, ep_rank_id, moe_expert_num,
             tp_recv_counts=None,
-            tp_group_name="", tp_world_size=0, tp_rank_id=0, global_bs=0,
+            tp_group_name="", tp_world_size=0, tp_rank_id=0, real_max_bs=0,
+            round=4, per_round_tokens=1024,
             combine_send_cost_stats=None,
         ):
             torch._check(
@@ -54,6 +56,14 @@ class CombineNormalOpBuilder(OpBuilder):
             torch._check(
                 recv_topk_weights.dim() == 2,
                 lambda: f"recv_topk_weights must be 2D tensor (BS, K).{ops_error(ErrCode.VALUE)}",
+            )
+            torch._check(
+                token_idx.dim() == 2,
+                lambda: f"token_idx must be 2D tensor.{ops_error(ErrCode.VALUE)}",
+            )
+            torch._check(
+                token_idx.dtype == torch.int32,
+                lambda: f"token_idx dtype must be int32.{ops_error(ErrCode.VALUE)}",
             )
             torch._check(
                 (ep_rank_id >= 0) and (ep_rank_id < ep_world_size),
@@ -132,6 +142,14 @@ class CombineNormalOpBuilder(OpBuilder):
                     f"{ops_error(ErrCode.VALUE)}."
                 ),
             )
+            torch._check(
+                    round > 0,
+                    lambda: f"round must be greater than 0, but got {round=}.{ops_error(ErrCode.VALUE)}",
+                )
+                torch._check(
+                    per_round_tokens > 0,
+                    lambda: f"per_round_tokens must be greater than 0, but got {per_round_tokens=}.{ops_error(ErrCode.VALUE)}",
+                )
             if tp_recv_counts is not None:
                 torch._check(
                     tp_recv_counts.dtype == torch.int32,
@@ -168,21 +186,22 @@ op_module = combine_normal_op_builder.load()
 
 @impl(AS_LIBRARY, combine_normal_op_builder.name, "PrivateUse1")
 def npu_moe_combine_normal(
-    recv_x, token_src_info, ep_recv_counts, recv_topk_weights, 
+    recv_x, token_src_info, ep_recv_counts, recv_topk_weights, token_idx,
     ep_group_name, ep_world_size, ep_rank_id, moe_expert_num,
     tp_recv_counts=None,
-    tp_group_name="", tp_world_size=0, tp_rank_id=0, global_bs=0,
+    tp_group_name="", tp_world_size=0, tp_rank_id=0, real_max_bs=0,
+    round=4, per_round_tokens=1024,
     combine_send_cost_stats=None,
 ):
-    """
-    MoE EP combine (normal path) with Hccl communication group.
+"""
+MoE EP combine (normal path) with Hccl communication group.
 
-    This function combines the expert outputs back to original token positions.
-    Typical flow: dispatch -> expert compute -> npu_moe_combine_normal.
-    """
-    return op_module.npu_moe_combine_normal(
-        recv_x, token_src_info, ep_recv_counts, recv_topk_weights, tp_recv_counts,
-        ep_group_name, ep_world_size, ep_rank_id, moe_expert_num,
-        tp_group_name, tp_world_size, tp_rank_id, global_bs,
-        combine_send_cost_stats,
-    )
+This function combines the expert outputs back to original token positions.
+Typical flow: dispatch -> expert compute -> npu_moe_combine_normal.
+"""
+return op_module.npu_moe_combine_normal(
+    recv_x, token_src_info, ep_recv_counts, recv_topk_weights, token_idx, tp_recv_counts,
+    ep_group_name, ep_world_size, ep_rank_id, moe_expert_num,
+    tp_group_name, tp_world_size, tp_rank_id, real_max_bs, round, per_round_tokens,
+    combine_send_cost_stats,
+)
