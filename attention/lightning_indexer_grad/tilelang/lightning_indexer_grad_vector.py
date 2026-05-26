@@ -57,18 +57,29 @@ def relu_grad_kernel(
             grad_ub = T.alloc_ub((block_m, block_k), dtype)
             in_ub = T.alloc_ub((block_m, block_k), dtype)
             out_ub = T.alloc_ub((block_m, block_k), dtype)
-            
+            # Ascend AI Core 不支持 half 精度比较运算，需要 float32 中间缓冲区
+            in_fp32_ub = T.alloc_ub((block_m, block_k), 'float32')
+            out_fp32_ub = T.alloc_ub((block_m, block_k), 'float32')
+
             # 加载输入分块
             T.copy(relu_grad_in[m_idx * block_m, k_idx * block_k], grad_ub)
             T.copy(relu_in[m_idx * block_m, k_idx * block_k], in_ub)
-            
-            # 应用 ReLU 反向: output = input * (relu_in > 0)
+
+            # Cast to float32 for comparison
             for i, j in T.Parallel(block_m, block_k):
-                if in_ub[i, j] > T.cast(0, dtype):
-                    out_ub[i, j] = grad_ub[i, j]
+                in_fp32_ub[i, j] = T.cast(in_ub[i, j], 'float32')
+
+            # 应用 ReLU 反向: output = input * (relu_in > 0)，在 float32 下比较
+            for i, j in T.Parallel(block_m, block_k):
+                if in_fp32_ub[i, j] > T.float32(0):
+                    out_fp32_ub[i, j] = T.cast(grad_ub[i, j], 'float32')
                 else:
-                    out_ub[i, j] = T.cast(0, dtype)
-            
+                    out_fp32_ub[i, j] = T.float32(0)
+
+            # Cast back to original dtype
+            for i, j in T.Parallel(block_m, block_k):
+                out_ub[i, j] = T.cast(out_fp32_ub[i, j], dtype)
+
             # 写入输出
             T.copy(out_ub, relu_grad_out[m_idx * block_m, k_idx * block_k])
     

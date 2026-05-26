@@ -420,10 +420,11 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcBatchCache(
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
     batchCache.bIdx = bIdx;
-    batchCache.s1Size = GetS1SeqSize(bIdx);
-    batchCache.s2Size = GetS2SeqSize(bIdx);
-    batchCache.preTokenLeftUp = CalcPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
-    batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
+    batchCache.s1Size = GetS1SeqSize(bIdx); // ② 获取 Q 序列长度
+    batchCache.s2Size = GetS2SeqSize(bIdx); // ③ 获取 KV 序列长度
+    
+    batchCache.preTokenLeftUp = CalcPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size);  // ④ 计算前向 token 左边界
+    batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size); // ⑤ 计算后向 token 左边界
 }
 
 void SparseAttnSharedkvMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
@@ -592,15 +593,15 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcBatchCost(
     S1GCache s1GCache;
     CalcBatchCache(bIdx, splitContext, bCache);
     for (uint32_t s1GIdx = 0; s1GIdx < splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
-        CalcS1GCache(s1GIdx, splitContext, bCache, s1GCache);
-        costInfo.bN2CostOfEachBatch[bIdx] += s1GCache.s1GCost;
-        costInfo.bN2BlockOfEachBatch[bIdx] += s1GCache.s1GBlock;
+        CalcS1GCache(s1GIdx, splitContext, bCache, s1GCache); //计算每个s1G的负载和块数
+        costInfo.bN2CostOfEachBatch[bIdx] += s1GCache.s1GCost; //累加每个s1G的负载
+        costInfo.bN2BlockOfEachBatch[bIdx] += s1GCache.s1GBlock; //累加每个s1G的块数
         // 更新最大S1G行开销
         if (s1GCache.s1GCost > costInfo.maxS1GCost) {
             costInfo.maxS1GCost = s1GCache.s1GCost;
         }
         if(s1GCache.s1GBlock > 0){
-            costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
+            costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost; //记录每个s1G的最后一个块数的负载
         }
     }
 }
@@ -618,9 +619,9 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcCostInfo(SplitContext &splitContex
 
     // 计算batch的负载并记录，用于按batch分配，需要按行计算起止点，统计块数、负载
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
-        CalcBatchCost(bIdx, splitContext, costInfo);
-        costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * kvHeadNum_;
-        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * kvHeadNum_;
+        CalcBatchCost(bIdx, splitContext, costInfo); // 计算一个batch的负载并记录
+        costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * kvHeadNum_; // 累加所有batch的负载
+        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * kvHeadNum_; // 累加所有batch的块数
     }
 }
 
@@ -900,7 +901,7 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const
             break;
         }
         assignContext.curCoreIdx = i;
-    AssignBlocksToCore(splitContext, assignContext, result);
+        AssignBlocksToCore(splitContext, assignContext, result);
     }
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
