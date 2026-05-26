@@ -202,14 +202,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         int64_t s2Size;
         if (sequsedOriKv != nullptr) {
             GlobalTensor<int32_t> sequsedOriKvGm;
-            sequsedOriKv.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
-            s2Size = sequsedOriKv.GetValue(bIdx);
+            sequsedOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
+            s2Size = sequsedOriKvGm.GetValue(bIdx);
         } else if (cuSeqlensOriKv != nullptr) {
             GlobalTensor<int32_t> cuSeqlensOriKvGm;
             cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
             s2Size = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
         } else {
-            s1Size = constInfo.s2Size;
+            s2Size = constInfo.s2Size;
         }
         int64_t s1Size;
         if (sequsedQ != nullptr) {
