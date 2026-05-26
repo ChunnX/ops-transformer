@@ -259,8 +259,8 @@ public:
 
         int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
-        int32_t blockSize = blockM * kAlign;
-        int32_t outputBlockSize = blockM * params.problemShape.n();
+        int64_t blockSize = static_cast<int64_t>(blockM) * kAlign;
+        int64_t outputBlockSize = static_cast<int64_t>(blockM) * params.problemShape.n();
         int64_t mnSize = static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
@@ -345,8 +345,8 @@ public:
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
         int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
-        int32_t blockSize = blockM * kAlign;
-        int32_t outputBlockSize = blockM * params.problemShape.n();
+        int64_t blockSize = static_cast<int64_t>(blockM) * kAlign;
+        int64_t outputBlockSize = static_cast<int64_t>(blockM) * params.problemShape.n();
         int64_t mnSize = static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;

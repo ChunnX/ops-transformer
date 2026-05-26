@@ -295,7 +295,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
         }
     }
 
-    uint64_t gm_scale_workspace_st = aAlignSize + bAlignSize + m * n * worldSize * sizeof(int32_t);
+    uint64_t gm_scale_workspace_st = aAlignSize + bAlignSize
+                                    + static_cast<uint64_t>(m) * n * worldSize * sizeof(int32_t);
  	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
