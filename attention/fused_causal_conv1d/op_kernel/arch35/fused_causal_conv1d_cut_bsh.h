@@ -62,7 +62,7 @@ private:
 
     __aicore__ inline void WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
                                               uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
-                                              int64_t readCIdx, int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
+                                              int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
                                               uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd);
 
     // Deferred write (post-SyncAll) for first batch on non-first BS cores.
@@ -927,7 +927,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                 // chunkEnd: one-past-last row of current chunk in xLocal
                 uint32_t chunkEnd = i + chunkSize;
                 WriteCacheToStates(cacheLocal, xLocal, chunkEnd, batchLen, meta.cachedStateLen, cacheLoaded,
-                                   meta.readCIdx, curWriteCIdx, dimStart, dimSize, dimBlocks, cacheSkip, batchEnd);
+                                   curWriteCIdx, dimStart, dimSize, dimBlocks, cacheSkip, batchEnd);
             }
         } else if (cacheLoaded && seqInBatch == 0 && batchLen >= K) {
             uint32_t cFromCachePA, cFromXPA;
@@ -1002,7 +1002,7 @@ template <typename T>
 __aicore__ inline void
 FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
                                                uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
-                                               int64_t readCIdx, int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
+                                               int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
                                                uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd)
 {
     // ---- Decompose: how many rows from cache vs from x ----
@@ -1018,6 +1018,10 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
         cFromX = curBatchLen;
     }
 
+    if (!hasCacheLocal) {
+        cFromCache = 0;
+    }
+
     uint32_t totalRows = cFromCache + cFromX;
     if (totalRows == 0)
         return;
@@ -1030,26 +1034,9 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
     // Write cache prefix (last cFromCache rows)
     if (cFromCache > 0) {
         uint32_t cacheRowStart = cachedStateLen - cFromCache;
-        if (hasCacheLocal) {
-            DataCopyExtParams wcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
-                                  cacheSkipBlocks * ALIGN_BYTES, 0};
-            DataCopyPad(cacheStatesGM_[csBase], cacheLocal[cacheRowStart * dimSize], wcp);
-        } else {
-            // Cache not loaded in this UB tile: re-read from GM at readCIdx
-            LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
-            uint64_t cacheSrcOff =
-                (uint64_t)readCIdx * cacheStride0_ + (uint64_t)cacheRowStart * cacheStride1_ + dimStart;
-            DataCopyExtParams rcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
-                                  cacheSkipBlocks * ALIGN_BYTES, 0, 0};
-            DataCopyPad(tmpBuf, cacheStatesGM_[cacheSrcOff], rcp, padParams);
-            xQueue_.EnQue(tmpBuf);
-            tmpBuf = xQueue_.DeQue<T>();
-            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-            DataCopyExtParams wcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
-                                  cacheSkipBlocks * ALIGN_BYTES, 0};
-            DataCopyPad(cacheStatesGM_[csBase], tmpBuf, wcp);
-            xQueue_.FreeTensor(tmpBuf);
-        }
+        DataCopyExtParams wcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
+                                cacheSkipBlocks * ALIGN_BYTES, 0};
+        DataCopyPad(cacheStatesGM_[csBase], cacheLocal[cacheRowStart * dimSize], wcp);
     }
 
     // Write x suffix (last cFromX rows of this batch)
