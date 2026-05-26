@@ -280,7 +280,7 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffse
             vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
             vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yType *>(lastOffsetParam.yGmAddr));
             vecCompute_.TransMxScaleLayout(lastOffsetParam);
-            vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yScaleType *>(lastOffsetParam.yScaleAddr));
+            vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yScaleType *>(lastOffsetParam.yScaleGmAddr));
         }
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
