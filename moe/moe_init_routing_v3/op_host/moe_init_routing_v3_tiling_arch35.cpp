@@ -252,8 +252,7 @@ private:
 
     bool IsSupportFullloadQuantMode() const
     {
-        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
-                (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
+        return false;
     }
 
     // 辅助工具函数
@@ -1725,11 +1724,27 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
     // INT8类型需要扩展为INT16处理
     int64_t effectiveDtypeSize = (inputXDtypeSize_ == sizeof(int8_t)) ? sizeof(int16_t) : inputXDtypeSize_;
 
-    int64_t rowSize = AlignBytes(perCoreRows * sizeof(int32_t), UB_BLOCK_SIZE) * NUM_TWO;
+    // 计算UB空间需求：应该使用每次循环处理的行数，而非核处理总行数
+    // 先计算理论上的最大每次循环行数，用于判断能否全载
     int64_t colSize = AlignBytes(cols_ * effectiveDtypeSize, UB_BLOCK_SIZE);
+    
+    // 理论最大每次循环行数（假设列全载）
+    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE) 
+                                         / sizeof(int32_t) / NUM_TWO;
+    theoreticalMaxPerLoopRows = Align(theoreticalMaxPerLoopRows, sizeof(int32_t));
+
+    // 每次循环实际处理的行数（取核处理行数和理论最大值的较小者）
+    int64_t perLoopRowsEstimate = std::min(perCoreRows, theoreticalMaxPerLoopRows);
+    int64_t lastPerLoopRowsEstimate = std::min(lastCoreRows, theoreticalMaxPerLoopRows);
+
+    // 使用每次循环行数计算UB需求
+    int64_t rowSize = AlignBytes(perLoopRowsEstimate * sizeof(int32_t), UB_BLOCK_SIZE) * NUM_TWO;
 
     // 如果能全载（一行能全部放入UB）
-    if (rowSize + colSize < availUbSize_) {
+    // 需要额外考虑固定开销：copyOutQueue(32字节) + scaleZeroOutQueue(32字节) + UB_BLOCK_SIZE(对齐)
+    int64_t fixedOverhead = UB_BLOCK_SIZE * NUM_TWO + UB_BLOCK_SIZE; // 32*2 + 32 = 96字节
+    
+    if (rowSize + colSize + fixedOverhead < availUbSize_) {
         tilingData->perCorePerLoopRows = perCoreRows;
         tilingData->perCoreLastLoopRows = perCoreRows;
         tilingData->perCoreLoops = 1;
@@ -1744,17 +1759,17 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
         int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
         int64_t baseMaxColsSize = AlignBytes(baseMaxCols, effectiveDtypeSize);
 
-        // 计算每循环最大行数
-        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - UB_BLOCK_SIZE) 
+        // 计算每循环最大行数（需要考虑固定开销）
+        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead) 
                                       / sizeof(int32_t) / NUM_TWO;
         basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
 
         if (cols_ < MAX_COLS_ONE_LOOP) {
-            basePerLoopMaxRows = (availUbSize_ - colSize - UB_BLOCK_SIZE)
+            basePerLoopMaxRows = (availUbSize_ - colSize - fixedOverhead)
                                   / sizeof(int32_t) / NUM_TWO;
             basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
         } else if (perCoreRows < basePerLoopMaxRows) {
-            baseMaxCols = (availUbSize_ - rowSize) / effectiveDtypeSize;
+            baseMaxCols = (availUbSize_ - rowSize - fixedOverhead) / effectiveDtypeSize;
             baseMaxCols = Align(baseMaxCols, effectiveDtypeSize);
         }
 
@@ -1804,15 +1819,34 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
     int64_t rowMultiple = NUM_TWO; // expandedRowIdxCopyInQueue buffer倍数
 
     // 计算每循环最大indices元素数（受UB大小限制）
-    int64_t perLoopMaxIndicesElements = (availUbSize_ - AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple -
-                                          UB_BLOCK_SIZE * NUM_TWO) / rowMultiple / sizeof(int32_t);
+    // UB分配：xCopyInQueue(双缓冲) + scaleCopyInQueue(双缓冲) + expandedRowIdxCopyInQueue(双缓冲)
+    // scaleCopyInQueue固定开销：2 * AlignBytes(1, sizeof(float)) = 64字节
+    int64_t scaleCopyInQueueSize = UB_BLOCK_SIZE * NUM_TWO;
+    
+    // xCopyInQueue占用：colMultiple * AlignBytes(perLoopCols, sizeof(T))
+    // 剩余空间给expandedRowIdxCopyInQueue：rowMultiple * AlignBytes(indicesElements, sizeof(int32_t))
+    
+    // 由于AlignBytes会引入对齐开销，不能简单地用 sizeof(int32_t) * rowMultiple 计算
+    // 需要迭代计算，找到满足 AlignBytes(indicesElements, 4) <= 可用空间的 最大indicesElements
+    
+    int64_t xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
+    int64_t remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
+    
+    // 计算理论最大indices元素数（需要考虑AlignBytes对齐开销）
+    // AlignBytes(indicesElements, 4) * 2 <= remainUbForIndices
+    // AlignBytes(indicesElements, 4) <= remainUbForIndices / 2
+    // indicesElements * 4 + 31 <= remainUbForIndices / 2 * 32 （近似）
+    int64_t maxAlignedBytes = remainUbForIndices / rowMultiple;
+    int64_t perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
     perLoopMaxIndicesElements = Align(perLoopMaxIndicesElements, sizeof(int32_t));
 
     // 如果UB空间不足，递减perLoopCols
     while (perLoopMaxIndicesElements <= 0) {
         perLoopCols = Ops::Base::CeilDiv(perLoopCols, NUM_TWO);
-        perLoopMaxIndicesElements = (availUbSize_ - AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple -
-                                      UB_BLOCK_SIZE * NUM_TWO) / rowMultiple / sizeof(int32_t);
+        xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
+        remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
+        maxAlignedBytes = remainUbForIndices / rowMultiple;
+        perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
         perLoopMaxIndicesElements = Align(perLoopMaxIndicesElements, sizeof(int32_t));
         OP_LOGD(context_, "perLoopCols adjusted to %ld, perLoopMaxIndicesElements=%ld",
                  perLoopCols, perLoopMaxIndicesElements);
