@@ -415,7 +415,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>输出不同量化过程中scaleOptional的中间值。</td>
       <td> 输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。
         <ul style="list-style-type: circle;">
-        <li>非量化场景下，当scaleOptional输入时，shape为[NUM_ROWS*K, 1]，前availableIdxNum个元素为有效数据，输出FLOAT32类型。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果scaleOptional输入，则expandedScaleOut的shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出FLOAT8_E8M0类型。</li>
+        <li>非量化场景下，当scaleOptional输入时，shape为[NUM_ROWS*K, 1]，前availableIdxNum个元素为有效数据，输出FLOAT32类型。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果scaleOptional输入，则expandedScaleOut的shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出FLOAT8_E8M0类型。当Drop/Pad场景输出是一个3D的Tensor，shape为[expertNum * expertCapacity, H]，输出FLOAT32类型。</li>
         <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
         <li>静态量化场景下不输出。</li>
         <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
@@ -496,8 +496,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
     - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
-    - expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）。
-    - dropPadMode仅支持取值为0。
+    - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
+    - dropPadMode支持取值为0和1，DropPad模式（dropPadMode=1）具有如下额外约束：<ul><li>rowIdxType仅支持取值为0（gather索引）。</li><li>activeExpertRangeOptional必须为[0, expertNum]。</li><li>quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INIT8、HIFLOAT8。</li></ul>
     - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
     
@@ -569,7 +569,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       </tr>
       <tr>
         <td align="center"><br>全载性能模板</td>
-        <td>在算子输入shape较小的场景，操作间的多核同步时间占比较高，成为性能瓶颈。因此，针对这种特化场景，添加性能模板。该模板中，搬入、排序、计算都在同一个kernel内完成。需要满足如下条件：<ul style="list-style-type: circle;"><li>属性要求：dropPadMode=0</li></ul></td>
+        <td>在算子输入shape较小的场景，操作间的多核同步时间占比较高，成为性能瓶颈。因此，针对这种特化场景，添加性能模板。该模板中，搬入、排序、计算都在同一个kernel内完成。需要满足如下条件：<ul style="list-style-type: circle;"></ul></td>
       </tr>
     </table>
 

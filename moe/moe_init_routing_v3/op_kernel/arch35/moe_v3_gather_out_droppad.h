@@ -97,33 +97,40 @@ __aicore__ inline void MoeGatherOutDroppad<T>::InitBaseData(GM_ADDR workspace,
     dropPadMode_ = tilingData->dropPadMode;
     activeNum_ = tilingData->activeNum;
 
-    colsLoops_ = tilingData->gatherOutDropPadParamsOp.colsLoops;
+colsLoops_ = tilingData->gatherOutDropPadParamsOp.colsLoops;
     perLoopCols_ = tilingData->gatherOutDropPadParamsOp.perLoopCols;
     lastLoopCols_ = tilingData->gatherOutDropPadParamsOp.lastLoopCols;
 
     actualExpertNum_ = tilingData->actualExpertNum;
+    // expertTotalCountGm用于读取专家处理的token总数（动态值）
+    // 地址：workspace + Align(n*k)*2 + Align(actualExpertNum)
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
-                                        1);
+                                             Align(actualExpertNum_, sizeof(int32_t)),
+                                         1);
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         expertTotalCountGm_);
     expertTotalCount_ = expertTotalCountGm_.GetValue(0);
 
+    // DropPad模式下，从gatherOutDropPadParamsOp读取完整Tiling参数
+    // 数据分割基于totalLength (n*k)，与expert_tokens_count、row_idx_gather一致
+    needCoreNum_ = tilingData->gatherOutDropPadParamsOp.needCoreNum;
+    perCoreIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCoreIndicesElements;
+    lastCoreIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCoreIndicesElements;
     perCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCorePerLoopIndicesElements;
     lastCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCorePerLoopIndicesElements;
-    perCoreIndicesElements_ = Ceil(expertTotalCount_, tilingData->coreNum);
-    needCoreNum_ = Ceil(expertTotalCount_, perCoreIndicesElements_);
-    lastCoreIndicesElements_ = expertTotalCount_ - (needCoreNum_ - 1) * perCoreIndicesElements_;
 
+    // 从gatherOutDropPadParamsOp读取循环参数
     if (blockIdx_ == needCoreNum_ - 1) {
         curCoreIndicesElements_ = lastCoreIndicesElements_;
-        curCorePerLoopIndicesElements_ = Min(lastCorePerLoopIndicesElements_, curCoreIndicesElements_);
+        indicesLoops_ = tilingData->gatherOutDropPadParamsOp.lastCoreIndicesLoops;
+        curCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCorePerLoopIndicesElements;
+        curCoreLastLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCoreLastLoopIndicesElements;
     } else {
         curCoreIndicesElements_ = perCoreIndicesElements_;
-        curCorePerLoopIndicesElements_ = Min(perCorePerLoopIndicesElements_, curCoreIndicesElements_);
+        indicesLoops_ = tilingData->gatherOutDropPadParamsOp.perCoreIndicesLoops;
+        curCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCorePerLoopIndicesElements;
+        curCoreLastLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCoreLastLoopIndicesElements;
     }
-    indicesLoops_ = Ceil(curCoreIndicesElements_, curCorePerLoopIndicesElements_);
-    curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
 }
 
 template <typename T>
@@ -141,11 +148,13 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Init(GM_ADDR x, GM_ADDR scale, GM
     } else {
         xGm_.SetGlobalBuffer((__gm__ T *)x, n_ * cols_);
     }
-    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
-                                 curCoreIndicesElements_ * cols_);
+    // DropPad模式：输出expandedX为3D[expertNum, expertCapacity, cols]，所有核共享整个输出区域
+    // 写入位置由expandedRowIdx决定，分布在整个输出范围
+    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX,
+                                 tilingData->expertNum * tilingData->expertCapacity * cols_);
     if (isInputScale_ == 1) {
-        expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale + blockIdx_ * perCoreIndicesElements_,
-                                         curCoreIndicesElements_);
+        expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale,
+                                         tilingData->expertNum * tilingData->expertCapacity);
     }
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
@@ -242,14 +251,17 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Process()
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
-                int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
-                if (rowIdx == -1) {
-                    continue;
+                int64_t outPosition = subRowIdxLocal.GetValue(indicesIndex); // 输出位置索引
+                if (outPosition == -1) {
+                    continue; // 被drop的token，跳过
                 }
-                int64_t xSrcOffset = rowIdx / k_ * cols_;
-                int64_t scaleSrcOffset = rowIdx / k_;
-                int64_t xDstOffset = (curExpertLoopOffset + indicesIndex) * cols_;
-                int64_t scaleDstOffset = curExpertLoopOffset + indicesIndex;
+                // 输入位置：基于排序后的序号（curExpertLoopOffset + indicesIndex）
+                int64_t sortIdx = curExpertLoopOffset + indicesIndex;
+                int64_t xSrcOffset = sortIdx / k_ * cols_;
+                int64_t scaleSrcOffset = sortIdx / k_;
+                // 输出位置：基于expandedRowIdx中的值（专家内位置）
+                int64_t xDstOffset = outPosition * cols_;
+                int64_t scaleDstOffset = outPosition;
                 SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
                 if (isInputScale_ == 1) {
                     CopyScaleIn(scaleSrcOffset);

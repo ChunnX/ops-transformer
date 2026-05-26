@@ -89,8 +89,15 @@ struct MoeV3Arch35SrcToDstCapacityComputeTilingData {
 
 // DropPad模式下的GatherOut阶段TilingData
 struct MoeV3Arch35GatherOutDropPadComputeTilingData {
+    int64_t needCoreNum{0};
+    int64_t perCoreIndicesElements{0};
+    int64_t lastCoreIndicesElements{0};
+    int64_t perCoreIndicesLoops{0};
     int64_t perCorePerLoopIndicesElements{0};
+    int64_t perCoreLastLoopIndicesElements{0};
+    int64_t lastCoreIndicesLoops{0};
     int64_t lastCorePerLoopIndicesElements{0};
+    int64_t lastCoreLastLoopIndicesElements{0};
     int64_t colsLoops{0};
     int64_t perLoopCols{0};
     int64_t lastLoopCols{0};

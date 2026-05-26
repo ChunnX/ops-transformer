@@ -297,14 +297,18 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
                                          this->expertNum_ * this->expertCapacity_);
     }
 
-    expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
-                                        Align(this->coreRows_, sizeof(int32_t)));
+expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+                                             this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
+                                         Align(this->coreRows_, sizeof(int32_t)));
     expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + length +
-                                            this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
-                                        Align(this->coreRows_, sizeof(int32_t)));
+                                             this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
+                                         Align(this->coreRows_, sizeof(int32_t)));
+    // expertIdxValueGm偏移地址必须与expert_tokens_count.h保持一致
+    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum)*2
+    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
     expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + length * 2 + Align(this->expertNum_, sizeof(int32_t)) * 2, this->coreNum_ * 2);
+        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset, 
+        this->coreNum_ * 2);
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(INT32_ONE_BLOCK_NUM, sizeof(int32_t)));
