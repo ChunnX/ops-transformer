@@ -695,9 +695,9 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 
     SyncAll();
 
-    WriteDeferredCacheSimple();
-
     FillApcCachePrefixChunks();
+
+    WriteDeferredCacheSimple();
 
     // inplace=true：把 y workspace 搬回 xGM_ 完成 inplace 语义。
     if (inplace_) {
