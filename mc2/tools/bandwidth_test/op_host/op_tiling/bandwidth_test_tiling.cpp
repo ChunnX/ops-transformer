@@ -65,7 +65,7 @@ constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 
 // ============ 属性索引常量 ============
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
+constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 卡数
 // constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
@@ -81,10 +81,6 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 // ============ 参数范围约束 ============
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
-const int64_t MAX_WORLD_SIZE = 384;
-const int64_t MAX_BS = 512;
-const int64_t MIN_DATA_SIZE = 1024;
-const int64_t MAX_DATA_SIZE = 8192;
 
 // ============ Tiling Key ============
 constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;  // A5架构base key
@@ -107,7 +103,6 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
@@ -115,8 +110,6 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(worldSizePtr == nullptr,
         OP_LOGE(nodeName, "worldSizePtr is null."), return ge::GRAPH_FAILED);
-    // OP_TILING_CHECK(rankIdPtr == nullptr,
-    //     OP_LOGE(nodeName, "rankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxBsPtr == nullptr,
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
@@ -131,7 +124,6 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
@@ -140,12 +132,11 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "group name is invalid, length should be in (0, %zu), but got length=%zu.",
         MAX_GROUP_NAME_LENGTH, strnlen(groupPtr, MAX_GROUP_NAME_LENGTH)), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
-        OP_LOGE(nodeName, "worldSize is invalid, only support [%ld, %ld], but got worldSize=%ld.",
-        MIN_WORLD_SIZE, MAX_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE),
+        OP_LOGE(nodeName, "worldSize is invalid, but got worldSize=%ld.",*worldSizePtr), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*maxBsPtr <= 0) || (*maxBsPtr > MAX_BS),
-        OP_LOGE(nodeName, "maxBs is invalid, only support (0, %ld], but got maxBs=%ld.",
+    OP_TILING_CHECK((*maxBsPtr <= 0),
+        OP_LOGE(nodeName, "maxBs is invalid, but got maxBs=%ld.",
         MAX_BS, *maxBsPtr), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
@@ -202,12 +193,12 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
     const int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     const int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
 
-    OP_TILING_CHECK(xDim0 <= 0 || xDim0 > MAX_BS,
-        OP_LOGE(nodeName, "x dim0 (bs) is invalid, should be in (0, %ld], but got %ld.",
-        MAX_BS, xDim0), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(xDim1 <= 0 || xDim1 > MAX_DATA_SIZE,
-        OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be in (0, %ld], but got %ld.",
-        MAX_DATA_SIZE, xDim1), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xDim0 <= 0,
+        OP_LOGE(nodeName, "x dim0 (bs) is invalid, should > 0, but got %ld.",
+        xDim0), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xDim1 <= 0,
+        OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should > 0, but got %ld.",
+        xDim1), return ge::GRAPH_FAILED);
 
     tilingData.max_bs = static_cast<int32_t>(xDim0);
     tilingData.data_size = static_cast<int32_t>(xDim1);
@@ -347,14 +338,8 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
     OP_TILING_CHECK(CheckTensorShape(context, nodeName, *tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check tensor shape failed."), return ge::GRAPH_FAILED);
 
-    // OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-    //     OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
-
     OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
-
-    // OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
-    //     OP_LOGE(nodeName, "SetHcommCfg failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
