@@ -507,3 +507,60 @@ void ScatterAdd(sparseIndices, scatterAdd, dk) {
 - CrossCore Flag 低开销同步
 - Workspace 共享减少数据搬运
 - 核内数据复用减少冗余计算
+
+---
+## 9. 补充实现逻辑
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. 遍历 batch (外层循环)                                        │
+│     for (bIndex = 0; bIndex < batch; bIndex++)                  │
+│                                                                  │
+│  2. 每个 batch 内:                                               │
+│     ├── 所有核并行执行（每个核处理不同的 S1×N2 段）               │
+│     ├── 核内部是任务流水线（task_0, task_1, task_2...）          │
+│     └── SyncAll 等待所有核完成                                   │
+│                                                                  │
+│  3. 下一个 batch                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+层级关系:
+┌─ Batch 循环 (顺序)
+│  ├─ 核并行 (24核同时执行)
+│  │  ├─ 核内流水线 (task_0 → task_1 → ...)
+│  │
+│  └─ SyncAll (等待)
+│
+└─ 下一个 Batch
+```
+
+```
+流水线的填充和清空过程:
+
+假设 loopTimes = 5 个任务
+
+时间 i:    0    1    2    3    4    5    6    7
+          ─┬────┬────┬────┬────┬────┬────┬────┬─
+阶段:     pre1 pre2 pre3 MID  MID  end3 end2 end1
+
+新任务启动:
+          task_0 task_1 task_2 task_3 task_4 (无) (无) (无)
+          ↑      ↑      ↑      ↑      ↑
+          启动   启动   启动   启动   启动   最后5个启动完成
+
+流水线中的任务:
+i=0: [task_0 正在 Vec1]                    ← 只有1个任务在管道
+i=1: [task_0→Cube, task_1→Vec1]            ← 2个任务
+i=2: [task_0→Vec2, task_1→Cube, task_2→Vec1] ← 3个任务
+i=3: [task_0→Vec3, task_1→Vec2, task_2→Cube, task_3→Vec1] ← 4个任务
+i=4: [task_1→Vec3, task_2→Vec2, task_3→Cube, task_4→Vec1] ← 管道满了
+i=5: [task_2→Vec3, task_3→Vec2, task_4→Cube] ← 不再启动新任务，开始清空
+i=6: [task_3→Vec3, task_4→Vec2]            ← 继续清空
+i=7: [task_4→Vec3]                         ← 最后一个任务完成
+
+任务完成时刻:
+task_0: i=3 完成 (从i=0启动，延迟4周期)
+task_1: i=4 完成
+task_2: i=5 完成
+task_3: i=6 完成
+task_4: i=7 完成 (从i=4启动，延迟4周期)
+```
