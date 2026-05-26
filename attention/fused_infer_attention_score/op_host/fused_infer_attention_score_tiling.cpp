@@ -1426,13 +1426,35 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
         bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
         bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
+        OP_LOGD(context->GetNodeName(),
+            "flashDecodeFlag check vars: lseFlag=%d pagedCacheFlag=%d maskType=%u learnableSinkFlag=%d innerPrecise=%d "
+            "maxQSeqlen=%ld minQSeqlen=%ld maxKVSeqlen=%ld numHeads=%d kvHeads=%d gqa=%d maxQSeqlen*gqa=%ld "
+            "numTasks=%u aicoreNum=%u isLongSeq=%d isShortSeq=%d",
+            static_cast<int>(faInfo.lseFlag), static_cast<int>(faInfo.pagedCacheFlag),
+            static_cast<uint32_t>(faInfo.maskType), static_cast<int>(faInfo.learnableSinkFlag), faInfo.innerPrecise,
+            maxQSeqlen, minQSeqlen, maxKVSeqlen, faInfo.numHeads, faInfo.kvHeads,
+            faInfo.numHeads / faInfo.kvHeads, maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads),
+            numTasks, aicoreNum, static_cast<int>(isLongSeq), static_cast<int>(isShortSeq));
+        OP_LOGD(context->GetNodeName(),
+            "flashDecodeFlag sub-conds: noLse=%d pagedCache=%d notFullMask=%d notSwaMask=%d noSink=%d innerPreciseOk=%d "
+            "gqaGroup=%d maxQ=%d maxKv=%d minQ=%d seqPattern=%d",
+            static_cast<int>(!faInfo.lseFlag), static_cast<int>(faInfo.pagedCacheFlag),
+            static_cast<int>(!(faInfo.maskType == MaskType::FULL_MASK)),
+            static_cast<int>(!(faInfo.maskType == MaskType::SWA_MASK)),
+            static_cast<int>(!faInfo.learnableSinkFlag), static_cast<int>(!(faInfo.innerPrecise == 1)),
+            static_cast<int>(maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128),
+            static_cast<int>(maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16),
+            static_cast<int>(maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024),
+            static_cast<int>(minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0),
+            static_cast<int>(isLongSeq || isShortSeq));
         if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
             (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
             (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
             (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
             (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
             (isLongSeq || isShortSeq)) {
-            faInfo.flashDecodeFlag = true; 
+            faInfo.flashDecodeFlag = true;
+            OP_LOGD(context->GetNodeName(), "flashDecodeFlag set to true");
         }
         if (faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
             (batch >= aicoreNum) && (faInfo.blockSize == 128) &&
