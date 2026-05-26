@@ -196,7 +196,7 @@ ge::graphStatus CompressorTiling::SetTemplateId()
         return ge::GRAPH_SUCCESS;
     }
     // 设置高性能模板
-    if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
+    if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 128) {
         context_->templateId = TemplateId::FULL_LOAD;
     }
     return ge::GRAPH_SUCCESS;
