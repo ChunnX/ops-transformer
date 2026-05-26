@@ -70,6 +70,10 @@ public:
     constexpr static uint64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     constexpr static uint64_t SCALE_C0 = 2;
     constexpr static uint64_t SCALE_BUFFER_NUM = 2;
+    constexpr static uint16_t SCALE_BUFFER_FLAG_0 = 4;
+    constexpr static uint16_t SCALE_BUFFER_FLAG_1 = 5;
+    constexpr static uint16_t M_MTE1_FLAG_0 = 4;
+    constexpr static uint16_t M_MTE1_FLAG_1 = 5;
 
     using MakeLayoutAL1 = AscendC::Std::conditional_t<
         transA, AscendC::Te::FrameLayoutFormat<AscendC::Te::ZNLayoutPtn, AscendC::Std::Int<C0_SIZE>>,
@@ -108,7 +112,7 @@ public:
         uint64_t l1BufNum;
     };
 
-    __aicore__ inline BlockMmad()
+    __aicore__ inline TensorBlockMmadMxCompat()
     {
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
@@ -123,7 +127,7 @@ public:
         AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
     }
 
-    __aicore__ inline ~BlockMmad()
+    __aicore__ inline ~TensorBlockMmadMxCompat()
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_1);
@@ -488,11 +492,6 @@ private:
                 tensorL0C, tensorAL0, tensorBL0);
         }
     }
-
-    constexpr static uint16_t SCALE_BUFFER_FLAG_0 = 4;
-    constexpr static uint16_t SCALE_BUFFER_FLAG_1 = 5;
-    constexpr static uint16_t M_MTE1_FLAG_0 = 4;
-    constexpr static uint16_t M_MTE1_FLAG_1 = 5;
 
     uint16_t biasBufId_ = 0;
     uint64_t biasL1OneBuffer_ = 0UL;
