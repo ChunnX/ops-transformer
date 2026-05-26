@@ -17,7 +17,7 @@ def generate_npu_mask(b, s1, s2, mask_mode, win_left, win_right, prefix=None):
     if mask_mode is None or mask_mode == 0:
         return None
     elif mask_mode in (3, 4):
-        mask = torch.triu(torch.ones(s1, s2), diagonal=1).bool()
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1).bool()
     return mask
 
 
