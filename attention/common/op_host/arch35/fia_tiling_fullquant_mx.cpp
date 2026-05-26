@@ -343,20 +343,20 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
         if (actualSeqLengthsTmp == 0 || actualSeqLengthsKV_[bIdx] == 0) {
             outerBlockNums = fiaInfo_->n2Size;
         }
-        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
-               "actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
-               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp,
-               outerBlockNums);
         totalSize += outerBlockNums;
+        OP_LOGD(fiaInfo_->opName,
+            "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
+            "outerBlockNums:%lld, totalSize:%lld\n",
+            bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
 
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    printf("actualUsedCoreNum:%d\n", actualUsedCoreNum);
-    printf("totalSize:%d\n", totalSize);
-    printf("zzyzzy gqa enableS1OutSplit\n");
+    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%lld\n", actualUsedCoreNum);
+    OP_LOGD(fiaInfo_->opName, "totalSize:%lld\n", totalSize);
+    OP_LOGD(fiaInfo_->opName, "gqa enableS1OutSplit\n");
 }
 
 bool FiaTilingFullQuantMxArch35::CheckQKVActualSeqLengthsRight()
@@ -671,8 +671,8 @@ void FiaTilingFullQuantMxArch35::GenTilingKey()
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, kvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
-            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp: %llu.",
+            "hasAttenMask: %u, hasRope: %u, kvLayoutType: %llu, isFd: %u, emptyTensor: %u, "
+            "enableKvPrefix: %u, enableS1OutSplit: %u, isReconstructTemp: %u.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
