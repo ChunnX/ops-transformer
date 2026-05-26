@@ -148,7 +148,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 
 ## get\_symm\_buffer\_for\_mega\_moe接口说明
 ```
-get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
+get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, *, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
 ```
 ## 参数说明
 
@@ -158,6 +158,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 - **num_topk**(`int`)：必选参数，表示每个token发送的专家数。预留参数，暂不支持。
 - **hidden**(`int`)：必选参数，表示每个token大小。预留参数，暂不支持。
 - **intermediate_hidden**(`int`)：必选参数，表示中间层投影维度。预留参数，暂不支持。
+- <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
 - **max_recv_token_num**(`int`)：可选参数，每个Rank最大可接收Token数，默认值为0表示自动计算。
 - **dispatch_quant_mode**(`int`)：可选参数，dispatch通信时量化模式，目前仅支持4（MX模式）。
 - **dispatch_quant_out_type**(`int`)：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
