@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 if (BUILD_OPEN_PROJECT)
+    set(inplace_fused_causal_conv1d_depends attention/fused_causal_conv1d CACHE INTERNAL "Dependencies for inplace_fused_causal_conv1d")
     set(inplace_fused_causal_conv1d_apt_depends attention/fused_causal_conv1d CACHE INTERNAL "Dependencies for inplace_fused_causal_conv1d")
     target_sources(op_host_aclnnExc PRIVATE
     inplace_fused_causal_conv1d_def.cpp
