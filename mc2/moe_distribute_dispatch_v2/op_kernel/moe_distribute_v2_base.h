@@ -93,7 +93,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     
 __aicore__ inline void AIVRDMAPostSend(
     GM_ADDR srcDmaAddr, GM_ADDR destDmaAddr, uint64_t destRankId, uint64_t messageLen, __gm__ HcclAiRMAInfo* QpInfo,
-    LocalTensor<uint64_t>& ubLocalTensor, LocalTensor<uint32_t>& ubLocalHeadTensor)
+    LocalTensor<uint64_t>& ubLocalTensor, LocalTensor<uint32_t>& ubLocalHeadTensor, GlobalTensor<uint32_t>& selfDataStatusGMAiv, uint32_t flag)
 {
     auto qpNum = ((__gm__ HcclAiRMAInfo*)QpInfo)->qpNum;
     auto qp_ctx_entry = (__gm__ HcclAiRMAWQ*)(((__gm__ HcclAiRMAInfo*)QpInfo)->sqPtr +
@@ -111,6 +111,12 @@ __aicore__ inline void AIVRDMAPostSend(
     auto QP_DEPTH = qp_ctx_entry->depth;
 
     PipeBarrier<PIPE_ALL>();
+    if (flag != -1) {
+        selfDataStatusGMAiv.SetValue(0, 12 + flag); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+    }
+    
 
     // Make sure we don't overflow the SQ in an infinite loop - no need to mitigate endless loop as the host
     // will timeout and kill the kernel, same as all2all kernel if it fails to complete (e.g. in case of link loss)
@@ -119,7 +125,17 @@ __aicore__ inline void AIVRDMAPostSend(
         if ((curHead - *(__gm__ uint32_t*)(curHardwareTailAddr)) < QP_DEPTH - 1) {
             break;
         }
+        int64_t systemCycleAfter = AscendC::GetSystemCycle();
+        int64_t systemCycleAfter1 = AscendC::GetSystemCycle();
     }
+
+    if (flag != -1) {
+        PipeBarrier<PIPE_ALL>();
+        selfDataStatusGMAiv.SetValue(0, 13 + flag); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+    }
+    
 
     __gm__ uint8_t* wqeAddr = (__gm__ uint8_t*)(sqBaseAddr + wqeSize * (curHead % QP_DEPTH));
 

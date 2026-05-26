@@ -182,6 +182,7 @@ private:
     GlobalTensor<int16_t> countInnerGlobal_;
     GlobalTensor<int32_t> offsetOuterGlobal_;
     GlobalTensor<int32_t> countOuterGlobal_;
+    GlobalTensor<uint32_t> testdumpGlobal_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     uint32_t axisBS_{0};
@@ -772,7 +773,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
                 aivDstGlobal.SetGlobalBuffer((__gm__ ExpandXTransType *)(dstrdmaAddr));
                 AIVRDMAPostSend((GM_ADDR)(srcrdmaAddr + copyLenAlign * (copySum - 1)),
                                 (GM_ADDR)(dstrdmaAddr + copyLenAlign * (copySum - 1)),
-                                tragRankId, copyLen, qp_info_, ubLocal_, ubLocalHead_);
+                                tragRankId, copyLen, qp_info_, ubLocal_, ubLocalHead_, testdumpGlobal_, -1);
             } else {
                 aivSrcGlobal.SetGlobalBuffer((__gm__ ExpandXTransType *)(srcrdmaAddr));
                 aivDstGlobal.SetGlobalBuffer((__gm__ ExpandXTransType *)(dstrdmaAddr));
@@ -819,7 +820,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         AIVRDMAPostSend((GM_ADDR)((uint64_t)(readStateGlobal_.GetPhyAddr())),
                         ((GetWindInAddrByRankId(tragRankId) +
                             halfWinSize_ * bufferId_ + dataSpaceSize_ + selfServerID * STATE_OFFSET)),
-                        tragRankId, UB_ALIGN, qp_info_, ubLocal_, ubLocalHead_);
+                        tragRankId, UB_ALIGN, qp_info_, ubLocal_, ubLocalHead_, testdumpGlobal_, -1);
     }
     SyncAll<true>();
 }
