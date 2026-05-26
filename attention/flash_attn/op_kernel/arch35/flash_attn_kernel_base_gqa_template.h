@@ -318,7 +318,8 @@ public:
         constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
-
+        constInfo.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
+        
         constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
