@@ -77,13 +77,14 @@ ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3Tili
     config.attrSharedExpertNumIndex = 7; // 7: 根据combineV2算子原型标志位初始化attrSharedExpertNumIndex索引
     config.attrSharedExpertRankNumIndex = 8; // 8: 根据combineV2算子原型标志位初始化attrSharedExpertRankNumIndex索引
     config.attrGlobalBsIndex  = 9; // 9: 根据combineV2算子原型标志位初始化attrGlobalBsIndex索引
-    config.attrOutDTypeIndex = 10; // 10: 根据combineV2算子原型标志位初始化attrOutDTypeIndex索引
-    config.attrCommQuantModeIndex = 11; // 11: 根据combineV2算子原型标志位初始化attrCommQuantModeIndex索引
-    config.attrGroupListTypeIndex = 12; // 12: 根据combineV2算子原型标志位初始化attrGroupListTypeIndex索引
-    config.attrCommAlgIndex = 13; // 13: 根据combineV2算子原型标志位初始化attrCommAlgIndex索引
-    config.attrZeroExpertNumIndex = 14; // 根据combineV2算子原型标志位设置attrZeroExpertNum索引
-    config.attrCopyExpertNumIndex = 15; // 根据combineV2算子原型标志位设置attrCopyExpertNum索引
-    config.attrConstExpertNumIndex = 16; // 根据combineV2算子原型标志位设置attrConstExpertNum索引
+    config.attrShmemBufferIndex = 10; // 11: shmem 通信 Buffer
+    config.attrOutDTypeIndex = 11; // 10: 根据combineV2算子原型标志位初始化attrOutDTypeIndex索引
+    config.attrCommQuantModeIndex = 12; // 11: 根据combineV2算子原型标志位初始化attrCommQuantModeIndex索引
+    config.attrGroupListTypeIndex = 13; // 12: 根据combineV2算子原型标志位初始化attrGroupListTypeIndex索引
+    config.attrCommAlgIndex = 14; // 13: 根据combineV2算子原型标志位初始化attrCommAlgIndex索引
+    config.attrZeroExpertNumIndex = 15; // 根据combineV2算子原型标志位设置attrZeroExpertNum索引
+    config.attrCopyExpertNumIndex = 16; // 根据combineV2算子原型标志位设置attrCopyExpertNum索引
+    config.attrConstExpertNumIndex = 17; // 根据combineV2算子原型标志位设置attrConstExpertNum索引
     config.hasAddRmsNorm = false;
     config.isMc2Context = true;
 

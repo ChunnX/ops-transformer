@@ -41,8 +41,7 @@ static constexpr float FLOAT_INF = 3e+99;
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
 
-enum class FA_LAYOUT : uint32_t
-{
+enum class FA_LAYOUT : uint32_t {
     BSH = 0,
     BSND = 0,
     BNSD = 1,
@@ -52,8 +51,21 @@ enum class FA_LAYOUT : uint32_t
     NTD = 5
 };
 
-enum class inferFaLayOutTypeEnum { None = 0, LAYOUT_BSH = 1, LAYOUT_SBH = 2, LAYOUT_BNSD = 3, LAYOUT_TND = 4, LAYOUT_NTD_TND = 5, LAYOUT_NTD = 6};
-enum class inferPFALayoutTypeEnum { LAYOUT_BSH = 0, LAYOUT_BNSD = 1, LAYOUT_TND = 2, LAYOUT_NTD = 3};
+enum class inferFaLayOutTypeEnum {
+    None = 0,
+    LAYOUT_BSH = 1,
+    LAYOUT_SBH = 2,
+    LAYOUT_BNSD = 3,
+    LAYOUT_TND = 4,
+    LAYOUT_NTD_TND = 5,
+    LAYOUT_NTD = 6
+};
+enum class inferPFALayoutTypeEnum {
+    LAYOUT_BSH = 0,
+    LAYOUT_BNSD = 1,
+    LAYOUT_TND = 2,
+    LAYOUT_NTD = 3
+};
 enum class inferDTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,
@@ -100,15 +112,20 @@ enum class inferImplModeEnum {
 #define ImplMode_AA_HIGH_PERFORMANCE 1
 #define ImplMode_AA_INVALID_LINE_HIGH_PRECISION 2
 
-static constexpr  inferFaLayOutTypeEnum InOutLayoutTypeValue[5][2] ={
-    {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
+// q_out layout → (inputLayout, outputLayout)
+//   0=BSND → (BSND, BSND)
+//   1=BNSD → (BNSD, BNSD)
+//   2=TND  → (TND, TND)
+//   3=BNSD_BSND → (BNSD, BSND)
+static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[5][2] = {
     {inferFaLayOutTypeEnum::LAYOUT_BSH, inferFaLayOutTypeEnum::LAYOUT_BSH},
+    {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
     {inferFaLayOutTypeEnum::LAYOUT_TND, inferFaLayOutTypeEnum::LAYOUT_TND},
     {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BSH},
     {inferFaLayOutTypeEnum::LAYOUT_NTD, inferFaLayOutTypeEnum::LAYOUT_NTD},
 };
 
-static constexpr  inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] ={
+static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
     {inferPFALayoutTypeEnum::LAYOUT_BNSD, inferPFALayoutTypeEnum::LAYOUT_BNSD},
     {inferPFALayoutTypeEnum::LAYOUT_BSH, inferPFALayoutTypeEnum::LAYOUT_BSH},
     {inferPFALayoutTypeEnum::LAYOUT_TND, inferPFALayoutTypeEnum::LAYOUT_TND},
@@ -116,11 +133,18 @@ static constexpr  inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] ={
     {inferPFALayoutTypeEnum::LAYOUT_NTD, inferPFALayoutTypeEnum::LAYOUT_NTD},
 };
 
-#define InOutLayoutType_BNSD_BNSD 0
-#define InOutLayoutType_BSH_BSH 1 //BSND由于排布与BSH一样，因此两个会编译成相同取值
-#define InOutLayoutType_TND_TND 2
+// q_out layout
+//   0: BSND (BSND排布与BSH一样)
+//   1: BNSD
+//   2: TND
+//   3: BNSD_BSND
+#define InOutLayoutType_BSND 0
+#define InOutLayoutType_BNSD 1
+#define InOutLayoutType_TND 2
 #define InOutLayoutType_BNSD_BSND 3
 #define InOutLayoutType_NTD_NTD 4
+// backward compat
+#define InOutLayoutType_BSH_BSH InOutLayoutType_BSND
 
 // KvLayoutType
 #define KvLayoutType_NO_PA 0
@@ -135,64 +159,18 @@ struct ConfigParams {
     inferDTemplateType dv;
 };
 
-// Config
-static constexpr ConfigParams ConfigValue[] ={
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //0
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //1
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //2
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //3
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned192, inferDTemplateType::Aligned128}, //4
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256, inferDTemplateType::Aligned128}, //5
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //6
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //7
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //8
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned576, inferDTemplateType::Aligned512}, //9
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned64, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //10
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned64, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //11
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned1024, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //12
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //13
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //14
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //15
-   {inferS1TemplateType::Aligned16, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //16
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //17
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //18
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //19
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //20
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256, inferDTemplateType::Aligned256}, //21
-   {inferS1TemplateType::Aligned32, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned512, inferDTemplateType::Aligned512}, //22
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128, inferDTemplateType::Aligned64}, //23
-   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //24
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned64}, //25
-   {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //26
+// config, D=128 fixed
+//   config=0: sOuter=64,sInner=128 → S1=128,S2=128
+//   config=1: sOuter=32,sInner=256 → S1=64,S2=256
+static constexpr ConfigParams ConfigValue[] = {
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // config=0
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // config=1
 };
 
-#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 0
+#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 0
 #define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 1
-#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64 2
-#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 3
-#define Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128 4
-#define Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128 5
-#define Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256 6
-#define Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512 7
-#define Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64 8
-#define Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512 9
-#define Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256 10
-#define Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512 11
-#define Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64 12
-#define Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128 13
-#define Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256 14
-#define Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512 15
-#define Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64 16
-#define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 17
-#define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 18
-#define Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64 19
-#define Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128 20
-#define Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256 21
-#define Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512 22
-#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64 23
-#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128 24
-#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64 25
-#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128 26
 
 
 // PseMode
@@ -243,7 +221,7 @@ static constexpr ConfigParams ConfigValue[] ={
 // kernel stream related struct
 struct FDparamsX {
     uint32_t fdCoreEnable;
- 	uint32_t fdBN2Idx;
+    uint32_t fdBN2Idx;
     uint32_t fdMIdx;
     uint32_t fdS2SplitNum;
     uint32_t mStart;
@@ -275,14 +253,14 @@ struct RunInfoX {
     uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
     uint32_t actMSize = 0;    // GS1方向上的长度
     uint32_t actMSizeAlign32; // GS1 方向上长度对齐
-    uint32_t actVecMSize;  // VEC 视角, 基本块GS1方向长度
-    uint32_t vecMbaseIdx;    // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
+    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
 
     uint32_t actSingleLoopS2Size = 0; // S2方向长度
     uint32_t actSingleLoopS2SizeAlign;
     // uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
-    uint32_t faTmpOutWsPos = 0;  // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;
@@ -303,12 +281,12 @@ struct CommonConstInfo {
     uint32_t dSizeRope;
     uint32_t gSize; /* g轴的大小 */
     uint32_t n2Size;
-    uint64_t s1Size; /* s1总大小 */
-    uint64_t s2Size; /* s2总大小 */
-    uint64_t cuSeqLensQSize;     /* 用户输入的actualseq的长度 */
-    uint64_t cuSeqLensKVSize;    /* 用户输入的actualseq_kv的长度 */
-    uint64_t seqUsedQSize;       /* 用户输入的seq used q的长度 */
-    uint64_t seqUsedKvSize;      /* 用户输入的seq used kv的长度 */
+    uint64_t s1Size;          /* s1总大小 */
+    uint64_t s2Size;          /* s2总大小 */
+    uint64_t cuSeqLensQSize;  /* 用户输入的actualseq的长度 */
+    uint64_t cuSeqLensKVSize; /* 用户输入的actualseq_kv的长度 */
+    uint64_t seqUsedQSize;    /* 用户输入的seq used q的长度 */
+    uint64_t seqUsedKvSize;   /* 用户输入的seq used kv的长度 */
 
     /* FA kernel meta */
     uint32_t bN2Start;
@@ -364,7 +342,7 @@ struct PseConstInfo {
 };
 
 struct TensorListConstInfo {
-    bool isKvContinuous;     /* 是否为tensorlist */
+    bool isKvContinuous; /* 是否为tensorlist */
 };
 
 struct PostQuantConstInfo {
@@ -389,12 +367,18 @@ struct SysPrefixConstInfo {
     int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
 };
 
-template<FiaKernelType>
+template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> :
-CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo, PseConstInfo, TensorListConstInfo, PostQuantConstInfo, LeftPaddingConstInfo, SysPrefixConstInfo {
-};
+struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
+                                              PAConstInfo,
+                                              LseConstInfo,
+                                              SinkConstInfo,
+                                              PseConstInfo,
+                                              TensorListConstInfo,
+                                              PostQuantConstInfo,
+                                              LeftPaddingConstInfo,
+                                              SysPrefixConstInfo {};
 
-#endif  // FLASH_ATTN_COMMON_DEF_H_
+#endif // FLASH_ATTN_COMMON_DEF_H_

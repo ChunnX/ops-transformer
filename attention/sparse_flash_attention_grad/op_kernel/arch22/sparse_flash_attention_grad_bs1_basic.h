@@ -83,6 +83,7 @@ private:
     int64_t curMaxS2Scatter{0};
     int64_t dimS1;
     int64_t totalS1{0};
+    int64_t validT1{0};
     bool deterministic = false;
     // attr
     uint32_t selectedBlockCount;
@@ -209,6 +210,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
 {
     Init(tilingData);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
+    if constexpr (IS_BSND == false) {
+        validT1 = ((__gm__ int32_t *)actual_seq_qlen)[dimB - 1];
+    }
 
     // AIC Process
     if ASCEND_IS_AIC {
@@ -222,6 +226,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            if (!IS_BSND && t1Index >= validT1) {
+                break;
+            }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
@@ -297,6 +304,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            if (!IS_BSND && t1Index >= validT1) {
+                break;
+            }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;

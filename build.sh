@@ -323,7 +323,7 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -512,6 +512,11 @@ function build_example()
 {
     log "Start to run example,name:${EXAMPLE_NAME} mode:${EXAMPLE_MODE}"
 
+    local verbose_option=""
+    if [ "${VERBOSE}" == "true" ];then
+        verbose_option="-v"
+    fi
+
     if [ ! -d "${BUILD_PATH}" ]; then
     	mkdir -p ${BUILD_PATH}
     fi
@@ -554,6 +559,55 @@ function build_example()
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
+
+    # ========= cann 路径配置（通过环境变量 SHMEM_HOME 指定） =========
+    if [[ -z "${ASCEND_HOME_PATH}" ]]; then
+        echo "Error: 环境变量 ASCEND_HOME_PATH 未设置，请先 source CANN包"
+        return 1
+    fi
+    ASCEND_HOME="$(realpath "${ASCEND_HOME_PATH}/..")"
+
+    if [[ ! -d "${ASCEND_HOME}" ]]; then
+        echo "Error: ASCEND_HOME=${ASCEND_HOME} 不存在"
+        return 1
+    fi
+
+    # ========= shmem 外接配置（通过环境变量 SHMEM_HOME 指定） =========
+    if [[ -z "${SHMEM_HOME}" ]]; then
+        echo "Error: 环境变量 SHMEM_HOME 未设置，请先 export SHMEM_HOME=/path/to/shmem"
+        return 1
+    fi
+
+    if [[ ! -d "${SHMEM_HOME}" ]]; then
+        echo "Error: SHMEM_HOME=${SHMEM_HOME} 不存在"
+        return 1
+    fi
+
+    # 自动判断 lib 还是 lib64
+    if [[ -d "${SHMEM_HOME}/build/lib" ]]; then
+        SHMEM_LIB_DIR="${SHMEM_HOME}/build/lib"
+    else
+        echo "Error: 在 ${SHMEM_HOME} 下未找到 lib 目录"
+        return 1
+    fi
+
+    SHMEM_INC_DIR="${SHMEM_HOME}/include"
+
+    echo "[INFO] SHMEM_HOME    = ${SHMEM_HOME}"
+    echo "[INFO] SHMEM_INC_DIR = ${SHMEM_INC_DIR}"
+    echo "[INFO] SHMEM_LIB_DIR = ${SHMEM_LIB_DIR}"
+
+    export LD_LIBRARY_PATH="${SHMEM_LIB_DIR}:${LD_LIBRARY_PATH}"
+
+    # SHMEM运行时日志开启
+    export SHMEM_LOG_LEVEL=ERROR
+    export SHMEM_LOG_TO_STDOUT=1
+
+    export PATH=${MPI_TEST_HOME}/bin:$PATH
+    export LD_LIBRARY_PATH=${MPI_TEST_HOME}/lib:$LD_LIBRARY_PATH
+    MPI_INC_DIR="${MPI_TEST_HOME}/include"
+    MPI_LIB_DIR="${MPI_TEST_HOME}/lib"
+
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
         if [ -z "$files" ]; then
@@ -585,7 +639,7 @@ function build_example()
                 MC2_APPEND_INCLUDE_AND_LIBRARY="-lpthread -Wl,--no-as-needed -lhccl -lhccl_fwk"
             fi
             if [[ "${PKG_MODE}" == "" ]]; then
-                g++ ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${INCLUDE_PATH} -I ${ACLNN_INCLUDE_PATH} -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} \
                     -L ${EAGER_LIBRARY_OPP_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lopapi_transformer -lascendcl -lnnopbase \
@@ -603,9 +657,12 @@ function build_example()
                     CUST_LIBRARY_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/lib"
                     CUST_INCLUDE_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/include"
                 fi
-                g++ ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${CUST_INCLUDE_PATH} -I ${INCLUDE_PATH} \
+                    -I ${MPI_INC_DIR} -I ${SHMEM_INC_DIR}   \
                     -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} \
+                    -L ${MPI_LIB_DIR} -L ${SHMEM_LIB_DIR} \
+                    -lmpi -lmpicxx -lshmem  \
                     -lopapi_math -lcust_opapi -lascendcl -lnnopbase \
                     -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} \
                     -lc_sec ${MC2_APPEND_INCLUDE_AND_LIBRARY} \
@@ -616,10 +673,116 @@ function build_example()
                 help_info "run_example"
                 return 1
             fi
-            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS} == "ascend950"" ]]; then
+            if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS}" == "ascend950" ]]; then
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
             else 
-                ./test_aclnn_${EXAMPLE_NAME}
+                # 指定 SHMEM Master IP
+                export SHMEM_UID_SESSION_ID="141.61.133.110:18899"
+                HOSTS=(141.61.133.110 141.61.133.109)
+ 	            PPN=8
+ 	            N_PES=$((${#HOSTS[@]} * PPN))
+                WORK_DIR="$(pwd)"                           # ops-transformer/build/
+                OPS_DIR="$(realpath "${WORK_DIR}/..")"      # ops-transformer/
+                EXEC="${WORK_DIR}/test_aclnn_${EXAMPLE_NAME}"
+ 	            LOG_DIR="${WORK_DIR}/../logs_${EXAMPLE_NAME}_$(date +%Y%m%d)"
+                mkdir -p ${LOG_DIR} ${WORK_DIR}
+
+                # 本地环境安装
+                # 算子 run 包（相对当前 build/ 目录）
+                OPS_RUN_LOCAL="${WORK_DIR}/../build_out/cann-ops-transformer-custom_linux-aarch64.run"
+                bash ${OPS_RUN_LOCAL} --install-path=${ASCEND_HOME}/cann/ --force
+                source ${ASCEND_HOME}/cann/vendors/custom_transformer/bin/set_env.bash
+
+                # 生成日志包装脚本（每次运行覆盖，确保最新）
+                WRAPPER="${WORK_DIR}/wrapper_${EXAMPLE_NAME}.sh"
+                {
+                    echo '#!/bin/bash'
+                    echo 'RANK=${PMI_RANK:-0}'
+                    echo 'HOST=$(hostname -s)'
+                    echo "LOG_FILE=\"${LOG_DIR}/log_\${HOST}_rank_\${RANK}.txt\""
+                    echo ''
+                    echo '# CANN 环境'
+                    echo "source ${ASCEND_HOME}/ascend-toolkit/set_env.sh"
+                    echo ''
+                    echo '# 自定义算子环境'
+                    echo "source ${ASCEND_HOME}/cann/vendors/custom_transformer/bin/set_env.bash"
+                    echo '# 自定义算子 .so'
+                    echo "export LD_LIBRARY_PATH=${OPS_DIR}/build:${LD_LIBRARY_PATH}"
+                    echo ''
+                    echo 'export ASCEND_SLOG_PRINT_TO_STDOUT=0'
+                    echo 'export SHMEM_LOG_LEVEL=ERROR'
+                    echo 'export SHMEM_LOG_TO_STDOUT=1'
+                    echo ''
+                    echo '# SHMEM'
+                    echo "SHMEM_HOME=${SHMEM_HOME}"
+                    echo "export LD_LIBRARY_PATH=${SHMEM_HOME}/build/lib:${LD_LIBRARY_PATH}"
+                    echo ''
+                    echo '{'
+                    echo '    echo "[wrapper] host=${HOST} rank=${RANK}"'
+                    echo '    echo "[wrapper] LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"'
+                    echo '    echo "----"'
+                    echo '} > "${LOG_FILE}"'
+                    echo ''
+                    echo 'exec "$@" >> "${LOG_FILE}" 2>&1'
+                } > "${WRAPPER}"
+                chmod +x "${WRAPPER}"
+                # MPI执行前，进行运行所需的环境和可执行文件scp复制
+                SSH_USER=root
+                # 需要同步的目录/文件
+                SYNC_PATHS=(
+                    "${WORK_DIR}/"
+                    "${WORK_DIR}/../../shmem/"
+                )
+                # 在远端预先创建的目录
+                REMOTE_MKDIRS=(
+                    "${LOG_DIR}"
+                    "${WORK_DIR}"
+                    "${WORK_DIR}/../../shmem/"
+                )
+
+                OPS_RUN_REMOTE="${WORK_DIR}/cann-ops-transformer-custom_linux-aarch64.run"
+
+                for ip in "${HOSTS[@]:1}"; do   # 跳过本机
+                    echo "==> 准备远端 ${ip}"
+
+                    # 1) 远端建目录
+                    ssh "${SSH_USER}@${ip}" "mkdir -p ${REMOTE_MKDIRS[*]}"
+
+                    # 2) 同步可执行文件 + wrapper
+                    scp "${WRAPPER}" "${SSH_USER}@${ip}:${WRAPPER}"
+                    scp "${EXEC}"    "${SSH_USER}@${ip}:${EXEC}"
+
+                    # 3) 同步库目录（递归）
+                    for p in "${SYNC_PATHS[@]}"; do
+                        scp -r "${p}/" "${SSH_USER}@${ip}:$(dirname ${p})/"
+                    done
+
+                    # 4) 同步算子 run 包
+                    scp "${OPS_RUN_LOCAL}" "${SSH_USER}@${ip}:${OPS_RUN_REMOTE}"
+
+                    # 5) 远端安装算子包
+                    ssh "${SSH_USER}@${ip}" "bash ${OPS_RUN_REMOTE} --install-path=${ASCEND_HOME}/cann/ --force"
+                done
+
+                echo "Per-rank logs will be written to: ${LOG_DIR}/"
+
+                HOSTS_ARG=$(IFS=,; echo "${HOSTS[*]/%/:${PPN}}")
+ 	 
+                echo $HOSTS_ARG
+                echo "HOSTS    = ${HOSTS[@]}"
+                echo "HOSTS#   = ${#HOSTS[@]}"
+                echo "PPN      = ${PPN}"
+                echo "N_PES    = ${N_PES}"
+                echo "WRAPPER  = ${WRAPPER}"
+                echo "EXEC     = ${EXEC}"
+                echo "HOSTS_ARG= ${HOSTS_ARG}"
+    
+                mpirun -np ${N_PES}     \
+                -hosts "${HOSTS_ARG}"   \
+                -genv PATH "${PATH}"    \
+                -genv LD_LIBRARY_PATH "${LD_LIBRARY_PATH}" \
+                -genv SHMEM_UID_SESSION_ID "${SHMEM_UID_SESSION_ID}" \
+                "${WRAPPER}" "${EXEC}" "tcp://${SHMEM_UID_SESSION_ID}" ${PPN}
             fi
             run_result=$?
             if [ $run_result -ne 0 ]; then
@@ -655,7 +818,7 @@ function build_example()
                 found_specific_example=true
             fi
             echo "Start compile and run example file: $file"
-            g++ ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
+            g++ ${verbose_option} ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
             ./test_geir_${EXAMPLE_NAME}
             run_result=$?
             if [ $run_result -ne 0 ]; then
@@ -837,7 +1000,6 @@ package_static() {
         mv "$new_dir_path" "$static_files_dir"
         return 1
     fi
-    make clean
 }
 
 function process_soc_input(){

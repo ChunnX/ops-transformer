@@ -141,14 +141,9 @@ ge::graphStatus BSAGradTiling::ProcessTND(gert::TilingContext *context)
 
     maxQSeqlen_ = 0;
     maxKvSeqlen_ = 0 ;
-    if (batch_ == 1) {
-        maxQSeqlen_ = totalTokensT_;
-        maxKvSeqlen_= static_cast<uint32_t>(kvShape->GetOriginShape().GetDim(TND_DIM_T));
-    } else {
-        for (uint32_t i = 0; i < batch_; ++i) {
-            maxQSeqlen_ = std::max(maxQSeqlen_, static_cast<uint32_t>(qSeqLenList[i]));
-            maxKvSeqlen_ = std::max(maxKvSeqlen_, static_cast<uint32_t>(kvSeqLenList[i]));
-        }
+    for (uint32_t i = 0; i < batch_; ++i) {
+        maxQSeqlen_ = std::max(maxQSeqlen_, static_cast<uint32_t>(qSeqLenList[i]));
+        maxKvSeqlen_ = std::max(maxKvSeqlen_, static_cast<uint32_t>(kvSeqLenList[i]));
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -388,13 +383,8 @@ ge::graphStatus BSAGradTiling::CalculateTaskSplit(gert::TilingContext *context) 
         uint32_t qSeqlen = 0;
         uint32_t kvSeqlen = 0;
         if (layout_ == InputLayout::TND) {
-            if (batch_ == 1) {
-                qSeqlen = totalQ;
-                kvSeqlen = totalKv;
-            } else {
-                qSeqlen = qSeqLenList[b];
-                kvSeqlen = kvSeqLenList[b];
-            }
+            qSeqlen = static_cast<uint32_t>(qSeqLenList[b]);
+            kvSeqlen = static_cast<uint32_t>(kvSeqLenList[b]);
         } else {
             qSeqlen = maxQSeqlen_;
             kvSeqlen = maxKvSeqlen_;
@@ -430,7 +420,7 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
     dPOutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float);
     if (layout_ == InputLayout::TND) {
         dQOutSize_ = totalTokensT_ * numHeads_ * headDim_ * sizeof(float);
-        dKOutSize_ = totalTokensT_ * kvHeads_ * headDim_ * sizeof(float);
+        dKOutSize_ = kvTotalSeqlen_ * kvHeads_ * headDim_ * sizeof(float);
         dVOutSize_ = dKOutSize_;
         gradSize_ = totalTokensT_ * numHeads_  * ONEBLOCK_FLOAT_NUM * sizeof(float);
     } else {

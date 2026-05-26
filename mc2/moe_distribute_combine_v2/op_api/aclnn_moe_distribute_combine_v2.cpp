@@ -14,12 +14,14 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
+
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,8 +37,8 @@ aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(
     const aclTensor* expandScalesOptional, const aclTensor* sharedExpertXOptional,
     const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
     const char* groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
-    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype,
-    int64_t commQuantMode, int64_t groupListType, const char* commAlg, 
+    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs, uint64_t shmemBuffer, 
+    int64_t outDtype, int64_t commQuantMode, int64_t groupListType, const char* commAlg, 
     aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnn_combine v2 WorkspaceSize start");
@@ -44,7 +46,7 @@ aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(
         expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional, xActiveMaskOptional,
         activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional, 
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp,
-        tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, 
+        tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, shmemBuffer, outDtype, commQuantMode, 
         groupListType, commAlg, 0, 0 , 0, xOut, workspaceSize, executor);
     return getWorkspaceSizesRes;
 }
@@ -53,6 +55,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(void *workspace, uint64_t workspaceSize,
                                                   aclrtStream stream)
 {
     OP_LOGD("aclnn_combine v2 start");
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnMoeDistributeCombineBase(workspace, workspaceSize, executor, stream);
 }
 

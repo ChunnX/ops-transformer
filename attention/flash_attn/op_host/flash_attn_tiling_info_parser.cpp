@@ -116,17 +116,17 @@ ge::graphStatus FaInfoParser::GetOpName()
 ge::graphStatus FaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "GetPlatformInfo is nullptr."),
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."),
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
                 return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
+        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -194,7 +194,7 @@ void FaInfoParser::GetOutputParaInfo()
 ge::graphStatus FaInfoParser::GetAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "attrs got from ge is nullptr"),
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
 
     // 索引0: softmax_scale (Float)

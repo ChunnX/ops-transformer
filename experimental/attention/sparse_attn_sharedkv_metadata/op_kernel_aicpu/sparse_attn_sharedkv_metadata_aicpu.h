@@ -267,7 +267,7 @@ struct AssignContext {
     int64_t unassignedCost { 0 };
     uint32_t usedCoreNum { 0U };
     uint32_t curKvSplitPart { 1U };
-    uint32_t curFdDataNum { 1U };
+    uint32_t preFdDataNum { 0U };
 
     int64_t bN2Cost { 0 };
     uint32_t bN2Block { 0U };
@@ -285,16 +285,10 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
-    bool ParamsCheck();
     int32_t GetQueryBatchSize();
-    int32_t GetKvBatchSize();
-    bool CheckSingleParam();
-    bool CheckExistence();
-    bool CheckConsistency();
-    bool CheckFeature();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetaData(SplitResult &splitRes);
+    bool GenMetadata(SplitResult &splitRes);
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
@@ -338,9 +332,6 @@ private:
     void SplitCore();
 
 private:
-    // context for log use
-    CpuKernelContext *context_ = nullptr;
-
     // input
     Tensor *actSeqLenQ_ = nullptr;
     Tensor *actSeqLenOriKv_ = nullptr;
@@ -349,7 +340,7 @@ private:
     Tensor *seqUsedKv_ = nullptr;
 
     // output
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
 
     // attributes
     int32_t batchSize_ = 0;
@@ -386,6 +377,7 @@ private:
     uint32_t sparseMode_ = 0;
     uint32_t attentionMode_ = 1;
     BlockCost<int64_t> typeCost_;
+    bool isHighPorfScfa_ = false;
 
 private:
     enum class ParamId : uint32_t {
@@ -396,7 +388,7 @@ private:
     seqUsedQ = 3,
     seqUsedKv = 4,
     // output
-    metaData = 0,
+    metadata = 0,
   };
 };
 } // namespace aicpu

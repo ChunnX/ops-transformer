@@ -897,6 +897,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
             }
         }
 
+        SetAndWaitAivSync(FLAG_ONE_IDX);
+
         if (blockIdx < worldSize && aivIdx == 1) {
             CheckBuffFlag((__gm__ int32_t*)stateAddrPerRank[blockIdx] + FLAG_OFFSET + FLAG_ZERO_IDX, uBuf_, 0);
         }

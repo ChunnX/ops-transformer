@@ -192,15 +192,21 @@ namespace BSA {
             taskInfo.curQBlcokIdx = taskInfo.curQSeqIdx / blockShapeX;
             uint32_t curQBlcokSeqIdx = taskInfo.curQBlcokIdx * blockShapeX;
             if (curQBlcokSeqIdx + blockShapeX <= taskInfo.qSeqlen) {
+                // 没有跨Batch
                 if (taskInfo.curQSeqIdx + basicQBlockSize <= curQBlcokSeqIdx + blockShapeX) {
+                    // 没有跨BasicBlock，处理一个完整的basicBlock
                     taskInfo.curCalQSize = basicQBlockSize;
                 } else {
+                    // 处理不完一整个basicBlock，被稀疏Block阻断了，处理长度为当前起始seq到稀疏块末尾
                     taskInfo.curCalQSize = curQBlcokSeqIdx + blockShapeX - taskInfo.curQSeqIdx;
                 }
             } else {
+                // 跨Batch了，只能处理当前Batch内的一部分
                 if (taskInfo.curQSeqIdx + basicQBlockSize <= taskInfo.qSeqlen) {
+                    // 没有跨BasicBlock，处理一个完整的basicBlock
                     taskInfo.curCalQSize = basicQBlockSize;
                 } else {
+                    // 处理不完一整个basicBlock，被Batch阻断了，处理长度为当前起始seq到Batch末尾
                     taskInfo.curCalQSize = taskInfo.qSeqlen - taskInfo.curQSeqIdx;
                 }
             }
@@ -240,17 +246,18 @@ namespace BSA {
             nextTask = taskInfo;
             if (inputLayout == 0) { // TND, Traverse N-axis first
                 if (taskInfo.curHeadIdx == numHeads - 1) {
-                    nextTask.qOffset = taskInfo.qOffset + (taskInfo.curCalQSize - 1) * numHeads * headDim;
-                    nextTask.kvOffset = taskInfo.kvOffset + (taskInfo.kvSeqlen - 1) * kvHeads * headDim;
+                    nextTask.qOffset = taskInfo.qOffset + (taskInfo.curCalQSize - 1) * numHeads * headDim + headDim;
                     if (taskInfo.curQSeqIdx + taskInfo.curCalQSize == taskInfo.qSeqlen) {
                         nextTask.curBatchIdx = taskInfo.curBatchIdx + 1;
                         nextTask.curHeadIdx = 0;
                         nextTask.curQSeqIdx = 0;
                         nextTask.qSeqlen = static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(nextTask.curBatchIdx)));
                         nextTask.kvSeqlen = static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(nextTask.curBatchIdx)));
+                        nextTask.kvOffset = taskInfo.kvOffset + (taskInfo.kvSeqlen - 1) * kvHeads * headDim + headDim;
                     } else { // batch 不变
                         nextTask.curHeadIdx = 0;
                         nextTask.curQSeqIdx = taskInfo.curQSeqIdx + taskInfo.curCalQSize;
+                        nextTask.kvOffset = taskInfo.kvOffset - kvHeads * headDim + headDim;
                     }
                 } else { // batch/QSeqIdx 不变
                     nextTask.qOffset = taskInfo.qOffset + headDim;
@@ -358,10 +365,10 @@ namespace BSA {
             TaskInfo preTaskInfo;
             initTaskInfo(gActualQseqlen, gActualKvseqlen, tilingData, numHeads, kvHeads, groupSize, headDim,
                 maxQSeqlen, maxKvSeqlen, blockShapeX, basicQBlockSize, inputLayout, coreIdx, taskInfo[0]);
-            uint32_t qBlockNum = (maxQSeqlen + blockShapeX - 1) / blockShapeX;
-            uint32_t kvBlockNum = (maxKvSeqlen + blockShapeY - 1) / blockShapeY;
-            uint32_t batchBlocks = numHeads * qBlockNum * kvBlockNum;
-            uint32_t headBlocks = qBlockNum * kvBlockNum;
+            uint32_t maskQBlockNum = (maxQSeqlen + blockShapeX - 1) / blockShapeX;
+            uint32_t maskKvBlockNum = (maxKvSeqlen + blockShapeY - 1) / blockShapeY;
+            uint32_t batchBlocks = numHeads * maskQBlockNum * maskKvBlockNum;
+            uint32_t headBlocks = maskQBlockNum * maskKvBlockNum;
 
             uint64_t actualStrideQ = headDim;
             uint64_t actualStrideKV = headDim;
@@ -378,17 +385,24 @@ namespace BSA {
             uint64_t gSOffset = coreIdx * WORKSPACE_BLOCK_SIZE_DB;
             uint32_t mmadFlag = 0;
 
+            AscendC::SyncAll<false>();
+
             SetFlag();
+            uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
                 TaskInfo curInfo = taskInfo[i % 2];
                 uint64_t kvBlockOffset = 0;
                 uint64_t beginKVOffset = curInfo.kvOffset;
-                for (uint32_t idx = 0; idx < kvBlockNum; idx++) {
+                uint32_t curKvBlockNum = (curInfo.kvSeqlen + blockShapeY - 1) / blockShapeY;
+                for (uint32_t idx = 0; idx < curKvBlockNum; idx++) {
                     // BlcokSpaseMask shape : [batch, numhead, CeilDiv(maxQSeqlen, blockShapeX), CeilDiv(maxKvSeqlen, blockShapeY)]
-                    uint64_t maskOffset = curInfo.curBatchIdx * batchBlocks + curInfo.curHeadIdx * headBlocks + curInfo.curQBlcokIdx * kvBlockNum + idx;
+                    uint64_t maskOffset = curInfo.curBatchIdx * batchBlocks + curInfo.curHeadIdx * headBlocks +
+                                          curInfo.curQBlcokIdx * maskKvBlockNum + idx;
                     if (gBlcokSpaseMask.GetValue(maskOffset)) {
+                        vec2CubeFlag++;
                         uint64_t kvBlockBasicOffset = 0;
-                        uint32_t kvBlockSize = (idx != kvBlockNum - 1) ? blockShapeY : maxKvSeqlen - blockShapeY * idx;
+                        uint32_t kvBlockSize =
+                            (idx != curKvBlockNum - 1) ? blockShapeY : curInfo.kvSeqlen - blockShapeY * idx;
                         uint32_t kvLoop = (kvBlockSize + basicKVBlockSize - 1) / basicKVBlockSize;
                         for (uint32_t loop = 0; loop < kvLoop; loop++) {
                             curInfo.curCalKVSize = (loop != kvLoop - 1) ? basicKVBlockSize : kvBlockSize - basicKVBlockSize * loop;
@@ -398,9 +412,16 @@ namespace BSA {
                                 curInfo.kvOffset = beginKVOffset + (kvBlockOffset + kvBlockBasicOffset) * headDim;
                             }
                             curInfo.sOffset = gSOffset + WORKSPACE_BLOCK_SIZE * pingpongFlag;
-                            LayoutA1 layoutA1(curInfo.curCalQSize, headDim);
-                            LayoutB1 layoutB1(headDim, curInfo.curCalKVSize);
+                            LayoutA1 layoutA1;
+                            LayoutB1 layoutB1;
                             LayoutC1 layoutC1(curInfo.curCalQSize, curInfo.curCalKVSize);
+                            if (inputLayout == 0) {
+                                layoutA1 = LayoutA1(curInfo.curCalQSize, headDim, numHeads * headDim);
+                                layoutB1 = LayoutB1(headDim, curInfo.curCalKVSize, kvHeads * headDim);
+                            } else {
+                                layoutA1 = LayoutA1(curInfo.curCalQSize, headDim);
+                                layoutB1 = LayoutB1(headDim, curInfo.curCalKVSize);
+                            }
                             GemmCoord actualShape1{curInfo.curCalQSize, curInfo.curCalKVSize, headDim};
                             blockMmad1(gQ[curInfo.qOffset],
                                 gK[curInfo.kvOffset],
@@ -422,10 +443,27 @@ namespace BSA {
                             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2VEC);
                             if (count > 0) {
                                 AscendC::WaitEvent(VEC2CUBE);
+
                                 LayoutA2 layoutA2(preTaskInfo.curCalQSize, preTaskInfo.curCalKVSize);
-                                LayoutB2 layoutB2(preTaskInfo.curCalKVSize, headDim);
-                                LayoutC2 layoutC2(preTaskInfo.curCalQSize, headDim);
+                                LayoutB2 layoutB2;
+                                LayoutC2 layoutC2;
+
+                                LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
+                                LayoutB3 layoutB3;
+                                LayoutC3 layoutC3;
+                                if (inputLayout == 0) {
+                                    layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
+                                    layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
+                                    layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
+                                    layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
+                                } else {
+                                    layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim);
+                                    layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim);
+                                    layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim);
+                                    layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim);
+                                }
                                 GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
+                                GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
                                 blockMmad2(gDs[preTaskInfo.sOffset],
                                     gK[preTaskInfo.kvOffset],
@@ -435,11 +473,6 @@ namespace BSA {
                                     layoutC2,
                                     actualShape2,
                                     mmadFlag);
-
-                                LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
-                                LayoutB3 layoutB3(preTaskInfo.curCalQSize, headDim);
-                                LayoutC3 layoutC3(preTaskInfo.curCalKVSize, headDim);
-                                GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
@@ -473,41 +506,54 @@ namespace BSA {
                         blockShapeX, basicQBlockSize, inputLayout, taskInfo[i % 2], taskInfo[(i + 1) % 2]);
                 }
             }
-            AscendC::WaitEvent(VEC2CUBE);
-            LayoutA2 layoutA2(preTaskInfo.curCalQSize, preTaskInfo.curCalKVSize);
-            LayoutB2 layoutB2(preTaskInfo.curCalKVSize, headDim);
-            LayoutC2 layoutC2(preTaskInfo.curCalQSize, headDim);
-            GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
-            LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
-            LayoutB3 layoutB3(preTaskInfo.curCalQSize, headDim);
-            LayoutC3 layoutC3(preTaskInfo.curCalKVSize, headDim);
-            GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
+            if (vec2CubeFlag != 0) {
+                AscendC::WaitEvent(VEC2CUBE);
+                LayoutA2 layoutA2(preTaskInfo.curCalQSize, preTaskInfo.curCalKVSize);
+                LayoutB2 layoutB2;
+                LayoutC2 layoutC2;
 
-            blockMmad2(gDs[preTaskInfo.sOffset],
-                gK[preTaskInfo.kvOffset],
-                gDq[preTaskInfo.qOffset],
-                layoutA2,
-                layoutB2,
-                layoutC2,
-                actualShape2,
-                mmadFlag);
-            blockMmad3(gP[preTaskInfo.sOffset],
-                gDout[preTaskInfo.qOffset],
-                gDv[preTaskInfo.kvOffset],
-                layoutA3,
-                layoutB3,
-                layoutC3,
-                actualShape3,
-                mmadFlag);
-            blockMmad3(gDs[preTaskInfo.sOffset],
-                gQ[preTaskInfo.qOffset],
-                gDk[preTaskInfo.kvOffset],
-                layoutA3,
-                layoutB3,
-                layoutC3,
-                actualShape3,
-                mmadFlag);
+                LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
+                LayoutB3 layoutB3;
+                LayoutC3 layoutC3;
+                if (inputLayout == 0) {
+                    layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
+                    layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
+                    layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
+                    layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
+                } else {
+                    layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim);
+                    layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim);
+                    layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim);
+                    layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim);
+                }
+                GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
+                GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
 
+                blockMmad2(gDs[preTaskInfo.sOffset],
+                    gK[preTaskInfo.kvOffset],
+                    gDq[preTaskInfo.qOffset],
+                    layoutA2,
+                    layoutB2,
+                    layoutC2,
+                    actualShape2,
+                    mmadFlag);
+                blockMmad3(gP[preTaskInfo.sOffset],
+                    gDout[preTaskInfo.qOffset],
+                    gDv[preTaskInfo.kvOffset],
+                    layoutA3,
+                    layoutB3,
+                    layoutC3,
+                    actualShape3,
+                    mmadFlag);
+                blockMmad3(gDs[preTaskInfo.sOffset],
+                    gQ[preTaskInfo.qOffset],
+                    gDk[preTaskInfo.kvOffset],
+                    layoutA3,
+                    layoutB3,
+                    layoutC3,
+                    actualShape3,
+                    mmadFlag);
+            }
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
         }
@@ -519,12 +565,13 @@ namespace BSA {
             __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
             // pre
             VecPre(params);
+            AscendC::SyncAll<false>();
 
             // simply softmax
             VecOp(params);
 
             AscendC::WaitEvent(CUBE2POST);
-            AscendC::SyncAll();
+            AscendC::SyncAll<true>();
 
             // post
             VecPost(params);
@@ -572,10 +619,10 @@ namespace BSA {
             TaskInfo preTaskInfo;
             initTaskInfo(gActualQseqlen, gActualKvseqlen, tilingData, numHeads, kvHeads, groupSize, headDim,
                 maxQSeqlen, maxKvSeqlen, blockShapeX, basicQBlockSize, inputLayout, coreIdx, taskInfoVec[0]);
-            uint32_t qBlockNum = (maxQSeqlen + blockShapeX - 1) / blockShapeX;
-            uint32_t kvBlockNum = (maxKvSeqlen + blockShapeY - 1) / blockShapeY;
-            uint32_t batchBlocks = numHeads * qBlockNum * kvBlockNum;
-            uint32_t headBlocks = qBlockNum * kvBlockNum;
+            uint32_t maskQBlockNum = (maxQSeqlen + blockShapeX - 1) / blockShapeX;
+            uint32_t maskKvBlockNum = (maxKvSeqlen + blockShapeY - 1) / blockShapeY;
+            uint32_t batchBlocks = numHeads * maskQBlockNum * maskKvBlockNum;
+            uint32_t headBlocks = maskQBlockNum * maskKvBlockNum;
 
             // uint32_t count = 0;
             uint32_t pingpongFlag = 0;
@@ -586,7 +633,6 @@ namespace BSA {
             EpilogueFAGSfmg vecSftmg(SfmgParams);
             EpilogueFAGOp sStmOp;
 
-            PipeBarrier<PIPE_ALL>(); // 等待上一步vec完成
             for (uint32_t i = 0; i < taskLengthVec; i++) {
                 TaskInfo curInfo = taskInfoVec[i % 2];
                 uint64_t beginKVOffset = curInfo.kvOffset;
@@ -594,18 +640,30 @@ namespace BSA {
                 // idx, 计算的行数
                 // 一个ai core里的aiv 0执行的行数：actualRow / 2 + actualRow % 2
                 // 一个ai core里的aiv 1执行的行数：actualRow / 2
-                if (vecCoreIdx % 2 != 0) {
-                    vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2,
-                        curInfo.curCalQSize / 2);
+                // if (vecCoreIdx % 2 != 0) {
+                //     vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2,
+                //         curInfo.curCalQSize / 2);
+                // } else {
+                //     vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
+                // }
+
+                uint32_t subBlockIdx = vecCoreIdx % 2;
+                if (inputLayout == 0) {
+                    vecSftmg(curInfo.qOffset / headDim + subBlockIdx * (curInfo.curCalQSize + 1) / 2 * numHeads,
+                        (curInfo.curCalQSize + 1 - subBlockIdx) / 2);
                 } else {
-                    vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
+                    vecSftmg(curInfo.qOffset / headDim + subBlockIdx * (curInfo.curCalQSize + 1) / 2,
+                        (curInfo.curCalQSize + 1 - subBlockIdx) / 2);
                 }
 
-                for (uint32_t idx = 0; idx < kvBlockNum; idx++) {
+                uint32_t curKvBlockNum = (curInfo.kvSeqlen + blockShapeY - 1) / blockShapeY;
+                for (uint32_t idx = 0; idx < curKvBlockNum; idx++) {
                     // BlcokSpaseMask shape : [batch, numhead, CeilDiv(maxQSeqlen, blockShapeX), CeilDiv(maxKvSeqlen, blockShapeY)]
-                    uint64_t maskOffset = curInfo.curBatchIdx * batchBlocks + curInfo.curHeadIdx * headBlocks + curInfo.curQBlcokIdx * kvBlockNum + idx;
+                    uint64_t maskOffset = curInfo.curBatchIdx * batchBlocks + curInfo.curHeadIdx * headBlocks +
+                                          curInfo.curQBlcokIdx * maskKvBlockNum + idx;
                     if (gBlcokSpaseMask.GetValue(maskOffset)) {
-                        uint32_t kvBlockSize = (idx != kvBlockNum - 1) ? blockShapeY : maxKvSeqlen - blockShapeY * idx;
+                        uint32_t kvBlockSize =
+                            (idx != curKvBlockNum - 1) ? blockShapeY : curInfo.kvSeqlen - blockShapeY * idx;
                         uint32_t kvLoop = (kvBlockSize + basicKVBlockSize - 1) / basicKVBlockSize;
                         for (uint32_t loop = 0; loop < kvLoop; loop++) {
                             curInfo.curCalKVSize = (loop != kvLoop - 1) ? basicKVBlockSize : kvBlockSize - basicKVBlockSize * loop;

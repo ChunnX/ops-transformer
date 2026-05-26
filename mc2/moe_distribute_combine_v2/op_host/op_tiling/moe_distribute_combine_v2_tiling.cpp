@@ -1279,6 +1279,8 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     if (*globalBsPtr == 0) {
         tilingData.moeDistributeCombineV2Info.globalBs = static_cast<uint32_t>(expertIdsDim0) * epWorldSize;
     }
+    auto shmemBufferPtr = attrs->GetAttrPointer<uint64_t>(config.attrShmemBufferIndex);
+    tilingData.moeDistributeCombineV2Info.shmemBuffer = static_cast<uint64_t>(*shmemBufferPtr);
     OP_TILING_CHECK(!CheckZeroComputeExpert(context, tilingData, nodeName, config),
         OP_LOGE(nodeName, "Zero compute expert check failed."), return ge::GRAPH_FAILED);
     return true;
@@ -1362,6 +1364,28 @@ static ge::graphStatus SetHCommCfg(const gert::TilingContext *context, MoeDistri
     return ge::GRAPH_SUCCESS;
 }
 
+static uint32_t GetPartialBufferSizeByFlag(const uint32_t axisBS, const uint32_t axisK,
+    const bool isInputTokenMaskFlag, const bool enableSpecialExpert, const bool isInputExpertMaskFlag)
+{
+    uint32_t partialBufferSize = 0;
+    
+    if (isInputTokenMaskFlag) {
+        uint32_t axisBsAlignSize = (axisBS * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+        partialBufferSize += axisBsAlignSize + axisBsAlignSize * sizeof(DTYPE_SIZE_HALF) * BUFFER_NUM;
+    }
+    if (isInputExpertMaskFlag) {
+        partialBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
+            (axisBS * sizeof(int32_t) +
+            UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
+            (axisBS * axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    }
+    if (enableSpecialExpert && !isInputExpertMaskFlag) {
+        partialBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    }
+
+    return partialBufferSize;
+}
+
 static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context, MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config& config)
 {
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h, axisBS = tilingData->moeDistributeCombineV2Info.bs;
@@ -1407,17 +1431,10 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext* context,
         totalBufferSize += (scaleNum * sizeof(expandXDesc->GetDataType()) + ALIGNED_LEN - 1) / ALIGNED_LEN *
             ALIGNED_LEN * BUFFER_NUM;
     }
-    if (isInputTokenMaskFlag) {
-        uint32_t axisBsAlignSize = (axisBS * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-        totalBufferSize += axisBsAlignSize + axisBsAlignSize * sizeof(DTYPE_SIZE_HALF) * BUFFER_NUM;
-    }
-    if (isInputExpertMaskFlag) {
-        totalBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN + (axisBS * sizeof(int32_t) +
-            UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN + (axisBS * axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    }
-    if (enableSpecialExpert && !isInputExpertMaskFlag) {
-        totalBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    }
+
+    totalBufferSize += GetPartialBufferSizeByFlag(axisBS, axisK,
+        isInputTokenMaskFlag, enableSpecialExpert, isInputExpertMaskFlag);
+
     tilingData->moeDistributeCombineV2Info.bufferNum = totalBufferSize > ubSize ? BUFFER_SINGLE : BUFFER_NUM;
     return;
 }
@@ -1436,7 +1453,8 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, Mo
     winSizeData.globalBs = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.globalBs);
     winSizeData.moeExpertNum = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.moeExpertNum);
     winSizeData.tpWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
-    winSizeData.isSetFullMeshV2 = false;
+    // winSizeData.isSetFullMeshV2 = false;
+    winSizeData.isSetFullMeshV2 = true;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
@@ -1477,27 +1495,10 @@ static ge::graphStatus CheckCombineOrARN(gert::TilingContext* context, MoeDistri
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(
-    gert::TilingContext* context, const CombineV2Config& config)
+ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext* context,
+    MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config& config,
+    bool &isActiveMask, bool &hasElasticInfo, bool &isPerformance)
 {
-    const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "Enter MoeDistributeCombineV2 Tiling func");
-    MoeDistributeCombineV2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineV2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
-    std::string groupEp = "";
-    std::string groupTp = "";
-    bool isShared = true;
-    bool isLayered = false;
-    bool isActiveMask = false;
-    bool hasElasticInfo = false;
-    bool isPerformance = false;
-    uint32_t localMoeExpertNum = 1;
-    uint32_t commQuantMode = 0U;
-
-    // 获取入参属性
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp,
-                                            commQuantMode, config, isLayered) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(config.xActiveMaskIndex);
     isActiveMask = (xActiveMaskStorageShape != nullptr);
     tilingData->moeDistributeCombineV2Info.isTokenMask = ((isActiveMask) &&
@@ -1514,13 +1515,14 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
     isPerformance = (performanceInfoStorageShape != nullptr);
     tilingData->moeDistributeCombineV2Info.isPerformance = isPerformance;
 
-    // 检查context输入
-    if (config.isMc2Context) {
-        OP_TILING_CHECK(
-            CheckMc2Context(context, nodeName, config) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
-    }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeName,
+    const bool isActiveMask, const bool hasElasticInfo, const bool isPerformance,
+    uint32_t &localMoeExpertNum, const bool isLayered, bool &isShared,
+    MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config& config)
+{
     // 检查输入输出的dim、format、dataType
     uint32_t tpWorldSize = tilingData->moeDistributeCombineV2Info.tpWorldSize;
     OP_TILING_CHECK(TilingCheckMoeDistributeCombine(context, nodeName, isActiveMask, hasElasticInfo,
@@ -1544,24 +1546,13 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
     OP_TILING_CHECK(CheckCombineOrARN(context, *tilingData, nodeName, config) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "CheckCombineOrARN failed."), return ge::GRAPH_FAILED);
     
-    // 校验win区大小
-    OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered,
-        config) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
-    OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
-                    return ge::GRAPH_FAILED);
-
-    if (!config.isMc2Context) {
-        OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize, isLayered) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    }
-    tilingData->moeDistributeCombineV2Info.isMc2Context = config.isMc2Context;
-    uint64_t tilingKey = CalTilingKey(tpWorldSize, commQuantMode, isLayered);
-    OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
-    context->SetTilingKey(tilingKey);
-    uint32_t numBlocks = 1U;
-
+ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext* context, MoeDistributeCombineV2TilingData *tilingData,
+    const bool isLayered, const char *nodeName, const CombineV2Config& config)
+{
+    int32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t epWorldSize = tilingData->moeDistributeCombineV2Info.epWorldSize;
@@ -1571,12 +1562,77 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetLocalMemorySize(ubSize - 32 * 1024);
     context->SetBlockDim(numBlocks);
     tilingData->moeDistributeCombineV2Info.aivNum = aivNum;
     tilingData->moeDistributeCombineV2Info.totalUbSize = ubSize;
     UbUsedCal(ubSize, context, tilingData, config);
     context->SetScheduleMode(1); // 设置为batch mode模式，所有核同时启动
     OP_LOGD(nodeName, "numBlocks = %u, aivNum = %lu, ubsize = %lu", numBlocks, aivNum, ubSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(
+    gert::TilingContext* context, const CombineV2Config& config)
+{
+    const char *nodeName = context->GetNodeName();
+    OP_LOGD(nodeName, "Enter MoeDistributeCombineV2 Tiling func");
+    MoeDistributeCombineV2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineV2TilingData>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
+    std::string groupEp = "";
+    std::string groupTp = "";
+    bool isShared = true;
+    bool isLayered = false;
+    bool isActiveMask = false;
+    bool hasElasticInfo = false;
+    bool isPerformance = false;
+    uint32_t localMoeExpertNum = 1;
+    uint32_t commQuantMode = 0U;
+
+    // 获取入参属性
+    OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp,
+                                            commQuantMode, config, isLayered) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+
+    // 检查并填充可选输入
+    OP_TILING_CHECK(
+        CheckAndGetOptionalInput(context, tilingData, config, isActiveMask,
+            hasElasticInfo, isPerformance) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Check and get optional input param failed."), return ge::GRAPH_FAILED);
+
+    // 检查context输入
+    if (config.isMc2Context) {
+        OP_TILING_CHECK(
+            CheckMc2Context(context, nodeName, config) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
+    }
+
+    OP_TILING_CHECK(CheckInputParam(context, nodeName, isActiveMask, hasElasticInfo, isPerformance,
+        localMoeExpertNum, isLayered, isShared, tilingData, config) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Tiling check input param failed."), return ge::GRAPH_FAILED);
+    
+    // 校验win区大小
+    OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered,
+        config) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
+                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
+                    return ge::GRAPH_FAILED);
+
+    uint32_t tpWorldSize = tilingData->moeDistributeCombineV2Info.tpWorldSize;
+    if (!config.isMc2Context) {
+        OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize, isLayered) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+    }
+    tilingData->moeDistributeCombineV2Info.isMc2Context = config.isMc2Context;
+    uint64_t tilingKey = CalTilingKey(tpWorldSize, commQuantMode, isLayered);
+    OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
+    context->SetTilingKey(tilingKey);
+
+    OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName, config) != ge::GRAPH_SUCCESS,
+                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set platformInfo Failed"),
+                    return ge::GRAPH_FAILED);
+
     PrintTilingDataInfo(nodeName, *tilingData);
 
     return ge::GRAPH_SUCCESS;
@@ -1626,13 +1682,14 @@ static void MoeDistributeCombineV2ConfigIndexSet(CombineV2Config& config)
     config.attrSharedExpertNumIndex = 8;     // 根据combineV2算子原型标志位初始化属性attrSharedExpertNumIndex索引为8
     config.attrSharedExpertRankNumIndex = 9; // 根据combineV2算子原型标志位初始化属性attrSharedExpertRankNumIndex索引为9
     config.attrGlobalBsIndex  = 10;      // 根据combineV2算子原型标志位初始化属性attrGlobalBsIndex索引为10
-    config.attrOutDTypeIndex = 11;       // 根据combineV2算子原型标志位初始化属性attrOutDTypeIndex索引为11
-    config.attrCommQuantModeIndex = 12;  // 根据combineV2算子原型标志位初始化属性attrCommQuantModeIndex索引为12
-    config.attrGroupListTypeIndex = 13;  // 根据combineV2算子原型标志位初始化属性attrGroupListTypeIndex索引为13
-    config.attrCommAlgIndex = 14;        // 根据combineV2算子原型标志位初始化属性attrCommAlgIndex索引为14
-    config.attrZeroExpertNumIndex = 15;  // 根据combineV2算子原型标志位设置属性attrZeroExpertNum索引为15
-    config.attrCopyExpertNumIndex = 16;  // 根据combineV2算子原型标志位设置属性attrCopyExpertNum索引为16
-    config.attrConstExpertNumIndex = 17; // 根据combineV2算子原型标志位设置属性attrConstExpertNum索引为17
+    config.attrShmemBufferIndex = 11;
+    config.attrOutDTypeIndex = 12;       // 根据combineV2算子原型标志位初始化属性attrOutDTypeIndex索引为11
+    config.attrCommQuantModeIndex = 13;  // 根据combineV2算子原型标志位初始化属性attrCommQuantModeIndex索引为12
+    config.attrGroupListTypeIndex = 14;  // 根据combineV2算子原型标志位初始化属性attrGroupListTypeIndex索引为13
+    config.attrCommAlgIndex = 15;        // 根据combineV2算子原型标志位初始化属性attrCommAlgIndex索引为14
+    config.attrZeroExpertNumIndex = 16;  // 根据combineV2算子原型标志位设置属性attrZeroExpertNum索引为15
+    config.attrCopyExpertNumIndex = 17;  // 根据combineV2算子原型标志位设置属性attrCopyExpertNum索引为16
+    config.attrConstExpertNumIndex = 18; // 根据combineV2算子原型标志位设置属性attrConstExpertNum索引为17
     config.hasAddRmsNorm = false;
 
     return;
@@ -1700,7 +1757,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineV2Tili
 inline void MoeDistributeCombineV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
     const char* socName = aclrtGetSocName();
-    if (std::strstr(socName, "Ascend950") == nullptr) {
+    if ((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910B") == nullptr)) {
         return;
     }
     Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV2");

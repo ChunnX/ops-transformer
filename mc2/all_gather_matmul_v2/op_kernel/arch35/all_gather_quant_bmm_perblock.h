@@ -29,14 +29,15 @@ namespace AllGatherMatmulImpl
 {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-class AllGatherQuantPerBlock : public AllGatherMatmulBase<AType, CType, CoreType>
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType,
+           uint8_t ServerMode = HCCL_COMM_MODE_CCU>
+class AllGatherQuantBmmPerBlock : public AllGatherMatmulBase<AType, CType, CoreType, ServerMode>
 {
 public:
-    __aicore__ inline AllGatherQuantPerBlock(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
-                                             Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, 
-                                             __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
-        : AllGatherMatmulBase<AType, CType, CoreType>(addrs, quantAddrs, tilingData, contextGM, tPipe)
+    __aicore__ inline AllGatherQuantBmmPerBlock(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
+                                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM,
+                                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
+        : AllGatherMatmulBase<AType, CType, CoreType, ServerMode>(addrs, quantAddrs, tilingData, contextGM, tPipe)
     {
         tilingData_ = tilingData;
         this->localInfo_.mmTiling = &tilingData_->quantBmmv3LocalTiling;
@@ -49,8 +50,8 @@ public:
 private:
     __aicore__ inline void QuantMatmulCompute();      /* 计算入口 */
     __aicore__ inline void QuantMatmulLocalCompute(); /* 本地块计算 */
-    __aicore__ inline void QuantMatmulGatherCompute(MmType& mmOp, uint32_t count, const Mc2Tiling::MC2TileInfo& tileInfo,
-                                                    bool isTail); /* 远端计算 */
+    __aicore__ inline void QuantMatmulGatherCompute(MmType& mmOp, uint32_t count,
+                                                    const Mc2Tiling::MC2TileInfo& tileInfo, bool isTail); /* 远端计算 */
 private:
     Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData_;
 };
@@ -59,8 +60,8 @@ private:
  * @brief allgather quant bmm perblock 主流程：通信+计算整块+计算尾块+后处理
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::Process()
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmmPerBlock<AType, BType, CType, MmType, CoreType, ServerMode>::Process()
 {
     // 开启通信
     this->HcclStart();
@@ -74,8 +75,9 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
  * @brief allgather quant bmm 计算流程
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::QuantMatmulCompute()
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmmPerBlock<AType, BType, CType, MmType, CoreType,
+                                                 ServerMode>::QuantMatmulCompute()
 {
     // 计算本片的块
     QuantMatmulLocalCompute();
@@ -105,8 +107,9 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
  * @brief 本地块计算流程
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::QuantMatmulLocalCompute()
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmmPerBlock<AType, BType, CType, MmType, CoreType,
+                                                 ServerMode>::QuantMatmulLocalCompute()
 {
     // 本卡位置与rankId一致，C矩阵本卡矩阵首地址为rankid*cSize
     GM_ADDR cGM =
@@ -117,7 +120,7 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
     MmType op;
     // Local compute do not need 'strideCount', set to 0.
     uint32_t strideCount = 0;
-    op.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM, 
+    op.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM,
             this->quantAddrs_->scale2GM, cGM, this->addrs_->workspaceGM, this->localInfo_.mmTiling, this->tPipe_,
             this->batchWeight_, strideCount, false);
     op.Process();
@@ -130,8 +133,9 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
  * @param isTail: 当前块是否为尾块
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::QuantMatmulGatherCompute(
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmmPerBlock<AType, BType, CType, MmType, CoreType,
+                                                 ServerMode>::QuantMatmulGatherCompute(
     MmType& mmOp, uint32_t count, const Mc2Tiling::MC2TileInfo& tileInfo, bool isTail)
 {
     uint32_t strideCount = this->paramInTiling_->rankM;
@@ -141,8 +145,9 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
         this->HcclWait(i, isTail);
         this->tPipe_->Destroy();
         this->tPipe_->Init();
-        mmOp.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM, this->gatherScaleAddr_,
-                  this->addrs_->cGM, this->addrs_->workspaceGM, tileInfo.mmTiling, this->tPipe_, this->batchWeight_, strideCount, true);
+        mmOp.Init(this->addrs_->aGM, this->addrs_->bGM, this->addrs_->biasGM, this->quantAddrs_->scale1GM,
+                  this->gatherScaleAddr_, this->addrs_->cGM, this->addrs_->workspaceGM, tileInfo.mmTiling,
+                  this->tPipe_, this->batchWeight_, strideCount, true);
         // batchmatmul计算
         mmOp.Process();
         SyncAll<false>();
@@ -154,22 +159,23 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
     }
 }
 
-#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, isTransA, isTransB, ...)     \
-    do {                                                                                                           \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                                      \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                                \
-        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));                                      \
-        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));                                         \
-        GET_TILING_DATA(tilingData, tilingGM);                                                                      \
-        MC2GmAddrs addrs = {aGM, bGM, biasGM, cGM, gatherOut, workspaceGM};                                        \
-        QuantGmAddrs quantAddrs = {scaleInv2, scaleInv1, scale};                                                   \
-        using opType = templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND, CubeFormat::ND,      \
-                                     CubeFormat::ND, isTransA, isTransB>;                                          \
-        AllGatherQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType> op(&addrs, &quantAddrs, &tilingData, \
-                                                                                 (__gm__ uint8_t*)context,          \
-                                                                                 mc2InitTiling, mc2CcTiling, &pipe); \
-        op.Init(mc2InitTiling, mc2CcTiling);                                                                         \
-        op.Process();                                                                                              \
+#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, hcclCommType,             \
+                                                             isTransA, isTransB, ...)                           \
+    do {                                                                                                        \
+        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                       \
+        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                \
+        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));                                  \
+        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));                                      \
+        GET_TILING_DATA(tilingData, tilingGM);                                                                  \
+        MC2GmAddrs addrs = {aGM, bGM, biasGM, cGM, gatherOut, workspaceGM};                                     \
+        QuantGmAddrs quantAddrs = {scaleInv2, scaleInv1, scale};                                                \
+        using opType = templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y,                                   \
+                                     CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, isTransA, isTransB>;       \
+        AllGatherQuantBmmPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType, hcclCommType> op(&addrs,       \
+                                  &quantAddrs, &tilingData, (__gm__ uint8_t*)context, mc2InitTiling,            \
+                                  mc2CcTiling, &pipe);                                                          \
+        op.Init(mc2InitTiling, mc2CcTiling);                                                                    \
+        op.Process();                                                                                           \
     } while (0)
 }  // namespace AllGatherMatmulImpl
 

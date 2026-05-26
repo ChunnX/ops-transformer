@@ -14,7 +14,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_dispatch_v3.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
 
@@ -43,7 +43,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4GetWorkspaceSize(
         x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
         elasticInfoOptional, performanceInfoOptional, groupEp, epWorldSize, epRankId, moeExpertNum,
         groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg,
+        sharedExpertRankNum, quantMode, globalBs, 0, expertTokenNumsType, commAlg,
         zeroExpertNum, copyExpertNum, constExpertNum, expandXOut,
         dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
         expandScalesOut, workspaceSize, executor);

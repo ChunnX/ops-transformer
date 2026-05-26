@@ -14,7 +14,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
 
@@ -35,7 +35,7 @@ aclnnStatus aclnnMoeDistributeCombineV3GetWorkspaceSize(const aclTensor* expandX
     const aclTensor* constExpertVOptional, const char* groupEp, int64_t epWorldSize,
     int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
     int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs,
-    int64_t outDtype, int64_t commQuantMode, int64_t groupListType, const char* commAlg, 
+    uint64_t shmemBuffer, int64_t outDtype, int64_t commQuantMode, int64_t groupListType, const char* commAlg, 
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* xOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
@@ -45,7 +45,7 @@ aclnnStatus aclnnMoeDistributeCombineV3GetWorkspaceSize(const aclTensor* expandX
         activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional, sharedExpertXOptional,
         elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
         constExpertVOptional, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, 
+        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, shmemBuffer, outDtype, commQuantMode, groupListType, commAlg, 
         zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     return getWorkspaceSizesRes;
 }

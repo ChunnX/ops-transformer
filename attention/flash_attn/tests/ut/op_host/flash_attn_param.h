@@ -11,6 +11,8 @@
 
 namespace FlashAttnUT {
 
+using optiling::flash_attn::FlashAttnCompileInfo;
+
 struct FlashAttnHostUtParamBase : public HostUtParamBase {
     float softmax_scale = 0.0f;
     int64_t mask_mode = 0;
@@ -62,7 +64,7 @@ struct FlashAttnTilingUtParam : public FlashAttnHostUtParamBase {
     uint64_t expectTilingKey = 0;
     std::string expectTilingDataHash;
 
-    optiling::FlashAttnCompileInfo compileInfo = {
+    FlashAttnCompileInfo compileInfo = {
         64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
 
     FlashAttnTilingUtParam(const csv_map &csvMap) : FlashAttnHostUtParamBase(csvMap)

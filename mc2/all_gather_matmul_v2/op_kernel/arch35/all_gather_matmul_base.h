@@ -31,14 +31,30 @@ namespace AllGatherMatmulImpl
 using namespace AscendC;
 constexpr uint64_t PERBLOCK_BLOCK_SIZE = 128;
 constexpr uint32_t MAX_RANK_DIM = 64;
-template <typename AType, typename CType, Mc2CoreType CoreType>
+
+template<uint8_t commMode>
+struct HcclTypeSelector {
+    static_assert(commMode == HCCL_COMM_MODE_CCU || commMode == HCCL_COMM_MODE_AICPU,
+                  "commMode must be 0 (CCU) or 1 (AICPU)");
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template<>
+struct HcclTypeSelector<HCCL_COMM_MODE_AICPU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template <typename AType, typename CType, Mc2CoreType CoreType,
+          uint8_t ServerMode = HCCL_COMM_MODE_CCU>
 class AllGatherMatmulBase
 {
 public:
     __aicore__ inline AllGatherMatmulBase(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
-                                          Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, TPipe* tPipe)
+                                          Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData,
+                                          GM_ADDR contextGM, TPipe* tPipe)
         : addrs_(addrs), quantAddrs_(quantAddrs), tPipe_(tPipe)
     {
+        tilingData_ = tilingData;
         paramInTiling_ = &tilingData->param;
         dataType_ = static_cast<AscendC::HcclDataType>(tilingData->dataType);
         debugMode_ = tilingData->debugMode;
@@ -46,9 +62,9 @@ public:
     }
     __aicore__ inline void Init(__gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling)
     {
-        hccl_.Init(context_, mc2InitTiling);
-        hccl_.SetCcTiling(mc2CcTiling);
-        rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+        hccl_.InitV2(context_, &(tilingData_->mc2InitTiling));
+        hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling));
+        rankId_ = hccl_.GetRankId();
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
         oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) * 
@@ -86,7 +102,7 @@ protected:
             uint64_t scaleCount = oneRankBlockSizeCnt_ * SCALE1_MULTIPLE;
             uint64_t scaleStride = oneRankBlockSizeCnt_ * SCALE1_MULTIPLE;
             hcclHandleIdList[SCALE1_HANDLE_IDX] =
-                hccl_.AllGather<true>(sendBuffer, recvBuffer, scaleCount, dataType_, scaleStride, repeat);
+                hccl_.template AllGather<true>(sendBuffer, recvBuffer, scaleCount, dataType_, scaleStride, repeat);
 
             // 再进行x1通信的prepare工作
             uint32_t tileCnt = paramInTiling_->tileCnt;
@@ -99,7 +115,8 @@ protected:
                 sendBuffer = addrs_->aGM + i * tileInfo_.aAddrOffset;
                 recvBuffer = gatherX1Addr_ + i * tileInfo_.aAddrOffset;
                 hcclHandleIdList[i] =
-                    hccl_.AllGather<true>(sendBuffer, recvBuffer, tileInfo_.aOffset, dataType_, stride, repeat);
+                    hccl_.template AllGather<true>(sendBuffer, recvBuffer, tileInfo_.aOffset, dataType_,
+                                                   stride, repeat);
             }
 
             // 处理尾块
@@ -108,7 +125,8 @@ protected:
                 sendBuffer = addrs_->aGM + tileCnt * tileInfo_.aAddrOffset + (i - tileCnt) * tailInfo_.aAddrOffset;
                 recvBuffer = gatherX1Addr_ + tileCnt * tileInfo_.aAddrOffset + (i - tileCnt) * tailInfo_.aAddrOffset;
                 hcclHandleIdList[i] =
-                    hccl_.AllGather<true>(sendBuffer, recvBuffer, tailInfo_.aOffset, dataType_, stride, repeat);
+                    hccl_.template AllGather<true>(sendBuffer, recvBuffer, tailInfo_.aOffset, dataType_,
+                                                   stride, repeat);
             }
         }
     }
@@ -143,7 +161,7 @@ protected:
     Mc2Tiling::MC2TileInfo localInfo_;
     Mc2Tiling::MC2TileInfo tileInfo_;
     Mc2Tiling::MC2TileInfo tailInfo_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<ServerMode>::type hccl_;
     AscendC::HcclDataType dataType_;
     GM_ADDR context_;
     bool notifyFlag_;
@@ -159,6 +177,7 @@ protected:
     GM_ADDR gatherScaleAddr_;
     AscendC::HcclHandle hcclHandleIdList[MAX_HANDLE_WITH_SCALE1]; /* hccl handle */
     uint32_t batchWeight_[MAX_RANK_DIM] = {0};
+    Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData_;
 
 private:
     __aicore__ inline void UpdateNotifyFlag()

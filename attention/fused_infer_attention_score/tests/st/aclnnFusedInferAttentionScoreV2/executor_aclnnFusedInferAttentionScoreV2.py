@@ -2848,7 +2848,7 @@ def _create_mask_no_sparse(m_shape, npu_m_shape, pre_tokens, next_tokens, batch,
         npu_mask = np.array(re_mask_npu_batch).astype(m_dtype)
         return cpu_mask, npu_mask
     else:
-        if batch ==None:
+        if batch is None:
             cpu_mask = _random_fill_tensor(cpu_mask, m_shape, random_ones, 1)
             return cpu_mask,cpu_mask
         for i in range(batch):
@@ -4039,7 +4039,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     out_shape = q_shape
 
     # >> actualSeqLengths预处理：actualSeqLengths为单值场景，如果长度为1且b不为1，则将actualSeqLengths扩展为b个单值的列表
-    if actualSeqLengths !=None:
+    if actualSeqLengths is not None:
         if len(actualSeqLengths) == 1 and len(actualSeqLengths) != q_shape[0]:
             actualSeqLengths_item = actualSeqLengths[0]
             for b_count in range(q_bnsd_shape[0] - 1):

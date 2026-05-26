@@ -57,6 +57,7 @@ struct MoeDistributeCombineInfo {
     uint32_t moeExpertNum;
     uint32_t moeExpertPerRankNum;
     uint32_t globalBs;
+    uint64_t shmemBuffer;                // shmem 通信 buffer
     uint32_t bs;
     uint32_t k;
     uint32_t h;

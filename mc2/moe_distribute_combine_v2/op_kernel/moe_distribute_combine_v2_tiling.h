@@ -33,6 +33,7 @@ struct MoeDistributeCombineV2Info {
     uint32_t copyExpertNum;
     uint32_t constExpertNum;
     uint32_t globalBs;
+    uint64_t shmemBuffer;                // shmem 通信 buffer
     uint32_t bs;
     uint32_t k;
     uint32_t h;

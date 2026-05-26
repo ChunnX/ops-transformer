@@ -87,7 +87,10 @@ class FlashAttenOpBuilder(OpBuilder):
                 attentionOutSize = (bSize, sSize, nSize, dSize)
 
             
-            return attentionOutSize, softmaxOutSize
+            return (
+ 	                 torch.empty(attentionOutSize, dtype=q.dtype, device='meta'),
+ 	                 torch.empty(softmaxOutSize, dtype=q.dtype, device='meta')
+ 	             )
 
 
 # Instantiate the builder
@@ -107,7 +110,6 @@ def npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None,
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    print("flash_attn entrance ========================\n")
     return op_module.npu_flash_attn(q,  k, v, block_table, cu_seqlens_q,
                                     cu_seqlens_kv, seqused_q,
                                     seqused_kv, sinks, attn_mask, metadata,

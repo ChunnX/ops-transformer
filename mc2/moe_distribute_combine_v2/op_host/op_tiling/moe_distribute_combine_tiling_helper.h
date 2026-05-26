@@ -77,14 +77,15 @@ struct CombineV2Config {
     uint32_t attrSharedExpertNumIndex = 8; // 8: 根据combineV2算子原型标志位初始化sharedExpertNum索引
     uint32_t attrSharedExpertRankNumIndex = 9; // 9: 根据combineV2算子原型标志位初始化sharedExpertRankNum索引
     uint32_t attrGlobalBsIndex  = 10; // 10: 根据combineV2算子原型标志位初始化globalBs索引
-    uint32_t attrOutDTypeIndex = 11; // 11: 根据combineV2算子原型标志位初始化outDType索引
-    uint32_t attrCommQuantModeIndex = 12; // 12: 根据combineV2算子原型标志位初始化commQuantMode索引
-    uint32_t attrGroupListTypeIndex = 13; // 13: 根据combineV2算子原型标志位初始化groupListType索引
-    uint32_t attrCommAlgIndex = 14; // 14: 根据combineV2算子原型标志位初始化commAlg索引
-    uint32_t attrNormEpsIndex = 15; // 根据combineARN算子原型标志位初始化attrNormEps索引
-    uint32_t attrZeroExpertNumIndex = 15; // 根据combineV2算子原型标志位初始化attrZeroExpertNum索引
-    uint32_t attrCopyExpertNumIndex = 16; // 根据combineV2算子原型标志位初始化attrCopyExpertNum索引
-    uint32_t attrConstExpertNumIndex = 17; // 根据combineV2算子原型标志位初始化attrConstExpertNum索引
+    uint32_t attrShmemBufferIndex = 11; // 12: shmem 通信 buffer
+    uint32_t attrOutDTypeIndex = 12; // 11: 根据combineV2算子原型标志位初始化outDType索引
+    uint32_t attrCommQuantModeIndex = 13; // 12: 根据combineV2算子原型标志位初始化commQuantMode索引
+    uint32_t attrGroupListTypeIndex = 14; // 13: 根据combineV2算子原型标志位初始化groupListType索引
+    uint32_t attrCommAlgIndex = 15; // 14: 根据combineV2算子原型标志位初始化commAlg索引
+    uint32_t attrNormEpsIndex = 16; // 根据combineARN算子原型标志位初始化attrNormEps索引
+    uint32_t attrZeroExpertNumIndex = 16; // 根据combineV2算子原型标志位初始化attrZeroExpertNum索引
+    uint32_t attrCopyExpertNumIndex = 17; // 根据combineV2算子原型标志位初始化attrCopyExpertNum索引
+    uint32_t attrConstExpertNumIndex = 18; // 根据combineV2算子原型标志位初始化attrConstExpertNum索引
     bool hasAddRmsNorm = false;
     bool isMc2Context = false;
 };

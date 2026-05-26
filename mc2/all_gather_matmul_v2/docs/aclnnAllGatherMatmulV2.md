@@ -181,7 +181,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     <tr>
         <td>quantScale (aclTensor*)</td>
         <td>输入</td>
-        <td>即计算公式中的bias。</td>
+        <td>量化参数。</td>
         <td>当前仅支持传入空指针场景。</td>
         <td>FLOAT</td>
         <td>ND</td>

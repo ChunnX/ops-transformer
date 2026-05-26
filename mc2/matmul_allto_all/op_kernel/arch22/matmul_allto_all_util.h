@@ -172,6 +172,8 @@ public:
 
     __aicore__ inline void SetBuffFlag(__gm__ int32_t *buff, int32_t flag)
     {
+        SetFlag<HardEvent::MTE3_S>(EVENT_ID2);
+        WaitFlag<HardEvent::MTE3_S>(EVENT_ID2);
         LocalTensor<int32_t> ubTensor = uBuf_.template Get<int32_t>();
         ubTensor(0) = flag;
         SetFlag<HardEvent::S_MTE3>(EVENT_ID2);

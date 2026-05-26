@@ -1930,15 +1930,11 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         const int is_in_a8w4_white_list = ((tuningConfig !=0 &&tuningConfig <= 64) || (A8W4_PRETILING_WHITE_LIST.count(mKNList)))
               && quantGroupNum != 0 && k / quantGroupNum == 256 && k % quantGroupNum == 0
               && withOffset == 0 && k%64==0 && n%64==0; // 256: 新方案只支持256 pergroup
-		uint32_t calc_m = 1U;
+        uint32_t calc_m = 1U;
         if (groupNum != 0U) {
           calc_m = m / groupNum;
         }
         const uint32_t avg_m = tuningConfig != 0L ? static_cast<uint32_t>(tuningConfig) : calc_m;
-		uint32_t enableCV11 = 0;
-		if (avg_m <= 128 && groupNum <= 4 && k <= 8192 && n <= 8192) {
-            enableCV11 = 1;
-        }
 
         tilingDataA8W4.gmmBaseParams.set_coreNum(aicNum);
         tilingDataA8W4.gmmBaseParams.set_groupNum(groupNum);
@@ -1978,6 +1974,10 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         auto biasPtr = context->GetDynamicInputTensor(BIAS_INDEX, 0);
         const bool isMSD = (tuningConfig == 0L || avg_m == 0U || n / avg_m > 4U || withOffset == true) &&
                     !(biasPtr == nullptr || biasPtr->GetStorageShape().GetShapeSize() == 0);
+        uint32_t enableCV11 = 0;
+        if (avg_m <= 128 && groupNum <= 4 && k <= 8192 && n <= 8192 && !(isMSD && is_in_a8w4_white_list)) {
+            enableCV11 = 1;
+        }
         if (withOffset && !isMSD) {
             OP_LOGW(context->GetNodeName(), "GMM W4A8: with-offset mode requires "
                 "non-empty bias, but got an empty tensor.");
@@ -2024,7 +2024,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           constexpr uint32_t A8W4_MSD_BASE_M_NEW = 64;
           constexpr uint32_t A8W4_MSD_BASE_K = 256;
           uint32_t A8W4_MSD_BASE_N = isShortM ? 512U : 256U;
-          constexpr uint32_t A8W4_MSD_BASE_N_NEW = 512;
+          uint32_t A8W4_MSD_BASE_N_NEW = (n <= 512U) ? AlignUp(n, 16U) : 512U;
           constexpr uint32_t A8W4_MSD_BASE_K_NEW = 256;
           //增加动态Tiling部分
           uint32_t A8W4_MSD_SINGLE_N = FindBestSingleNA8W4(A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, avg_m, n, groupNum, aicNum);

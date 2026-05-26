@@ -142,7 +142,7 @@ private:
     __aicore__ inline void UpdateMMGlobalAddr();
     __aicore__ inline void Iterate(int64_t singleCoreM, int64_t singleCoreN);
     __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs, uint32_t groupIdx);
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM_);
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM, int64_t baseN);
 
 private:
     BlockMmad mmadOp_;
@@ -210,7 +210,8 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
         if (IsLastGroupAndNeedSplit(bs, loopIdx)) {
             bs.UpdateTailTile();
         } else {
-            SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(curBaseM_));
+            SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(curBaseM_),
+                                      static_cast<int64_t>(params.gmmParams.baseN));
         }
         initSingleGroup_ = false;
         ProcessSingleGroup(params, bs, groupIdx);
@@ -262,14 +263,35 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int64_t mSize,
-                                                                                              int64_t curBaseM)
+                                                                                              int64_t curBaseM,
+                                                                                              int64_t baseN)
 {
-    if (curBaseM >= mSize) {
-        bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    if constexpr (formatB != CubeFormat::ND) {
+        if (curBaseM >= mSize) {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        }
     } else {
-        bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        if constexpr (transB) {
+            if (curBaseM >= mSize && (Get<MNK_K>(problemShape_) & 0xff) == 0) {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
+        } else {
+            if (curBaseM >= mSize && (Get<MNK_N>(problemShape_) & 0xff) == 0 && (baseN & 0xff) == 0) {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
+        }
     }
 }
 

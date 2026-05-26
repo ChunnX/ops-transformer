@@ -112,6 +112,7 @@ public:
     this->Attr("shared_expert_rank_num").AttrType(OPTIONAL).Int(0);
     this->Attr("quant_mode").AttrType(OPTIONAL).Int(0);
     this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
+    this->Attr("shmem_buffer").AttrType(OPTIONAL).Int(0);
     this->Attr("expert_token_nums_type").AttrType(OPTIONAL).Int(1);
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
     this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);

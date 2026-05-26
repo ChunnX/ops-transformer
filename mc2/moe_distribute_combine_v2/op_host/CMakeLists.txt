@@ -8,6 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+if(NOT DEFINED ENV{SHMEM_HOME})
+ 	     message(FATAL_ERROR "环境变量 SHMEM_HOME 未设置，构建终止！请先 export SHMEM_HOME=xxx")
+endif()
+set(SHMEM_HOME $ENV{SHMEM_HOME})
+
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         moe_distribute_combine_v2_def.cpp
@@ -33,6 +38,15 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MoeDistributeCombineV2
             OPTIONS --cce-auto-sync=off
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend950")  # 适配多版本兼容dump功能
+        message(STATUS "We now in branch ascend950")
+        add_definitions(-DMC2_EXCEPTION_HANDLER)
+        add_ops_compile_options(
+            OP_NAME MoeDistributeDispatchV2
+            OPTIONS 
+                -I${SHMEM_HOME}/include/
+                -I${SHMEM_HOME}/src/device/
+        )    
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_combine_v2 ACLNNTYPE aclnn_inner)

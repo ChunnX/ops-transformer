@@ -343,7 +343,7 @@ __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLs
     }
 }
 
-// ----------------------------------------------Copy LSE UB To Gm arch32--------------------------------
+// ----------------------------------------------Copy LSE UB To Gm arch22--------------------------------
 template <typename T, ActualSeqLensMode Q_MODE>
 __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                               uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,

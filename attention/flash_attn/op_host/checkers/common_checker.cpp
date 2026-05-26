@@ -93,13 +93,13 @@ ge::graphStatus CommonChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 ge::graphStatus CommonChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 {
     OP_CHECK_IF(faInfo.opParamInfo.query.desc == nullptr || faInfo.opParamInfo.query.shape == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Query input is null pointer!"), return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "Query input is null pointer!"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.opParamInfo.key.desc == nullptr || faInfo.opParamInfo.key.shape == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Key input is null pointer!"), return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "Key input is null pointer!"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.opParamInfo.value.desc == nullptr || faInfo.opParamInfo.value.shape == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Value input is null pointer!"), return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "Value input is null pointer!"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.opParamInfo.attnOut.desc == nullptr || faInfo.opParamInfo.attnOut.shape == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "AttentionOut is null pointer!"), return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "AttentionOut is null pointer!"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -133,7 +133,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (keyDesc != nullptr) {
         OP_CHECK_IF(keyDesc->GetDataType() != queryDtype,
-                    OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
+                    OP_LOGE(faInfo.opName,
                                                 "key dtype(%s) should be consistent with query dtype(%s).",
                                                 DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
                                                 DataTypeToSerialString(queryDtype).c_str()),
@@ -142,7 +142,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (valueDesc != nullptr) {
         OP_CHECK_IF(valueDesc->GetDataType() != queryDtype,
-                    OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
+                    OP_LOGE(faInfo.opName,
                                                 "value dtype(%s) should be consistent with query dtype(%s).",
                                                 DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
                                                 DataTypeToSerialString(queryDtype).c_str()),
@@ -151,7 +151,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (attnOutDesc != nullptr) {
         OP_CHECK_IF(attnOutDesc->GetDataType() != queryDtype,
-                    OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
+                    OP_LOGE(faInfo.opName,
                                                 "attentionOut dtype(%s) should be consistent with query dtype(%s).",
                                                 DataTypeToSerialString(attnOutDesc->GetDataType()).c_str(),
                                                 DataTypeToSerialString(queryDtype).c_str()),
@@ -173,7 +173,7 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
     }
 
     OP_CHECK_IF(faInfo.n1Size % faInfo.n2Size != 0,
-                OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
+                OP_LOGE(faInfo.opName,
                                             "numHeads(%ld) should be an integer multiple of numKeyValueHeads(%ld)!",
                                             faInfo.n1Size, faInfo.n2Size),
                 return ge::GRAPH_FAILED);

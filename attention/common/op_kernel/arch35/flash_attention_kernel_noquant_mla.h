@@ -439,6 +439,9 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1]);
 
         gS1EndIdx = runParam.s1LoopTimes;
+        if (lastBN && runParam.s1LoopTimes == 0) {
+            runParam.s1LoopTimes += 1;
+        }
         for (int64_t gS1Index = gS1StartIdx; gS1Index <runParam.s1LoopTimes; gS1Index++) {
             s2LoopLimit = 0;
             this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, multiCoreInnerIdx, runParam);

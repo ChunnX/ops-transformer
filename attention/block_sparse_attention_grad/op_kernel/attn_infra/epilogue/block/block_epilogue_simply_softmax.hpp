@@ -158,12 +158,6 @@ public:
     __aicore__ inline
     SimpltSoftmax()
     {
-        if constexpr(INPUT_LAYOUT == TND) {
-            transpseStride = (n1 * 1 - 1) * sizeof(float);
-        } else if constexpr(INPUT_LAYOUT == BNSD){
-            transpseStride = 0;
-        }
-
         // baseM =  128;
         // 分核 一个core 最大 128 * 128 一个vec 64 * 128
         uint64_t sBufferLen = baseM * 128 * sizeof(float); // max
@@ -249,6 +243,10 @@ public:
         row = params.actualRow;
         if (row <= 0) {
             return;
+        }
+
+        if constexpr(INPUT_LAYOUT == TND) {
+            transpseStride = (n1 * 1 - 1) * sizeof(float);
         }
 
         // 初始化 GM
@@ -372,9 +370,11 @@ public:
         wait_flag(PIPE_MTE2, PIPE_V, eventId);
 
         uint8_t repeatimes = CeilDiv(row, BRCB_BASE_NUM);
-        Brcb(lseFp32Brc, lse, repeatimes, {1, 8});
-        AscendC::PipeBarrier<PIPE_V>();
-
+        if constexpr (INPUT_LAYOUT == BNSD) {
+            Brcb(lseFp32Brc, lse, repeatimes, {1, 8});
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        
         Muls(sLocal, sLocal, (float)scaleValue, countAlign);
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -458,7 +458,11 @@ public:
         uint64_t startOffset = 0;
         auto eventId = EVENT_ID5;
         if constexpr (INPUT_LAYOUT == TND) {
-            uint64_t bOffset = n1 * ((__gm__ int64_t *)actualQSeqlen)[curCoreBatch];
+            uint64_t prefixSum = 0;
+            for (uint64_t b = 0; b < curCoreBatch; b++) {
+                prefixSum += ((__gm__ int64_t *)actualQSeqlen)[b];
+            }
+            uint64_t bOffset = n1 * prefixSum;
             startOffset = bOffset + curS1Idx * n1 + curCoreN1Idx;
             // 对于TND 格式来说， 会进行类似 (s n) -> (n s) 的transpose转换
             DataCopyPad(lseFp32Brc,
@@ -522,15 +526,23 @@ public:
     void CopyDIn(GlobalTensor<float> &d, LocalTensor<float> &dLocal, uint64_t count, uint64_t curS1Idx)
     {
         uint64_t startOffset = 0;
+        uint32_t srcStride = 0;
         if constexpr (INPUT_LAYOUT == TND) {
-            uint64_t bOffset = n1 * ((__gm__ int64_t *)actualQSeqlen)[curCoreBatch] * BRCB_BASE_NUM;
+            uint64_t prefixSum = 0;
+            for (uint64_t b = 0; b < curCoreBatch; b++) {
+                prefixSum += ((__gm__ int64_t *)actualQSeqlen)[b];
+            }
+            uint64_t bOffset = prefixSum * n1 * BRCB_BASE_NUM;
             startOffset = bOffset + curS1Idx * n1 * BRCB_BASE_NUM + curCoreN1Idx * BRCB_BASE_NUM;
+            srcStride = static_cast<uint32_t>((n1 - 1) * BRCB_BASE_NUM * sizeof(float));
         } else {
             startOffset = curCoreBatch * (n1 * maxQSeqlen * BRCB_BASE_NUM) + curCoreN1Idx * maxQSeqlen * BRCB_BASE_NUM +
                           curS1Idx * BRCB_BASE_NUM;
         }
-        DataCopyPad(dLocal, d[startOffset],
-                    {static_cast<uint16_t>(count), static_cast<uint32_t>(BRCB_BASE_NUM * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
+        DataCopyPad(
+            dLocal, d[startOffset],
+            {static_cast<uint16_t>(count), static_cast<uint32_t>(BRCB_BASE_NUM * sizeof(float)), srcStride, 0, 0},
+            {false, 0, 0, 0});
     }
 };
 

@@ -1126,10 +1126,8 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     const gert::StorageShape *pseShiftShape = context_->GetOptionalInputShape(PSE_SHIFT_INDEX);
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
-        OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)) &&
-                        (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE)) &&
-                        (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)),
-                    OP_LOGE(opName_, "PseType(%ld) is not support, pseType must be 0/2/3.", pseType_),
+        OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
+                    OP_LOGE(opName_, "PseType(%ld) is not support, pseType must be 0.", pseType_),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||

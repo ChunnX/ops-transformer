@@ -74,15 +74,21 @@ def get_cu_seqlens(seqlens_list):
 
 
 def broadcastKV(n1, n2, kv_tensor, dtype):
-    factor = n1 // n2
     kv_shape = kv_tensor.shape
     b = kv_shape[0]
     s = kv_shape[2]
     d = kv_shape[3]
     kv_res = torch.zeros(b, n1, s, d).to(dtype)
-    for i in range(n1):
-        j = i // factor
-        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    if n1 >= n2:
+        factor = n1 // n2
+        for i in range(n1):
+            j = i // factor
+            kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    else:
+        factor = n2 // n1
+        for i in range(n1):
+            j = i * factor
+            kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
     return kv_res
 
 
@@ -102,7 +108,6 @@ def _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, ac
 
 def tforward_tnd(q, k, v, **kwargs):
     cu_q = kwargs["cu_seqlens_q"]
-    cu_kv = kwargs["cu_seqlens_kv"]
     seqused_q = kwargs["seqused_q"]
     seqused_kv = kwargs["seqused_kv"]
     b = len(cu_q) - 1
@@ -112,6 +117,10 @@ def tforward_tnd(q, k, v, **kwargs):
     d = kwargs.get("D")
     d_v = kwargs.get("DV", d)
     s1_total = cu_q[-1]
+
+    layout_kv = kwargs.get("layout_kv", None)
+    is_pa = layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ")
+    cu_kv = kwargs.get("cu_seqlens_kv", None)
 
     sparse_mode = kwargs.get("sparse_mode", None)
     pre_tokens  = kwargs.get("pre_tokens", 2147483647)
@@ -142,7 +151,7 @@ def tforward_tnd(q, k, v, **kwargs):
             continue
 
         q_start = cu_q[i]
-        kv_start = cu_kv[i]
+        kv_start = cu_kv[i] if cu_kv is not None else sum(seqused_kv[:i])
 
         qi = q[:, :, q_start:q_start + act_q_len]
         ki = k[:, :, kv_start:kv_start + act_kv_len]

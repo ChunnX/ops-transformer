@@ -80,34 +80,10 @@ struct FlashAttnAttenMaskParams {
     uint8_t isExistRowInvalid = 0;
 };
 
-struct FlashAttnPseParams {
-    uint8_t pseShiftByBatch;
-    uint32_t pseS1Size;
-    uint32_t pseS2Size;
-    uint32_t pseStride;
-    uint32_t qStartIdx;
-    uint32_t kvStartIdx;
-};
-
-struct FlashAttnSystemPrefixParams {
-    uint8_t iscuSharedPrefixLenNull;
-    uint32_t prefixSeqInnerSize;
-};
-
 struct FlashAttnPageAttentionParams {
     uint8_t paLayoutType;
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
-};
-
-struct FlashAttnLeftPaddingParams {
-    uint8_t isQHasLeftPadding;
-    uint8_t isKVHasLeftPadding;
-};
-
-struct FlashAttnPostQuantParams {
-    uint8_t isPostQuantPerChnl;
-    uint8_t isPostQuantBF16;
 };
 
 struct FlashAttnWorkspaceParams {
@@ -120,13 +96,6 @@ struct FlashAttnS1OuterSplitCoreParams {
     uint64_t totalSize;
 };
 
-struct FlashAttnEmptyTensorParams {
-    uint32_t singleCoreSize;
-    uint8_t needInit;
-    uint64_t totalOutputSize;
-    uint64_t totalSoftMaxLseOutputSize;
-};
-
 struct FlashAttnMetaData {
     uint32_t FAMetadata[FA_AIC_CORE_NUM][FLASH_ATTN_METADATA_SIZE];
     uint32_t FDMetadata[FA_AIV_CORE_NUM][FA_FD_METADATA_SIZE];
@@ -136,14 +105,9 @@ class FlashAttnNoQuantTilingArch35 {
 public:
     FlashAttnBaseParams flashAttnBaseParams;
     FlashAttnAttenMaskParams flashAttnAttenMaskParams;
-    FlashAttnPseParams flashAttnPseParams;
-    FlashAttnSystemPrefixParams flashAttnSystemPrefixParams;
     FlashAttnPageAttentionParams flashAttnPageAttentionParams;
-    FlashAttnLeftPaddingParams flashAttnLeftPaddingParams;
-    FlashAttnPostQuantParams flashAttnPostQuantParams;
     FlashAttnWorkspaceParams flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams flashAttnS1OuterSplitCoreParams;
-    FlashAttnEmptyTensorParams flashAttnEmptyTensorParams;
 };
 
 class FlashAttnTilingData {

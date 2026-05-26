@@ -49,6 +49,9 @@ constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t N_SIZE_4 = 4;
 constexpr int64_t ALPHA_SIZE_3 = 3;
 constexpr int64_t C_V_RATIO = 2;
+constexpr int64_t DEFAULT_KEY = 0;
+constexpr int64_t DETERMINISTIC_KEY = 1;
+constexpr int64_t ELEMENTS_SIZE_PER_BLOCK = 8;
 } // namespace
 
 using namespace ge;
@@ -326,6 +329,10 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
     auto xShape = xShapePtr->GetStorageShape();
+    OP_CHECK_IF(xShape.GetDimNum() != 4,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "xShape verify failed, x must be 4D, but got %lu dims", xShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
     auto attrsPtr = context->GetAttrs();
     if (attrsPtr == nullptr) {
         OP_LOGE(context, "attrs is nullptr");
@@ -342,6 +349,10 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     OP_CHECK_IF(ShapeVerify(context, batchSize, seqLength, n, c) != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "ShapeVerify failed"), return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(n != N_SIZE_4,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
+                return ge::GRAPH_FAILED);
+
     int64_t c0 = 256; // must be VL
     int64_t c1 = c / c0;
     int64_t cTail = c % c0;
@@ -352,6 +363,16 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     CHECK_NULLPTR(sumOutPtr);
     auto sumOutShape = sumOutPtr->GetStorageShape();
     int64_t skIterCount = sumOutShape.GetDim(0) / C_V_RATIO;
+
+    OP_CHECK_IF(
+        skIterCount != 20,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "sk_iter_count must be 20, but got %ld", skIterCount),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
+                return ge::GRAPH_FAILED);
 
     int64_t mm1K = n * n + 2 * n;
     int64_t mm1M = tile * 2;
@@ -423,7 +444,16 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+    auto isDeterministic = (context->GetDeterministic() == 1);
+    context->SetScheduleMode(1); // 1: batchmode模式
+    context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
+    if (isDeterministic) {
+        currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize +
+                              aicNum * (n * n + 2 * n) * (n * c) * sizeof(float) +
+                              aivNum * (n * n + 2 * n + ELEMENTS_SIZE_PER_BLOCK) * sizeof(float);
+    } else {
+        currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -431,9 +461,6 @@ static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseCon
 {
     return ge::GRAPH_SUCCESS;
 }
-
-struct MhcPreSinkhornBackwardCompileInfo {
-};
 
 IMPL_OP_OPTILING(MhcPreSinkhornBackward)
     .Tiling(TilingMhcPreSinkhornBackward)

@@ -51,6 +51,7 @@ extern "C" {
  * @param [in] sharedExpertNum: 计算可选输入，int。共享专家数量。
  * @param [in] sharedExpertRankNum: 计算可选输入，int。共享专家卡数量。
  * @param [in] globalBs: 计算可选输入，int。
+ * @param [in] shmemBuffer: shmem 通信Buffer。
  * @param [in] outDtype: 计算可选输入，int。输出数据类型。预留参数，暂未使用，传0即可。
  * @param [in] commQuantMode: 计算可选输入，int。通信量化类型。
  * @param [in] groupListType: 计算可选输入，int。groupList格式。预留参数，暂未使用，传0即可。
@@ -76,7 +77,7 @@ ACLNN_API aclnnStatus aclnnMoeDistributeCombineV3GetWorkspaceSize(const aclTenso
     int64_t epRankId, int64_t moeExpertNum,
     const char* groupTp, int64_t tpWorldSize, int64_t tpRankId,
     int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, 
-    int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
+    int64_t globalBs, uint64_t shmemBuffer, int64_t outDtype, int64_t commQuantMode,
     int64_t groupListType, const char* commAlg, int64_t zeroExpertNum,
     int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* xOut, uint64_t* workspaceSize,
