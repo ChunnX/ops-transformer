@@ -212,6 +212,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
     auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK(transMmWeightPtr == nullptr, OP_LOGE(opName_, "transMmWeightPtr is null."),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*transMmWeightPtr == true && !localParams_.hasSharedMm,
+                    OP_LOGE(opName_, "transMmWeight should not be true when mmX is null!"), return ge::GRAPH_FAILED);
     localParams_.isMmWeightTrans = *transMmWeightPtr;
 
     localParams_.gmmXScaleDtype = localParams_.gmmXDtype;
