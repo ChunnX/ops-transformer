@@ -236,19 +236,26 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 
 以下参数在所有场景中有效（作为 `aclnnGroupedMatmulV5GetWorkspaceSize` 的入参）：
 
+#### Tensor 类参数
+
 | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
 |--------|:---:|------|------|----------|:---:|:---|:---:|
 | x | 输入 | 公式中的输入 $x$ | TensorList 长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 2~6 | √ |
 | weight | 输入 | 公式中的 $weight$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 2~3 | √ |
-| out | 输出 | 公式中的输出 $y$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | — |
-| splitItem | 输入 | 输出是否做 Tensor 切分 | `0/1` = 多 Tensor 输出；`2/3` = 单 Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | — | — | — | — |
-| groupType | 输入 | 分组轴 | `-1` = 不分组；`0` = M 轴分组；`2` = K 轴分组 | — | — | — | — |
-| groupListType | 输入 | groupList 数据格式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | — | — | — | — |
-| actType | 输入 | 激活函数类型 | `0`=NONE / `1`=RELU / `2`=GELU_TANH / `3`=GELU_ERR_FUNC(不支持) / `4`=FAST_GELU / `5`=SILU | — | — | — | — |
+| out | 输出 | 公式中的输出 $y$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | N/A |
 | groupListOptional | 可选输入 | 分组轴方向各组大小分布 | 格式取决于 groupListType | INT64 | ND | 1~2 | √ |
-| tuningConfigOptional | 可选输入 | [0]=预期 token 数（优化 tiling）；[1]=A8W4 场景是否使能 weight NZ 格式；[2]=允许额外内存上限。兼容历史版本，不用时传 nullptr | INT64 | — | 3 | — |
-| workspaceSize | 输出 | 需要在 Device 侧申请的 workspace 大小（字节） | — | — | — | — | — |
-| executor | 输出 | 算子执行器，包含计算流程 | — | — | — | — | — |
+| tuningConfigOptional | 可选输入 | [0]=预期 token 数（优化 tiling）；[1]=A8W4 场景是否使能 weight NZ 格式；[2]=允许额外内存上限 | 兼容历史版本，不用时传 `nullptr` | INT64 | ND | 3 | N/A |
+
+#### 属性类参数
+
+| 参数名 | 输入/输出 | 描述 | 取值说明 |
+|--------|:---:|------|------|
+| splitItem | 输入 | 输出是否做 Tensor 切分 | `0/1` = 多 Tensor 输出；`2/3` = 单 Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 |
+| groupType | 输入 | 分组轴 | `-1` = 不分组；`0` = M 轴分组；`2` = K 轴分组 |
+| groupListType | 输入 | groupList 数据格式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) |
+| actType | 输入 | 激活函数类型 | `0`=NONE / `1`=RELU / `2`=GELU_TANH / `3`=GELU_ERR_FUNC(不支持) / `4`=FAST_GELU / `5`=SILU |
+| workspaceSize | 输出 | 需要在 Device 侧申请的 workspace 大小（字节） | N/A |
+| executor | 输出 | 算子执行器，包含计算流程 | N/A |
 
 **产品代际差异：**
 
