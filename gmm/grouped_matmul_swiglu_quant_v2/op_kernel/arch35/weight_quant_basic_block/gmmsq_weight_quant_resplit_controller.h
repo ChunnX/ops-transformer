@@ -146,8 +146,8 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
             ctrlParam.basicBlockLimit = startBasicBlockId;
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
-                SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize, N_L1), N_L1);
-                ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize, N_L1);
+                SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize / 2, N_L1 / 2), N_L1 / 2);
+                ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize / 2, N_L1 / 2);
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % tiling_->coreNum;
         }
@@ -191,10 +191,9 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
         offsetParam[ctrlParam.processId].nOffset =
             ctrlParam.nOffset +
             ((ctrlParam.curBasicBlockId - ctrlParam.basicBlockLimit) % basicBlockCount) * basicBlockSize;
-        offsetParam[ctrlParam.processId].nL1Size =
-            offsetParam[ctrlParam.processId].nOffset + basicBlockSize > tiling_->nSize ?
-                tiling_->nSize - offsetParam[ctrlParam.processId].nOffset :
-                basicBlockSize;
+        uint64_t halfNRemaining = offsetParam[ctrlParam.processId].nSize / 2 - offsetParam[ctrlParam.processId].nOffset;
+        offsetParam[ctrlParam.processId].nL1Size = halfNRemaining >= basicBlockSize ?
+            basicBlockSize * 2 : halfNRemaining * 2;
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
         offsetParam[ctrlParam.processId].yScaleGmAddr = reinterpret_cast<GM_ADDR>(yScaleGm_);
 
