@@ -131,6 +131,20 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::PostPro
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Process()
 {
+    // === 验证补丁：清零 workspace ===
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0) {
+            uint64_t totalWorkspaceBytes = fullMN_ * sizeof(C_DTYPE) * 2; // sendBuf + recvBuf
+            // 对 workspace 逐段清零 (用 DataCopy 或 memset 语义)
+            __gm__ uint8_t* wsPtr = (__gm__ uint8_t*)sendBuf_;
+            for (uint64_t i = 0; i < totalWorkspaceBytes; i += sizeof(C_DTYPE)) {
+                *((__gm__ C_DTYPE*)(wsPtr + i)) = static_cast<C_DTYPE>(0);
+            }
+        }
+        SyncAll<true>();
+    }
+    // === 验证补丁结束 ===
+
     InnerProcess(); // 核心计算+通信
     PostProcess(); // 等待计算与通信完成, 终止hcclserver
 }
