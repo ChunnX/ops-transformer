@@ -23,9 +23,9 @@
 #include <cstdio>
 #include <string>
 #include <sstream>
+#include <chrono>
 #include "acl/acl.h"
 #include "../op_api/aclnn_flash_attn.h"
-#include "../../flash_attn_metadata/op_host/op_api/aclnn_flash_attn_metadata.h"
 
 namespace {
 
@@ -375,6 +375,51 @@ static void SaveFloatToTxt(const char *path, const float *data, int64_t n,
     fclose(f);
 }
 
+// 从 pytest --dump_metadata 生成的 .bin 文件加载 metadata tensor 到 device
+static int LoadMetadataFromBin(const char *path, void **deviceAddr, aclTensor **tensor)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) { LOG_PRINT("[ERROR] Cannot open metadata bin: %s\n", path); return -1; }
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    rewind(f);
+    if (fsize <= 0 || fsize % (long)sizeof(int32_t) != 0)
+        { LOG_PRINT("[ERROR] Invalid metadata file size: %ld\n", fsize); fclose(f); return -1; }
+    int64_t nElems = (int64_t)(fsize / sizeof(int32_t));
+    std::vector<int32_t> host(nElems);
+    fread(host.data(), sizeof(int32_t), (size_t)nElems, f);
+    fclose(f);
+    size_t byteSize = (size_t)nElems * sizeof(int32_t);
+    int ret = aclrtMalloc(deviceAddr, byteSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (ret != ACL_SUCCESS) { LOG_PRINT("aclrtMalloc metadata failed. ERROR: %d\n", ret); return ret; }
+    ret = aclrtMemcpy(*deviceAddr, byteSize, host.data(), byteSize, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (ret != ACL_SUCCESS) { LOG_PRINT("aclrtMemcpy metadata failed. ERROR: %d\n", ret); return ret; }
+    int64_t shape[1]   = {nElems};
+    int64_t strides[1] = {1};
+    *tensor = aclCreateTensor(shape, 1, aclDataType::ACL_INT32, strides, 0,
+                              aclFormat::ACL_FORMAT_ND, shape, 1, *deviceAddr);
+    const uint32_t *m = reinterpret_cast<const uint32_t *>(host.data());
+    LOG_PRINT("[INFO] Loaded metadata: %s  (%ld int32)  sectionNum=%u mBase=%u s2Base=%u\n",
+              path, nElems, nElems >= 1 ? m[0] : 0u, nElems >= 2 ? m[1] : 0u, nElems >= 3 ? m[2] : 0u);
+    return ACL_SUCCESS;
+}
+
+// 从 host int32 数组创建 device int32 tensor
+static int CreateInt32Tensor(const int32_t *hostData, int64_t n,
+                             void **deviceAddr, aclTensor **tensor)
+{
+    size_t byteSize = (size_t)n * sizeof(int32_t);
+    int ret = aclrtMalloc(deviceAddr, byteSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (ret != ACL_SUCCESS) { LOG_PRINT("aclrtMalloc int32 failed. ERROR: %d\n", ret); return ret; }
+    ret = aclrtMemcpy(*deviceAddr, byteSize, hostData, byteSize, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (ret != ACL_SUCCESS) { LOG_PRINT("aclrtMemcpy int32 failed. ERROR: %d\n", ret); return ret; }
+    int64_t shape[1]   = {n};
+    int64_t strides[1] = {1};
+    *tensor = aclCreateTensor(shape, 1, aclDataType::ACL_INT32, strides, 0,
+                              aclFormat::ACL_FORMAT_ND, shape, 1, *deviceAddr);
+    return ACL_SUCCESS;
+}
+
 } // namespace
 
 // ─── 测试参数结构（对标 test_case.py 各字段）────────────────────────────────
@@ -430,20 +475,17 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
 
     // ── 分配设备张量 ────────────────────────────────────────────────────────
     void *qDev=nullptr, *kDev=nullptr, *vDev=nullptr, *outDev=nullptr;
-    void *metaDev = nullptr;
-    aclTensor *qT=nullptr, *kT=nullptr, *vT=nullptr, *outT=nullptr, *metaT=nullptr;
+    aclTensor *qT=nullptr, *kT=nullptr, *vT=nullptr, *outT=nullptr;
 
     auto cleanup = [&]() {
-        if (qT)    aclDestroyTensor(qT);
-        if (kT)    aclDestroyTensor(kT);
-        if (vT)    aclDestroyTensor(vT);
-        if (outT)  aclDestroyTensor(outT);
-        if (metaT) aclDestroyTensor(metaT);
-        if (qDev)    aclrtFree(qDev);
-        if (kDev)    aclrtFree(kDev);
-        if (vDev)    aclrtFree(vDev);
-        if (outDev)  aclrtFree(outDev);
-        if (metaDev) aclrtFree(metaDev);
+        if (qT)   aclDestroyTensor(qT);
+        if (kT)   aclDestroyTensor(kT);
+        if (vT)   aclDestroyTensor(vT);
+        if (outT) aclDestroyTensor(outT);
+        if (qDev)   aclrtFree(qDev);
+        if (kDev)   aclrtFree(kDev);
+        if (vDev)   aclrtFree(vDev);
+        if (outDev) aclrtFree(outDev);
     };
 
     // Q
@@ -471,61 +513,15 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
     if (CreateAclTensorDeviceZero(outShape, &outDev, aclDataType::ACL_FLOAT16,
                                   sizeof(uint16_t), &outT) != ACL_SUCCESS)
         { cleanup(); return false; }
-    // Metadata (清零)
-    if (CreateMetadataTensor(&metaDev, &metaT) != ACL_SUCCESS)
-        { cleanup(); return false; }
 
     double softmaxScale = 1.0 / std::sqrt((double)D);
     int64_t winLeft     = tc.winLeft;
     int64_t winRight    = tc.winRight;
 
     // ────────────────────────────────────────────────────────────────────────
-    //  步骤 A：调用 flash_attn_metadata 算子预计算 tiling 切分方案
+    //  调用 flash_attn 算子（metadata 传 nullptr，由 tiling 自动计算）
     // ────────────────────────────────────────────────────────────────────────
-    LOG_PRINT("\n  [A] 调用 flash_attn_metadata 算子...\n");
-    {
-        uint64_t wsSize = 0;
-        aclOpExecutor *exec = nullptr;
-        int ret = aclnnFlashAttnMetadataGetWorkspaceSize(
-            nullptr,       // cuSeqlensQOptional
-            nullptr,       // cuSeqlensKvOptional
-            nullptr,       // sequsedQOptional
-            nullptr,       // sequsedKvOptional
-            B, S_q, S_kv, N_q, N_kv, D,
-            tc.maskMode, winLeft, winRight,
-            "BNSD", "BNSD", "BNSD",
-            metaT, &wsSize, &exec);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("  aclnnFlashAttnMetadataGetWorkspaceSize FAILED. ret=%d\n", ret);
-            cleanup(); return false;
-        }
-        void *ws = nullptr;
-        if (wsSize > 0) {
-            aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        }
-        ret = aclnnFlashAttnMetadata(ws, wsSize, exec, stream);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("  aclnnFlashAttnMetadata FAILED. ret=%d\n", ret);
-            if (ws) aclrtFree(ws);
-            cleanup(); return false;
-        }
-        aclrtSynchronizeStream(stream);
-        if (ws) aclrtFree(ws);
-    }
-
-    // 回读 metadata → 打印
-    std::vector<uint32_t> metaHost(METADATA_MAX_ELEMS, 0);
-    aclrtMemcpy(metaHost.data(), METADATA_MAX_ELEMS * sizeof(uint32_t),
-                metaDev, METADATA_MAX_ELEMS * sizeof(uint32_t),
-                ACL_MEMCPY_DEVICE_TO_HOST);
-    LOG_PRINT("\n  ▼ flash_attn_metadata 输出（sectionNum=%u  mBase=%u  s2Base=%u）\n",
-              metaHost[0], metaHost[1], metaHost[2]);
-    PrintMetadata(metaHost.data(), METADATA_MAX_ELEMS);
-
-    // ────────────────────────────────────────────────────────────────────────
-    //  步骤 B：调用 flash_attn 算子（传入上一步的 metadata）
-    // ────────────────────────────────────────────────────────────────────────
-    LOG_PRINT("  [B] 调用 flash_attn 算子（使用预计算 metadata）...\n");
+    LOG_PRINT("\n  [A] 调用 flash_attn 算子...\n");
     {
         uint64_t wsSize = 0;
         aclOpExecutor *exec = nullptr;
@@ -536,12 +532,12 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
             nullptr,    // cuSeqlensKv
             nullptr,    // sequsedQ
             nullptr,    // sequsedKv
-            nullptr,    // sinks (arg 9)
-            nullptr,    // reserved optional (arg 10, actual API has extra tensor here)
-            metaT,      // metadata (arg 11) ← 传入预计算好的 metadata
+            nullptr,    // sinks
+            nullptr,    // attnMask
+            nullptr,    // metadata (nullptr → tiling 自动计算)
             softmaxScale,
-            (int32_t)tc.maskMode, (int32_t)winLeft, (int32_t)winRight,
-            (int32_t)S_q, (int32_t)S_kv,
+            tc.maskMode, winLeft, winRight,
+            S_q, S_kv,
             "BNSD", "BNSD", "BNSD",
             (int32_t)0, // returnSoftmaxLse
             outT,
@@ -680,6 +676,259 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
     return passed;
 }
 
+// ─── TND_MIXED_02 专用测试函数（直接读取 metadata.bin，跳过 metadata 算子）───
+static bool RunTndMixed02(aclrtStream stream, const char *metaBinPath,
+                          bool dumpOutput, bool verbose, uint32_t seed)
+{
+    // test_case.py TND_MIXED_02 硬编码参数
+    static const int64_t  B       = 8;
+    static const int64_t  N_q    = 4;
+    static const int64_t  N_kv   = 4;
+    static const int64_t  D      = 128;
+    static const int64_t  T_q    = 944;   // sum(cu_seqlens_q)
+    static const int64_t  T_kv   = 944;
+    static const int64_t  maskMode = 3;
+    static const int64_t  winLeft  = -1;  // sparse_mode=3 → pre_tokens=-1
+    static const int64_t  winRight = -1;
+    static const float    qMin = -10.0f, qMax = 10.0f;
+    static const float    kMin = -10.0f, kMax = 10.0f;
+    static const float    vMin = -10.0f, vMax = 10.0f;
+    static const int      REPEAT_TIMES = 1;    // ← 调整此处可反复调用算子
+
+    static const int32_t CU_SEQLENS_Q[9]  = {0,118,236,354,472,590,708,826,944};
+    static const int32_t CU_SEQLENS_KV[9] = {0,118,236,354,472,590,708,826,944};
+    static const int32_t SEQUSED_Q[8]     = {118,118,118,118,118,118,118,118};
+    static const int32_t SEQUSED_KV[8]    = {118,118,118,118,118,118,118,118};
+
+    const int64_t S_q0  = SEQUSED_Q[0];   // 118
+    const int64_t S_kv0 = SEQUSED_KV[0];  // 118
+    const char *SEP = "----------------------------------------------------------------";
+
+    LOG_PRINT("\n+%s+\n", SEP);
+    LOG_PRINT("| TND_MIXED_02: B=%ld N_q=%ld N_kv=%ld T=%ld D=%ld mask=%ld\n",
+              B, N_q, N_kv, T_q, D, maskMode);
+    LOG_PRINT("+%s+\n", SEP);
+
+    std::vector<int64_t> qShape   = {T_q,  N_q,  D};
+    std::vector<int64_t> kShape   = {T_kv, N_kv, D};
+    std::vector<int64_t> vShape   = {T_kv, N_kv, D};
+    std::vector<int64_t> outShape = {T_q,  N_q,  D};
+    int64_t qElem  = T_q  * N_q  * D;
+    int64_t kvElem = T_kv * N_kv * D;
+    int64_t outElem = qElem;
+    int64_t qRef0  = S_q0  * N_q  * D;  // batch 0 comparison elements
+
+    std::mt19937 rng(seed);
+
+    void *qDev=nullptr, *kDev=nullptr, *vDev=nullptr, *outDev=nullptr;
+    void *cuQDev=nullptr, *cuKvDev=nullptr, *seqQDev=nullptr, *seqKvDev=nullptr;
+    void *metaDev=nullptr, *maskDev=nullptr;
+    aclTensor *qT=nullptr, *kT=nullptr, *vT=nullptr, *outT=nullptr;
+    aclTensor *cuQT=nullptr, *cuKvT=nullptr, *seqQT=nullptr, *seqKvT=nullptr;
+    aclTensor *metaT=nullptr, *maskT=nullptr;
+
+    auto cleanup = [&]() {
+        aclDestroyTensor(qT);  aclDestroyTensor(kT);  aclDestroyTensor(vT);
+        aclDestroyTensor(outT); aclDestroyTensor(cuQT); aclDestroyTensor(cuKvT);
+        aclDestroyTensor(seqQT); aclDestroyTensor(seqKvT);
+        aclDestroyTensor(metaT); aclDestroyTensor(maskT);
+        aclrtFree(qDev); aclrtFree(kDev); aclrtFree(vDev); aclrtFree(outDev);
+        aclrtFree(cuQDev); aclrtFree(cuKvDev); aclrtFree(seqQDev); aclrtFree(seqKvDev);
+        aclrtFree(metaDev); aclrtFree(maskDev);
+    };
+
+    // ── 创建 Q/K/V，同时提取 batch 0 数据供 CPU 参考 ────────────────────────
+    // TND 格式 [T, N, D]：token t, head n, dim d → index t*N*D + n*D + d
+    // batch 0 tokens: t in [CU_SEQLENS_Q[0], CU_SEQLENS_Q[0]+S_q0)
+    // CPU ref 使用 BNSD-like [N_q, S_q0, D]：index n*S_q0*D + s*D + d
+    std::vector<float> qRef, kRef, vRef;
+    (void)dumpOutput;  // dump not implemented for TND variant
+    auto extractBatch0 = [&](const std::vector<uint16_t> &h, int64_t N,
+                             int32_t cu_start, int64_t seq_len, std::vector<float> &ref) {
+        ref.resize(seq_len * N * D);
+        for (int64_t n = 0; n < N; ++n)
+            for (int64_t s = 0; s < seq_len; ++s)
+                for (int64_t d = 0; d < D; ++d) {
+                    int64_t tndIdx = ((int64_t)cu_start + s) * N * D + n * D + d;
+                    ref[n * seq_len * D + s * D + d] = fp16_to_float(h[tndIdx]);
+                }
+    };
+    {
+        std::uniform_real_distribution<float> dist(qMin, qMax);
+        std::vector<uint16_t> h(qElem);
+        for (auto &v : h) v = float_to_fp16(dist(rng));
+        extractBatch0(h, N_q, CU_SEQLENS_Q[0], S_q0, qRef);
+        if (CreateAclTensor(h, qShape, &qDev, aclDataType::ACL_FLOAT16, &qT) != ACL_SUCCESS)
+            { cleanup(); return false; }
+    }
+    {
+        std::uniform_real_distribution<float> dist(kMin, kMax);
+        std::vector<uint16_t> h(kvElem);
+        for (auto &v : h) v = float_to_fp16(dist(rng));
+        extractBatch0(h, N_kv, CU_SEQLENS_KV[0], S_kv0, kRef);
+        if (CreateAclTensor(h, kShape, &kDev, aclDataType::ACL_FLOAT16, &kT) != ACL_SUCCESS)
+            { cleanup(); return false; }
+    }
+    {
+        std::uniform_real_distribution<float> dist(vMin, vMax);
+        std::vector<uint16_t> h(kvElem);
+        for (auto &v : h) v = float_to_fp16(dist(rng));
+        extractBatch0(h, N_kv, CU_SEQLENS_KV[0], S_kv0, vRef);
+        if (CreateAclTensor(h, vShape, &vDev, aclDataType::ACL_FLOAT16, &vT) != ACL_SUCCESS)
+            { cleanup(); return false; }
+    }
+    if (CreateAclTensorDeviceZero(outShape, &outDev, aclDataType::ACL_FLOAT16,
+                                  sizeof(uint16_t), &outT) != ACL_SUCCESS)
+        { cleanup(); return false; }
+
+    // ── 创建 cu_seqlens / seqused 张量 ───────────────────────────────────────
+    if (CreateInt32Tensor(CU_SEQLENS_Q,  B+1, &cuQDev,  &cuQT)  != ACL_SUCCESS) { cleanup(); return false; }
+    if (CreateInt32Tensor(CU_SEQLENS_KV, B+1, &cuKvDev, &cuKvT) != ACL_SUCCESS) { cleanup(); return false; }
+    if (CreateInt32Tensor(SEQUSED_Q,     B,   &seqQDev, &seqQT) != ACL_SUCCESS) { cleanup(); return false; }
+    if (CreateInt32Tensor(SEQUSED_KV,    B,   &seqKvDev,&seqKvT)!= ACL_SUCCESS) { cleanup(); return false; }
+
+    // ── 从 .bin 文件加载 metadata ─────────────────────────────────────────────
+    if (LoadMetadataFromBin(metaBinPath, &metaDev, &metaT) != ACL_SUCCESS)
+        { cleanup(); return false; }
+
+    // ── 构造因果 attn_mask [2048, 2048] INT8（mask_mode=3 必须提供）─────────
+    // mask[i][j] = 1(屏蔽) if j > i（上三角），0(允许) if j <= i（下三角）
+    {
+        constexpr int64_t MSZ = 2048;
+        std::vector<int8_t> hMask((size_t)(MSZ * MSZ), 0);
+        for (int64_t i = 0; i < MSZ; ++i)
+            for (int64_t j = i + 1; j < MSZ; ++j)
+                hMask[i * MSZ + j] = 1;
+        size_t byteSize = (size_t)(MSZ * MSZ);
+        if (aclrtMalloc(&maskDev, byteSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS ||
+            aclrtMemcpy(maskDev, byteSize, hMask.data(), byteSize, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS)
+            { cleanup(); return false; }
+        int64_t mShape[2]   = {MSZ, MSZ};
+        int64_t mStrides[2] = {MSZ, 1};
+        maskT = aclCreateTensor(mShape, 2, aclDataType::ACL_INT8, mStrides, 0,
+                                aclFormat::ACL_FORMAT_ND, mShape, 2, maskDev);
+    }
+
+    // ── 调用 flash_attn（TND 布局，maxSeqlen=-1 由 cu_seqlens 决定）──────────
+    LOG_PRINT("\n  [A] Calling aclnnFlashAttn (TND, metadata from file, x%d)...\n", REPEAT_TIMES);
+    double softmaxScale = 1.0 / std::sqrt((double)D);
+    {
+        // GetWorkspaceSize 只调一次（CPU 侧准备 executor）
+        uint64_t wsSize = 0;
+        aclOpExecutor *exec = nullptr;
+        int ret = aclnnFlashAttnGetWorkspaceSize(
+            qT, kT, vT,
+            nullptr,  // blockTable
+            cuQT,     // cuSeqlensQ
+            cuKvT,    // cuSeqlensKv
+            seqQT,    // sequsedQ
+            seqKvT,   // sequsedKv
+            nullptr,  // sinks
+            maskT,    // attnMask: causal mask [2048,2048] INT8 (mask_mode=3 required)
+            metaT,    // metadata from .bin
+            softmaxScale,
+            maskMode, winLeft, winRight,
+            (int64_t)-1, (int64_t)-1,  // maxSeqlenQ/KV=-1 for TND (kernel uses cu_seqlens)
+            "TND", "TND", "TND",
+            (int64_t)0,  // returnSoftmaxLse
+            (int64_t)0,  // deterministic
+            outT,
+            nullptr,  // softmaxLse
+            &wsSize, &exec);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("  aclnnFlashAttnGetWorkspaceSize FAILED. ret=%d\n", ret);
+            cleanup(); return false;
+        }
+        void *ws = nullptr;
+        if (wsSize > 0) aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
+
+        // 循环调用算子，计时
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int _r = 0; _r < REPEAT_TIMES; ++_r) {
+            ret = aclnnFlashAttn(ws, wsSize, exec, stream);
+            if (ret != ACL_SUCCESS) {
+                LOG_PRINT("  aclnnFlashAttn FAILED (iter %d). ret=%d\n", _r, ret);
+                if (ws) aclrtFree(ws);
+                cleanup(); return false;
+            }
+            aclrtSynchronizeStream(stream);
+        }
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double totalMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        LOG_PRINT("  flash_attn done. repeat=%d  total=%.3f ms  avg=%.3f ms\n",
+                  REPEAT_TIMES, totalMs, totalMs / REPEAT_TIMES);
+
+        if (ws) aclrtFree(ws);
+    }
+
+    // ── 回读 NPU 输出 ──────────────────────────────────────────────────────────
+    std::vector<uint16_t> outHost(outElem, 0);
+    aclrtMemcpy(outHost.data(), (size_t)outElem * sizeof(uint16_t),
+                outDev, (size_t)outElem * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+
+    // ── CPU 参考（batch 0，因果注意力：mask_mode=3 = CAUSAL）──────────────────
+    LOG_PRINT("\n  [B] CPU reference (batch 0: S_q=%ld S_kv=%ld, causal)...\n", S_q0, S_kv0);
+    std::vector<float> cpuOut(qRef0, 0.0f);
+    cpu_flash_attention(qRef, kRef, vRef, cpuOut, 1, N_q, N_kv, S_q0, S_kv0, D, /*maskMode=*/1);
+
+    // ── 精度对比（batch 0）───────────────────────────────────────────────────
+    // NPU 输出 TND [T_q, N_q, D]，batch 0: token [CU_SEQLENS_Q[0], +S_q0)
+    double maxAbsErr=0, sumAbsErr=0, maxRelErr=0, sumRelErr=0;
+    int64_t failCount=0;
+    for (int64_t n = 0; n < N_q; ++n) {
+        for (int64_t s = 0; s < S_q0; ++s) {
+            for (int64_t d = 0; d < D; ++d) {
+                int64_t tndIdx = ((int64_t)CU_SEQLENS_Q[0] + s) * N_q * D + n * D + d;
+                int64_t refIdx = n * S_q0 * D + s * D + d;
+                float npu = fp16_to_float(outHost[tndIdx]);
+                float cpu = cpuOut[refIdx];
+                float ae  = std::abs(npu - cpu);
+                float ref = std::abs(cpu) + 1e-6f;
+                float thr = std::max(ref * RATIO_THRESHOLD, 0.000025f);
+                if (ae > maxAbsErr) maxAbsErr = ae;
+                if ((double)(ae/ref) > maxRelErr) maxRelErr = ae/ref;
+                sumAbsErr += ae;
+                sumRelErr += ae/ref;
+                if (ae > thr) ++failCount;
+            }
+        }
+    }
+    double meanAbsErr = sumAbsErr / qRef0;
+    double failRatio  = (double)failCount / qRef0;
+    bool   passed     = (failRatio <= (double)FAIL_RATIO_LIMIT);
+
+    LOG_PRINT("\n+%s+\n", SEP);
+    LOG_PRINT("| Accuracy: TND_MIXED_02 (batch 0, %ld elements)\n", qRef0);
+    LOG_PRINT("|  MaxAbsErr : %.8f\n", maxAbsErr);
+    LOG_PRINT("|  MeanAbsErr: %.8f\n", meanAbsErr);
+    LOG_PRINT("|  MaxRelErr : %.8f\n", maxRelErr);
+    LOG_PRINT("|  FailElems : %ld / %ld  (%.4f%%)\n",
+              failCount, qRef0, failRatio * 100.0);
+    LOG_PRINT("|  Result    : %s\n", passed ? "PASS" : "FAIL");
+    if (failCount > 0) {
+        int64_t printMax = verbose ? failCount : std::min(failCount, (int64_t)10);
+        int64_t printed  = 0;
+        for (int64_t n = 0; n < N_q && printed < printMax; ++n)
+            for (int64_t s = 0; s < S_q0 && printed < printMax; ++s)
+                for (int64_t d = 0; d < D && printed < printMax; ++d) {
+                    int64_t ti = ((int64_t)CU_SEQLENS_Q[0]+s)*N_q*D + n*D + d;
+                    int64_t ri = n*S_q0*D + s*D + d;
+                    float npu = fp16_to_float(outHost[ti]);
+                    float ae  = std::abs(npu - cpuOut[ri]);
+                    float thr = std::max((std::abs(cpuOut[ri])+1e-6f)*RATIO_THRESHOLD, 0.000025f);
+                    if (ae > thr) {
+                        LOG_PRINT("|  [n=%ld s=%ld d=%ld] npu=%.6f cpu=%.6f ae=%.6f\n",
+                                  n, s, d, (double)npu, (double)cpuOut[ri], (double)ae);
+                        ++printed;
+                    }
+                }
+    }
+    LOG_PRINT("+%s+\n\n", SEP);
+
+    cleanup();
+    return passed;
+}
+
 // ─── 打印用法帮助 ────────────────────────────────────────────────────────────
 static void PrintUsage(const char *prog)
 {
@@ -723,110 +972,34 @@ static void PrintUsage(const char *prog)
         prog, prog, prog, prog, prog);
 }
 
+// ─── 修改此路径以指向 pytest 生成的 metadata.bin ──────────────────────────────
+#define METADATA_BIN_PATH  "./metadata_TND_MIXED_02.bin"
+
 int main(int argc, char *argv[])
 {
-    // ─── 默认参数（对标 test_case.py 常用字段）──────────────────────────────
-    std::string caseName = "test";
-    int64_t B        = 1;
-    int64_t N_q      = 19;      // N1
-    int64_t N_kv     = 19;     // N2；-1 表示"等于 N_q"
-    int64_t S_q      = 640;     // S1
-    int64_t S_kv     = 1024;    // S2
-    int64_t D        = 128;
-    int64_t maskMode = 0;      // 1=因果下三角
-    int64_t winLeft  = -1;
-    int64_t winRight = -1;
-    float   qMin = -10.0f, qMax = 10.0f;
-    float   kMin = -10.0f, kMax = 10.0f;
-    float   vMin = -10.0f, vMax = 10.0f;
-    uint32_t seed    = 42u;
-    int32_t deviceId = 0;
-    bool dumpOutput  = false;
-    bool verbose     = false;
+    (void)argc; (void)argv;
+    const char *metaBinPath = METADATA_BIN_PATH;
+    const uint32_t seed     = 42u;
+    const int32_t  deviceId = 0;
+    const bool     dumpOutput = false;
+    const bool     verbose    = false;
 
-    // ─── 命令行参数解析 ─────────────────────────────────────────────────────
-    for (int i = 1; i < argc; ++i) {
-        std::string a = argv[i];
-        auto nextStr = [&]() -> std::string {
-            return (i + 1 < argc) ? argv[++i] : "";
-        };
-        if      (a == "--help")    { PrintUsage(argv[0]); return 0; }
-        else if (a == "--dump")    { dumpOutput = true; }
-        else if (a == "--verbose") { verbose    = true; }
-        else if (a == "--name")    { caseName   = nextStr(); }
-        else if (a == "--seed")    { seed       = (uint32_t)std::stoul(nextStr()); }
-        else if (a == "--device")  { deviceId   = (int32_t) std::stoi(nextStr()); }
-        else if (a == "--B")       { B          = std::stoll(nextStr()); }
-        else if (a == "--N1")      { N_q        = std::stoll(nextStr()); }
-        else if (a == "--N2")      { N_kv       = std::stoll(nextStr()); }
-        else if (a == "--S1")      { S_q        = std::stoll(nextStr()); }
-        else if (a == "--S2")      { S_kv       = std::stoll(nextStr()); }
-        else if (a == "--D")       { D          = std::stoll(nextStr()); }
-        else if (a == "--mask")    { maskMode   = std::stoll(nextStr()); }
-        else if (a == "--wL")      { winLeft    = std::stoll(nextStr()); }
-        else if (a == "--wR")      { winRight   = std::stoll(nextStr()); }
-        else if (a == "--qMin")    { qMin       = std::stof(nextStr()); }
-        else if (a == "--qMax")    { qMax       = std::stof(nextStr()); }
-        else if (a == "--kMin")    { kMin       = std::stof(nextStr()); }
-        else if (a == "--kMax")    { kMax       = std::stof(nextStr()); }
-        else if (a == "--vMin")    { vMin       = std::stof(nextStr()); }
-        else if (a == "--vMax")    { vMax       = std::stof(nextStr()); }
-        else { LOG_PRINT("[WARN] 未知参数: %s，已忽略（--help 查看用法）\n", a.c_str()); }
-    }
-    if (N_kv < 0) N_kv = N_q;  // N2 默认等于 N1（MHA）
-
-    // ─── 构造测试参数 ────────────────────────────────────────────────────────
-    TestCase tc;
-    tc.name     = caseName.c_str();
-    tc.B        = B;
-    tc.N_q      = N_q;
-    tc.N_kv     = N_kv;
-    tc.S_q      = S_q;
-    tc.S_kv     = S_kv;
-    tc.D        = D;
-    tc.maskMode = maskMode;
-    tc.winLeft  = winLeft;
-    tc.winRight = winRight;
-    tc.qMin     = qMin;  tc.qMax = qMax;
-    tc.kMin     = kMin;  tc.kMax = kMax;
-    tc.vMin     = vMin;  tc.vMax = vMax;
-
-    // ─── 打印当前参数配置 ────────────────────────────────────────────────────
-    const char *SEP = "══════════════════════════════════════════════════════════════════";
-    LOG_PRINT("\n%s\n", SEP);
-    LOG_PRINT("  FlashAttn 测试参数配置\n");
-    LOG_PRINT("%s\n", SEP);
-    LOG_PRINT("  B=%ld  N1(N_q)=%ld  N2(N_kv)=%ld  S1(S_q)=%ld  S2(S_kv)=%ld  D=%ld\n",
-              B, N_q, N_kv, S_q, S_kv, D);
-    LOG_PRINT("  maskMode=%ld  winLeft=%ld  winRight=%ld\n",
-              maskMode, winLeft, winRight);
-    LOG_PRINT("  Q∈[%.3g, %.3g]  K∈[%.3g, %.3g]  V∈[%.3g, %.3g]\n",
-              (double)qMin, (double)qMax, (double)kMin, (double)kMax, (double)vMin, (double)vMax);
-    LOG_PRINT("  seed=%u  device=%d  dump=%s  verbose=%s\n",
-              seed, deviceId, dumpOutput ? "yes" : "no", verbose ? "yes" : "no");
-    LOG_PRINT("%s\n\n", SEP);
-
-    // ─── device / stream 初始化 ─────────────────────────────────────────────
     aclrtStream stream;
-    if (Init(deviceId, &stream) != ACL_SUCCESS) {
-        LOG_PRINT("Init acl failed.\n");
-        return 1;
-    }
+    if (Init(deviceId, &stream) != ACL_SUCCESS) { LOG_PRINT("Init ACL failed.\n"); return 1; }
 
-    // ─── 运行 ────────────────────────────────────────────────────────────────
     bool passed = false;
     try {
-        passed = RunTestCase(tc, stream, dumpOutput, verbose, seed);
+        passed = RunTndMixed02(stream, metaBinPath, dumpOutput, verbose, seed);
     } catch (const std::exception &e) {
-        LOG_PRINT("[ERROR] 运行异常: %s\n", e.what());
+        LOG_PRINT("[ERROR] Exception: %s\n", e.what());
     } catch (...) {
-        LOG_PRINT("[ERROR] 未知异常\n");
+        LOG_PRINT("[ERROR] Unknown exception\n");
     }
 
-    LOG_PRINT("\n%s\n  最终结论: %s\n%s\n\n",
-              SEP, passed ? "✓ PASS" : "✗ FAIL", SEP);
+    const char *SEP = "================================================================";
+    LOG_PRINT("\n%s\n  Final Result: %s\n%s\n\n",
+              SEP, passed ? "PASS" : "FAIL", SEP);
 
-    // ─── 资源释放 ────────────────────────────────────────────────────────────
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
