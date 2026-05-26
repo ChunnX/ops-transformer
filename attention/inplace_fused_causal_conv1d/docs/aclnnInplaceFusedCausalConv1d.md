@@ -1,6 +1,6 @@
 # aclnnInplaceFusedCausalConv1d
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/fused_causal_conv1d)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/inplace_fused_causal_conv1d)
 
 ## 产品支持情况
 
@@ -258,6 +258,11 @@
 
       $$
       y[i, dim] = x[i, dim] + y[i, dim]
+      $$
+
+  9. 原地更新
+      $$
+      x[i, dim] = y[i, dim]
       $$
 
 ## 函数原型
@@ -663,26 +668,11 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_aclnn_inplace_fused_causal_conv1d.cpp
- * \brief
- */
-
 #include <iostream>
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_fused_causal_conv1d.h"
+#include "aclnnop/aclnn_inplace_fused_causal_conv1d.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
