@@ -18,14 +18,92 @@
 
 #include <stdio.h>
 
-#include "blaze/gemm/block/block_mmad_mx.h"
-#include "blaze/gemm/kernel/kernel_qgmm_mx.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
+#include "blaze/gemm/block/block_mmad_mx.h"
+#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/block/block_scheduler_policy.h"
+#include "cgmct/epilogue/block_epilogue_empty.h"
+#include "cgmct/kernel/kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
+using namespace Cgmct::Gemm;
+
+template <class InnerBlockMmad>
+class BlazeBlockMmadMxAdapter {
+public:
+    using AType = typename InnerBlockMmad::AType;
+    using BType = typename InnerBlockMmad::BType;
+    using CType = typename InnerBlockMmad::CType;
+    using BiasType = typename InnerBlockMmad::BiasType;
+    using LayoutA = typename InnerBlockMmad::LayoutA;
+    using LayoutB = typename InnerBlockMmad::LayoutB;
+    using LayoutC = typename InnerBlockMmad::LayoutC;
+    using L1TileShape = AscendC::Shape<_0, _0, _0>;
+    using L0TileShape = AscendC::Shape<_0, _0, _0>;
+    static constexpr bool transA = InnerBlockMmad::transA;
+    static constexpr bool transB = InnerBlockMmad::transB;
+
+    struct Params {
+        GM_ADDR aGmAddr{nullptr};
+        GM_ADDR bGmAddr{nullptr};
+        GM_ADDR x2ScaleGmAddr{nullptr};
+        GM_ADDR x1ScaleGmAddr{nullptr};
+        GM_ADDR cGmAddr{nullptr};
+        GM_ADDR biasGmAddr{nullptr};
+        GM_ADDR groupListGmAddr{nullptr};
+    };
+
+    struct L1Params {
+        uint64_t kAL1;
+        uint64_t kBL1;
+        uint64_t scaleKL1;
+        uint64_t l1BufNum;
+    };
+
+    __aicore__ inline void Init(const AscendC::Shape<int64_t, int64_t, int64_t>& problemShape,
+                                const AscendC::Shape<int64_t, int64_t, int64_t>& l0TileShape,
+                                const L1Params& l1Params, bool isBias, bool dbL0C)
+    {
+        innerProblemShape_ = {static_cast<uint64_t>(AscendC::Get<0>(problemShape)),
+                              static_cast<uint64_t>(AscendC::Get<1>(problemShape)),
+                              static_cast<uint64_t>(AscendC::Get<2>(problemShape)), 0UL};
+        innerBlockShape_ = {AscendC::Get<0>(l0TileShape), AscendC::Get<1>(l0TileShape), AscendC::Get<2>(l0TileShape),
+                            0};
+        innerL1Params_ = {l1Params.kAL1, l1Params.scaleKL1, l1Params.l1BufNum};
+        isBias_ = isBias;
+        dbL0C_ = dbL0C;
+        inner_.Init(innerProblemShape_, innerBlockShape_, innerL1Params_, isBias_, dbL0C_);
+    }
+
+    __aicore__ inline void UpdateParamsForNextProblem(const AscendC::Shape<int64_t, int64_t, int64_t>& problemShape)
+    {
+        innerProblemShape_ = {static_cast<uint64_t>(AscendC::Get<0>(problemShape)),
+                              static_cast<uint64_t>(AscendC::Get<1>(problemShape)),
+                              static_cast<uint64_t>(AscendC::Get<2>(problemShape)), 0UL};
+        inner_.Init(innerProblemShape_, innerBlockShape_, innerL1Params_, isBias_, dbL0C_);
+    }
+
+    template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB, typename TensorBias,
+              typename TensorC>
+    __aicore__ inline void operator()(TensorA const& gmA, TensorB const& gmB, TensorScaleA const& gmScaleA,
+                                      TensorScaleB const& gmScaleB, TensorBias const& gmBias, TensorC const& gmC,
+                                      const AscendC::Shape<int64_t, int64_t, int64_t>& blockShape)
+    {
+        inner_(gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC,
+               {AscendC::Get<0>(blockShape), AscendC::Get<1>(blockShape), AscendC::Get<2>(blockShape), 0});
+    }
+
+private:
+    InnerBlockMmad inner_;
+    typename InnerBlockMmad::ProblemShape innerProblemShape_{};
+    typename InnerBlockMmad::BlockShape innerBlockShape_{};
+    typename InnerBlockMmad::L1Params innerL1Params_{};
+    bool isBias_{false};
+    bool dbL0C_{false};
+};
 
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType, class xLayout,
           class wLayout, class yLayout, class l0cType>
@@ -54,12 +132,14 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
-    using ProblemShape = Blaze::Gemm::MatmulShape;
+    using ProblemShape = MatmulShape;
+    using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
     using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
-    using BlockMmad =
+    using TensorBlockMmad =
         Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType, LayoutC>;
-    using BlockEpilogue = void;
-    using GmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue>;
+    using BlockMmad = BlazeBlockMmadMxAdapter<TensorBlockMmad>;
+    using BlockEpilogue = Block::BlockEpilogueEmpty;
+    using GmmKernel = Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
 
@@ -82,32 +162,9 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
         }
     }
 
-    GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
-    GM_ADDR bDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight));
-    GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-    GM_ADDR biasDataAddr =
-        mmTilingDataIn->isBias == 1 ? reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias))
-                                    : nullptr;
-    GM_ADDR perTokenScaleDataAddr = perTokenScale;
-    GM_ADDR scaleDataAddr =
-        scale == nullptr ? nullptr
-                         : reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
-    GM_ADDR groupListDataAddr = groupList;
-
-    if ASCEND_IS_AIC {
-        if (AscendC::GetBlockIdx() == 0) {
-            AscendC::printf(
-                "[zzzlog][gqmm_tensor_api][L101] resolved addr a=%p b=%p y=%p bias=%p scaleA=%p scaleB=%p "
-                "groupList=%p\n",
-                aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr, groupListDataAddr);
-        }
-    }
-
     Params params = {
-        {static_cast<int64_t>(gmmParams.m), static_cast<int64_t>(gmmParams.n), static_cast<int64_t>(gmmParams.k),
-         static_cast<int64_t>(1)},
-        {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
-        groupListDataAddr,
+        {1, 1, 1, 1},
+        {x, weight, scale, perTokenScale, y, bias, groupList},
         gmmParams};
 
     if ASCEND_IS_AIC {
