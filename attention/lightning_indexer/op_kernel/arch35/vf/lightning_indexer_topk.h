@@ -158,12 +158,12 @@ public:
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal,
                                           hisIndexLocal[loopIdx % 2], topK,
-                                          loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256), s2SeqLen);
+                                          loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256), s2SeqLen); // 256: 本地内存对齐粒度
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
                 AscendC::DataCopy(indicesOutLocal,
                                   hisIndexLocal[(loopIdx + 1) % 2],
-                                  LICommon::Align(topK, (uint32_t)256));
+                                  LICommon::Align(topK, (uint32_t)256)); // 256: 本地内存对齐粒度
             }
         }
     }
