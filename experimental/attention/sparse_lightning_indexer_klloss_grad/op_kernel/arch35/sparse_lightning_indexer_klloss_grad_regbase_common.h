@@ -191,6 +191,7 @@ constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
 
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {13, 14};
+constexpr uint8_t SYNC_V7_TO_C3_FLAG[2] = {3, 4};
 
 constexpr uint8_t SYNC_ST_TO_P_FLAG = 12;
 constexpr uint8_t SYNC_V6_TO_RELU_FLAG = 11;

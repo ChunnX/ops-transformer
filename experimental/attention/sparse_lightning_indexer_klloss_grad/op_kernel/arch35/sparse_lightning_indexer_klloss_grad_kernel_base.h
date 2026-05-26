@@ -378,9 +378,11 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
         SetRunInfo(runInfo, taskId);
         if (runInfo.s2LoopTimes == 0) {
             if ASCEND_IS_AIC {
+                CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
                 CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
             }
             vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
             taskId++;
             continue;
         }
@@ -396,6 +398,9 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
             CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_ST_TO_P_FLAG);
         }
         SetRunInfoP(runInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+        }
         ProcessP(runInfo, taskId, bIndex, s1Index);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_RELU_FLAG);
@@ -403,11 +408,13 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
         }
         if ASCEND_IS_AIV {
             vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
         }
         taskId++;
     }
-    if (cBlockIdx >= coreNum - constInfo.remainCoreNum) {
+    if (processBS1ByCore < constInfo.formerCoreProcessNNum) {
         if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
             CrossCoreSetFlag<MODE_NUM_2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[taskId & 1]); // 额外空同步确保每个核处理+1轮
         }
         if ASCEND_IS_AIV {
@@ -415,6 +422,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
             runInfoExtra.taskId = taskId;
             runInfoExtra.taskIdMod2 = taskId & 1;
             vecBlock.ProcessVector7Deter(runInfoExtra, this->bmm3Buffer.Get());
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
         }
     }    
     SyncAll<false>();
@@ -636,6 +644,9 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitMMResBuf(
         if constexpr (!Deterministic) {
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
+        } else {
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[0]);
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[1]);
         }
     } else if ASCEND_IS_AIC {
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[0]);
@@ -660,6 +671,9 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::FreeBuf()
         if constexpr (!Deterministic) {
             CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
             CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
+        } else {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[0]);
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[1]);
         }
     }
 }
