@@ -148,7 +148,7 @@ private:
     uint32_t dataState_{0};        // 数据状态 (用于双缓冲)
     uint32_t totalUsedUB_{0};      // 已使用的UB大小
     uint64_t winDataSizeOffset_{0}; // 窗口数据区偏移
-    uint64_t expertPerSizeOnWin_{0}; // 每个expert在窗口中占用的空间
+    uint64_t rankPerSizeOnWin_{0}; // 每个expert在窗口中占用的空间
     uint32_t stateOffset_{0};      // 状态偏移 (32字节)
     uint32_t recStatusNumPerCore_{0}; // 每个核负责等待的rank数量
     uint32_t rscvStatusNum_{0};    // 需要等待的rank总数
@@ -167,13 +167,10 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
-    // epRankId_ = tilingData->rank_id; // 获取当前rank ID
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     context_ = (__gm__ Mc2MoeContext *)context;
-    // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
     // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
@@ -217,7 +214,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
     uint32_t axisMaxBS = globalBS_ / epWorldSize_;
-    expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
+    rankPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
 
     // ============ 计算状态等待的任务分发 ============
     // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
@@ -387,7 +384,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
         // 计算目标窗口地址:
         // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
         GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(dstRankId) +
-                                           epRankId_ * expertPerSizeOnWin_ +
+                                           epRankId_ * rankPerSizeOnWin_ +
                                            curExpertCnt * hAlignWinSize_);
         dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
         GlobalTensor<XType> tempTensor = dstWinGMTensor[0];
@@ -561,7 +558,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
         uint32_t count = localStatusTensor(index * 8 + 1); // 从该rank收到的token数量
         
         // 计算窗口中该rank数据的起始地址
-        GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + index * expertPerSizeOnWin_;
+        GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + index * rankPerSizeOnWin_;
         GlobalTensor<YType> tokGlobal, yOutGlobal;
         tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 

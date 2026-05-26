@@ -19,7 +19,6 @@
  * 4. 计算并填充TilingData，传递给Kernel
  * 
  * 输入校验范围：
- * - world_size: [1, 384]
  * - rank_id: [0, world_size)
  * - mode: 0 或 1
  */
@@ -66,7 +65,6 @@ constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 // ============ 属性索引常量 ============
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 卡数
-// constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4U; // HCCL buffer size
