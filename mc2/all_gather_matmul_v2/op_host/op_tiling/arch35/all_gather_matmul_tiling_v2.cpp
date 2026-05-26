@@ -208,9 +208,9 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
-    if (std::strcmp(commMode_, "ccu") == 0) {
+    if (std::strncmp(commMode_, "ccu", 3) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
-    } else if(std::strcmp(commMode_, "default") == 0){ // default
+    } else if (std::strncmp(commMode_, "", 0) == 0) { // empty string
         if (rankSize_ <= 8) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }
