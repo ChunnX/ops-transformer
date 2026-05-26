@@ -72,8 +72,8 @@ bool FiaTilingNonQuantArch35::IsCapable()
         (fiaInfo_->sparseMode == 0 && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
         (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
          fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) || // layout非 BSH/BSND/BNSD/TND
-        (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) // 非D=128 GQA，且非Prefill MLA
-        // CheckS1OutSplit() // 使能S1外切场景
+        (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
+        CheckS1OutSplit() // 使能S1外切场景
     ) {
         return false;
     }
@@ -357,7 +357,6 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
 
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
-    return true;
     if (fiaInfo_->isOutQuantEnable) {
         return false;
     }
