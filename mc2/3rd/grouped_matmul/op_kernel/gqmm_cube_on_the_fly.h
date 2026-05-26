@@ -324,7 +324,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
         if (gmmQuantParams_->bQuantMode ==
             static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
             mm_.SetQuantScalar(scaleScalar_);
-        } else {
+        } else if (gmmQuantParams_->bQuantMode != static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
             mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
         }
     }
