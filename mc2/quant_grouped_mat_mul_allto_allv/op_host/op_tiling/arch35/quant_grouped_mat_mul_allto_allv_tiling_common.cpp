@@ -788,7 +788,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context, uint8_t &commMode)
+static ge::graphStatus QuantGetAndConvertCommMode(const gert::TilingContext *context, uint8_t &commMode)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
@@ -796,12 +796,14 @@ static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context,
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."),
+                    return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
-    if (std::strcmp(commModeStr, "aicpu") == 0 || std::strcmp(commModeStr, "") == 0) {
+    if (std::strcmp(commModeStr, "aicpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strcmp(commModeStr, "default") == 0) {
+    } else if (std::strcmp(commModeStr, "") == 0) {
         if (rankDim <= 8) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
@@ -809,7 +811,7 @@ static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context,
         }
         OP_LOGI(context->GetNodeName(), "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support 'default', 'aicpu', 'ccu'.");
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -836,7 +838,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
     uint8_t commMode = 0;
-    if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+    if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {

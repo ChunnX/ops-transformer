@@ -44,12 +44,7 @@ static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext 
         OPS_LOG_E(context->GetNodeName(), "commModePtr pointer is null.");
         return ge::GRAPH_FAILED;
     }
-    std::string tempCommMode = commModePtr;
-    if (tempCommMode == "") {
-        OPS_LOG_E(context->GetNodeName(), "commMode is None, will use aicpu.");
-        tempCommMode = "aicpu";
-    }
-    commMode = tempCommMode;
+    commMode = commModePtr;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -64,11 +59,11 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     const char* serverType = nullptr;
     const char* streamType = nullptr;
-    if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "default")) {
+    if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
         serverType = "ccu server";
         streamType = "ccu_stream";
         OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
-    } else if ((isArch35 &&  commMode == "aicpu") || (!isArch35) || (isArch35 && rankSize > 8 && commMode == "default")) {
+    } else if ((isArch35 &&  commMode == "aicpu") || (!isArch35) || (isArch35 && rankSize > 8 && commMode == "")) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
         OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
@@ -86,10 +81,10 @@ ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext
         return status;
     }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    if ((!isArch35) || (isArch35 && commMode == "aicpu") || (isArch35 && rankSize > 8 && commMode == "default")) {
+    if ((!isArch35) || (isArch35 && commMode == "aicpu") || (isArch35 && rankSize > 8 && commMode == "")) {
         OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
-    } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "default")) {
+    } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
         OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
         return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }

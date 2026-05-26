@@ -417,8 +417,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "default") == 0) {
-            // default：小于等于8P走CCU，否则走AICPU
+        } else if (std::strcmp(commModeStr, "") == 0) {
             if (rankSize <= 8) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {
@@ -444,7 +443,6 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     char *str_commMode = const_cast<char *>(commMode);
     int64_t yDtype = gmmY->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
-
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
@@ -539,7 +537,10 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
         mmXQuantMode, mmWeightQuantMode, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-
+    if (commMode == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
+        return false;
+    }
     aclnnStatus ret = InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, transposeGmmWeight, gmmXScale, transposeGmmWeightScale,
         sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
@@ -560,7 +561,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint6
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                OP_LOGD("arch35, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 OP_LOGD("arch35, use CCU mode");

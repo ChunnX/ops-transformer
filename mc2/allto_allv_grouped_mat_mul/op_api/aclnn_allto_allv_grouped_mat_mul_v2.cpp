@@ -56,8 +56,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "default") == 0) {
-            // default：小于等于8P走CCU，否则走AICPU
+        } else if (std::strcmp(commModeStr, "") == 0) {
             if (rankSize <= 8) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {
@@ -160,7 +159,10 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
-
+    if (commMode == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
+        return false;
+    }
     char *str_commMode = const_cast<char *>(commMode);
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);

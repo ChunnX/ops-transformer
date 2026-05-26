@@ -366,7 +366,6 @@ static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeig
     return ACLNN_SUCCESS;
 }
 
-
 static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
                                const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
                                const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
@@ -403,36 +402,6 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
-    // 获取卡数
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-
-    // 获取通信引擎参数
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "aicpu") == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (std::strcmp(commModeStr, "ccu") == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "default") == 0) {
-            // default：小于等于8P走CCU，否则走AICPU
-            if (rankSize <= 8) {
-                commModeEnum = Mc2Comm::COMM_MODE_CCU;
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
-    return ACLNN_SUCCESS;
-}
-
 extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
@@ -442,14 +411,10 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, aclTensor *gmmY, aclTensor *mmYOptional,
     aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "aicpu" : "default";
+    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "aicpu" : "";
     char *str_commMode = const_cast<char *>(commMode);
     int64_t yDtype = gmmY->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
-
-    uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
-    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
@@ -457,7 +422,7 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional, permuteOutOptional,
         workspaceSize, executor);
     if (*executor != nullptr) {
-        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_AICPU));
         NnopbaseSetUserHandle(*executor, args);
     }
     OP_LOGD("AlltoAllvQuantGroupedMatmul, aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize ret %d.", ret);
