@@ -1,192 +1,133 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file ts_nsag_param_tc.cpp
- * \brief nsa compress attention infer 用例.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "ts_ncai.h"
+#include <gtest/gtest.h>
+#include <cstring>
+#include <iostream>
+#include <numeric>
+#include <vector>
+#include "tikicpulib.h"
+#include "tiling_case_executor.h"
+#include "../op_host/arch22/ncai_tiling_ut_common.h"
 
-using Tensor = ops::adv::tests::utils::Tensor;
+using namespace ncai_tiling_ut;
 
-TEST_F(Ts_ncaInfer, case_nsa_compress_attention_infer_0_kernel)
+extern "C" __global__ __aicore__ void nsa_compress_attention_infer(
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* attentionMaskOptional,
+    __gm__ uint8_t* blockTableOptional, __gm__ uint8_t* actualQSeqLenOptional, __gm__ uint8_t* actualCmpKvSeqLenOptional,
+    __gm__ uint8_t* actualSelKvSeqLenOptional, __gm__ uint8_t* topkMaskOptional, __gm__ uint8_t* output,
+    __gm__ uint8_t* topkIndicesOut, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling);
+
+using NcaiKernelFunc = void (*)(__gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*,
+                                __gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*,
+                                __gm__ uint8_t*, __gm__ uint8_t*, __gm__ uint8_t*);
+
+class NsaCompressAttentionInferKernel : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "NsaCompressAttentionInferKernel SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "NsaCompressAttentionInferKernel TearDown" << std::endl;
+    }
+};
+
+namespace {
+
+size_t Product(const std::vector<int64_t>& dims)
 {
-    constexpr uint32_t CASE1_B = 20;
-    constexpr uint32_t CASE1_S2 = 4096;
-    constexpr uint32_t CASE1_NUMHEADS = 64;
-    constexpr uint32_t CASE1_NUMKVHEADS = 4;
-    constexpr uint32_t CASE1_SELECTBLOCKSIZE = 64;
-    constexpr uint32_t CASE1_SELECTBLOCKCOUNT = 16;
-    constexpr uint32_t CASE1_COMPRESSBLOCKSIZE = 32;
-    constexpr uint32_t CASE1_COMPRESSSTRIDE = 16;
-    constexpr uint32_t CASE1_PAGEBLOCKSIZE = 128;
-    constexpr uint32_t CASE1_MTILINGBLOCKDIM = 24;
-    constexpr uint32_t CASE1_HEADSIZE_QK = 192;
-
-    ncaInferCase cs;
-    /* 设置参数 */
-    cs.mParam.B = CASE1_B;
-    cs.mParam.S1 = 1;
-    cs.mParam.S2 = CASE1_S2;
-    cs.mParam.N1 = CASE1_NUMHEADS;
-    cs.mParam.G = CASE1_NUMHEADS / CASE1_NUMKVHEADS;
-    cs.mParam.D = CASE1_HEADSIZE_QK;
-    cs.mParam.N2 = CASE1_NUMKVHEADS;
-    
-    // attr
-    cs.mParam.numHeads = CASE1_NUMHEADS;
-    cs.mParam.numKeyValueHeads = CASE1_NUMKVHEADS;
-    cs.mParam.selectBlockSize = CASE1_SELECTBLOCKSIZE;
-    cs.mParam.selectBlockCount = CASE1_SELECTBLOCKCOUNT;
-    cs.mParam.compressBlockSize = CASE1_COMPRESSBLOCKSIZE;
-    cs.mParam.compressStride = CASE1_COMPRESSSTRIDE;
-    cs.mParam.scaleValue = 1.0;
-    cs.mParam.layoutOptional = "TND";
-    cs.mParam.pageBlockSize = CASE1_PAGEBLOCKSIZE;
-    cs.mParam.sparseMode = 0;
-
-    cs.mOpInfo.mExp.mTilingBlockDim = CASE1_MTILINGBLOCKDIM; // expected block dim
-    cs.mOpInfo.mCtr.mRunTiling = true;
-    cs.mOpInfo.mCtr.mRunKernel = true;
-    ASSERT_TRUE(cs.Init());
-    ASSERT_TRUE(cs.Run());
+    if (dims.empty()) {
+        return 0;
+    }
+    return std::accumulate(dims.begin(), dims.end(), static_cast<size_t>(1),
+                           [](size_t acc, int64_t dim) { return acc * static_cast<size_t>(dim); });
 }
 
-TEST_F(Ts_ncaInfer, case_nsa_compress_attention_infer_1_kernel)
+uint8_t* AllocGm(size_t bytes)
 {
-    constexpr uint32_t CASE2_B = 20;
-    constexpr uint32_t CASE2_S2 = 2048;
-    constexpr uint32_t CASE2_NUMHEADS = 64;
-    constexpr uint32_t CASE2_NUMKVHEADS = 4;
-    constexpr uint32_t CASE2_SELECTBLOCKSIZE = 64;
-    constexpr uint32_t CASE2_SELECTBLOCKCOUNT = 16;
-    constexpr uint32_t CASE2_COMPRESSBLOCKSIZE = 32;
-    constexpr uint32_t CASE2_COMPRESSSTRIDE = 16;
-    constexpr uint32_t CASE2_PAGEBLOCKSIZE = 128;
-    constexpr uint32_t CASE2_MTILINGBLOCKDIM = 24;
-    constexpr uint32_t CASE2_HEADSIZE_QK = 192;
-
-    ncaInferCase cs;
-    /* 设置参数 */
-    cs.mParam.B = CASE2_B;
-    cs.mParam.S1 = 1;
-    cs.mParam.S2 = CASE2_S2;
-    cs.mParam.N1 = CASE2_NUMHEADS;
-    cs.mParam.G = CASE2_NUMHEADS / CASE2_NUMKVHEADS;
-    cs.mParam.D = CASE2_HEADSIZE_QK;
-    cs.mParam.N2 = CASE2_NUMKVHEADS;
-    
-    // attr
-    cs.mParam.numHeads = CASE2_NUMHEADS;
-    cs.mParam.numKeyValueHeads = CASE2_NUMKVHEADS;
-    cs.mParam.selectBlockSize = CASE2_SELECTBLOCKSIZE;
-    cs.mParam.selectBlockCount = CASE2_SELECTBLOCKCOUNT;
-    cs.mParam.compressBlockSize = CASE2_COMPRESSBLOCKSIZE;
-    cs.mParam.compressStride = CASE2_COMPRESSSTRIDE;
-    cs.mParam.scaleValue = 1.0;
-    cs.mParam.layoutOptional = "BSND";
-    cs.mParam.pageBlockSize = CASE2_PAGEBLOCKSIZE;
-    cs.mParam.sparseMode = 0;
-
-    cs.mOpInfo.mExp.mTilingBlockDim = CASE2_MTILINGBLOCKDIM;
-    cs.mOpInfo.mCtr.mRunTiling = true;
-    cs.mOpInfo.mCtr.mRunKernel = true;
-    ASSERT_TRUE(cs.Init());
-    ASSERT_TRUE(cs.Run());
+    if (bytes == 0) {
+        return nullptr;
+    }
+    return reinterpret_cast<uint8_t*>(AscendC::GmAlloc(bytes));
 }
 
-// getmaxworkspace test
-TEST_F(Ts_ncaInfer, case_nsa_compress_attention_infer_aclgraph_kernel)
+void RunKernelCase(const CaseParams& params)
 {
-    constexpr uint32_t CASE3_B = 20;
-    constexpr int32_t CASE3_S2 = -1;
-    constexpr uint32_t CASE3_NUMHEADS = 64;
-    constexpr uint32_t CASE3_NUMKVHEADS = 4;
-    constexpr uint32_t CASE3_SELECTBLOCKSIZE = 64;
-    constexpr uint32_t CASE3_SELECTBLOCKCOUNT = 16;
-    constexpr uint32_t CASE3_COMPRESSBLOCKSIZE = 32;
-    constexpr uint32_t CASE3_COMPRESSSTRIDE = 16;
-    constexpr uint32_t CASE3_PAGEBLOCKSIZE = 128;
-    constexpr uint32_t CASE3_MTILINGBLOCKDIM = 24;
-    constexpr uint32_t CASE3_HEADSIZE_QK = 192;
+    CaseShapes shapes;
+    auto para = BuildTilingContextPara(params, shapes);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
 
-    ncaInferCase cs;
-    /* 设置参数 */
-    cs.mParam.B = CASE3_B;
-    cs.mParam.S1 = 1;
-    cs.mParam.S2 = CASE3_S2;
-    cs.mParam.N1 = CASE3_NUMHEADS;
-    cs.mParam.G = CASE3_NUMHEADS / CASE3_NUMKVHEADS;
-    cs.mParam.D = CASE3_HEADSIZE_QK;
-    cs.mParam.N2 = CASE3_NUMKVHEADS;
-    
-    // attr
-    cs.mParam.numHeads = CASE3_NUMHEADS;
-    cs.mParam.numKeyValueHeads = CASE3_NUMKVHEADS;
-    cs.mParam.selectBlockSize = CASE3_SELECTBLOCKSIZE;
-    cs.mParam.selectBlockCount = CASE3_SELECTBLOCKCOUNT;
-    cs.mParam.compressBlockSize = CASE3_COMPRESSBLOCKSIZE;
-    cs.mParam.compressStride = CASE3_COMPRESSSTRIDE;
-    cs.mParam.scaleValue = 1.0;
-    cs.mParam.layoutOptional = "TND";
-    cs.mParam.pageBlockSize = CASE3_PAGEBLOCKSIZE;
-    cs.mParam.sparseMode = 0;
+    const size_t queryBytes = Product(shapes.query) * sizeof(uint16_t);
+    const size_t keyBytes = Product(shapes.key) * sizeof(uint16_t);
+    const size_t valueBytes = Product(shapes.value) * sizeof(uint16_t);
+    const size_t maskBytes = Product({128, 128}) * sizeof(bool);
+    const size_t blockTableBytes = Product(shapes.blockTable) * sizeof(int32_t);
+    const size_t actualQBytes = Product({static_cast<int64_t>(shapes.actualQ.size())}) * sizeof(int64_t);
+    const size_t actualCmpBytes = Product({static_cast<int64_t>(shapes.actualCmpKv.size())}) * sizeof(int64_t);
+    const size_t actualSelBytes = Product({static_cast<int64_t>(shapes.actualSelKv.size())}) * sizeof(int64_t);
+    const size_t topkMaskBytes = Product({20, 4096}) * sizeof(bool);
+    const size_t outputBytes = Product(shapes.output) * sizeof(uint16_t);
+    const size_t topkOutBytes = Product(shapes.topkIndicesOut) * sizeof(int32_t);
 
-    cs.mOpInfo.mExp.mTilingBlockDim = CASE3_MTILINGBLOCKDIM;
-    cs.mOpInfo.mCtr.mRunTiling = true;
-    cs.mOpInfo.mCtr.mRunKernel = true;
-    ASSERT_TRUE(cs.Init());
-    ASSERT_TRUE(cs.Run());
+    uint8_t* query = AllocGm(queryBytes);
+    uint8_t* key = AllocGm(keyBytes);
+    uint8_t* value = AllocGm(valueBytes);
+    uint8_t* attenMask = AllocGm(maskBytes);
+    uint8_t* blockTable = AllocGm(blockTableBytes);
+    uint8_t* actualQ = AllocGm(actualQBytes);
+    uint8_t* actualCmp = AllocGm(actualCmpBytes);
+    uint8_t* actualSel = AllocGm(actualSelBytes);
+    uint8_t* topkMask = AllocGm(topkMaskBytes);
+    uint8_t* output = AllocGm(outputBytes);
+    uint8_t* topkOut = AllocGm(topkOutBytes);
+
+    memcpy(actualQ, shapes.actualQ.data(), actualQBytes);
+    memcpy(actualCmp, shapes.actualCmpKv.data(), actualCmpBytes);
+    memcpy(actualSel, shapes.actualSelKv.data(), actualSelBytes);
+
+    size_t workspaceBytes = 0;
+    for (size_t ws : tilingInfo.workspaceSizes) {
+        workspaceBytes += ws;
+    }
+    uint8_t* workspace = AllocGm(workspaceBytes);
+    uint8_t* tiling = AllocGm(tilingInfo.tilingDataSize);
+    memcpy(tiling, tilingInfo.tilingData.get(), tilingInfo.tilingDataSize);
+
+    auto kernelFunc = reinterpret_cast<NcaiKernelFunc>(nsa_compress_attention_infer);
+    ICPU_SET_TILING_KEY(tilingInfo.tilingKey);
+    ICPU_RUN_KF(kernelFunc, tilingInfo.blockNum, query, key, value, attenMask, blockTable, actualQ, actualCmp,
+                actualSel, topkMask, output, topkOut, workspace, tiling);
 }
 
-TEST_F(Ts_ncaInfer, case_nsa_compress_attention_infer_mtp_kernel)
+}  // namespace
+
+TEST_F(NsaCompressAttentionInferKernel, case_nsa_compress_attention_infer_0_kernel)
 {
-    constexpr uint32_t CASE4_B = 20;
-    constexpr uint32_t CASE4_S1 = 2;
-    constexpr uint32_t CASE4_S2 = 4096;
-    constexpr uint32_t CASE4_NUMHEADS = 64;
-    constexpr uint32_t CASE4_NUMKVHEADS = 4;
-    constexpr uint32_t CASE4_SELECTBLOCKSIZE = 64;
-    constexpr uint32_t CASE4_SELECTBLOCKCOUNT = 16;
-    constexpr uint32_t CASE4_COMPRESSBLOCKSIZE = 32;
-    constexpr uint32_t CASE4_COMPRESSSTRIDE = 16;
-    constexpr uint32_t CASE4_PAGEBLOCKSIZE = 128;
-    constexpr uint32_t CASE4_MTILINGBLOCKDIM = 24;
-    constexpr uint32_t CASE4_HEADSIZE_QK = 192;
+    RunKernelCase(LegacyCase0Tnd());
+}
 
-    ncaInferCase cs;
-    /* 设置参数 */
-    cs.mParam.B = CASE4_B;
-    cs.mParam.S1 = CASE4_S1;
-    cs.mParam.S2 = CASE4_S2;
-    cs.mParam.N1 = CASE4_NUMHEADS;
-    cs.mParam.G = CASE4_NUMHEADS / CASE4_NUMKVHEADS;
-    cs.mParam.D = CASE4_HEADSIZE_QK;
-    cs.mParam.N2 = CASE4_NUMKVHEADS;
-    
-    // attr
-    cs.mParam.numHeads = CASE4_NUMHEADS;
-    cs.mParam.numKeyValueHeads = CASE4_NUMKVHEADS;
-    cs.mParam.selectBlockSize = CASE4_SELECTBLOCKSIZE;
-    cs.mParam.selectBlockCount = CASE4_SELECTBLOCKCOUNT;
-    cs.mParam.compressBlockSize = CASE4_COMPRESSBLOCKSIZE;
-    cs.mParam.compressStride = CASE4_COMPRESSSTRIDE;
-    cs.mParam.scaleValue = 1.0;
-    cs.mParam.layoutOptional = "TND";
-    cs.mParam.pageBlockSize = CASE4_PAGEBLOCKSIZE;
-    cs.mParam.sparseMode = 0;
+TEST_F(NsaCompressAttentionInferKernel, case_nsa_compress_attention_infer_1_kernel)
+{
+    RunKernelCase(LegacyCase1Bsnd());
+}
 
-    cs.mOpInfo.mExp.mTilingBlockDim = CASE4_MTILINGBLOCKDIM;
-    cs.mOpInfo.mCtr.mRunTiling = true;
-    cs.mOpInfo.mCtr.mRunKernel = true;
-    ASSERT_TRUE(cs.Init());
-    ASSERT_TRUE(cs.Run());
+TEST_F(NsaCompressAttentionInferKernel, case_nsa_compress_attention_infer_aclgraph_kernel)
+{
+    RunKernelCase(LegacyCaseAclGraphTnd());
+}
+
+TEST_F(NsaCompressAttentionInferKernel, case_nsa_compress_attention_infer_mtp_kernel)
+{
+    RunKernelCase(LegacyCaseMtpTnd());
 }
