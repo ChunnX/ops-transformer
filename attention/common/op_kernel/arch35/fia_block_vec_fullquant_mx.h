@@ -376,14 +376,15 @@ public:
         //-------------------------Data copy to l1-------------------------
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
+        uint64_t actVecMSizeAlign16 = runInfo.actMSizeAlign32 >> 1;
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
             this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
             this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-            uint64_t copyBlockCount = runInfo.actMSizeAlign32 * mxfp8s2BaseSize / MXFP_GROUP_SIZE / blockBytes;
-            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actMSizeAlign32 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
-            uint64_t subLoopOffset = runInfo.actMSizeAlign32 * mxfp8s2BaseSize / blockBytes * 2;
-            uint16_t copyCount = runInfo.actMSizeAlign32 / 16;
+            uint64_t copyBlockCount = actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE / blockBytes;
+            uint64_t vecOffset = constInfo.subBlockIdx * actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
+            uint64_t subLoopOffset = actVecMSizeAlign16 * mxfp8s2BaseSize / blockBytes * 2;
+            uint16_t copyCount = actVecMSizeAlign16 / 16;
             uint16_t dstStride = mxfp8s2BaseSize / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
@@ -392,8 +393,8 @@ public:
                     {copyCount, 1, 0, dstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= 256) {
-            uint16_t copyCount = runInfo.actMSizeAlign32 / 16;
-            uint64_t vecOffset = constInfo.subBlockIdx * runInfo.actMSizeAlign32 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
+            uint16_t copyCount = actVecMSizeAlign16 / 16;
+            uint64_t vecOffset = constInfo.subBlockIdx * actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
             DataCopy(mm2AScaleL1Tensor[vecOffset], pScaleSubLoop0Tensor, {copyCount, 4, 0, 0});
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
