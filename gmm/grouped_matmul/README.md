@@ -19,7 +19,6 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
   - [3.1 场景分类](#31-场景分类)
   - [3.2 量化模式](#32-量化模式)
   - [3.3 量化粒度](#33-量化粒度)
-  - [3.4 分组与配置](#34-分组与配置)
 - [4. 功能说明](#4-功能说明)
   - [4.1 分组方式](#41-分组方式)
   - [4.2 计算公式](#42-计算公式)
@@ -86,20 +85,6 @@ GroupedMatmul 根据计算过程中对数据精度的处理方式，分为三大
 | **pergroup** | 对 weight 按 K 方向等分为若干组（Group），每组使用独立的缩放因子 | scale 的 shape 为 `(E, G, N)` |
 | **perblock** | 对 weight 按 K/N 方向固定大小（如 128）分块，每块独立缩放 | 参见 [G-B 量化](#gb量化) |
 
-<a id="34-分组与配置"></a>
-
-### 3.4 分组与配置
-
-| 参数/术语 | 含义 |
-|-----------|------|
-| **groupType** | 指定分组轴：`-1` = 不分组，`0` = M 轴分组，`2` = K 轴分组 |
-| **groupListOptional** | 描述分组轴上各组大小的数组（具体格式取决于 groupListType） |
-| **groupListType** | groupList 的数据格式：`0` = 累积和，`1` = 各组大小，`2` = (组索引, 组大小) 对 |
-| **splitItem** | 输出是否为单 Tensor：`0/1` = 多 Tensor 输出，`2/3` = 单 Tensor 输出 |
-| **actType** | 激活函数类型（0~5）：NONE / RELU / GELU_TANH / GELU_ERR_FUNC / FAST_GELU / SILU |
-
----
-
 ## 4. 功能说明
 
 ### 4.1 分组方式
@@ -114,13 +99,13 @@ GroupedMatmul 根据计算过程中对数据精度的处理方式，分为三大
 
 ### 4.2 计算公式
 
-#### 3.2.1 <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
+#### 4.2.1 <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
 
 $$
 y_i = x_i \times weight_i + bias_i
 $$
 
-#### 3.2.2 <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
+#### 4.2.2 <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
 
 > weight 以低精度存储，计算时反量化为浮点。
 
@@ -144,7 +129,7 @@ $$
 y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i
 $$
 
-#### 3.2.3 <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
+#### 4.2.3 <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
 
 ##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化（<abbr title="pertensor-perchannel：x 侧全体共享一套量化参数，weight 侧每列一套">T-C</abbr> / <abbr title="pertensor-pertensor：x 侧和 weight 侧均为全体共享一套量化参数">T-T</abbr>，无 perTokenScaleOptional）
 
