@@ -17,13 +17,9 @@
 #include "kv_quant_sparse_flash_attention_template_tiling_key.h"
 #if (__CCE_AICORE__ == 310)
 #include "arch35/kv_quant_sparse_flash_attention_kernel_mla.h"
-#else
-#include "kv_quant_sparse_flash_attention_kernel_mla.h"
-#endif
 
 using namespace AscendC;
 
-#if (__CCE_AICORE__ == 310)
 #if defined(__DAV_C310_CUBE__)
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...)                                                 \
     do {                                                                                                  \
@@ -53,17 +49,6 @@ using namespace AscendC;
         op.Process();                                                                                     \
     } while (0)
 #endif
-#else
-#define QSFA_OP_IMPL(templateClass, tilingdataClass, ...)                                         \
-    do {                                                                                          \
-        templateClass<QSFAType<__VA_ARGS__>> op;                                                  \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                     \
-        const tilingdataClass *__restrict tiling_data = &tiling_data_in;                          \
-        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable,               \
-            actualSeqLengthsQuery, actualSeqLengthsKV,                                            \
-	    attentionOut, user, tiling_data, tiling, &tPipe);                                         \
-        op.Process();                                                                             \
-    } while (0)
 #endif
 
 template<int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G>
@@ -74,11 +59,11 @@ kv_quant_sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
                        __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
                        __gm__ uint8_t *tiling)
 {
+#if (__CCE_AICORE__ == 310)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
-#if (__CCE_AICORE__ == 310)
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t, fp8_e4m3fn_t,
@@ -109,17 +94,6 @@ kv_quant_sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
         QSFA_OP_IMPL(BaseApi::KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, half, int8_t,
             float, half, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
-    }
-#else
-    if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
-                  ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
-        QSFA_OP_IMPL(KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, half, int8_t,
-            half, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
-            TEMPLATE_MODE);
-    } else { // bf16
-        QSFA_OP_IMPL(KvQuantSparseFlashAttentionMla, KvQuantSparseFlashAttentionTilingDataMla, bfloat16_t, int8_t,
-            bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
-            TEMPLATE_MODE);
     }
 #endif
 }
