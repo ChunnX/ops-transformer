@@ -393,7 +393,7 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
             outerBlockNums = fiaInfo_->n2Size * fiaInfo_->gSize;
         }
         totalSize += outerBlockNums;
-        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
+        OP_LOGD(fiaInfo_->opName, "bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
                "outerBlockNums:%d, totalSize:%d\n",
                bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
@@ -402,9 +402,9 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    printf("actualUsedCoreNum:%d\n", actualUsedCoreNum);
-    printf("totalSize:%d\n", totalSize);
-    printf("zzyzzy gqa enableS1OutSplit\n");
+    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%d\n", actualUsedCoreNum);
+    OP_LOGD(fiaInfo_->opName, "totalSize:%d\n", totalSize);
+    OP_LOGD(fiaInfo_->opName, "gqa enableS1OutSplit\n");
 }
 
 bool FiaTilingNonQuantArch35::CheckEnableDN()
@@ -769,8 +769,8 @@ void FiaTilingNonQuantArch35::GenTilingKey()
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, kvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
-            "enableKvPrefix: %llu, enableS1OutSplit: %u, isReconstructTemp: %llu.",
+            "hasAttenMask: %u, hasRope: %u, kvLayoutType: %llu, isFd: %u, emptyTensor: %u, "
+            "enableKvPrefix: %u, enableS1OutSplit: %u, isReconstructTemp: %u.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
