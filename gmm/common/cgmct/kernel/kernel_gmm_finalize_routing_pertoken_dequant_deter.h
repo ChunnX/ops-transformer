@@ -344,7 +344,7 @@ public:
                 AscendC::PRINTF("[FF] blk=%u mOffset=%llu outRow=%llu n=%llu wsOffset=%llu\n",
                     GetBlockIdx(), mOffset, outRow, n, mOffset * n);
             }
-            // epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
+            epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
         }
         if (GetBlockIdx() < 2) {
             AscendC::PRINTF("[FF] blk=%u flush loop done\n", GetBlockIdx());
