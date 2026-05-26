@@ -343,11 +343,10 @@ static bool ValidateXShape(gert::TilingContext *contex, int64_t &mSize, int64_t 
     auto xStorageShape = contex->GetInputShape(X_INDEX);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto xDimNum = xShape.GetDimNum();
-
     if (unlikely(xDimNum != DIM_NUM_X)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "x",
             std::to_string(xDimNum).c_str(),
-            ("The shape dim of x must be " + std::to_string(DIM_NUM_X)).c_str());
+            "The shape dim of x must be " + std::to_string(DIM_NUM_X));
         return false;
     }
     mSize = xShape.GetDim(0);
@@ -485,11 +484,10 @@ static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int6
     auto scaleStorageShape = contex->GetOptionalInputShape(SCALE_INDEX);
     const gert::Shape &scaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = scaleShape.GetDimNum();
-
     if (unlikely(scaleDimNum != DIM_NUM_MX_SCALE)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "scale",
             std::to_string(scaleDimNum).c_str(),
-            ("The shape dim of scale must be " + std::to_string(DIM_NUM_MX_SCALE)).c_str());
+            "The shape dim of scale must be " + std::to_string(DIM_NUM_MX_SCALE));
         return false;
     }
     if (unlikely(scaleShape.GetDim(0) != eFromW)) {
@@ -522,7 +520,6 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
     auto pertokenScaleStorageShape = contex->GetOptionalInputShape(PERTOKEN_SCALE_INDEX);
     const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
     auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
-
     if (unlikely(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "pertokenScale",
             std::to_string(pertokenScaleDimNum),
