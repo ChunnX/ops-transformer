@@ -89,7 +89,9 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorMM()
 
 ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
 {
-    localParams_.gmmXDtype = context_->GetInputDesc(GMM_X_INDEX)->GetDataType();
+    auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
+    OP_TILING_CHECK(gmmXDesc == nullptr, OP_LOGE(opName_, "GetInputDesc gmmX returned null."), return ge::GRAPH_FAILED);
+    localParams_.gmmXDtype = gmmXDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_X_DTYPE_LIST, localParams_.gmmXDtype),
                     OP_LOGE(opName_, "The Input gmmX Dtype should be in (DT_FLOAT16, DT_BF16), but gmmX is %s.",
                             Ops::Base::ToString(localParams_.gmmXDtype).c_str()),
@@ -98,7 +100,10 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
     const gert::StorageShape *gmmWeightStorageShape = context_->GetInputShape(GMM_WEIGHT_INDEX);
     OP_TILING_CHECK(gmmWeightStorageShape == nullptr, OP_LOGE(opName_, "gmmWeightStorageShape is null!"),
                     return ge::GRAPH_FAILED);
-    localParams_.gmmWeightDtype = context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
+    auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
+    OP_TILING_CHECK(gmmWeightDesc == nullptr, OP_LOGE(opName_, "GetInputDesc gmmWeight returned null."),
+                    return ge::GRAPH_FAILED);
+    localParams_.gmmWeightDtype = gmmWeightDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_WEIGHT_DTYPE_LIST, localParams_.gmmWeightDtype),
                     OP_LOGE(opName_,
                             "The Input gmmWeight Dtype should be in (DT_FLOAT16, DT_BF16), but gmmWeight is %s.",
@@ -110,7 +115,9 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
                             Ops::Base::ToString(localParams_.gmmWeightDtype).c_str()),
                     return ge::GRAPH_FAILED);
 
-    localParams_.yDtype = context_->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType();
+    auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
+    OP_TILING_CHECK(yDesc == nullptr, OP_LOGE(opName_, "GetOutputDesc y returned null."), return ge::GRAPH_FAILED);
+    localParams_.yDtype = yDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_Y_DTYPE_LIST, localParams_.yDtype),
                     OP_LOGE(opName_, "The Output y Dtype should be in (DT_FLOAT16, DT_BF16), but y Dtype is %s.",
                             Ops::Base::ToString(localParams_.yDtype).c_str()),
@@ -151,8 +158,14 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     if (!localParams_.hasSharedMm) {
         return ge::GRAPH_SUCCESS;
     }
-    localParams_.mmXDtype = context_->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType();
-    localParams_.mmWeightDtype = context_->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX)->GetDataType();
+    auto mmXDesc = context_->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX);
+    auto mmWeightDesc = context_->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX);
+    OP_TILING_CHECK(mmXDesc == nullptr, OP_LOGE(opName_, "GetOptionalInputDesc mmX returned null."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mmWeightDesc == nullptr, OP_LOGE(opName_, "GetOptionalInputDesc mmWeight returned null."),
+                    return ge::GRAPH_FAILED);
+    localParams_.mmXDtype = mmXDesc->GetDataType();
+    localParams_.mmWeightDtype = mmWeightDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_X_DTYPE_LIST, localParams_.mmXDtype),
                     OP_LOGE(opName_, "The Input mmX Dtype should be in (DT_FLOAT16, DT_BF16), but mmX is %s.",
                             Ops::Base::ToString(localParams_.mmXDtype).c_str()),
@@ -171,7 +184,9 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
                             Ops::Base::ToString(localParams_.mmWeightDtype).c_str(),
                             Ops::Base::ToString(localParams_.gmmXDtype).c_str()),
                     return ge::GRAPH_FAILED);
-    localParams_.mmYDtype = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX)->GetDataType();
+    auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
+    OP_TILING_CHECK(mmYDesc == nullptr, OP_LOGE(opName_, "GetOutputDesc mmY returned null."), return ge::GRAPH_FAILED);
+    localParams_.mmYDtype = mmYDesc->GetDataType();
 
     const gert::StorageShape *mmXStorageShape = context_->GetOptionalInputShape(MM_X_OPTIONAL_INDEX);
     const gert::StorageShape *mmWeightStorageShape = context_->GetOptionalInputShape(MM_WEIGHT_OPTIONAL_INDEX);
@@ -215,7 +230,10 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
     OP_TILING_CHECK(transMmWeightPtr == nullptr, OP_LOGE(opName_, "transMmWeightPtr is null."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*transMmWeightPtr == true && !localParams_.hasSharedMm,
-                    OP_LOGE(opName_, "transMmWeight should not be true when mmX is null!"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_,
+                            "transMmWeight should not be true when mmX is null! transMmWeight=%d, hasSharedMm=%d.",
+                            *transMmWeightPtr, localParams_.hasSharedMm),
+                    return ge::GRAPH_FAILED);
     localParams_.isMmWeightTrans = *transMmWeightPtr;
 
     localParams_.gmmXScaleDtype = localParams_.gmmXDtype;

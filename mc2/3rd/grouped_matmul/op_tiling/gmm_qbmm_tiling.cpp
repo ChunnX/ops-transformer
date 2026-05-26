@@ -952,8 +952,8 @@ void Mc2GroupedQbmmTiling::CalBasicBlock()
         uint64_t maxBaseN = aicoreParams_.l0cSize / (basicTiling_.baseM * DATA_SIZE_L0C);
         basicTiling_.baseN = std::min(basicTiling_.baseN, maxBaseN);
         basicTiling_.baseN = !inputParams_.transB ?
-            CeilAlign(basicTiling_.baseN, CUBE_BLOCK) :
-            CeilAlign(basicTiling_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
+            FloorAlign(basicTiling_.baseN, CUBE_BLOCK) :
+            FloorAlign(basicTiling_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
     }
 }
 

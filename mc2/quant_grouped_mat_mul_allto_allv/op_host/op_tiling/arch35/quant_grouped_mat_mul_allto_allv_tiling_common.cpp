@@ -614,10 +614,14 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetSendRecvCoun
     auto gmmQTilingCommonInfoPtr = &localTilingData_.taskTilingInfo;
     uint64_t maxCountsSize = std::min<uint64_t>(expertNum, MAX_EXPERT_NUM);
     for (uint64_t i = 0; i < maxCountsSize; i++) {
-        OP_TILING_CHECK(sendCounts[i] < 0, OP_LOGE(opName_, "sendCounts value %ld should not be < 0 !", sendCounts[i]),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(recvCounts[i] < 0, OP_LOGE(opName_, "recvCounts value %ld should not be < 0 !", recvCounts[i]),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            sendCounts[i] < 0 || sendCounts[i] > static_cast<int64_t>(localParams_.A),
+            OP_LOGE(opName_, "sendCounts[%lu] should be in [0, %lu], but got %ld.", i, localParams_.A, sendCounts[i]),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            recvCounts[i] < 0 || recvCounts[i] > static_cast<int64_t>(localParams_.BsK),
+            OP_LOGE(opName_, "recvCounts[%lu] should be in [0, %lu], but got %ld.", i, localParams_.BsK, recvCounts[i]),
+            return ge::GRAPH_FAILED);
         gmmQTilingCommonInfoPtr->sendCnt[i] = static_cast<int32_t>(sendCounts[i]);
         gmmQTilingCommonInfoPtr->recvCnt[i] = static_cast<int32_t>(recvCounts[i]);
     }
@@ -630,7 +634,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckLocalParams()
     OP_TILING_CHECK((localParams_.H1 == 0) || (localParams_.H1 >= MAX_H1_VALUE),
                     OP_LOGE(opName_, "H1 should be in range (0, %lu), but got %lu.", MAX_H1_VALUE, localParams_.H1),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((localParams_.BsK >= MAX_BSK_VALUE),
+    OP_TILING_CHECK((localParams_.BsK == 0) || (localParams_.BsK >= MAX_BSK_VALUE),
                     OP_LOGE(opName_, "BSK should be in range (0, %lu), but got %lu.", MAX_BSK_VALUE, localParams_.BsK),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((localParams_.N1 == 0) || (localParams_.N1 >= MAX_N1_VALUE),
