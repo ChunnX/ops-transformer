@@ -103,7 +103,7 @@ REG_OP(QuantGroupedMatMulAlltoAllv)
       .ATTR(y_dtype, Int, DT_UNDEFINED)
       .ATTR(mm_dtype, Int, DT_UNDEFINED)
       .ATTR(comm_quant_dtype, Int, 0)
-      .ATTR(comm_mode, String, "default")
+      .ATTR(comm_mode, String, "")
       .OP_END_FACTORY_REG(QuantGroupedMatMulAlltoAllv)
 
 

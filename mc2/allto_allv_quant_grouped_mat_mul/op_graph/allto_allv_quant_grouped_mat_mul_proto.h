@@ -96,7 +96,7 @@ REG_OP(AlltoAllvQuantGroupedMatMul)
       .ATTR(group_size, Int, 0)
       .ATTR(y_dtype, Int, 28)
       .ATTR(mm_dtype, Int, 28)
-      .ATTR(comm_mode, String, "default")
+      .ATTR(comm_mode, String, "")
       .OP_END_FACTORY_REG(AlltoAllvQuantGroupedMatMul)
 
 }  // namespace ge

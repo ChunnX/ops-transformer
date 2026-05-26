@@ -139,20 +139,12 @@ static ge::graphStatus GroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext*
         return ret;
     }
 
-    if (std::strcmp(commMode, "ccu") == 0 || std::strcmp(commMode, "aicpu") == 0 || std::strcmp(commMode, "default") == 0) {
+    if (std::strcmp(commMode, "ccu") == 0 || std::strcmp(commMode, "aicpu") == 0 || std::strcmp(commMode, "") == 0) {
         OPS_LOG_D("GroupedMatMulAlltoAllvFallback", "aclnnGroupedMatMulAlltoAllvV2.");
         const auto apiRet = EXEC_OPAPI_CMD(aclnnGroupedMatMulAlltoAllvV2,
                                            gmmX, gmmWeight, sendCountsTensor, recvCountsTensor, mmX, mmWeight,
                                            group, commMode, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
                                            *transGmmWeight, *transMmWeight, y, mmY);
-        OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
-                   OP_LOGE("GroupedMatMulAlltoAllvFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
-    } else {
-        OPS_LOG_D("GroupedMatMulAlltoAllvFallback", "aclnnGroupedMatMulAlltoAllv.");
-        const auto apiRet = EXEC_OPAPI_CMD(aclnnGroupedMatMulAlltoAllv,
-                                       gmmX, gmmWeight, sendCountsTensor, recvCountsTensor, mmX, mmWeight,
-                                       group, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
-                                       *transGmmWeight, *transMmWeight, y, mmY);
         OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
                    OP_LOGE("GroupedMatMulAlltoAllvFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
     }
