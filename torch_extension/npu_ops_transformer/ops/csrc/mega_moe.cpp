@@ -28,7 +28,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     const c10::optional<at::Tensor> &scales,
     int64_t max_recv_token_num,
     int64_t dispatch_quant_mode,
-    int64_t dispatch_quant_out_type,
+    int64_t dispatch_quant_out_dtype,
     int64_t combine_quant_mode,
     std::string comm_alg,
     int64_t num_max_token_per_rank,
@@ -87,8 +87,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t h = x_size[1];
     int64_t k = topk_ids_size[1];
 
-    if ((dispatch_quant_out_type != static_cast<int64_t>(ge::DT_UNDEFINED)) &&
-        (dispatch_quant_out_type == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
+    if ((dispatch_quant_out_dtype != static_cast<int64_t>(ge::DT_UNDEFINED)) &&
+        (dispatch_quant_out_dtype == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
         TORCH_CHECK(h % 2 == 0,
                     "The last dim input shape must be divisible by 2 if "
                     "dispatch quant output type is torch_npu.float4_e2m1");
@@ -105,8 +105,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     std::string activation_str = std::string(activation);
     char *activation_ptr = const_cast<char *>(activation_str.c_str());
 
-    int64_t dispatch_quant_result_type = dispatch_quant_out_type.has_value()
-        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_type.value()))
+    int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()
+        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
         : 28;
 
     at::Tensor y;

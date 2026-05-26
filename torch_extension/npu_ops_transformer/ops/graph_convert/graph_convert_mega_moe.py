@@ -43,7 +43,7 @@ if _TORCHAIR_AVAILABLE:
                 x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
                 moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
                 max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
-                dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
+                dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
                 num_max_token_per_rank: int = 0,
                 activation: str = "swiglu", activation_clamp: float = 3.4028234663852886e+38,
                 dependencies=[], node_name=None):
@@ -70,7 +70,7 @@ if _TORCHAIR_AVAILABLE:
         .REQUIRED_ATTR(ccl_buffer_size, Int)\n
         .ATTR(max_recv_token_num, Int, 0)\n
         .ATTR(dispatch_quant_mode, Int, 0)\n
-        .ATTR(dispatch_quant_out_type, Int, 28)\n
+        .ATTR(dispatch_quant_out_dtype, Int, 28)\n
         .ATTR(combine_quant_mode, Int, 0)\n
         .ATTR(comm_alg, String, "")\n
         .ATTR(num_max_token_per_rank, Int, 0)\n
@@ -98,7 +98,7 @@ if _TORCHAIR_AVAILABLE:
             "ccl_buffer_size": attr.Int(ccl_buffer_size),
             "max_recv_token_num": attr.Int(max_recv_token_num),
             "dispatch_quant_mode": attr.Int(dispatch_quant_mode),
-            "dispatch_quant_out_type": attr.Int(dispatch_quant_out_type),
+            "dispatch_quant_out_dtype": attr.Int(dispatch_quant_out_dtype),
             "combine_quant_mode": attr.Int(combine_quant_mode),
             "comm_alg": attr.Str(comm_alg),
             "num_max_token_per_rank": attr.Int(num_max_token_per_rank),
@@ -138,7 +138,7 @@ if _TORCHAIR_AVAILABLE:
             .required_attr("ccl_buffer_size", attr.Int) \
             .attr("max_recv_token_num", attr.Int(0)) \
             .attr("dispatch_quant_mode", attr.Int(0)) \
-            .attr("dispatch_quant_out_type", attr.Int(28)) \
+            .attr("dispatch_quant_out_dtype", attr.Int(28)) \
             .attr("combine_quant_mode", attr.Int(0)) \
             .attr("comm_alg", attr.Str("")) \
             .attr("num_max_token_per_rank", attr.Int(0)) \
@@ -168,7 +168,7 @@ if _TORCHAIR_AVAILABLE:
         scales: Optional[Tensor] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
-        dispatch_quant_out_type: int = 28,
+        dispatch_quant_out_dtype: int = 28,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
         num_max_token_per_rank: int = 0,
@@ -195,7 +195,7 @@ if _TORCHAIR_AVAILABLE:
                        ccl_buffer_size=ccl_buffer_size,
                        max_recv_token_num=max_recv_token_num,
                        dispatch_quant_mode=dispatch_quant_mode,
-                       dispatch_quant_out_type=dispatch_quant_out_type,
+                       dispatch_quant_out_dtype=dispatch_quant_out_dtype,
                        combine_quant_mode=combine_quant_mode,
                        comm_alg=comm_alg,
                        num_max_token_per_rank=num_max_token_per_rank,
