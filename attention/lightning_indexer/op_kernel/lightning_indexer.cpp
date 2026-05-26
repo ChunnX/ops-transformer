@@ -16,13 +16,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_template_tiling_key.h"
-
-#if (__CCE_AICORE__ == 310)
-    #include "arch35/lightning_indexer_kernel.h"
-
-#else
-    #include "arch22/lightning_indexer_kernel.h"
-#endif
+#include "arch35/lightning_indexer_kernel.h"
 
 using namespace LIKernel;
 

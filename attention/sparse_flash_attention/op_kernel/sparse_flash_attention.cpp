@@ -15,11 +15,7 @@
 
 #include "kernel_operator.h"
 #include "sparse_flash_attention_template_tiling_key.h"
-#if (__CCE_AICORE__ == 310)
 #include "arch35/sparse_flash_attention_kernel_mla.h"
-#else
-#include "arch22/sparse_flash_attention_kernel_mla.h"
-#endif
 
 using namespace AscendC;
 

@@ -16,13 +16,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "quant_lightning_indexer_template_tiling_key.h"
-
-#if (__CCE_AICORE__ == 310)
-    #include "arch35/quant_lightning_indexer_kernel.h"
-
-#else
-    #include "arch22/quant_lightning_indexer_kernel.h"
-#endif
+#include "arch35/quant_lightning_indexer_kernel.h"
 
 using namespace QLIKernel;
 
