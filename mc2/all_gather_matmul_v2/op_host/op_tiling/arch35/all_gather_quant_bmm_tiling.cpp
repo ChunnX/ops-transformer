@@ -410,7 +410,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strcmp(commMode_, "ccu") == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
-    } else if(std::strcmp(commMode_, "default") == 0){ // default
+    } else if(commMode_[0] == '\0'){ // default
         if (rankSize_ <= 8) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }
@@ -496,7 +496,7 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     if (std::strcmp(commMode_, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if(std::strcmp(commMode_, "default") == 0){ // default
+    } else if(commMode_[0] == '\0'){ // empty string
         if (rankSize_ <= 8) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         }

@@ -41,7 +41,7 @@ using namespace Mc2Tiling;
 namespace optiling {
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
-const std::vector<std::string> SUPPORT_COMM_MODES = {"ccu", "aicpu", "default"};
+const std::vector<std::string> SUPPORT_COMM_MODES = {"ccu", "aicpu", ""};
 
 static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8};
@@ -607,7 +607,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
                     return false);
     OP_TILING_CHECK(std::find(SUPPORT_COMM_MODES.begin(), SUPPORT_COMM_MODES.end(), commMode_) == SUPPORT_COMM_MODES.end(), 
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or aicpu or default, but the actual value is %s.", commMode_),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or aicpu or empty string, but the actual value is %s.", commMode_),
                     return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
