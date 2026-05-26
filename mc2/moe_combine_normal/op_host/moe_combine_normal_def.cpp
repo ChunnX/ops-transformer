@@ -6,7 +6,6 @@
  * Note:
  * History: 2025-11-28 create moe_combine_normal def file
  */
-
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -38,6 +37,12 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("token_idx")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("tp_recv_counts")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
@@ -64,7 +69,9 @@ public:
         this->Attr("tp_world_size").AttrType(OPTIONAL).Int(0);
         this->Attr("tp_rank_id").AttrType(OPTIONAL).Int(0);
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
-        this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
+        this->Attr("real_max_bs").AttrType(OPTIONAL).Int(0);
+        this->Attr("round").AttrType(OPTIONAL).Int(4);
+        this->Attr("per_round_tokens").AttrType(OPTIONAL).Int(1024);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -76,12 +83,12 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_true")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-
-        this->AICore().AddConfig("ascend910b", aicore_config);
-        this->AICore().AddConfig("ascend910_93", aicore_config);
+#ifdef __DAV_C310__
         this->AICore().AddConfig("ascend950", aicore_config);
+#endif
+        this->AICore().AddConfig("ascend910_93", aicore_config);
         this->MC2().HcclGroup({"ep_group_name", "tp_group_name"});
-    }
+}
 };
 
 OP_ADD(MoeCombineNormal);

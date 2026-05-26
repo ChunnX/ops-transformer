@@ -1,20 +1,18 @@
 /*
+
  * SPDX-License-Identifier: MIT
  * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
  * Description: Normal combine tiling header file
  * Create: 2025-11-28
  * Note:
  * History: 2025-11-28 create normal combine tiling header file
- */
-
+*/
 #ifndef MOE_COMBINE_NORMAL_TILING_H
 #define MOE_COMBINE_NORMAL_TILING_H
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-// a3
-namespace Moe {
 struct MoeCombineNormalInfo {
     uint32_t epWorldSize;
     uint32_t tpWorldSize;
@@ -23,7 +21,9 @@ struct MoeCombineNormalInfo {
     uint32_t expertShardType;
     uint32_t moeExpertNum;
     uint32_t moeExpertPerRankNum;
-    uint32_t globalBs;
+    uint32_t realMaxBs;
+    uint32_t perRoundTokens;
+    uint32_t maxRound;
     uint32_t bs;
     uint32_t k;
     uint32_t h;
@@ -40,5 +40,5 @@ struct MoeCombineNormalTilingData {
     Mc2CcTiling mc2CcTiling2;
     MoeCombineNormalInfo moeCombineNormalInfo;
 };
-} // namespace Moe
+
 #endif // MOE_COMBINE_NORMAL_TILING_H
