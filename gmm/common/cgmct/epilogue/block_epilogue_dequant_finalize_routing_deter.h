@@ -289,10 +289,13 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         if (GetBlockIdx() < 2 && i == 0) {
             AscendC::PRINTF("[LWS] blk=%u groupAccumM=%llu offsetM=%llu n_=%llu yOffset=%llu wsIdx=%llu curBaseN=%u\n",
                 GetBlockIdx(), groupAccumM_, offsetM, n_, yOffset, wsIdx, curBaseN);
+            // float dumpVal = yLocal.GetValue(i * alignN_);
+            // AscendC::PRINTF("[LWS-DUMP] blk=%u yLocal[0]=%f\n", GetBlockIdx(), dumpVal);
+            DumpTensor(mmQuantOutGm_[wsIdx], i, 1);
         }
-        if (i == 0) {
-            DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
-        }
+        // if (i == 0) {
+        //     DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
+        // }
     }
 }
 
