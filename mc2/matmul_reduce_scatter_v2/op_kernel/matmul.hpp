@@ -333,7 +333,7 @@ public:
                     blockMmad(
                         gmA[gmOffsetA], params.layoutA,
                         gmB[gmOffsetB], params.layoutB,
-                        gmC[gmOffsetC], params.layoutC,
+                        gmDst[gmOffsetC], layoutGmDst,
                         gmBias[blockLocCoord.n()], blockSizeCoord);
                 } else {
                     bool isFirstBlock = loopIdx == coreIdx;
