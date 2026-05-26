@@ -408,7 +408,7 @@ class GeneralizedLIV2:
         return cpu_mask, next_tokens_list
 
 
-    def forward(self, query, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table):
+    def forward(self, query, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset):
         print("cpu执行中...")
 
         # 参数的初始化
@@ -514,6 +514,7 @@ class GeneralizedLIV2:
         out_shape_bnsd[1] = k_head_num
         out_shape_bnsd[-1] = sparse_count
         y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
+        y += output_idx_offset
         return y, y_value
 
 def trans_prefix_actseq(self,list):
@@ -531,11 +532,10 @@ def trans_prefix_actseq(self,list):
         return list_new
 
 def liv2_output_single(params):
-    # TODO
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
-    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, \
-    layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange,\
-    cmp_ratio, return_value, max_seqlen_q = params
+    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
+    layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
+    output_idx_offset_datarange, cmp_ratio, return_value, max_seqlen_q = params
 
     test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                                 head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlensk, seqused_q, seqused_k,
@@ -546,9 +546,12 @@ def liv2_output_single(params):
     actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq * cmp_ratio + cmp_residual_k, k_seq * cmp_ratio + cmp_residual_k, batch_size)).to(torch.int32).npu() \
                             if seqused_k is None else torch.tensor(seqused_k).to(torch.int32).npu()
 
+    output_idx_offset = torch.tensor(np.random.uniform(output_idx_offset_datarange[0], output_idx_offset_datarange[1], self.output_idx_offset_shape)).to(torch.int32).npu()
+    output_idx_offset = torch.broadcast_to(output_idx_offset, (batch_size, max_seqlen_q, 1, topk))
+
     if layout_query == "BSND":
-        query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1],(batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype).npu()
-        weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
+        query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype).npu()
+        weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(torch.float32).npu()
 
     elif layout_query == "TND":
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (q_t_size, q_head_num, head_dim))).to(qk_dtype).npu()
@@ -556,12 +559,12 @@ def liv2_output_single(params):
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype).npu()
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_liv2.forward(query, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset)
 
     elif layout_key == "TND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype).npu()
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_liv2.forward(query, key, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset)
 
     elif layout_key == "PA_BSND":
         # 以不同batch中最大seq为标准初始化key(bnsd)
@@ -603,7 +606,7 @@ def liv2_output_single(params):
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
         key = key.npu()
-        cpu_result, topk_value = test_liv2.forward(query, key_bnsd, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_liv2.forward(query, key_bnsd, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     max_seqlen_q = actual_seq_lengths_query.max().item()
     max_seqlen_k = actual_seq_lengths_key.max().item()
