@@ -56,6 +56,8 @@ protected:
     static const std::vector<uint32_t> GMM_X_DTYPE_LIST;
     static const std::vector<uint32_t> GMM_WEIGHT_DTYPE_LIST;
     static const std::vector<uint32_t> GMM_Y_DTYPE_LIST;
+    static const std::set<int64_t> A5_SUPPORT_RANK_SIZE;
+    static const std::set<int64_t> A3_SUPPORT_RANK_SIZE;
 };
 } // namespace optiling
 #endif

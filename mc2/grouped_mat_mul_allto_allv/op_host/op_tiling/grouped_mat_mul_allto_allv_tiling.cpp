@@ -34,6 +34,8 @@ namespace optiling {
 const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::vector<uint32_t> GroupedMatmulAllToAllvTiling::GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+const std::set<int64_t> GroupedMatmulAllToAllvTiling::A5_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
+const std::set<int64_t> GroupedMatmulAllToAllvTiling::A3_SUPPORT_RANK_SIZE{8, 16, 32, 64, 128};
 
 ge::graphStatus GroupedMatmulAllToAllvTiling::GetShapeAttrsInfo()
 {
@@ -262,11 +264,13 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
     }
 
     std::string supportRankSizeRange;
-    for (const auto &v : SUPPORT_RANK_SIZE) {
+    const std::set<int64_t> &supportRankSize =
+        (npuArch_ == NpuArch::DAV_3510) ? A5_SUPPORT_RANK_SIZE : A3_SUPPORT_RANK_SIZE;
+    for (const auto &v : supportRankSize) {
         supportRankSizeRange += (std::to_string(v) + " ");
     }
     OP_TILING_CHECK(
-        SUPPORT_RANK_SIZE.find(rankDim) == SUPPORT_RANK_SIZE.end(),
+        supportRankSize.find(rankDim) == supportRankSize.end(),
         OP_LOGE(opName_, "World_size should be %s, but the actual value is %ld.", supportRankSizeRange, rankDim),
         return ge::GRAPH_FAILED);
     localParams_.epWorldSize = rankDim;
