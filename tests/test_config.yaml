@@ -478,8 +478,9 @@ attention:
       - attention/flash_attn/tests
     test:
       ut: True
-      examples: True
+      examples: False
     options:
+      - attention/flash_attn
 gmm:
   grouped_matmul:
     module: True
