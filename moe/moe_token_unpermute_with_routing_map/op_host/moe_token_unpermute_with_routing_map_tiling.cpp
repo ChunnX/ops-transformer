@@ -236,7 +236,7 @@ static inline void Init(gert::TilingContext* context, MoeTokenUnpermuteWithRouti
   size_t sysWorkspaceSize = 16 * 1024 * 1024 * 2;
   size_t *currentWorkspace = context->GetWorkspaceSizes(1); 
   currentWorkspace[0] = sysWorkspaceSize;
-
+  //temp
   auto ascendPlaform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
   param.core.maxCoreNum = static_cast<int64_t>(ascendPlaform.GetCoreNumAiv());
   uint64_t maxCoreMemery;
