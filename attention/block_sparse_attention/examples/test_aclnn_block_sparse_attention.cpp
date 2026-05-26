@@ -22,7 +22,6 @@
 #include <cstdlib>
 #include <sys/stat.h>
 #include "acl/acl.h"
-#include "aclnn/opdev/bfloat16.h"
 #include "aclnnop/aclnn_block_sparse_attention.h"
 
 using namespace std;
@@ -45,6 +44,19 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
         shapeSize *= i;
     }
     return shapeSize;
+}
+
+uint16_t FloatToBf16(float val) {
+    uint32_t bits;
+    memcpy(&bits, &val, sizeof(float));
+    return static_cast<uint16_t>(bits >> 16);
+}
+
+float Bf16ToFloat(uint16_t val) {
+    uint32_t bits = static_cast<uint32_t>(val) << 16;
+    float result;
+    memcpy(&result, &bits, sizeof(float));
+    return result;
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
@@ -193,16 +205,17 @@ uint32_t MixBits(uint32_t x) {
     return x;
 }
 
-void FillQkvHostData(std::vector<op::bfloat16>& data, InputFillMode mode, uint32_t randomSeed, uint32_t streamId) {
+void FillQkvHostData(std::vector<uint16_t>& data, InputFillMode mode, uint32_t randomSeed, uint32_t streamId) {
     if (mode == INPUT_FILL_ALL_ONE) {
-        std::fill(data.begin(), data.end(), op::bfloat16(1.0f));
+        const uint16_t one = FloatToBf16(1.0f);
+        std::fill(data.begin(), data.end(), one);
         return;
     }
 
     const uint32_t base = randomSeed + streamId * 1000003u;
     for (size_t i = 0; i < data.size(); ++i) {
         const uint32_t bit = MixBits(base + static_cast<uint32_t>(i)) & 1u;
-        data[i] = op::bfloat16(static_cast<float>(bit));
+        data[i] = FloatToBf16(static_cast<float>(bit));
     }
 }
 
@@ -303,10 +316,10 @@ bool WriteBinaryFile(const std::string& filePath, const void* data, size_t byteS
     return true;
 }
 
-std::vector<float> Bf16HostToFloat32(const std::vector<op::bfloat16>& data) {
+std::vector<float> Bf16HostToFloat32(const std::vector<uint16_t>& data) {
     std::vector<float> result(data.size());
     for (size_t i = 0; i < data.size(); ++i) {
-        result[i] = static_cast<float>(data[i]);
+        result[i] = Bf16ToFloat(data[i]);
     }
     return result;
 }
@@ -398,9 +411,9 @@ bool WriteMetadataJson(const std::string& filePath, int32_t batch, int32_t qSeql
 }
 
 bool SaveVerifyArtifacts(const std::string& outputDir,
-                         const std::vector<op::bfloat16>& queryHostData,
-                         const std::vector<op::bfloat16>& keyHostData,
-                         const std::vector<op::bfloat16>& valueHostData,
+                         const std::vector<uint16_t>& queryHostData,
+                         const std::vector<uint16_t>& keyHostData,
+                         const std::vector<uint16_t>& valueHostData,
                          const std::vector<int8_t>& blockSparseMaskHostData,
                          const std::vector<float>& resultData, int32_t batch, int32_t qSeqlen, int32_t kvSeqlen,
                          int32_t numHeads, int32_t numKvHeads, int32_t headDim, int32_t blockShapeX,
@@ -527,7 +540,7 @@ int main(int argc, char* argv[]) {
 
     // 3. 创建Query tensor (TND format: [totalQTokens, numHeads, headDim])
     std::vector<int64_t> queryShape = {totalQTokens, numHeads, headDim};
-    std::vector<op::bfloat16> queryHostData(totalQTokens * numHeads * headDim);
+    std::vector<uint16_t> queryHostData(totalQTokens * numHeads * headDim);
     FillQkvHostData(queryHostData, inputFillMode, kInputRandomSeed, 0);
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_BF16, &queryTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create query tensor\n");
@@ -539,8 +552,8 @@ int main(int argc, char* argv[]) {
 
     // 4. 创建Key/Value tensor (TND format: [totalKvTokens, numKvHeads, headDim])
     std::vector<int64_t> kvShape = {totalKvTokens, numKvHeads, headDim};
-    std::vector<op::bfloat16> keyHostData(totalKvTokens * numKvHeads * headDim);
-    std::vector<op::bfloat16> valueHostData(totalKvTokens * numKvHeads * headDim);
+    std::vector<uint16_t> keyHostData(totalKvTokens * numKvHeads * headDim);
+    std::vector<uint16_t> valueHostData(totalKvTokens * numKvHeads * headDim);
     FillQkvHostData(keyHostData, inputFillMode, kInputRandomSeed, 1);
     FillQkvHostData(valueHostData, inputFillMode, kInputRandomSeed, 2);
     LOG_PRINT("Input fill mode: %d, random seed: %u, dtype: bf16\n", static_cast<int>(inputFillMode), kInputRandomSeed);
@@ -581,7 +594,7 @@ int main(int argc, char* argv[]) {
     // 6. 创建输出tensor
     std::vector<int64_t> attentionOutShape = {totalQTokens, numHeads, headDim};
     int64_t attentionOutElementCount = totalQTokens * numHeads * headDim;
-    std::vector<op::bfloat16> attentionOutHostData(attentionOutElementCount, 0.0f);
+    std::vector<uint16_t> attentionOutHostData(attentionOutElementCount, 0);
     ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_BF16, &attentionOutTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create attentionOut tensor\n");
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
@@ -740,9 +753,9 @@ int main(int argc, char* argv[]) {
 
     // 14. 获取输出的值，将device侧内存上的结果拷贝至host侧
     int64_t attentionOutSize = GetShapeSize(attentionOutShape);
-    std::vector<op::bfloat16> resultData(attentionOutSize, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(op::bfloat16), attentionOutDeviceAddr,
-                      attentionOutSize * sizeof(op::bfloat16), ACL_MEMCPY_DEVICE_TO_HOST);
+    std::vector<uint16_t> resultData(attentionOutSize, 0);
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(uint16_t), attentionOutDeviceAddr,
+                      attentionOutSize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
                            actualSeqLengths, actualSeqLengthsKv, blockShape, queryDeviceAddr, keyDeviceAddr,
@@ -753,7 +766,7 @@ int main(int argc, char* argv[]) {
     // 15. 将完整结果转为 float32 落盘，并写入 metadata 供 Python CPU 参考脚本复现与对比
     std::vector<float> resultFloat(resultData.size());
     for (size_t i = 0; i < resultData.size(); ++i) {
-        resultFloat[i] = static_cast<float>(resultData[i]);
+        resultFloat[i] = Bf16ToFloat(resultData[i]);
     }
     if (!SaveVerifyArtifacts(outputDir, queryHostData, keyHostData, valueHostData, blockSparseMaskHostData,
                              resultFloat, batch, qSeqlen, kvSeqlen, numHeads, numKvHeads, headDim, blockShapeX,
@@ -770,7 +783,7 @@ int main(int argc, char* argv[]) {
     uint64_t printNum = 10;
     LOG_PRINT("attentionOut preview (first %lu elements):\n", printNum);
     for (uint64_t i = 0; i < printNum && i < resultData.size(); i++) {
-        LOG_PRINT("  index %lu: %f\n", i, static_cast<float>(resultData[i]));
+        LOG_PRINT("  index %lu: %f\n", i, Bf16ToFloat(resultData[i]));
     }
 
     // 16. 释放资源
