@@ -23,7 +23,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_mixed_quant_sparse_flash_mla(Tensor q, *,"                   \
+        return "npu_mixed_quant_sparse_flash_mla(Tensor q, *,"                                       \
                                 "Tensor? ori_kv=None, Tensor? cmp_kv=None, "                         \
                                 "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, " \
                                 "Tensor? ori_block_table=None, Tensor? cmp_block_table=None, "       \
