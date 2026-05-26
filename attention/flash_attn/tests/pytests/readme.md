@@ -12,9 +12,9 @@ pytests/
 │   ├── test_case.py            # 基础测试用例（BASE、BNSD、TND、PA 等）
 │   ├── test_case_fia_STC.py    # FIA STC 测试用例集（实际推理场景）
 │   ├── test_case_functional_single.py  # 单功能测试用例
-│   ├── test_case_redline_fa.py         # flash_attn 红线用例
-│   ├── test_case_redline_fa_TND.py     # flash_attn varlen 红线用例
-│   └── test_case_redline_fia.py        # FIA 红线用例
+│   ├── test_case_redline_training.py       # flash_attn 训练红线用例
+│   ├── test_case_redline_training_TND.py   # flash_attn varlen 训练红线TND用例
+│   └── test_case_redline_inference.py      # FIA 推理红线用例
 ├── tools/                      # 开发工具
 │   └── xlsx_to_testcase.py     # Excel → test case 转换器
 ├── test_flash_attn.py           # 主入口：命令行参数解析、流程编排、三方精度对比
