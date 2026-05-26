@@ -85,6 +85,7 @@ private:
     int64_t curS1Basic;
     int64_t curLoopS1Basic;
     int64_t oriWinDiagOffset;
+    int64_t cmpDiagOffset;
 
     // gmoffset
     uint64_t queryGmOffset;
@@ -381,6 +382,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     runInfo[mmPingPongIdx].curS1g = curLoopS1Basic * dimG; // 尾块S1处理
     runInfo[mmPingPongIdx].curS1Basic = curLoopS1Basic;
     runInfo[mmPingPongIdx].oriWinDiagOffset = oriWinDiagOffset;
+    runInfo[mmPingPongIdx].cmpDiagOffset = cmpDiagOffset;
 }
 
 template <typename SMLAGT>
@@ -474,7 +476,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64
     oriSelectedCount = oriWinEnd - oriWinStart;
 
     if constexpr (MODE == SMLAG_CFA_MODE) {
-        curMaxS3 = Max((curS3 * cmpRatio + residual - curS1 + s1Index + (curLoopS1Basic - 1) + 1) / cmpRatio, 0);
+        cmpDiagOffset = curS3 * cmpRatio + residual - curS1;
+        curMaxS3 = Max((cmpDiagOffset + s1Index + (curLoopS1Basic - 1) + 1) / cmpRatio, 0);
         cmpSelectedCount = curMaxS3;
     }
 

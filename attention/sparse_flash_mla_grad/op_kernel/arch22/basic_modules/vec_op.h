@@ -571,7 +571,7 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t loopIdx, const in
             curActualRight = Max(curActualRight, curActualLeft);
         } else {
             curActualLeft = 0;
-            curActualRight = Max((runInfo.oriWinDiagOffset + s1Index + 1) / cmpRatio - runInfo.blkCntOffset, 0);
+            curActualRight = Max((runInfo.cmpDiagOffset + s1Index + 1) / cmpRatio - runInfo.blkCntOffset, 0);
             curActualRight = Min(curActualRight, actualSelS2);
         }
     }
