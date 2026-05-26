@@ -372,7 +372,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckAttr()
     if (dropPadMode_ == DROP_PAD && expertTokensNumFlag_) {
         OP_CHECK_IF(expertTokensNumType_ != COUNT,
                     OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_type",
-                                              std::to_string(expertTokensNumType_), 
+                                              std::to_string(expertTokensNumType_),
                             (std::to_string(COUNT) + "when DROP_MODE and expert_tokens_num_flag is true")),
                             return ge::GRAPH_FAILED);
     }
@@ -844,32 +844,37 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckDtype()
                                   "INT8, FLOAT16, BF16 or FLOAT"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputXDtype_ == ge::DT_INT8 && quantMode_ != UN_QUANT,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "inputXDtype_", Ops::Base::ToString(inputXDtype_).c_str(),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "inputXDtype_",
+                                              Ops::Base::ToString(inputXDtype_).c_str(),
                                               "quantization is not supported when input_X is INT8"),
                 return ge::GRAPH_FAILED);
 
     auto expertIdxDtype_ = context_->GetInputDesc(INPUT_EXPERT_IDX_INDEX)->GetDataType();
     OP_CHECK_IF(expertIdxDtype_ != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertIdxDtype_", Ops::Base::ToString(expertIdxDtype_).c_str(),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertIdxDtype_",
+                                  Ops::Base::ToString(expertIdxDtype_).c_str(),
                                   "INT32"),
                 return ge::GRAPH_FAILED);
     
     if (quantMode_ == STATIC_QUANT) {
         auto scaleDtype_ = context_->GetOptionalInputDesc(INPUT_SCALE_INDEX)->GetDataType();
         OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_", Ops::Base::ToString(scaleDtype_).c_str(), "FLOAT"),
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_",
+                Ops::Base::ToString(scaleDtype_).c_str(), "FLOAT"),
                 return ge::GRAPH_FAILED);
         
         auto offsetDtype_ = context_->GetOptionalInputDesc(INPUT_OFFSET_INDEX)->GetDataType();
         OP_CHECK_IF(offsetDtype_ != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offsetDtype_", Ops::Base::ToString(offsetDtype_).c_str(),
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offsetDtype_",
+                                      Ops::Base::ToString(offsetDtype_).c_str(),
                                       "FLOAT"),
                 return ge::GRAPH_FAILED);
     } else {
         if (scaleShapePtr_ != nullptr) {
             auto scaleDtype_ = context_->GetOptionalInputDesc(INPUT_SCALE_INDEX)->GetDataType();
             OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_", Ops::Base::ToString(scaleDtype_).c_str(),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scaleDtype_",
+                                          Ops::Base::ToString(scaleDtype_).c_str(),
                                           "FLOAT"),
                     return ge::GRAPH_FAILED);
         }
@@ -877,7 +882,8 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckDtype()
 
     auto expandedXDtype_ = context_->GetOutputDesc(OUTPUT_EXPANDED_X_INDEX)->GetDataType();
     OP_CHECK_IF(expandedXDtype_ != ge::DT_INT8 && expandedXDtype_ != ge::DT_FLOAT16 && expandedXDtype_ != ge::DT_BF16 && expandedXDtype_ != ge::DT_FLOAT,
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedXDtype_", Ops::Base::ToString(expandedXDtype_).c_str(),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expandedXDtype_",
+                                  Ops::Base::ToString(expandedXDtype_).c_str(),
                                   "INT8, FLOAT16, BF16 or FLOAT"),
                 return ge::GRAPH_FAILED);
     

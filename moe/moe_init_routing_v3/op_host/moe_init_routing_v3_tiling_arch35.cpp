@@ -730,9 +730,10 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
         supportedDtypes = DYNAMIC_QUANT_SUPPORTED_DTYPES;
     }
     OP_CHECK_IF(supportedDtypes.count(xDtype_) == 0,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "dtype of x", Ops::Base::ToString(xDtype_),
-                                                      ("unsupported under quant_mode " +
-                                                       std::to_string(quantMode_))),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "dtype of x",
+                                                    Ops::Base::ToString(xDtype_),
+                                                    ("unsupported under quant_mode " +
+                                                    std::to_string(quantMode_))),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -775,8 +776,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
             OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "scale dim[0]", std::to_string(dim0), "1"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT,
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", Ops::Base::ToString(scaleDtype_).c_str(),
-                                              "DT_FLOAT"),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
+                        Ops::Base::ToString(scaleDtype_).c_str(),
+                        "DT_FLOAT"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
@@ -867,7 +869,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputOffset()
             OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "offset dim[0]", std::to_string(dim0), "1"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(offsetDtype_ != ge::DataType::DT_FLOAT,
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offset", Ops::Base::ToString(offsetDtype_).c_str(),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offset",
+                                              Ops::Base::ToString(offsetDtype_).c_str(),
                                               "DT_FLOAT"),
                     return ge::GRAPH_FAILED);
     }
@@ -933,7 +936,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()
     if (quantMode_ == QUANT_MODE_STATIC) {
         OP_CHECK_IF(
             expandedXDtype_ != ge::DataType::DT_INT8,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expanded_x", Ops::Base::ToString(expandedXDtype_).c_str(),
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expanded_x",
+                                      Ops::Base::ToString(expandedXDtype_).c_str(),
                                       "DT_INT8"),
             return ge::GRAPH_FAILED);
     }

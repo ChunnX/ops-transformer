@@ -187,7 +187,8 @@ ge::graphStatus MoeGatingTopKSoftmaxV2BaseTiling::GetShapeAttrsInfo()
     dtype = gating->GetDataType();
     OP_CHECK_IF(
         (dtype != ge::DataType::DT_FLOAT && dtype != ge::DataType::DT_FLOAT16 && dtype != ge::DataType::DT_BF16),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x", Ops::Base::ToString(dtype).c_str(), "FLOAT, FLOAT16, BF16"),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x", Ops::Base::ToString(dtype).c_str(),
+            "FLOAT, FLOAT16, BF16"),
         return ge::GRAPH_FAILED);
     auto gatingShape = context_->GetInputShape(0)->GetStorageShape();
     auto ret = CheckInShape(gatingShape);
@@ -228,13 +229,14 @@ ge::graphStatus MoeGatingTopKSoftmaxV2BaseTiling::GetShapeAttrsInfo()
     OP_CHECK_IF(
         (yDtype != dtype),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            context_->GetNodeName(), "y and x", (Ops::Base::ToString(yDtype) + " and " + Ops::Base::ToString(dtype)).c_str(),
+            context_->GetNodeName(), "y and x",
+            (Ops::Base::ToString(yDtype) + " and " + Ops::Base::ToString(dtype)).c_str(),
             "The dtype of output y should be the same as input x"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         (yDtype != ge::DataType::DT_FLOAT && yDtype != ge::DataType::DT_FLOAT16 && yDtype != ge::DataType::DT_BF16),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y", Ops::Base::ToString(yDtype).c_str(), "FLOAT, FLOAT16, BF16"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y", Ops::Base::ToString(yDtype).c_str(),
+        "FLOAT, FLOAT16, BF16"), return ge::GRAPH_FAILED);
     ret = CheckOutShape(context_->GetOutputShape(OUT_INDEX)->GetStorageShape(), gatingShape, false, "y");
     if (ret != ge::SUCCESS) {
         return ret;
@@ -245,8 +247,8 @@ ge::graphStatus MoeGatingTopKSoftmaxV2BaseTiling::GetShapeAttrsInfo()
     auto expertIdxDtype = expertIdxDesc->GetDataType();
     OP_CHECK_IF(
         (expertIdxDtype != ge::DataType::DT_INT32),
-        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertIdx", Ops::Base::ToString(expertIdxDtype).c_str(), "INT32"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expertIdx", Ops::Base::ToString(expertIdxDtype).c_str(),
+        "INT32"), return ge::GRAPH_FAILED);
     ret = CheckOutShape(context_->GetOutputShape(INDICES_INDEX)->GetStorageShape(), gatingShape, false, "expertIdx");
     if (ret != ge::SUCCESS) {
         return ret;
