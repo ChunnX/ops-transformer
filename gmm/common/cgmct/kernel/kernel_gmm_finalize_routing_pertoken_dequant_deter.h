@@ -395,7 +395,8 @@ public:
             if (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
-                // if ASCEND_IS_AIV { FinalFlush(params); }
+                deterSync_.windowStartM = deterSync_.curGroupM;
+                deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
             }
             ProcessSingleGroup(params, bs, groupIdx);
@@ -405,7 +406,7 @@ public:
 
         if (isDeter_) {
             SyncAll<false>();
-            // if ASCEND_IS_AIV { FinalFlush(params); }
+            deterSync_.windowStartM = deterSync_.curGroupM;
             SyncAll<false>();
         }
 
