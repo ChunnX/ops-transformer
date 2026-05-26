@@ -17,8 +17,9 @@
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
 #include <stdio.h>
+
+#include "tensor_block_mmad_mx_adapter.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
-#include "tensor_block_mmad_mx_compat.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
@@ -54,8 +55,8 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutC = yLayout;
     using ProblemShape = Blaze::Gemm::MatmulShape;
     using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
-    using BlockMmad = Blaze::Gemm::Block::TensorBlockMmadMxCompat<
-        BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType, LayoutC>;
+    using BlockMmad =
+        Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType, LayoutC>;
     using BlockEpilogue = void;
     using GmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue>;
     using Params = typename GmmKernel::Params;
