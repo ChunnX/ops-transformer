@@ -230,8 +230,7 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
     auto mmYShape = CreateTensorShape({{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
                                          ge::DT_FLOAT16, ge::FORMAT_ND);
 
-    bool needMMShapes = has_any_target_key(testParam.tilingParamsStrPair, targets) || tilingParams.permuteOutFlag;
-    if (!needMMShapes || tilingParams.isNeedMM == false) {
+    if (!(has_any_target_key(testParam.tilingParamsStrPair, targets) || tilingParams.isNeedMM == false)) {
         mmXShape->shape_ = {};
         mmWeightShape->shape_ = {};
     }
@@ -285,7 +284,7 @@ static TestParam testParams[] = {
     {"Test_H_3", {{"H2", "7168"}, {"mmWeightDim0", "7169"}, {"permuteOutFlag", "true"}}, {}, {}, ge::GRAPH_FAILED},
     {"Test_H_4", {{"H1", "65536"}, {"permuteOutFlag", "true"}}, {}, {}, ge::GRAPH_FAILED},
     {"Test_send_counts_0",
-     {{"BSK", "16386"}, {"permuteOutFlag", "true"}},
+     {{"BSK", "16386"}, {"BS", "2048"}, {"permuteOutFlag", "true"}},
      {{"sendCounts",
        std::vector<int64_t>{
            3201, 3201, 3200, 3200, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
