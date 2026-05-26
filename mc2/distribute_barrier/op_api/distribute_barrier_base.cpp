@@ -80,8 +80,8 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclTensor *mc2Context = nullptr;
-    aclnnStatus getWorkspaceSizesRes;
-    aclnnStatus ret;
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
+    aclnnStatus ret = ACLNN_ERR_INNER;
 
     if (!is950) {
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),

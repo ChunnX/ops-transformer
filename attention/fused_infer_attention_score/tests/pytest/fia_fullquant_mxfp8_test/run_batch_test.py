@@ -28,6 +28,7 @@ CASES = [
         "kv_cache_layout": "PA_NZ",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "PA_NZ_S48_Q48_Nq1_Nkv1_D128",
@@ -41,6 +42,7 @@ CASES = [
         "kv_cache_layout": "PA_NZ",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "PA_NZ_S64_Q64_Nq1_Nkv1_D128",
@@ -54,6 +56,7 @@ CASES = [
         "kv_cache_layout": "PA_NZ",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "PA_NZ_S66_Q66_Nq1_Nkv1_D128",
@@ -67,6 +70,7 @@ CASES = [
         "kv_cache_layout": "PA_NZ",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "PA_NZ_S86_Q86_Nq1_Nkv1_D128",
@@ -80,6 +84,7 @@ CASES = [
         "kv_cache_layout": "PA_NZ",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "TND_S48_Q48_Nq8_Nkv1_D128_AUTO_TND",
@@ -93,6 +98,7 @@ CASES = [
         "kv_cache_layout": "BnNBsD",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "TND_S66_Q66_Nq8_Nkv1_D128_AUTO_TND",
@@ -106,6 +112,7 @@ CASES = [
         "kv_cache_layout": "BnNBsD",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
     {
         "name": "PA_NZ_S1023_Q1023_Nq80_Nkv8_D128_AUTO_TND",
@@ -119,6 +126,7 @@ CASES = [
         "kv_cache_layout": "PA_NZ",
         "block_size": 512,
         "sparse_mode": 3,
+        "p_scale": 1.0,
     },
 ]
 
@@ -136,13 +144,14 @@ def _set_case(module, case):
     module.INPUT_LAYOUT = case.get("input_layout", "TND")
     module.Q_SCALE_LAYOUT = case.get("q_scale_layout", "AUTO")
     module.KV_CACHE_LAYOUT = case.get("kv_cache_layout", "PA_NZ")
+    module.P_SCALE = float(case["p_scale"])
 
 
 def run_case(module, case):
     _set_case(module, case)
     try:
         data = module.generate_data()
-        q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, qr_bf16, kr_bf16, block_table_torch = data
+        q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch = data
         module.cpu_mxfp8_golden(
             q_fp8,
             k_fp8,
@@ -150,6 +159,7 @@ def run_case(module, case):
             deq_q,
             deq_k,
             deq_v,
+            p_scale,
             module.ACTUAL_SEQ_Q,
             module.ACTUAL_SEQ_KV,
             qr_bf16,

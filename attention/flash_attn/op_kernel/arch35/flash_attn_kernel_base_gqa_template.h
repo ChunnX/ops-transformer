@@ -165,18 +165,7 @@ public:
         this->pipe = tPipe;
         this->tilingData = tiling;
 
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
-        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
-
-        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
-        fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * 16U * sectionNum_);
-
         InitConstInfo();
-
 
         keyPtr = key;
         valuePtr = value;
@@ -193,6 +182,12 @@ public:
         } else {
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
+        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
+        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+
+        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
+        
 
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
@@ -200,6 +195,10 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
+            fdMetaDataGm.SetGlobalBuffer(
+            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+            FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
@@ -222,7 +221,6 @@ public:
                                         kvSeqUsedParser);
             }
         }
-
         if (isFd) {
             if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();

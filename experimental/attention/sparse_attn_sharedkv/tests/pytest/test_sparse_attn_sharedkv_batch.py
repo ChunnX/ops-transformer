@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import os
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 pt_dir = os.getenv("SAS_PT_LOAD_PATH", "./data")
 result_path = Path(os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx'))
@@ -63,7 +63,7 @@ def call_sas_npu(testcase_files):   # 初始化参数和tensor
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_sparse_attn_sharedkv(testcase_files):   # 初始化参数和tensor
-    with ProcessPoolExecutor(max_workers=1) as executor:
+    with ThreadPoolExecutor(max_workers=1) as executor:
         # 创建当前用例子进程
         future1 = executor.submit(call_sas_npu, testcase_files)
         # 检查退出码
