@@ -42,7 +42,7 @@ enum NnopbaseHcclServerType {
 
 extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* dstRankId,
-    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t cclBufferSize, const char *commAlg,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t aivNum, int64_t cclBufferSize, const char *commAlg,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
@@ -69,7 +69,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* dstRankId, const c
 }
 
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, const char* group,
-                                int64_t worldSize, int64_t maxBs, int64_t mode,
+                                int64_t worldSize, int64_t maxBs, int64_t mode, int64_t aivNum,
                                 aclTensor* y, aclTensor* receiveCnt)
 {
     OP_LOGD("aclnn_bandwidth_test CheckParams start");
@@ -94,6 +94,11 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, c
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group name exceeds max length %zu", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_NULLPTR;
     }
+
+    if (aivNum < -1 || aivNum > 128) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aivNum must be in range [-1,128], got %ld", aivNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     
     OP_LOGD("aclnn_bandwidth_test CheckParams success");
     return ACLNN_SUCCESS;
@@ -101,12 +106,12 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, c
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* dstRankId,
-    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t aivNum,
     const char *commAlg, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
-    auto ret_param = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, y, receiveCnt);
+    auto ret_param = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, aivNum, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
@@ -117,7 +122,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
         auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
-            mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg,
+            mc2Context, x, dstRankId, group, worldSize, maxBs, mode, aivNum, hcclBuffSize, commAlg,
             y, receiveCnt, workspaceSize, executor);
     #endif
     if (NnopbaseSetHcclServerType) {

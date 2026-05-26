@@ -69,6 +69,9 @@ constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 卡数
 // constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4U; // HCCL buffer size
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;   // 通信算法
+constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;    // AIV核数量
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -367,9 +370,18 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t platformAivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    
+    auto attrs = context->GetAttrs();
+    auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
+    uint32_t aivNum = platformAivNum;
+    if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
+        aivNum = static_cast<uint32_t>(*aivNumPtr);
+        OP_LOGD(nodeName, "User set aiv_num=%ld, use user value instead of platform default=%u", *aivNumPtr, platformAivNum);
+    }
+    
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
 
     context->SetBlockDim(numBlocks);
