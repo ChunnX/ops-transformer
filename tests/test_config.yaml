@@ -480,7 +480,7 @@ attention:
       ut: True
       examples: False
     options:
-      - attention/flash_attn
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
