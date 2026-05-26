@@ -35,7 +35,7 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM,
-        GM_ADDR yGM, GM_ADDR groupListGM, GM_ADDR workspaceGM,
+        GM_ADDR yGM, GM_ADDR workspaceGM,
         const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
         TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
     {
@@ -61,7 +61,7 @@ public:
         a_ = tilingData_->taskTilingInfo.A;
 
         uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_;
-        groupListGm_ = groupListGM;
+        groupListGm_ = workspaceGM_;
         ptrTableBase_ = groupListGm_ + groupListSize;
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
