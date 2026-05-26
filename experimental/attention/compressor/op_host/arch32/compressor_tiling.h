@@ -27,8 +27,8 @@
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
-#include "../op_kernel/compressor_template_tiling_key.h"
-#include "../op_kernel/compressor_tiling_data.h"
+#include "../../op_kernel/arch32/compressor_template_tiling_key.h"
+#include "../../op_kernel/arch32/compressor_tiling_data.h"
 #include "platform/platform_info.h"
 
 #ifdef ASCENDC_OP_TEST
@@ -36,6 +36,7 @@
 #else
 #define CMP_EXTERN_C
 #endif
+// #define DAY0_SCOPE
 
 namespace optiling {
 
@@ -202,7 +203,7 @@ enum class LayoutType {
 enum class TemplateId:uint8_t {
     NORMAL = 0,
     EMPTY_X = 1,
-    FULL_LOAD = 2
+    PERF = 2
 };
 
 CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
@@ -222,8 +223,13 @@ struct CompressorBaseShapeInfo {
 
 const std::vector<int> ROPE_HEAD_DIM {64};
 const std::vector<int> COFF {1, 2};
+#ifdef DAY0_SCOPE
+const std::vector<int> CMP_RATIO {4, 128};
+const std::vector<int> ROTARY_MODE {2};
+#else
 const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
 const std::vector<int> ROTARY_MODE {1, 2};
+#endif
 const std::vector<uint32_t> HEAD_DIM {128, 512};
 const std::vector<int> CACHE_MODE {1, 2};
 
