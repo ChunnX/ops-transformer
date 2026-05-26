@@ -40,7 +40,11 @@ public:
 
     __aicore__ inline void InitConstInfoWithPA()
     {
-        FlashAttentionGqaContext::InitConstInfo();
+        if ASCEND_IS_AIC {
+            FlashAttentionGqaContext::InitConstInfoCube();
+        } else {
+            FlashAttentionGqaContext::InitConstInfoVector();
+        }
     }
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)

@@ -43,7 +43,6 @@ namespace BaseApi {
 
 class FlashAttentionGqaContext {
 public:
-    BufferManager<BufferType::GM> gmBufferManager;
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
@@ -96,15 +95,17 @@ public:
     uint32_t s2OStart_;
     uint32_t s2OEnd_;
 
-__aicore__ inline void InitConstInfo()
+__aicore__ inline void InitConstInfoCube()
     {
-        if ASCEND_IS_AIC {
-            constInfo.aicIdx = GetBlockIdx();
-        } else {
-            constInfo.aivIdx = GetBlockIdx();
-            constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
-            constInfo.subBlockIdx = GetSubBlockIdx();
-        }
+        constInfo.aicIdx = GetBlockIdx();
+        constInfo.dBasicBlock = Align64Func((uint16_t)this->tilingData->flashAttnBaseParams.dSizeV);
+    }
+
+    __aicore__ inline void InitConstInfoVector()
+    {
+        constInfo.aivIdx = GetBlockIdx();
+        constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
+        constInfo.subBlockIdx = GetSubBlockIdx();
         constInfo.dBasicBlock = Align64Func((uint16_t)this->tilingData->flashAttnBaseParams.dSizeV);
     }
 
