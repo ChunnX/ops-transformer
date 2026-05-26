@@ -335,24 +335,20 @@ public:
             AscendC::PRINTF("[FF] blk=%u totalM=%llu winStart=%llu curGroupM=%llu\n",
                 GetBlockIdx(), totalM, deterSync_.windowStartM, deterSync_.curGroupM);
         }
-        uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
-        uint64_t n = params.gmmParams.matmulTiling->N;
-
-        for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-            auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
-            if (outRow % coreNumVec != GetBlockIdx()) continue;
-            if (GetBlockIdx() < 2 && mOffset < 4) {
-                AscendC::PRINTF("[FF] blk=%u mOffset=%llu outRow=%llu n=%llu wsOffset=%llu\n",
-                    GetBlockIdx(), mOffset, outRow, n, mOffset * n);
-            }
-            // epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
-        }
+        // uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
+        // uint64_t n = params.gmmParams.matmulTiling->N;
+        // for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
+        //     auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
+        //     if (outRow % coreNumVec != GetBlockIdx()) continue;
+        //     if (GetBlockIdx() < 2 && mOffset < 4) {
+        //         AscendC::PRINTF("[FF] blk=%u mOffset=%llu outRow=%llu n=%llu wsOffset=%llu\n",
+        //             GetBlockIdx(), mOffset, outRow, n, mOffset * n);
+        //     }
+        //     // epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
+        // }
         if (GetBlockIdx() < 2) {
             AscendC::PRINTF("[FF] blk=%u flush loop done\n", GetBlockIdx());
         }
-
-        deterSync_.windowStartM = deterSync_.curGroupM;
-        deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -400,6 +396,8 @@ public:
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
                 if ASCEND_IS_AIV { FinalFlush(params); }
+                deterSync_.windowStartM = deterSync_.curGroupM;
+                deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
             }
             ProcessSingleGroup(params, bs, groupIdx);
@@ -409,6 +407,7 @@ public:
 
         if (isDeter_) {
             SyncAll<false>();
+            // if ASCEND_IS_AIV { FinalFlush(params); }
             deterSync_.windowStartM = deterSync_.curGroupM;
             SyncAll<false>();
         }
