@@ -198,25 +198,25 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            LocalMemAllocator allocator;
+            LocalMemAllocator<Hardware::UB> allocator;
             // \u4e0e FA block \u5171\u4eabUB\u5e03\u5c40\uff1a\u8df3\u8fc7 bmm1/bmm2 \u533a\u57df\uff0c\u7136\u540e\u6309\u76f8\u540c\u987a\u5e8f\u5206\u914d
             constexpr uint32_t mm1Sz = s1BaseSize / 2U * (uint32_t)s2TemplateType * sizeof(T);
             constexpr uint32_t mm2Sz = bmm2Write2Ub ?
                 (s1BaseSize / 2U * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
-            (void)allocator.alloc<uint8_t>(mm1Sz * 2U + mm2Sz * 2U);
+            (void)allocator.Alloc<TPosition::VECIN, uint8_t, mm1Sz * 2U + mm2Sz * 2U>();
 
             if constexpr (!bmm2Write2Ub) {
-                (void)allocator.alloc<uint8_t>(32768); // \u8df3\u8fc7 mm2InBuf \u533a\u57df
+                (void)allocator.Alloc<TPosition::VECIN, uint8_t, 32768>(); // \u8df3\u8fc7 mm2InBuf \u533a\u57df
             }
             // SharedBuffer2[0] \u5bf9\u5e94 attenMaskBuf[0] \uff08FA\u7528\uff09/ fdLseMaxUb \u533a\uff08FD\u7528\uff09
-            LocalTensor<uint8_t> sharedBuf2a = allocator.alloc<uint8_t>(BUFFER_SIZE_BYTE_8K);
-            (void)allocator.alloc<uint8_t>(BUFFER_SIZE_BYTE_8K); // \u8df3\u8fc7 attenMaskBuf[1]
+            LocalTensor<uint8_t> sharedBuf2a = allocator.Alloc<TPosition::VECIN, uint8_t, BUFFER_SIZE_BYTE_8K>();
+            (void)allocator.Alloc<TPosition::VECIN, uint8_t, BUFFER_SIZE_BYTE_8K>(); // \u8df3\u8fc7 attenMaskBuf[1]
             // SharedBuffer3 \u5bf9\u5e94 stage2OutBuf \uff08FA\u7528\uff09/ fdSumBufs \u533a\uff08FD\u7528\uff09
-            LocalTensor<uint8_t> sharedBuf3  = allocator.alloc<uint8_t>(32768);
+            LocalTensor<uint8_t> sharedBuf3  = allocator.Alloc<TPosition::VECIN, uint8_t, 32768>();
             // SharedBuffer1[0] \u5bf9\u5e94 stage1OutBuf[0] \uff08FA\u7528\uff09/ fdMm2Res \u533a\uff08FD\u7528\uff09
-            LocalTensor<uint8_t> sharedBuf1a = allocator.alloc<uint8_t>(33024);
+            LocalTensor<uint8_t> sharedBuf1a = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>();
             // SharedBuffer1[1] \u5bf9\u5e94 stage1OutBuf[1] \uff08FA\u7528\uff09/ fdReduce \u533a\uff08FD\u7528\uff09
-            LocalTensor<uint8_t> sharedBuf1b = allocator.alloc<uint8_t>(33024);
+            LocalTensor<uint8_t> sharedBuf1b = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>();
 
             fdMm2ResBuf1 = sharedBuf1a.template ReinterpretCast<T>();
             fdMm2ResBuf2 = fdMm2ResBuf1[BUFFER_SIZE_BYTE_16K / sizeof(T)];
