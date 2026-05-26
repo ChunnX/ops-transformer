@@ -105,7 +105,6 @@ public:
     __aicore__ inline void DeterministicFlushRow(uint64_t mOffset, uint64_t outRow, uint64_t nSize);
     __aicore__ inline uint64_t GetRowIndex(uint64_t globalOffset);
     __aicore__ inline void SetWorkspaceGroupOffset(uint64_t groupAccumM);
-    __aicore__ inline void ResetRowIndexAddr();
 
 private:
     __aicore__ inline void CopyInLogit(uint32_t curBaseM, uint64_t offsetM, LocalTensor<float> &logitUb);
@@ -225,6 +224,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
         mmQuantOutGm_.SetGlobalBuffer(
             reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM));
+        rowIndexGlobal_.SetGlobalBuffer(
+            reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
     }
 }
 
@@ -250,8 +251,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 {
     if ASCEND_IS_AIV {
         logitGlobal_.SetGlobalBuffer((__gm__ float *)params_->logitGmAddr + Get<LOGIT_IDXSD>(baseOffset));
-        rowIndexGlobal_.SetGlobalBuffer((__gm__ DataTypeRowIndex *)params_->rowIndexGmAddr +
-                                        Get<LOGIT_IDXSD>(baseOffset));
         if (params_->x1ScaleGmAddr != nullptr) {
             x1ScaleGlobal_.SetGlobalBuffer((__gm__ DataTypeX1Scale *)params_->x1ScaleGmAddr +
                                            Get<X1SCALE_IDXD>(baseOffset));
@@ -519,13 +518,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     uint64_t groupAccumM)
 {
     groupAccumM_ = groupAccumM;
-}
-
-GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::ResetRowIndexAddr()
-{
-    rowIndexGlobal_.SetGlobalBuffer((__gm__ DataTypeRowIndex *)params_->rowIndexGmAddr);
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS

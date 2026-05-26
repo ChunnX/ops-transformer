@@ -335,10 +335,6 @@ public:
             printf("[FF] blk=%u totalM=%llu winStart=%llu curGroupM=%llu\n",
                 GetBlockIdx(), totalM, deterSync_.windowStartM, deterSync_.curGroupM);
         }
-        epilogueDequantOp_.ResetRowIndexAddr();
-        if (GetBlockIdx() < 2) {
-            printf("[FF] blk=%u ResetRow done\n", GetBlockIdx());
-        }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
 
