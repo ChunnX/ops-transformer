@@ -169,6 +169,8 @@ transformer-vf@ops-transformer:
         release:
             huawei_style:  
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
+                - ops/ops-transformer/attention/lightning_indexer/op_kernel/arch35/vf
+                - ops/ops-transformer/attention/quant_lightning_indexer/op_kernel/arch35/vf
             opensource_style: null 
             kernel_style: null 
         unrelease:
