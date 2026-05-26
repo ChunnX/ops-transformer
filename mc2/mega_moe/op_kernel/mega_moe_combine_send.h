@@ -32,8 +32,6 @@ __aicore__ inline void CombineTokensOptimize(
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = 1;
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);        // N_VALUE是当前tile块的n长度
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
@@ -75,14 +73,12 @@ __aicore__ inline void CombineTileOptimize(
 
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, 0>();
     CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
-    SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, 0>();
 
     // 从 tripleInfoPtr 加载本 tile 的三元组信息（groupCnt 是 expert + wave 累计起点）
     AscendC::GlobalTensor<int32_t> tripleGm;
     LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, rowCount * 8);
     tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
         params.workspaceInfo.tripleInfoPtr + (groupCnt + mLoc) * 32));
-    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, 1>();
     AscendC::DataCopy(tripleTensor, tripleGm, rowCount * 8);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, 0>();
 
