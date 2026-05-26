@@ -17,8 +17,6 @@
 #include "kv_quant_sparse_flash_attention_template_tiling_key.h"
 #if (__CCE_AICORE__ == 310)
 #include "arch35/kv_quant_sparse_flash_attention_kernel_mla.h"
-#else
-#include "kv_quant_sparse_flash_attention_kernel_mla.h"
 #endif
 
 using namespace AscendC;
