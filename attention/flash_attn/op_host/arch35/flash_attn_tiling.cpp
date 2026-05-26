@@ -383,8 +383,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     // 1、存在seqUsedQ
     // 2、存在seqUsedKv(可能导致S2小于S1出现行无效)
     // 3、带mask且S2小于S1
-    if (seqUsedQFlag_ || 
-        seqUsedKvFlag_ || 
+    if (seqUsedQFlag_ || seqUsedKvFlag_ ||
         ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
             tilingData_.baseTiling.flashAttnBaseParams.isInitOutput = 1;
         }
