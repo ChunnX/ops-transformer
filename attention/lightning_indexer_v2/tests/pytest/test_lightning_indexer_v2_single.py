@@ -27,7 +27,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num", "head_dim", 
         "block_size", "block_num", "qk_dtype", "cu_seqlens_q", "cu_seqlens_k", "seqused_q", "seqused_k", 
         "cmp_residual_k","output_idx_offset", "layout_q", "layout_k", "topk", "mask_mode", 
-        "query_datarange","key_datarange","weights_datarange", "output_idx_offset_datarange,","cmp_ratio", "return_value", "max_seqlen_q"
+        "query_datarange","key_datarange","weights_datarange", "output_idx_offset_datarange","cmp_ratio", "return_value", "max_seqlen_q"
     ]
     param_values = [
         locals()["param_batch_size"],
