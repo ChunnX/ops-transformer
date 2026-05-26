@@ -662,6 +662,9 @@ __aicore__ inline void GroupMatmul2Optimize(
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
+        bool isFirstTile = (loopIdx == coreInGroup);
+        bool isLastTile = (loopIdx + coresPerWave >= tileNum);
+
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == coreInGroup) {
                 int64_t schedulerN = static_cast<int64_t>(k);
@@ -679,6 +682,8 @@ __aicore__ inline void GroupMatmul2Optimize(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
 
             auto gmBlockA = gmA.Slice(
@@ -703,10 +708,23 @@ __aicore__ inline void GroupMatmul2Optimize(
 
             SyncFuncStatic<AscendC::HardEvent::FIX_S, 0>();
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
+
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_TILE_DONE);
+            }
+            if (isLastTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
+            }
         } else {
             while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
                 int64_t st = GetSystemCycle();
                 while (GetSystemCycle() - st < 100) {}
+            }
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
@@ -714,6 +732,15 @@ __aicore__ inline void GroupMatmul2Optimize(
             MegaMoeCombineImpl::CombineTileOptimize<bfloat16_t, decltype(actualShape)>(
                 mLoc, nLoc, n, expertIdx, rankId, gmmAddrInfo.gmm2OutGlobal,
                 ubBuffer, actualShape, params, static_cast<uint32_t>(groupCnt + waveRowOffset));
+
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_TILE_DONE);
+            }
+            if (isLastTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
+            }
         }
     }
 }
