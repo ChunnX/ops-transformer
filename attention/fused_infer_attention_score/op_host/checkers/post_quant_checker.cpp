@@ -24,11 +24,12 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
+using namespace Ops::Base;
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
 // CheckSingle
@@ -58,9 +59,11 @@ ge::graphStatus PostQuantChecker::CheckExistenceQuantScale2(const FiaTilingInfo 
                     OP_LOGE(fiaInfo.opName, "Desc of quant_scale2 is nullptr in post quant scenario!"),
                     return ge::GRAPH_FAILED);
         int64_t quantScale2ShapeSize = fiaInfo.opParamInfo.quantScale2.tensor->GetShapeSize();
-        OP_CHECK_IF(quantScale2ShapeSize <= 0,
-                    OP_LOGE(fiaInfo.opName, "Shape size of quant_scale2 is nonpositive in post quant scenario!"),
-                    return ge::GRAPH_FAILED);
+        if (quantScale2ShapeSize <= 0) {
+            OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "quant_scale2", std::to_string(quantScale2ShapeSize).c_str(),
+                                          "positive");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -71,10 +74,10 @@ ge::graphStatus PostQuantChecker::CheckFeatureAttenOut(const FiaTilingInfo &fiaI
     // post-quantization scenarios only support int8/fp8_e4m3fn/hifloat8 output data type
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
-        OP_CHECK_IF(outputType != ge::DT_INT8 && outputType != ge::DT_FLOAT8_E4M3FN && outputType != ge::DT_HIFLOAT8,
-                    OP_LOGE(fiaInfo.opName,
-                    "The quantScale2 exists, output data type only supports int8/fp8_e4m3fn/hifloat8!"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            outputType != ge::DT_INT8 && outputType != ge::DT_FLOAT8_E4M3FN && outputType != ge::DT_HIFLOAT8,
+            OP_LOGE(fiaInfo.opName, "The quantScale2 exists, output data type only supports int8/fp8_e4m3fn/hifloat8!"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -84,10 +87,10 @@ ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fi
     // Post-quantization scale dtype must be FP32. BF16 is allowed only if the query is BF16
     if (fiaInfo.isOutQuantEnable) {
         const ge::DataType quantScale2Type = fiaInfo.opParamInfo.quantScale2.tensor->GetDataType();
-        OP_CHECK_IF(fiaInfo.inputQType != ge::DT_BF16 && quantScale2Type != ge::DT_FLOAT,
-                    OP_LOGE(fiaInfo.opName,
-                            "When query is not bf16, the post quant scale dtype only supports float32!"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            fiaInfo.inputQType != ge::DT_BF16 && quantScale2Type != ge::DT_FLOAT,
+            OP_LOGE(fiaInfo.opName, "When query is not bf16, the post quant scale dtype only supports float32!"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -100,19 +103,19 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
         int64_t quantScale2ShapeSize = fiaInfo.opParamInfo.quantScale2.tensor->GetShapeSize();
         size_t quantScale2Dim = fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape().GetDimNum();
         std::string layoutString = fiaInfo.opParamInfo.layOut;
-        bool isSupportedLayout = layoutString == "BSH" || layoutString == "BSND" || layoutString == "BNSD" ||
-                                 layoutString == "BNSD_BSND";
+        bool isSupportedLayout =
+            layoutString == "BSH" || layoutString == "BSND" || layoutString == "BNSD" || layoutString == "BNSD_BSND";
         uint32_t numHeads = *(fiaInfo.opParamInfo.numHeads);
         uint64_t quantScale2ShapeSizePerChannel =
             static_cast<uint64_t>(numHeads) * static_cast<uint64_t>(fiaInfo.vHeadDim);
         // per-tensor or per-channel verification
         if (quantScale2Dim == 1) {
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
-                OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != 1U),
-                            OP_LOGE(fiaInfo.opName,
-                                    "For post quant per-tensor, quant scale/offset only support [1], now is [%d]",
-                                    quantScale2ShapeSize),
-                            return ge::GRAPH_FAILED);
+                if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "quant_scale2",
+                                                  std::to_string(quantScale2ShapeSize).c_str(), "[1]");
+                    return ge::GRAPH_FAILED;
+                }
             }
         } else {
             if (isSupportedLayout) {
@@ -220,21 +223,21 @@ ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaI
                     preTokensPerbatch = fiaInfo.preToken;
                     nextTokensPerbatch = fiaInfo.nextToken;
                 }
-                OP_CHECK_IF((checkPostQuantOffset &&
-                             ((preTokensPerbatch + actualSeqLengthsKV[i] +
-                                   static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i] <
-                               0) ||
-                              (nextTokensPerbatch < 0))),
-                            OPS_REPORT_VECTOR_INNER_ERR(
-                                fiaInfo.opName,
-                                "When sparse mode = %d, output dtype is int8, the output's dequant offset "
-                                "is not null or empty tensor, "
-                                "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
-                                "participate in the calculation, "
-                                "the accuracy of the final result will be incorrect. Please see the "
-                                "documentation for more details.",
-                                fiaInfo.sparseMode, preTokens, nextTokens),
-                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(
+                    (checkPostQuantOffset && ((preTokensPerbatch + actualSeqLengthsKV[i] +
+                                                   static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i] <
+                                               0) ||
+                                              (nextTokensPerbatch < 0))),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        fiaInfo.opName,
+                        "When sparse mode = %d, output dtype is int8, the output's dequant offset "
+                        "is not null or empty tensor, "
+                        "preTokens = %ld and nextTokens = %ld, some rows of the matrix do not "
+                        "participate in the calculation, "
+                        "the accuracy of the final result will be incorrect. Please see the "
+                        "documentation for more details.",
+                        fiaInfo.sparseMode, preTokens, nextTokens),
+                    return ge::GRAPH_FAILED);
             }
         }
     }
@@ -253,19 +256,17 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
     }
     if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
-                    (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
-                    OP_LOGE(fiaInfo.opName,
-                            "When keyAntiquantMode and valueAntiquantMode are both 1, "
-                            "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
+                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
+                    OP_LOGE(fiaInfo.opName, "When keyAntiquantMode and valueAntiquantMode are both 1, "
+                                            "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
                     return ge::GRAPH_FAILED);
     }
 
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
-                    (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
-                    OP_LOGE(fiaInfo.opName,
-                            "When keyAntiquantMode and valueAntiquantMode are both 4, "
-                            "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
+                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
+                    OP_LOGE(fiaInfo.opName, "When keyAntiquantMode and valueAntiquantMode are both 4, "
+                                            "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -291,9 +292,13 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
         OP_CHECK_IF(quantOffset2Dim != quantScale2Dim,
                     OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dim!"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(quantOffset2ShapeSize != quantScale2ShapeSize,
-                    OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same shape size!"),
-                    return ge::GRAPH_FAILED);
+        if (quantOffset2ShapeSize != quantScale2ShapeSize) {
+            std::string shapeMsg = std::to_string(quantScale2ShapeSize) + ", " + std::to_string(quantOffset2ShapeSize);
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                fiaInfo.opName, "quant_scale2 and quant_offset2", shapeMsg.c_str(),
+                "The shape size of input quant_scale2 should be the same as input quant_offset2");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -326,7 +331,7 @@ ge::graphStatus PostQuantChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo
         }
         if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
             if (ge::GRAPH_SUCCESS != CheckFeatureRowValid(fiaInfo)) {
-                 return ge::GRAPH_FAILED;
+                return ge::GRAPH_FAILED;
             }
         }
     } else if (enableAntiQuant_) {
@@ -346,4 +351,4 @@ ge::graphStatus PostQuantChecker::CheckMultiParaConsistency(const FiaTilingInfo 
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling
