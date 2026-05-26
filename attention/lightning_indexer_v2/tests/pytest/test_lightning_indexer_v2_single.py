@@ -100,7 +100,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
                     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, layout_query,\
-                    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, output_idx_offset_datarange\
+                    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, output_idx_offset_datarange, \
                     cmp_ratio, return_value, max_seqlen_q
 
         # 获得cpu结果(真值)和算子结果（测试值）
