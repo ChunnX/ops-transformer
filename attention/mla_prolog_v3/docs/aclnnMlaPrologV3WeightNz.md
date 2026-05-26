@@ -222,10 +222,10 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
   | S            | Seq-Length（输入样本序列长度） | 取值范围：不限制                                                              |
   | He           | Head-Size（隐藏层大小）        | A2、A3、A5取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192  |
-  | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536、2048                                                           |
+  | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536                                                          |
   | N            | Head-Num（多头数）             | 取值范围：1、2、4、8、16、32、64、128                                       |
   | Hckv         | kv 低秩矩阵维度                | 取值固定为：512                                                             |
-  | D            | qk 不含位置编码维度            | 取值固定为：128、192                                                             |
+  | D            | qk 不含位置编码维度            | 取值固定为：128                                                            |
   | Dr           | qk 位置编码维度                | 取值固定为：64                                                              |
   | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
   | BlockNum     | PagedAttention 场景下的块数    | 1. 当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 `(B*S)/BlockSize` 向上取整的结果。<br> 2. 当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于`B` * `(S / BlockSize)`向上取整的结果（即`B * Ceil(S/BlockSize)`）。注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。举例：actualSeqLenOptional数值为[47, 151, 261, 422]，blocksize=128，那么Batch中的长度分别为[47, 104, 110, 161] ，此时BlockNum=Ceil(47/128)+ Ceil(104/128)+ Ceil(110/128)+ Ceil(161/128)=5|
