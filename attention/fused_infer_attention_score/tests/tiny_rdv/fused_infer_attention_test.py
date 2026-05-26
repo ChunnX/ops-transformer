@@ -341,6 +341,13 @@ def TO_NPU(tensor):
     else:
         return tensor.to("npu:%s" % DEVICE_ID)
 
+def tensor_to_npu_inplace(*tensors: torch.Tensor) -> list[torch.Tensor]:
+    for t in tensors:
+        if t is None:
+            continue
+        else:
+            t.data = t.to("npu:%s" % DEVICE_ID).data
+
 def cpu_golden_fused_infer_attention_score(query, key, value,
         pse_shift=None, atten_mask=None, actual_seq_lengths=None, actual_seq_lengths_kv=None,
         dequant_scale1=None, quant_scale1=None, dequant_scale2=None,
@@ -429,7 +436,8 @@ def page_attn_for_bnsd(bnsd_tensor, b, act_seq_lens_kv, block_table, block_size)
         b_seq = act_seq_lens_kv[i] if len(act_seq_lens_kv) > 1 else act_seq_lens_kv[0]
         b_block_num = (b_seq + block_size - 1) // block_size
         for j in range(b_block_num):
-            page_cache_tensor[block_table[i][j], :, :, :] = bnsd_tensor[i, :, (j*block_size):((j+1)*block_size), :]
+            src_tensor = bnsd_tensor[i, :, (j*block_size):((j+1)*block_size), :]
+            page_cache_tensor[block_table[i][j], :, 0:src_tensor.shape[1], :] = src_tensor
     return page_cache_tensor
 
 def rearrange_by_layout(bnsd_tensor, layout, b, act_seq_lens):
@@ -495,8 +503,10 @@ def cpu_golden_base(query, key, value,
         softmax_lse_flag=False, src_date_type=torch.float16, compute_date_type=torch.float32):
     # 注意: 不能修改输入数据
     b, n1, s1, _ = query.shape
+    n2 = key.shape[1]
     s2 = key.shape[2]
     vd = value.shape[-1]
+    g = n1 // n2
     mask_value = float('-inf') # -1e12
     invalid_rows_out_value = 0
     invalid_rows_lse_value = float('inf')
@@ -509,10 +519,15 @@ def cpu_golden_base(query, key, value,
         q = query[i, :, 0:b_s1, :].to(src_date_type).to(compute_date_type)
         k = key[i, :, 0:b_s2, :].to(src_date_type).to(compute_date_type)
         v = value[i, :, 0:b_s2, :].to(src_date_type).to(compute_date_type)
+        q = q.reshape(n2, g, q.shape[1], q.shape[2])
+        k = k.reshape(n2, 1, k.shape[1], k.shape[2])
+        v = v.reshape(n2, 1, v.shape[1], v.shape[2])
         attn_scores = torch.matmul(q, k.transpose(-2, -1))
         if query_rope is not None and key_rope is not None:
             q_r = query_rope[i, :, 0:b_s1, :].to(src_date_type).to(compute_date_type)
             k_r = key_rope[i, :, 0:b_s2, :].to(src_date_type).to(compute_date_type)
+            q_r = q_r.reshape(n2, g, q_r.shape[1], q_r.shape[2])
+            k_r = k_r.reshape(n2, 1, k_r.shape[1], k_r.shape[2])
             rope_attn_scores = torch.matmul(q_r, k_r.transpose(-2, -1))
             attn_scores = attn_scores + rope_attn_scores
         attn_scores = attn_scores * scale
@@ -530,11 +545,14 @@ def cpu_golden_base(query, key, value,
         scores_sum = exp_scores.sum(dim=-1, keepdim=True) + 1e-12
         attn_weights = exp_scores / scores_sum
         attn_out_tmp = torch.matmul(attn_weights, v)
-        attn_out[i, :, 0:b_s1, :] = attn_out_tmp.masked_fill(invalid_rows_flag.unsqueeze(-1), invalid_rows_out_value)
+        attn_out_tmp = attn_out_tmp.masked_fill(invalid_rows_flag.unsqueeze(-1), invalid_rows_out_value)
+        attn_out_tmp = attn_out_tmp.reshape(n2*g, attn_out_tmp.shape[2], attn_out_tmp.shape[3])
+        attn_out[i, :, 0:b_s1, :] = attn_out_tmp
         attn_out = attn_out.to(src_date_type)
         if softmax_lse_flag:
             softmax_lse_tmp = scores_max + torch.log(scores_sum)
-            softmax_lse[i, :, 0:b_s1, :] = softmax_lse_tmp.masked_fill(invalid_rows_flag.unsqueeze(-1), invalid_rows_lse_value)
+            softmax_lse_tmp = softmax_lse_tmp.masked_fill(invalid_rows_flag.unsqueeze(-1), invalid_rows_lse_value)
+            softmax_lse[i, :, 0:b_s1, :] = softmax_lse_tmp.reshape(n2*g, softmax_lse_tmp.shape[2], softmax_lse_tmp.shape[3])
             softmax_lse = softmax_lse.to(src_date_type)
         else:
             softmax_lse = None
@@ -705,7 +723,8 @@ def run_fia_eager(case_name, b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, 
         inner_precise, out_scale_shape, out_scale_dtype, with_postquant_offset,
         enable_pse, pse_mode, pse_shape, pse_dtype, enable_q_padding, q_padding_size, enable_kv_padding, kv_padding_size,
         enable_shared_prefix, shared_prefix_s2, actual_shared_prefix_len, q_quant_mode, q_scale_shape, q_scale_dtype,
-        k_quant_mode, k_scale_shape, k_scale_dtype, v_quant_mode, v_scale_shape, v_scale_dtype, with_antiquant_offset):
+        k_quant_mode, k_scale_shape, k_scale_dtype, v_quant_mode, v_scale_shape, v_scale_dtype, with_antiquant_offset,
+        npu_loop):
 
     try:
         (query, key, value, pse_shift, atten_mask, act_seq_lens_q, act_seq_lens_kv,
@@ -773,44 +792,57 @@ def run_fia_eager(case_name, b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, 
                             value_antiquant_mode=v_quant_mode)
 
     try:
-        npu_attn_out, npu_softmax_lse = torch_npu.npu_fused_infer_attention_score(
-                                TO_NPU(query),
-                                TO_NPU(key),
-                                TO_NPU(value),
-                                pse_shift=TO_NPU(pse_shift),
-                                atten_mask=TO_NPU(atten_mask),
-                                actual_seq_lengths=act_seq_lens_q,
-                                actual_seq_lengths_kv=act_seq_lens_kv,
-                                dequant_scale1=TO_NPU(dequant_scale1),
-                                quant_scale1=TO_NPU(quant_scale1),
-                                dequant_scale2=TO_NPU(dequant_scale2),
-                                quant_scale2=TO_NPU(quant_scale2),
-                                quant_offset2=TO_NPU(quant_offset2),
-                                block_table=TO_NPU(block_table),
-                                query_padding_size=TO_NPU(query_padding_size_tensor),
-                                kv_padding_size=TO_NPU(kv_padding_size_tensor),
-                                key_antiquant_scale=TO_NPU(key_antiquant_scale),
-                                key_antiquant_offset=TO_NPU(key_antiquant_offset),
-                                value_antiquant_scale=TO_NPU(value_antiquant_scale),
-                                value_antiquant_offset=TO_NPU(value_antiquant_offset),
-                                key_shared_prefix=TO_NPU(key_shared_prefix),
-                                value_shared_prefix=TO_NPU(value_shared_prefix),
-                                actual_shared_prefix_len=actual_shared_prefix_len,
-                                query_rope=TO_NPU(query_rope),
-                                key_rope=TO_NPU(key_rope),
-                                num_heads=num_heads,
-                                scale=scale,
-                                pre_tokens=pre_tokens,
-                                next_tokens=next_tokens,
-                                input_layout=input_layout,
-                                num_key_value_heads=num_key_value_heads,
-                                sparse_mode=sparse_mode,
-                                inner_precise=inner_precise,
-                                block_size=block_size,
-                                antiquant_mode=q_quant_mode,
-                                softmax_lse_flag=softmax_lse_flag,
-                                key_antiquant_mode=k_quant_mode,
-                                value_antiquant_mode=v_quant_mode)
+        tensor_to_npu_inplace(
+            query, key, value,
+            pse_shift, atten_mask,
+            dequant_scale1, quant_scale1,
+            dequant_scale2, quant_scale2, quant_offset2,
+            block_table,
+            query_padding_size_tensor, kv_padding_size_tensor,
+            key_antiquant_scale, key_antiquant_offset,
+            value_antiquant_scale, value_antiquant_offset,
+            key_shared_prefix, value_shared_prefix, actual_shared_prefix_len,
+            query_rope, key_rope)
+
+        for i in range(npu_loop):
+            npu_attn_out, npu_softmax_lse = torch_npu.npu_fused_infer_attention_score(
+                query,
+                key,
+                value,
+                pse_shift=pse_shift,
+                atten_mask=atten_mask,
+                actual_seq_lengths=act_seq_lens_q,
+                actual_seq_lengths_kv=act_seq_lens_kv,
+                dequant_scale1=dequant_scale1,
+                quant_scale1=quant_scale1,
+                dequant_scale2=dequant_scale2,
+                quant_scale2=quant_scale2,
+                quant_offset2=quant_offset2,
+                block_table=block_table,
+                query_padding_size=query_padding_size_tensor,
+                kv_padding_size=kv_padding_size_tensor,
+                key_antiquant_scale=key_antiquant_scale,
+                key_antiquant_offset=key_antiquant_offset,
+                value_antiquant_scale=value_antiquant_scale,
+                value_antiquant_offset=value_antiquant_offset,
+                key_shared_prefix=key_shared_prefix,
+                value_shared_prefix=value_shared_prefix,
+                actual_shared_prefix_len=actual_shared_prefix_len,
+                query_rope=query_rope,
+                key_rope=key_rope,
+                num_heads=num_heads,
+                scale=scale,
+                pre_tokens=pre_tokens,
+                next_tokens=next_tokens,
+                input_layout=input_layout,
+                num_key_value_heads=num_key_value_heads,
+                sparse_mode=sparse_mode,
+                inner_precise=inner_precise,
+                block_size=block_size,
+                antiquant_mode=q_quant_mode,
+                softmax_lse_flag=softmax_lse_flag,
+                key_antiquant_mode=k_quant_mode,
+                value_antiquant_mode=v_quant_mode)
     except Exception as e:
         print_log(case_name + " exec npu Failed!", level='ERROR')
         err_type = type(e).__name__
@@ -947,6 +979,8 @@ if __name__ == "__main__":
     parser.add_argument('--v_scale_shape', type=parse_shape, default=None,  help='shape of value dequant scale')
     parser.add_argument('--v_scale_dtype', type=str, default=None, help='dtype of value dequant scale')
     parser.add_argument('--with_antiquant_offset', action='store_true', help='')
+    # script control params
+    parser.add_argument('--npu_loop', type=int, default=1, help='loop times of the operator executed on the NPU')
     args = parser.parse_args()
 
     fulfill_percent_all, res_all = run_fia_eager(args.case_name, args.b, args.n2, args.g, args.s1, args.s2, args.qk_d, args.v_d, args.rope_d,
@@ -959,6 +993,7 @@ if __name__ == "__main__":
         args.enable_shared_prefix, args.shared_prefix_s2, args.actual_shared_prefix_len,
         args.q_quant_mode, args.q_scale_shape, args.q_scale_dtype,
         args.k_quant_mode, args.k_scale_shape, args.k_scale_dtype,
-        args.v_quant_mode, args.v_scale_shape, args.v_scale_dtype, args.with_antiquant_offset)
+        args.v_quant_mode, args.v_scale_shape, args.v_scale_dtype, args.with_antiquant_offset,
+        args.npu_loop)
 
     write_res_to_csv("./fia_test_result.csv", args.case_name, fulfill_percent_all, res_all)
