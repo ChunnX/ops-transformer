@@ -19,6 +19,23 @@
 #include "opdev/fast_vector.h"
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
+#include "op_common/log/log.h"
+
+#undef OpLogErrSub
+#undef D_OP_LOGE
+#undef OP_LOGE_WITHOUT_REPORT
+#undef OP_LOGE
+
+#define OpLogErrSub(moduleId, level, op_info, errno, fmt, ...)                                                  \
+    DOplogSub(static_cast<int32_t>(moduleId), OPAPI_SUBMOD_NAME, level, "[%s][%lu] errno[%d] %s" fmt,           \
+            __FUNCTION__, op::OpLog::GetTid(), errno, op_info, ##__VA_ARGS__)
+#define D_OP_LOGE(opname, errno, fmt, ...) OpLogErrSub(OP_ID, OP_LOG_ERROR, opname, errno, fmt, ##__VA_ARGS__)
+#define OP_LOGE_WITHOUT_REPORT(errno, ...) D_OP_LOGE(GetOpName().c_str(), errno, __VA_ARGS__)
+#define OP_LOGE(errno, ...)                                                                                     \
+    do {                                                                                                         \
+        OP_LOGE_WITHOUT_REPORT(errno, __VA_ARGS__);                                                             \
+        REPORT_ERROR_MESSAGE(errno, __VA_ARGS__);                                                               \
+    } while (false)
 
 using namespace op;
 
@@ -400,16 +417,21 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        std::string paramMsg = "query, key and value";
+        std::string dtypeMsg = std::string(op::ToString(DataType(qDtype)).GetString()) + ", " +
+            op::ToString(DataType(kDtype)).GetString() + " and " +
+            op::ToString(DataType(vDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+            dtypeMsg.c_str(), "The dtypes of input query, key and value must be the same");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
-                op::ToString(DataType(qDtype)).GetString());
+        std::string dtypeStr = op::ToString(DataType(qDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
+            "query, key and value", dtypeStr.c_str(),
+            "The dtype of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (pseType == PSE_INNER_MUL_ADD || pseType == PSE_INNER_MUL_ADD_SQRT) {
@@ -420,9 +442,9 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
         }
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != op::DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not invalid in pse type 2 or 3 mode, It must be float32",
-                    op::ToString(DataType(pseDtype)).GetString());
+            std::string dtypeStr = op::ToString(DataType(pseDtype)).GetString();
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "pse",
+                dtypeStr.c_str(), "The dtype of input pse must be FLOAT when the mode of pse is 2 or 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -430,18 +452,20 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     if (realShiftOptional != nullptr) {
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != outDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not equal to the data type %s of attentionOut.",
-                    op::ToString(DataType(pseDtype)).GetString(), op::ToString(DataType(outDtype)).GetString());
+            std::string paramMsg = "pse and attentionOut";
+            std::string dtypeMsg = std::string(op::ToString(DataType(pseDtype)).GetString()) + " and " +
+                op::ToString(DataType(outDtype)).GetString();
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+                dtypeMsg.c_str(), "The dtypes of input pse and output attentionOut must be the same");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (sinkOptional != nullptr) {
         auto sinkDtype = sinkOptional->GetDataType();
         if (sinkDtype != op::DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of sink is [%s], should be fp32.",
-                    op::ToString(DataType(sinkDtype)).GetString());
+            std::string dtypeStr = op::ToString(DataType(sinkDtype)).GetString();
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE(op::internal::GetLogApiInfo().c_str(), "sink",
+                dtypeStr.c_str(), "FLOAT");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -456,16 +480,21 @@ static aclnnStatus InputDtypeCheckQuant(const aclTensor *query, const aclTensor 
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        std::string paramMsg = "query, key and value";
+        std::string dtypeMsg = std::string(op::ToString(DataType(qDtype)).GetString()) + ", " +
+            op::ToString(DataType(kDtype)).GetString() + " and " +
+            op::ToString(DataType(vDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+            dtypeMsg.c_str(), "The dtypes of input query, key and value must be the same");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
-                op::ToString(DataType(qDtype)).GetString());
+        std::string dtypeStr = op::ToString(DataType(qDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
+            "query, key and value", dtypeStr.c_str(),
+            "The dtype of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -966,10 +995,14 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     }
     if (qDtype !=  ge::DataType::DT_BF16 || kDtype != ge::DataType::DT_BF16 || vDtype != ge::DataType::DT_BF16
         || qRopeDtype != ge::DataType::DT_BF16 || kRopeDtype != ge::DataType::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], queryRope[%s], key[%s], keyRope[%s], value[%s]"
-                " should be BFloat16.", op::ToString(DataType(qDtype)).GetString(),
-                op::ToString(DataType(qRopeDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(kRopeDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
+        std::string paramMsg = "query, queryRope, key, keyRope and value";
+        std::string dtypeMsg = std::string(op::ToString(DataType(qDtype)).GetString()) + ", " +
+            op::ToString(DataType(qRopeDtype)).GetString() + ", " +
+            op::ToString(DataType(kDtype)).GetString() + ", " +
+            op::ToString(DataType(kRopeDtype)).GetString() + " and " +
+            op::ToString(DataType(vDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+            dtypeMsg.c_str(), "The dtypes of input query, queryRope, key, keyRope and value must be BF16");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseMode == 6) {
