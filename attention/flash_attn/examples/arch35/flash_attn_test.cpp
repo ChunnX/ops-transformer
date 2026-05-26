@@ -269,7 +269,6 @@ int main()
     const char *layoutKv     = "BNSD";  // KV布局仅支持BSND/TND/PA_ND/PA_Nz
     const char *layoutOut    = "BNSD";
     int64_t returnSoftmaxLse = 0;      // 推理场景不输出softmax_lse
-    int64_t deterministic    = 0;
 
     // 3. 调用aclnnFlashAttn两段式接口
     uint64_t workspaceSize = 0;
@@ -287,7 +286,7 @@ int main()
         nullptr,    // metadataOptional
         softmaxScale, maskMode, winLeft, winRight, maxseqlenq, maxseqlenkv,
         layoutQ, layoutKv, layoutOut,
-        returnSoftmaxLse, deterministic,
+        returnSoftmaxLse,
         outTensor,
         nullptr,    // softmaxLseOptional: 推理场景不输出
         &workspaceSize, &executor);

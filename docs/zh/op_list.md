@@ -244,7 +244,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列尾部的数据（长度为卷积核宽减1）更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -606,6 +606,16 @@
     <td>AI Core</td>
     <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
   </tr>
+   <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/distribute_barrier_extend/README.md">distribute_barrier_extend</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
+ 	</tr>
   <tr>
     <td>mc2</td>
     <td><a href="../../mc2/grouped_mat_mul_all_reduce/README.md">grouped_mat_mul_all_reduce</a></td>

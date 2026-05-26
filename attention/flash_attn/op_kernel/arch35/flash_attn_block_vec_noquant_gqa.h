@@ -283,7 +283,7 @@ public:
 
     __aicore__ inline bool IsInitAttentionOutGm()
     {
-        return constInfo.isInitOutput;
+return constInfo.isInitOutput;
     }
 
     __aicore__ inline void InitOutputSingleCore()

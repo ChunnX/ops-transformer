@@ -29,9 +29,13 @@ constexpr int64_t INPUT_CACHE_INDICES_INDEX = 4;
 constexpr int64_t INPUT_INITIAL_STATE_MODE_INDEX = 5;
 constexpr int64_t INPUT_BIAS_INDEX = 6;
 constexpr int64_t INPUT_NUM_ACCEPTED_TOKEN_INDEX = 7;
+constexpr int64_t INPUT_NUM_COMPUTED_TOKEN_INDEX = 8;
+constexpr int64_t INPUT_BLOCK_IDX_FIRST_SCHEDULED_TOKEN_INDEX = 9;
+constexpr int64_t INPUT_BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX = 10;
+constexpr int64_t INPUT_INITIAL_STATE_IDX_INDEX = 11;
 
-constexpr int64_t OUTPUT_Y_INDEX = 0;
-constexpr int64_t OUTPUT_CONV_STATES_INDEX = 1;
+constexpr int64_t OUTPUT_CONV_STATES_INDEX = 0;
+constexpr int64_t OUTPUT_Y_INDEX = 1;
 
 ge::graphStatus InferShape4FusedCausalConv1d(gert::InferShapeContext *context)
 {
