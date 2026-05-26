@@ -32,6 +32,7 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 // FP32的0值和极大值
 static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
@@ -338,6 +339,7 @@ struct CommonConstInfo {
     /* 输出shape */
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+    bool enableFlashDecode;
 };
 
 struct PAConstInfo {
