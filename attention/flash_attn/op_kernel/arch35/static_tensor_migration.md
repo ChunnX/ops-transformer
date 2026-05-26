@@ -366,4 +366,4 @@ l0cBufferManager.Init(262144);
 ## 遗留说明
 
 - `vselrIndexesBuf[4]` 保留 `TBuf<>` 类型：其作为数组传递给 `ProcessVec1Vf`/`ProcessVec1VfDn` API，该 API 签名暂未更新，待 VF 接口迁移后可统一替换为 `LocalTensor<uint8_t>[4]`。
-- `BufferManager<L1/UB>::Init(size)` 的静态模式 API 需确认框架版本支持（原 `Init(pipe, size)` 已改为 `Init(size)`）。
+- `BufferManager<L1/UB>::Init` 静态模式：在 `buffer_manager.h` 新增 `Init(LocalTensor<uint8_t> mem)` 重载，各硬件内存（L1/L0A/L0B/L0C/UB）均以 `LocalTensor<uint8_t>{}` (offset=0) 初始化，因为这些硬件内存 bank 的起始地址在静态编程模型中固定为 0。
