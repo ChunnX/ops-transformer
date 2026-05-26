@@ -74,8 +74,8 @@ constexpr uint32_t FLAG_OFFSET = STATE_OFFSET / sizeof(float);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
 #define TemplateMC2TypeFullmeshClass typename XType, typename ExpandXOutType, int32_t QuantMode, \
-                                     bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMC2TypeFullmeshFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+                                     bool IsSmoothScaleExist
+#define TemplateMC2TypeFullmeshFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -177,7 +177,6 @@ private:
     GlobalTensor<int64_t> expertTokenNumsOutGMTensor_;
     GlobalTensor<float> windowInstatusFp32Tensor_;
     GlobalTensor<bool> xActiveMaskGMTensor_;
-    GlobalTensor<XOutType> winTpGatherOutGMTensor_;
     GlobalTensor<int32_t> expandIdxGMTensor_;
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<int32_t> performanceInfoGMTensor_;
@@ -243,7 +242,6 @@ private:
     TBuf<> performanceFlagBuf_;
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
-    GM_ADDR sendTpCountOutGM_;
     GM_ADDR statusSpaceGM_;
     GM_ADDR windowGM_;
     GM_ADDR recvCntWorkspaceGM_;
@@ -329,7 +327,7 @@ private:
     DataCopyParams dataStateParams_{1U, sizeof(uint32_t), 0U, 0U};
 
     MoeDistributeDispatchV2Quant<XInType, ExpandXOutType,
-                XOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather> quantInst_;
+                XOutType, QuantMode, IsSmoothScaleExist, false> quantInst_;
 };
 
 template <TemplateMC2TypeFullmeshClass>
@@ -494,7 +492,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SetDataStatus();
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut;
-    sendTpCountOutGM_ = tpSendCountsOut;
     recvCntWorkspaceGM_ = workspaceGM;
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
