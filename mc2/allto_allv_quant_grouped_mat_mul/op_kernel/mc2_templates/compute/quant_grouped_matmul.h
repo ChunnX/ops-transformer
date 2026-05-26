@@ -34,9 +34,8 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
     CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 class QuantGroupedMatmul {
 public:
-    __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM,
-        GM_ADDR yGM, GM_ADDR workspaceGM,
-        const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
+    __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
+        GM_ADDR groupListGM, GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
         TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
     {
         if ASCEND_IS_AIV {
@@ -61,7 +60,7 @@ public:
         a_ = tilingData_->taskTilingInfo.A;
 
         uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_;
-        groupListGm_ = workspaceGM_;
+        groupListGm_ = groupListGM;
         ptrTableBase_ = groupListGm_ + groupListSize;
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
@@ -82,6 +81,17 @@ public:
         }
     }
 
+    // 11-param overload for backward compatibility with quantgmmalltoallv
+    // In that context: param5(yGM)=workspaceGM_full, param6(workspaceGM)=gmmGroupListGM
+    __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM,
+        GM_ADDR yGM, GM_ADDR workspaceGM,
+        const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
+        TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+    {
+        Init(xGM, weightGM, xScaleGM, weightScaleGM, yGM, workspaceGM, yGM,
+             tilingData, gmmTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+    }
+
     __aicore__ inline void Process(uint32_t expertIdx)
     {
         if ASCEND_IS_AIV {
@@ -97,7 +107,6 @@ public:
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
         GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
-        GM_ADDR perTokenScalePtr = (xScaleGM_ != nullptr) ? BuildPtrTable(xScaleGM_, 4) : nullptr;
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
@@ -107,7 +116,7 @@ public:
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();
-        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, perTokenScalePtr, yPtr, workspaceGM_,
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
             &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
