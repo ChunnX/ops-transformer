@@ -109,7 +109,7 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename NoQuantCube::Bmm2ResBuffSel<useDn, isFp8>::Type;
+    using bmm2ResBufferType = typename NoQuantCube::Bmm2ResBuffSel<useDn, isFp8, optionalDn>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     // mm2左矩阵P
@@ -325,7 +325,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     if constexpr (bmm2Write2Ub) {
-        if constexpr (!(useDn && isFp8)) {
+        if constexpr (!((useDn && isFp8) || optionalDn)) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
             if ASCEND_IS_AIV {
@@ -631,8 +631,15 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     }
     runParam.s1RealSize = Min(s1BaseSize, runParam.actualS1Size - runParam.s1oIdx * s1BaseSize);
     if constexpr (useDn || useNz) {
-        runParam.s1RealSizeAlign32 = (runParam.s1RealSize + 31) >> 5 << 5;
-        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : (runParam.s1RealSizeAlign32 >> 1);
+        if constexpr (optionalDn) {
+            runParam.s1RealSizeAlign64 = (runParam.s1RealSize + 63) >> 6 << 6;
+            runParam.halfS1RealSize = runParam.s1RealSize <= 32 ?
+                                      runParam.s1RealSize : (runParam.s1RealSizeAlign64 >> 1);
+        } else {
+            runParam.s1RealSizeAlign32 = (runParam.s1RealSize + 31) >> 5 << 5;
+            runParam.halfS1RealSize = runParam.s1RealSize <= 16 ?
+                                      runParam.s1RealSize : (runParam.s1RealSizeAlign32 >> 1);
+        }
     } else {
         runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     }
@@ -694,7 +701,11 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;
-    runInfo.s1RealSizeAlign32 = runParam.s1RealSizeAlign32;
+    if constexpr (optionalDn) {
+        runInfo.s1RealSizeAlign64 = runParam.s1RealSizeAlign64;
+    } else {
+        runInfo.s1RealSizeAlign32 = runParam.s1RealSizeAlign32;
+    }
     runInfo.halfS1RealSize = runParam.halfS1RealSize;
     runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
 
