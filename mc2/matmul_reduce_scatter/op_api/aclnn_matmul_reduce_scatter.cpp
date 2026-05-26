@@ -169,7 +169,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
 aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
                                                  const char *group, const char *reduce_op, int64_t commTurn,
-                                                 int64_t streamMode, const aclTensor *output,
+                                                 int64_t streamMode, aclTensor *output,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor) {
   uint64_t timeStamp = NnopbaseMsprofSysTime();
   // 固定写法，参数检查
@@ -204,7 +204,7 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
   if (IsAscend910A5()) {
     const char *commMode = "ccu";
     return aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, reduce_op,
-                                                      commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
+                                                      commTurn, streamMode, 0, commMode, output,
                                                       nullptr, workspaceSize, executor);
   }
     aclnnStatus ret = aclnnInnerMatmulReduceScatterGetWorkspaceSize(x1, x2, bias, const_cast<char*>(group),

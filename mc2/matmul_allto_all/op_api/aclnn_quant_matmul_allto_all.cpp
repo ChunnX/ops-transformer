@@ -413,7 +413,7 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(const aclTensor*
                                                                 const aclTensor* x1ScaleOptional, const aclTensor* x2ScaleOptional,
                                                                 const aclTensor* commScaleOptional,
                                                                 const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
-                                                                char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
+                                                                const char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
                                                                 int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
                                                                 int64_t commQuantMode, int64_t commQuantDtype,
                                                                 bool transposeX1, bool transposeX2, int64_t groupSize,
@@ -466,7 +466,6 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
     const aclTensor* out = output;
     int64_t worldSize = -1;
-    char* str_group = const_cast<char*>(group);
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
     commQuantDtype = op::DataType::DT_UNDEFINED;
     // 生成yDtype，图模式需要
@@ -481,7 +480,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
     }
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        str_group, worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
+        group, worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
         transposeX1, transposeX2, groupSize, out, workspaceSize, executor);
     OP_LOGD("QuantMatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
