@@ -564,8 +564,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::GetStrides()
         tilingData_.stateStride0 = strideState->GetStride(0);
         tilingData_.stateStride1 = strideState->GetStride(1);
     } else {
-        tilingData_.stateStride1 = static_cast<int64_t>(tilingData_.dk) * static_cast<int64_t>(tilingData_.dv);
-        tilingData_.stateStride0 = static_cast<int64_t>(tilingData_.nv) * tilingData_.stateStride1;
+        tilingData_.stateStride1 = static_cast<uint64_t>(tilingData_.dk) * static_cast<uint64_t>(tilingData_.dv);
+        tilingData_.stateStride0 = static_cast<uint64_t>(tilingData_.nv) * tilingData_.stateStride1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -587,8 +587,8 @@ void RecurrentGatedDeltaRuleTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "hasGama: [%u]", tilingData_.hasGama);
     OP_LOGD(context_->GetNodeName(), "hasGamaK: [%u]", tilingData_.hasGamaK);
     OP_LOGD(context_->GetNodeName(), "hasAcceptedTokens: [%u]", tilingData_.hasAcceptedTokens);
-    OP_LOGD(context_->GetNodeName(), "stateStride0: [%ld]", tilingData_.stateStride0);
-    OP_LOGD(context_->GetNodeName(), "stateStride1: [%ld]", tilingData_.stateStride1);
+    OP_LOGD(context_->GetNodeName(), "stateStride0: [%lu]", tilingData_.stateStride0);
+    OP_LOGD(context_->GetNodeName(), "stateStride1: [%lu]", tilingData_.stateStride1);
 }
 
 ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
