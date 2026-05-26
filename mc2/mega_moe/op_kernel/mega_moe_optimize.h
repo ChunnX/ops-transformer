@@ -1050,13 +1050,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     FirstBuffInit();
 
-    // === 穿刺版本：dispatch 走同步模式（pr_5426 风格），不做 prefetch ===
-    // 原因：AIV1 prefetch (e+1) 跟 AIV0 GMM1 epi (e) 共享物理 vec 核的 UB（offset 0 起的
-    // FirstBuffInit tensors vs epilogue 的 gluRes/quantOutput 等），并发会出 UB OOB。
-    // 此版本里 AIV1 在每个 expert iter 进入 wave loop 前同步做完 dispatch，
-    // 再让 AIV0 进 GMM1 epi、AIV1 进 GMM2 combine。AIV0/AIV1 不并发，UB 不冲突。
-    // 待打通后再单独优化 prefetch（需要把 dispatch tensors 改成跟 epilogue 不冲突的 UB 区域）。
-
+    // === prefetch 版本（参考 commit e9f093d）：dispatch 提前一轮 ===
+    // pre-loop：AIV1 sub1 先 dispatch expert 0；进入 expert loop 后，每轮在
+    // UpdateGroupParams(e, 0) 把 totalSendCntInExp_ 读入 problemShape_.M_VALUE
+    // 之后再 prefetch expert e+1。这样 cube 等到 flag(2) 立即跑 GMM1，sub1 在
+    // 准备下一个 SendInfoCal/Dispatch 时与 sub0/AIC 的 epi/GMM2 并行。
+    //
+    // 跨轮共用变量隔离分析：
+    //   - totalSendCntInExp_：UpdateGroupParams sub1 在 prefetch 之前先把它读入
+    //                         problemShape_.M_VALUE，再用 m_i = Get<M_VALUE>(...)
+    //                         捕获到栈上。prefetch 改写 totalSendCntInExp_ 不会
+    //                         影响本轮已捕获的 m_i / waveCnt。
+    //   - cumsumRevCntInRank_：全局累加器，SendInfoCal(0..N-1) 仍按序在 AIV1 sub1
+    //                          上串行执行（pre-loop + body 内 prefetch 单链），顺序成立。
+    //   - cumsumInfoTensor_：按 (localExpertId * worldSize_ + rank) 寻址，每个
+    //                        expert 独立槽位，prefetch 不会踩本轮。
+    //   - validTopkIndexTensor_/topkIndexTensor_/gatherMaskInt32Tensor_/
+    //     expertTokenCntTensor_：仅在同一对 (SendInfoCal(e) → TripleInfoCalAndDispatch(e))
+    //                            内部被写后读，prefetch 把这对调用作为一个原子段一次跑完。
+    //   - GM flag(2) / expertRevNumsGloablTensor_[e*8*aicNum+8*blockIdx]：按 expertIdx
+    //                          隔离槽位 + flag 计数器自然排队，AIC 端 1:1 消费。
+    //   - AIV0 与 AIV1 各自 256KB UB 独立 (见之前 UB 串扰分析)；prefetch (e+1)
+    //                          的 UB 写入与 AIV0 epi(e) 互不可见，无串扰。
+    //
     // 交织：GMM1 scheduler 走全 B 宽 n（每 tile 1 次 mmad）→ tileNum = n / L1_TILE_N
     // 非交织：GMM1 scheduler 走 swiglu 输出 N = n/2（每 tile 2 次 mmad）→ tileNum = (n/2) / L1_TILE_N
     uint64_t schedulerN_const;
@@ -1080,25 +1096,33 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         minCoresPerWaveGmm1 = 1U;
     }
 
-    // for 循环: per-expert 同步 Dispatch + 并行 wave GMM1→GMM2 流水
+    // pre-loop: 把 expert 0 的 dispatch 先发出去，启动整条流水线
+    if constexpr (g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
+            SendInfoCal(0);
+            groupFlagListGm2_.SetGlobalBuffer(
+                (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr);
+            TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_), 0);
+        }
+    }
+
+    // for 循环: per-expert 并行 wave GMM1→GMM2 流水 + prefetch (expertIdx+1) 的 dispatch
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        // 同步 dispatch（pr_5426 风格）：AIV1 先把当前 expert 的 SendInfoCal +
-        // TripleInfoCalAndDispatch 全部做完，AIV0 才进 GMM1 epi。
-        if constexpr (g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                SendInfoCal(expertIdx);
-            }
-        }
+        // 当前 expert 的 SendInfoCal 已经在 pre-loop 或上一轮 prefetch 中跑完，
+        // UpdateGroupParams sub1 读到的 totalSendCntInExp_ 即为 expert e 的值。
         bool valid = UpdateGroupParams(expertIdx, 0);
-        // dispatch flag pointer 指向当前 expert 自己的槽
+
+        // prefetch: 在本轮 UpdateGroupParams 之后，立刻把下一个 expert 的 dispatch 发出去。
+        // 注意必须在 UpdateGroupParams 之后调用，否则 totalSendCntInExp_ 会被 (e+1) 提前覆盖。
         if constexpr (g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
+            if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
+                SendInfoCal(expertIdx + 1U);
                 groupFlagListGm2_.SetGlobalBuffer(
                     (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                    static_cast<int64_t>(expertIdx));
+                    static_cast<int64_t>(expertIdx + 1U));
                 TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_),
-                                         static_cast<int32_t>(expertIdx));
+                                         static_cast<int32_t>(expertIdx + 1U));
             }
         }
 

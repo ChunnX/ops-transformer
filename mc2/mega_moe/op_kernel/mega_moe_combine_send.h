@@ -32,8 +32,6 @@ __aicore__ inline void CombineTokensOptimize(
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = 1;
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);        // N_VALUE是当前tile块的n长度
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
