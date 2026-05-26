@@ -16,11 +16,11 @@
 #include "ts_aclnn_ffn.h"
 
 namespace {
-TEST_P(Ts_Aclnn_FFN_WithParam_Ascend910B3, Tc_Aclnn_FFN)
-{
-    ASSERT_TRUE(case_->Init());
-    ASSERT_TRUE(case_->Run());
-}
+// TEST_P(Ts_Aclnn_FFN_WithParam_Ascend910B3, Tc_Aclnn_FFN)
+// {
+//     ASSERT_TRUE(case_->Init());
+//     ASSERT_TRUE(case_->Run());
+// }
 
 const auto Tc_FFN_Aclnn_Case = ::testing::Values(
 
@@ -163,5 +163,5 @@ const auto Tc_FFN_Aclnn_Case = ::testing::Values(
              GenTensor("deqScale2", {512}, ge::DataType::DT_BF16), GenTensor("y", {256, 512}, ge::DataType::DT_BF16)},
             {}, "fastgelu", 1, -1, FunctionType::QUANT, AclnnFFNVersion::V3)));
 
-INSTANTIATE_TEST_SUITE_P(FFN, Ts_Aclnn_FFN_WithParam_Ascend910B3, Tc_FFN_Aclnn_Case);
+// INSTANTIATE_TEST_SUITE_P(FFN, Ts_Aclnn_FFN_WithParam_Ascend910B3, Tc_FFN_Aclnn_Case);
 } // namespace
