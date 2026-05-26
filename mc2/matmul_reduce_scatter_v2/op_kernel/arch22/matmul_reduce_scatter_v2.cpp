@@ -28,17 +28,25 @@ using namespace matmulReduceScatterV2_aivmode_tiling;
 using namespace AscendC;
 using namespace MatmulReduceScatterV2Impl;
 
-template <bool TPL_ISBIAS, bool TPL_IS_TRANSPOSE_A, bool TPL_IS_TRANSPOSE_B, bool TPL_IS_SMALLM>
+template <bool TPL_ISBIAS, int MM_REDUCE_SCATTER_BIAS_DTYPE, bool TPL_IS_TRANSPOSE_A, bool TPL_IS_TRANSPOSE_B, 
+          bool TPL_IS_SMALLM>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM,
                                                     GM_ADDR x2ScaleGM, GM_ADDR quantScaleGM, GM_ADDR cGM,
                                                     GM_ADDR amaxOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     // aiv算子模板
-
+    using DtypeBias = float;
+    if constexpr (MM_REDUCE_SCATTER_BIAS_DTYPE == TILINGKEY_TPL_FP32) {
+        using DtypeBias = float;
+    } else if constexpr (MM_REDUCE_SCATTER_BIAS_DTYPE == TILINGKEY_TPL_BF16) {
+        using DtypeBias = bfloat16_t;
+    } else if constexpr (MM_REDUCE_SCATTER_BIAS_DTYPE == TILINGKEY_TPL_FP16) {
+        using DtypeBias = half;
+    }
 #define INVOKE_MMREDUCESCATTER_AIV_MODE_OP_IMPL(templateClass, ...)                                                    \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(MatmulReduceScatterV2AivModeTilingData, tilingData, tilingGM);                     \
-        templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_X2_SCALE, DTYPE_Y, __VA_ARGS__> op;                        \
+        templateClass<DTYPE_X1, DTYPE_X2, DtypeBias, DTYPE_X2_SCALE, DTYPE_Y, __VA_ARGS__> op;                        \
         op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, workspaceGM, tilingGM);                                   \
         op.Process();                                                                                                  \
     } while (0)
