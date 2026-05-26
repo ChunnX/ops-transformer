@@ -6,10 +6,8 @@
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 
-namespace npu_ops_transformer_ext
-{
-    namespace FinalRouting
-    {
+namespace npu_ops_transformer_ext {
+    namespace FinalRouting {
         #include <iostream>
         #include <stdio.h>
         #include "kernel_operator.h"
@@ -57,10 +55,10 @@ namespace npu_ops_transformer_ext
 
             __aicore__ inline void Process()
             {
-                for(int64_t tis = 0; tis < gbTokenNum_; tis += blockNum_){
+                for (int64_t tis = 0; tis < gbTokenNum_; tis += blockNum_) {
                     int64_t token_idx = tis + blockIdx_;
 
-                    if(token_idx < gbTokenNum_){
+                    if (token_idx < gbTokenNum_) {
                         LocalTensor<int32_t> local_token_table = inQueTokenTable_.AllocTensor<int32_t>();
                         LocalTensor<bfloat16_t> local_score_table = inQueScoreTable_.AllocTensor<bfloat16_t>();
                         
@@ -81,9 +79,9 @@ namespace npu_ops_transformer_ext
                         lmOutFloat_ = lmOut_.ReinterpretCast<float>();
                         Duplicate(lmOutFloat_, (float)0.0, bkCopyNumAlign_);
                         
-                        for(int64_t expert_idx = 0; expert_idx < gbExpertNum_; expert_idx++){
+                        for (int64_t expert_idx = 0; expert_idx < gbExpertNum_; expert_idx++) {
                             int64_t routing_token_idx = lmTokenTable_.GetValue(expert_idx);
-                            if(routing_token_idx >= 0){
+                            if (routing_token_idx >= 0) {
                                 CopyIn(routing_token_idx);
                                 Compute(AscendC::ToFloat(lmScoreTable_.GetValue(expert_idx)));
                             }
@@ -165,9 +163,9 @@ namespace npu_ops_transformer_ext
             op.Process();
         }
 
-        void final_routing_kernel_lanuch(int64_t block_dim, void* stream, 
-                uint8_t* in, uint8_t* token_table, uint8_t* score_table, uint8_t* out,
-                const int64_t expert_num, const int64_t token_num, const int64_t copy_byte)
+        void final_routing_kernel_lanuch(int64_t block_dim, void* stream,
+            uint8_t* in, uint8_t* token_table, uint8_t* score_table, uint8_t* out,
+            const int64_t expert_num, const int64_t token_num, const int64_t copy_byte)
         {
             compute_final_routing<<<block_dim, nullptr, stream>>>(in, token_table, score_table, out,
                     expert_num, token_num, copy_byte);
@@ -183,7 +181,8 @@ namespace npu_ops_transformer_ext
         }
 
 
-        int judge_final_routing_lanuch(const int64_t expert_num, const int64_t token_num, const int64_t copy_byte, const int64_t ubSize, const int64_t vCores)
+        int judge_final_routing_lanuch(const int64_t expert_num, const int64_t token_num, const int64_t copy_byte,
+            const int64_t ubSize, const int64_t vCores)
         {
             (void)(vCores);
 
@@ -210,23 +209,24 @@ namespace npu_ops_transformer_ext
             use_byte += gbExpertNumAlign_ * sizeof(int32_t);
             use_byte += gbExpertNumAlign_ * sizeof(int16_t);
 
-            if(use_byte > ubSize){ 
-                std::cout << __FUNCTION__ << ": " << use_byte/1024 << " KB" << std::endl; 
+            if (use_byte > ubSize) {
+                std::cout << __FUNCTION__ << ": " << use_byte/1024 << " KB" << std::endl;
                 return 1;
             }
             return 0;
         }
 
-        int final_routing_lanuch(int64_t block_dim, void* stream, 
-                uint8_t* in, uint8_t* token_table, uint8_t* score_table, uint8_t* out,
-                const int64_t expert_num, const int64_t token_num, const int64_t copy_byte)
+        int final_routing_lanuch(int64_t block_dim, void* stream,
+            uint8_t* in, uint8_t* token_table, uint8_t* score_table, uint8_t* out,
+            const int64_t expert_num, const int64_t token_num, const int64_t copy_byte)
         {
             int64_t ubSize = 184 * 1024;
             int64_t vCores = 40;
             
             int ret = judge_final_routing_lanuch(expert_num, token_num, copy_byte, ubSize, vCores);
-            if(ret == 0){
-                final_routing_kernel_lanuch(block_dim, stream, in, token_table, score_table, out, expert_num, token_num, copy_byte);
+            if (ret == 0) {
+                final_routing_kernel_lanuch(block_dim, stream, in, token_table, score_table,
+                    out, expert_num, token_num, copy_byte);
                 return 0;
             }
             
@@ -234,7 +234,9 @@ namespace npu_ops_transformer_ext
             return 1;
         }
 
-        int64_t final_routing_npu(int64_t block_dim, torch::Tensor &in, torch::Tensor &token_table, torch::Tensor &score_table, torch::Tensor &out){
+        int64_t final_routing_npu(int64_t block_dim, torch::Tensor &in, torch::Tensor &token_table,
+            torch::Tensor &score_table, torch::Tensor &out)
+        {
             TORCH_CHECK(torch_npu::utils::is_npu(in), "input tensor must be on NPU device");
             TORCH_CHECK(torch_npu::utils::is_npu(token_table), "token table tensor must be on NPU device");
             TORCH_CHECK(torch_npu::utils::is_npu(score_table), "score table tensor must be on NPU device");
@@ -246,9 +248,10 @@ namespace npu_ops_transformer_ext
             
             auto stream = c10_npu::getCurrentNPUStream().stream(false);
             int launchStatus = 0;
-            auto acl_call = [=, &launchStatus]() -> int
-            {
-                launchStatus = final_routing_lanuch(block_dim, stream, (uint8_t *)in.data_ptr(), (uint8_t *)token_table.data_ptr(), (uint8_t *)score_table.data_ptr(), (uint8_t *)out.data_ptr(), expert_num, token_num, copy_byte);
+            auto acl_call = [=, &launchStatus]() -> int {
+                launchStatus = final_routing_lanuch(block_dim, stream, (uint8_t *)in.data_ptr(),
+                (uint8_t *)token_table.data_ptr(), (uint8_t *)score_table.data_ptr(), (uint8_t *)out.data_ptr(),
+                expert_num, token_num, copy_byte);
                 return 0;
             };
             at_npu::native::OpCommand::RunOpApi("FinalRouting", acl_call);
@@ -258,6 +261,6 @@ namespace npu_ops_transformer_ext
         TORCH_LIBRARY_IMPL(npu_ops_transformer_ext, PrivateUse1, m)
         {
             m.impl("final_routing", final_routing_npu);
-        }               
+        }
     }
 }
