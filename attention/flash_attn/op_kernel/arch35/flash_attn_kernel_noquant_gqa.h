@@ -249,14 +249,14 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager.Init(LocalTensor<uint8_t>{}); // L1 从 offset=0 起
+        l1BufferManager.InitStatic(); // L1 从 offset=0 起，TPosition::A1
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(LocalTensor<uint8_t>{}); // UB 从 offset=0 起
+            ubBufferManager.InitStatic(); // UB 从 offset=0 起，TPosition::VECIN
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         } else {
-            ubBufferManager.Init(LocalTensor<uint8_t>{}); // UB 从 offset=0 起
+            ubBufferManager.InitStatic(); // UB 从 offset=0 起，TPosition::VECIN
         }
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
 

@@ -356,9 +356,9 @@ public:
         }
 
         // L0A B C 各硬件内存从 offset=0 起静态使用
-        l0aBufferManager.Init(LocalTensor<uint8_t>{}); // L0A from offset=0
-        l0bBufferManager.Init(LocalTensor<uint8_t>{}); // L0B from offset=0
-        l0cBufferManager.Init(LocalTensor<uint8_t>{}); // L0C from offset=0
+        l0aBufferManager.InitStatic(); // L0A from offset=0, TPosition::A2
+        l0bBufferManager.InitStatic(); // L0B from offset=0, TPosition::B2
+        l0cBufferManager.InitStatic(); // L0C from offset=0, TPosition::CO1
         // L0A B C当前写死，要改成通过计算获取
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
