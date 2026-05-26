@@ -35,6 +35,7 @@ constexpr int64_t ASSIST_INDEX_NUM = 32;
 constexpr int64_t MRGSORT_LIST_MAX_ELEMENT = 2040;
 constexpr float MAX_INT8 = 127.0f;
 constexpr uint32_t INF = 0xFF7FFFFF;
+constexpr int64_t FILTER_CHUNK_SIZE = 4096;
 
 constexpr int64_t MERGE_LIST_TWO = 2;
 constexpr int64_t MERGE_LIST_THREE = 3;
@@ -54,6 +55,8 @@ constexpr int64_t EXERPT_TOKENS_CUMSUM = 0;
 constexpr int64_t EXERPT_TOKENS_COUNT = 1;
 constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
 constexpr int64_t EXERPT_TOKENS_NONE = 0;
+constexpr int64_t COUNTING_SORT_THRESHOLD = 1536;
+constexpr int64_t PERFORMANCE_MODE_RANGE_MAX = 32;
 
 const __gm__ int32_t assist[256] = {
     0,  0, 0, 0, 0, 0, 0, 0, 1,  0, 0, 0, 0, 0, 0, 0, 2,  0, 0, 0, 0, 0, 0, 0, 3,  0, 0, 0, 0, 0, 0, 0,
@@ -64,6 +67,21 @@ const __gm__ int32_t assist[256] = {
     20, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 0, 0, 0, 0, 22, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0,
     24, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 0, 0,
     28, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, 31, 0, 0, 0, 0, 0, 0, 0};
+
+template <typename T>
+__aicore__ inline T OpsBaseCeilDiv(T a, T b)
+{
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+}
+
+template <typename T>
+__aicore__ inline T OpsBaseCeilAlign(T a, T b)
+{
+    return OpsBaseCeilDiv(a, b) * b;
+}
 
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {

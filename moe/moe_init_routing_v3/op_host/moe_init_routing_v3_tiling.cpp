@@ -40,6 +40,15 @@ const static int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
 const static int64_t ACTIVE_NUM_MIN_VALUE = static_cast<int64_t>(-1);
 const static int64_t EXPERT_CAPACITY_MIN_VALUE = static_cast<int64_t>(0);
 
+// Counting sort constants
+const static int64_t COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM = 128;
+const static int64_t COUNTING_SORT_FILTER_CHUNK_SIZE = 4096;
+const static int64_t COUNTING_SORT_VECTOR_FILTER_THRESHOLD = 64;
+const static int64_t COUNTING_SORT_ONE_REPEAT_COMPARE_NUM = 64;
+const static int64_t COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES = 64 * 1024; // 128KB
+const static int64_t COUNTING_SORT_MIN_N = 256;                         // 128KB
+const static int64_t COUNTING_SORT_MAX_N = 1024 * 1024;                 // 128KB
+
 const static int64_t INPUT_X_INDEX = 0;
 const static int64_t INPUT_EXPERT_IDX_INDEX = 1;
 const static int64_t INPUT_SCALE_INDEX = 2;
@@ -101,6 +110,9 @@ const static int64_t PERFORMANCE_MODE_BS_MAX = 8192;
 const static int64_t PERFORMANCE_MODE_RANGE_MAX = 32;
 const static int64_t PERFORMANCE_MODE_MAX_BATCH_SIZE_TOP_K = PERFORMANCE_MODE_BS_MAX * PERFORMANCE_MODE_TOP_K;
 const static int64_t PERFORMANCE_MODE_MAX_ONE_CORE_GATHER = 21845;
+
+const static int64_t ONE_BLOCK_ELEMENT = 8;
+const static int64_t COUNTING_SORT_THRESHOLD = 1536;
 
 const static int64_t gatherFirstN = 100;
 const static int64_t gatherFirstScale = 8;
@@ -203,6 +215,12 @@ private:
     void SetGatherTilingDataCols(MoeV3SrcToDstCapacityComputeTilingData *tilingData, int64_t baseMaxCols, int64_t cols);
     void SetGatherTilingDataRows(MoeV3SrcToDstCapacityComputeTilingData *tilingData, int64_t perCoreRows,
                                  int64_t lastCoreRows, int64_t basePerLoopMaxRows);
+    void ComputeCountingSortTiling();
+    int64_t EstimateCountingSortFullLoadUB(
+        int64_t coreTokenNum, int64_t coreEntries, int64_t expertCountStride, int64_t filterNeedCoreNum,
+        int64_t actualExpertNum);
+    void ComputeCountingSortCutOriginTiling(
+        int64_t filterNeedCoreNum, int64_t filterPerCoreTokens, int64_t expertCountStride, int64_t actualExpertNum);
     void Tiling4SrcToDstDropPadCompute();
     void Tiling4SrcToDstDropPadDynamicCompute();
     void Tiling4SrcToDstCompute();
@@ -238,6 +256,8 @@ private:
     int64_t gatherFirstFullload_ = 0;
     int64_t ep_ = 0;
     int64_t smoothType_ = 0;
+    int64_t countingSortFullLoad_ = -1;
+    size_t countingSortWorkspaceSize_ = 0;
 
     const gert::StorageShape *xShapePtr_ = nullptr;
     const gert::StorageShape *expertIdxShapePtr_ = nullptr;
@@ -658,7 +678,8 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetShapeAttrsInfo()
 void MoeInitRountingV3TilingBase::ShowTilingData()
 {   
     int64_t isFullloadInt = 1 ? isFullload_ == true : 0;
-    OP_LOGI(context_, "isFullload: %ld, gatherFirstFullload: %ld, ep: %ld", isFullloadInt, gatherFirstFullload_, ep_);
+    OP_LOGI(context_, "isFullload: %ld, gatherFirstFullload: %ld, ep: %ld, countingSortFullLoad: %ld", isFullloadInt,
+        gatherFirstFullload_, ep_, countingSortFullLoad_);
 }
 
 int64_t MoeInitRountingV3TilingBase::IsGatherFirstFullLoad() {
@@ -715,6 +736,131 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
         remainUb -= (quantSpace + scaleOutSpace);
     }
     return remainUb > 0;
+}
+
+void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
+{
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N || ep_ != 1 || quantMode_ != UN_QUANT ||
+        dropPadMode_ != DROP_LESS || expertTokensNumType_ != COUNT ||
+        actualExpertNum > COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM || actualExpertNum <= 0 || k_ != PERFORMANCE_MODE_TOP_K) {
+        return;
+    }
+    if (n_ <= COUNTING_SORT_THRESHOLD && rowIdxTytpe_ == SCATTER &&
+        (expertEnd_ - expertStart_) <= PERFORMANCE_MODE_RANGE_MAX) {
+        return;
+    }
+
+    int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize);
+    int64_t filterPerCoreTokens = Ops::Base::CeilDiv(n_, aivNum);
+    int64_t filterNeedCoreNum = Ops::Base::CeilDiv(n_, filterPerCoreTokens);
+    int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, ONE_BLOCK_ELEMENT);
+    int64_t coreEntries = filterPerCoreTokens * k_;
+    int64_t fullLoadUB = EstimateCountingSortFullLoadUB(
+        filterPerCoreTokens, coreEntries, expertCountStride, filterNeedCoreNum, actualExpertNum);
+
+    countingSortFullLoad_ = (fullLoadUB <= ubSize - LENGTH_1024) ? 1 : 0;
+    int64_t filterChunkSize = (countingSortFullLoad_ == 1) ? 0 : COUNTING_SORT_FILTER_CHUNK_SIZE;
+
+    if (countingSortFullLoad_ == 1) {
+        countingSortWorkspaceSize_ =
+            static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(expertCountStride) * sizeof(int32_t);
+        moeInitRoutingV3TilingData.gatherOutComputeParamsOp.set_needCoreNum(filterNeedCoreNum);
+        moeInitRoutingV3TilingData.gatherOutComputeParamsOp.set_perCoreIndicesElements(filterPerCoreTokens);
+    } else {
+        ComputeCountingSortCutOriginTiling(filterNeedCoreNum, filterPerCoreTokens, expertCountStride, actualExpertNum);
+    }
+
+    OP_LOGI(
+        context_,
+        "CountingSort tiling: countingSortFullLoad=%ld, filterNeedCoreNum=%ld, "
+        "filterPerCoreTokens=%ld, filterChunkSize=%ld, fullLoadUB=%ld, ubSize=%ld, "
+        "countingSortWorkspaceSize=%zu",
+        countingSortFullLoad_, filterNeedCoreNum, filterPerCoreTokens, filterChunkSize, fullLoadUB, ubSize,
+        countingSortWorkspaceSize_);
+}
+
+int64_t MoeInitRountingV3TilingBase::EstimateCountingSortFullLoadUB(
+    int64_t coreTokenNum, int64_t coreEntries, int64_t expertCountStride, int64_t filterNeedCoreNum,
+    int64_t actualExpertNum)
+{
+    int64_t colsAligned = Ops::Base::CeilDiv(cols_ * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+    int64_t scaleSlotSize = ONE_BLOCK_BYTE / SIZE_FP32;
+    int64_t ub = 0;
+
+    ub += Ops::Base::CeilAlign(coreTokenNum * colsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(coreEntries * SIZE_INT32, ONE_BLOCK_BYTE);
+    if (isInputScale_) {
+        ub += Ops::Base::CeilAlign(coreTokenNum * scaleSlotSize * SIZE_FP32, ONE_BLOCK_BYTE);
+    }
+    ub += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(filterNeedCoreNum * expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int64_t)), ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(coreEntries * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE);
+
+    int64_t entriesAligned =
+        Ops::Base::CeilDiv(coreEntries, COUNTING_SORT_ONE_REPEAT_COMPARE_NUM) * COUNTING_SORT_ONE_REPEAT_COMPARE_NUM;
+    int64_t maskBytes = Ops::Base::CeilAlign(Ops::Base::CeilDiv(entriesAligned, ONE_BLOCK_ELEMENT), ONE_BLOCK_BYTE);
+    ub += Ops::Base::CeilAlign(entriesAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+    ub += maskBytes * NUM_THREE;
+    ub += Ops::Base::CeilAlign(entriesAligned * SIZE_INT32, ONE_BLOCK_BYTE) * NUM_THREE;
+
+    return ub;
+}
+
+void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
+    int64_t filterNeedCoreNum, int64_t filterPerCoreTokens, int64_t expertCountStride, int64_t actualExpertNum)
+{
+    int64_t chunkAligned = Ops::Base::CeilAlign(COUNTING_SORT_FILTER_CHUNK_SIZE, ONE_BLOCK_ELEMENT);
+    int64_t persistentSize = Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    // Phase A: chunked filtering
+    int64_t phaseASize = Ops::Base::CeilAlign(chunkAligned * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+    int64_t maskBytesA =
+        Ops::Base::CeilAlign(Ops::Base::CeilDiv(chunkAligned, ONE_BLOCK_ELEMENT), static_cast<int64_t>(sizeof(int8_t)));
+    phaseASize += maskBytesA * NUM_THREE + Ops::Base::CeilAlign(chunkAligned * SIZE_INT32, ONE_BLOCK_BYTE) * NUM_THREE;
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE);
+
+    // Phase B
+    int64_t phaseBSize = Ops::Base::CeilAlign(filterNeedCoreNum * expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseBSize += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseBSize += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int64_t)), ONE_BLOCK_BYTE);
+
+    // Phase C: compute colsLoops/perLoopCols
+    int64_t maxPerLoopColsBytes = COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES;
+    int64_t csPerLoopCols =
+        (cols_ * inuptXDtypeSize_ > maxPerLoopColsBytes) ? (maxPerLoopColsBytes / inuptXDtypeSize_) : cols_;
+    int64_t csColsLoops = Ops::Base::CeilDiv(cols_, csPerLoopCols);
+    int64_t csLastLoopCols = cols_ - (csColsLoops - 1) * csPerLoopCols;
+    int64_t csPerLoopColsAligned =
+        Ops::Base::CeilDiv(csPerLoopCols * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+
+    int64_t phaseCSize = Ops::Base::CeilAlign(chunkAligned * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE);
+    phaseCSize += ONE_BLOCK_BYTE + Ops::Base::CeilAlign(csPerLoopColsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE);
+    if (isInputScale_) {
+        phaseCSize += Ops::Base::CeilAlign(ONE_BLOCK_ELEMENT * SIZE_FP32, ONE_BLOCK_BYTE);
+    }
+
+    int64_t totalUB = persistentSize + std::max({phaseASize, phaseBSize, phaseCSize});
+
+    // Set tiling params
+    auto gatherOp = &moeInitRoutingV3TilingData.gatherOutComputeParamsOp;
+    gatherOp->set_needCoreNum(filterNeedCoreNum);
+    gatherOp->set_perCoreIndicesElements(filterPerCoreTokens);
+    gatherOp->set_colsLoops(csColsLoops);
+    gatherOp->set_perLoopCols(csPerLoopCols);
+    gatherOp->set_lastLoopCols(csLastLoopCols);
+
+    // Workspace: pairs + expertCount
+    int64_t lastCoreTokens = n_ - (filterNeedCoreNum - 1) * filterPerCoreTokens;
+    int64_t maxCoreEntries = std::max(filterPerCoreTokens, lastCoreTokens) * k_;
+    int64_t pairsPerCore = Ops::Base::CeilAlign(maxCoreEntries, ONE_BLOCK_ELEMENT) * NUM_TWO;
+    size_t pairsWorkspaceSize =
+        static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(pairsPerCore) * sizeof(int32_t);
+    size_t expertCountWorkspaceSize =
+        static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(expertCountStride) * sizeof(int32_t);
+    countingSortWorkspaceSize_ = pairsWorkspaceSize + expertCountWorkspaceSize;
 }
 
 bool MoeInitRountingV3TilingBase::IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168() const
@@ -863,6 +1009,9 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
     Tiling4SrcToDstDropPadCompute();
     Tiling4GatherOutCompute();
     isFullload_ = IsFullLoad();
+    if (!isFullload_ && !IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
+        ComputeCountingSortTiling();
+    }
     ShowTilingData();
     return ge::GRAPH_SUCCESS;
 }
@@ -890,25 +1039,28 @@ uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
     }
     else if (IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
         return PERFORMANCE_TILINGKEY_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168;
-    } else if (PerformanceMode::ONE_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
-               rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT) {
+    } else if (countingSortFullLoad_ == 1 ||
+               (PerformanceMode::ONE_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
+                rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT && countingSortFullLoad_ == -1)) {
         uint64_t sortMode = NUM_TWO;
         return static_cast<uint64_t>(TILINGKEY_BASE + sortMode * SORT_CORE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE + 
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
-    } else if (PerformanceMode::MULTI_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
-               rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT) {
+    } else if (countingSortFullLoad_ == 0 ||
+               (PerformanceMode::MULTI_CORE_GATHER_SORT == GetPerformanceMode() && quantMode_ == UN_QUANT &&
+                rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT && countingSortFullLoad_ == -1)) {
         uint64_t sortMode = 3;
         return static_cast<uint64_t>(TILINGKEY_BASE + sortMode * SORT_CORE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE + 
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE +
+                                     static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
+    } else {
+        return static_cast<uint64_t>(TILINGKEY_BASE + static_cast<uint64_t>(sortMode_) * SORT_CORE_TILINGKEY_BASE +
+                                     static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
     }
-    return static_cast<uint64_t>(TILINGKEY_BASE + static_cast<uint64_t>(sortMode_) * SORT_CORE_TILINGKEY_BASE +
-                                 static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                 static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE + 
-                                 static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
 }
 
 ge::graphStatus MoeInitRountingV3TilingBase::GetWorkspaceSize()
@@ -934,6 +1086,10 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetWorkspaceSize()
     }
     if (dropPadMode_ == DROP_PAD) {
         workspaceSize_ += expertIdxValueWorkspaceSize;
+    }
+    // Counting sort may need additional workspace
+    if (countingSortWorkspaceSize_ > workspaceSize_) {
+        workspaceSize_ = countingSortWorkspaceSize_;
     }
     OP_LOGI(context_, "Allocate workspaceSize is: %ld.", workspaceSize_);
     return ge::GRAPH_SUCCESS;
