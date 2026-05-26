@@ -222,13 +222,11 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     if (params_->workspaceGM != nullptr) {
         isDeter_ = true;
         pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
+        uint32_t wsElemCount = params_->deterWorkspaceSize / sizeof(DataTypeOut);
         mmQuantOutGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM));
+            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM), wsElemCount);
         rowIndexGlobal_.SetGlobalBuffer(
             reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
-        if (GetBlockIdx() < 2) {
-            AscendC::PRINTF("[DETER-INIT] blk=%u wsAddr=%p\n", GetBlockIdx(), params_->workspaceGM);
-        }
     }
 }
 
@@ -286,16 +284,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
-        if (GetBlockIdx() < 2 && i == 0) {
-            AscendC::PRINTF("[LWS] blk=%u groupAccumM=%llu offsetM=%llu n_=%llu yOffset=%llu wsIdx=%llu curBaseN=%u\n",
-                GetBlockIdx(), groupAccumM_, offsetM, n_, yOffset, wsIdx, curBaseN);
-            // float dumpVal = yLocal.GetValue(i * alignN_);
-            // AscendC::PRINTF("[LWS-DUMP] blk=%u yLocal[0]=%f\n", GetBlockIdx(), dumpVal);
-            DumpTensor(mmQuantOutGm_[wsIdx], i, 1);
-        }
-        // if (i == 0) {
-        //     DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
-        // }
+        DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
     }
 }
 
