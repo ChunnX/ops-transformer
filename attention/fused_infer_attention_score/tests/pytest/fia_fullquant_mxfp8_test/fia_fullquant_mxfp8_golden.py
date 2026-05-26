@@ -20,13 +20,17 @@ MXFP8 Flash Attention Golden
 """
 
 import torch
+import torch.nn as nn
 import torch_npu
 import math
+from torchair.configs.compiler_config import CompilerConfig
+import torchair as tng
 import result_compare_method
 
 # ==============================================================================
 # 配置区
 # ==============================================================================
+GRAPH_PATH = 0
 B = 1
 N_q = 1           # query heads
 N_kv = 1           # kv heads
@@ -63,6 +67,8 @@ SEED_K = 3
 SEED_V = 4
 SEED_QR = 8
 SEED_KR = 9
+
+DEVICE_ID = 0
 
 # ==============================================================================
 # 量化 scale 计算
@@ -900,35 +906,8 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             k_rope_npu = None
 
         print("[NPU] 调用 PA 模式...")
-        npu_out = torch_npu.npu_fused_infer_attention_score_v2(
-            q_npu, k_npu, v_npu,
-            query_rope=q_rope_npu,
-            key_rope=k_rope_npu,
-            atten_mask=mask_arg,
-            actual_seq_qlen=accum_seq_q,
-            actual_seq_kvlen=actual_seq_kv,
-            dequant_scale_query=deq_q_npu,
-            dequant_scale_key=deq_k_npu,
-            dequant_scale_value=deq_v_npu,
-            num_query_heads=N_q,
-            num_key_value_heads=N_kv,
-            block_size=BLOCK_SIZE,
-            block_table=block_table_npu,
-            softmax_scale=softmax_scale,
-            input_layout="TND",
-            sparse_mode=SPARSE_MODE,
-            query_quant_mode=6,
-            key_quant_mode=6,
-            value_quant_mode=8,
-            query_dtype=FP8_DTYPE,
-            key_dtype=FP8_DTYPE,
-            value_dtype=FP8_DTYPE,
-            dequant_scale_query_dtype=torch_npu.float8_e8m0fnu,
-            dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
-            dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
-            quant_scale_p=p_scale_npu,
-            out_dtype=out_dtype,
-        )
+        atten_out, lse_out = mxfp8_fa_torch_npu(q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg, accum_seq_q, actual_seq_kv,
+            deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, block_table_npu, N_q, N_kv, softmax_scale, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
     else:
         k_npu = convert_kv_bnsd_to_layout(k_fp8, actual_seq_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
         v_npu = convert_kv_bnsd_to_layout(v_fp8, actual_seq_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
@@ -959,21 +938,40 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             k_rope_npu = None
 
         print(f"[NPU] 调用 {npu_input_layout} 模式...")
-        npu_out = torch_npu.npu_fused_infer_attention_score_v2(
-            q_npu, k_npu, v_npu,
-            query_rope=q_rope_npu,
-            key_rope=k_rope_npu,
-            atten_mask=mask_arg,
-            actual_seq_qlen=accum_seq_q,
-            actual_seq_kvlen=accum_seq_kv,
-            dequant_scale_query=deq_q_npu,
-            dequant_scale_key=deq_k_npu,
-            dequant_scale_value=deq_v_npu,
-            num_query_heads=N_q,
-            num_key_value_heads=N_kv,
+        atten_out, lse_out = mxfp8_fa_torch_npu(q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg, accum_seq_q, accum_seq_kv,
+            deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, None, N_q, N_kv, softmax_scale, npu_input_layout, 0, SPARSE_MODE, out_dtype)
+
+    npu_output = atten_out
+    T_actual = sum(actual_seq_q)
+    if npu_output.shape[0] > T_actual:
+        npu_output = npu_output[:T_actual]
+    print(f"[NPU] output={npu_output.shape}")
+    return npu_output
+
+class Network(nn.Module):
+    def __init__(self):
+        super(Network, self).__init__()
+
+    def forward(self, q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
+                dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype):
+        atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
+            q, k, v,
+            query_rope=q_rope,
+            key_rope=k_rope,
+            atten_mask=mask,
+            actual_seq_qlen=actual_seq_q,
+            actual_seq_kvlen=actual_seq_kv,
+            dequant_scale_query=dequant_scale_q,
+            dequant_scale_key=dequant_scale_k,
+            dequant_scale_value=dequant_scale_v,
+            block_table=block_table,
+            block_size=block_size,
+            num_query_heads=q_n,
+            num_key_value_heads=kv_n,
             softmax_scale=softmax_scale,
-            input_layout=npu_input_layout,
-            sparse_mode=SPARSE_MODE,
+            input_layout=layout,
+            sparse_mode=sparse_mode,
             query_quant_mode=6,
             key_quant_mode=6,
             value_quant_mode=8,
@@ -983,16 +981,111 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             dequant_scale_query_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
             dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
-            quant_scale_p=p_scale_npu,
+            quant_scale_p=p_scale,
             out_dtype=out_dtype,
         )
 
-    npu_output = npu_out[0]
-    T_actual = sum(actual_seq_q)
-    if npu_output.shape[0] > T_actual:
-        npu_output = npu_output[:T_actual]
-    print(f"[NPU] output={npu_output.shape}")
-    return npu_output
+        return atten_out, lse_out
+
+def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
+                       dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                       block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype):
+
+    device_id = DEVICE_ID
+    torch_npu.npu.set_device(int(device_id))
+
+    if GRAPH_PATH == 0:
+        print("[NPU] 调用单算子模式...")
+        atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
+            q, k, v,
+            query_rope=q_rope,
+            key_rope=k_rope,
+            atten_mask=mask,
+            actual_seq_qlen=actual_seq_q,
+            actual_seq_kvlen=actual_seq_kv,
+            dequant_scale_query=dequant_scale_q,
+            dequant_scale_key=dequant_scale_k,
+            dequant_scale_value=dequant_scale_v,
+            block_table=block_table,
+            block_size=block_size,
+            num_query_heads=q_n,
+            num_key_value_heads=kv_n,
+            softmax_scale=softmax_scale,
+            input_layout=layout,
+            sparse_mode=sparse_mode,
+            query_quant_mode=6,
+            key_quant_mode=6,
+            value_quant_mode=8,
+            query_dtype=FP8_DTYPE,
+            key_dtype=FP8_DTYPE,
+            value_dtype=FP8_DTYPE,
+            dequant_scale_query_dtype=torch_npu.float8_e8m0fnu,
+            dequant_scale_key_dtype=torch_npu.float8_e8m0fnu,
+            dequant_scale_value_dtype=torch_npu.float8_e8m0fnu,
+            quant_scale_p=p_scale,
+            out_dtype=out_dtype,
+        )
+        return atten_out, lse_out 
+
+    npu_mode = Network().to("npu:%s" % device_id)
+    config = CompilerConfig()
+    with torch.no_grad():
+        npu_backend = tng.get_npu_backend(compiler_config=config)
+        if GRAPH_PATH == 3:
+            print("[NPU] 调用静态图...")
+            torch._dynamo.reset()
+            npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=False)
+            atten_out, lse_out = npu_mode(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
+                dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
+                q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype)
+
+        elif GRAPH_PATH == 5:
+            print("[NPU] 调用动态图...")
+            torch._dynamo.reset()
+            npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=True)
+            atten_out, lse_out = npu_mode(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
+                dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
+                q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype)
+    
+        elif GRAPH_PATH == 6 or GRAPH_PATH == 7:
+            if GRAPH_PATH == 7:
+                print("[NPU] 调用aclgraph...")
+                config.debug.aclgraph.disable_reinplace_inplaceable_ops_pass = True
+                config.mode = "reduce-overhead"
+            else:
+                print("[NPU] 调用tiling下沉...")
+                config.experimental_config.tiling_schedule_optimize = True
+            npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=True)
+            if q is not None:
+                torch._dynamo.mark_static(q)
+            if k is not None:
+                torch._dynamo.mark_static(k)
+            if v is not None:
+                torch._dynamo.mark_static(v)
+            if q_rope is not None:
+                torch._dynamo.mark_static(q_rope)
+            if k_rope is not None:
+                torch._dynamo.mark_static(k_rope)
+            if mask is not None:
+                torch._dynamo.mark_static(mask)
+            if dequant_scale_q is not None:
+                torch._dynamo.mark_static(dequant_scale_q)
+            if dequant_scale_k is not None:
+                torch._dynamo.mark_static(dequant_scale_k)
+            if dequant_scale_v is not None:
+                torch._dynamo.mark_static(dequant_scale_v)
+            if p_scale is not None:
+                torch._dynamo.mark_static(p_scale)
+            if block_table is not None:
+                torch._dynamo.mark_static(block_table)
+
+            atten_out, lse_out = npu_mode(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
+                dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
+                q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype)
+
+        atten_out = atten_out.cpu().detach()
+        lse_out = lse_out.cpu().detach()
+        return atten_out, lse_out 
 
 # ==============================================================================
 # Main
@@ -1021,11 +1114,11 @@ if __name__ == '__main__':
                                qr_bf16, kr_bf16)
 
     print("\n[Step 3] NPU 调用")
-    npu_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
+    atten_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
                            dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                            ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
                            block_table_torch, qr_bf16, kr_bf16)
 
     print("\n[Step 4] 精度对比")
     cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, ACTUAL_SEQ_Q, "TND")
-    result_compare_method.check_result(cpu_tnd_torch, npu_out)
+    result_compare_method.check_result(cpu_tnd_torch, atten_out)
