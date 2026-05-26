@@ -1083,68 +1083,67 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
-    __aicore__ inline void SoftmaxInitBuffer(LocalMemAllocator &allocator)
+    __aicore__ inline void SoftmaxInitBuffer(LocalMemAllocator<Hardware::UB> &allocator)
     {
-        softmaxSumBuf[0] = allocator.alloc<float>(256 / sizeof(float));
-        softmaxSumBuf[1] = allocator.alloc<float>(256 / sizeof(float));
-        softmaxSumBuf[2] = allocator.alloc<float>(256 / sizeof(float));
+        softmaxSumBuf[0] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
+        softmaxSumBuf[1] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
+        softmaxSumBuf[2] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
 
-        softmaxMaxBuf[0] = allocator.alloc<float>(256 / sizeof(float));
-        softmaxMaxBuf[1] = allocator.alloc<float>(256 / sizeof(float));
-        softmaxMaxBuf[2] = allocator.alloc<float>(256 / sizeof(float));
+        softmaxMaxBuf[0] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
+        softmaxMaxBuf[1] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
+        softmaxMaxBuf[2] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
 
-        softmaxExpBuf[0] = allocator.alloc<T>(256 / sizeof(T));
-        softmaxExpBuf[1] = allocator.alloc<T>(256 / sizeof(T));
-        softmaxExpBuf[2] = allocator.alloc<T>(256 / sizeof(T));
+        softmaxExpBuf[0] = allocator.Alloc<TPosition::VECIN, T, 256 / sizeof(T)>();
+        softmaxExpBuf[1] = allocator.Alloc<TPosition::VECIN, T, 256 / sizeof(T)>();
+        softmaxExpBuf[2] = allocator.Alloc<TPosition::VECIN, T, 256 / sizeof(T)>();
 
-        maxBrdcstBuf = allocator.alloc<float>(2048 / sizeof(float));
-        sumBrdcstBuf = allocator.alloc<float>(2048 / sizeof(float));
+        maxBrdcstBuf = allocator.Alloc<TPosition::VECIN, float, 2048 / sizeof(float)>();
+        sumBrdcstBuf = allocator.Alloc<TPosition::VECIN, float, 2048 / sizeof(float)>();
     }
 
     __aicore__ inline void InitBuffers()
     {
-        LocalMemAllocator allocator;
+        LocalMemAllocator<Hardware::UB> allocator;
         // 跳过 bmm1/bmm2 UB 区域（内核的 ubBufferManager 占用）
         constexpr uint32_t mm1Sz = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         constexpr uint32_t mm2Sz = bmm2Write2Ub ?
             (mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
-        (void)allocator.alloc<uint8_t>(mm1Sz * 2U + mm2Sz * 2U);
+        (void)allocator.Alloc<TPosition::VECIN, uint8_t, mm1Sz * 2U + mm2Sz * 2U>();
 
         if constexpr (!bmm2Write2Ub) {
-            mm2InBuf = allocator.alloc<T>(32768 / sizeof(T));
+            mm2InBuf = allocator.Alloc<TPosition::VECIN, T, 32768 / sizeof(T)>();
         }
-        attenMaskBuf[0] = allocator.alloc<uint8_t>(8192);
-        attenMaskBuf[1] = allocator.alloc<uint8_t>(8192);
-        stage2OutBuf    = allocator.alloc<uint8_t>(32768).template ReinterpretCast<T>();
-        stage1OutBuf[0] = allocator.alloc<uint8_t>(33024).template ReinterpretCast<INPUT_T>();
-        stage1OutBuf[1] = allocator.alloc<uint8_t>(33024).template ReinterpretCast<INPUT_T>();
+        attenMaskBuf[0] = allocator.Alloc<TPosition::VECIN, uint8_t, 8192>();
+        attenMaskBuf[1] = allocator.Alloc<TPosition::VECIN, uint8_t, 8192>();
+        stage2OutBuf    = allocator.Alloc<TPosition::VECIN, uint8_t, 32768>().template ReinterpretCast<T>();
+        stage1OutBuf[0] = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>().template ReinterpretCast<INPUT_T>();
+        stage1OutBuf[1] = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>().template ReinterpretCast<INPUT_T>();
 
         if constexpr (s2BaseSize == 256) {
             if constexpr (mBaseSize == 128) {
                 SoftmaxInitBuffer(allocator);
             } else {
                 SoftmaxInitBuffer(allocator);
-                commonBuf = allocator.alloc<uint8_t>(512);
+                commonBuf = allocator.Alloc<TPosition::VECIN, uint8_t, 512>();
             }
         } else {
             SoftmaxInitBuffer(allocator);
             if constexpr (!useDn) {
-                commonBuf = allocator.alloc<uint8_t>(512);
+                commonBuf = allocator.Alloc<TPosition::VECIN, uint8_t, 512>();
             }
         }
 
-        // vselrIndexesBuf: 保留 TBuf<> 类型，用 LocalTensor 赋値
+        // vselrIndexesBuf: 保留 TBuf<> 类型，用 LocalTensor 赋值
         for (uint32_t i = 0; i < 4; i++) {
-            LocalTensor<uint8_t> tmp = allocator.alloc<uint8_t>(256);
-            vselrIndexesBuf[i] = tmp;
+            vselrIndexesBuf[i] = allocator.Alloc<TPosition::VECIN, uint8_t, 256>();
         }
 
         if (constInfo.isSoftmaxLseEnable) {
-            lseBuf = allocator.alloc<float>((mBaseSize >> 1U) * 8U);
+            lseBuf = allocator.Alloc<TPosition::VECIN, float, (mBaseSize >> 1U) * 8U>();
         }
 
         if (constInfo.learnableSinkFlag) {
-            sinkBuf = allocator.alloc<INPUT_T>(256 / sizeof(INPUT_T));
+            sinkBuf = allocator.Alloc<TPosition::VECIN, INPUT_T, 256 / sizeof(INPUT_T)>();
         }
     }
 
