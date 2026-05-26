@@ -708,8 +708,7 @@ __aicore__ inline void GroupMatmul2Optimize(
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
-            int64_t ubOffset = 0;
-            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECCALC, 64 * 1024, L1_TILE_M * L1_TILE_N);
             MegaMoeCombineImpl::CombineTileOptimize<bfloat16_t, decltype(actualShape)>(
                 mLoc, nLoc, n, expertIdx, rankId, gmmAddrInfo.gmm2OutGlobal,
                 ubBuffer, actualShape, params, static_cast<uint32_t>(groupCnt + waveRowOffset));

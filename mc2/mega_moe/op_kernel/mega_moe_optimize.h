@@ -276,7 +276,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
         (int64_t)(worldSize_ * expertPerRank_ * sizeof(int32_t)), (int64_t)ALIGN_32);
     cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
         cumsumInfoTensorSize / sizeof(int32_t));
-    uint32_t gatherMaskTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    uint32_t topkIndexTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    uint32_t topkIndexTensorSize = Ops::Base::CeilAlign(
+        (int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_32));
+    topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
+        topkIndexTensorSize / sizeof(int32_t));
+    uint32_t gatherMaskTensorAddr = topkIndexTensorAddr + topkIndexTensorSize;
     uint32_t gatherMaskTensorSize = maskAlignSize_ * worldSize_;
     gatherMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr,
         gatherMaskTensorSize / sizeof(uint8_t));
@@ -293,15 +298,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
         (int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_32));
     validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
         validTopkIndexTensorSize / sizeof(int32_t));
-    uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
-    uint32_t topkIndexTensorSize = Ops::Base::CeilAlign(
-        (int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_32));
-    topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
-        topkIndexTensorSize / sizeof(int32_t));
-    // uint32_t tripleTensorAddr = topkIndexTensorAddr + topkIndexTensorSize;
-    // uint32_t tripleTensorSize = maxOutputSize_ * ALIGN_32;
-    // tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr, tripleTensorSize / sizeof(int32_t));
-    uint32_t copyTmpTensor1Addr = topkIndexTensorAddr + topkIndexTensorSize; 
+    uint32_t copyTmpTensor1Addr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t copyTmpTensor1Size = 8 * 1024;
     copyTmpTensor1_ = LocalTensor<QuantOutType>(TPosition::VECCALC, copyTmpTensor1Addr,
         copyTmpTensor1Size / sizeof(QuantOutType));
@@ -1040,7 +1037,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
-    // 触碰一下 build tag，防止 constexpr 字符串被优化掉（用于二进制 grep 验证）
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     BuffInit();
     TopKIdsAllGather();
