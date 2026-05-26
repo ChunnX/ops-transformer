@@ -284,8 +284,6 @@ public:
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
 
-    TPipe *tPipe;
-
     /* =====================GM变量(with layout)==================== */
     FaGmTensorQ queryGm;
     FaGmTensorKV keyGm;
@@ -325,11 +323,10 @@ public:
                         useDn, bmm2Write2Ub, splitD>(constInfo),
           constInfo(constInfo){};
 
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
+    __aicore__ inline void InitCubeBlock(BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
                                          QSeqParserType &qParser, KvSeqParserType &kvParser)
     {
-        tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
         this->qSeqParserPtr = &qParser;
         this->kvSeqParserPtr = &kvParser;
@@ -359,9 +356,9 @@ public:
         }
 
         // L0A B C 当前写死，能否通过基础api获取
-        l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
-        l0bBufferManager.Init(tPipe, 65536);  // 64 * 1024
-        l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
+        l0aBufferManager.Init(65536);  // 64 * 1024
+        l0bBufferManager.Init(65536);  // 64 * 1024
+        l0cBufferManager.Init(262144); // 256 * 1024
         // L0A B C当前写死，要改成通过计算获取
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
