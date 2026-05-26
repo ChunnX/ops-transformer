@@ -146,8 +146,8 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
                 return ge::GRAPH_FAILED);
 
         for (size_t i = 0; i < seqQShapeSize; i++) {
-            int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
-            int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
+            int64_t qSeqLen = (i == 0 ? qValue[i] : std::max(int64_t(0), qValue[i] - qValue[i - 1]));
+            int64_t kvSeqLen = (i == 0 ? kvValue[i] : std::max(int64_t(0), kvValue[i] - kvValue[i - 1]));
             fBaseParams.actualSeqQlen.push_back(qSeqLen);
             fBaseParams.actualSeqKvlen.push_back(kvSeqLen);
             if (qSeqLen != kvSeqLen) {
@@ -166,7 +166,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
         // base shape
         fBaseParams.b = seqQShapeSize - tailZeroCount;
         fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
-        fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
+        fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
     } else {
         fBaseParams.b = 1;
         fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);

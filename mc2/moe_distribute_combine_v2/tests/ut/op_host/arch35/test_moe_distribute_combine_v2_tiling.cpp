@@ -141,7 +141,7 @@ TEST(MoeDistributeCombineV2Arch35ArnTilingTest, BasicSuccess)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 64UL;
+    uint64_t expectTilingKey = 32UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 

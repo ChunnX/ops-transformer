@@ -90,10 +90,8 @@ TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_fp16_tnd_pa_nd)
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
@@ -141,17 +139,15 @@ TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_bf16_tnd_pa_nd)
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdSwaTilingKey);
 }
 
-TEST_F(SparseFlashMlaTiling, test_tiling_cfa_ori_and_cmp_kv_fp16_tnd_pa_nd)
+TEST_F(SparseFlashMlaTiling, test_tiling_hca_ori_and_cmp_kv_fp16_tnd_pa_nd)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -192,17 +188,15 @@ TEST_F(SparseFlashMlaTiling, test_tiling_cfa_ori_and_cmp_kv_fp16_tnd_pa_nd)
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdCfaTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdHcaTilingKey);
 }
 
-TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_fp16_tnd_pa_nd)
+TEST_F(SparseFlashMlaTiling, test_tiling_csa_with_sparse_indices_fp16_tnd_pa_nd)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -243,17 +237,15 @@ TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_fp16_tnd_pa_nd
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdScfaTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdCsaTilingKey);
 }
 
-TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_bf16_tnd_pa_nd)
+TEST_F(SparseFlashMlaTiling, test_tiling_csa_with_sparse_indices_bf16_tnd_pa_nd)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -294,14 +286,12 @@ TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_bf16_tnd_pa_nd
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdScfaTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdCsaTilingKey);
 }
 
 TEST_F(SparseFlashMlaTiling, test_tiling_n1_not_64_failed)
@@ -345,10 +335,8 @@ TEST_F(SparseFlashMlaTiling, test_tiling_n1_not_64_failed)
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
@@ -396,10 +384,8 @@ TEST_F(SparseFlashMlaTiling, test_tiling_ori_kv_null_failed)
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
@@ -447,10 +433,8 @@ TEST_F(SparseFlashMlaTiling, test_tiling_cmp_sparse_indices_without_cmp_kv_faile
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
@@ -498,10 +482,8 @@ TEST_F(SparseFlashMlaTiling, test_tiling_unsupported_dtype_failed)
             {"ori_win_left", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNBD")},
+            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"ori_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"cmp_kv_stride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);

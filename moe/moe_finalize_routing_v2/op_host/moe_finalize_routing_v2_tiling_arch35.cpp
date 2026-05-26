@@ -58,6 +58,7 @@ const static int64_t ATTR_DROP_PAD_MODE_IDX = 0LL;
 const static int64_t ATTR_ZERO_EXPERT_RANGE_IDX = 1LL;
 const static int64_t ATTR_COPY_EXPERT_RANGE_IDX = 2LL;
 const static int64_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3LL;
+const static int64_t ATTR_K_IDX = 4LL;
 
 const static int64_t BATCH_COPY_EXPERT_NUM = 4;
 
@@ -187,9 +188,13 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scalesShape)
 {
+    auto attrsPtr = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
+    const int64_t* attrKPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrKPtr);
+    k = *attrKPtr;
     if (!scalesShape) {
         hasScales_ = false;
-        k = 1;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -199,7 +204,16 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scales",
             std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
         return ge::GRAPH_FAILED);
-    k = scalesShape->GetStorageShape().GetDim(1);
+    int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
+    // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+    if (*attrKPtr > 1) {
+        OP_CHECK_IF(
+            *attrKPtr != scalesDim1,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(*attrKPtr).c_str(), "k must equal scales dim1"),
+            return ge::GRAPH_FAILED);
+    }
+    k = scalesDim1;
     OP_CHECK_IF(
         k <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
             std::to_string(k).c_str(), "k must be greater than 0."),
@@ -967,22 +981,7 @@ bool MoeFinalizeRoutingV2Regbase::IsHFullLoad()
 
 bool MoeFinalizeRoutingV2Regbase::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-    // IsRowKHFullLoad（全维度）→ IsKHFullLoad（K-H 维度）→ IsHFullLoad（仅 H 维度），粒度由粗到细，适配不同 MoE 子任务；
-    rowKHFullLoad_ = IsRowKHFullLoad();
-    if (rowKHFullLoad_) {
-        return true;
-    }
-
-    kHFullLoad_ = IsKHFullLoad();
-    if (kHFullLoad_) {
-        return true;
-    }
-    hFullLoad_ = IsHFullLoad();
-
-    return true;
+    return false;
 }
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::CalcTilingKey()

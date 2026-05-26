@@ -184,7 +184,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
   </tr>
   <tr><td align="left">传入的rotary_mode不为1（仅支持interleave模式）。</td></tr>
   <tr><td align="left">传入的partialSlice长度不为2，或取值范围不合法。</td></tr>
-  <tr><td align="left">传入的xRef、cos、sin的形状不满足约束（维度不为4，或cos与sin形状不一致，或xRef最后一维大小超过1024，或不是2的倍数）。</td></tr>
+  <tr><td align="left">传入的xRef、cos、sin的形状不满足约束（维度不为4，或cos与sin形状不一致，或xRef最后一维大小超过1024，或xRef最后一维不是2的倍数，或partialSlice切片长度不是2的倍数）。</td></tr>
   </table>
 
 ## aclnnInplacePartialRotaryMul
@@ -237,6 +237,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 - 不支持非连续。
 - 输入张量xRef最后一维（D）大小不超过1024。
 - interleave模式（rotary_mode = 1）下，xRef最后一维（D）大小必须为2的倍数。
+- interleave模式（rotary_mode = 1）下，partialSlice切片长度（即partialSlice[1] - partialSlice[0]）必须为2的倍数。
 - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
 - partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ xRef最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 - 仅支持interleave模式（rotary_mode = 1）。

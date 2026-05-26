@@ -267,6 +267,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor/README.md">compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
+  </tr>
+  <tr>
     <td>gmm</td>
     <td><a href="../../gmm/grouped_matmul/README.md">grouped_matmul</a></td>
     <td>✓</td>

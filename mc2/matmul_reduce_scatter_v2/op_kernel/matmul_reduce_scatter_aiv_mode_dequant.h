@@ -136,20 +136,23 @@ public:
                 layoutDst = layoutOutput;
                 gmDst = gmOutput + layoutOutput.GetOffset(offsetC);
             }
+            __gm__ BiasType *gmBiasOffset = (gmbias != nullptr) ? (gmbias + blockLocCoord.n()) : nullptr;
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale, gmbias,
-                              layoutBias, workspace + dataBlockOffset, layoutBlock,
+                              perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
+                              gmBiasOffset, layoutBias, workspace + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerChannel) {
-                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, gmbias, layoutBias,
+                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
+                              gmBiasOffset, layoutBias,
                               workspace + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerToken) {
-                blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale, gmbias,
-                              layoutBias, gmPeerMem + dataBlockOffset, layoutBlock,
+                blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
+                              gmBiasOffset, layoutBias,
+                              gmPeerMem + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             }

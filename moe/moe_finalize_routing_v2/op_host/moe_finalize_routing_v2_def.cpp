@@ -71,6 +71,7 @@ public:
         this->Attr("zero_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
         this->Attr("copy_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
         this->Attr("constant_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("k").AttrType(OPTIONAL).Int(1);
         OpAICoreConfig membaseCfg;
         membaseCfg.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -234,8 +235,8 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("opFile.value", "moe_finalize_routing_v2_apt");
-        this->AICore().AddConfig("ascend950", regbaseCfg);
+            .ExtendCfgInfo("opFile.value", "moe_finalize_routing_v2");
+        this->AICore().AddConfig("ascend950", membaseCfg);
 
         OpAICoreConfig config310p;
         config310p.Input("expanded_x")

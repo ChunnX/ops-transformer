@@ -41,6 +41,7 @@ constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
 constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
 constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
+constexpr uint8_t SYNC_ALL_PRE_FLAG = 13;
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -80,6 +81,7 @@ constexpr uint16_t QUANT_UB2L1_SRC_OFFSET = 512;
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
+constexpr uint32_t PRE_INIT_UB_SIZE = 6 * 1024;
 
 constexpr uint32_t RESERVED_WORKSPACE_SIZE = 64 * 1024;
 constexpr bool INPUT_DISABLE = 0;
@@ -163,6 +165,7 @@ constexpr uint16_t UNROLL_FACTOR = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t NUM_FOUR = 4;
+constexpr uint32_t NUM_FIVE = 5;
 constexpr uint32_t NUM_EIGHT = 8;
 
 constexpr static bool end = true;
@@ -218,6 +221,11 @@ __aicore__ constexpr bool IS_DETER_NEW(const uint8_t deterSparseType)
 __aicore__ constexpr bool NEED_DETER_PREFIX(const uint8_t deterSparseType, bool isTnd)
 {
     return isTnd && IS_DETER_NEW(deterSparseType);
+}
+
+__aicore__ constexpr bool NEED_DETER(const uint8_t deterSparseType)
+{
+    return deterSparseType != NO_DETER;
 }
 
 template <typename T, bool IS_WRITE_UB>
@@ -328,12 +336,12 @@ __aicore__ constexpr bool GET_IS_NZ_OUT(const uint8_t SPLIT_AXIS, const uint32_t
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 #define FagOldTilingType                                                                                               \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, \
-                                                                 false> *__restrict
+    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
+        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
 
 #define FagTilingType                                                                                                  \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, \
-                                                                 IS_TND_SWIZZLE> *__restrict
+    const __gm__ FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
+        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, IS_TND_SWIZZLE> *__restrict
 
 struct LoopInfo {
     int64_t bIdx{0};
@@ -358,10 +366,6 @@ struct DeterConstInfo {
     uint32_t dqEachVectorSize;
     uint32_t dkvEachVectorSize;
     // 确定性计算MTE3的stride
-    int64_t deterBStride;
-    int64_t deterN2Stride;
-    int64_t deterGStride;
-    int64_t deterS1oStride;
     uint32_t deterDqkSrcStride;
     uint32_t deterDvSrcStride;
     uint32_t deterDqDstStride;
@@ -412,7 +416,6 @@ struct FagConstInfo {
     int64_t s1Outer;
     int64_t s2Outer;
     int64_t s1CvTail;
-    int64_t s1Tail;
     int64_t s2Tail;
     uint32_t sfmgMaxLoopSize;
     uint32_t dAlignToBlock;

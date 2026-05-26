@@ -46,8 +46,8 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(
     const aclTensor *actualSeqLengths,
     const aclTensor *gOptional,
     float           scaleValue,
-    aclTensor       *out,
-    aclTensor       *finalState,
+    const aclTensor *out,
+    const aclTensor *finalState,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```

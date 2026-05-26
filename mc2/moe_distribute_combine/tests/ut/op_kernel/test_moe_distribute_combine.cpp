@@ -41,7 +41,7 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest1000)
 
     MoeDistributeCombineTilingData *tiling_data = reinterpret_cast<MoeDistributeCombineTilingData*>(tiling);
     tiling_data->moeDistributeCombineInfo.epWorldSize = 8;
-    tiling_data->moeDistributeCombineInfo.tpWorldSize = 2;
+    tiling_data->moeDistributeCombineInfo.tpWorldSize = 1;
     tiling_data->moeDistributeCombineInfo.epRankId = 0;
     tiling_data->moeDistributeCombineInfo.tpRankId = 0;
     tiling_data->moeDistributeCombineInfo.expertShardType = 0;

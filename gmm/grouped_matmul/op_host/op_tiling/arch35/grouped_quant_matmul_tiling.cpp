@@ -1068,12 +1068,8 @@ ge::graphStatus GroupedQmmTiling::PostTiling()
     return SaveTilingDataToContext(tilingData_);
 }
 
-void GroupedQmmTiling::LogQuantParams(const GMMQuantParams &params) const
+int64_t GroupedQmmTiling::LogQuantParams(const GMMQuantParams &params) const
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.groupNum << ", activeType = " << params.activeType
         << ", aQuantMode = " << params.aQuantMode << ", bQuantMode = " << params.bQuantMode
@@ -1084,11 +1080,12 @@ void GroupedQmmTiling::LogQuantParams(const GMMQuantParams &params) const
         << ", groupListType = " << static_cast<uint32_t>(params.groupListType)
         << ", hasBias = " << static_cast<int32_t>(params.hasBias);
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
+    return 0;
 }
 
 void GroupedQmmTiling::PrintQuantParams()
 {
-    LogQuantParams(tilingData_.gmmQuantParams);
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams(tilingData_.gmmQuantParams));
 }
 
 void GroupedQmmTiling::CalBasicBlock()

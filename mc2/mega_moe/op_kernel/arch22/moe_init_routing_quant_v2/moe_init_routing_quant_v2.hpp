@@ -38,7 +38,8 @@ __aicore__ inline void moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, G
                                                  GM_ADDR expandedX, GM_ADDR expandedRowIdx,
                                                  GM_ADDR expertTokensCountOrCumsum, GM_ADDR expertTokensBeforeCapacity,
                                                  GM_ADDR dynamicQuantScale, GM_ADDR workspace,
-                                                 const MoeInitRoutingQuantV2TilingData *tilingData, uint64_t tilingKey)
+                                                 const MoeInitRoutingQuantV2TilingData *tilingData, uint64_t tilingKey,
+                                                 int64_t colsAlign = ALIGN_512)
 {
     if (g_coreType == AIC) {
         return;
@@ -63,7 +64,7 @@ __aicore__ inline void moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, G
         TPipe sortPipe;
         MoeV2FullLoadDynamicQuant<DTYPE_X> op;
         op.Init(x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum, scale, dynamicQuantScale, workspace,
-                tilingData, &sortPipe);
+                tilingData, &sortPipe, colsAlign);
         op.Process();
         sortPipe.Destroy();
         return;
@@ -137,7 +138,7 @@ __aicore__ inline void moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, G
         TPipe gatherPipe;
         MoeV2GatherDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
         gatherDynamicQuantOp.Init(x, scale, expandedRowIdx, expandedX, dynamicQuantScale, workspace, tilingData,
-                                  &gatherPipe);
+                                  &gatherPipe, colsAlign);
         gatherDynamicQuantOp.Process();
         gatherPipe.Destroy();
     }

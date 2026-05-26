@@ -35,7 +35,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
             "float? activation_clamp=None, " \
             "int? dispatch_quant_out_dtype=None,  " \
-            "int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)"
+            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -46,7 +46,7 @@ class _MegaMoeOpBuilder(OpBuilder):
                               combine_quant_mode=0, comm_alg="",
                               num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                               dispatch_quant_out_dtype=None,
-                              weight1_type=None, weight2_type=None):
+                              weight1_type=None, weight2_type=None, topo_type=None):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -74,13 +74,13 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   combine_quant_mode=0, comm_alg="",
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                   dispatch_quant_out_dtype=None,
-                  weight1_type=None, weight2_type=None):
+                  weight1_type=None, weight2_type=None, topo_type=None):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
         max_recv_token_num, dispatch_quant_mode, combine_quant_mode, comm_alg,
         num_max_tokens_per_rank, activation, activation_clamp, dispatch_quant_out_dtype,
-        weight1_type, weight2_type)
+        weight1_type, weight2_type, topo_type)
 
 
 class SymmBuffer:
@@ -120,9 +120,10 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
+        self.topo_type = self._ctx_manager.topo_type
 
 
-def npu_get_mega_moe_ccl_buffer_size(
+def get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
     dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
@@ -130,15 +131,15 @@ def npu_get_mega_moe_ccl_buffer_size(
 ) -> int:
     def inline_align(val, align):
         return (val + align - 1) // align * align
-    torch._check(((ep_world_size >= 2) and (ep_world_size <= 768)),
-                     lambda: (f"ep_world_size only support in [2, 768], but got {ep_world_size=}."))
+    torch._check(((ep_world_size >= 2) and (ep_world_size <= 1024)),
+                     lambda: (f"ep_world_size only support in [2, 1024], but got {ep_world_size=}."))
     torch._check(((hidden >= 1024) and (hidden <= 8192)),
                     lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
     torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= 512)),
                     lambda: (f"num_max_tokens_per_rank only support in [1, 512], "
                             f"but got {num_max_tokens_per_rank=}."))
-    torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 1024)),
-                    lambda: (f"moe_expert_num only support in [1, 1024], but got {moe_expert_num=}."))
+    torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 2048)),
+                    lambda: (f"moe_expert_num only support in [1, 2048], but got {moe_expert_num=}."))
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
                      lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
     local_moe_expert_num = moe_expert_num // ep_world_size
@@ -241,5 +242,6 @@ def mega_moe(
         activation_clamp=activation_clamp,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
-        weight2_type=weight2_type
+        weight2_type=weight2_type,
+        topo_type=sym_buffer.topo_type
     )

@@ -119,16 +119,18 @@ struct CommParas {
     const char* op;
     const int64_t stream_mode = 1; // STOP_ON_FAILURE
     int64_t comm_turn;
-    const char* comm_mode;
+    const char* comm_mode {nullptr};
 };
 
-inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
+static inline ge::graphStatus GetCommParaBase(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
     const auto attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
+    OPS_CHECK(attrs == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
     para.group = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP));
-    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.group == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
 
     para.op = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_OP));
     para.op = (para.op == nullptr ? "sum" : para.op);
@@ -189,7 +191,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     CommParas comm_para;
     OPS_CHECK(
-        GetCommPara(host_api_ctx, comm_para) != ge::SUCCESS,
+        GetCommParaBase(host_api_ctx, comm_para) != ge::SUCCESS,
         OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get comm paras."), return ge::GRAPH_FAILED);
 
     AllReduceParas all_reduce_para;

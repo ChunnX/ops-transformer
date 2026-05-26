@@ -31,6 +31,7 @@ const int64_t DIM_LEN = 2;
 const int64_t SPLIT_RATIO = 2;
 const int64_t OUT_DIM_LEN = 3;
 const int64_t N_SPLIT_RATIO = 128;
+constexpr int64_t MX_WEIGHTSCALE_MULTI_DIM = 3;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_DTYPE = 3UL;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_MODE = 2UL;
 constexpr size_t QUANT_MODE_MX_TYPE = 2;
@@ -58,6 +59,21 @@ bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
     return DavidSupportedInputDtypes.find(dtype) != DavidSupportedInputDtypes.end();
 }
 
+static bool IsMxA8W4MultiWeightScenario(gert::InferShapeContext *context, const gert::Shape *weightScaleShape,
+                                        const gert::RuntimeAttrs *attrs)
+{
+    const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
+    if (quantModePtr == nullptr || *quantModePtr != static_cast<int64_t>(QUANT_MODE_MX_TYPE)) {
+        return false;
+    }
+    if (weightScaleShape->GetDimNum() != MX_WEIGHTSCALE_MULTI_DIM) {
+        return false;
+    }
+    auto xDtype = context->GetDynamicInputDesc(X_INDEX, 0)->GetDataType();
+    auto weightDtype = context->GetDynamicInputDesc(WEIGHT_INDEX, 0)->GetDataType();
+    return xDtype == ge::DataType::DT_FLOAT8_E4M3FN && weightDtype == ge::DataType::DT_FLOAT4_E2M1;
+}
+
 static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeContext *context)
 {
     const gert::Shape *xShape = context->GetDynamicInputShape(X_INDEX, 0);
@@ -68,9 +84,10 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
     int64_t nDimIndex = weightScaleShape->GetDimNum() - 1;
     auto outScaleShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
-    if (nDimIndex == OUT_DIM_LEN) {
-        auto attrs = context->GetAttrs();
-        OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    bool isMxA8W4MultiWeight = IsMxA8W4MultiWeightScenario(context, weightScaleShape, attrs);
+    if (nDimIndex == OUT_DIM_LEN || isMxA8W4MultiWeight) {
         const bool *transposeWeightPtr = attrs->GetBool(WEIGHTSCALE_INDEX);
         const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
         nDimIndex = transposeWeight ? weightScaleShape->GetDimNum() - OUT_DIM_LEN :
@@ -130,8 +147,8 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
                     GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "x, weight",
                     ListToString(ge::TypeUtils::DataTypeToSerialString(xDtype),
                                  ge::TypeUtils::DataTypeToSerialString(weightDtype)),
-                    "on this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
-                    "FLOAT8_E5M2, FLOAT4_E2M1, INT_8 or HIFLOAT8"),
+                    "On this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
+                    "FLOAT8_E5M2, FLOAT4_E2M1, INT8 or HIFLOAT8"),
                 return GRAPH_FAILED);
 
         OP_CHECK_IF(*quantMode != QUANT_MODE_MX_TYPE && *quantMode != QUANT_MODE_PERTOKEN_TYPE,
@@ -146,7 +163,8 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
             context->SetOutputDataType(1, DataType::DT_FLOAT8_E8M0);
         }  else {
             OP_LOGE(context->GetNodeName(),
-                    "In mx quant mode, quantMode should be 2, but actual value is %ld.", *quantMode);
+                    "In mx quant mode, the dtype of weightScale should be FLOAT8_E8M0, but actual dtype is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(weightScaleDtype).c_str());
             return GRAPH_FAILED;
         }
     } else if (*quantMode == QUANT_MODE_PERTOKEN_TYPE) {

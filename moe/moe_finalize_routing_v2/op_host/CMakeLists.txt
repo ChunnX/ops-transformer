@@ -13,19 +13,10 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         moe_finalize_routing_v2_def.cpp
     )
-    if("${CONDITION_UNIT}" STREQUAL "ascend950")
-        add_ops_compile_options(
-            OP_NAME MoeFinalizeRoutingV2
-            OPTIONS --cce-auto-sync=on
-                    -mllvm 
-                    -cce-aicore-dcci-before-kernel-end=false
-        )
-    else()
-        add_ops_compile_options(
-            OP_NAME MoeFinalizeRoutingV2
-            OPTIONS --cce-auto-sync=off
-        )
-    endif()
+    add_ops_compile_options(
+                OP_NAME MoeFinalizeRoutingV2
+                OPTIONS --cce-auto-sync=off
+            )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

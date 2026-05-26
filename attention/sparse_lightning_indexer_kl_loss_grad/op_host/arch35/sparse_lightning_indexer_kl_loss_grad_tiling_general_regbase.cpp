@@ -255,6 +255,7 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
     auto layoutKeyPtr = attrs->GetAttrPointer<char>(idx++);
     auto sparseModePtr = attrs->GetAttrPointer<int32_t>(idx++);
     auto cmpRatioPtr = attrs->GetAttrPointer<int32_t>(idx++);
+    auto cmpResidualK = context_->GetOptionalInputShape(CMP_RESIDUAL_KEY_INPUT_INDEX);
     layoutQuery = layoutQueryPtr;
     layoutKey = layoutKeyPtr;
     sparseMode = *sparseModePtr;
@@ -275,6 +276,9 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
     OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
         OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports ranging from 1 to 128.",
         cmpRatio),
+        return false);
+    OP_CHECK_IF((sparseMode == SPARSE_MODE_SIZE_3 && cmpRatio != 1 && cmpResidualK == nullptr),
+        OP_LOGE(opName, " cmp_residual_k is required when mask_mode is 3 with cmp_ratio not equal to 1!"),
         return false);
 
     OP_LOGD(context_, "attrs: layout_query[%s] layout_key[%s] sparse_mode[%ld] cmp_ratio[%ld].", layoutQuery, layoutKey,
@@ -302,8 +306,8 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(cons
             accumS2 = t2Size;
             n1Size = queryIndexShape.GetDim(1);
             n2Size = keyIndexShape.GetDim(1);
-            OP_CHECK_IF(n1Size < 1 || n1Size > 64,
-                OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~64, but got %ld.", n1Size),
+            OP_CHECK_IF(n1Size < 1 || n1Size > 128,
+                OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~128, but got %ld.", n1Size),
                 return false);
             OP_CHECK_IF(n2Size != 1, OP_LOGE(opName, "Inputshape N Size of Key should be 1, but got %ld.", n2Size),
                 return false);
@@ -333,8 +337,8 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(cons
                 OP_LOGE(opName, "Query s1Size should be greater than 0, but got %ld.", s1Size), return false);
             OP_CHECK_IF(s2Size < SIZE_1,
                 OP_LOGE(opName, "Query s2Size should be greater than 0, but got %ld.", s2Size), return false);
-            OP_CHECK_IF(n1Size < 1 || n1Size > 64,
-                OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~64, but got %ld.", n1Size),
+            OP_CHECK_IF(n1Size < 1 || n1Size > 128,
+                OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~128, but got %ld.", n1Size),
                 return false);
             OP_CHECK_IF(n2Size != 1, OP_LOGE(opName, "Inputshape N Size of Key should be 1, but got %ld.", n2Size),
                 return false);
