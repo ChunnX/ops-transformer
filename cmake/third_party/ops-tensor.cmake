@@ -23,17 +23,31 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 
   execute_process(
-    COMMAND git -c pull.ff=only pull origin ${OPTENSOR_TAG_ID} --depth=1
+    COMMAND git fetch origin ${OPTENSOR_TAG_ID} --depth=1
     WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
-    TIMEOUT 10
-    RESULT_VARIABLE EXEC_RESULT
-    OUTPUT_VARIABLE EXEC_INFO
-    ERROR_VARIABLE EXEC_ERROR
+    TIMEOUT 20
+    RESULT_VARIABLE FETCH_RESULT
+    ERROR_VARIABLE FETCH_ERROR
+    OUTPUT_QUIET
   )
-  if("${EXEC_RESULT}" STREQUAL "0")
-    message(STATUS "ops-tensor updated")
+
+  if(FETCH_RESULT EQUAL 0)
+    set(CHECKOUT_REF "FETCH_HEAD")
+    message(STATUS "ops-tensor fetched ${OPTENSOR_TAG_ID}")
   else()
-    message(WARNING "Git pull failed (network unavailable?), using cached ops-tensor code. ${EXEC_ERROR}")
+    set(CHECKOUT_REF "${OPTENSOR_TAG_ID}")
+    message(WARNING "Git fetch failed (network unavailable?), checkout to cached ${OPTENSOR_TAG_ID}")
+  endif()
+
+  execute_process(
+    COMMAND git checkout ${CHECKOUT_REF}
+    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
+    RESULT_VARIABLE CHECKOUT_RESULT
+    ERROR_VARIABLE CHECKOUT_ERROR
+    OUTPUT_QUIET
+  )
+  if(NOT CHECKOUT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Git checkout failed: ${CHECKOUT_ERROR}")
   endif()
 else()
   if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild")

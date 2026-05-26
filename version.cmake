@@ -19,6 +19,8 @@ set_cann_build_dependencies(ge-compiler ">=8.5")
 set_cann_build_dependencies(asc-devkit ">=8.5")
 set_cann_build_dependencies(bisheng-compiler ">=8.5")
 set_cann_build_dependencies(asc-tools ">=8.5")
+# gmm consumes ops-tensor from source, while mc2 keeps its in-repo copy.
+# Do not require an installed ops_tensor package during top-level dependency checks.
 
 set_cann_run_dependencies(runtime ">=8.5")
 set_cann_run_dependencies(opbase ">=8.5")
