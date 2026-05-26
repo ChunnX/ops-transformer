@@ -221,11 +221,6 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
                     return ge::GRAPH_FAILED);
     localParams_.isMmWeightTrans = *transMmWeightPtr;
 
-    localParams_.gmmXScaleDtype = localParams_.gmmXDtype;
-    localParams_.gmmWeightScaleDtype = localParams_.gmmXDtype;
-    localParams_.mmXScaleDtype = localParams_.gmmXDtype;
-    localParams_.mmWeightScaleDtype = localParams_.gmmXDtype;
-
     return ge::GRAPH_SUCCESS;
 }
 
