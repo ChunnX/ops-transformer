@@ -555,13 +555,13 @@ public:
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
-                    AscendC::PipeBarrier<PIPE_V>();
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
+                AscendC::PipeBarrier<PIPE_V>();
             }
             // 将乘法结果从UB cast到D
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
