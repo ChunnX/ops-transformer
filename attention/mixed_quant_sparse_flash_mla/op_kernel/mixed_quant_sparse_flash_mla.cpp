@@ -32,7 +32,7 @@ using namespace AscendC;
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                             \
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable,           \
             cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,    \
-            seqUsedCmpKV, cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata,           \
+            seqUsedCmpKV, cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata,            \
             attentionOut, user, tilingData, &tPipe);                                              \
         op.Process();                                                                             \
     } while (0)
@@ -52,14 +52,15 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
+    constexpr bool isPa = (KV_LAYOUT_T == SAS_LAYOUT_PA_ND);
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
         SAS_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
-            fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, true,
+            fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, isPa,
             static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
             static_cast<SASTemplateMode>(TEMPLATE_MODE), SPLIT_G);
     } else {
         SAS_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
-            hifloat8_t, float, bfloat16_t, FLASH_DECODE, true,
+            hifloat8_t, float, bfloat16_t, FLASH_DECODE, isPa,
             static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
             static_cast<SASTemplateMode>(TEMPLATE_MODE), SPLIT_G);
     }

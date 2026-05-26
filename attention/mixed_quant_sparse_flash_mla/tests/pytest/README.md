@@ -47,10 +47,41 @@
 ``` bash
 bash test_run.sh single
 ```
-#### 用例的批量生成与测试
-1、excel路径下存放用例excel表格
+#### 批量测试
 
-2、执行指令：
+支持三种批量测试模式，均可通过选项指定excel文件、sheet名、pt保存目录：
+
+| 命令 | 功能 |
+|------|------|
+| `batch_save` | 从excel读取用例 → golden计算 → 保存pt文件 |
+| `batch_exec` | 读取pt文件 → NPU测试（需先 `batch_save`） |
+| `batch` | 全流程：`batch_save` + `batch_exec`，默认完成后清理pt文件 |
+
+##### 选项参数
+
+| 选项 | 说明 | 默认值 | 适用命令 |
+|------|------|--------|---------|
+| `--excel <路径>` | 指定excel文件路径 | `./excel/example.xlsx` | batch_save / batch_exec / batch |
+| `--sheet <名称>` | 指定excel sheet名 | `decode` | batch_save / batch |
+| `--pt-dir <目录>` | 指定pt文件保存/读取目录 | `qsmla_testcase` | batch_save / batch_exec / batch |
+| `--keep-pt` | 执行完成后保留pt文件 | 默认清理 | 仅 batch |
+
+##### 使用示例
 ``` bash
+# batch_save：只生成pt文件
+bash test_run.sh batch_save
+bash test_run.sh batch_save --excel my.xlsx --sheet prefill --pt-dir my_pt
+
+# batch_exec：只执行NPU测试（需先batch_save生成pt文件）
+bash test_run.sh batch_exec
+bash test_run.sh batch_exec --pt-dir my_pt
+
+# batch：全流程（默认清理pt文件）
 bash test_run.sh batch
+
+# batch：全流程，保留pt文件
+bash test_run.sh batch --keep-pt
+
+# batch：全流程，自定义所有参数
+bash test_run.sh batch --excel my.xlsx --sheet prefill --pt-dir my_pt --keep-pt
 ```

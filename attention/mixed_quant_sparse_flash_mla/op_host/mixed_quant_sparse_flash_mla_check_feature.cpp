@@ -109,6 +109,11 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
         return ge::GRAPH_FAILED);
 
     if (*opParamInfo_.kvQuantMode == 1) {
+        // OP_CHECK_IF(*opParamInfo_.tileSize != 64, // 64:当前不泛化
+        //     OP_LOGE(opName_, "tile_size only support 64, but got %ld",
+        //     *opParamInfo_.tileSize),
+        //     return ge::GRAPH_FAILED);
+
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
             OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
             return ge::GRAPH_FAILED);
@@ -128,6 +133,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
 
 ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantPa() const
 {
+    if (kvLayout_ != SASLayout::PA_ND) {
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
         OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%ld) should be in range (0, %u].",
         oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);

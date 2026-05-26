@@ -95,8 +95,15 @@ void KvQuantSASTilingCheck::Init()
     opParamInfo_ = sasInfo_.opParamInfo;
     socVersion_ = sasInfo_.socVersion;
 
-    bSize_ = sasInfo_.bSize;
-    bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
+    qLayout_ = sasInfo_.qLayout;
+    kvLayout_ = sasInfo_.kvLayout;
+    outLayout_ = sasInfo_.outLayout;
+
+    if (opParamInfo_.oriBlockTable.tensor != nullptr) {
+        bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
+    } else {
+        bSize_ = sasInfo_.bSize;
+    }
     n1Size_ = sasInfo_.n1Size;
     n2Size_ = sasInfo_.n2Size;
     s1Size_ = sasInfo_.s1Size;
@@ -140,10 +147,6 @@ void KvQuantSASTilingCheck::Init()
     oriKvType_ = sasInfo_.oriKvType;
     cmpKvType_ = sasInfo_.cmpKvType;
     outputType_ = sasInfo_.outputType;
-
-    qLayout_ = sasInfo_.qLayout;
-    kvLayout_ = sasInfo_.kvLayout;
-    outLayout_ = sasInfo_.outLayout;
 
     if (opParamInfo_.cmpKv.tensor == nullptr) {
         perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
