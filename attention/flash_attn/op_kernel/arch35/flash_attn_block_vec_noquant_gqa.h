@@ -257,10 +257,8 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (!useDn && hasAtten) {
             if (likely(runInfo.actVecMSize != 0)) {
-                set_mark(0x50010000); // AttenMaskCopyIn开始
                 attenMaskUb = this->attenMaskInQue[runInfo.loop & (DB - 1)].template AllocTensor<uint8_t>();
                 AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
-                set_mark(0x500100FF); // AttenMaskCopyIn结束
             }
         }
 
