@@ -117,14 +117,14 @@ public:
 
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
     // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
-    static constexpr event_t FA_MTE3_TO_V_0     = 0U;
-    static constexpr event_t FA_MTE3_TO_V_1     = 1U;
-    static constexpr event_t FA_V_TO_MTE3_0     = 0U;
-    static constexpr event_t FA_V_TO_MTE3_1     = 1U;
-    static constexpr event_t FA_MTE2_TO_V_ID    = 2U;
-    static constexpr event_t FA_V_TO_MTE2_ID    = 2U;
-    static constexpr event_t FA_MTE3_TO_MTE2_ID = 2U;
-    static constexpr event_t FA_MTE2_TO_V_SINK  = 4U;
+    static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
+    static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
+    static constexpr uint32_t FA_V_TO_MTE3_0     = 0U;
+    static constexpr uint32_t FA_V_TO_MTE3_1     = 1U;
+    static constexpr uint32_t FA_MTE2_TO_V_ID    = 2U;
+    static constexpr uint32_t FA_V_TO_MTE2_ID    = 2U;
+    static constexpr uint32_t FA_MTE3_TO_MTE2_ID = 2U;
+    static constexpr uint32_t FA_MTE2_TO_V_SINK  = 4U;
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -177,8 +177,8 @@ public:
     LocalTensor<INPUT_T> stage1OutBuf[2];
     LocalTensor<uint8_t> attenMaskBuf[2];
     LocalTensor<T> stage2OutBuf;
-    event_t mte3ToVId[2]; // 静态分配: {0,1}
-    event_t vToMte3Id[2]; // 静态分配: {0,1}
+    uint32_t mte3ToVId[2]; // 静态分配: {0,1}
+    uint32_t vToMte3Id[2]; // 静态分配: {0,1}
     LocalTensor<float> softmaxMaxBuf[PRELOAD_N + 1];
     LocalTensor<float> softmaxSumBuf[PRELOAD_N + 1];
     LocalTensor<T> softmaxExpBuf[PRELOAD_N + 1];
@@ -694,9 +694,9 @@ public:
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
-        constexpr event_t mte2ToV   = FA_MTE2_TO_V_ID;
-        constexpr event_t vToMte2   = FA_V_TO_MTE2_ID;
-        constexpr event_t mte3ToMte2 = FA_MTE3_TO_MTE2_ID;
+        constexpr uint32_t mte2ToV    = FA_MTE2_TO_V_ID;
+        constexpr uint32_t vToMte2    = FA_V_TO_MTE2_ID;
+        constexpr uint32_t mte3ToMte2 = FA_MTE3_TO_MTE2_ID;
 
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             int32_t mIdx = mOIdx * subMBase;
@@ -1002,8 +1002,8 @@ public:
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
-        constexpr event_t mte2ToV = FA_MTE2_TO_V_ID;
-        constexpr event_t vToMte2 = FA_V_TO_MTE2_ID;
+        constexpr uint32_t mte2ToV = FA_MTE2_TO_V_ID;
+        constexpr uint32_t vToMte2 = FA_V_TO_MTE2_ID;
 
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             int32_t mIdx = mOIdx * subMBase;
