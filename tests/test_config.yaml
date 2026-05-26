@@ -472,7 +472,10 @@ attention:
     src:
       - attention/flash_attn
     exclude:
+      - attention/flash_attn/docs
+      - attention/flash_attn/README.md
     ut_cov_exclude:
+      - attention/flash_attn/tests
     test:
       ut: True
       examples: True
