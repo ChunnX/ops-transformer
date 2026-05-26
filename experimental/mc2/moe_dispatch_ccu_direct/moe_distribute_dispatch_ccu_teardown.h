@@ -10,130 +10,69 @@
 
 /*!
  * \file moe_distribute_dispatch_ccu_teardown.h
- * \brief A6 CCU MoeDistributeDispatchCcuTeardown 算子三件套声明（v4，端到端 IO 契约对齐库上 op_def）。
+ * \brief A6 MoeDistributeDispatchCcuTeardown ascendc kernel 接口声明（v10 架构纠正版）。
  *
- * 入参出参严格对齐 ops-transformer/mc2/moe_distribute_dispatch_teardown 的 op_def：
- *   Inputs:  x (REQUIRED)
- *            y (REQUIRED)
- *            expert_ids (REQUIRED, INT32)
- *            comm_cmd_info (REQUIRED, INT32)
- *   Outputs: expand_x (REQUIRED)
- *            dynamic_scales (REQUIRED, FLOAT 或 FLOAT8_E8M0)
- *            assist_info_for_combine (REQUIRED, INT32)
- *            expert_token_nums (REQUIRED, INT64)
- *   Attrs:   group_ep (REQUIRED, String)
- *            ep_world_size, ep_rank_id, moe_expert_num (REQUIRED, Int)
- *            expert_shard_type (OPT, Int=0)
- *            shared_expert_num (OPT, Int=1)
- *            shared_expert_rank_num (OPT, Int=0)
- *            quant_mode (OPT, Int=0)
- *            global_bs (OPT, Int=0)
- *            expert_token_nums_type (OPT, Int=1)
- *            comm_type (OPT, Int=0)
- *            comm_alg (OPT, String="")
+ * v10 重大架构纠正：
+ *   之前 v1-v9 把 teardown 实现为 hcomm CcuKernel（跑在 CCU 引擎）——这是错的。
+ *   teardown 的工作（读 commCmdInfo + DataCopy y→expand_x + 写 assist_info）是
+ *   **纯 vector 计算**，应该跑在 **AIV (AI Vector Core)** 上，用标准 ascendc kernel
+ *   语法实现，通过 `<<<blockDim, stream>>>` 直接 launch（即"AIV 直驱"）。
  *
- * v3→v4 变更：
- *   - KernelArg attr：新增 groupEp (REQUIRED)；删 subCommRanks；commAlg uint32→string；
- *     默认值修正 (sharedExpertNum 0→1, commType 2→0)。
- *   - TaskArg：字段顺序与 op_def 严格对齐；删除 expectedPeerCount（device 端用 epWorldSize_-1 推导）；
- *     dynamic_scales 从 OPTIONAL（默认 0）改为 REQUIRED（caller 必须 alloc buffer）。
+ *   配套调整：
+ *     - 0.5RTT 等齐 + 清零（WaitAllPeersArriveNotify / ClearAllPeersArriveNotify）
+ *       从 v9 teardown 上移到 v10 setup CCU 末尾（setup CCU 的段 9）。
+ *     - setup CCU 完成时所有对端 0.5RTT 数据已就位；stream 顺序保证 AIV teardown
+ *       跑时 y / commCmdInfo 内容稳定，无需再做等齐。
+ *
+ *   端到端 IO 契约（字段名 / dtype / shape）严格保留：
+ *     Inputs:  x, y, expertIds, commCmdInfo
+ *     Outputs: expandX, dynamicScales, assistInfoForCombine, expertTokenNums
+ *
+ *   简化范围（v10）：
+ *     - device 端 teardown 只实际读 y + commCmdInfo，只实际写 expandX + assistInfoForCombine
+ *     - x / expertIds / dynamicScales / expertTokenNums 端到端 IO 契约保留但 device
+ *       端不使用——host driver sync 后对 dynamicScales / expertTokenNums 显式归零
  */
 
 #ifndef MOE_DISTRIBUTE_DISPATCH_CCU_TEARDOWN_H
 #define MOE_DISTRIBUTE_DISPATCH_CCU_TEARDOWN_H
 
 #include <cstdint>
-#include <string>
-#include <vector>
-#include "moe_dispatch_ccu_api.h"
-#include "ccu_kernel_arg.h"
-#include "ccu_kernel_signature.h"
-#include "ccu_task_arg_v1.h"
-#include "hccl_types.h"
 
-namespace hcomm {
-
-struct CcuKernelArgMoeDistributeDispatchCcuTeardown : public CcuKernelArg {
-    std::string groupEp;             // REQUIRED, 签名级占位
-    uint32_t epWorldSize;
-    uint32_t epRankId;
-    uint32_t moeExpertNum;
-    uint32_t expertShardType;        // OPT, 默认 0
-    uint32_t sharedExpertNum;        // OPT, 默认 1
-    uint32_t sharedExpertRankNum;    // OPT, 默认 0
-    uint32_t quantMode;              // OPT, 默认 0
-    uint32_t globalBs;               // OPT, 默认 0
-    uint32_t expertTokenNumsType;    // OPT, 默认 1
-    uint32_t commType;               // OPT, 默认 0
-    std::string commAlg;             // OPT, 默认 ""
-
-    uint32_t bs;
-    uint32_t topK;
-    uint32_t hiddenSize;
-    uint64_t tokenMsgLen;             // v6: Align256(hiddenSize) * sizeof(YOutType)（非量化）
-    uint32_t moeExpertPerRankNum;    // = op_def 的 localExpertNum
-
-    CcuKernelArgMoeDistributeDispatchCcuTeardown(
-        const std::string &groupEp_,
-        uint32_t epWorldSize_, uint32_t epRankId_, uint32_t moeExpertNum_,
-        uint32_t bs_, uint32_t topK_, uint32_t hiddenSize_,
-        uint32_t expertShardType_ = 0, uint32_t sharedExpertNum_ = 1,
-        uint32_t sharedExpertRankNum_ = 0, uint32_t quantMode_ = 0,
-        uint32_t globalBs_ = 0, uint32_t expertTokenNumsType_ = 1,
-        uint32_t commType_ = 0, const std::string &commAlg_ = "");
-
-    CcuKernelSignature GetKernelSignature() const override;
+// ----- v10 Tiling 结构（host 端填充、device 端读取）-----
+//   通过 tilingGM 传给 ascendc kernel；host driver alloc + memcpy 一份到 device。
+//   host 和 device 端都 include 本头，结构对齐必须一致（POD struct + 显式字段类型）。
+struct MoeDistributeDispatchCcuTeardownTilingData {
+    uint32_t epWorldSize;            // EP 通信域大小（对应 op_def epWorldSize）
+    uint32_t epRankId;                // 本卡 EP rank id
+    uint32_t moeExpertNum;            // MoE 总 expert 数
+    uint32_t moeExpertPerRankNum;     // 本卡 expert 数 = op_def 的 localExpertNum
+    uint32_t bs;                       // batch size
+    uint32_t topK;                     // topK
+    uint32_t hiddenSize;               // H
+    uint32_t expertTokenNumsType;     // 0=前缀和 / 1=数量（v10 简化版 device 不写，仅占位）
+    uint64_t tokenMsgLen;              // = Align256(H) * sizeof(YOutType)（非量化）
+    uint64_t tokenWithMetaLen;         // v15 ★ = tokenMsgLen + 32（含三元组 metadata）
+    uint64_t segBytes;                 // = bs * topK * tokenWithMetaLen，每段固定字节数（含 padding）
 };
 
-// 每次 launch 参数：字段顺序严格对齐 op_def 的 Input/Output。
-//   Inputs:  x, y, expert_ids, comm_cmd_info
-//   Outputs: expand_x, dynamic_scales, assist_info_for_combine, expert_token_nums
-//   dynamic_scales 改为 REQUIRED；v3 简化版本下 device 端不写、host driver sync 后归零。
-struct CcuTaskArgMoeDistributeDispatchCcuTeardown : public CcuTaskArg {
-    // ----- Inputs (op_def) -----
-    uint64_t xAddr;
-    uint64_t yAddr;                       // setup 写入的 window 起址
-    uint64_t expertIdsAddr;
-    uint64_t commCmdInfoAddr;             // 含每 src rank 发送 token 数（setup 跨卡写入）
-    // ----- Outputs (op_def) -----
-    uint64_t expandXAddr;                 // [rankSize*bs, H]（v3 整段预留布局）
-    uint64_t dynamicScalesAddr;           // [bs*topK] FLOAT；v3 简化版 host 归零
-    uint64_t assistInfoForCombineAddr;    // INT32 前缀和路由表
-    uint64_t expertTokenNumsAddr;         // INT64 (moeExpertPerRankNum,)；v3 简化版 host 归零
+// ----- v13 Kernel 函数前向声明 -----
+//   host driver 通过 `<<<blockDim, l2_ctrl, stream>>>(...)` 直调时需见此声明。
+//   注意：本声明依赖 ascendc 工具链的 GM_ADDR / __global__ / __aicore__ 关键字——
+//   纯 host gcc 编译环境（如 A5 demo）下不能直接 include；本工程目标为 A6 ascendc 仿真/真机。
+//
+// v13 ★ 加 GM_ADDR commWindow（位于 expertTokenNums 与 workspace 之间）——op_def yAddr
+//   字段语义恢复库上（src 端发送缓冲，device 端不读不写），对端接收 window 由独立的
+//   commWindow 参数承载（工程内部 scratch，库上 op_def 无此字段）。
+#ifdef __ASCENDC_KERNEL_HEADER_AVAILABLE__   // ascendc 编译路径下定义此宏；host gcc 不定义
+#include "kernel_operator.h"
 
-    CcuTaskArgMoeDistributeDispatchCcuTeardown(
-        uint64_t xAddr_, uint64_t yAddr_, uint64_t expertIdsAddr_, uint64_t commCmdInfoAddr_,
-        uint64_t expandXAddr_, uint64_t dynamicScalesAddr_,
-        uint64_t assistInfoForCombineAddr_, uint64_t expertTokenNumsAddr_);
-};
-
-class CcuKernelMoeDistributeDispatchCcuTeardown : public Mc2CcuKernelBase {
-public:
-    explicit CcuKernelMoeDistributeDispatchCcuTeardown(const CcuKernelArg &arg);
-
-protected:
-    HcclResult Algorithm() override;
-    std::vector<uint64_t> GeneArgs(const CcuTaskArg &arg) override;
-
-private:
-    uint32_t epWorldSize_;               // 用来在 Algorithm 内部推导 expectedPeerCount = epWorldSize - 1
-    uint32_t epRankId_;
-    uint32_t moeExpertPerRankNum_;
-    uint32_t bs_;
-    uint32_t topK_;
-    uint64_t tokenMsgLen_;
-
-    CcuRep::Variable yAddrVar_;
-    CcuRep::Variable expandXAddrVar_;
-    CcuRep::Variable assistInfoAddrVar_;
-    CcuRep::Variable commCmdInfoAddrVar_;
-    CcuRep::Variable expectedPeerCountVar_;   // = epWorldSize_ - 1（host const，Var=Imm 合法）
-    CcuRep::Variable tokenMsgLenVar_;
-    CcuRep::LocalAddr srcAddr_;
-    CcuRep::LocalAddr dstAddr_;
-    CcuRep::CompletedEvent event_;
-};
-
-} // namespace hcomm
+extern "C" __global__ __aicore__ void moe_distribute_dispatch_ccu_teardown(
+    GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo,
+    GM_ADDR expandX, GM_ADDR dynamicScales,
+    GM_ADDR assistInfoForCombine, GM_ADDR expertTokenNums,
+    GM_ADDR commWindow,                       // v13 ★ device 端实际读的接收 window
+    GM_ADDR workspace, GM_ADDR tilingGM);
+#endif
 
 #endif // MOE_DISTRIBUTE_DISPATCH_CCU_TEARDOWN_H

@@ -95,25 +95,43 @@ struct CcuKernelArgMoeDistributeDispatchCcuSetup : public CcuKernelArg {
 // 每次 launch 动态参数：字段顺序严格对齐 op_def 的 Input/Output。
 //   Inputs:  x, expert_ids, scales, x_active_mask
 //   Outputs: y, expand_idx, comm_cmd_info
-//   + routingTable: v3 算子工程内部 scratch（库上 op_def 无此字段；详见文件头注释）
+//   + commWindow / routingTable: v13 工程内部 scratch（库上 op_def 无此字段）
+//
+// v13 ★ 关键架构纠正（op_def yAddr 字段语义恢复库上）：
+//   v12 之前把 op_def yAddr 当作"对端接收 window"用——这跟库上 yAddr（src 端发送缓冲）
+//   字段语义颠倒。v13 引入独立的 commWindowAddr 字段作为接收 window，op_def yAddr
+//   保留 caller 占位 alloc 但 device 端不读不写。
+//   详见 OPEN_QUESTIONS P0-0a "差异 1" 修复。
 struct CcuTaskArgMoeDistributeDispatchCcuSetup : public CcuTaskArg {
     // ----- Inputs (op_def) -----
-    uint64_t xAddr;                  // [Bs, H]    REQUIRED (BF16/FP16/...)
-    uint64_t expertIdsAddr;          // [Bs, topK] REQUIRED (INT32)；v3 device 端不再读，host 用它算 routingTable
+    uint64_t xAddr;                  // [Bs, H]    REQUIRED (BF16/FP16/...) —— v15 ★ device 端不直接读
+                                      //   （host 端把 x 重排拼上 metadata 后 device 端读 xWithMetaAddr）
+    uint64_t expertIdsAddr;          // [Bs, topK] REQUIRED (INT32)；host 用它算 routingTable
     uint64_t scalesAddr;             // OPTIONAL (FLOAT)；简化版传 0
     uint64_t xActiveMaskAddr;        // OPTIONAL (BOOL)；简化版传 0
     // ----- Outputs (op_def) -----
-    uint64_t yAddr;                  // 接收 window 起址（对端 GM）
+    uint64_t yAddr;                  // v13 ★ caller 按 op_def 公式 alloc 占位，device 端不读不写
+                                      //   （库上 yAddr 语义为 src 端发送缓冲，v13 CCU 0.5RTT 路径不需要
+                                      //    发送侧重排——直接 per-token RemoteWrite 到对端 commWindow）
     uint64_t expandIdxAddr;          // [Bs*topK] INT32
     uint64_t commCmdInfoAddr;        // INT32；前 epWorldSize 槽是正式槽，后 epWorldSize 槽是 scratch
-    // ----- Internal (v3 workaround，不属于 op_def) -----
+    // ----- Internal (v13/v15 工程内部 scratch，库上 op_def 无) -----
+    uint64_t commWindowAddr;         // v13 ★ 对端接收 window：对端 setup 通过 0.5RTT WriteNbWithArriveNotify
+                                      //   写到本卡 commWindow[本卡视角的 src rank 段]；teardown 读取整理
+                                      //   v15 ★ shape: (rankSize * bs * topK, tokenWithMetaLen)
+                                      //          每槽 = tokenMsgLen data + 32B metadata 三元组
     uint64_t routingTableAddr;       // [Bs*topK] INT32, host 预算 = expertIds / moeExpertPerRankNum
+    uint64_t xWithMetaAddr;          // v15 ★ host 预拼装的 (Bs*K, tokenWithMetaLen) buffer：
+                                      //   每行 idx=i*K+j 内容 = x[i] data + (selfRank, i, j) 三元组 + pad to 32B
+                                      //   段 7 阶段 B per-token WriteNb 直接从这个 buffer 读
+                                      //   一次性 RDMA 把 data + metadata 整体送过去
 
     CcuTaskArgMoeDistributeDispatchCcuSetup(
         uint64_t xAddr_, uint64_t expertIdsAddr_,
         uint64_t scalesAddr_, uint64_t xActiveMaskAddr_,
         uint64_t yAddr_, uint64_t expandIdxAddr_, uint64_t commCmdInfoAddr_,
-        uint64_t routingTableAddr_);
+        uint64_t commWindowAddr_, uint64_t routingTableAddr_,
+        uint64_t xWithMetaAddr_);
 };
 
 // device 算法
@@ -136,12 +154,14 @@ private:
 
     CcuRep::Variable xAddrVar_;
     CcuRep::Variable expertIdsAddrVar_;          // v8 ★ DoMainLoop 阶段 A 读 expertId
-    CcuRep::Variable yAddrVar_;
+    CcuRep::Variable commWindowAddrVar_;         // v13 ★ 替代 v12 之前的 yAddrVar_（op_def yAddr 不再用作接收 window）
     CcuRep::Variable expandIdxAddrVar_;
     CcuRep::Variable commCmdInfoAddrVar_;
     CcuRep::Variable routingTableAddrVar_;
+    CcuRep::Variable xWithMetaAddrVar_;          // v15 ★ host 预拼装的 (Bs*K, tokenWithMetaLen) buffer 起址
     CcuRep::Variable tokenMsgLenVar_;
-    std::vector<CcuRep::Variable> remoteYAddrs_;
+    CcuRep::Variable tokenWithMetaLenVar_;       // v15 ★ = tokenMsgLen + 32（段 4/5/7 用）
+    std::vector<CcuRep::Variable> remoteCommWindowAddrs_;   // v13 ★ PreSync 后拿到的各对端 commWindow 起址
     std::vector<CcuRep::Variable> expertOccCnts_; // v8 ★ per-expert 累计计数（对齐库上 expand_idx "给同一专家发送的 token 个数"语义）
     std::vector<CcuRep::Variable> peerOccBytes_;
     CcuRep::LocalAddr localSrc_;

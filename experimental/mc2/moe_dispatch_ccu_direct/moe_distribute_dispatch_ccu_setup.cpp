@@ -81,11 +81,13 @@ CcuTaskArgMoeDistributeDispatchCcuSetup::CcuTaskArgMoeDistributeDispatchCcuSetup
     uint64_t xAddr_, uint64_t expertIdsAddr_,
     uint64_t scalesAddr_, uint64_t xActiveMaskAddr_,
     uint64_t yAddr_, uint64_t expandIdxAddr_, uint64_t commCmdInfoAddr_,
-    uint64_t routingTableAddr_)
+    uint64_t commWindowAddr_, uint64_t routingTableAddr_,
+    uint64_t xWithMetaAddr_)
     : xAddr(xAddr_), expertIdsAddr(expertIdsAddr_),
       scalesAddr(scalesAddr_), xActiveMaskAddr(xActiveMaskAddr_),
       yAddr(yAddr_), expandIdxAddr(expandIdxAddr_), commCmdInfoAddr(commCmdInfoAddr_),
-      routingTableAddr(routingTableAddr_)
+      commWindowAddr(commWindowAddr_), routingTableAddr(routingTableAddr_),
+      xWithMetaAddr(xWithMetaAddr_)
 {}
 
 // --------------------------- CcuKernel ----------------------------
@@ -106,15 +108,20 @@ CcuKernelMoeDistributeDispatchCcuSetup::CcuKernelMoeDistributeDispatchCcuSetup(c
 std::vector<uint64_t> CcuKernelMoeDistributeDispatchCcuSetup::GeneArgs(const CcuTaskArg &arg)
 {
     const auto &myArg = static_cast<const CcuTaskArgMoeDistributeDispatchCcuSetup &>(arg);
-    // v8：expertIdsAddr 重新加入 GeneArgs（device 端 DoMainLoop 阶段 A 需要读 expertId
-    //     做 per-expert expand_idx 累计计数，对齐库上语义"给同一专家发送的 token 个数"）。
+    // v13 ★ 关键变更：用 commWindowAddr 替代 yAddr（op_def yAddr 字段语义错位修复）。
+    //   op_def yAddr 是 caller 占位 alloc（src 端发送缓冲，库上语义），device 端 v13 不读不写。
+    //   对端接收 window 改用 v13 新增的 commWindowAddr 字段（工程内部 scratch）。
+    // v15 ★ 新增 xWithMetaAddr：host 预拼装 (x[i] data + (selfRank,i,j) metadata) 后的 buffer，
+    //   段 7 阶段 B 直接从这个 buffer 一次 RDMA 把 token + metadata 整体发送。
+    //   xAddr 仍保留 op_def 占位但 device 端 v15 不再直接读取。
     return {
-        myArg.xAddr,
+        myArg.xAddr,                  // v15 device 端不读但保留契约
         myArg.expertIdsAddr,
-        myArg.yAddr,
+        myArg.commWindowAddr,
         myArg.expandIdxAddr,
         myArg.commCmdInfoAddr,
         myArg.routingTableAddr,
+        myArg.xWithMetaAddr,          // v15 ★ device 端段 7 阶段 B 真正读取的 src buffer
         tokenMsgLen_,
     };
 }
@@ -124,17 +131,19 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     // ============ 1. InitResource ============
     xAddrVar_            = CreateVariable();
     expertIdsAddrVar_    = CreateVariable();                  // v8 ★
-    yAddrVar_            = CreateVariable();
+    commWindowAddrVar_            = CreateVariable();
     expandIdxAddrVar_    = CreateVariable();
     commCmdInfoAddrVar_  = CreateVariable();
     routingTableAddrVar_ = CreateVariable();
+    xWithMetaAddrVar_    = CreateVariable();                  // v15 ★
     tokenMsgLenVar_      = CreateVariable();
+    tokenWithMetaLenVar_ = CreateVariable();                  // v15 ★
     localSrc_            = CreateLocalAddr();
     localDst_            = CreateLocalAddr();
     remoteDst_           = CreateRemoteAddr();
     event_               = CreateCompletedEvent();
 
-    remoteYAddrs_.reserve(epWorldSize_);
+    remoteCommWindowAddrs_.reserve(epWorldSize_);
     std::vector<CcuRep::Variable> remoteCommCmdInfoAddrs(epWorldSize_);
     std::vector<CcuRep::Variable> sendBytesPerPeer(epWorldSize_);
     std::vector<CcuRep::Variable> sendTokensPerPeer(epWorldSize_);
@@ -150,14 +159,14 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
 
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
         if (r == epRankId_) {
-            remoteYAddrs_.push_back(CreateVariable());
+            remoteCommWindowAddrs_.push_back(CreateVariable());
             remoteCommCmdInfoAddrs[r] = CreateVariable();
         } else {
             uint32_t channelIdx = (r < epRankId_) ? r : r - 1;
             CcuRep::Variable vy, vc;
             CHK_RET(CreateVariable(channels_[channelIdx], CKE_IDX_0, &vy));
             CHK_RET(CreateVariable(channels_[channelIdx], CKE_IDX_1, &vc));
-            remoteYAddrs_.push_back(vy);
+            remoteCommWindowAddrs_.push_back(vy);
             remoteCommCmdInfoAddrs[r] = vc;
         }
         // v8：peerOccurCnts_ 已删除（v7 误用 per-rank 计数写 expand_idx，v8 改用 expertOccCnts_ per-expert）
@@ -169,13 +178,31 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     // ============ 2. LoadArgs ============
     Load(xAddrVar_);
     Load(expertIdsAddrVar_);                                  // v8 ★ 顺序与 GeneArgs 一致
-    Load(yAddrVar_);
+    Load(commWindowAddrVar_);
     Load(expandIdxAddrVar_);
     Load(commCmdInfoAddrVar_);
     Load(routingTableAddrVar_);
+    Load(xWithMetaAddrVar_);                                  // v15 ★ 新增 Load 顺序对齐 GeneArgs
     Load(tokenMsgLenVar_);
-    remoteYAddrs_[epRankId_] = yAddrVar_;
+    remoteCommWindowAddrs_[epRankId_] = commWindowAddrVar_;
     remoteCommCmdInfoAddrs[epRankId_] = commCmdInfoAddrVar_;
+
+    // v15 ★ tokenWithMetaLenVar_ = tokenMsgLen + 32（CCU 严格清单：Var = Var + Var，所以用 helper）
+    CcuRep::Variable metaBytesVar = CreateVariable();
+    metaBytesVar = static_cast<uint64_t>(32);    // 三元组 12B + padding 到 32B 对齐
+    tokenWithMetaLenVar_ = tokenMsgLenVar_ + metaBytesVar;
+
+    // ============ 2.5. Clear 上次 dispatch 的 0.5RTT 状态（v11 ★ 起头清零）============
+    // v11 架构纠正：setup 异步 + teardown AIV 内部等齐（轮询 commCmdInfo）。
+    //   Clear 时机选择：
+    //     - setup 末尾 → race（累加可能还在进行）
+    //     - teardown → AIV 不能调 0.5RTT API
+    //     - setup 起头 → stream 顺序保证此时上次 dispatch 已彻底完成 ✓
+    //   时序证明：上次 teardown 等齐 commCmdInfo（≥ 上次 setup 段 8 RDMA 完成）
+    //            → FIFO RDMA 保证 上次 setup 段 7 的 0.5RTT 累加也已完成
+    //            → stream sync → 本次 setup 起头 Clear 时累加全部完成 ★ 安全
+    //   第一次调用时状态本就是 0，Clear 是 no-op。
+    CHK_RET(ClearAllPeersArriveNotify(MOE_DISPATCH_CCU_TAG));
 
     // ============ 3. PreSync ============
     uint32_t selfBit = 1U << epRankId_;
@@ -183,7 +210,7 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
         if (r == epRankId_) continue;
         uint32_t channelIdx = (r < epRankId_) ? r : r - 1;
-        CHK_RET(NotifyRecord(channels_[channelIdx], CKE_IDX_0, CKE_IDX_0, yAddrVar_,           selfBit));
+        CHK_RET(NotifyRecord(channels_[channelIdx], CKE_IDX_0, CKE_IDX_0, commWindowAddrVar_,           selfBit));
         CHK_RET(NotifyRecord(channels_[channelIdx], CKE_IDX_1, CKE_IDX_1, commCmdInfoAddrVar_, selfBit));
     }
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
@@ -194,27 +221,26 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     }
 
     // ============ 4. BuildSlotBase ============
-    // oneVar：替代 "Var = Var + 1U" 中的立即数（CCU 严格清单只支持 Var = Var + Var；
-    // Var = Var + Imm 不被支持，需用 helper Variable 绕开）。
+    // oneVar：替代 "Var = Var + 1U" 中的立即数。
     CcuRep::Variable oneVar = CreateVariable();
     oneVar = 1U;
-    // v7：每段大小 = bs * topK 槽位（严格 worst-case：本卡 bs*topK 副本可能全部路由到同一对端）。
-    //     之前 v5/v6 用 "每段 bs 槽位" 是个隐含假设——只有当所有 topK 副本均匀分布到不同 rank
-    //     时才不溢出。一旦 topK > rankSize 或路由极不均衡（router 把所有 topK 都路由到一个 rank），
-    //     按 bs 段长度会越界覆盖下一段。
-    //     正确语义：每个本卡产生 bs*topK 个副本，最坏情况单 rank 收 bs*topK 个，故每段 = bs*topK。
+    // v15 ★ 每段大小公式从 tokenMsgLen 改为 tokenWithMetaLen（每槽含 token data + 32B metadata 三元组）：
+    //   段内 slot 编号 = peerOccBytes[r] / tokenWithMetaLen
+    //   段长 = bs * topK * tokenWithMetaLen 字节（host 端立即数预算）
+    uint64_t tokenWithMetaLenImm = tokenMsgLen_ + 32U;     // host 端立即数
     CcuRep::Variable myBaseOffVar = CreateVariable();
-    myBaseOffVar = static_cast<uint64_t>(epRankId_) * bs_ * topK_ * tokenMsgLen_;
+    myBaseOffVar = static_cast<uint64_t>(epRankId_) * bs_ * topK_ * tokenWithMetaLenImm;
     CcuRep::Variable mySlotBaseVar = CreateVariable();
-    mySlotBaseVar = yAddrVar_ + myBaseOffVar;
+    mySlotBaseVar = commWindowAddrVar_ + myBaseOffVar;
     std::vector<CcuRep::Variable> remoteSlotBaseVar(epWorldSize_);
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
         CcuRep::Variable v = CreateVariable();
-        v = remoteYAddrs_[r] + myBaseOffVar;
+        v = remoteCommWindowAddrs_[r] + myBaseOffVar;
         remoteSlotBaseVar[r] = v;
     }
 
     // ============ 5. PreCount ============
+    // v15 ★ 每 token 写量从 tokenMsgLen 改为 tokenWithMetaLen（含 32B metadata 三元组）。
     CcuRep::Variable rankVarA = CreateVariable();
     for (uint32_t i = 0; i < bs_; ++i) {
         for (uint32_t j = 0; j < topK_; ++j) {
@@ -222,11 +248,24 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
             LoadVariable(routingTableAddrVar_ + static_cast<uint64_t>(idx) * sizeof(uint32_t), rankVarA);
             for (uint32_t r = 0; r < epWorldSize_; ++r) {
                 CCU_IF(rankVarA == r) {
-                    sendBytesPerPeer[r]  = sendBytesPerPeer[r] + tokenMsgLenVar_;
+                    sendBytesPerPeer[r]  = sendBytesPerPeer[r] + tokenWithMetaLenVar_;
                     sendTokensPerPeer[r] = sendTokensPerPeer[r] + oneVar;
                 }
             }
         }
+    }
+
+    // ============ 5.5. 加 commCmdInfo 跨卡写的 4 字节 overhead（v10.1 ★ 同步漏洞修复）============
+    // v10 发现：段 8 commCmdInfo 跨卡写用普通 WriteNb 不累加 0.5RTT wtCount，
+    //   导致 setup 末尾段 9 WaitAllPeersArriveNotify 等齐只覆盖段 7 数据写、不覆盖段 8 cmd 写。
+    //   teardown AIV 读 commCmdInfo[r != self] 时对端 commCmdInfo 可能未到位 → 读到旧值。
+    // v10.1 修复：段 8 改用 WriteNbWithArriveNotify（见下方段 8），同时这里把每对端预期字节数
+    //   +4（commCmdInfo 4 字节），让 wishCntXn 与对端 wtCount（含段 7 数据 + 段 8 cmd）精确匹配。
+    CcuRep::Variable cmdInfoBytesVar = CreateVariable();
+    cmdInfoBytesVar = static_cast<uint64_t>(sizeof(uint32_t));   // = 4
+    for (uint32_t r = 0; r < epWorldSize_; ++r) {
+        if (r == epRankId_) continue;   // 自发自不走 0.5RTT
+        sendBytesPerPeer[r] = sendBytesPerPeer[r] + cmdInfoBytesVar;   // Var = Var + Var，合法
     }
 
     // ============ 6. RecordExpectCount ============
@@ -237,11 +276,11 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     }
 
     // ============ 7. DoMainLoop ============
-    // v8 改造：拆为两个独立阶段。
-    //   阶段 A：按 expertId 维度写 expand_idx——per-expert 累计计数，对齐库上语义
-    //           "给同一专家发送的 token 个数"（aclnnMoeDistributeDispatchSetup.md expandIdxOut 描述）。
-    //   阶段 B：按 rank 维度做数据发送——per-rank peerOccBytes_ 字节累加器维护对端 window 槽位偏移。
-    //   两阶段独立维护，避免 v7 把 per-rank 计数写到 expand_idx 的语义 bug。
+    // v8 拆双阶段：A=按 expertId 写 expand_idx, B=按 rank 发数据
+    // v15 ★ 阶段 B 改造：
+    //   - localSrc 从 xAddr[i] 改为 xWithMetaAddr[idx]（idx = i*K+j）：host 预拼装好的 token+metadata
+    //   - 单次 WriteNb/LocalCopyNb 长度 tokenMsgLen → tokenWithMetaLen（一次 RDMA 把 data+meta 整体送过去）
+    //   - peerOccBytes 累加单位 tokenMsgLen → tokenWithMetaLen（段内 slot 仍连续）
     CcuRep::Variable expertIdVar = CreateVariable();
     CcuRep::Variable rankVarB    = CreateVariable();
     CcuRep::Variable curOccVar   = CreateVariable();
@@ -252,11 +291,11 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
             LoadVariable(expertIdsAddrVar_ + static_cast<uint64_t>(idx) * sizeof(uint32_t), expertIdVar);
             // 读路由 rank（用于阶段 B 的发送地址定位）
             LoadVariable(routingTableAddrVar_ + static_cast<uint64_t>(idx) * sizeof(uint32_t), rankVarB);
-            localSrc_.addr = xAddrVar_ + static_cast<uint64_t>(i) * tokenMsgLen_;
+            // v15 ★ localSrc 从 host 预拼装的 xWithMeta[idx] 读，已含 (selfRank, i, j) metadata
+            //   xWithMeta layout: (Bs*K, tokenWithMetaLen)，每行 idx = i*K+j 对应一个唯一副本
+            localSrc_.addr = xWithMetaAddrVar_ + static_cast<uint64_t>(idx) * tokenWithMetaLenImm;
 
             // ---- 阶段 A：按 expertId 维度写 expand_idx ----
-            // host 端展开 moeExpertNum_ 个 CCU_IF，逐 expertId 匹配；
-            // 命中的 expertId 对应的 expertOccCnts_[e] 是"已经发给 expert e 的副本数"。
             for (uint32_t e = 0; e < moeExpertNum_; ++e) {
                 CCU_IF(expertIdVar == e) {
                     curOccVar = expertOccCnts_[e];
@@ -266,20 +305,20 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
                 }
             }
 
-            // ---- 阶段 B：按 rank 维度发送数据 ----
+            // ---- 阶段 B：按 rank 维度发送 token+metadata 整体（v15 一次 RDMA tokenWithMetaLen 字节）----
             for (uint32_t r = 0; r < epWorldSize_; ++r) {
                 CCU_IF(rankVarB == r) {
                     if (r == epRankId_) {
                         localDst_.addr = mySlotBaseVar + peerOccBytes_[r];
-                        CHK_RET(LocalCopyNb(localDst_, localSrc_, tokenMsgLenVar_, event_));
+                        CHK_RET(LocalCopyNb(localDst_, localSrc_, tokenWithMetaLenVar_, event_));
                     } else {
                         uint32_t channelIdx = (r < epRankId_) ? r : r - 1;
                         remoteDst_.addr = remoteSlotBaseVar[r] + peerOccBytes_[r];
                         CHK_RET(WriteNbWithArriveNotify(channels_[channelIdx], remoteDst_,
-                                                         localSrc_, tokenMsgLenVar_,
+                                                         localSrc_, tokenWithMetaLenVar_,
                                                          MOE_DISPATCH_CCU_TAG));
                     }
-                    peerOccBytes_[r] = peerOccBytes_[r] + tokenMsgLenVar_;
+                    peerOccBytes_[r] = peerOccBytes_[r] + tokenWithMetaLenVar_;
                 }
             }
         }
@@ -297,7 +336,13 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
         localTokenBuf.addr = commCmdInfoAddrVar_ + scratchOff;
         remoteDst_.addr    = remoteCommCmdInfoAddrs[r]
                              + static_cast<uint64_t>(epRankId_) * sizeof(uint32_t);
-        CHK_RET(WriteNb(channels_[channelIdx], remoteDst_, localTokenBuf, elemBytesVar, event_));
+        // v10.1 ★ 同步漏洞修复：原 v10 这里用 WriteNb（普通），不累加对端 wtCount，
+        //   导致段 9 WaitAllPeersArriveNotify 不能等齐 commCmdInfo 跨卡写。
+        //   改为 WriteNbWithArriveNotify：4 字节也 atomic add 到对端 wtCount，
+        //   配合段 5.5 的 sendBytesPerPeer[r] += 4，wishCntXn 与 wtCount 精确匹配。
+        //   这样 teardown AIV launch 时 commCmdInfo[r != self] 必然已就位。
+        CHK_RET(WriteNbWithArriveNotify(channels_[channelIdx], remoteDst_, localTokenBuf,
+                                         elemBytesVar, MOE_DISPATCH_CCU_TAG));
     }
 
     event_.SetMask(0xFFFFFFFFU);
@@ -306,6 +351,12 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     StoreVariable(sendTokensPerPeer[epRankId_],
                   commCmdInfoAddrVar_ + static_cast<uint64_t>(epRankId_) * sizeof(uint32_t));
 
+    // v11 ★ 删除 v10 的段 9（WaitAllPeersArriveNotify + ClearAllPeersArriveNotify）。
+    //   v10 的同步阻塞设计违反了 0.5RTT 异步语义（库上 docs："通信指令发出后即刻退出"）。
+    //   v11 恢复异步：
+    //     - setup 不等齐，立即返回 → setup/teardown 间可以夹 matmul 等其他 kernel
+    //     - 等齐工作移到 teardown AIV 内部（轮询本卡 commCmdInfo 等 sentinel 被覆盖）
+    //     - Clear 移到本函数段 2.5（起头清上次残留）
     return HCCL_SUCCESS;
 }
 

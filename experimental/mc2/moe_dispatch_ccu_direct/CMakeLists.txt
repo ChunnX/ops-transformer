@@ -25,11 +25,16 @@ if(CMAKE_INSTALL_PREFIX STREQUAL /usr/local)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_LIST_DIR}/out" FORCE)
 endif()
 
-# 两个 CCU kernel 子类编译为 host 端目标（CCU kernel 不是 ascendc kernel，跑在 CCU 引擎、
-# 由 hcomm 运行时调度，不需要 ascendc 编译器）
+# v10 架构纠正：
+#   - setup 仍是 hcomm CcuKernel（跑 CCU 引擎），用 host 端 g++ 编译进静态库即可。
+#   - teardown 改为 AIV ascendc kernel（`__global__ __aicore__` 函数）—— 不能用普通
+#     g++ 编译，必须用 ascendc 工具链。本 CMake 只支持 host 端编译路径，所以 teardown.cpp
+#     从这里移出；A6 工具链下应由 ascendc 编译器单独编译为 .o 后链接到 test 可执行。
+#   - A5 host 环境下，test_driver 里的 `<<<>>>` 一行同样无法用普通 g++ 编译——
+#     本工程在 A5 仅作"骨架检查"，A6 ascendc 仿真/真机才是目标。
 add_library(moe_dispatch_ccu STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/moe_distribute_dispatch_ccu_setup.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/moe_distribute_dispatch_ccu_teardown.cpp
+    # v10：teardown.cpp 移出（改 ascendc kernel，编译路径见上方注释）
 )
 target_compile_options(moe_dispatch_ccu PRIVATE
     -O2 -Wall -D_GLIBCXX_USE_CXX11_ABI=0
