@@ -139,8 +139,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "worldSize is invalid, but got worldSize=%ld.",*worldSizePtr), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*maxBsPtr <= 0),
-        OP_LOGE(nodeName, "maxBs is invalid, but got maxBs=%ld.",
-        MAX_BS, *maxBsPtr), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "maxBs is invalid, should be positive"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
