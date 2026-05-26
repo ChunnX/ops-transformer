@@ -290,7 +290,9 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
             AscendC::PRINTF("[LWS] blk=%u groupAccumM=%llu offsetM=%llu n_=%llu yOffset=%llu wsIdx=%llu curBaseN=%u\n",
                 GetBlockIdx(), groupAccumM_, offsetM, n_, yOffset, wsIdx, curBaseN);
         }
-        // DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
+        if (i == 0) {
+            DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
+        }
     }
 }
 
