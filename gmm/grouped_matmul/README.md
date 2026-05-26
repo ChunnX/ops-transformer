@@ -17,12 +17,7 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
   - [4.1 分组方式](#41-分组方式)
   - [4.2 计算公式](#42-计算公式)
   - [4.3 版本演进](#43-版本演进)
-- [5. 参数说明](#5-参数说明)
-- [6. 约束说明](#6-约束说明)
-  - [6.1 公共约束](#61-公共约束)
-  - [6.2 Ascend 950PR/Ascend 950DT](#62-ascend-950prascend-950dt)
-  - [6.3 Atlas A3/A2 训练系列产品](#63-atlas-a3a2-训练系列产品)
-- [7. 接口调用](#7-接口调用)
+- [5. 接口调用](#5-接口调用)
 
 ---
 
@@ -209,55 +204,12 @@ $$
 | V4 → V5 | — | 增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token 数预期值，tiling 时按该值进行最优切分 |
 | V1 → V4 | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight 为 INT4/FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8（仅 perchannel 模式） | 支持分组轴（groupType）；非量化支持 x/weight 转置；支持 x/weight/y 均为单 Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式） |
 
----
-
-## 5. 参数说明
-
-GroupedMatmul 涉及十余个输入输出参数，根据场景划分职责。各参数的详细维度、数据类型组合、shape 约束请参见 [aclnnGroupedMatmulV5 参数说明](docs/aclnnGroupedMatmulV5.md#5-参数说明)。
-
-| 场景 | 必传参数 | 必须置空 |
-|------|----------|----------|
-| 非量化 | x, weight, biasOptional | scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional, perTokenScaleOptional |
-| 伪量化 | x, weight, antiquantScaleOptional, antiquantOffsetOptional, biasOptional | scaleOptional, offsetOptional, perTokenScaleOptional |
-| 全量化 | x, weight, scaleOptional, biasOptional（静态）perTokenScaleOptional（动态/MX/G-B） | antiquantScaleOptional, antiquantOffsetOptional |
+**确定性计算**：GroupedMatmul 默认提供确定性实现。
 
 ---
 
-## 6. 约束说明
-
-### 6.1 公共约束
-
-- **确定性计算**：算子默认提供确定性实现。
-- 详细接口级约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#6-约束说明)。
-
-### 6.2 Ascend 950PR/Ascend 950DT
-
-<a id="62-ascend-950prascend-950dt"></a>
-
-- **groupType**：支持 M 轴分组（0）和不分组（-1）。全量化和非量化额外支持 K 轴分组（2）。
-- **groupListType**：支持 0、1、2。
-- **tuningConfigOptional**：不支持。
-- **actType**（0~5）：
-  - 非量化/伪量化场景仅支持 0（NONE）。
-  - 全量化场景下，当 x 和 weight 为 INT8、量化模式为静态 T-C 或动态 K-C、scale 为 FLOAT32 或 BFLOAT16 时，支持 0、1、2、4、5；其余仅支持 0。
-
-> 各场景详细的数据类型组合矩阵、shape 约束、groupType 组合请参见 [aclnnGroupedMatmulV5 约束说明 - Ascend 950PR/950DT](docs/aclnnGroupedMatmulV5.md#62-ascend-950prascend-950dt)。
-
-### 6.3 Atlas A3/A2 训练系列产品
-
-<a id="63-atlas-a3a2-训练系列产品"></a>
-
-- **x/weight 最后一维** < 65536。
-- **x/weight 转置要求**对应的 Tensor 必须非连续。
-- **weight 数据格式**为 FRACTAL_NZ 时，shape 需满足 NZ 格式要求。
-- **perTokenScaleOptional**：仅支持 x/weight/out 均为单 Tensor。
-
-> 详细的场景分类约束、子场景数据类型要求、shape 限制请参见 [aclnnGroupedMatmulV5 约束说明 - Atlas A3/A2](docs/aclnnGroupedMatmulV5.md#63-atlas-a3a2-训练系列产品)。
-
----
-
-## 7. 接口调用
+## 5. 接口调用
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|
-| aclnn 调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#72-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
+| aclnn 调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#82-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |

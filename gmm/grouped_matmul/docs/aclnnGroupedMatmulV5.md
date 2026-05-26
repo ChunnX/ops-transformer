@@ -10,20 +10,24 @@
   - [3.1 接口功能概览](#31-接口功能概览)
   - [3.2 两段式接口说明](#32-两段式接口说明)
 - [4. 函数原型](#4-函数原型)
-- [5. 参数说明](#5-参数说明)
-  - [5.1 通用参数](#51-通用参数)
-  - [5.2 非量化场景参数](#52-非量化场景参数)
-  - [5.3 伪量化场景参数](#53-伪量化场景参数)
-  - [5.4 全量化场景参数](#54-全量化场景参数)
-  - [5.5 aclnnGroupedMatmulV5 参数](#55-aclnngroupedmatmulv5-参数)
-  - [5.6 返回值与错误码](#56-返回值与错误码)
-- [6. 约束说明](#6-约束说明)
-  - [6.1 公共约束](#61-公共约束)
-  - [6.2 Ascend 950PR/Ascend 950DT](#62-ascend-950prascend-950dt)
-  - [6.3 Atlas A3/A2 训练系列产品](#63-atlas-a3a2-训练系列产品)
-- [7. 接口调用](#7-接口调用)
-  - [7.1 调用流程](#71-调用流程)
-  - [7.2 示例代码索引](#72-示例代码索引)
+- [5. 场景决策](#5-场景决策)
+  - [5.1 决策流程](#51-决策流程)
+  - [5.2 场景→必传参数速查](#52-场景必传参数速查)
+  - [5.3 典型最小调用流程](#53-典型最小调用流程)
+- [6. 参数说明](#6-参数说明)
+  - [6.1 通用参数](#61-通用参数)
+  - [6.2 非量化场景参数](#62-非量化场景参数)
+  - [6.3 伪量化场景参数](#63-伪量化场景参数)
+  - [6.4 全量化场景参数](#64-全量化场景参数)
+  - [6.5 aclnnGroupedMatmulV5 参数](#65-aclnngroupedmatmulv5-参数)
+  - [6.6 返回值与错误码](#66-返回值与错误码)
+- [7. 约束说明](#7-约束说明)
+  - [7.1 公共约束](#71-公共约束)
+  - [7.2 Ascend 950PR/Ascend 950DT](#72-ascend-950prascend-950dt)
+  - [7.3 Atlas A3/A2 训练系列产品](#73-atlas-a3a2-训练系列产品)
+- [8. 接口调用](#8-接口调用)
+  - [8.1 调用流程](#81-调用流程)
+  - [8.2 示例代码索引](#82-示例代码索引)
 
 ---
 
@@ -42,7 +46,7 @@
 
 ## 2. 专业术语
 
-本章简要列出接口文档中涉及的术语，完整的概念性解释请参见 [GroupedMatmul README - 专业术语](../README.md#2-专业术语)。
+本章简要列出接口文档中涉及的术语，完整的概念性解释请参见 [GroupedMatmul README - 专业术语](../README.md#3-专业术语)。
 
 | 类别 | 术语 | 简要说明 |
 |------|------|----------|
@@ -72,11 +76,11 @@
 
 ### 3.1 接口功能概览
 
-实现分组矩阵乘计算。分组方式和计算公式详见 [GroupedMatmul README - 功能说明](../README.md#3-功能说明)。
+实现分组矩阵乘计算。分组方式和计算公式详见 [GroupedMatmul README - 功能说明](../README.md#4-功能说明)。
 
-> 详细计算公式和量化原理请参见 [GroupedMatmul README - 计算公式](../README.md#32-计算公式)。
+> 详细计算公式和量化原理请参见 [GroupedMatmul README - 计算公式](../README.md#42-计算公式)。
 
-> 版本演进详见 [GroupedMatmul README - 版本演进](../README.md#33-版本演进)。
+> 版本演进详见 [GroupedMatmul README - 版本演进](../README.md#43-版本演进)。
 
 ### 3.2 两段式接口说明
 
@@ -125,27 +129,121 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 ---
 
-## 5. 参数说明
+## 5. 场景决策
+
+> **目的**：您已确定计算场景和产品代际，需要快速判断——哪些参数必传、哪些必须置空、支持哪些 dtype 组合。
+
+### 5.1 决策流程
+
+按以下步骤自检，定位到对应子表：
+
+```
+1. 确定场景    → 非量化 / 伪量化 / 全量化
+2. 确定产品    → Ascend 950PR/950DT 或 Atlas A3/A2
+3. 确定量化模式 → 仅全量化需确定：静态 / 动态(T-C/T-T/K-C/K-T) / MX / G-B
+4. 确定分组轴  → groupType: -1(不分组) / 0(M轴) / 2(K轴)
+5. 查对应约束  → [7.2 Ascend 950PR/950DT](#72-ascend-950prascend-950dt) 或 [7.3 Atlas A3/A2](#73-atlas-a3a2-训练系列产品) 查看 dtype 与约束详情
+```
+
+### 5.2 场景→必传参数速查
+
+| 场景 | **必传参数** | **必须置空（传 nullptr）** |
+|------|:---|:---|
+| **非量化** | `x`, `weight`, `out` | `scaleOptional`, `offsetOptional`, `antiquantScaleOptional`, `antiquantOffsetOptional`, `perTokenScaleOptional` |
+| **伪量化** | `x`, `weight`, `antiquantScaleOptional`, `out` | `scaleOptional`, `offsetOptional`, `perTokenScaleOptional` |
+| **全量化-静态** | `x`, `weight`, `scaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `perTokenScaleOptional` |
+| **全量化-动态** | `x`, `weight`, `scaleOptional`, `perTokenScaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `offsetOptional` |
+| **全量化-MX/G-B** | `x`, `weight`, `scaleOptional`, `perTokenScaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `offsetOptional` |
+
+> **biasOptional** 在所有场景中均可选。**groupListOptional** 根据 groupType 决定是否必传，详见 [groupType 场景矩阵](#72-ascend-950prascend-950dt)。
+
+### 5.3 典型最小调用流程
+
+<details>
+<summary>非量化最小调用（M 轴分组，单 Tensor 输出）</summary>
+
+```c++
+// 参数清单：x, weight, out 共 3 个，其余全部传 nullptr
+aclTensorList *x             = CreateTensorList({(g, M, K)}, FLOAT16);
+aclTensorList *weight        = CreateTensorList({(g, K, N)}, FLOAT16);
+aclTensorList *out           = CreateTensorList({(g, M, N)}, FLOAT16);
+aclTensorList *groupList     = CreateTensorList(Ms, INT64);     // cumsum 格式，见 6.1 通用参数
+
+aclnnGroupedMatmulV5GetWorkspaceSize(
+    x, weight, nullptr, nullptr, nullptr,   // bias, scale, offset
+    nullptr, nullptr, nullptr,              // antiquantScale, antiquantOffset, perTokenScale
+    groupList,
+    nullptr, nullptr, nullptr,              // activation 系列
+    2, 0, 1, 0,                             // splitItem, groupType, groupListType, actType
+    nullptr, out, nullptr, nullptr, &wsSize, &executor);
+```
+
+</details>
+
+<details>
+<summary>伪量化 A16W8 最小调用（M 轴分组，单 Tensor 输出，perchannel 量化）</summary>
+
+```c++
+// 参数清单：x, weight, antiquantScale, out 共 4 个
+aclTensorList *x              = CreateTensorList({(g, M, K)}, FLOAT16);
+aclTensorList *weight         = CreateTensorList({(g, K, N)}, INT8);
+aclTensorList *antiquantScale = CreateTensorList({(g, N)},    FLOAT);  // perchannel
+aclTensorList *out            = CreateTensorList({(g, M, N)}, FLOAT16);
+aclTensorList *groupList      = CreateTensorList(Ms, INT64);
+
+aclnnGroupedMatmulV5GetWorkspaceSize(
+    x, weight, nullptr, nullptr, nullptr,   // bias, scale, offset
+    antiquantScale, nullptr, nullptr,       // antiquantOffset, perTokenScale
+    groupList,
+    nullptr, nullptr, nullptr,
+    2, 0, 1, 0, nullptr, out, nullptr, nullptr, &wsSize, &executor);
+```
+
+</details>
+
+<details>
+<summary>全量化静态 A8W8 最小调用（M 轴分组，单 Tensor 输出，perchannel 量化）</summary>
+
+```c++
+// 参数清单：x, weight, scale, out 共 4 个
+aclTensorList *x         = CreateTensorList({(g, M, K)}, INT8);
+aclTensorList *weight    = CreateTensorList({(g, K, N)}, INT8);
+aclTensorList *scale     = CreateTensorList({(g, N)},    UINT64);  // perchannel
+aclTensorList *out       = CreateTensorList({(g, M, N)}, BFLOAT16);
+aclTensorList *groupList = CreateTensorList(Ms, INT64);
+
+aclnnGroupedMatmulV5GetWorkspaceSize(
+    x, weight, nullptr, scale, nullptr,     // bias, scale, offset
+    nullptr, nullptr, nullptr,              // antiquant 系列, perTokenScale
+    groupList,
+    nullptr, nullptr, nullptr,
+    2, 0, 1, 0, nullptr, out, nullptr, nullptr, &wsSize, &executor);
+```
+
+</details>
+
+---
+
+## 6. 参数说明
 
 > 标注规则：
-> - <sup>1</sup>：仅 Ascend 950PR/950DT 不支持
-> - <sup>2</sup>：仅 Atlas A3/A2 不支持
-> - "—" 表示该参数在当前场景下必须传空（nullptr）
+> - <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>：仅 Ascend 950PR/950DT 不支持
+> - <span title="Atlas A3/A2 不支持"><sup>2</sup></span>：仅 Atlas A3/A2 不支持
 
-<a id="51-通用参数"></a>
+<a id="61-通用参数"></a>
 
-### 5.1 通用参数
+### 6.1 通用参数
 
 以下参数在所有场景中有效（作为 `aclnnGroupedMatmulV5GetWorkspaceSize` 的入参）：
 
 | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
 |--------|:---:|------|------|----------|:---:|:---|:---:|
-| x | 输入 | 公式中的输入 $x$ | TensorList 长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4<sup>1</sup>、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup> | ND | 2~6 | √ |
-| weight | 输入 | 公式中的 $weight$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup> | ND | 2~3 | √ |
+| x | 输入 | 公式中的输入 $x$ | TensorList 长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 2~6 | √ |
+| weight | 输入 | 公式中的 $weight$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 2~3 | √ |
 | out | 输出 | 公式中的输出 $y$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | — |
 | splitItem | 输入 | 输出是否做 Tensor 切分 | `0/1` = 多 Tensor 输出；`2/3` = 单 Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | — | — | — | — |
 | groupType | 输入 | 分组轴 | `-1` = 不分组；`0` = M 轴分组；`2` = K 轴分组 | — | — | — | — |
-| groupListType | 输入 | groupList 数据格式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#6-约束说明) | — | — | — | — |
+| groupListType | 输入 | groupList 数据格式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | — | — | — | — |
 | actType | 输入 | 激活函数类型 | `0`=NONE / `1`=RELU / `2`=GELU_TANH / `3`=GELU_ERR_FUNC(不支持) / `4`=FAST_GELU / `5`=SILU | — | — | — | — |
 | groupListOptional | 可选输入 | 分组轴方向各组大小分布 | 格式取决于 groupListType | INT64 | ND | 1~2 | √ |
 | tuningConfigOptional | 可选输入 | [0]=预期 token 数（优化 tiling）；[1]=A8W4 场景是否使能 weight NZ 格式；[2]=允许额外内存上限。兼容历史版本，不用时传 nullptr | INT64 | — | 3 | — |
@@ -163,73 +261,86 @@ aclnnStatus aclnnGroupedMatmulV5(
   - scaleOptional 不支持 INT64
   - x/weight/out 均最多 128 个 Tensor
 
-<a id="52-非量化场景参数"></a>
+<a id="62-非量化场景参数"></a>
 
-### 5.2 非量化场景参数
+### 6.2 非量化场景参数
+
+<details>
+<summary>展开查看非量化场景参数</summary>
 
 以下参数必须传空：`scaleOptional`、`offsetOptional`、`antiquantScaleOptional`、`antiquantOffsetOptional`、`perTokenScaleOptional`、`activationInputOptional`、`activationQuantScaleOptional`、`activationQuantOffsetOptional`。
 
 | 参数名 | 非量化特有说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
-| biasOptional | 可选偏置 | FLOAT、FLOAT16、INT32、BFLOAT16<sup>2</sup> | 1~2 |
+| biasOptional | 可选偏置 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | 1~2 |
 
-<a id="53-伪量化场景参数"></a>
+</details>
 
-### 5.3 伪量化场景参数
+<a id="63-伪量化场景参数"></a>
+
+### 6.3 伪量化场景参数
+
+<details>
+<summary>展开查看伪量化场景参数</summary>
 
 以下参数必须传空：`scaleOptional`、`offsetOptional`、`perTokenScaleOptional`、`activationInputOptional`、`activationQuantScaleOptional`、`activationQuantOffsetOptional`。
 
-> **例外**：x 为 INT8、weight 为 INT4 的 A8W4 伪量化场景中 `scaleOptional`/`offsetOptional` 可能生效，详见 [A8W4 场景约束](#a8w4)。
+> **例外**：x 为 INT8、weight 为 INT4 的 A8W4 伪量化场景中 `scaleOptional`/`offsetOptional` 可能生效，详见 [A8W4 场景约束](#a8w4场景约束)。
 
-<a id="531-perchannel-模式"></a>
+<a id="631-perchannel-模式"></a>
 
-#### 5.3.1 perchannel 模式
+#### 6.3.1 perchannel 模式
 
 | 参数名 | 说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
 | antiquantScaleOptional | 伪量化缩放因子 | FLOAT16、BFLOAT16 | 1~3 |
 | antiquantOffsetOptional | 伪量化偏移量 | FLOAT16、BFLOAT16 | 1~3 |
-| biasOptional | 可选偏置 | FLOAT、FLOAT16、BFLOAT16<sup>2</sup> | 1~2 |
+| biasOptional | 可选偏置 | FLOAT、FLOAT16、BFLOAT16<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | 1~2 |
 
-<a id="532-pergroup-模式"></a>
+<a id="632-pergroup-模式"></a>
 
-#### 5.3.2 pergroup 模式（仅 A16W4、weight=INT4 时支持）
+#### 6.3.2 pergroup 模式（仅 A16W4、weight=INT4 时支持）
 
-shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应的伪量化场景约束。
+shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应的伪量化场景约束。
 
-<a id="54-全量化场景参数"></a>
+</details>
 
-### 5.4 全量化场景参数
+<a id="64-全量化场景参数"></a>
+
+### 6.4 全量化场景参数
+
+<details>
+<summary>展开查看全量化场景参数</summary>
 
 以下参数必须传空：`antiquantScaleOptional`、`antiquantOffsetOptional`、`activationInputOptional`。
 
-<a id="541-静态量化参数子集"></a>
+<a id="641-静态量化参数子集"></a>
 
-#### 5.4.1 静态量化参数子集
+#### 6.4.1 静态量化参数子集
 
 | 参数名 | 说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
-| scaleOptional | 量化缩放因子 | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<sup>2</sup>、INT64<sup>2</sup> | 1~4 |
+| scaleOptional | 量化缩放因子 | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | 1~4 |
 | offsetOptional | 量化偏移量（可选） | FLOAT | 3 |
-| biasOptional | 可选偏置 | FLOAT、FLOAT16、INT32、BFLOAT16<sup>2</sup> | 1~2 |
+| biasOptional | 可选偏置 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | 1~2 |
 
 > `perTokenScaleOptional` 必须传空。
 
-<a id="542-动态量化参数子集"></a>
+<a id="642-动态量化参数子集"></a>
 
-#### 5.4.2 动态量化（T-T/T-C/K-T/K-C）参数子集
+#### 6.4.2 动态量化（T-T/T-C/K-T/K-C）参数子集
 
 | 参数名 | 说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
 | scaleOptional | 量化缩放因子 | FLOAT、UINT64、BFLOAT16 | 1~4 |
-| perTokenScaleOptional | x 侧 per-token 缩放因子 | FLOAT、FLOAT8_E8M0<sup>2</sup> | 1~3 |
-| biasOptional | 可选偏置 | FLOAT、FLOAT16、INT32、BFLOAT16<sup>2</sup> | 1~2 |
+| perTokenScaleOptional | x 侧 per-token 缩放因子 | FLOAT、FLOAT8_E8M0<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | 1~3 |
+| biasOptional | 可选偏置 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | 1~2 |
 
 > `offsetOptional` 必须传空。
 
-<a id="543-mx量化参数子集"></a>
+<a id="643-mx量化参数子集"></a>
 
-#### 5.4.3 MX 量化参数子集
+#### 6.4.3 MX 量化参数子集
 
 | 参数名 | 说明 | 数据类型 |
 |--------|------|----------|
@@ -238,9 +349,9 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 > `offsetOptional`、`biasOptional`（x=FLOAT4_E2M1 时 bias 可为 FLOAT32）必须传空或按需设置。
 
-<a id="544-g-b量化参数子集"></a>
+<a id="644-g-b量化参数子集"></a>
 
-#### 5.4.4 G-B 量化参数子集
+#### 6.4.4 G-B 量化参数子集
 
 | 参数名 | 说明 | 数据类型 |
 |--------|------|----------|
@@ -249,9 +360,9 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 > `biasOptional`、`offsetOptional` 必须传空。
 
-<a id="545-激活函数辅助参数"></a>
+<a id="645-激活函数辅助参数"></a>
 
-#### 5.4.5 激活函数辅助参数
+#### 6.4.5 激活函数辅助参数
 
 以下参数在全量化场景下用于激活函数相关计算（当前仅支持传空）：
 
@@ -262,9 +373,11 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 | activationFeatureOutOptional | 输出 | 激活函数前向输入数据 |
 | dynQuantScaleOutOptional | 输出 | 动态量化缩放因子 |
 
-<a id="55-aclnngroupedmatmulv5-参数"></a>
+</details>
 
-### 5.5 aclnnGroupedMatmulV5 参数
+<a id="65-aclnngroupedmatmulv5-参数"></a>
+
+### 6.5 aclnnGroupedMatmulV5 参数
 
 第二段接口 `aclnnGroupedMatmulV5` 的参数：
 
@@ -275,9 +388,9 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 | executor | 输入 | 算子执行器，由第一段接口返回 |
 | stream | 输入 | 指定执行任务的 Stream |
 
-<a id="56-返回值与错误码"></a>
+<a id="66-返回值与错误码"></a>
 
-### 5.6 返回值与错误码
+### 6.6 返回值与错误码
 
 **返回类型**：`aclnnStatus`，具体参见 [aclnn 返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -299,13 +412,15 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 ---
 
-## 6. 约束说明
+## 7. 约束说明
 
 **确定性计算**：aclnnGroupedMatmulV5 默认确定性实现。
 
-<a id="61-公共约束"></a>
+> "—" 表示该参数在当前场景下必须传空（nullptr）
 
-### 6.1 公共约束
+<a id="71-公共约束"></a>
+
+### 7.1 公共约束
 
 以下约束在所有场景和产品代际下通用：
 
@@ -320,9 +435,12 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
   groupListType=1：须为非负数列（各组大小）。
   groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
 
-<a id="62-ascend-950prascend-950dt"></a>
+<a id="72-ascend-950prascend-950dt"></a>
 
-### 6.2 Ascend 950PR/Ascend 950DT
+### 7.2 Ascend 950PR/Ascend 950DT
+
+<details>
+<summary>展开查看 Ascend 950PR/950DT 约束详情</summary>
 
 - groupType：支持 M 轴分组（0）和不分组（-1）。非量化/全量化额外支持 K 轴分组（2）。
 - groupListType：支持 0、1、2。仅全量化 groupType=0 时支持 groupListType=2。
@@ -456,11 +574,16 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 | 1（各组大小） | `[123, 0, 333, 0, 0, 333, 0, 0, 0]` |
 | 2（索引+大小） | `[[0, 123], [2, 333], [5, 333], [1, 0], [3, 0], [4, 0], [6, 0], [7, 0], [8, 0]]`（非零组前置） |
 
-<a id="63-atlas-a3a2-训练系列产品"></a>
+</details>
 
-### 6.3 Atlas A3/A2 训练系列产品
+<a id="73-atlas-a3a2-训练系列产品"></a>
 
-#### 6.3.1 场景分类与数据类型约束
+### 7.3 Atlas A3/A2 训练系列产品
+
+<details>
+<summary>展开查看 Atlas A3/A2 约束详情</summary>
+
+#### 7.3.1 场景分类与数据类型约束
 
 | 场景名 | x | weight | out | 约束说明 |
 |--------|:---:|:---:|:---:|------|
@@ -481,9 +604,9 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 | x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | out |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
-| FLOAT | FLOAT (ND) | FLOAT/null | — | — | — | — | — | INT64 | FLOAT |
-| FLOAT16 | FLOAT16 (ND/NZ) | FLOAT16/null | — | — | — | — | — | INT64 | FLOAT16 |
-| BFLOAT16 | BFLOAT16(ND/NZ) | FLOAT/null | — | — | — | — | — | INT64 | BFLOAT16 |
+| FLOAT | FLOAT (ND) | FLOAT/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT64 | FLOAT |
+| FLOAT16 | FLOAT16 (ND/NZ) | FLOAT16/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT64 | FLOAT16 |
+| BFLOAT16 | BFLOAT16(ND/NZ) | FLOAT/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT64 | BFLOAT16 |
 
 **约束**：
 - 支持 groupType=-1、0、2，actType=0，groupListType=0/1。
@@ -496,11 +619,11 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 | x | weight | bias | scale | perTokenScale | out |
 |:---|:---|:---|:---|:---|:---|
-| INT8 | INT8 (ND) | INT32/null | UINT64 | — | INT8 |
+| INT8 | INT8 (ND) | INT32/null | UINT64 | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT8 |
 | INT8 | INT8 (ND/NZ) | INT32/null | BFLOAT16 | FLOAT/null | BFLOAT16 |
-| INT8 | INT8 (NZ) | — | FLOAT/BFLOAT16 | FLOAT/null | BFLOAT16 |
+| INT8 | INT8 (NZ) | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | FLOAT/BFLOAT16 | FLOAT/null | BFLOAT16 |
 | INT8 | INT8 (ND/NZ) | INT32/null | FLOAT | FLOAT/null | FLOAT16 |
-| INT8 | INT8 (ND/NZ) | INT32/null | — | — | INT32 |
+| INT8 | INT8 (ND/NZ) | INT32/null | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | INT32 |
 
 > 其余参数（offset、antiquantScale、antiquantOffset、activationXxx 等）均须传空。
 
@@ -520,7 +643,7 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 | x | weight | bias | scale | perTokenScale | out |
 |:---|:---|:---|:---|:---|:---|
-| INT4 | INT4 (ND/NZ) | — | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
+| INT4 | INT4 (ND/NZ) | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
 
 **约束**：
 - groupType=0，actType=0，groupListType=0/1。
@@ -539,7 +662,7 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 
 | x | weight | bias | scale | offset | perTokenScale | out |
 |:---|:---|:---|:---|:---|:---|:---|
-| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | — | FLOAT | BFLOAT16 |
+| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | FLOAT | BFLOAT16 |
 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | FLOAT | FLOAT16 |
 
 **约束**：
@@ -607,7 +730,7 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 | weight 多，perchannel | `(N_i)` |
 | weight 多，pergroup | `(G_i, N_i)` |
 
-#### 6.3.2 groupType 支持场景
+#### 7.3.2 groupType 支持场景
 
 > x、weight、y 输入为 aclTensorList。"单" = 单元素 TensorList，"多" = 多元素 TensorList。
 
@@ -620,7 +743,7 @@ shape 约束参见 [约束说明](#63-atlas-a3a2-训练系列产品) 中对应�
 | 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x 必须转置；weight 不转置 | x/weight 2维，y 3维；bias 传空 |
 | 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x 必须转置；weight 不转置 | x/weight/y 2维；weight 最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias 传空 |
 
-#### 6.3.3 tuningConfigOptional 配置示例
+#### 7.3.3 tuningConfigOptional 配置示例
 
 tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。兼容历史版本，不使用时不传即可。
 
@@ -630,11 +753,13 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。兼容历�
 | [1] | 是否使能 weight 亲核格式（需先转置再 NZ） | A8W4 |
 | [2] | 允许额外 workspace 上限（-1=不限），用于定轴算法优化 | A8W8 |
 
+</details>
+
 ---
 
-## 7. 接口调用
+## 8. 接口调用
 
-### 7.1 调用流程
+### 8.1 调用流程
 
 1. 根据场景准备输入（x/weight 及各场景所需的量化/伪量化参数）。
 2. 调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace 大小和 executor。
@@ -643,7 +768,7 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。兼容历�
 5. 同步等待 Stream 任务完成。
 6. 将输出从 Device 拷贝到 Host。
 
-### 7.2 示例代码索引
+### 8.2 示例代码索引
 
 以下表格提供各场景下的示例代码文件链接，请参考文件中的注释了解对应场景说明。编译与运行请参考 [编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
