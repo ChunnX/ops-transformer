@@ -63,6 +63,7 @@ protected:
         scaleValue = 1.0f;
         cmpRatio = 1;
         deterministic = false;
+        deterMode = 0;
         opName = nullptr;
         inputLayout = nullptr;
     }
@@ -127,6 +128,7 @@ protected:
     int32_t sparseMode;
     int32_t rsvd;
     int32_t cmpRatio;
+    int32_t deterMode;
     float scaleValue;
 
     const char *templateName = "slikbase";
@@ -150,7 +152,7 @@ protected:
     int64_t softmaxOutWorkspaceLen;
 
     platform_ascendc::SocVersion socVersion;
-    bool deterministic;
+    bool deterministic= false;
 
     const char *opName;
     const char *inputLayout;

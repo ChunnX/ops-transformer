@@ -110,10 +110,12 @@ struct SLIGradConstInfo {
     int32_t gatherKBaseSize; // gather一次做的行数，一般128
     int32_t syKBaseSize;
     int32_t pKBaseSize;
+    int64_t bmm3BaseOffset = 0;
 };
 
 struct SLIGradRunInfo {
     uint32_t taskId;
+    uint32_t taskIdMod2;
 	uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t t1Index;
@@ -186,9 +188,17 @@ struct SLIGradPRunInfo {
 
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
+
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
-constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {2, 3};
+constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {13, 14};
+constexpr uint8_t SYNC_V7_TO_C3_FLAG[2] = {3, 4};
+
 constexpr uint8_t SYNC_ST_TO_P_FLAG = 12;
+constexpr uint8_t SYNC_V6_TO_RELU_FLAG = 11;
+constexpr uint8_t SYNC_RELU_TO_V6_FLAG = 2;
+
+constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
+constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 15;
 
 template <typename T>
 __aicore__ inline T SLIGAlign(T num, T rnd)

@@ -34,6 +34,8 @@ public:
                                 const optiling::SparseLightningIndexerGradRegBaseTilingData *__restrict tiling,
                                 TPipe *tPipe);
     __aicore__ inline void Process();
+    __aicore__ inline void ProcessDeter();
+    __aicore__ inline void ProcessNormal();
     __aicore__ inline void ProcessSY(SLIGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx);
     __aicore__ inline void ProcessP(SLIGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx);
     __aicore__ inline void InitMMResBuf();
@@ -56,7 +58,7 @@ public:
     GM_ADDR actualSeqQlenAddr;
     GM_ADDR actualSeqKvlenAddr;
     GM_ADDR usedSeqQlenAddr;
-    GM_ADDR usedSeqKvlenAddr;    
+    GM_ADDR usedSeqKvlenAddr;
     GM_ADDR cmpResidualKAddr;
     GM_ADDR metadataGm;
     
@@ -65,10 +67,11 @@ public:
     GlobalTensor<T> reluRes;
     GlobalTensor<INPUT_T> gatherSYRes;
     GlobalTensor<T> scatterAddResGm;
+    GlobalTensor<T> scatterAddResPong;
     GlobalTensor<T> softmaxOutGm;
     GlobalTensor<T> dWeightGm;
     GlobalTensor<OUT_T> dqGm;
-
+    GlobalTensor<T> bmm3Res;
     // CV间共享buffer
     TBuf<> mm12ResBuf[3]; //UB上3buffer
     TBuf<> mm3ResBuf;
@@ -83,6 +86,8 @@ public:
     SLIGradConstInfo constInfo;
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+
+    int64_t coreNum;
 
     int64_t curS1 = 0;
     int64_t curS2 = 0;
@@ -146,13 +151,14 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
         // InitVecOP
         vecBlock.InitParams(constInfo, tilingData);
         vecBlock.InitGlobalBuffer(key, weight, sparseIndices, attnSoftmaxL1, dKey, dWeight, softmaxOut, 
-                                  gatherSYRes, reluRes, reduceSumRes, scatterAddResGm);
+                                  gatherSYRes, reluRes, reduceSumRes, scatterAddResGm, scatterAddResPong, bmm3Res,
+                                  cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK);
         vecBlock.InitBuffers(pipe);
     } else if ASCEND_IS_AIC {
         // initCubeOP
         cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
         cubeBlock.InitCubeBuffers();
-        cubeBlock.InitGlobalBuffer(query, dQuery, reluRes, gatherSYRes);
+        cubeBlock.InitGlobalBuffer(query, dQuery, reluRes, gatherSYRes, bmm3Res);
     }
 }
 
@@ -243,9 +249,11 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessP(SLIG
                 cubeBlock.ComputeMm4(reluGradResL1Buf.Get(), runInfo, constInfo, kRunInfoNeg2, isFixOut);
             }
             if ASCEND_IS_AIV {
-                for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg2.s2SingleLoopTimes; ++s2InnerIdx) {
-                    SetPSingleRunInfo(kRunInfoNeg2, runInfo, s2TaskId - 2, s2InnerIdx);
-                    vecBlock.ProcessVector7(this->bmm3Buffer.Get(), runInfo, kRunInfoNeg2);
+                if constexpr (!Deterministic) {
+                    for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg2.s2SingleLoopTimes; ++s2InnerIdx) {
+                        SetPSingleRunInfo(kRunInfoNeg2, runInfo, s2TaskId - 2, s2InnerIdx);
+                        vecBlock.ProcessVector7(this->bmm3Buffer.Get(), runInfo, kRunInfoNeg2);
+                    }
                 }
             }
         }
@@ -318,6 +326,17 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::Process()
 {
+    // printf("!!!!is deter !!!! %d \n",Deterministic);
+    if constexpr(Deterministic) {
+        ProcessDeter();
+    } else {
+        ProcessNormal();
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessNormal()
+{
     int64_t taskId = 0;
     SLIGradRunInfo runInfo;
     for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -330,14 +349,82 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
         }
         ProcessSY(runInfo, taskId, bIndex, s1Index);
         if ASCEND_IS_AIV {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_RELU_TO_V6_FLAG);
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_ST_TO_P_FLAG);
         } else {
+            CrossCoreSetFlag<2, PIPE_FIX>(SYNC_RELU_TO_V6_FLAG);
             CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_ST_TO_P_FLAG);
-        }
+        }        
         SetRunInfoP(runInfo);
         ProcessP(runInfo, taskId, bIndex, s1Index);
         taskId++;
     }
+    SyncAll<false>();
+    if ASCEND_IS_AIV {
+        vecBlock.ReInitBuffers(pipe);
+        vecBlock.ProcessVector8();
+    }
+    FreeBuf();
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessDeter()
+{
+    int64_t taskId = 0;
+    SLIGradRunInfo runInfo;
+    for (int32_t i = 0; i < processBS1ByCore; i++) {
+        this->usedT1Index = this->cBlockIdx + this->usedCoreNum * i;
+        GetTndSeqLen(usedT1Index, bIndex);
+        SetRunInfo(runInfo, taskId);
+        if (runInfo.s2LoopTimes == 0) {
+            if ASCEND_IS_AIC {
+                CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
+            }
+            vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+            taskId++;
+            continue;
+        }
+        if ASCEND_IS_AIV {
+            CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_RELU_FLAG);
+        }
+        ProcessSY(runInfo, taskId, bIndex, s1Index);
+        if ASCEND_IS_AIV {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_RELU_TO_V6_FLAG);
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_ST_TO_P_FLAG);
+        } else {
+            CrossCoreSetFlag<2, PIPE_FIX>(SYNC_RELU_TO_V6_FLAG);
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_ST_TO_P_FLAG);
+        }
+        SetRunInfoP(runInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+        }
+        ProcessP(runInfo, taskId, bIndex, s1Index);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_RELU_FLAG);
+            CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
+        }
+        if ASCEND_IS_AIV {
+            vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+        }
+        taskId++;
+    }
+    if (processBS1ByCore < constInfo.formerCoreProcessNNum) {
+        if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+            CrossCoreSetFlag<MODE_NUM_2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[taskId & 1]); // 额外空同步确保每个核处理+1轮
+        }
+        if ASCEND_IS_AIV {
+            SLIGradRunInfo runInfoExtra;
+            runInfoExtra.taskId = taskId;
+            runInfoExtra.taskIdMod2 = taskId & 1;
+            vecBlock.ProcessVector7Deter(runInfoExtra, this->bmm3Buffer.Get());
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[runInfo.taskIdMod2]);
+        }
+    }    
     SyncAll<false>();
     if ASCEND_IS_AIV {
         vecBlock.ReInitBuffers(pipe);
@@ -365,6 +452,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
     SLIGradRunInfo &runInfo, int64_t taskId)
 {
     runInfo.taskId = taskId;
+    runInfo.taskIdMod2 = taskId & 1;
     runInfo.bIdx = bIndex;
     runInfo.t1Index = t1Index;
     runInfo.t2Index = t2Index;
@@ -491,7 +579,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
         constInfo.aicIdx = GetBlockIdx();
         cBlockIdx = constInfo.aicIdx;
     }
-
+    coreNum = static_cast<int64_t>(GetBlockNum());;
     constInfo.totalSize = tilingData->multiCoreParams.totalSize;
     auto &baseInfo = tilingData->baseParams;
     constInfo.bSize = baseInfo.bSize;
@@ -534,7 +622,10 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
     if constexpr(Layout_Q == SLILayout::BSND) {
         curS1 = constInfo.s1Size;
         curS2 = constInfo.s2Size;
-    }    
+    }
+    if constexpr (Deterministic) {
+        constInfo.bmm3BaseOffset = constInfo.aicIdx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -550,12 +641,18 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitMMResBuf(
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[1]);
-        CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
-        CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
+        if constexpr (!Deterministic) {
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
+        } else {
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[0]);
+            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V7_TO_C3_FLAG[1]);
+        }
     } else if ASCEND_IS_AIC {
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[0]);
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[1]);
         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG);
+        CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_V6_TO_RELU_FLAG);
     }
 }
 
@@ -567,11 +664,17 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::FreeBuf()
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[1]);
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
+        CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_RELU_FLAG);
     } else if ASCEND_IS_AIC {
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);
-        CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
-        CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
+        if constexpr (!Deterministic) {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
+        } else {
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[0]);
+            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_V7_TO_C3_FLAG[1]);
+        }
     }
 }
 template <typename CubeBlockType, typename VecBlockType>
@@ -581,10 +684,19 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitWorkspace
     int64_t reduceSumOffset = 2 * constInfo.kSizeAlign128 * sizeof(float); // * 2
     int64_t reluOffset = constInfo.gSizeQueryIndex * constInfo.kSizeAlign128 * sizeof(float);
     int64_t gatherSYOffset = constInfo.kSizeAlign128 * constInfo.dSizeQueryIndex * sizeof(INPUT_T);
-
+    int64_t bmm3Offset = constInfo.kSize * constInfo.dSizeQueryIndex * sizeof(float) * 2;
     int64_t coreTotalOffset = constInfo.aicIdx * (reduceSumOffset + reluOffset + gatherSYOffset);
     int64_t totalOffset = GetBlockNum() * (reduceSumOffset + reluOffset + gatherSYOffset);
+    totalOffset = GetBlockNum() * (reduceSumOffset + reluOffset + gatherSYOffset);
     uint64_t offset = 0;
+
+    if constexpr (Layout_Q == SLILayout::TND) {
+        constInfo.totalCost = ((__gm__ int32_t *)actualSeqKvlenAddr)[constInfo.bSize];
+    } else if constexpr (Layout_Q == SLILayout::BSND) {
+        constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
+    }
+    int64_t scatterAddResOffset = constInfo.totalCost * constInfo.dSizeQueryIndex * sizeof(float);
+
     reduceSumRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
     offset += reduceSumOffset;
     reluRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
@@ -592,12 +704,14 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitWorkspace
     gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
     offset += gatherSYOffset;
     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
+    if constexpr (Deterministic) {
+        totalOffset+=scatterAddResOffset;
+        scatterAddResPong.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
+        totalOffset+=scatterAddResOffset;
+        bmm3Res.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
+    }
+
     if ASCEND_IS_AIV {
-        if constexpr (Layout_Q == SLILayout::TND) {
-            constInfo.totalCost = ((__gm__ int32_t *)actualSeqKvlenAddr)[constInfo.bSize];
-        } else if constexpr (Layout_Q == SLILayout::BSND) {
-            constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
-        }
         int64_t totalCost = constInfo.totalCost;
         int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
         int64_t coreNum_ = GetBlockNum();
@@ -607,6 +721,10 @@ SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitWorkspace
         int32_t t2End = Min(t2Start + avgCost, totalCost);
         GlobalTensor<T> sccatterAddTensor = scatterAddResGm[t2Start * constInfo.dSizeQueryIndex];
         AscendC::Fill(sccatterAddTensor, constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
+        if constexpr (Deterministic) {
+            GlobalTensor<T> sccatterAddTensorPong = scatterAddResPong[t2Start * constInfo.dSizeQueryIndex];
+            AscendC::Fill(sccatterAddTensorPong, constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
+        }
 
         qPreBlockFactor = tilingData->multiCoreParams.qPreBlockFactor;
         qPreBlockTotal = tilingData->multiCoreParams.qPreBlockTotal;
