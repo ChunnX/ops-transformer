@@ -53,7 +53,17 @@ if __name__ == "__main__":
     TARGET_FOLDER = "./case_json"
     json_file_list = get_all_json_files(TARGET_FOLDER)
 
+    # json_file_list = ["./case_json/aclnnFusedInferAttentionScoreV2_PFA_default_CON_FP16_2_2_128_128_259_4.json"]  # 单跑验证时，放开这条注释，内部填写要执行用例的json路径
+
     for json_path in json_file_list:
+        json_name = os.path.basename(json_path)
+        name_without_ext, ext = os.path.splitext(json_name)
+
+        log_base_path = "./res_log"
+        if not os.path.exists(log_base_path):
+            os.makedirs(log_base_path)
+        log_name = "./res_log/" + name_without_ext + ".log"
+
         with open(json_path, "r", encoding="utf-8") as f:
             data_dict = json.load(f)
 
@@ -63,4 +73,5 @@ if __name__ == "__main__":
 
         print_log("start exec cmd:")
         print_log(" ".join(cmd_list))
-        res = subprocess.run(cmd_list)
+        with open(log_name, "w") as f:
+            res = subprocess.run(cmd_list, stdout=f, stderr=f)
