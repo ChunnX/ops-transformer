@@ -403,7 +403,6 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
         }
         // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
         inplace_ = isInplace_ ? 1UL : 0UL;
-        const bool *pBool = attrs->GetAttrPointer<bool>(ATTR_INPLACE_INDEX);
         if ((p = attrs->GetAttrPointer<int64_t>(ATTR_MAX_QUERY_LEN_INDEX)) != nullptr) {
             maxQueryLen_ = *p;
         }
