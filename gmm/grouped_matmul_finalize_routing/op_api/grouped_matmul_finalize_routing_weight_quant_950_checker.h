@@ -17,8 +17,7 @@
 #include "util/math_util.h"
 #include "log/log.h"
 
-namespace
-{
+namespace {
 static constexpr const char* ACLNN_NAME = "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize";
 };
 

@@ -227,7 +227,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimEqualTarget(const gert::
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME,
                     tensorType + "[" + std::to_string(idx) + "]",
                     std::to_string(tmpDimNum).c_str(),
-                    "The shape dim of " + tensorType + "[" + std::to_string(idx) + "] must be " + 
+                    "The shape dim of " + tensorType + "[" + std::to_string(idx) + "] must be " +
                     std::to_string(targetDim)),
                 return false);
     return true;
@@ -798,8 +798,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
         OP_CHECK_IF(weightNzFlag_,
             OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                 "FRACTAL_NZ",
-                "ND (In weight quant case, when x-weight is bf16/fp16-int8/int4/int32, "
-                "weight only supports ND-format)"),
+                "ND (In weight quant, when x-weight is bf16/fp16-int8/int4/int32)"),
             return false);
     } else if (ge::GetSizeByDataType(xDType_) == B16_DATA_SIZE &&
                (weightDtype_ == ge::DT_FLOAT8_E4M3FN || weightDtype_ == ge::DT_FLOAT8_E5M2 ||
@@ -808,8 +807,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
             OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                 std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
                 ", transpose=" + (transB_ ? "true" : "false"),
-                "transposed and ND-format (In weight quant case, when x-weight is bf16/fp16-fp8/hif8, "
-                "weight only supports transposed and ND-format)"),
+                "transposed and ND-format "
+                "(In weight quant, when x-weight is bf16/fp16-fp8/hif8)"),
             return false);
     } else if (ge::GetSizeByDataType(xDType_) == B16_DATA_SIZE &&
                (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2 ||
@@ -819,16 +818,16 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
             OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                 std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
                 ", transpose=" + (transB_ ? "true" : "false"),
-                "untransposed and FRACTAL_NZ-format (In weight quant case, when x-weight is bf16/fp16-fp4/fp16, "
-                "weight only supports untransposed and FRACTAL_NZ-format)"),
+                "untransposed and FRACTAL_NZ-format "
+                "(In weight quant, when x-weight is bf16/fp16-fp4/fp16)"),
             return false);
     } else if (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4) {
         OP_CHECK_IF(!(weightNzFlag_ && !transB_),
             OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                 std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
                 ", transpose=" + (transB_ ? "true" : "false"),
-                "untransposed and FRACTAL_NZ-format (In weight quant case, when x-weight is int8-int4, "
-                "weight only supports untransposed and FRACTAL_NZ-format)"),
+                "untransposed and FRACTAL_NZ-format "
+                "(In weight quant, when x-weight is int8-int4)"),
             return false);
     } else if (xDType_ == ge::DT_FLOAT8_E4M3FN &&
                (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT) &&
@@ -838,8 +837,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
             OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                 std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
                 ", transpose=" + (transB_ ? "true" : "false"),
-                "transposed and FRACTAL_NZ-format (In weight quant case, when x-weight is float8_e4m3fn-float4_e2m1/fp32, "
-                "weight only supports transposed weight and FRACTAL_NZ-format)"),
+                "transposed and FRACTAL_NZ-format "
+                "(In weight quant, when x-weight is float8_e4m3fn-float4_e2m1/fp32)"),
             return false);
     }
     return true;
