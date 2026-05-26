@@ -48,6 +48,9 @@ static constexpr size_t DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX = 11;
 
 static constexpr uint32_t SOC_VERSION_SIZE = 32;
 
+static constexpr int64_t BS_MAX = 512;
+static constexpr int64_t K_MAX = 16;
+
 bool IsPlatform910B(const char *nodeName)
 {
     char versionValVersion[SOC_VERSION_SIZE];
@@ -88,6 +91,14 @@ static ge::graphStatus InferExpertIdsShape(gert::InferShapeContext *context, int
     OP_CHECK_IF((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0),
         OP_LOGE(context->GetNodeName(), "Input shape of xShape or input shape of expertIdsShape is incorrect, "
         "xShape [%ld, %ld], expertIdsShape [%ld, %ld]", bs, h, bsTmp, k),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((bs > BS_MAX),
+        OP_LOGE(context->GetNodeName(), "The valid range of x's dim0 is (0, %ld], but got %ld.", BS_MAX, bs),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((k > K_MAX),
+        OP_LOGE(context->GetNodeName(), "The valid range of expertIds's dim1 is (0, %ld], but got %ld.", K_MAX, k),
         return ge::GRAPH_FAILED);
 
     expandIdxShape->SetDimNum(DIM_ONE);

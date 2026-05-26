@@ -65,6 +65,12 @@ static constexpr size_t DISPATCH_INPUT_ATTR_QUANT_MODE_INDEX = 9;
 static constexpr size_t DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX = 10;
 static constexpr size_t DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX = 16;
 
+static constexpr int64_t BS_MAX = 512;
+static constexpr int64_t K_MAX = 16;
+static constexpr int64_t EP_WORLD_SIZE_MAX = 768;
+static constexpr int64_t MOE_EXPERT_NUM_MAX = 1024;
+static constexpr int64_t GLOBAL_BS_MAX = 393216; // EP_WORLD_SIZE_MAX * BS_MAX
+
 static constexpr uint32_t VERSION_SIZE = 32;
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
@@ -207,6 +213,26 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
     OP_CHECK_IF((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0),
         OP_LOGE(context->GetNodeName(), "Input shape of xShape or input shape of expertIdsShape is incorrect, "
         "xShape [%ld, %ld], expertIdsShape [%ld, %ld]", bs, h, bsTmp, k),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((bs > BS_MAX),
+        OP_LOGE(context->GetNodeName(), "The valid range of x's dim0 is (0, %ld], but got %ld.", BS_MAX, bs),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((k > K_MAX),
+        OP_LOGE(context->GetNodeName(), "The valid range of expertIds's dim1 is (0, %ld], but got %ld.", K_MAX, k),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((*epWorldSize > EP_WORLD_SIZE_MAX),
+        OP_LOGE(context->GetNodeName(), "The valid range of epWorldSize is (0, %ld], but got %ld.", EP_WORLD_SIZE_MAX, *epWorldSize),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((*moeExpertNum > MOE_EXPERT_NUM_MAX),
+        OP_LOGE(context->GetNodeName(), "The valid range of expertIds's dim1 is (0, %ld], but got %ld.", MOE_EXPERT_NUM_MAX, *moeExpertNum),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((*globalBs > GLOBAL_BS_MAX),
+        OP_LOGE(context->GetNodeName(), "The input value of globalBs %ld exceeds the maximum allowed value %ld.", *globalBs, GLOBAL_BS_MAX),
         return ge::GRAPH_FAILED);
 
     int64_t a;
