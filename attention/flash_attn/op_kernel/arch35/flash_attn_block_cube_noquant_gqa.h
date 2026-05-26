@@ -602,7 +602,6 @@ public:
             mm1A = l1QBuffers.GetPre();
             mm1A.Set<HardEvent::MTE2_MTE1>();
         }
-
         Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
@@ -631,6 +630,7 @@ public:
                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                 param);
         }
+
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -957,6 +957,7 @@ public:
                     mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
             }
         }
+
 
         mm2B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知

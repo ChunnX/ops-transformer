@@ -16,7 +16,6 @@
 
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
-
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
 // CUBE与VEC核间同步的模式
