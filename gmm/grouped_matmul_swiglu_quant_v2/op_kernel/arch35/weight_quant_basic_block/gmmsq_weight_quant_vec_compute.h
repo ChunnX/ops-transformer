@@ -115,8 +115,8 @@ public:
     __aicore__ inline void ComputeScale(const BasicBlockOffsetParam &param);
     __aicore__ inline void ComputeDataForQuantTargetFp8(const LocalTensor<float> &yF32,
                                                         const BasicBlockOffsetParam &param);
-    __aicore__ inline void CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param);
-    __aicore__ inline void CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param);
+    __aicore__ inline void CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yType *yFp32Addr);
+    __aicore__ inline void CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yScaleType *yScaleAddr);
     __aicore__ inline void TransMxScaleLayout(const BasicBlockOffsetParam &param);
     __aicore__ inline void SetMTE3ToV();
     __aicore__ inline void End();
@@ -465,12 +465,13 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeDataForQuantTargetFp8(
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yType *yFp32Addr)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
     if(mRealSize == 0 || param.mL1Size == 0){
         return;
     }
+    yFp32Global_.SetGlobalBuffer(yFp32Addr);
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
     uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * param.mL1Size / 2) * (param.nSize / DIVISOR_FACTOR_TWO) + param.nOffset / 2;
@@ -485,12 +486,13 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const Bas
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yScaleType *yScaleAddr)
 {
     uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
     if(mRealSize == 0 || param.mL1Size == 0){
         return;
     }
+    yScaleGlobal_.SetGlobalBuffer(yScaleAddr);
     uint64_t nGroupCount = CeilDivide(param.nL1Size / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
     uint64_t nTotalGroupCount = CeilDivide(param.nSize / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
 
