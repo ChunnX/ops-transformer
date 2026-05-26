@@ -35,6 +35,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
     auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
     auto matmulTiling_ = tilingData.matmulTiling;
 
+    SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
 
     using L1TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
