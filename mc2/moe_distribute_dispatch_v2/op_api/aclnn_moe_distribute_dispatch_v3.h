@@ -41,6 +41,7 @@ extern "C" {
  * @param [in] sharedExpertRankNum: 计算可选输入，int。共享专家卡数量。
  * @param [in] quantMode: 计算可选输入，int，量化模式。
  * @param [in] globalBs: 计算可选输入，int。EP域全局的batch size大小。
+ * @param [in] shmemBuffer: shmem 通信Buffer。
  * @param [in] expertTokenNumsType: 计算可选输入，int。输出expertTokenNums中的值语义类型。
  * @param [in] commAlg: 计算可选输入，str。 通信算法类型。预留参数，暂未使用。
  * @param [in] zeroExpertNum: 计算可选输入，int。 表示零专家的数量。
@@ -65,7 +66,7 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(const aclTens
     const char* groupEp, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
     int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, 
-    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
+    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, uint64_t shmemBuffer, 
     int64_t expertTokenNumsType, const char* commAlg,
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
     aclTensor* expandXOut, aclTensor* dynamicScalesOut,

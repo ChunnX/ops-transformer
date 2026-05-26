@@ -583,7 +583,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
         return ge::GRAPH_FAILED;
     }
 
-    isSetFullMeshV2 = ((strcmp(commAlgPtr, "fullmesh_v2") == 0) ? true : false);
+    // isSetFullMeshV2 = ((strcmp(commAlgPtr, "fullmesh_v2") == 0) ? true : false);
+    isSetFullMeshV2 = true;
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 isSetFullMeshV2 = %d\n", isSetFullMeshV2);
 
     return ge::GRAPH_SUCCESS;
@@ -841,6 +842,9 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
     } else {
         tilingData.moeDistributeDispatchV2Info.globalBs = static_cast<uint32_t>(*globalBsPtr);
     }
+
+    auto shmemBufferPtr = attrs->GetAttrPointer<uint64_t>(config.attrShmemBufferIndex);
+    tilingData.moeDistributeDispatchV2Info.shmemBuffer = static_cast<uint64_t>(*shmemBufferPtr);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1595,6 +1599,7 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext* context, MoeDistrib
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    context->SetLocalMemorySize(ubSize - 32 * 1024);
     context->SetBlockDim(numBlocks);
     context->SetScheduleMode(1); // 设置为batch mode模式, 所有核同时启动
     tilingData->moeDistributeDispatchV2Info.totalUbSize = ubSize;

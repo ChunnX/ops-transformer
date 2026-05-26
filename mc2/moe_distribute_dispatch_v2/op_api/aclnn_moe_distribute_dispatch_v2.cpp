@@ -20,6 +20,7 @@
 using namespace Ops::Transformer;
 using namespace op;
 
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,7 +31,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
     const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional,
     const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
     const char* groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
-    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
+    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, uint64_t shmemBuffer,
     int64_t expertTokenNumsType, const char* commAlg, aclTensor* expandXOut,
     aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut,
     aclTensor* expertTokenNumsOut, aclTensor* epRecvCountsOut,
@@ -42,7 +43,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
         x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional,
         nullptr, nullptr, groupEp, epWorldSize, epRankId, moeExpertNum,
         groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-        sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlg, 0, 0, 0, expandXOut,
+        sharedExpertRankNum, quantMode, globalBs, shmemBuffer, expertTokenNumsType, commAlg, 0, 0, 0, expandXOut,
         dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
         expandScalesOut, workspaceSize, executor);
 
@@ -52,6 +53,9 @@ aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_dispatch v2 start");
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnMoeDistributeDispatchBase(workspace, workspaceSize, executor, stream);
 }
 #ifdef __cplusplus
