@@ -34,10 +34,14 @@
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
 |cmp_block_table|可选输入|PageAttention中cmpKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
 |cu_seqlens_q|可选输入|表示当前Batch及前序Batch中q的有效token数的累加和，维度为B+1，仅layout_q为TND场景需传入|INT32|ND|
-|cu_seqlens_ori_kv|可选输入|预留参数，当前不生效，表示当前Batch及前序Batch中ori_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
-|cu_seqlens_cmp_kv|可选输入|预留参数，当前不生效，表示当前Batch及前序Batch中cmp_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
-|seqused_q|可选输入|预留参数，当前不生效，表示不同Batch中q的有效token数，维度为B|INT32|ND|
-|seqused_kv|可选输入|表示不同Batch中ori_kv的有效token数，维度为B|INT32|ND|
+|cu_seqlens_ori_kv|可选输入|表示当前Batch及前序Batch中ori_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
+|cu_seqlens_cmp_kv|可选输入|表示当前Batch及前序Batch中cmp_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
+|seqused_q|可选输入|表示不同Batch中q的真实使用长度，维度为B|INT32|ND|
+|seqused_ori_kv|可选输入|表示不同Batch中ori_kv的真实使用长度，维度为B|INT32|ND|
+|seqused_cmp_kv|可选输入|表示不同Batch中cmp_kv的真实使用长度，维度为B，cmp长度改为参数传入而非根据cmp_ratio计算|INT32|ND|
+|cmp_residual_kv|可选输入|cmp_mask_mode=3且cmp_ratio≠1时必须传入，表示每个Batch的余数，用于精确计算mask边界|INT32|ND|
+|ori_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
+|cmp_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |sinks|可选输入|注意力下沉tensor，当前必须传入|FLOAT32|ND|
 |metadata|可选输入|aicpu算子（npu_mixed_quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
 |rope_head_dim|可选属性|默认值为None，当前仅支持64|INT32|-|
@@ -63,7 +67,10 @@
 -   参数ori\_kv和cmp\_kv中的block\_size1和block\_size2需为16的倍数，最大支持1024；block\_num1及block_num2为PageAttention时block总数。
 -   参数ori\_sparse\_indices与cmp\_sparse\_indices中的K1与K2为一次离散选取的block数，需要保证每行有效值均在前半部分，无效值均在后半部分，当前不支持传入ori\_sparse\_indices，cmp\_sparse\_indices中K2仅支持512/1024。
 -   参数cu\_seqlens\_q、cu\_seqlens\_ori\_kv及cu\_seqlens\_cmp\_kv维度为B + 1，要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
--   参数seqused\_q及seqused\_kv维度为B，要求其值表示每个Batch中的有效token数。
+-   参数seqused\_q维度为B，要求其值表示每个Batch中的有效token数。
+-   参数seqused\_ori\_kv、seqused\_cmp\_kv维度为B，表示每个Batch中ori_kv和cmp_kv的真实使用长度。若不传入，seqused\_ori\_kv默认使用全部长度，seqused\_cmp\_kv默认根据seqused\_ori\_kv和cmp\_ratio计算（floor(seqused\_ori\_kv / cmp\_ratio)）。
+-   参数cmp\_residual\_kv维度为B，当cmp\_mask\_mode=3且cmp\_ratio≠1时必须传入，用于解决mask计算中的余数问题，防止越界访问。
+-   若同时传入seqused\_ori\_kv、seqused\_cmp\_kv和cmp\_residual\_kv，需满足：seqused\_ori\_kv[i] == seqused\_cmp\_kv[i] * cmp\_ratio + cmp\_residual\_kv[i]，且cmp\_residual\_kv[i] < cmp\_ratio。
 -   参数ori\_block\_table的shape为2维，其中第一维长度为B，第二维长度不小于所有Batch中最大的S2对应的block数量，即S2\_max / block\_size1向上取整。
 -   参数cmp\_block\_table的shape为2维，其中第一维长度为B，第二维长度不小于floor(S2\_max \/ cmp\_ratio)对应的block数量，即floor(S2\_max \/ cmp\_ratio) \/ block\_size2向上取整。
 -   ori\_mask\_mode及cmp\_mask\_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/context/sparse_mode%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E.md)。
