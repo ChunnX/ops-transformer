@@ -297,6 +297,8 @@ public:
         } else {
             constInfo.actualKVPrefixSize = 0;
         }
+        // learnableSink
+        constInfo.learnableSinkFlag = false;
 
         if (fiaS1OuterSplitCoreParams.enableS1OutSplit) {
             constInfo.enableS1OutSplit = true;
