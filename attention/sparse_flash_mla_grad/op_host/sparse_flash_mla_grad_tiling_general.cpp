@@ -490,9 +490,9 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
 
     int64_t oriWinLeft = *oriWinLeftPtr;
     int64_t oriWinRight = *oriWinRightPtr;
-    OP_CHECK_IF(oriWinLeft != 127 || oriWinRight != 0, OP_LOGE("SparseFlashMlaGrad", "SprseFlashMlaGrad only support oriWinLeft=127 and oriWinRight=0 now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(oriWinLeft != 127 || oriWinRight != 0, OP_LOGE("SparseFlashMlaGrad", "SparseFlashMlaGrad only support oriWinLeft=127 and oriWinRight=0 now."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(*oriMaskModePtr, OP_LOGE("SparseFlashMlaGrad", "SprseFlashMlaGrad only support oriMaskMode=4 now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*oriMaskModePtr, OP_LOGE("SparseFlashMlaGrad", "SparseFlashMlaGrad only support oriMaskMode=4 now."), return ge::GRAPH_FAILED);
 
     tilingData.opInfo.set_B(tmpData.b);
     tilingData.opInfo.set_G(tmpData.g);
