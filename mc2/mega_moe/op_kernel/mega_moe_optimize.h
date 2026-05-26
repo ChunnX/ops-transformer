@@ -1149,12 +1149,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 在 wave 边界用 (basePtr + curWave) 偏移做 AtomicAdd。
     if constexpr (g_coreType == AscendC::AIV) {
         if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, 0);
             SendInfoCal(0);
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, 1);
             groupFlagListGm2_.SetGlobalBuffer(
                 (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr);
-            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, false);
             TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_), 0);
-            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, true);
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, 2);
         }
     }
 
@@ -1170,16 +1171,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // groupFlagListGm2_ 指向 expert (e+1) 的 wave-0 槽起点，AtomicAdd 内部按 wave 偏移。
         if constexpr (g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
+                                                  static_cast<int>(expertIdx + 1U), 0);
                 SendInfoCal(expertIdx + 1U);
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
+                                                  static_cast<int>(expertIdx + 1U), 1);
                 groupFlagListGm2_.SetGlobalBuffer(
                     (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                     static_cast<int64_t>(expertIdx + 1U) * static_cast<int64_t>(maxWavesPerExpert_));
-                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
-                                                  static_cast<int>(expertIdx + 1U), false);
                 TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_),
                                          static_cast<int32_t>(expertIdx + 1U));
                 MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
-                                                  static_cast<int>(expertIdx + 1U), true);
+                                                  static_cast<int>(expertIdx + 1U), 2);
             }
         }
 

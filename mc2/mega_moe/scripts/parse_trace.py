@@ -52,15 +52,16 @@ P_PROCESS_END = 4
 P_STAGE_NUM = 5
 STAGE_NAMES = ['KERNEL_ENTRY', 'INIT_DONE', 'QUANT_DONE', 'EXPERT_LOOP_END', 'PROCESS_END']
 
-# Dispatch (AIV1 only)
+# Dispatch (AIV1 only) — 每 expert 4 slot：
+#   0 = SendInfoCal_begin, 1 = SendInfoCal_end (= dispatch_begin), 2 = dispatch_end, 3 = 保留
 P_DISPATCH_BASE = 5
 MAX_EXPERTS_TRACED = 8
-DISPATCH_PTS_PER_EXPERT = 2
+DISPATCH_PTS_PER_EXPERT = 4
 
 # Wave
-P_WAVE_BASE = P_DISPATCH_BASE + MAX_EXPERTS_TRACED * DISPATCH_PTS_PER_EXPERT  # 21
-WAVE_POINTS_PER_ITER = 12
-MAX_WAVES_TRACED = (POINTS_PER_CORE - P_WAVE_BASE) // WAVE_POINTS_PER_ITER  # 19
+P_WAVE_BASE = P_DISPATCH_BASE + MAX_EXPERTS_TRACED * DISPATCH_PTS_PER_EXPERT  # 37
+WAVE_POINTS_PER_ITER = 14
+MAX_WAVES_TRACED = (POINTS_PER_CORE - P_WAVE_BASE) // WAVE_POINTS_PER_ITER  # (260-37)/14 = 15
 
 SP_WAVE_ENTRY = 0
 SP_GMM1_BEGIN = 1
@@ -70,13 +71,16 @@ SP_GMM1_LAST_TILE_DONE = 4
 SP_GMM1_END = 5
 SP_GMM2_BEGIN = 6
 SP_GMM2_FIRST_WAIT_DONE = 7
-SP_GMM2_FIRST_TILE_DONE = 8
-SP_GMM2_LAST_TILE_DONE = 9
-SP_GMM2_END = 10
-SP_WAVE_END = 11
+SP_GMM2_CB_AFTER_COPY_TILE = 8
+SP_GMM2_CB_AFTER_TRIPLE = 9
+SP_GMM2_FIRST_TILE_DONE = 10
+SP_GMM2_LAST_TILE_DONE = 11
+SP_GMM2_END = 12
+SP_WAVE_END = 13
 SP_NAMES = [
     'WAVE_ENTRY', 'GMM1_BEGIN', 'GMM1_FIRST_WAIT_DONE', 'GMM1_FIRST_TILE_DONE',
     'GMM1_LAST_TILE_DONE', 'GMM1_END', 'GMM2_BEGIN', 'GMM2_FIRST_WAIT_DONE',
+    'GMM2_CB_AFTER_COPY_TILE', 'GMM2_CB_AFTER_TRIPLE',
     'GMM2_FIRST_TILE_DONE', 'GMM2_LAST_TILE_DONE', 'GMM2_END', 'WAVE_END',
 ]
 
@@ -106,13 +110,15 @@ AIV0_PHASES = [
     (SP_WAVE_ENTRY,           SP_WAVE_END,              'TOTAL',      'TOTAL wave'),
 ]
 AIV1_PHASES = [
-    (SP_WAVE_ENTRY,           SP_GMM2_BEGIN,            'entr->g2B',  'enter -> GMM2 call (sub1 idle)'),
-    (SP_GMM2_BEGIN,           SP_GMM2_FIRST_WAIT_DONE,  'wRowR',      'combine wait rowReady'),
-    (SP_GMM2_FIRST_WAIT_DONE, SP_GMM2_FIRST_TILE_DONE,  'cbFr',       'combine first tile'),
-    (SP_GMM2_FIRST_TILE_DONE, SP_GMM2_LAST_TILE_DONE,   'cbMd',       'combine mid+last tiles'),
-    (SP_GMM2_LAST_TILE_DONE,  SP_GMM2_END,              'cbEnd',      'combine end -> GMM2 end'),
-    (SP_GMM2_END,             SP_WAVE_END,              'g2->ex',     'GMM2 end -> wave end'),
-    (SP_WAVE_ENTRY,           SP_WAVE_END,              'TOTAL',      'TOTAL wave'),
+    (SP_WAVE_ENTRY,            SP_GMM2_BEGIN,            'entr->g2B',  'enter -> GMM2 call (sub1 idle)'),
+    (SP_GMM2_BEGIN,            SP_GMM2_FIRST_WAIT_DONE,  'wRowR',      'combine wait rowReady'),
+    (SP_GMM2_FIRST_WAIT_DONE,  SP_GMM2_CB_AFTER_COPY_TILE, 'cbCpy',    'CombineTile: CopyTileFromGM (GMM2 out → UB)'),
+    (SP_GMM2_CB_AFTER_COPY_TILE, SP_GMM2_CB_AFTER_TRIPLE, 'cbTrip',    'CombineTile: load triple tensor'),
+    (SP_GMM2_CB_AFTER_TRIPLE,  SP_GMM2_FIRST_TILE_DONE,  'cbSnd',      'CombineTokensOptimize (UB → remote win)'),
+    (SP_GMM2_FIRST_TILE_DONE,  SP_GMM2_LAST_TILE_DONE,   'cbMd',       'combine mid+last tiles'),
+    (SP_GMM2_LAST_TILE_DONE,   SP_GMM2_END,              'cbEnd',      'combine end -> GMM2 end'),
+    (SP_GMM2_END,              SP_WAVE_END,              'g2->ex',     'GMM2 end -> wave end'),
+    (SP_WAVE_ENTRY,            SP_WAVE_END,              'TOTAL',      'TOTAL wave'),
 ]
 
 
@@ -127,8 +133,10 @@ def trace_csv_header():
              f'p{P_EXPERT_LOOP_END}_EXPERT_LOOP_END',
              f'p{P_PROCESS_END}_PROCESS_END']
     for e in range(MAX_EXPERTS_TRACED):
-        cols.append(f'p{P_DISPATCH_BASE + e*2}_disp_e{e}_begin')
-        cols.append(f'p{P_DISPATCH_BASE + e*2 + 1}_disp_e{e}_end')
+        cols.append(f'p{P_DISPATCH_BASE + e*DISPATCH_PTS_PER_EXPERT + 0}_disp_e{e}_sendInfoBeg')
+        cols.append(f'p{P_DISPATCH_BASE + e*DISPATCH_PTS_PER_EXPERT + 1}_disp_e{e}_sendInfoEnd')
+        cols.append(f'p{P_DISPATCH_BASE + e*DISPATCH_PTS_PER_EXPERT + 2}_disp_e{e}_dispatchEnd')
+        cols.append(f'p{P_DISPATCH_BASE + e*DISPATCH_PTS_PER_EXPERT + 3}_disp_e{e}_reserved')
     for w in range(MAX_WAVES_TRACED):
         for sp in range(WAVE_POINTS_PER_ITER):
             cols.append(f'p{P_WAVE_BASE + w*WAVE_POINTS_PER_ITER + sp}_w{w}_{SP_NAMES[sp]}')
@@ -203,17 +211,13 @@ def _valid_mask(block, sp_idx):
 
 
 def infer_wave_to_expert(aiv1):
-    """通过 AIV1 dispatch begin（同核内时间）+ wave entry 推断 wave -> expert。
-       返回 (n_cores, MAX_WAVES_TRACED) int32，-1 表示未知。
-       前提：mega_moe.h 中 wave loop body 在所有 core（含 AIV1）同步 increment waveTraceIdx_，
-       故同 pair 的 AIC/AIV0/AIV1 上同一 wave_idx 对应同一个 expert，借 AIV1 一处推断即可。
-    """
+    """通过 AIV1 sendInfo_begin (slot 0) + wave entry 推断 wave -> expert。"""
     n = aiv1.shape[0]
     out = np.full((n, MAX_WAVES_TRACED), -1, dtype=np.int32)
     for ci in range(n):
-        events = []  # (begin_us, expert_id)，仅取合法值
+        events = []  # (begin_us, expert_id)
         for e in range(MAX_EXPERTS_TRACED):
-            b = aiv1[ci, P_DISPATCH_BASE + 2 * e]
+            b = aiv1[ci, P_DISPATCH_BASE + DISPATCH_PTS_PER_EXPERT * e + 0]
             if 0 < b < _US_SANE_UPPER:
                 events.append((int(b), e))
         if not events:
@@ -341,16 +345,20 @@ def analyze(ts, rank_id):
     stage_report('AIV0', aiv0)
     stage_report('AIV1', aiv1)
 
-    # 2) Per-expert dispatch
+    # 2) Per-expert dispatch（拆 SendInfoCal / TripleDispatch / 总）
     print(f"\n  --- [AIV1] per-expert DISPATCH duration ---")
     for e in range(MAX_EXPERTS_TRACED):
-        bi = P_DISPATCH_BASE + e * DISPATCH_PTS_PER_EXPERT
-        ei = bi + 1
-        valid = _valid_mask(aiv1, bi) & _valid_mask(aiv1, ei)
-        if not valid.any():
+        s0 = P_DISPATCH_BASE + e * DISPATCH_PTS_PER_EXPERT + 0
+        s1 = P_DISPATCH_BASE + e * DISPATCH_PTS_PER_EXPERT + 1
+        s2 = P_DISPATCH_BASE + e * DISPATCH_PTS_PER_EXPERT + 2
+        valid_send = _valid_mask(aiv1, s0) & _valid_mask(aiv1, s1)
+        valid_disp = _valid_mask(aiv1, s1) & _valid_mask(aiv1, s2)
+        valid_tot  = _valid_mask(aiv1, s0) & _valid_mask(aiv1, s2)
+        if not valid_tot.any():
             continue
-        diffs = aiv1[valid, ei] - aiv1[valid, bi]
-        print(f"    expert[{e}] dispatch  {_summarize(diffs)}")
+        print(f"    expert[{e}] sendInfoCal  {_summarize(aiv1[valid_send, s1] - aiv1[valid_send, s0])}")
+        print(f"    expert[{e}] tripleDisp   {_summarize(aiv1[valid_disp, s2] - aiv1[valid_disp, s1])}")
+        print(f"    expert[{e}] TOTAL        {_summarize(aiv1[valid_tot,  s2] - aiv1[valid_tot,  s0])}")
 
     # 3) wave→expert 推断（基于 AIV1 dispatch 时间窗）；同 pair 的 AIC/AIV0 共用
     expert_map = infer_wave_to_expert(aiv1)

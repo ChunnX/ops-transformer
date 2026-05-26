@@ -169,15 +169,20 @@ constexpr int P_PROCESS_END = 4;
 constexpr int P_STAGE_NUM = 5;
 
 // ----- Per-expert dispatch（仅 AIV1=subBlock1 上有效） -----
+// 4 sub-points / expert：
+//   0 = SendInfoCal 入口
+//   1 = SendInfoCal 出口 = TripleInfoCalAndDispatch 入口
+//   2 = TripleInfoCalAndDispatch 出口
+//   3 = 保留
 constexpr int P_DISPATCH_BASE = P_STAGE_NUM;     // 5
 constexpr int MAX_EXPERTS_TRACED = 8;
-constexpr int DISPATCH_PTS_PER_EXPERT = 2;       // 0=begin, 1=end
-constexpr int P_DISPATCH_SLOTS = MAX_EXPERTS_TRACED * DISPATCH_PTS_PER_EXPERT;  // 16
+constexpr int DISPATCH_PTS_PER_EXPERT = 4;
+constexpr int P_DISPATCH_SLOTS = MAX_EXPERTS_TRACED * DISPATCH_PTS_PER_EXPERT;  // 32
 
 // ----- Per-wave sub-points -----
-constexpr int P_WAVE_BASE = P_DISPATCH_BASE + P_DISPATCH_SLOTS;                 // 21
-constexpr int WAVE_POINTS_PER_ITER = 12;
-constexpr int MAX_WAVES_TRACED = (POINTS_PER_CORE - P_WAVE_BASE) / WAVE_POINTS_PER_ITER;  // (260-21)/12 = 19
+constexpr int P_WAVE_BASE = P_DISPATCH_BASE + P_DISPATCH_SLOTS;                 // 37
+constexpr int WAVE_POINTS_PER_ITER = 14;
+constexpr int MAX_WAVES_TRACED = (POINTS_PER_CORE - P_WAVE_BASE) / WAVE_POINTS_PER_ITER;  // (260-37)/14 = 15
 
 // 单 wave 内 sub-point 含义（AIC / AIV 视角）：
 //
@@ -203,10 +208,16 @@ constexpr int SP_GMM1_LAST_TILE_DONE = 4;
 constexpr int SP_GMM1_END = 5;
 constexpr int SP_GMM2_BEGIN = 6;
 constexpr int SP_GMM2_FIRST_WAIT_DONE = 7;
-constexpr int SP_GMM2_FIRST_TILE_DONE = 8;
-constexpr int SP_GMM2_LAST_TILE_DONE = 9;
-constexpr int SP_GMM2_END = 10;
-constexpr int SP_WAVE_END = 11;
+// combine 内部细分（只在 AIV1 上写）：
+//   8  = CopyTileFromGM 完成（GMM2 输出 GM→UB 读完）
+//   9  = triple tensor DataCopy 完成
+//  10  = CombineTokensOptimize 完成（远端 win 区写完）
+constexpr int SP_GMM2_CB_AFTER_COPY_TILE = 8;
+constexpr int SP_GMM2_CB_AFTER_TRIPLE = 9;
+constexpr int SP_GMM2_FIRST_TILE_DONE = 10;
+constexpr int SP_GMM2_LAST_TILE_DONE = 11;
+constexpr int SP_GMM2_END = 12;
+constexpr int SP_WAVE_END = 13;
 
 __aicore__ inline int GetGlobalCoreIdx()
 {
@@ -239,15 +250,17 @@ __aicore__ inline void RecordTimestampAt(GM_ADDR baseAddr, int pointIndex)
 #endif
 }
 
-// 便捷封装：dispatch begin / end，AIV1 (subBlock1) 上调用。
-__aicore__ inline void RecordDispatchPoint(GM_ADDR baseAddr, int expertIdx, bool isEnd)
+// 便捷封装：dispatch 4 个 sub-point（slotInExpert ∈ [0, DISPATCH_PTS_PER_EXPERT)），
+//   slot 0 = SendInfoCal_begin, 1 = SendInfoCal_end (= dispatch_begin), 2 = dispatch_end, 3 = 保留
+__aicore__ inline void RecordDispatchPoint(GM_ADDR baseAddr, int expertIdx, int slotInExpert)
 {
 #ifdef MEGA_MOE_TRACE_ENABLE
     if (expertIdx < 0 || expertIdx >= MAX_EXPERTS_TRACED) return;
-    int idx = P_DISPATCH_BASE + expertIdx * DISPATCH_PTS_PER_EXPERT + (isEnd ? 1 : 0);
+    if (slotInExpert < 0 || slotInExpert >= DISPATCH_PTS_PER_EXPERT) return;
+    int idx = P_DISPATCH_BASE + expertIdx * DISPATCH_PTS_PER_EXPERT + slotInExpert;
     RecordTimestampAt(baseAddr, idx);
 #else
-    (void)baseAddr; (void)expertIdx; (void)isEnd;
+    (void)baseAddr; (void)expertIdx; (void)slotInExpert;
 #endif
 }
 

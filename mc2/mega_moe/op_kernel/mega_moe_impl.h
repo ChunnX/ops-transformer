@@ -731,7 +731,8 @@ __aicore__ inline void GroupMatmul2Optimize(
             LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECCALC, 64 * 1024, L1_TILE_M * L1_TILE_N);
             MegaMoeCombineImpl::CombineTileOptimize<bfloat16_t, decltype(actualShape)>(
                 mLoc, nLoc, n, expertIdx, rankId, gmmAddrInfo.gmm2OutGlobal,
-                ubBuffer, actualShape, params, static_cast<uint32_t>(groupCnt + waveRowOffset));
+                ubBuffer, actualShape, params, static_cast<uint32_t>(groupCnt + waveRowOffset),
+                waveTraceIdx, isFirstTile);
 
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,

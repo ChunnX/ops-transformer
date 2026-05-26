@@ -59,11 +59,13 @@ __aicore__ inline void CopyTileFromGM(
 
 // CombineTileOptimize = 读 GM tile 到 UB + 加载 triple + CombineTokensOptimize
 // groupCnt: 当前 expert 在 tripleInfoPtr 中的累计起始 token 数（含 waveRowOffset）
+// waveTraceIdx / isFirstTile: 用于细分打点（CopyTileFromGM 完成、triple 完成）
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTileOptimize(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t expertIdx, uint32_t rankId,
     GM_ADDR gmm2OutAddr, LocalTensor<ElementMMadOut2>& ubBuffer,
-    BlockShape& actualBlockShape, const ParamsOptimize& params, uint32_t groupCnt)
+    BlockShape& actualBlockShape, const ParamsOptimize& params, uint32_t groupCnt,
+    int waveTraceIdx = -1, bool isFirstTile = false)
 {
     GlobalTensor<ElementMMadOut2> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(gmm2OutAddr));
@@ -73,6 +75,10 @@ __aicore__ inline void CombineTileOptimize(
 
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, 0>();
     CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
+    if (isFirstTile) {
+        MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                      MegaMoeTrace::SP_GMM2_CB_AFTER_COPY_TILE);
+    }
 
     // 从 tripleInfoPtr 加载本 tile 的三元组信息（groupCnt 是 expert + wave 累计起点）
     AscendC::GlobalTensor<int32_t> tripleGm;
@@ -81,6 +87,10 @@ __aicore__ inline void CombineTileOptimize(
         params.workspaceInfo.tripleInfoPtr + (groupCnt + mLoc) * 32));
     AscendC::DataCopy(tripleTensor, tripleGm, rowCount * 8);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, 0>();
+    if (isFirstTile) {
+        MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                      MegaMoeTrace::SP_GMM2_CB_AFTER_TRIPLE);
+    }
 
     CombineTokensOptimize<ElementMMadOut2, BlockShape>(
         mLoc, nLoc, n, expertIdx, rankId, tripleTensor, ubBuffer, actualBlockShape, params);
