@@ -33,7 +33,7 @@ constexpr uint32_t MUL_256_ALIGN = 256U;
 constexpr uint64_t WIN_512_ALIGN = 512UL;
 constexpr uint32_t FLOAT_NUM_PER_ALIGN = 8U;
 constexpr uint8_t DOUBLE_BUFFER = 2;
-constexpr int64_t CYCLE_TO_TIME = 50;  // cycle num is converted into a fixed base unit of time, set at 50
+constexpr int64_t CYCLE_TO_TIME = 50; // cycle num is converted into a fixed base unit of time, set at 50
 
 template <AscendC::HardEvent event>
 __aicore__ inline void SyncFunc()
@@ -48,8 +48,7 @@ __aicore__ inline void SyncFunc()
 
 using namespace AscendC;
 template <TemplateMC2TypeClass>
-class MoeCombineNormal
-{
+class MoeCombineNormal {
 public:
     __aicore__ inline MoeCombineNormal(){};
     __aicore__ inline void Init(GM_ADDR recvX, GM_ADDR tokenSrcInfo, GM_ADDR epRecvCount, GM_ADDR topkWeights,
@@ -169,10 +168,9 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::InitMagic()
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::InitGlobalBuffer(GM_ADDR recvX, GM_ADDR tokenSrcInfo,
-                                                                                  GM_ADDR epRecvCount,
-                                                                                  GM_ADDR topkWeights, GM_ADDR tokenIdx,
-                                                                                  GM_ADDR XOut,
-                                                                                  GM_ADDR sendCostStatsOut)
+                                                                               GM_ADDR epRecvCount, GM_ADDR topkWeights,
+                                                                               GM_ADDR tokenIdx, GM_ADDR XOut,
+                                                                               GM_ADDR sendCostStatsOut)
 {
     recvXGM_.SetGlobalBuffer((__gm__ RecvXType *)recvX);
     tokenSrcInfoGM_.SetGlobalBuffer((__gm__ SrcInfoType *)tokenSrcInfo);
@@ -189,15 +187,15 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void
 MoeCombineNormal<TemplateMC2TypeFunc>::InitTilingData(const MoeCombineNormalTilingData *tilingData)
 {
-    axisBS_ = tilingData->MoeCombineNormalInfo.bs;
-    axisH_ = tilingData->MoeCombineNormalInfo.h;
-    axisK_ = tilingData->MoeCombineNormalInfo.k;
-    aivNum_ = tilingData->MoeCombineNormalInfo.aivNum;
-    moeExpertNum_ = tilingData->MoeCombineNormalInfo.moeExpertNum;
-    moeExpertPerRankNum_ = tilingData->MoeCombineNormalInfo.moeExpertPerRankNum;
-    epWorldSize_ = tilingData->MoeCombineNormalInfo.epWorldSize;
-    epRankId_ = tilingData->MoeCombineNormalInfo.epRankId;
-    isEnableDiagnose_ = tilingData->MoeCombineNormalInfo.isEnableDiagnose;
+    axisBS_ = tilingData->moeCombineNormalInfo.bs;
+    axisH_ = tilingData->moeCombineNormalInfo.h;
+    axisK_ = tilingData->moeCombineNormalInfo.k;
+    aivNum_ = tilingData->moeCombineNormalInfo.aivNum;
+    moeExpertNum_ = tilingData->moeCombineNormalInfo.moeExpertNum;
+    moeExpertPerRankNum_ = tilingData->moeCombineNormalInfo.moeExpertPerRankNum;
+    epWorldSize_ = tilingData->moeCombineNormalInfo.epWorldSize;
+    epRankId_ = tilingData->moeCombineNormalInfo.epRankId;
+    isEnableDiagnose_ = tilingData->moeCombineNormalInfo.isEnableDiagnose;
 }
 
 template <TemplateMC2TypeClass>
@@ -215,12 +213,11 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::InitBuffLen()
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::Init(GM_ADDR recvX, GM_ADDR tokenSrcInfo,
-                                                                      GM_ADDR epRecvCount, GM_ADDR topkWeights,
-                                                                      GM_ADDR tokenIdx, GM_ADDR tpRecvCount,
-                                                                      GM_ADDR XOut, GM_ADDR sendCostStatsOut,
-                                                                      GM_ADDR workspaceGM, TPipe *pipe,
-                                                                      const MoeCombineNormalTilingData *tilingData)
+__aicore__ inline void
+MoeCombineNormal<TemplateMC2TypeFunc>::Init(GM_ADDR recvX, GM_ADDR tokenSrcInfo, GM_ADDR epRecvCount,
+                                            GM_ADDR topkWeights, GM_ADDR tokenIdx, GM_ADDR tpRecvCount, GM_ADDR XOut,
+                                            GM_ADDR sendCostStatsOut, GM_ADDR workspaceGM, TPipe *pipe,
+                                            const MoeCombineNormalTilingData *tilingData)
 {
     workspaceGM_ = workspaceGM;
     tpipe_ = pipe;
@@ -232,7 +229,7 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::Init(GM_ADDR recvX
     InitBuffLen();
 
     PipeBarrier<PIPE_ALL>();
-    winDataSizeOffset_ = static_cast<uint64_t>(magic_) * (tilingData->MoeCombineNormalInfo.totalWinSize / 2UL);
+    winDataSizeOffset_ = static_cast<uint64_t>(magic_) * (tilingData->moeCombineNormalInfo.totalWinSize / 2UL);
     localRankGM_ = GetBufferAddrByRankId(epRankId_);
     DataCacheCleanAndInvalid<SrcInfoType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         epRecvCountGM_[moeExpertNum_ - 1]);
@@ -283,7 +280,7 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::CopyBufferToShareA
 
         if (isEnableDiagnose_) {
             SyncFunc<AscendC::HardEvent::MTE3_S>();
-            int32_t durationTime = static_cast<int32_t>((GetSystemCycle() - sendStartCycle) / CYCLE_TO_TIME);  // us
+            int32_t durationTime = static_cast<int32_t>((GetSystemCycle() - sendStartCycle) / CYCLE_TO_TIME); // us
             int32_t preTime = sendCostStatsTensor.GetValue(srcRankId);
             sendCostStatsTensor.SetValue(srcRankId, preTime + durationTime);
         }
@@ -302,9 +299,8 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::CopyBufferToShareA
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::CopyBufferToShare(uint32_t srcRankId,
-                                                                                   uint32_t srcTokenId,
-                                                                                   uint32_t srcTopkId, uint32_t tkIndex)
+__aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::CopyBufferToShare(uint32_t srcRankId, uint32_t srcTokenId,
+                                                                                uint32_t srcTopkId, uint32_t tkIndex)
 {
     uint32_t tokenOffset = tkIndex * axisH_;
     GM_ADDR dstGM = GetBufferAddrByRankId(srcRankId) + (srcTokenId * axisK_ + srcTopkId) * h512AlignRecvXLen_;
@@ -323,9 +319,8 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::CopyBufferToShare(
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::SetStatusBySrcInfo(uint32_t srcRankId,
-                                                                                    uint32_t srcTokenId,
-                                                                                    uint32_t srcTopkId)
+__aicore__ inline void
+MoeCombineNormal<TemplateMC2TypeFunc>::SetStatusBySrcInfo(uint32_t srcRankId, uint32_t srcTokenId, uint32_t srcTopkId)
 {
     LocalTensor<uint32_t> statusTensor = stateBuf_.Get<uint32_t>();
     GM_ADDR stateGM = GetStateAddrByRankId(srcRankId) + (srcTokenId * axisK_ + srcTopkId) * UB_32_ALIGN;
@@ -336,7 +331,7 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::SetStatusBySrcInfo
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::WaitBuffCopy(uint32_t tokenIndex,
-                                                                              uint32_t startTokenIndex)
+                                                                           uint32_t startTokenIndex)
 {
     LocalTensor<int32_t> tokenIdxLocal = tokenIdxBuf_.Get<int32_t>();
     int tempValidCount = 0;
@@ -348,7 +343,7 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::WaitBuffCopy(uint3
         ++tempValidCount;
     }
     uint32_t calCount = axisK_ * FLOAT_NUM_PER_ALIGN;
-    GM_ADDR stateGM = GetStateAddrByRankId(epRankId_) + tokenIndex * axisK_ * UB_32_ALIGN;  // 计算地址偏移
+    GM_ADDR stateGM = GetStateAddrByRankId(epRankId_) + tokenIndex * axisK_ * UB_32_ALIGN; // 计算地址偏移
     GlobalTensor<float> stateGMTensor;
     stateGMTensor.SetGlobalBuffer((__gm__ float *)stateGM);
     float current = (float)0.0;
@@ -372,7 +367,7 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::WaitBuffCopy(uint3
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::ReadBufferAndWeightedSum(uint32_t tokenIndex,
-                                                                                          uint32_t startTokenIndex)
+                                                                                       uint32_t startTokenIndex)
 {
     LocalTensor<float> tokenFloatLocal = tokenFloatBuf_.Get<float>();
     LocalTensor<float> weightedMulBufLocal = weightedMulBuf_.Get<float>();
@@ -451,7 +446,7 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::ReadBufferFromRemo
 
     for (uint32_t tokenIndex = startTokenIndex; tokenIndex < endTokenIndex; tokenIndex++) {
         WaitBuffCopy(tokenIndex, startTokenIndex);
-        SyncFunc<AscendC::HardEvent::MTE3_V>();  // 与结果搬出datacopy同tensor
+        SyncFunc<AscendC::HardEvent::MTE3_V>(); // 与结果搬出datacopy同tensor
         ReadBufferAndWeightedSum(tokenIndex, startTokenIndex);
     }
 }
@@ -459,11 +454,11 @@ __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::ReadBufferFromRemo
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeCombineNormal<TemplateMC2TypeFunc>::Process()
 {
-    if ASCEND_IS_AIV {  // 全aiv处理
+    if ASCEND_IS_AIV { // 全aiv处理
         CopyBufferToShareAndSetStatus();
         ReadBufferFromRemote();
     }
 }
 
-}  // namespace MoeCombineNormalImpl
-#endif  // MOE_COMBINE_IMPL_H
+} // namespace MoeCombineNormalImpl
+#endif // MOE_COMBINE_IMPL_H
