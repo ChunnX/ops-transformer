@@ -24,8 +24,7 @@
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "flash_attention_noquant_block_vec_flashdecode.h" // FiaBlockVecFlashDecode
-
+#include "flash_attention_noquant_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -59,16 +58,14 @@ public:
 
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
-    static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
 
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT; // V100 只支持一种??
+    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
     static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
 
     using INPUT_T = typename CubeBlockType::Q_T;
     using T = typename CubeBlockType::MM_T;
-    using OUT_T = typename VecFaBlockType::OUT_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
     // CV buffers
@@ -144,11 +141,11 @@ public:
     TBuf<> SharedBuffer3;                          // 共用
 
     // 非tnd时不使用cuSeqLens，这里保证定义
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
+    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
         qCuSeqLensParser;
 
-    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD),
+    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
         kvCuSeqLensParser;
 
@@ -184,13 +181,13 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
         } else {
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
         }
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         } else {
@@ -203,7 +200,8 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+            vecFaBlock.isFd = isFd;
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
@@ -216,7 +214,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qCuSeqLensParser,
                                         kvCuSeqLensParser);
             } else {
@@ -225,7 +223,7 @@ public:
             }
         }
 
-        if constexpr (FLASH_DECODE) {
+        if (isFd) {
             if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();
                 vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
@@ -239,7 +237,7 @@ public:
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
                 }
-                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                     vecFdBlock.SetCuSeqLensParsers(qCuSeqLensParser, kvCuSeqLensParser);
                 } else {
                     vecFdBlock.SetCuSeqLensParsers(qSeqUsedParser, kvSeqUsedParser);
@@ -280,7 +278,7 @@ public:
 
     __aicore__ inline void InitQCuSeqLensParser()
     {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
         } else {
             qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
@@ -289,7 +287,7 @@ public:
 
     __aicore__ inline void InitKvCuSeqLensParser()
     {
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
         } else {
             kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
@@ -323,15 +321,13 @@ public:
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
 
-        // if constexpr (HAS_MASK) {
-        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
         constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
         constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
         constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
         constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
-        // }
 
         constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
         constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
@@ -465,13 +461,13 @@ public:
             if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
-                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
+                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
                     actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
                 } else {
                     actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
                 }
             }
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
@@ -524,7 +520,7 @@ public:
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
-        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
+        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
         } else if (constInfo.sparseMode == fa_base_vector::BAND) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
@@ -844,10 +840,8 @@ public:
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);
             }
-            if constexpr (FLASH_DECODE) {
-                if ASCEND_IS_AIV {
-                    FlashDecode(sectionIdx);
-                }
+            if ASCEND_IS_AIV {
+                FlashDecode(sectionIdx);
             }
         }
 

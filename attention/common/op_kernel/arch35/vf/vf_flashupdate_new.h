@@ -664,7 +664,7 @@ __aicore__ inline void SinkSubExpAddGSFusedVF(const LocalTensor<SINK_T>& dstTens
 
 template <typename T>
 __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *maxUb, const uint16_t m,
-    const uint16_t d, int64_t dSize, const uint32_t pltTailD, const uint16_t hasTail)
+    const uint16_t d, int64_t dSize, const uint32_t pltTailD, const uint16_t hasTail, const uint32_t min = 0xFF7FFFFF)
 {
     constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
     const uint16_t dLoops = d / floatRepSize;
@@ -672,8 +672,7 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
 
     constexpr uint32_t tmpZero = 0x00000000; // zero value of fp16 and fp32
     const T zeroValue = *((T*)&tmpZero);
-    constexpr uint32_t tmpMin = 0xFF7FFFFF; // min value of float
-    const float minValue = *((float*)&tmpMin);
+    const float minValue = *((float*)&min);
     MicroAPI::RegTensor<float> vregMinValue;
     MicroAPI::RegTensor<T> vregZeroValue;
     MicroAPI::RegTensor<float> vregMax;
@@ -707,7 +706,7 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
 
 template <typename T>
 __aicore__ inline void RowInvalidUpdateVF(const LocalTensor<T>& finalTensor, const LocalTensor<float>& maxTensor,
-    const uint16_t m, const uint16_t d, int64_t dSize)
+    const uint16_t m, const uint16_t d, int64_t dSize, const uint32_t min = 0xFF7FFFFF)
 {
     __ubuf__ T * finalUb = (__ubuf__ T*)finalTensor.GetPhyAddr();
     __ubuf__ float * maxUb = (__ubuf__ float*)maxTensor.GetPhyAddr();
@@ -720,7 +719,7 @@ __aicore__ inline void RowInvalidUpdateVF(const LocalTensor<T>& finalTensor, con
         hasTail = 1;
     }
 
-    RowInvalidUpdateVF<T>(finalUb, maxUb, m, d, dSize, pltTailD, hasTail);
+    RowInvalidUpdateVF<T>(finalUb, maxUb, m, d, dSize, pltTailD, hasTail, min);
 }
 } // namespace
 

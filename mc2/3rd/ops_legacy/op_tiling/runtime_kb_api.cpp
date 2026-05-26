@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "ops_legacy/op_tiling/runtime_kb_api.h"
+#include "runtime_kb_api.h"
 #ifdef BUILD_OPEN_PROJECT
 #include "legacy_common_manager.h"
 #include "log/log.h"

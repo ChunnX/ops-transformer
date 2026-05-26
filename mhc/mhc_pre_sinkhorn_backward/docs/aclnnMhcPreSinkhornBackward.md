@@ -529,9 +529,12 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
                 <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
          <tr>
-        <td rowspan="3">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="3">561002</td>
+        <td rowspan="4">ACLNN_ERR_INNER_TILING_ERROR</td>
+        <td rowspan="4">561002</td>
         <td>N不等于4。</td>
+      </tr>
+      <tr>
+        <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
       </tr>
       <tr>
         <td>sk_iter_count不等于20。</td>

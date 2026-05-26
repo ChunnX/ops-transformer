@@ -1031,15 +1031,22 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     bool isAicpu = (commMode == Mc2Comm::COMM_MODE_AICPU);
+    auto &&param = MutableRCSTilingData();
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_) && !isAicpu) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
+        allReduceTilingHccl.SetIsAlign((isPerBlock_ ||
+            (scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8) ||
+            (param.isInputCommQuantScale == QUANT_MODE_FP8)));
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_) && !isAicpu) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);
+        allReduceTilingHccl.SetIsAlign((isPerBlock_ ||
+            (scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8) ||
+            (param.isInputCommQuantScale == QUANT_MODE_FP8)));
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {
         MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);

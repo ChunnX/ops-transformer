@@ -142,7 +142,7 @@ def run_case(module, case):
     _set_case(module, case)
     try:
         data = module.generate_data()
-        q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, qr_fp16, kr_fp16, block_table_np = data
+        q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, qr_bf16, kr_bf16, block_table_torch = data
         module.cpu_mxfp8_golden(
             q_fp8,
             k_fp8,
@@ -152,8 +152,8 @@ def run_case(module, case):
             deq_v,
             module.ACTUAL_SEQ_Q,
             module.ACTUAL_SEQ_KV,
-            qr_fp16,
-            kr_fp16,
+            qr_bf16,
+            kr_bf16,
         )
         return {"name": case["name"], "status": "PASSED", "error_message": ""}
     except Exception as exc:
