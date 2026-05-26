@@ -332,7 +332,7 @@ public:
             return;
         }
         if (GetBlockIdx() < 2) {
-            printf("[FF] blk=%u totalM=%llu winStart=%llu curGroupM=%llu\n",
+            AscendC::PRINTF("[FF] blk=%u totalM=%llu winStart=%llu curGroupM=%llu\n",
                 GetBlockIdx(), totalM, deterSync_.windowStartM, deterSync_.curGroupM);
         }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
@@ -341,10 +341,14 @@ public:
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
             if (outRow % coreNumVec != GetBlockIdx()) continue;
-            epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
+            if (GetBlockIdx() < 2 && mOffset < 4) {
+                AscendC::PRINTF("[FF] blk=%u mOffset=%llu outRow=%llu n=%llu wsOffset=%llu\n",
+                    GetBlockIdx(), mOffset, outRow, n, mOffset * n);
+            }
+            // epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
         }
         if (GetBlockIdx() < 2) {
-            printf("[FF] blk=%u flush loop done\n", GetBlockIdx());
+            AscendC::PRINTF("[FF] blk=%u flush loop done\n", GetBlockIdx());
         }
 
         deterSync_.windowStartM = deterSync_.curGroupM;
@@ -395,8 +399,7 @@ public:
             if (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
-                deterSync_.windowStartM = deterSync_.curGroupM;
-                deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
+                if ASCEND_IS_AIV { FinalFlush(params); }
                 SyncAll<false>();
             }
             ProcessSingleGroup(params, bs, groupIdx);
