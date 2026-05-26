@@ -289,7 +289,7 @@ __aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr) {
     return reinterpret_cast<__gm__ T*>(*(retPtr + index));
 }
 
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3113
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
 __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset,
     const MC2GMMBaseParams *__restrict &gmmBaseParams, const GlobalTensor<int64_t> &groupListGm)
 {

@@ -45,7 +45,7 @@ constexpr uint32_t WEIGHTNZ_N0_K0 = 512;
 
 constexpr float NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715;
 constexpr float TANH_APPROX_FACTOR = 1 / 0.044715;
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3113
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
 constexpr AscendC::MicroAPI::DivSpecificMode mode = { AscendC::MicroAPI::MaskMergeMode::ZEROING, true };
 #endif
 
