@@ -9,7 +9,7 @@
  */
 /*!
  * \file scatter_pa_kv_cache_nz_non_contiguous.h
- * \brief Non-contiguous case 2 with NZ format using strides
+ * \brief Non-contiguous with NZ format using strides
  */
 
 #ifndef SCATTER_PA_KV_CACHE_NZ_NON_CONTIGUOUS_H_
@@ -247,10 +247,6 @@ __aicore__ inline void ScatterPaKvCacheNzNonContiguous<T1, T2, IndexDtype, InOut
     int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t lastDimIdx, int64_t headNum, int64_t lastDimNum)
 {
     LocalTensor<T2> inputLocal = valueQue_.DeQue<T2>();
-
-    event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdV2ToS);
-    WaitFlag<HardEvent::V_S>(eventIdV2ToS);
 
     int64_t dstStride = 0;
     if constexpr (FIVE_DIM) {

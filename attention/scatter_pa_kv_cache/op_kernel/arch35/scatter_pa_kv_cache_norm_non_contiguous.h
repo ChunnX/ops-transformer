@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 /*!
  * \file scatter_pa_kv_cache_normal_non_contiguous.h
- * \brief Non-contiguous case 2 with ND format using strides
+ * \brief Non-contiguous with ND format using strides
  */
 
 #ifndef SCATTER_PA_KV_CACHE_NORMAL_NON_CONTIGUOUS_H_
@@ -198,8 +198,8 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutMode>::InitLoopInfo() {
-    int64_t ubHandleSize = maxHandleSize_ / sizeof(T);
-    ubHandleSize = RoundUp(ubHandleSize) - BLOCK_SIZE;
+    int64_t ubHandleSize = maxHandleSize_ / BLOCK_SIZE * BLOCK_SIZE;
+    ubHandleSize = ubHandleSize / sizeof(T);
     alignKHeadSize_ = RoundUp(tilingData_->kHeadSize);
     
     kFullyLoad_ = (alignKHeadSize_ <= ubHandleSize);

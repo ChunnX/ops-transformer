@@ -918,6 +918,7 @@ bool ScatterPaKvCacheTiling::IsLastAxisContiguous(const gert::Stride &stride, co
     return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
 }
 
+// 当前非连续场景只支持key, keyCache, value, valueCache尾轴连续的场景
 bool ScatterPaKvCacheTiling::IsNonContiguous()
 {
     bool keyLastAxisContiguous = IsLastAxisContiguous(keyStride_, inputKeyShape_);
@@ -977,13 +978,11 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     if (GetTemplateType(inputKeyDimNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (templateType_ == TEMPLATE_NORMAL) { // && IsNonContiguous()) {
-        printf("TEMPLATE_NORMAL is contiguous :%d\n ", IsNonContiguous());
+    if (templateType_ == TEMPLATE_NORMAL && IsNonContiguous()) {
         templateType_ = TEMPLATE_NORMAL_NON_CONTIGUOUS;
     }
-    if (templateType_ == TEMPLATE_NZ) {// && IsNonContiguous()) {
+    if (templateType_ == TEMPLATE_NZ && IsNonContiguous()) {
         templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS;
-        printf("TEMPLATE_NZ is contiguous :%d, dimNum:%d\n ", IsNonContiguous(), inputKeyCacheInShape_.GetDimNum());
         if (inputKeyCacheInShape_.GetDimNum() != DIM4) {
             templateType_ = TEMPLATE_NZ_NON_CONTIGUOUS_FIVE_DIM;
         }
@@ -1214,7 +1213,6 @@ void ScatterPaKvCacheTiling::DumpTilingInfo()
         info += " valueCacheStride2: " + std::to_string(valueCacheStride2_);
         info += " valueCacheStride3: " + std::to_string(valueCacheStride3_);
     }
-    printf("tiling data is : %s\n", info.c_str());
     OP_LOGI(context_->GetNodeName(), "%s", info.c_str());
 }
 

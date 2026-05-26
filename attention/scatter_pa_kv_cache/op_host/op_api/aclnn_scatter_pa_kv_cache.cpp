@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -84,12 +84,12 @@ static aclnnStatus CheckDtypeValid(
     const aclTensor *valueCacheRef,
     const aclTensor *compressLensOptional,
     const aclTensor *compressSeqOffsetOptional,
-    const aclTensor *seqLensOptional)
+    const aclTensor *seqLensOptional,
+    char *cacheModeOptional)
 {
     auto& platformInfo = op::GetCurrentPlatformInfo();
     auto socVersion = platformInfo.GetCurNpuArch();
     bool isArch35 = (socVersion == NpuArch::DAV_3510);
-
     auto dtypeSupportList = isArch35 ? KEY_VALUE_DTYPE_SUPPORT_LIST : KEY_VALUE_DTYPE_SUPPORT_LIST_910;
 
     OP_CHECK_DTYPE_NOT_SUPPORT(key, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
@@ -112,12 +112,21 @@ static aclnnStatus CheckDtypeValid(
 
         auto valueDtype = value->GetDataType();
         auto valueCacheDtype = valueCacheRef->GetDataType();
-        if (keyDtype != valueDtype || keyDtype != valueCacheDtype) {
+        bool isPaNz = (cacheModeOptional != nullptr && strcmp(cacheModeOptional, "PA_NZ") == 0);
+
+        if (valueDtype != valueCacheDtype) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of key[%s], value[%s], valueCacheRef[%s] are not equal.",
-                    op::ToString(DataType(keyDtype)).GetString(),
+                    "The data type of value[%s] and valueCacheRef[%s] are not equal.",
                     op::ToString(DataType(valueDtype)).GetString(),
                     op::ToString(DataType(valueCacheDtype)).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+
+        if (!isPaNz && keyDtype != valueDtype) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The data type of key[%s] and value[%s] are not equal when cacheMode is not PA_NZ.",
+                    op::ToString(DataType(keyDtype)).GetString(),
+                    op::ToString(DataType(valueDtype)).GetString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -173,59 +182,6 @@ static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value)
                 "The dim num of value must be 0, 3 or 4, but got %ld.",
                 valueDimNum);
         return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckFormat(
-    const aclTensor *key,
-    const aclTensor *keyCacheRef,
-    const aclTensor *slotMapping,
-    const aclTensor *value,
-    const aclTensor *valueCacheRef)
-{
-    auto keyFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(key->GetStorageFormat()));
-    auto slotMappingFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(slotMapping->GetStorageFormat()));
-
-    if (keyFormat != ge::FORMAT_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "key format[%s] is not supported, only support ND.",
-                op::ToString(keyFormat).GetString());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (slotMappingFormat != ge::FORMAT_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "slotMapping format[%s] is not supported, only support ND.",
-                op::ToString(slotMappingFormat).GetString());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    auto keyCacheFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(keyCacheRef->GetStorageFormat()));
-    if (keyCacheFormat != ge::FORMAT_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "keyCacheRef format[%s] is not supported, only support ND.",
-                op::ToString(keyCacheFormat).GetString());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (value != nullptr) {
-        auto valueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(value->GetStorageFormat()));
-        if (valueFormat != ge::FORMAT_ND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "value format[%s] is not supported, only support ND.",
-                    op::ToString(valueFormat).GetString());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-
-        auto valueCacheFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(valueCacheRef->GetStorageFormat()));
-        if (valueCacheFormat != ge::FORMAT_ND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "valueCacheRef format[%s] is not supported, only support ND.",
-                    op::ToString(valueCacheFormat).GetString());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
     }
 
     return ACLNN_SUCCESS;
@@ -302,7 +258,7 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
     return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
 }
 
-static bool IsSupportNonContiguousCase1(const aclTensor *keyCacheRef, const aclTensor *valueCacheRef,
+static bool IsSupportNonContiguousCache(const aclTensor *keyCacheRef, const aclTensor *valueCacheRef,
                                         const aclTensor *value)
 {
     bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCacheRef);
@@ -313,7 +269,7 @@ static bool IsSupportNonContiguousCase1(const aclTensor *keyCacheRef, const aclT
     return keyCacheCase1 && valueCacheCase1;
 }
 
-static bool IsSupportNonContiguousCase2(const aclTensor *key, const aclTensor *keyCacheRef,
+static bool IsSupportNonContiguousKeyAndCache(const aclTensor *key, const aclTensor *keyCacheRef,
                                         const aclTensor *value, const aclTensor *valueCacheRef)
 {
     bool keyLastAxisContiguous = IsLastAxisContiguous(key);
@@ -337,7 +293,7 @@ static bool IsSupportNonContiguousCase2(const aclTensor *key, const aclTensor *k
     return allLastAxisContiguous && anyNonContiguous;
 }
 
-static aclnnStatus ProcessNonContiguousCase(
+static aclnnStatus ProcessNonContiguous(
     const aclTensor *key,
     aclTensor *keyCacheRef,
     const aclTensor *slotMapping,
@@ -353,10 +309,10 @@ static aclnnStatus ProcessNonContiguousCase(
     uint64_t *workspaceSize,
     aclOpExecutor **executor,
     UniqueExecutor& uniqueExecutor,
-    bool isCase2)
+    bool isKeyAndCacheNonContiguous)
 {
     const aclTensor *keyView = nullptr;
-    if (isCase2 && IsLastAxisContiguous(key)) {
+    if (isKeyAndCacheNonContiguous && IsLastAxisContiguous(key)) {
         keyView = uniqueExecutor->CreateView(key,
                                              key->GetViewShape(),
                                              key->GetStorageShape(),
@@ -381,7 +337,7 @@ static aclnnStatus ProcessNonContiguousCase(
     const aclTensor *valueView = value;
     const aclTensor *valueCacheView = nullptr;
     if (value != nullptr) {
-        if (isCase2 && IsLastAxisContiguous(value)) {
+        if (isKeyAndCacheNonContiguous && IsLastAxisContiguous(value)) {
             valueView = uniqueExecutor->CreateView(value,
                                                    value->GetViewShape(),
                                                    value->GetStorageShape(),
@@ -432,7 +388,7 @@ static aclnnStatus ProcessNonContiguousCase(
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ProcessContiguousCase(
+static aclnnStatus ProcessContiguous(
     const aclTensor *key,
     aclTensor *keyCacheRef,
     const aclTensor *slotMapping,
@@ -551,11 +507,9 @@ aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
 
     CHECK_RET(CheckShape(key, value) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    CHECK_RET(CheckFormat(key, keyCacheRef, slotMapping, value, valueCacheRef) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-
     CHECK_RET(CheckDtypeValid(key, keyCacheRef, slotMapping, value, valueCacheRef,
-                              compressLensOptional, compressSeqOffsetOptional, seqLensOptional) == ACLNN_SUCCESS,
+                              compressLensOptional, compressSeqOffsetOptional, seqLensOptional,
+                              cacheModeOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -571,19 +525,19 @@ aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
                                strcmp(scatterModeOptional, "None") == 0);
 
     if (isArch35 && isKey3Dim && isScatterModeEmpty) {
-        bool isCase1 = IsSupportNonContiguousCase1(keyCacheRef, valueCacheRef, value);
-        bool isCase2 = IsSupportNonContiguousCase2(key, keyCacheRef, value, valueCacheRef);
+        bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCacheRef, valueCacheRef, value);
+        bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(key, keyCacheRef, value, valueCacheRef);
 
-        if (isCase1 || isCase2) {
-            return ProcessNonContiguousCase(
+        if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
+            return ProcessNonContiguous(
                 key, keyCacheRef, slotMapping, value, valueCacheRef,
                 compressLensOptional, compressSeqOffsetOptional, seqLensOptional,
                 cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional,
-                workspaceSize, executor, uniqueExecutor, isCase2);
+                workspaceSize, executor, uniqueExecutor, isKeyAndCacheNonContiguous);
         }
     }
 
-    return ProcessContiguousCase(
+    return ProcessContiguous(
         key, keyCacheRef, slotMapping, value, valueCacheRef,
         compressLensOptional, compressSeqOffsetOptional, seqLensOptional,
         cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional,
