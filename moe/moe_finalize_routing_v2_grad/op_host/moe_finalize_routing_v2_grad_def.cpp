@@ -70,6 +70,7 @@ public:
             .ExtendCfgInfo("opFile.value", "moe_finalize_routing_v2_grad");
         this->AICore().AddConfig("ascend910b", membaseCfg);
         this->AICore().AddConfig("ascend910_93", membaseCfg);
+        this->AICore().AddConfig("ascend950", membaseCfg);
 
         OpAICoreConfig regbaseCfg;
         regbaseCfg.Input("grad_y")
@@ -146,7 +147,7 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "moe_finalize_routing_v2_grad_apt");
-        this->AICore().AddConfig("ascend950", regbaseCfg);
+        // this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 
