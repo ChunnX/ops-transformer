@@ -52,7 +52,7 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ProcessMainLoop();
-    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv);
+    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedOriKv,
@@ -138,7 +138,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
-    this->ParseTilingData(cuSeqlensQ, cuSeqlensOriKv, sequsedOriKv);
+    this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, sequsedOriKv);
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedOriKv, sequsedCmpKv, cmpResidualKv);
     vecBlock.CleanOutput(attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
@@ -152,7 +152,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ParseTilingData(
-    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv)
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv)
 {
     auto &mixedQuantSparseFlashMlaBaseParams = this->tilingData->baseParams;
     constInfo.bSize = mixedQuantSparseFlashMlaBaseParams.batchSize;
@@ -200,18 +200,23 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     constInfo.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
         int64_t s2Size;
-        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+        if (sequsedOriKv != nullptr) {
+            GlobalTensor<int32_t> sequsedOriKvGm;
+            sequsedOriKv.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
+            s2Size = sequsedOriKv.GetValue(bIdx);
+        } else if (cuSeqlensOriKv != nullptr) {
             GlobalTensor<int32_t> cuSeqlensOriKvGm;
             cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
             s2Size = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
         } else {
-            GlobalTensor<int32_t> actualSeqLengthsKVGm;
-            actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
-            s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            s1Size = constInfo.s2Size;
         }
-    
         int64_t s1Size;
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        if (sequsedQ != nullptr) {
+            GlobalTensor<int32_t> sequsedQGm;
+            sequsedQGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
+            s1Size = sequsedQGm.GetValue(bIdx);
+        } else if (cuSeqlensQ != nullptr) {
             GlobalTensor<int32_t> cuSeqlensQGm;
             cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
             s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
