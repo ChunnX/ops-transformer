@@ -182,7 +182,7 @@ static ge::graphStatus SetTilingData(
     // - mBaseTailSplitCnt, nBaseTailSplitCnt
     // - mTailMain, nTailMain
     // - usedCoreNum, nBufferNum, dbL0c
-    
+    tilingData->qbmmTilingdata.baseM = 128;
     OP_LOGD(nodeName, "QuantMatmulTilingSwat computed tiling data successfully");
     OP_LOGD(nodeName, "  qbmmTilingdata.m=%u, n=%u, k=%u", 
             tilingData->qbmmTilingdata.m, tilingData->qbmmTilingdata.n, tilingData->qbmmTilingdata.k);

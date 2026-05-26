@@ -288,7 +288,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
             if (AscendC::Te::Get<MNK_M>(singleShape) <= 0 || AscendC::Te::Get<MNK_N>(singleShape) <= 0) {
                 // Tail splitting can create empty logical slices; ignore them and
                 // stop the current block once no useful work remains.
-                return;
+                break;
             }
             CrossCoreWaitFlag(9);
             // tileCount++;
