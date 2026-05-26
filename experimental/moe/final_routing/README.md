@@ -1,4 +1,4 @@
-# 算子名称：FinalRouing
+# 算子名称：FinalRouting
 
 ## 产品支持情况
 
@@ -75,6 +75,7 @@ $$
   </tbody></table>
 
 ## 约束说明
+
 - token_table中小于0的值表示该expert对此token无效
 
 ## 调用说明
