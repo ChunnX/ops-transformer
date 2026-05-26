@@ -1037,7 +1037,8 @@ void GroupedQmmTiling::SetKernelType()
 uint64_t GroupedQmmTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
-                              static_cast<uint64_t>(inputParams_.kernelType));
+                              static_cast<uint64_t>(inputParams_.kernelType),
+                              static_cast<uint64_t>(GMM_L1_BUFFER_NUM_2));
 }
 
 ge::graphStatus GroupedQmmTiling::GetWorkspaceSize()
@@ -1080,7 +1081,9 @@ void GroupedQmmTiling::CalBasicBlock()
 {
     bool isGBQuantMode = inputParams_.aQuantMode == optiling::QuantMode::PERGROUP_MODE &&
                          inputParams_.bQuantMode == optiling::QuantMode::PERBLOCK_MODE;
-    basicTiling_.baseM = std::min(inputParams_.mSize, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256));
+    basicTiling_.baseM =
+        std::min(CeilDiv(inputParams_.mSize, inputParams_.groupNum),
+                 static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256));
     basicTiling_.baseM = !inputParams_.transA ?
                              CeilAlign(basicTiling_.baseM, CUBE_BLOCK) :
                              CeilAlign(basicTiling_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
