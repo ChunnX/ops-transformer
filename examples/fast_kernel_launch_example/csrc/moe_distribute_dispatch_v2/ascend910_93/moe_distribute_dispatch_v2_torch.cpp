@@ -361,12 +361,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
 }
 
 // Register Ascend implementations for MoeDistributeDispatchV2
-TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(fast_kernel_launch, PrivateUse1, m)
 {
     m.impl("MoeDistributeDispatchV2", TORCH_FN(npu_moe_distribute_dispatch_v2));
 }
 
-TORCH_LIBRARY_IMPL(ascend_ops, Meta, m)
+TORCH_LIBRARY_IMPL(fast_kernel_launch, Meta, m)
 {
     m.impl("MoeDistributeDispatchV2", &npu_moe_distribute_dispatch_v2_meta);
 }

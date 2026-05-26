@@ -407,12 +407,12 @@ at::Tensor npu_moe_distribute_combine_v2_meta(
     return output;
 }
 
-TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(fast_kernel_launch, PrivateUse1, m)
 {
     m.impl("MoeDistributeCombineV2", TORCH_FN(npu_moe_distribute_combine_v2));
 }
 
-TORCH_LIBRARY_IMPL(ascend_ops, Meta, m)
+TORCH_LIBRARY_IMPL(fast_kernel_launch, Meta, m)
 {
     m.impl("MoeDistributeCombineV2", &npu_moe_distribute_combine_v2_meta);
 }
