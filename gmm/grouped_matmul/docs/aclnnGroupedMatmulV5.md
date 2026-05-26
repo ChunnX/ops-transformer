@@ -1,5 +1,12 @@
 # aclnnGroupedMatmulV5
 
+<style>
+abbr {
+  border-bottom: 1px dotted #666;
+  cursor: help;
+}
+</style>
+
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
 
 ## 目录
@@ -137,30 +144,28 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 按以下步骤自检，定位到对应子表：
 
-```
-1. 确定场景    → 非量化 / 伪量化 / 全量化
-2. 确定产品    → Ascend 950PR/950DT 或 Atlas A3/A2
-3. 确定量化模式 → 仅全量化需确定：静态 / 动态(T-C/T-T/K-C/K-T) / MX / G-B
-4. 确定分组轴  → groupType: -1(不分组) / 0(M轴) / 2(K轴)
-5. 查对应约束  → [7.2 Ascend 950PR/950DT](#72-ascend-950prascend-950dt) 或 [7.3 Atlas A3/A2](#73-atlas-a3a2-训练系列产品) 查看 dtype 与约束详情
-```
+1. 确定场景 → <abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr> / <abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr> / <abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>
+2. 确定产品 → Ascend 950PR/950DT 或 Atlas A3/A2
+3. 确定量化模式 → 仅全量化需确定：<abbr title="量化参数离线预计算，推理时不变">静态</abbr> / <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>(<abbr title="pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放">T-C</abbr>/<abbr title="pertensor-pertensor：输入和权重均为统一缩放">T-T</abbr>/<abbr title="pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放">K-C</abbr>/<abbr title="pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放">K-T</abbr>) / <abbr title="特殊 pergroup 量化（block 粒度 M=1,N=1,K=32）">MX</abbr> / <abbr title="pergroup-perblock：输入侧按 K 分组缩放，权重侧按 N×K 分块缩放">G-B</abbr>
+4. 确定分组轴 → groupType: -1(不分组) / 0(M轴) / 2(K轴)
+5. 查对应约束 → [7.2 Ascend 950PR/950DT](#72-ascend-950prascend-950dt) 或 [7.3 Atlas A3/A2](#73-atlas-a3a2-训练系列产品) 查看 dtype 与约束详情
 
 ### 5.2 场景→必传参数速查
 
 | 场景 | **必传参数** | **必须置空（传 nullptr）** |
 |------|:---|:---|
-| **非量化** | `x`, `weight`, `out` | `scaleOptional`, `offsetOptional`, `antiquantScaleOptional`, `antiquantOffsetOptional`, `perTokenScaleOptional` |
-| **伪量化** | `x`, `weight`, `antiquantScaleOptional`, `out` | `scaleOptional`, `offsetOptional`, `perTokenScaleOptional` |
-| **全量化-静态** | `x`, `weight`, `scaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `perTokenScaleOptional` |
-| **全量化-动态** | `x`, `weight`, `scaleOptional`, `perTokenScaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `offsetOptional` |
-| **全量化-MX/G-B** | `x`, `weight`, `scaleOptional`, `perTokenScaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `offsetOptional` |
+| **<abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr>** | `x`, `weight`, `out` | `scaleOptional`, `offsetOptional`, `antiquantScaleOptional`, `antiquantOffsetOptional`, `perTokenScaleOptional` |
+| **<abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr>** | `x`, `weight`, `antiquantScaleOptional`, `out` | `scaleOptional`, `offsetOptional`, `perTokenScaleOptional` |
+| **<abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>-<abbr title="量化参数离线预计算，推理时不变">静态</abbr>** | `x`, `weight`, `scaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `perTokenScaleOptional` |
+| **<abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>-<abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>** | `x`, `weight`, `scaleOptional`, `perTokenScaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `offsetOptional` |
+| **<abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>-<abbr title="特殊 pergroup 量化（block 粒度 M=1,N=1,K=32）">MX</abbr>/<abbr title="pergroup-perblock：输入侧按 K 分组缩放，权重侧按 N×K 分块缩放">G-B</abbr>** | `x`, `weight`, `scaleOptional`, `perTokenScaleOptional`, `out` | `antiquantScaleOptional`, `antiquantOffsetOptional`, `offsetOptional` |
 
 > **biasOptional** 在所有场景中均可选。**groupListOptional** 根据 groupType 决定是否必传，详见 [groupType 场景矩阵](#72-ascend-950prascend-950dt)。
 
 ### 5.3 典型最小调用流程
 
 <details>
-<summary>非量化最小调用（M 轴分组，单 Tensor 输出）</summary>
+<summary><abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr>最小调用（M 轴分组，单 Tensor 输出）</summary>
 
 ```c++
 // 参数清单：x, weight, out 共 3 个，其余全部传 nullptr
@@ -181,7 +186,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 </details>
 
 <details>
-<summary>伪量化 A16W8 最小调用（M 轴分组，单 Tensor 输出，perchannel 量化）</summary>
+<summary><abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr> A16W8 最小调用（M 轴分组，单 Tensor 输出，<abbr title="每列独立缩放因子">perchannel</abbr> 量化）</summary>
 
 ```c++
 // 参数清单：x, weight, antiquantScale, out 共 4 个
@@ -202,7 +207,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 </details>
 
 <details>
-<summary>全量化静态 A8W8 最小调用（M 轴分组，单 Tensor 输出，perchannel 量化）</summary>
+<summary><abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr><abbr title="量化参数离线预计算，推理时不变">静态</abbr> A8W8 最小调用（M 轴分组，单 Tensor 输出，<abbr title="每列独立缩放因子">perchannel</abbr> 量化）</summary>
 
 ```c++
 // 参数清单：x, weight, scale, out 共 4 个
@@ -261,7 +266,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 
 - **Ascend 950PR/Ascend 950DT**：
   - x/weight 不支持 INT16；x 不支持 INT4
-  - x/weight/out 在非量化支持最多 1024 个 Tensor，伪量化最多 128 个，全量化最多 1 个
+   - x/weight/out 在<abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr>支持最多 1024 个 Tensor，<abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr>最多 128 个，<abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>最多 1 个
 - **Atlas A3/A2**：
   - 不支持 FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0 类型
   - biasOptional 不支持 BFLOAT16
@@ -270,7 +275,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 
 <a id="62-非量化场景参数"></a>
 
-### 6.2 非量化场景参数
+### 6.2 <abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr>场景参数
 
 <details>
 <summary>展开查看非量化场景参数</summary>
@@ -285,7 +290,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 
 <a id="63-伪量化场景参数"></a>
 
-### 6.3 伪量化场景参数
+### 6.3 <abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr>场景参数
 
 <details>
 <summary>展开查看伪量化场景参数</summary>
@@ -296,7 +301,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 
 <a id="631-perchannel-模式"></a>
 
-#### 6.3.1 perchannel 模式
+#### 6.3.1 <abbr title="每列独立缩放因子">perchannel</abbr> 模式
 
 | 参数名 | 说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
@@ -306,7 +311,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 
 <a id="632-pergroup-模式"></a>
 
-#### 6.3.2 pergroup 模式（仅 A16W4、weight=INT4 时支持）
+#### 6.3.2 <abbr title="按 K 方向等分多组，每组独立缩放">pergroup</abbr> 模式（仅 A16W4、weight=INT4 时支持）
 
 shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应的伪量化场景约束。
 
@@ -314,7 +319,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 <a id="64-全量化场景参数"></a>
 
-### 6.4 全量化场景参数
+### 6.4 <abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>场景参数
 
 <details>
 <summary>展开查看全量化场景参数</summary>
@@ -323,7 +328,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 <a id="641-静态量化参数子集"></a>
 
-#### 6.4.1 静态量化参数子集
+#### 6.4.1 <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化参数子集
 
 | 参数名 | 说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
@@ -335,7 +340,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 <a id="642-动态量化参数子集"></a>
 
-#### 6.4.2 动态量化（T-T/T-C/K-T/K-C）参数子集
+#### 6.4.2 <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>量化（<abbr title="pertensor-pertensor：输入和权重均为统一缩放">T-T</abbr>/<abbr title="pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放">T-C</abbr>/<abbr title="pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放">K-T</abbr>/<abbr title="pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放">K-C</abbr>）参数子集
 
 | 参数名 | 说明 | 数据类型 | 维度(shape) |
 |--------|------|----------|:---|
@@ -347,7 +352,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 <a id="643-mx量化参数子集"></a>
 
-#### 6.4.3 MX 量化参数子集
+#### 6.4.3 <abbr title="特殊 pergroup 量化（block 粒度 M=1,N=1,K=32）">MX</abbr> 量化参数子集
 
 | 参数名 | 说明 | 数据类型 |
 |--------|------|----------|
@@ -358,7 +363,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 <a id="644-g-b量化参数子集"></a>
 
-#### 6.4.4 G-B 量化参数子集
+#### 6.4.4 <abbr title="pergroup-perblock：输入侧按 K 分组缩放，权重侧按 N×K 分块缩放">G-B</abbr> 量化参数子集
 
 | 参数名 | 说明 | 数据类型 |
 |--------|------|----------|

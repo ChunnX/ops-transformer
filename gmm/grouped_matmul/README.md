@@ -1,5 +1,12 @@
 # GroupedMatmul
 
+<style>
+abbr {
+  border-bottom: 1px dotted #666;
+  cursor: help;
+}
+</style>
+
 ## 1. GroupedMatmul 简介
 
 GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量进行分组，分别对各组执行矩阵乘法。涵盖非量化、伪量化和全量化三种计算场景，广泛应用于 MoE 等大模型推理加速。
@@ -99,21 +106,21 @@ GroupedMatmul 根据计算过程中对数据精度的处理方式，分为三大
 
 算子功能：实现分组矩阵乘计算，公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
 
-- **M 轴分组（groupType=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
-- **K 轴分组（groupType=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
-- **不分组（groupType=-1）**：各组 shape 完全独立。
+- **M 轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
+- **K 轴分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
+- **不分组（<abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr>=-1）**：各组 shape 完全独立。
 
 <a id="42-计算公式"></a>
 
 ### 4.2 计算公式
 
-#### 3.2.1 非量化场景
+#### 3.2.1 <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
 
 $$
 y_i = x_i \times weight_i + bias_i
 $$
 
-#### 3.2.2 伪量化场景
+#### 3.2.2 <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
 
 > weight 以低精度存储，计算时反量化为浮点。
 
@@ -137,9 +144,9 @@ $$
 y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i
 $$
 
-#### 3.2.3 全量化场景
+#### 3.2.3 <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
 
-##### 静态量化（T-C / T-T，无 perTokenScaleOptional）
+##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化（<abbr title="pertensor-perchannel：x 侧全体共享一套量化参数，weight 侧每列一套">T-C</abbr> / <abbr title="pertensor-pertensor：x 侧和 weight 侧均为全体共享一套量化参数">T-T</abbr>，无 perTokenScaleOptional）
 
 $$
 y_i = (x_i \times weight_i) \times scale_i + offset_i
@@ -157,7 +164,7 @@ $$
 y_i = (x_i \times weight_i) \times scale_i + bias_i
 $$
 
-##### 动态量化（T-T / T-C / K-T / K-C）
+##### <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>量化（<abbr title="pertensor-pertensor：x 侧和 weight 侧均为全体共享一套量化参数">T-T</abbr> / <abbr title="pertensor-perchannel：x 侧全体共享一套量化参数，weight 侧每列一套">T-C</abbr> / <abbr title="pertoken-pertensor：x 侧每行一套量化参数，weight 侧全体共享一套">K-T</abbr> / <abbr title="pertoken-perchannel：x 侧每行一套量化参数，weight 侧每列一套">K-C</abbr>）
 
 $$
 y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i
@@ -175,7 +182,7 @@ $$
 y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i + bias_i
 $$
 
-##### MX 量化
+##### <abbr title="特殊 pergroup 量化，block 粒度 M=1,N=1,K=32">MX</abbr> 量化
 
 <a id="mx量化"></a>
 
@@ -187,7 +194,7 @@ $$
 
 <a id="gb量化"></a>
 
-##### G-B 量化
+##### <abbr title="pergroup-perblock：输入侧按 K 分组缩放，权重侧按 N×K 分块缩放">G-B</abbr> 量化
 
 G-B 是 pergroup-perblock 量化，block size 固定为 gsM=1, gsN=gsK=128：
 
