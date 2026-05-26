@@ -20,9 +20,7 @@
 
 struct MoeDistributeCombineA2Info {
     uint32_t epWorldSize;                // epWorldSize
-    uint32_t tpWorldSize;                // tpWorldSize
     uint32_t epRankId;                   // epRankId
-    uint32_t tpRankId;                   // tpRankId
     uint32_t expertSharedType;           // expert type
     uint32_t sharedExpertRankNum;        // shared expert number
     uint32_t moeExpertNum;               // moe expert number
@@ -49,9 +47,7 @@ struct MoeDistributeCombineA2TilingData {
 // a3
 struct MoeDistributeCombineInfo {
     uint32_t epWorldSize;
-    uint32_t tpWorldSize;
     uint32_t epRankId;
-    uint32_t tpRankId;
     uint32_t expertShardType;
     uint32_t sharedExpertRankNum;
     uint32_t moeExpertNum;
@@ -64,12 +60,10 @@ struct MoeDistributeCombineInfo {
     uint32_t aivNum;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
 };
 struct MoeDistributeCombineTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
-    Mc2CcTiling mc2CcTiling2;
     MoeDistributeCombineInfo moeDistributeCombineInfo;
 };
 

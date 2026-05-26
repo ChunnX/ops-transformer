@@ -18,9 +18,7 @@
 
 struct MoeDistributeDispatchV2Info {
     uint32_t epWorldSize;                // epWorldSize
-    uint32_t tpWorldSize;                // tpWorldSize
     uint32_t epRankId;                   // epRankId
-    uint32_t tpRankId;                   // tpRankId
     uint32_t expertShardType;            // expert type
     uint32_t sharedExpertNum;            // shared expert number
     uint32_t sharedExpertRankNum;        // shared expert rank number
@@ -42,7 +40,6 @@ struct MoeDistributeDispatchV2Info {
     bool reserved2;
     uint64_t totalUbSize;                // epWorldSize
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
     int32_t zeroComputeExpertNum;       // sum of zero, copy and const expert nums
     uint32_t maxSizeForUbBuffer;

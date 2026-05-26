@@ -19,7 +19,6 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace {
-constexpr uint32_t TP_WORLD_SIZE_TWO = 2;
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_GROUP_TP_INDEX = 4;
 constexpr uint64_t DOUBLE_DATA_BUFFER = 2UL;
@@ -42,37 +41,11 @@ struct CheckWinSizeData {
     uint64_t epWorldSize;
     uint64_t globalBs;
     uint64_t moeExpertNum;
-    uint64_t tpWorldSize;
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     bool isSetFullMeshV2;
     bool isLayered;
     bool isMc2Context;
 };
-
-static ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const char *nodeName,
-    uint64_t tokenNeedSizeDispatch, uint64_t tokenNeedSizeCombine, CheckWinSizeData &winSizeData)
-{
-    auto attrs = context->GetAttrs();
-    uint64_t tpWorldSize = static_cast<uint64_t>(winSizeData.tpWorldSize);
-    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
-        uint64_t maxWindowSizeTp = 0;
-        auto groupTpHccl = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_TP_INDEX));
-        OP_TILING_CHECK(mc2tiling::GetCclBufferSize(groupTpHccl, &maxWindowSizeTp, nodeName) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName, "Get Ep HcclBufferSizeTP failed, HcclBufferSizeTP is %lu", maxWindowSizeTp),
-            return ge::GRAPH_FAILED);
-        uint64_t actualSize = static_cast<uint64_t>(winSizeData.a) * (tokenNeedSizeDispatch +
-        tokenNeedSizeCombine) * DOUBLE_DATA_BUFFER;
-        OP_TILING_CHECK((actualSize > maxWindowSizeTp),
-        OP_LOGE(nodeName, "TP HCCL_BUFFSIZE is too SMALL, A = %u, tokenNeedSizeDispatch = %lu, tokenNeedSizeCombine = %lu,"
-            "NEEDED_HCCL_BUFFSIZE(A * (tokenNeedSizeDispatch + tokenNeedSizeCombine) * 2UL) = %luMB, TP HCCL_BUFFSIZE=%luMB.",
-            winSizeData.a,  tokenNeedSizeDispatch, tokenNeedSizeCombine, actualSize / MB_SIZE + 1UL,
-            maxWindowSizeTp / MB_SIZE), return ge::GRAPH_FAILED);
-        winSizeData.totalWinSizeTp = maxWindowSizeTp;
-        OP_LOGD(nodeName, "TpwindowSize = %lu", maxWindowSizeTp);
-    }
-    return ge::GRAPH_SUCCESS;
-}
 
 static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSizeData winSizeData,
     const uint64_t maxWindowSizeEp, const uint64_t hcclBufferSizeEp, const uint64_t tokenNeedSizeDispatch,
@@ -147,8 +120,6 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
         "Tiling check actual window size failed."), return ge::GRAPH_FAILED);
     winSizeData.totalWinSizeEp = maxWindowSizeEp;
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSizeEp);
-    OP_TILING_CHECK(CheckTpWinSize(context, nodeName, tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData
-        ) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check Tp window size failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 }

@@ -21,9 +21,7 @@
 // a3
 struct MoeDistributeCombineV2Info {
     uint32_t epWorldSize;
-    uint32_t tpWorldSize;
     uint32_t epRankId;
-    uint32_t tpRankId;
     uint32_t expertShardType;
     uint32_t sharedExpertNum;
     uint32_t sharedExpertRankNum;
@@ -48,7 +46,6 @@ struct MoeDistributeCombineV2Info {
     bool reserved2;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     float armAvgFactor;
     float epsilon;
     uint32_t bufferNum;
