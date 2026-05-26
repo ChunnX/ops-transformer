@@ -38,6 +38,11 @@ public:
         mem_ = tbuf.template Get<uint8_t>();
     }
 
+    __aicore__ inline void Init(LocalTensor<uint8_t> mem) {
+        static_assert(bufferType != BufferType::GM, "GM should use workspace.");
+        mem_ = mem;
+    }
+
     __aicore__ inline void Init(__gm__ uint8_t* workspace) {
         static_assert(bufferType == BufferType::GM, "BufferType should be GM.");
         mem_.SetGlobalBuffer((__gm__ uint8_t*)workspace);
