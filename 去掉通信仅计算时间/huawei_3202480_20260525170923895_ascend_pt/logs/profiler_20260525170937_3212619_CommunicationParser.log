@@ -1,0 +1,3 @@
+[2026-05-25-17:09:37.522] [INFO] [AscendProfiler_CommunicationParser:97] Profiler logger initialized at: /home/c00697382/mc2_test_0416/Profiling_Result_mc2_case/huawei_3202480_20260525170923895_ascend_pt/logs/profiler_20260525170937_3212619_CommunicationParser.log
+[2026-05-25-17:09:37.522] [INFO] [AscendProfiler_CommunicationParser:66] CommunicationParser start.
+[2026-05-25-17:09:37.525] [INFO] [AscendProfiler_CommunicationParser:73] CommunicationParser finish.

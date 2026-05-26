@@ -1,0 +1,19 @@
+Device_id,Level,API Name,Time(us),Count,Avg(us),Min(us),Max(us),Variance
+3,acl,aclmdlRICaptureThreadExchangeMode,21.651,24,0.902,0.2,7.331,2.695
+3,acl,aclnnExp,395.163,50,7.903,5.748,55.002,47.743
+3,acl,aclnnInnerAlltoAllMatmul,14124.013,10,1412.401,98.538,12827.598,14482777.793
+3,acl,aclnnInnerAlltoAllMatmulGetWorkspaceSize,150384.128,10,15038.413,22.334,149781.643,2017315729.629
+3,acl,aclnnInnerAlltoAllMatmulTiling,693.66,10,69.366,13.38,298.077,11518.766
+3,acl,aclrtBinaryLoadFromData,87.381,1,87.381,87.381,87.381,0.0
+3,acl,aclrtCtxGetFloatOverflowAddr,1.292,1,1.292,1.292,1.292,0.0
+3,acl,aclrtCtxGetSysParamOpt,11.027,2,5.513,0.211,10.816,28.117
+3,acl,aclrtFree,38.777,9,4.309,1.262,11.898,15.432
+3,acl,aclrtGetPhyDevIdByLogicDevId,6.21,2,3.105,0.591,5.619,6.32
+3,acl,aclrtGetResInCurrentThread,5.459,22,0.248,0.06,3.515,0.513
+3,acl,aclrtGetStreamAttribute,17.02,60,0.284,0.15,2.613,0.112
+3,acl,aclrtLaunchKernelWithHostArgs,203.135,50,4.063,2.964,20.922,7.105
+3,acl,aclrtMallocWithCfg,5568.582,14,397.756,1.582,5348.792,1886182.325
+3,acl,aclrtMemcpy,569.613,12,47.468,26.529,127.962,702.203
+3,acl,aclrtStreamGetId,66.233,358,0.185,0.05,26.039,2.157
+3,acl,aclrtSynchronizeDeviceWithTimeout,7873858.091,1,7873858.091,7873858.091,7873858.091,0.0
+3,node,launch,3403.758,60,56.729,3.676,2685.398,117465.313

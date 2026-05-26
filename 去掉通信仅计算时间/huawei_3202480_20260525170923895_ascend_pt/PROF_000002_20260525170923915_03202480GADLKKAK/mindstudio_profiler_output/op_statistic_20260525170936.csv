@@ -1,0 +1,3 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+3,AlltoAllMatmul,FUSION,10,7859569.284,177.651,785956.928,7857916.41,99.792
+3,Exp,AI_VECTOR_CORE,50,16356.237,297.644,327.124,329.289,0.208

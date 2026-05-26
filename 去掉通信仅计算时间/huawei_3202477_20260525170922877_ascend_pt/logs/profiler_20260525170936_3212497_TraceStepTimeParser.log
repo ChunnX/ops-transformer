@@ -1,0 +1,3 @@
+[2026-05-25-17:09:36.592] [INFO] [AscendProfiler_TraceStepTimeParser:97] Profiler logger initialized at: /home/c00697382/mc2_test_0416/Profiling_Result_mc2_case/huawei_3202477_20260525170922877_ascend_pt/logs/profiler_20260525170936_3212497_TraceStepTimeParser.log
+[2026-05-25-17:09:36.592] [INFO] [AscendProfiler_TraceStepTimeParser:169] TraceStepTimeParser start.
+[2026-05-25-17:09:36.615] [INFO] [AscendProfiler_TraceStepTimeParser:177] TraceStepTimeParser finish.

@@ -1,0 +1,32 @@
+[2026-05-25-17:09:34.895] [INFO] [AscendProfiler_ProfilingParser:97] Profiler logger initialized at: /home/c00697382/mc2_test_0416/Profiling_Result_mc2_case/huawei_3202479_20260525170923882_ascend_pt/logs/profiler_20260525170934_3211738_ProfilingParser.log
+[2026-05-25-17:09:34.938] [INFO] [AscendProfiler_ProfilingParser:100] TorchOpParser start.
+[2026-05-25-17:09:34.939] [INFO] [AscendProfiler_ProfilingParser:82] TaskQueueParser start.
+[2026-05-25-17:09:34.964] [INFO] [AscendProfiler_ProfilingParser:162] CANNTimelineParser start.
+[2026-05-25-17:09:34.967] [INFO] [AscendProfiler_ProfilingParser:106] TorchOpParser finish.
+[2026-05-25-17:09:34.970] [INFO] [AscendProfiler_ProfilingParser:88] TaskQueueParser finish.
+[2026-05-25-17:09:34.972] [INFO] [AscendProfiler_ProfilingParser:62] TreeBuildParser start.
+[2026-05-25-17:09:34.999] [INFO] [AscendProfiler_ProfilingParser:70] TreeBuildParser finish.
+[2026-05-25-17:09:35.000] [INFO] [AscendProfiler_ProfilingParser:62] MemoryPrepareParser start.
+[2026-05-25-17:09:35.003] [INFO] [AscendProfiler_ProfilingParser:75] MemoryPrepareParser finish.
+[2026-05-25-17:09:36.468] [INFO] [AscendProfiler_ProfilingParser:172] CANNTimelineParser finish.
+[2026-05-25-17:09:36.563] [INFO] [AscendProfiler_ProfilingParser:31] RelationParser start.
+[2026-05-25-17:09:36.577] [INFO] [AscendProfiler_ProfilingParser:38] RelationParser finish.
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:473] ============================================================
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:474] Task execution completed
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:475] ============================================================
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:478] torch_op                  | PTHREAD         | Succeed    | 0.033s | deps: None
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:478] task_queue                | PTHREAD         | Succeed    | 0.033s | deps: None
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:478] trace_prepare             | SUB_PROCESS     | Succeed    | 0.035s | deps: torch_op, task_queue
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:478] build_tree                | PTHREAD         | Succeed    | 0.029s | deps: torch_op, task_queue
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:478] export                    | SUB_PROCESS     | Succeed    | 2.091s | deps: None
+[2026-05-25-17:09:38.174] [INFO] [AscendProfiler_ProfilingParser:478] timeline                  | PTHREAD|NON_BLOCKING | Succeed    | 1.505s | deps: None
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] relation                  | PTHREAD         | Succeed    | 0.015s | deps: task_queue, timeline
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] memory_prepare            | PTHREAD         | Succeed    | 0.004s | deps: build_tree, task_queue, torch_op
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] analyze                   | SUB_PROCESS     | Succeed    | 1.118s | deps: timeline
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] operator                  | SUB_PROCESS     | Succeed    | 0.045s | deps: build_tree, timeline, relation, torch_op
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] trace                     | SUB_PROCESS     | Succeed    | 0.095s | deps: build_tree, trace_prepare, timeline, task_queue, torch_op
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] kernel                    | SUB_PROCESS     | Succeed    | 0.064s | deps: build_tree, export, relation
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] step_time                 | SUB_PROCESS     | Succeed    | 0.035s | deps: build_tree, timeline, relation, torch_op
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] memory                    | SUB_PROCESS     | Succeed    | 0.032s | deps: export, memory_prepare
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] integrate                 | SUB_PROCESS     | Succeed    | 0.111s | deps: export
+[2026-05-25-17:09:38.175] [INFO] [AscendProfiler_ProfilingParser:478] communication             | SUB_PROCESS     | Succeed    | 0.034s | deps: build_tree, analyze, relation

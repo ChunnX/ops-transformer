@@ -1,0 +1,56 @@
+2026-05-25 17:09:35 [INFO] [info_conf_reader.py:421] - No host frequency, or the frequency is invalid.
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - CpuUsageAnalysis process data finished, execute time is 0.004 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - MemUsageAnalysis process data finished, execute time is 0.004 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - DiskUsageAnalysis process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - NetworkUsageAnalysis process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - HostSyscallAnalysis process data finished, execute time is 0.004 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - HostPlatformAnalysis process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [collection_engine.py:97] - Database process finished.
+2026-05-25 17:09:35 [INFO] [collection_engine.py:98] - Analysis finished.
+2026-05-25 17:09:35 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:35 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - ParsingMemoryData process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - ParsingCpuUsageData process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - NpuOpMemParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [hash_dic_parser.py:56] - start parsing hash data file: unaging.additional.type_info_dic.slice_0
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - Mc2CommInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ccu_add_info_parser.py:254] - Start parsing ccu add info data file.
+2026-05-25 17:09:35 [INFO] [ccu_add_info_parser.py:259] - Create ccu add info table finished!
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - CCUAddInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [hash_dic_parser.py:56] - start parsing hash data file: unaging.additional.hash_dic.slice_0
+2026-05-25 17:09:35 [INFO] [hash_dic_parser.py:56] - start parsing hash data file: unaging.additional.hash_dic.slice_1
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - HashDicParser process data finished, execute time is 0.011 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - CaptureStreamInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [task_track_parser.py:130] - start parsing task track data, files: ['aging.compact.task_track.slice_0']
+2026-05-25 17:09:35 [INFO] [data_parser.py:122] - start to process the file: aging.compact.task_track.slice_0
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - HcclInfoParser process data finished, execute time is 0.002 s
+2026-05-25 17:09:35 [INFO] [api_event_parser.py:66] - start parsing api_event data file: aging.api_event.data.slice_0
+2026-05-25 17:09:35 [INFO] [data_parser.py:122] - start to process the file: aging.additional.tensor_info.slice_0
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - FusionAddInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - GraphAddInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - NodeAttrInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - HcclOpInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - RuntimeOpInfoParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [data_parser.py:122] - start to process the file: aging.compact.node_basic_info.slice_0
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - TaskTrackParser process data finished, execute time is 0.034 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - TensorAddInfoParser process data finished, execute time is 0.060 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - NodeBasicInfoParser process data finished, execute time is 0.060 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - ApiEventParser process data finished, execute time is 0.067 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - HCCLOperatorParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [cann_calculator.py:82] - start to analysis cann software callstack
+2026-05-25 17:09:35 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:35 [WARNING] [cann_calculator.py:87] - Data will not be parsed by msprof_analysis.so!
+2026-05-25 17:09:35 [INFO] [cann_analysis_chain.py:64] - Finish build event tree for thread 3202477
+2026-05-25 17:09:35 [INFO] [cann_analysis_chain.py:64] - Finish build event tree for thread 3203211
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - CANNCalculator process data finished, execute time is 0.042 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - MsprofTxParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - StaticOpMemParser process data finished, execute time is 0.003 s
+2026-05-25 17:09:35 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:35 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:35 [INFO] [ms_multi_process.py:76] - NpuOpMemCalculator process data finished, execute time is 0.002 s
+2026-05-25 17:09:36 [INFO] [info_conf_reader.py:421] - No host frequency, or the frequency is invalid.
+2026-05-25 17:09:36 [WARNING] [file_manager.py:98] - Data has been analyzed, path is /home/c00697382/mc2_test_0416/Profiling_Result_mc2_case/huawei_3202477_20260525170922877_ascend_pt/PROF_000002_20260525170922896_03202477GCNHQQQF/host, there are ['metric_summary.db', 'ge_host_info.db', 'tensor_info.db', 'node_basic_info.db', 'rts_track.db', 'api_event.db', 'ge_info.db', 'runtime.db', 'ge_hash.db'] in sqlite.
+2026-05-25 17:09:36 [WARNING] [msprof_export.py:477] - File all_file.complete already exists. All data will be exported from db in sqlite. Path is /home/c00697382/mc2_test_0416/Profiling_Result_mc2_case/huawei_3202477_20260525170922877_ascend_pt/PROF_000002_20260525170922896_03202477GCNHQQQF/host 
+2026-05-25 17:09:36 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:36 [WARNING] [file_manager.py:335] - The path /home/c00697382/Ascend/cann-9.0.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-05-25 17:09:36 [INFO] [ms_multi_process.py:76] - NpuOpMemCalculator process data finished, execute time is 0.003 s
