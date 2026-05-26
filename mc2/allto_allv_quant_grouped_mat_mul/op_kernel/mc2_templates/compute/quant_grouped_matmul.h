@@ -81,7 +81,6 @@ public:
         }
     }
 
-    // 11-param overload for backward compatibility
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM,
         GM_ADDR yGM, GM_ADDR workspaceGM,
         const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
