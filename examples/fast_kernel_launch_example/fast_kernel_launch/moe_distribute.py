@@ -16,7 +16,7 @@ class MoeDistributeBuffer:
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         x_context = torch.zeros(X_CONTEXT_SIZE, dtype=torch.int32).npu()
-        self.context, self.ccl_buffer_size = torch.ops.ascend_ops.updateContext(x_context, self.group_name, self.world_size)
+        self.context, self.ccl_buffer_size = torch.ops.fast_kernel_launch.updateContext(x_context, self.group_name, self.world_size)
 
     @staticmethod
     def get_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,
@@ -57,16 +57,17 @@ class MoeDistributeBuffer:
         self.rank_id = torch.distributed.get_rank(new_group)
         self.group_name = new_group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         x_context = torch.zeros(X_CONTEXT_SIZE, dtype=torch.int32).npu()
-        self.context, self.ccl_buffer_size = torch.ops.ascend_ops.updateContext(x_context, self.group_name, self.world_size)
+        self.context, self.ccl_buffer_size = torch.ops.fast_kernel_launch.updateContext(x_context, self.group_name, self.world_size)
         return
 
     def npu_moe_distribute_dispatch_v2(self, x, expert_ids,
             moe_expert_num, *, scales=None, x_active_mask=None,
-            expert_scales=None, performance_info=None, expert_shard_type=0, shared_expert_num=0,
+            elastic_info=None, expert_scales=None, performance_info=None,
+            expert_shard_type=0, shared_expert_num=0,
             shared_expert_rank_num=0, quant_mode=0, global_bs=0, expert_token_nums_type=1,
             comm_alg="", zero_expert_num=0, copy_expert_num=0, const_expert_num=0):
         (expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, expand_scales) \
-            = torch.ops.ascend_ops.MoeDistributeDispatchV2(
+            = torch.ops.fast_kernel_launch.MoeDistributeDispatchV2(
                                              mc2_context=self.context,
                                              x=x,
                                              expert_ids=expert_ids,
@@ -77,6 +78,7 @@ class MoeDistributeBuffer:
                                              total_winsize_ep=self.ccl_buffer_size,
                                              scales=scales,
                                              x_active_mask=x_active_mask,
+                                             elastic_info=elastic_info,
                                              expert_scales=expert_scales,
                                              performance_info=performance_info,
                                              expert_shard_type=expert_shard_type,
@@ -95,12 +97,12 @@ class MoeDistributeBuffer:
     def npu_moe_distribute_combine_v2(self, expand_x, expert_ids, assist_info_for_combine,
             ep_send_counts, expert_scales,
             moe_expert_num, *,
-            x_active_mask=None, shared_expert_x=None, ori_x=None,
+            x_active_mask=None, shared_expert_x=None, elastic_info=None, ori_x=None,
             const_expert_alpha_1=None, const_expert_alpha_2=None, const_expert_v=None,
             performance_info=None, expert_shard_type=0, shared_expert_num=0, shared_expert_rank_num=0,
             global_bs=0, comm_quant_mode=0,
             comm_alg="", zero_expert_num=0, copy_expert_num=0, const_expert_num=0):
-        return torch.ops.ascend_ops.MoeDistributeCombineV2(
+        return torch.ops.fast_kernel_launch.MoeDistributeCombineV2(
                                              mc2_context=self.context,
                                              expand_x=expand_x,
                                              expert_ids=expert_ids,
@@ -114,6 +116,7 @@ class MoeDistributeBuffer:
                                              total_winsize_ep=self.ccl_buffer_size,
                                              x_active_mask=x_active_mask,
                                              shared_expert_x=shared_expert_x,
+                                             elastic_info=elastic_info,
                                              ori_x=ori_x,
                                              const_expert_alpha_1=const_expert_alpha_1,
                                              const_expert_alpha_2=const_expert_alpha_2,

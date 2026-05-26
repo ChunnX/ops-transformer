@@ -206,10 +206,11 @@ static void ValidateInputTensorDim(const at::Tensor& x, const at::Tensor& expert
 }
 
 static void ValidateOptionalTensorDim(const c10::optional<at::Tensor>& scales,
-                                       const c10::optional<at::Tensor>& x_active_mask,
-                                       const c10::optional<at::Tensor>& expert_scales,
-                                       const c10::optional<at::Tensor>& performance_info,
-                                       MoeDistributeDispatchV2ValidateParams& params) {
+                                        const c10::optional<at::Tensor>& x_active_mask,
+                                        const c10::optional<at::Tensor>& elastic_info,
+                                        const c10::optional<at::Tensor>& expert_scales,
+                                        const c10::optional<at::Tensor>& performance_info,
+                                        MoeDistributeDispatchV2ValidateParams& params) {
     params.isScales = scales.has_value();
     
     if (x_active_mask.has_value()) {
@@ -225,6 +226,15 @@ static void ValidateOptionalTensorDim(const c10::optional<at::Tensor>& scales,
                         "x_active_mask's dim1 not equal to k, x_active_mask: ", mask.size(1),
                         ", k: ", params.k);
         }
+    }
+    
+    if (elastic_info.has_value()) {
+        const auto& elastic = elastic_info.value();
+        TORCH_CHECK(elastic.dim() == 1,
+                    "elastic_info must be 1-dimension, but got ", elastic.dim(), " dimension");
+        TORCH_CHECK(elastic.scalar_type() == at::kInt,
+                    "elastic_info datatype is invalid, datatype should be Int, but is ",
+                    c10::toString(elastic.scalar_type()));
     }
     
     if (expert_scales.has_value()) {
@@ -253,9 +263,10 @@ static void ValidateInputDataType(const at::Tensor& x, const at::Tensor& expert_
 }
 
 static void ValidateOptionalTensorDataType(const c10::optional<at::Tensor>& scales,
-                                            const c10::optional<at::Tensor>& x_active_mask,
-                                            const c10::optional<at::Tensor>& expert_scales,
-                                            const c10::optional<at::Tensor>& performance_info) {
+                                             const c10::optional<at::Tensor>& x_active_mask,
+                                             const c10::optional<at::Tensor>& elastic_info,
+                                             const c10::optional<at::Tensor>& expert_scales,
+                                             const c10::optional<at::Tensor>& performance_info) {
     if (scales.has_value()) {
         const auto& scales_tensor = scales.value();
         TORCH_CHECK(scales_tensor.scalar_type() == at::kFloat,
@@ -268,6 +279,13 @@ static void ValidateOptionalTensorDataType(const c10::optional<at::Tensor>& scal
         TORCH_CHECK(mask.scalar_type() == at::kBool,
                     "x_active_mask datatype is invalid, datatype should be Bool, but is ",
                     c10::toString(mask.scalar_type()));
+    }
+    
+    if (elastic_info.has_value()) {
+        const auto& elastic = elastic_info.value();
+        TORCH_CHECK(elastic.scalar_type() == at::kInt,
+                    "elastic_info datatype is invalid, datatype should be Int, but is ",
+                    c10::toString(elastic.scalar_type()));
     }
     
     if (expert_scales.has_value()) {
@@ -286,11 +304,12 @@ static void ValidateOptionalTensorDataType(const c10::optional<at::Tensor>& scal
 }
 
 bool ValidateMoeDistributeDispatchV2Input(const at::Tensor& x, const at::Tensor& expert_ids,
-                                           const c10::optional<at::Tensor>& scales,
-                                           const c10::optional<at::Tensor>& x_active_mask,
-                                           const c10::optional<at::Tensor>& expert_scales,
-                                           const c10::optional<at::Tensor>& performance_info,
-                                           MoeDistributeDispatchV2ValidateParams& params) {
+                                            const c10::optional<at::Tensor>& scales,
+                                            const c10::optional<at::Tensor>& x_active_mask,
+                                            const c10::optional<at::Tensor>& elastic_info,
+                                            const c10::optional<at::Tensor>& expert_scales,
+                                            const c10::optional<at::Tensor>& performance_info,
+                                            MoeDistributeDispatchV2ValidateParams& params) {
     
     // 初始化和属性验证
     InitValidateContext(params);
@@ -302,14 +321,14 @@ bool ValidateMoeDistributeDispatchV2Input(const at::Tensor& x, const at::Tensor&
     
     // 张量维度验证
     ValidateInputTensorDim(x, expert_ids, params);
-    ValidateOptionalTensorDim(scales, x_active_mask, expert_scales, performance_info, params);
+    ValidateOptionalTensorDim(scales, x_active_mask, elastic_info, expert_scales, performance_info, params);
     
     // global_bs验证
     ValidateGlobalBs(params, expert_ids.size(0), x_active_mask.has_value());
 
     // 数据类型验证
     ValidateInputDataType(x, expert_ids, params);
-    ValidateOptionalTensorDataType(scales, x_active_mask, expert_scales, performance_info);
+    ValidateOptionalTensorDataType(scales, x_active_mask, elastic_info, expert_scales, performance_info);
     
     return true;
 }

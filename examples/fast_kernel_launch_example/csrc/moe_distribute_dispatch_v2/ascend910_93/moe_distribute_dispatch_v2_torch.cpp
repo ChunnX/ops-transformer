@@ -39,7 +39,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("MoeDistributeDispatchV2(Tensor x, Tensor expert_ids, Tensor mc2_context, str group_ep, int ep_world_size, " \
             "int ep_rank_id, int moe_expert_num, int total_winsize_ep, *, Tensor? scales=None, Tensor? x_active_mask=None, " \
-            "Tensor? expert_scales=None, Tensor? performance_info=None, "\
+            "Tensor? elastic_info=None, Tensor? expert_scales=None, Tensor? performance_info=None, "\
             "int expert_shard_type=0, int shared_expert_num=0, " \
             "int shared_expert_rank_num=0, int quant_mode=0, int global_bs=0, int expert_token_nums_type=0, " \
             "str comm_alg=\"\", int zero_expert_num=0, int copy_expert_num=0, int const_expert_num=0 " \
@@ -78,7 +78,8 @@ void moe_distribute_dispatch_v2_api(
     const at::Tensor &new_workspace, const at::Tensor &mc2_context,
     c10::string_view group_ep, int64_t ep_world_size, int64_t ep_rank_id, int64_t moe_expert_num,
     const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &x_active_mask,
-    const c10::optional<at::Tensor> &expert_scales, const c10::optional<at::Tensor> &performance_info,
+    const c10::optional<at::Tensor> &elastic_info, const c10::optional<at::Tensor> &expert_scales,
+    const c10::optional<at::Tensor> &performance_info,
     at::Tensor &expand_x, at::Tensor &dynamic_scales, at::Tensor &assist_info_forcombine, 
     at::Tensor &expert_token_nums, at::Tensor &ep_recv_counts,
     at::Tensor &expand_scales, MoeDistributeDispatchV2Info tilingData)
@@ -95,6 +96,11 @@ void moe_distribute_dispatch_v2_api(
     if(x_active_mask.has_value()) {
         xActiveMask_ptr = get_first_tensor_address<c10::optional<at::Tensor>>(x_active_mask->scalar_type(), x_active_mask,
             false);
+    }
+    void* elasticInfo_ptr = nullptr;
+    if(elastic_info.has_value()) {
+        elasticInfo_ptr = get_first_tensor_address<c10::optional<at::Tensor>>(elastic_info->scalar_type(),
+            elastic_info, false);
     }
     void* expertScales_ptr = nullptr;
     if(expert_scales.has_value()) {
@@ -130,7 +136,7 @@ void moe_distribute_dispatch_v2_api(
 
     moe_distribute_dispatch_v2_entry(tilingKey, tilingData.aivNum, (void*)stream, (GM_ADDR)x_ptr,
         (GM_ADDR)expertIds_ptr, (GM_ADDR)scales_ptr, (GM_ADDR)xActiveMask_ptr,
-        (GM_ADDR)expertScales_ptr, (GM_ADDR)performanceInfo_ptr,
+        (GM_ADDR)elasticInfo_ptr, (GM_ADDR)expertScales_ptr, (GM_ADDR)performanceInfo_ptr,
         (GM_ADDR)expandXOut_ptr, (GM_ADDR)dynamicScalesOut_ptr, (GM_ADDR)assistInfoOut_ptr,
         (GM_ADDR)expertTokenNumsOut_ptr, (GM_ADDR)epSendCountsOut_ptr,
         (GM_ADDR)expandScalesOut_ptr, (GM_ADDR)workspace_ptr, (GM_ADDR)mc2Context_ptr, tilingData);
@@ -145,6 +151,7 @@ void calculate_tilingdata(MoeDistributeDispatchV2Info &tilingData, int64_t ep_wo
     int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num, int64_t expert_token_nums_type,
     const c10::optional<at::Tensor> &scales,
     const c10::optional<at::Tensor> &x_active_mask,
+    const c10::optional<at::Tensor> &elastic_info,
     const c10::optional<at::Tensor> &performance_info)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
@@ -166,6 +173,7 @@ void calculate_tilingdata(MoeDistributeDispatchV2Info &tilingData, int64_t ep_wo
     tilingData.aivNum = ascendcPlatform->GetCoreNumAiv();                     // aivNum
     tilingData.isTokenMask = (x_active_mask.has_value() && x_active_mask->dim() == DIM_ONE);                    // input active mask 1dims or not
     tilingData.isExpertMask = (x_active_mask.has_value() && x_active_mask->dim() == DIM_TWO);                   // input active mask 2dims or not
+    tilingData.hasElasticInfo = elastic_info.has_value();                   // has elasticinfo or not
     tilingData.isPerformance = performance_info.has_value();                  // whether performance or not
     tilingData.isQuant = (quant_mode != 0);                        // whether quant or not
     tilingData.reserved0 = false;
@@ -195,7 +203,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     const at::Tensor &x, const at::Tensor &expert_ids, const at::Tensor &mc2_context, c10::string_view group_ep,
     int64_t ep_world_size, int64_t ep_rank_id, int64_t moe_expert_num, int64_t total_winsize_ep, 
     const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &x_active_mask,
-    const c10::optional<at::Tensor> &expert_scales, const c10::optional<at::Tensor> &performance_info,
+    const c10::optional<at::Tensor> &elastic_info, const c10::optional<at::Tensor> &expert_scales,
+    const c10::optional<at::Tensor> &performance_info,
     int64_t expert_shard_type, int64_t shared_expert_num,
     int64_t shared_expert_rank_num, int64_t quant_mode, int64_t global_bs,
     int64_t expert_token_nums_type, c10::string_view comm_alg,
@@ -215,7 +224,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     validate_params.copy_expert_num = copy_expert_num;
     validate_params.const_expert_num = const_expert_num;
     
-    ValidateMoeDistributeDispatchV2Input(x, expert_ids, scales, x_active_mask, expert_scales, 
+    ValidateMoeDistributeDispatchV2Input(x, expert_ids, scales, x_active_mask, elastic_info, expert_scales, 
                                          performance_info, validate_params);
     
     int64_t bs = validate_params.bs;
@@ -268,12 +277,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     MoeDistributeDispatchV2Info tilingData;
     calculate_tilingdata(tilingData, ep_world_size, ep_rank_id, moe_expert_num, total_winsize_ep,
         expert_shard_type, shared_expert_num, shared_expert_rank_num, global_bs, bs, h, k, a, quant_mode,
-        zero_expert_num, copy_expert_num, const_expert_num, expert_token_nums_type, scales, x_active_mask, performance_info);
+        zero_expert_num, copy_expert_num, const_expert_num, expert_token_nums_type, scales, x_active_mask, elastic_info, performance_info);
 
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
     auto acl_call = [=]() mutable -> int {
         moe_distribute_dispatch_v2_api(stream, is_fullmesh_v2, x, expert_ids, new_workspace, mc2_context, group_ep,
-            ep_world_size, ep_rank_id, moe_expert_num, scales, x_active_mask, expert_scales, performance_info, expand_x,
+            ep_world_size, ep_rank_id, moe_expert_num, scales, x_active_mask, elastic_info, expert_scales, performance_info, expand_x,
             dynamic_scales, assist_info_forcombine, expert_token_nums, ep_recv_counts,
             expand_scales, tilingData);
         return 0;
@@ -283,15 +292,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     return std::tie(expand_x, dynamic_scales, assist_info_forcombine, expert_token_nums, ep_recv_counts,
         expand_scales);
 }
-
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_distribute_dispatch_v2_meta(
     const at::Tensor &x, const at::Tensor &expert_ids, const at::Tensor &mc2_context, c10::string_view group_ep,
     int64_t ep_world_size, int64_t ep_rank_id, int64_t moe_expert_num, int64_t total_winsize_ep, 
     const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &x_active_mask,
-    const c10::optional<at::Tensor> &expert_scales, const c10::optional<at::Tensor> &performance_info,
-    int64_t expert_shard_type, int64_t shared_expert_num, int64_t shared_expert_rank_num,
-    int64_t quant_mode, int64_t global_bs, int64_t expert_token_nums_type,
-    c10::string_view comm_alg, int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num)
+    const c10::optional<at::Tensor> &elastic_info, const c10::optional<at::Tensor> &expert_scales,
+    const c10::optional<at::Tensor> &performance_info,
+    int64_t expert_shard_type, int64_t shared_expert_num,
+    int64_t shared_expert_rank_num, int64_t quant_mode, int64_t global_bs,
+    int64_t expert_token_nums_type, c10::string_view comm_alg,
+    int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num)
 {
     bool is_shared_default = ((shared_expert_num == 1) && (shared_expert_rank_num == 0));
     bool is_no_shared = ((shared_expert_num == 0) && (shared_expert_rank_num == 0));
@@ -351,12 +361,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
 }
 
 // Register Ascend implementations for MoeDistributeDispatchV2
-TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(fast_kernel_launch, PrivateUse1, m)
 {
     m.impl("MoeDistributeDispatchV2", TORCH_FN(npu_moe_distribute_dispatch_v2));
 }
 
-TORCH_LIBRARY_IMPL(ascend_ops, Meta, m)
+TORCH_LIBRARY_IMPL(fast_kernel_launch, Meta, m)
 {
     m.impl("MoeDistributeDispatchV2", &npu_moe_distribute_dispatch_v2_meta);
 }

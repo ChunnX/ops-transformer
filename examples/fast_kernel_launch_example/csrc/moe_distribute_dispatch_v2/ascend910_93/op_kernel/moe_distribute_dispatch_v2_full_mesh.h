@@ -25,6 +25,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_v2_base.h"
+#include "moe_distribute_elastic.h"
 #include "../../../common/inc/kernel/mc2_moe_context.h"
 #include "../../../common/inc/kernel/mc2_kernel_utils.h"
 
@@ -75,7 +76,7 @@ class MoeDistributeDispatchV2FullMesh {
 public:
     __aicore__ inline MoeDistributeDispatchV2FullMesh() {};
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR performanceInfo, 
+        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, 
         GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, 
         GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeDispatchV2Info tilingData, TPipe *pipe);
     __aicore__ inline void Process();
@@ -251,6 +252,7 @@ private:
     uint64_t flagPadOffset_{0};
     bool isTokenMaskFlag_ = false;
     bool isExpertMaskFlag_ = false;
+    bool hasElasticInfoFlag_ = false;
     bool isPerformanceFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool isScalingDownFlag_ = false;
@@ -280,6 +282,9 @@ private:
     uint32_t expertIdsSize_{0};
     uint32_t globalBS_{0};
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    GlobalTensor<int32_t> elasticInfoGMTensor_;
+    LocalTensor<int32_t> elasticInfoTensor_;
+    MoeDistributeElastic elasticInst_;
 
     DataCopyExtParams expandXCopyParams_;
     DataCopyExtParams hCopyParams_;
@@ -386,7 +391,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Init(
-    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR performanceInfo, 
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, 
     GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, 
     GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeDispatchV2Info tilingData, TPipe *pipe)
 {
@@ -403,6 +408,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(expandIdxOut));
     scalesGMTensor_.SetGlobalBuffer((__gm__ float*)scales);
     SetTilingDataAndCal(tilingData);
+    hasElasticInfoFlag_ = tilingData.hasElasticInfo;
+    elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
+    elasticInst_.SetElasticInitParams(tpipe_, elasticInfoGMTensor_);
+    if (hasElasticInfoFlag_) {
+        elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
+        isScalingDownFlag_ = elasticInfoTensor_.GetValue(0);
+        uint32_t epRankIdU32 = static_cast<uint32_t>(epRankId_);
+        elasticInst_.InitElasticInfo(isScalingDownFlag_, epWorldSize_, sharedExpertRankNum_, moeExpertNum_, epRankIdU32, moeExpertNumPerRank_);
+        epRankId_ = static_cast<int32_t>(epRankIdU32);
+    }
     if (isPerformanceFlag_) {
         performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(performanceInfo));
     }
@@ -522,6 +537,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         uint32_t sendTokenIndex = virtualTokenIndex % activeMaskBsCnt_;
         uint32_t toSharedExpertIndex = virtualTokenIndex / activeMaskBsCnt_;
         int32_t toRankId = idInSharedGroup + toSharedExpertIndex * rankNumPerSharedExpert_;
+        if (isScalingDownFlag_) {
+            toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
+        }
 
         dstWinGMTensor.SetGlobalBuffer(
             (__gm__ ExpandXOutType*)(GetWindAddrByRankId(toRankId) + expertPerSizeOnWin_ * epRankId_ + sendTokenIndex * hCommuSize_));
@@ -616,6 +634,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 int32_t topKIndex = calExpertIdsIdx % axisK_;
                 int32_t srcTokenIndex = calExpertIdsIdx / axisK_;
                 int32_t toRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+                if (isScalingDownFlag_) {
+                    toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
+                }
 
                 GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(toRankId) +
                                                 (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_)) +
@@ -750,6 +771,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             dstRankId = ((curExpertId - sharedExpertRankNum_) / moeExpertNumPerRank_ + sharedExpertRankNum_);
             offset += ((curExpertId - sharedExpertRankNum_) % moeExpertNumPerRank_ * epWorldSize_ * STATE_OFFSET);
         }
+        if (isScalingDownFlag_) {
+            dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
+        }
 
         GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(dstRankId) + offset);
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
@@ -784,6 +808,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         tpipe_->InitBuffer(performanceFlagBuf_, performanceFlagSizeAlign);
         performanceFlagTensor_ = performanceFlagBuf_.Get<int32_t>();
         Duplicate<int32_t>(performanceFlagTensor_, 0, performanceFlagSizeAlign / sizeof(int32_t));
+        if (isScalingDownFlag_) {
+            elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
+        }
     }
     uint32_t statusBufSize = rscvStatusNum_ * UB_ALIGN;
     uint32_t tokenNumBufSize = Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
@@ -1028,7 +1055,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (statusFp32 > float(0.5) && performanceFlag == 0) {
             performanceFlagTensor_.SetValue(i, 1);
             uint32_t fromLocalRankId = (startStatusIndex_ + i) % epWorldSize_;
-            uint32_t fromRankId = fromLocalRankId;
+            uint32_t fromRankId = isScalingDownFlag_ ?
+                elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + fromLocalRankId) :
+                fromLocalRankId;
             int32_t savedTime = performanceInfoTensor.GetValue(fromRankId * DURATION_OFFSET);
             int32_t newValue = (duration > savedTime) ? duration : savedTime;
             if (newValue != savedTime) {

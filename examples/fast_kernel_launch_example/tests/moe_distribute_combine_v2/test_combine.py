@@ -5,8 +5,8 @@ import numpy as np
 from torch.multiprocessing import Process
 import torch_npu
 import torch.distributed as dist
-import ascend_ops
-from ascend_ops import MoeDistributeBuffer
+import fast_kernel_launch
+from fast_kernel_launch import MoeDistributeBuffer
 
 HCCL_BUFFER_SIZE = 12288
 
