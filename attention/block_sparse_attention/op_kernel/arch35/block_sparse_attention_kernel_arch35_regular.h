@@ -360,6 +360,8 @@ public:
                         (gatheredKvSTileIdxDe == 0),
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
                         mm2ToReFlag);
+                    // AscendC::printf("tkd print gO[gmOffsetO] (O matrix, final result)\n");
+                    // AscendC::DumpTensor(gO[gmOffsetO], 0, 256);
 #endif
                 }
             }

@@ -501,12 +501,8 @@ public:
                         l0TileNAct,
                         l0TileKAct,
                         initMmad);
-                        AscendC::printf("tkd print PV l0ATensor[l0ABufId]\n");
-                        AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
-                        AscendC::printf("tkd print PV l0BTensor[l0BBufId]\n");
-                        AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
-                        AscendC::printf("tkd print PV l0CTensor[l0CBufId]\n");
-                        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
+                        // AscendC::printf("tkd print PV l0CTensor[l0CBufId]\n");
+                        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
@@ -523,10 +519,16 @@ public:
             // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
             // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
             uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+            uint32_t mPerSubCore = mFixPAligned8 / 2;
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
             auto ubCTensorTlaTile = GetTile(ubCTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
-            copyL0CToDst(ubCTensorTlaTile, l0CTensorTla, deqScalar);
+                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mPerSubCore, nFixPAligned8));
+            auto l0CTensorTlaTileSub0 = GetTile(l0CTensorTla,
+                    tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+            auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
+                    tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+            copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
+            copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         // crossCoreSync after all fixPipe move

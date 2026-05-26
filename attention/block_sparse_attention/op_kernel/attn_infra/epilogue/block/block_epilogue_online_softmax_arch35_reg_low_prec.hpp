@@ -70,7 +70,6 @@ public:
     static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
     static constexpr ElementInput MIN_VALUE = -65504.0f;
-    static constexpr uint32_t FLOAT8_REP_SIZE = 256;
     static constexpr uint32_t HALF_REP_SIZE = 128;
     static constexpr uint32_t FLOAT_REP_SIZE = 64;
     static constexpr uint32_t BLOCK_REP_SIZE = 8;
@@ -196,24 +195,24 @@ public:
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        AscendC::printf("tkd ELE_NUM_PER_C0: %u\n", ELE_NUM_PER_C0);
-        AscendC::printf("tkd actualBlockShape.m(): %u\n", static_cast<uint32_t>(actualBlockShape.m()));
-        AscendC::printf("tkd actualBlockShape.n(): %u\n",static_cast<uint32_t>(actualBlockShape.n()));
-        AscendC::printf("tkd mCopyOffset: %u\n", mCopyOffset);
-        AscendC::printf("tkd m: %u\n", m);
-        AscendC::printf("tkd n: %u\n", n);
-        AscendC::printf("tkd mRound: %u\n", mRound);
-        AscendC::printf("tkd nRound: %u\n", nRound);
-        AscendC::printf("tkd blockStride: %u\n", blockStride);
-        AscendC::printf("tkd vlSize: %u\n", static_cast<uint32_t>(vlSize));
-        AscendC::printf("tkd nLoops: %u\n", static_cast<uint32_t>(nLoops));
-        AscendC::printf("tkd tailN: %u\n", tailN);
-        AscendC::printf("tkd mLoops: %u\n", mLoops);
-        AscendC::printf("tkd tailM: %u\n", tailM);
-        AscendC::printf("tkd nPadding: %u\n", nPadding);
+        // AscendC::printf("tkd ELE_NUM_PER_C0: %u\n", ELE_NUM_PER_C0);
+        // AscendC::printf("tkd actualBlockShape.m(): %u\n", static_cast<uint32_t>(actualBlockShape.m()));
+        // AscendC::printf("tkd actualBlockShape.n(): %u\n",static_cast<uint32_t>(actualBlockShape.n()));
+        // AscendC::printf("tkd mCopyOffset: %u\n", mCopyOffset);
+        // AscendC::printf("tkd m: %u\n", m);
+        // AscendC::printf("tkd n: %u\n", n);
+        // AscendC::printf("tkd mRound: %u\n", mRound);
+        // AscendC::printf("tkd nRound: %u\n", nRound);
+        // AscendC::printf("tkd blockStride: %u\n", blockStride);
+        // AscendC::printf("tkd vlSize: %u\n", static_cast<uint32_t>(vlSize));
+        // AscendC::printf("tkd nLoops: %u\n", static_cast<uint32_t>(nLoops));
+        // AscendC::printf("tkd tailN: %u\n", tailN);
+        // AscendC::printf("tkd mLoops: %u\n", mLoops);
+        // AscendC::printf("tkd tailM: %u\n", tailM);
+        // AscendC::printf("tkd nPadding: %u\n", nPadding);
 
         AscendC::printf("tkd S matrix after dequantScale\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
+        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 140);
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
             ComputeScaleAndMax<KvBaseTileRegSplitStages::ONE>(
@@ -226,20 +225,20 @@ public:
             UpdateMax(nowMaxAddr, lastMaxAddr, mLoops, tailM);
         }
         AscendC::printf("tkd S matrix after scaled\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
-        AscendC::printf("tkd inital lpUbTensor\n");
-        AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
-        AscendC::printf("tkd initial max\n");
-        AscendC::DumpTensor(lmUbTensor, 0, 32);
-        AscendC::printf("tkd initial sum\n");
-        AscendC::DumpTensor(llUbTensor, 0, 32);
+        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 140);
+        // AscendC::printf("tkd inital lpUbTensor\n");
+        // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
+        // AscendC::printf("tkd initial max\n");
+        // AscendC::DumpTensor(lmUbTensor, 0, 32);
+        // AscendC::printf("tkd initial sum\n");
+        // AscendC::DumpTensor(llUbTensor, 0, 32);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         if (kvBaseTileRegStages == 1) {
             ComputeExpSubSum16<KvBaseTileRegSplitStages::ONE>(
                 pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN, blockStride, nRound);
             AscendC::printf("tkd after ONE lpUbTensor\n");
-            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
+            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
             AscendC::printf("tkd after ONE max\n");
             AscendC::DumpTensor(lmUbTensor, 1, 32);
             AscendC::printf("tkd after ONE sum\n");
@@ -249,7 +248,7 @@ public:
             ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(
                 pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN, blockStride, nRound);
             AscendC::printf("tkd after TWO lpUbTensor\n");
-            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
+            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
             AscendC::printf("tkd after TWO max\n");
             AscendC::DumpTensor(lmUbTensor, 1, 32);
             AscendC::printf("tkd after TWO sum\n");
@@ -260,7 +259,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
+        uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : RoundUp(n, ELE_NUM_PER_C0);
+        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
             ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
@@ -614,6 +614,8 @@ private:
             AscendC::RoundMode::CAST_RINT,
         };
 
+        RegTensor<ElementInput> expDstVreg0Fp8;
+        RegTensor<ElementInput> expDstVreg1Fp8;
         RegTensor<float> floatVreg0;
         RegTensor<float> floatVreg1;
         RegTensor<float> floatVreg2;
@@ -646,20 +648,20 @@ private:
             LoadAlign(expVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
             Sub(expDstVreg0, expVreg0, maxVreg, pregFull);
             Sub(expDstVreg1, expVreg1, maxVreg, pregTailN);
+            Exp(expDstVreg0Fp8, expDstVreg0, pregFull);
+            Exp(expDstVreg1Fp8, expDstVreg1, pregTailN);
             Exp(expDstVreg0, expDstVreg0, pregFull);
             Exp(expDstVreg1, expDstVreg1, pregTailN);
-            Duplicate(expDstVregResult, 0);
-            Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVreg0, expDstVreg1, pregTailN);
 
             if constexpr (FULL_QUANT_FP8) {
                 constexpr half maxValueFP8 = static_cast<half>(448.0f);
-                Muls(expDstVreg0, expDstVreg0, maxValueFP8, pregFull);
-                Muls(expDstVreg1, expDstVreg1, maxValueFP8, pregTailN);
+                Muls(expDstVreg0Fp8, expDstVreg0Fp8, maxValueFP8, pregFull);
+                Muls(expDstVreg1Fp8, expDstVreg1Fp8, maxValueFP8, pregTailN);
 
-                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg0, pRegFp16All);
-                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg0, pRegFp16All);
-                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg2, expDstVreg1, pRegFp16All);
-                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg3, expDstVreg1, pRegFp16All);
+                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg0Fp8, pRegFp16All);
+                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg0Fp8, pRegFp16All);
+                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg2, expDstVreg1Fp8, pRegFp16All);
+                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg3, expDstVreg1Fp8, pRegFp16All);
 
                 DeInterleave(deInterleaveVreg0, deInterleaveVreg1, floatVreg0, floatVreg0);
                 DeInterleave(deInterleaveVreg2, deInterleaveVreg3, floatVreg1, floatVreg1);
@@ -700,8 +702,8 @@ private:
                     expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE, expDstVreg1,
                     blockStride, pregTailN);
             }
-
-            ReduceSum(expSumVreg, expDstVregResult, pregFull);
+            Add<ElementInput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg1, expDstVreg0, pregTailN);
+            ReduceSum(expSumVreg, expDstVreg0, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);

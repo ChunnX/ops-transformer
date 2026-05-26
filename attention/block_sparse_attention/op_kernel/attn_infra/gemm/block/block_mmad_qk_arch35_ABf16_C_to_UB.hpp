@@ -531,12 +531,12 @@ public:
                             l0TileNAct,
                             l0TileKAct,
                             initMmad);
-                        AscendC::printf("tkd print QK l0ATensor[l0ABufId]\n");
-                        AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
-                        AscendC::printf("tkd print QK l0BTensor[l0BBufId]\n");
-                        AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
+                        // AscendC::printf("tkd print QK l0ATensor[l0ABufId]\n");
+                        // AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
+                        // AscendC::printf("tkd print QK l0BTensor[l0BBufId]\n");
+                        // AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
                         AscendC::printf("tkd print QK l0CTensor[l0CBufId]\n");
-                        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
+                        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 140);
                         if (l1ToL0ANoRepeatFlag && (nL1Itr == nL1LoopNum - 1) && (nL0Itr == nL0LoopNum - 1)) {
                             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                         }

@@ -218,41 +218,42 @@ public:
         }
         AscendC::printf("tkd S matrix after scaled\n");
         AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
-        AscendC::printf("tkd inital lpUbTensor\n");
-        AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
-        AscendC::printf("tkd initial max\n");
-        AscendC::DumpTensor(lmUbTensor, 0, 32);
-        AscendC::printf("tkd initial sum\n");
-        AscendC::DumpTensor(llUbTensor, 0, 32);
+        // AscendC::printf("tkd inital lpUbTensor\n");
+        // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
+        // AscendC::printf("tkd initial max\n");
+        // AscendC::DumpTensor(lmUbTensor, 0, 32);
+        // AscendC::printf("tkd initial sum\n");
+        // AscendC::DumpTensor(llUbTensor, 0, 32);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         uint32_t tailNOdd = tailN / 2 ;
         uint32_t tailNEven = tailNOdd + tailN % 2;
         if (kvBaseTileRegStages == 1) {
-            ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::ONE>(
-                pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
+            ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::ONE>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN,
+                                                                  blockStride, nRound, tailNOdd, tailNEven);
             AscendC::printf("tkd after ONE lpUbTensor\n");
-            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
+            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
             AscendC::printf("tkd after ONE max\n");
             AscendC::DumpTensor(lmUbTensor, 1, 32);
             AscendC::printf("tkd after ONE sum\n");
             AscendC::DumpTensor(llUbTensor, 1, 32);
-            } else if (kvBaseTileRegStages == 2) {
-            ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(
-                pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
+        } else if (kvBaseTileRegStages == 2) {
+            ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN,
+                                                                  blockStride, nRound, tailNOdd, tailNEven);
             AscendC::printf("tkd after TWO lpUbTensor\n");
-            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 32);
+            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
             AscendC::printf("tkd after TWO max\n");
             AscendC::DumpTensor(lmUbTensor, 1, 32);
             AscendC::printf("tkd after TWO sum\n");
             AscendC::DumpTensor(llUbTensor, 1, 32);
-            }
+        }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
+        uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : RoundUp(n, ELE_NUM_PER_C0);
+        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
             ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,

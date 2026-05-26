@@ -273,7 +273,7 @@ public:
                 curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
             float qDequantScaleValue = gQDequantScale.GetValue(qDequantScaleOffset);
             AscendC::printf("tkd qDequantScaleOffset: %u\n", qDequantScaleOffset);
-            AscendC::printf("tkd qDeqquantScaleValue: %f\n", qDequantScaleValue);
+            AscendC::printf("tkd qDequantScaleValue: %f\n", qDequantScaleValue);
 #endif
 #ifdef __DAV_VEC__
             uint32_t oShapeCol = 0;
@@ -424,8 +424,8 @@ public:
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
                         mm2ToReFlag,
                         deqScalar);
-                    AscendC::printf("tkd print gO[gmOffsetO] (O matrix, final result)\n");
-                    AscendC::DumpTensor(gO[gmOffsetO], 0, 32);
+                    // AscendC::printf("tkd print gO[gmOffsetO] (O matrix, final result)\n");
+                    // AscendC::DumpTensor(gO[gmOffsetO], 0, 256);
 #endif
                 }
             }
