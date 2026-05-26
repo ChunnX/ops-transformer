@@ -386,8 +386,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     if (seqUsedQFlag_ || seqUsedKvFlag_ ||
         ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
             tilingData_.baseTiling.flashAttnBaseParams.isInitOutput = 1;
-        }
-    else {
+    } else {
         tilingData_.baseTiling.flashAttnBaseParams.isInitOutput = 0;
     }
 }
