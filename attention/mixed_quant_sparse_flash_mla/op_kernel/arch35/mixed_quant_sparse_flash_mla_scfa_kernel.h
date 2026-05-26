@@ -21,9 +21,9 @@
 #include "mixed_quant_sparse_flash_mla_scfa_block_vector.h"
 #include "kernel_operator.h"
 #include "../mixed_quant_sparse_flash_mla_metadata.h"
-#include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/CopyInL1.h"
 
 #include "kernel_operator_list_tensor_intf.h"
 
