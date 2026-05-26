@@ -42,8 +42,6 @@ const std::vector<uint32_t> QUANT_GMM_WEIGHT_SCALE_DTYPE_LIST = {
     ge::DT_FLOAT,
 };
 const std::vector<uint32_t> QUANT_GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
-const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128, 256};
-constexpr int64_t RANK_DEFAULT_NUM = -1;
 
 bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
@@ -813,11 +811,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.a2avCcTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -956,10 +952,10 @@ uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-        localParams_.isMmWeightTrans, commMode);
+                                                  localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-        localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
     return tilingKey;
 }
 
-}
+} // namespace Mc2Tiling
