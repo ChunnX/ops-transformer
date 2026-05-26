@@ -38,9 +38,10 @@ public:
         mem_ = tbuf.template Get<uint8_t>();
     }
 
-    __aicore__ inline void Init(LocalTensor<uint8_t> mem) {
+    __aicore__ inline void InitStatic() {
         static_assert(bufferType != BufferType::GM, "GM should use workspace.");
-        mem_ = mem;
+        TBuf<BufferInfo<bufferType>::Position> tbuf;
+        mem_ = tbuf.template Get<uint8_t>();
     }
 
     __aicore__ inline void Init(__gm__ uint8_t* workspace) {
