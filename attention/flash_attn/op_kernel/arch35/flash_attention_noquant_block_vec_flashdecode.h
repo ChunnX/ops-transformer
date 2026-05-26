@@ -195,37 +195,47 @@ public:
     {
         this->blockIdx = GetBlockIdx();
     }
-    __aicore__ inline void InitBuffers(TPipe *pipe, TQue<QuePosition::VECOUT, 1> SharedBuffer1[],
-                                       TQue<QuePosition::VECIN, 1> SharedBuffer2[], TBuf<> &SharedBuffer3)
+    __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            fdMm2ResBuf1 = SharedBuffer1[0].template AllocTensor<T>();
+            LocalMemAllocator allocator;
+            // \u4e0e FA block \u5171\u4eabUB\u5e03\u5c40\uff1a\u8df3\u8fc7 bmm1/bmm2 \u533a\u57df\uff0c\u7136\u540e\u6309\u76f8\u540c\u987a\u5e8f\u5206\u914d
+            constexpr uint32_t mm1Sz = s1BaseSize / 2U * (uint32_t)s2TemplateType * sizeof(T);
+            constexpr uint32_t mm2Sz = bmm2Write2Ub ?
+                (s1BaseSize / 2U * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
+            (void)allocator.alloc<uint8_t>(mm1Sz * 2U + mm2Sz * 2U);
+
+            if constexpr (!bmm2Write2Ub) {
+                (void)allocator.alloc<uint8_t>(32768); // \u8df3\u8fc7 mm2InBuf \u533a\u57df
+            }
+            // SharedBuffer2[0] \u5bf9\u5e94 attenMaskBuf[0] \uff08FA\u7528\uff09/ fdLseMaxUb \u533a\uff08FD\u7528\uff09
+            LocalTensor<uint8_t> sharedBuf2a = allocator.alloc<uint8_t>(BUFFER_SIZE_BYTE_8K);
+            (void)allocator.alloc<uint8_t>(BUFFER_SIZE_BYTE_8K); // \u8df3\u8fc7 attenMaskBuf[1]
+            // SharedBuffer3 \u5bf9\u5e94 stage2OutBuf \uff08FA\u7528\uff09/ fdSumBufs \u533a\uff08FD\u7528\uff09
+            LocalTensor<uint8_t> sharedBuf3  = allocator.alloc<uint8_t>(32768);
+            // SharedBuffer1[0] \u5bf9\u5e94 stage1OutBuf[0] \uff08FA\u7528\uff09/ fdMm2Res \u533a\uff08FD\u7528\uff09
+            LocalTensor<uint8_t> sharedBuf1a = allocator.alloc<uint8_t>(33024);
+            // SharedBuffer1[1] \u5bf9\u5e94 stage1OutBuf[1] \uff08FA\u7528\uff09/ fdReduce \u533a\uff08FD\u7528\uff09
+            LocalTensor<uint8_t> sharedBuf1b = allocator.alloc<uint8_t>(33024);
+
+            fdMm2ResBuf1 = sharedBuf1a.template ReinterpretCast<T>();
             fdMm2ResBuf2 = fdMm2ResBuf1[BUFFER_SIZE_BYTE_16K / sizeof(T)];
-            fdReduceBuf = SharedBuffer1[1].template AllocTensor<T>();
-            fdOutputBuf = fdReduceBuf[BUFFER_SIZE_BYTE_16K / sizeof(T)].template ReinterpretCast<OUTPUT_T>();
-            fdSumBuf1 = SharedBuffer3.template Get<T>();
-            fdSumBuf2 = fdSumBuf1[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
-            fdMaxBuf1 = fdSumBuf2[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
-            fdMaxBuf2 = fdMaxBuf1[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
-            fdLseExpBuf = fdMaxBuf2[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
-            fdLseMaxUbBuf1 = SharedBuffer2[0].template AllocTensor<T>();
+            fdReduceBuf  = sharedBuf1b.template ReinterpretCast<T>();
+            fdOutputBuf  = fdReduceBuf[BUFFER_SIZE_BYTE_16K / sizeof(T)].template ReinterpretCast<OUTPUT_T>();
+            fdSumBuf1    = sharedBuf3.template ReinterpretCast<T>();
+            fdSumBuf2    = fdSumBuf1[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
+            fdMaxBuf1    = fdSumBuf2[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
+            fdMaxBuf2    = fdMaxBuf1[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
+            fdLseExpBuf  = fdMaxBuf2[(BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K) / sizeof(T)];
+            fdLseMaxUbBuf1 = sharedBuf2a.template ReinterpretCast<T>();
             fdLseMaxUbBuf2 = fdLseMaxUbBuf1[BUFFER_SIZE_BYTE_256B / sizeof(T)];
-            fdLseUbBuf = fdLseMaxUbBuf2[BUFFER_SIZE_BYTE_256B / sizeof(T)];
+            fdLseUbBuf     = fdLseMaxUbBuf2[BUFFER_SIZE_BYTE_256B / sizeof(T)];
             if (unlikely(learnableSinkFlag)) {
                 fdSinkCopyInBuf = fdLseUbBuf[BUFFER_SIZE_BYTE_256B / sizeof(T)];
-                fdSinkValueBuf = fdSinkCopyInBuf[BUFFER_SIZE_BYTE_2K / sizeof(T)];
-                fdSinkExpBuf = fdSinkValueBuf[BUFFER_SIZE_BYTE_2K / sizeof(T)];
-                fdSinkTmpBuf = fdSinkExpBuf[BUFFER_SIZE_BYTE_256B / sizeof(T)];
+                fdSinkValueBuf  = fdSinkCopyInBuf[BUFFER_SIZE_BYTE_2K / sizeof(T)];
+                fdSinkExpBuf    = fdSinkValueBuf[BUFFER_SIZE_BYTE_2K / sizeof(T)];
+                fdSinkTmpBuf    = fdSinkExpBuf[BUFFER_SIZE_BYTE_256B / sizeof(T)];
             }
-        }
-    }
-    __aicore__ inline void FreeBuffers(TQue<QuePosition::VECOUT, 1> SharedBuffer1[],
-                                       TQue<QuePosition::VECIN, 1> SharedBuffer2[])
-    {
-        if ASCEND_IS_AIV {
-            SharedBuffer1[0].template FreeTensor(fdMm2ResBuf1);
-            SharedBuffer1[1].template FreeTensor(fdReduceBuf);
-            SharedBuffer2[0].template FreeTensor(fdLseMaxUbBuf1);
         }
     }
     __aicore__ inline void AllocEventID()
@@ -585,8 +595,7 @@ public:
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm) {};
     __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink) {};
     __aicore__ inline void InitDecodeParams() {};
-    __aicore__ inline void InitBuffers(TPipe *pipe, TQue<QuePosition::VECOUT, 1> SharedBuffer1[],
-                                       TQue<QuePosition::VECIN, 1> SharedBuffer2[], TBuf<> &SharedBuffer3) {};
+    __aicore__ inline void InitBuffers() {};
     __aicore__ inline void AllocEventID() {};
     __aicore__ inline void FreeEventID() {};
     __aicore__ inline void FlashDecode(FDparamsX &fd) {};
