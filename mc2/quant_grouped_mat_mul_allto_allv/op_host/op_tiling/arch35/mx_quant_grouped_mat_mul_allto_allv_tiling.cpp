@@ -49,8 +49,6 @@ const std::vector<uint32_t> MX_QUANT_GMM_Y_DTYPE_LIST = {
     ge::DT_FLOAT16,
     ge::DT_BF16,
 };
-const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128, 256};
-constexpr int64_t RANK_DEFAULT_NUM = -1;
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::MxCheckShapeDimensions(const gert::StorageShape *shape,
                                                                             uint64_t dims, const char *shapeName)
