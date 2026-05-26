@@ -119,11 +119,9 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyScaleZeroOut(int64_t in
     if (this->isInputScale_ != 1) {
         return;
     }
-    LocalTensor<float> scaleLocal = scaleZeroOutQueue_.DeQue<float>();
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    DataCopyPad(expandedScaleGm_[index], scaleLocal, copyParams);
-    scaleZeroOutQueue_.EnQue<float>(scaleLocal);
+    DataCopyPad(expandedScaleGm_[index], this->scaleZeroLocal_, copyParams);
 }
 
 template <typename T>
