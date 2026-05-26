@@ -676,7 +676,28 @@ static MoeDistributeCombineTeardownTestParam g_testCases[] = {
      {8, 8}, ge::DT_FLOAT, ge::FORMAT_ND, {2080}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 7168}, ge::DT_FLOAT, ge::FORMAT_ND, {}, ge::DT_BOOL, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND,
      "hccl_world_group", 2, 0, 32, 0, 0, 0, 16, 0, 2, "", "3510",
-     ge::GRAPH_FAILED, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN}
+     ge::GRAPH_FAILED, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_shared_expert_x_2d_success",
+     {96, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {96, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {8, 6}, ge::DT_INT32, ge::FORMAT_ND, {48}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 6}, ge::DT_FLOAT, ge::FORMAT_ND, {1568}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {8}, ge::DT_BOOL, ge::FORMAT_ND, {8, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     "hccl_world_group", 2, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510",
+     ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_shared_expert_x_3d_success",
+     {96, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {96, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+     {8, 6}, ge::DT_INT32, ge::FORMAT_ND, {48}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 6}, ge::DT_FLOAT, ge::FORMAT_ND, {1568}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {8}, ge::DT_BOOL, ge::FORMAT_ND, {4, 2, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     "hccl_world_group", 2, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510",
+     ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_bf16_shared_expert_x_2d_success",
+     {128, 7168}, ge::DT_BF16, ge::FORMAT_ND, {128, 10752}, ge::DT_INT8, ge::FORMAT_ND,
+     {8, 8}, ge::DT_INT32, ge::FORMAT_ND, {64}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 8}, ge::DT_FLOAT, ge::FORMAT_ND, {2080}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 7168}, ge::DT_BF16, ge::FORMAT_ND, {8}, ge::DT_BOOL, ge::FORMAT_ND, {8, 7168}, ge::DT_BF16, ge::FORMAT_ND,
+     "hccl_world_group", 2, 0, 32, 0, 0, 0, 16, 0, 2, "", "3510",
+     ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN}
 };
 
 class MoeDistributeCombineTeardownTilingTest : public testing::TestWithParam<MoeDistributeCombineTeardownTestParam> {
