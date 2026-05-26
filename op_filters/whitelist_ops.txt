@@ -3,11 +3,7 @@
 # [soc_name] 表示仅该 SOC 屏蔽，无 section 头的为全局屏蔽（所有 SOC）
 
 # 全局屏蔽 - 所有产品类型都不测试
-moe_distribute_dispatch_setup
-moe_distribute_dispatch_teardown
-moe_distribute_combine_setup
-moe_distribute_combine_teardown
-mega_moe
+
 attention_to_ffn
 ffn_to_attention
 
@@ -24,6 +20,11 @@ inplace_matmul_all_reduce_add_rms_norm
 matmul_reduce_scatter_v2
 quant_reduce_scatter
 quant_all_reduce
+moe_distribute_dispatch_setup
+moe_distribute_dispatch_teardown
+moe_distribute_combine_setup
+moe_distribute_combine_teardown
+mega_moe
 
 # [ascend910b] - 仅 ascend910b 屏蔽
 [ascend910b]
@@ -52,6 +53,11 @@ moe_distribute_combine_add_rms_norm
 moe_update_expert
 quant_reduce_scatter
 quant_all_reduce
+moe_distribute_dispatch_setup
+moe_distribute_dispatch_teardown
+moe_distribute_combine_setup
+moe_distribute_combine_teardown
+mega_moe
 
 # [ascend950] - 仅 ascend950 屏蔽
 [ascend950]
