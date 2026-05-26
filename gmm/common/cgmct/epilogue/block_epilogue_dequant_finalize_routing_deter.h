@@ -226,6 +226,9 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
             reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM));
         rowIndexGlobal_.SetGlobalBuffer(
             reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
+        if (GetBlockIdx() < 2) {
+            AscendC::PRINTF("[DETER-INIT] blk=%u wsAddr=%p\n", GetBlockIdx(), params_->workspaceGM);
+        }
     }
 }
 
@@ -283,7 +286,11 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
-        DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
+        if (GetBlockIdx() < 2 && i == 0) {
+            AscendC::PRINTF("[LWS] blk=%u groupAccumM=%llu offsetM=%llu n_=%llu yOffset=%llu wsIdx=%llu curBaseN=%u\n",
+                GetBlockIdx(), groupAccumM_, offsetM, n_, yOffset, wsIdx, curBaseN);
+        }
+        // DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
     }
 }
 
