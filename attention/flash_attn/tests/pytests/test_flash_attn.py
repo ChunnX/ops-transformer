@@ -21,9 +21,9 @@ from test_utils.data import generate_qkv, generate_npu_mask, trans_bnsd_to_layou
 from test_utils.compare import data_compare_benchmark_new, Result, check_result, analyze_fail_distribution
 from test_utils.io import save_tensor_to_txt, load_tensor_from_txt
 
-_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single",
-                        "test_case_redline_fa_TND", "test_case_redline_fa", "test_case_redline_fia",
-                        "test_case_perf_redline_inference"]
+_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_func_stc",
+                        "test_case_func_redline_training_TND", "test_case_func_redline_training",
+                        "test_case_func_redline_inference", "test_case_perf_redline_inference"]
 
 # ─────────────────── 动态导入 GPU / NPU 实现 ───────────────────
 GPU_AVAILABLE = False
