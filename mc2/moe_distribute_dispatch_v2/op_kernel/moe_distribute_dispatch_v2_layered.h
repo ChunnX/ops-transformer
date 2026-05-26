@@ -472,6 +472,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     GlobalTensor<uint64_t> flagIpcGt;
     flagIpcGt.SetGlobalBuffer((__gm__ uint64_t*)(shareIPCAddrsGM_[localRankId] + IPC_FLAG_OFFSET) +
         destRankIdx * B64_PER_BLOCK);
+    constexpr int64_t WAIT_IPC_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
+    int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
         DataCopy(localWait, flagIpcGt, B64_PER_BLOCK);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -479,6 +481,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         uint64_t tempVal = localWait.GetValue(0);
         if (tempVal >= magicVal_) {
             break;
+        }
+        if (AscendC::GetSystemCycle() - startCycle >= WAIT_IPC_TIMEOUT_CYCLES) {
+            assert(sizeof(int32_t) == -1, "Dispatch DFX: WaitIpcFlag timeout!");
         }
     }
 }
@@ -713,6 +718,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     LocalTensor<int32_t> tokenTopKInfoI32Lt = tokenTopKInfoU8Lt.template ReinterpretCast<int32_t>();
 
     uint32_t tokenIdx = 0;
+    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
+    int64_t startCycle = AscendC::GetSystemCycle();
     while (tokenStatus != FINISH_STATUS) {
         if (serverId_ == serverIdx) {
             tokenStatus = GetSelfServerTokenInfo(selfTokenIdx, true, tokenTopKInfoU8Lt[tokenIdx * expLenInStruct_]);
@@ -725,6 +732,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             continue;
         }
         tokenIdx += 1;
+        if (AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) {
+            assert(sizeof(int32_t) == -1, "Dispatch DFX: CreateInnerReduceInfo timeout!");
+        }
     }
 
     uint32_t realBS = tokenIdx;
@@ -1311,6 +1321,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
     Duplicate<int32_t>(tokenNumPerExp_, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
     SyncFunc<AscendC::HardEvent::V_S>();
+    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
+    int64_t startCycle = AscendC::GetSystemCycle();
     while (tokenStatus != FINISH_STATUS) {
         if (formServerId == serverId_) {
             tokenStatus = GetSelfServerTokenInfo(selfTokenIdx, justExpInfo, tokenStructU8Lt);
@@ -1330,6 +1342,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); //等待tokenStructU8Lt搬出，才能复用tokenStructU8Lt
         tokenIdx += 1;
         justExpInfo = (tokenIdx % coresPerServer != logicAivId % coresPerServer);
+        if (AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) {
+            assert(sizeof(int32_t) == -1, "Dispatch DFX: Win2Ipc timeout!");
+        }
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>(); // tokenNumPerExpTensor的scalar值写完，才能搬出
     //数据发送结束，填写tokenNum到对端Ipc，每轮填写coresPerServer个，总共要填写 SERVER_RANK_SIZE * localMoeExpertNum_个
