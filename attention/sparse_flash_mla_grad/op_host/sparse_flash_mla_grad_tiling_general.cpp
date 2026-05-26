@@ -492,7 +492,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     int64_t oriWinRight = *oriWinRightPtr;
     OP_CHECK_IF(oriWinLeft != 127 || oriWinRight != 0, OP_LOGE("SparseFlashMlaGrad", "SparseFlashMlaGrad only support oriWinLeft=127 and oriWinRight=0 now."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(*oriMaskModePtr, OP_LOGE("SparseFlashMlaGrad", "SparseFlashMlaGrad only support oriMaskMode=4 now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*oriMaskModePtr != 4, OP_LOGE("SparseFlashMlaGrad", "SparseFlashMlaGrad only support oriMaskMode=4 now, but got %ld.", *oriMaskModePtr), return ge::GRAPH_FAILED);
 
     tilingData.opInfo.set_B(tmpData.b);
     tilingData.opInfo.set_G(tmpData.g);
@@ -547,7 +547,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     if (tmpData.mode == SMLAG_CFA_MODE || tmpData.mode == SMLAG_SCFA_MODE) {
         OP_CHECK_IF(cmpMaskModePtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpMaskModePtr is null"), return ge::GRAPH_FAILED);
         int64_t cmpMaskMode = *cmpMaskModePtr;
-        OP_CHECK_IF(cmpMaskMode != 3, OP_LOGE("SparseFlashMlaGrad", "cmpMaskMode only support 3 now."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(cmpMaskMode != 3, OP_LOGE("SparseFlashMlaGrad", "cmpMaskMode only support 3 now, but got %ld.", cmpMaskMode), return ge::GRAPH_FAILED);
         if (cmpMaskMode == 3){
             // check cmpResidual tensor shape
             auto cmpResidualKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_RESIDUAL_KV));
