@@ -33,7 +33,8 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
     int64_t XRows = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(0);
     int64_t expertNum = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(1);
     if (XRows < NEG_ONE || expertNum < NEG_ONE) {
-        OP_LOGE(context, "Invalid x shape, shape is %s.", Ops::Base::ToString(*xShape).c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", Ops::Base::ToString(*xShape),
+                                              "x rows and expert num must be greater than or equal to -1");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -44,18 +45,18 @@ static ge::graphStatus CheckInputDimsAndAttr(gert::InferShapeContext *context, c
 {
     if (xShape->GetDimNum() == 1U) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
-            OP_LOGE(context, "The dynamic dim of x should be -2, current shape is %s.",
-                    Ops::Base::ToString(*xShape).c_str());
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", Ops::Base::ToString(*xShape),
+                                                  "dynamic dim of x should be -2");
             return ge::GRAPH_FAILED;
         }
     } else if (xShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE(context, "The dim of x should be 2 or dynamic, current shape is %s.",
-                Ops::Base::ToString(*xShape).c_str());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()),
+                                     "2 or dynamic");
         return ge::GRAPH_FAILED;
     }
 
     if (k < 0) {
-        OP_LOGE(context, "k must be a non-negative number.");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "k", std::to_string(k), "non-negative");
         return ge::GRAPH_FAILED;
     }
 
