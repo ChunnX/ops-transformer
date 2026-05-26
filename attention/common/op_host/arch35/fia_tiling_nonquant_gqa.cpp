@@ -392,7 +392,8 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
             outerBlockNums = fiaInfo_->n2Size * fiaInfo_->gSize;
         }
         totalSize += outerBlockNums;
-        OP_LOGD(fiaInfo_->opName, "bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
+        OP_LOGD(fiaInfo_->opName,
+            "bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
             "outerBlockNums:%d, totalSize:%d\n",
             bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
