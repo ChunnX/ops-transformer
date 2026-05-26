@@ -38,7 +38,6 @@ protected:
     ge::graphStatus CheckParamsRelationMm() override;
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
     ge::graphStatus GetPlatformInfo() override;
-    ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
 
     static constexpr uint32_t GMM_X_INDEX = 0;

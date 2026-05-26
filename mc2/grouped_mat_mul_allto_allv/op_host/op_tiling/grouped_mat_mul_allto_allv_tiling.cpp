@@ -17,7 +17,6 @@
  *        CheckParamsRelationAndSetLocalParams, SetTilingCommonInfo, SetGmmA2avWorkspaceInfo,
  *        SetHcclTiling, PostTiling, GetWorkspaceSize, GetTilingKey, DoOpTiling, GetPlatformInfo,
  *        DoLibApiTiling, DoQuantGMMTiling, CheckOpInputSingleParamsTensorMM
- *        注: GetWorkspaceSize已覆写，使用uint64_t计算避免大shape场景workspace溢出
  */
 
 #include "grouped_mat_mul_allto_allv_tiling.h"
@@ -301,18 +300,6 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetPlatformInfo()
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Failed to get platform info."), return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus GroupedMatmulAllToAllvTiling::GetWorkspaceSize()
-{
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Failed to get workspace."), return ge::GRAPH_FAILED);
-    uint64_t totalWsSize = static_cast<uint64_t>(libApiWorkSpaceSize_) + inferredInfo_.gmmResultLen +
-                           localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
-                           localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    workspaces[0] = totalWsSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%ld", workspaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
