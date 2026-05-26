@@ -17,10 +17,8 @@
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
 #include <stdio.h>
-
-#include "blaze/gemm/block/block_mmad_mx.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
-#include "blaze/gemm/policy/dispatch_policy.h"
+#include "../../../../../mc2/3rd/blaze/block/block_mmad_mx.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
