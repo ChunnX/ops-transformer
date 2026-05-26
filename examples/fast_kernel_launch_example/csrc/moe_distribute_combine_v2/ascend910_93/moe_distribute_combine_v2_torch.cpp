@@ -40,7 +40,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
     m.def("MoeDistributeCombineV2(Tensor expand_x, Tensor expert_ids, Tensor assist_info_for_combine, " \
             "Tensor ep_send_counts, Tensor expert_scales, Tensor mc2_context, str group_ep, int ep_world_size, " \
             "int ep_rank_id, int moe_expert_num, int total_winsize_ep, *, " \
-            "Tensor? x_active_mask=None, Tensor? shared_expert_x=None, Tensor? ori_x=None, " \
+            "Tensor? x_active_mask=None, Tensor? shared_expert_x=None, Tensor? elastic_info=None, Tensor? ori_x=None, " \
             "Tensor? const_expert_alpha_1=None, Tensor? const_expert_alpha_2=None, Tensor? const_expert_v=None, " \
             "Tensor? performance_info=None, " \
             "int expert_shard_type=0, int shared_expert_num=0, int shared_expert_rank_num=0, " \
@@ -78,6 +78,7 @@ void MoeDistributeCombineV2_api(aclrtStream stream,
                                 const at::Tensor &new_workspace, const at::Tensor &mc2_context,
                                 const c10::optional<at::Tensor> &x_active_mask,
                                 const c10::optional<at::Tensor> &shared_expert_x,
+                                const c10::optional<at::Tensor> &elastic_info,
                                 const c10::optional<at::Tensor> &ori_x,
                                 const c10::optional<at::Tensor> &const_expert_alpha_1,
                                 const c10::optional<at::Tensor> &const_expert_alpha_2,
@@ -106,6 +107,12 @@ void MoeDistributeCombineV2_api(aclrtStream stream,
     if(shared_expert_x.has_value()) {
         sharedExpertX_ptr = get_first_tensor_address<c10::optional<at::Tensor>>(shared_expert_x->scalar_type(),
             shared_expert_x, false);
+    }
+
+    void* elasticInfo_ptr = nullptr;
+    if(elastic_info.has_value()) {
+        elasticInfo_ptr = get_first_tensor_address<c10::optional<at::Tensor>>(elastic_info->scalar_type(),
+            elastic_info, false);
     }
 
     void* oriX_ptr = nullptr;
@@ -155,7 +162,7 @@ void MoeDistributeCombineV2_api(aclrtStream stream,
     moe_distribute_combine_v2_entry(tilingKey, tilingData.aivNum, stream, (GM_ADDR)expandX_ptr, (GM_ADDR)expertIds_ptr,
     (GM_ADDR)expandIdx_ptr, (GM_ADDR)epSendCount_ptr, (GM_ADDR)residualX_ptr,
     (GM_ADDR)gamma_ptr, (GM_ADDR)expertScales_ptr, (GM_ADDR)xActiveMask_ptr, (GM_ADDR)sharedExpertX_ptr,
-    (GM_ADDR)oriX_ptr, (GM_ADDR)constExpertAlpha1_ptr, (GM_ADDR)constExpertAlpha2_ptr,
+    (GM_ADDR)elasticInfo_ptr, (GM_ADDR)oriX_ptr, (GM_ADDR)constExpertAlpha1_ptr, (GM_ADDR)constExpertAlpha2_ptr,
     (GM_ADDR)constExpertV_ptr, (GM_ADDR)performanceInfo_ptr, (GM_ADDR)XOut_ptr,
     (GM_ADDR)workspace_ptr, (GM_ADDR)mc2Context_ptr, tilingData);
 
@@ -223,6 +230,7 @@ void calculate_tilingdata(MoeDistributeCombineV2Info &tilingData, int64_t ep_wor
     const at::Tensor &expand_x,
     const c10::optional<at::Tensor> &x_active_mask,
     const c10::optional<at::Tensor> &shared_expert_x,
+    const c10::optional<at::Tensor> &elastic_info,
     const c10::optional<at::Tensor> &performance_info)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
@@ -248,6 +256,7 @@ void calculate_tilingdata(MoeDistributeCombineV2Info &tilingData, int64_t ep_wor
     tilingData.isTokenMask = (x_active_mask.has_value() && x_active_mask->dim() == DIM_ONE);
     tilingData.isExpertMask = (x_active_mask.has_value() && x_active_mask->dim() == DIM_TWO);
     tilingData.hasSharedExpertX = shared_expert_x.has_value();  // 或根据实际变量名调整
+    tilingData.hasElasticInfo = elastic_info.has_value();
     tilingData.isPerformance = performance_info.has_value();
     tilingData.reserved0 = false;
     tilingData.reserved1 = false;
@@ -265,6 +274,7 @@ at::Tensor npu_moe_distribute_combine_v2(
     int64_t moe_expert_num, int64_t total_winsize_ep, 
     const c10::optional<at::Tensor> &x_active_mask,
     const c10::optional<at::Tensor> &shared_expert_x,
+    const c10::optional<at::Tensor> &elastic_info,
     const c10::optional<at::Tensor> &ori_x,
     const c10::optional<at::Tensor> &const_expert_alpha_1,
     const c10::optional<at::Tensor> &const_expert_alpha_2,
@@ -286,11 +296,12 @@ at::Tensor npu_moe_distribute_combine_v2(
     validate_params.zero_expert_num = zero_expert_num;
     validate_params.copy_expert_num = copy_expert_num;
     validate_params.const_expert_num = const_expert_num;
-    
+
     TORCH_CHECK(ValidateMoeDistributeCombineV2Input(expand_x, expert_ids, assist_info_for_combine, ep_send_counts,
                                                        expert_scales, x_active_mask, shared_expert_x,
-                                                       ori_x, const_expert_alpha_1, const_expert_alpha_2,
-                                                       const_expert_v, performance_info, validate_params),
+                                                       elastic_info, ori_x, const_expert_alpha_1,
+                                                       const_expert_alpha_2, const_expert_v, performance_info,
+                                                       validate_params),
                 "Input validation failed for npu_moe_distribute_combine_v2");
     
     auto expand_x_size = expand_x.sizes();
@@ -346,13 +357,14 @@ at::Tensor npu_moe_distribute_combine_v2(
     MoeDistributeCombineV2Info tilingData;
     calculate_tilingdata(tilingData, ep_world_size, ep_rank_id, moe_expert_num, total_winsize_ep,
         expert_shard_type, shared_expert_num, shared_expert_rank_num, global_bs, bs, h, k, a, zero_expert_num,
-        copy_expert_num, const_expert_num, comm_quant_mode, expand_x, x_active_mask, shared_expert_x, performance_info);
+        copy_expert_num, const_expert_num, comm_quant_mode, expand_x, x_active_mask, shared_expert_x,
+        elastic_info, performance_info);
 
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
     auto acl_call = [=]() mutable -> int {
         MoeDistributeCombineV2_api(stream, expand_x, expert_ids, assist_info_for_combine, ep_send_counts,
             expert_scales, new_workspace, mc2_context, x_active_mask,
-            shared_expert_x, ori_x, const_expert_alpha_1, const_expert_alpha_2,
+            shared_expert_x, elastic_info, ori_x, const_expert_alpha_1, const_expert_alpha_2,
             const_expert_v, performance_info, output, comm_quant_mode, tilingData);
         return 0;
     };
@@ -366,9 +378,10 @@ at::Tensor npu_moe_distribute_combine_v2_meta(
     const at::Tensor &assist_info_for_combine,
     const at::Tensor &ep_send_counts, const at::Tensor &expert_scales, const at::Tensor &mc2_context,
     c10::string_view group_ep, int64_t ep_world_size, int64_t ep_rank_id,
-    int64_t moe_expert_num, int64_t total_winsize_ep, 
+    int64_t moe_expert_num, int64_t total_winsize_ep,
     const c10::optional<at::Tensor> &x_active_mask,
     const c10::optional<at::Tensor> &shared_expert_x,
+    const c10::optional<at::Tensor> &elastic_info,
     const c10::optional<at::Tensor> &ori_x,
     const c10::optional<at::Tensor> &const_expert_alpha_1,
     const c10::optional<at::Tensor> &const_expert_alpha_2,

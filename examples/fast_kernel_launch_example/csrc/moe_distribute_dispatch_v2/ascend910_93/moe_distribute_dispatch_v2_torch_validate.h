@@ -79,6 +79,7 @@ bool ValidateMoeDistributeDispatchV2Input(
     const at::Tensor& expert_ids,
     const c10::optional<at::Tensor>& scales,
     const c10::optional<at::Tensor>& x_active_mask,
+    const c10::optional<at::Tensor>& elastic_info,
     const c10::optional<at::Tensor>& expert_scales,
     const c10::optional<at::Tensor>& performance_info,
     MoeDistributeDispatchV2ValidateParams& params);
