@@ -62,7 +62,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             i = i + 1
 
         return test_cases
-        
+
     except Exception as e:
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
@@ -116,13 +116,13 @@ def save_result(params, result, fulfill_percent, result_path):
             print(f"变量名: {list(row_data.keys())}")
             print("请检查变量名或Excel文件")
             return False
-        
+
         # 追加新行
         new_df = pd.DataFrame([row_data])
         df = pd.concat([df, new_df], ignore_index=True)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
-    
+
     # 保存到Excel
     df.to_excel(result_path, index=False)

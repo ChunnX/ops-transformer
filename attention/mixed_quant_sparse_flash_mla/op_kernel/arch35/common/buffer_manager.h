@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file buffer_manager.h
@@ -47,7 +47,7 @@ public:
     }
 
     template<SyncType syncType = SyncType::INNER_CORE_SYNC>
-    __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType> &buffer){
+    __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType> &buffer) {
     }
 private:
     uint32_t offset_ = 0;

@@ -37,12 +37,12 @@ if os.path.isdir(testcase_path):
         print(f"错误: 目录中没有找到.pt文件: {testcase_path}")
     else:
         print(f"找到 {len(pt_files)} 个测试用例文件")
-        for pt_file in pt_files:  
+        for pt_file in pt_files:
             filepath = os.path.join(testcase_path, pt_file)
             locals()["testcase_files"].append(filepath)
 else:
     print(f"错误: 输出目录不存在: {testcase_path}")
-    
+
 def sas(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
@@ -52,9 +52,9 @@ def sas(testcase_files):
         print("NPU ERROR：", e)
         result = "NPU ERROR"
         fulfill_percent = 0
-    
+
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
-    
+
     if(result == "NPU ERROR"):
         pytest.fail(f"用例执行失败:{test_data['Testcase_Name']}")
 

@@ -16,8 +16,6 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-using namespace at_npu::native;
-using npu_preparation = at_npu::native::OpPreparation;
 
 // npu tensor max size
 const int SIZE = 8;
@@ -51,7 +49,7 @@ std::tuple<at::Tensor, at::Tensor> construct_mixed_quant_sparse_flash_mla_atten_
         // atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2) - rope_head_dim};
         atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
     }
-    at::Tensor atten_out = npu_preparation::apply_tensor_without_format(atten_out_size, q.options().dtype(q.dtype()));
+    at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(q.dtype()));
     at::Tensor softmax_lse;
 
     if (!atten_out.defined()) {
@@ -81,8 +79,7 @@ std::tuple<at::Tensor, at::Tensor> construct_mixed_quant_sparse_flash_mla_atten_
         // 不返回时tensor传空
         softmax_lse_size = {};
     }
-    softmax_lse = npu_preparation::apply_tensor_without_format(softmax_lse_size, q.options().dtype(torch::kFloat32));
-    
+    softmax_lse = at::empty(softmax_lse_size, q.options().dtype(torch::kFloat32));
     if (!softmax_lse.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作失败\n");
     } else {
@@ -99,7 +96,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     const c10::optional<at::Tensor> &ori_block_table, const c10::optional<at::Tensor> &cmp_block_table,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_ori_kv,
     const c10::optional<at::Tensor> &cu_seqlens_cmp_kv, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &seqused_ori_kv, const c10::optional<at::Tensor> &seqused_cmp_kv, const c10::optional<at::Tensor> &cmp_residual_kv,
+    const c10::optional<at::Tensor> &seqused_ori_kv, const c10::optional<at::Tensor> &seqused_cmp_kv,
+    const c10::optional<at::Tensor> &cmp_residual_kv,
     const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length,
     const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &metadata,
     int64_t quant_mode, int64_t rope_head_dim,
@@ -108,6 +106,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     int64_t ori_win_left, int64_t ori_win_right,
     c10::string_view layout_q, c10::string_view layout_kv,
     int64_t topk_value_mode, bool return_softmax_lse,
+    int64_t batch_invariant,
     c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
@@ -120,8 +119,9 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
 
     // construct the atten_out tensor
-    std::tuple<at::Tensor, at::Tensor> mixed_quant_sparse_flash_mla_atten_out = op_api::construct_mixed_quant_sparse_flash_mla_atten_out_tensor(
-        q, ori_kv_val, layout_q_str, layout_kv_str, rope_head_dim, return_softmax_lse);
+    std::tuple<at::Tensor, at::Tensor> mixed_quant_sparse_flash_mla_atten_out =
+        op_api::construct_mixed_quant_sparse_flash_mla_atten_out_tensor(
+            q, ori_kv_val, layout_q_str, layout_kv_str, rope_head_dim, return_softmax_lse);
     at::Tensor atten_out = std::get<0>(mixed_quant_sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(mixed_quant_sparse_flash_mla_atten_out);
 
@@ -137,21 +137,23 @@ std::tuple<at::Tensor, at::Tensor> npu_mixed_quant_sparse_flash_mla(
     }
 
     ACLNN_CMD(aclnnMixedQuantSparseFlashMla, q,
-                ori_kv, cmp_kv,
-                ori_sparse_indices, cmp_sparse_indices,
-                ori_block_table, cmp_block_table,
-                cu_seqlens_q, cu_seqlens_ori_kv,
-                cu_seqlens_cmp_kv, seqused_q,
-                seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
-                ori_topk_length, cmp_topk_length,
-                sinks, metadata,
-                quant_mode, rope_head_dim,
-                softmax_scale, cmp_ratio,
-                ori_mask_mode, cmp_mask_mode,
-                ori_win_left, ori_win_right,
-                layout_q_ptr, layout_kv_ptr,
-                topk_value_mode, return_softmax_lse,
-                atten_out, softmax_lse);
+        ori_kv, cmp_kv,
+        ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table,
+        cu_seqlens_q, cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length, cmp_topk_length,
+        sinks, metadata,
+        quant_mode, rope_head_dim,
+        softmax_scale, cmp_ratio,
+        ori_mask_mode, cmp_mask_mode,
+        ori_win_left, ori_win_right,
+        layout_q_ptr, layout_kv_ptr,
+        topk_value_mode, return_softmax_lse,
+        batch_invariant,
+        atten_out, softmax_lse);
     printf("ACLNN_CMD end =========== \n");
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }

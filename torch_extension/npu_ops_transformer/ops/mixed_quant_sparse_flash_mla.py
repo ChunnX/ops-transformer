@@ -12,12 +12,15 @@ from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
+
 class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
         super(MixedQuantSparseFlashMlaOpBuilder, self).__init__("npu_mixed_quant_sparse_flash_mla")
+
     def sources(self):
         """Path to C++ source code."""
         return ['ops/csrc/mixed_quant_sparse_flash_mla.cpp']
+
     def schema(self) -> str:
         """PyTorch operator signature."""
         return "npu_mixed_quant_sparse_flash_mla(Tensor q, *,"                   \
@@ -27,7 +30,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, "        \
                                 "Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, "           \
                                 "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, "         \
-                                "Tensor? cmp_residual_kv=None, "                                      \
+                                "Tensor? cmp_residual_kv=None, "                                     \
                                 "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "       \
                                 "Tensor? sinks=None, Tensor? metadata=None, "                        \
                                 "int quant_mode = 1, int rope_head_dim=64, "                         \
@@ -36,6 +39,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "int ori_win_left=127, int ori_win_right=0, "                        \
                                 "str layout_q=\"BSND\", str layout_kv=\"PA_ND\", "                   \
                                 "int topk_value_mode=1, bool return_softmax_lse=False, "             \
+                                "int batch_invariant=0, "                                            \
                                 "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -50,30 +54,32 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 ori_block_table=None, cmp_block_table=None,
                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
-                                quant_mode = 1, rope_head_dim=64,
-                                softmax_scale= 1.0, cmp_ratio=1,
+                                quant_mode=1, rope_head_dim=64,
+                                softmax_scale=1.0, cmp_ratio=1,
                                 ori_mask_mode=4, cmp_mask_mode=3,
                                 ori_win_left=127, ori_win_right=0,
                                 layout_q='BSND', layout_kv='PA_ND',
                                 topk_value_mode=1, return_softmax_lse=False,
+                                batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
             if layout_q == "BSND":
                 ## 添加softmax_lse
-                attn_out = torch.empty(q.shape, dtype = q.dtype, device="meta")
+                attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
                 if return_softmax_lse:
-                    softmax_lse = torch.empty([q.shape[0], ori_kv.shape[2],q.shape[1], q.shape[2] / ori_kv.shape[2]],
-                                              dtype = torch.float32, device="meta")
+                    softmax_lse = torch.empty([q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] / ori_kv.shape[2]],
+                                              dtype=torch.float32, device="meta")
                 else:
                     # 给一个空的合法张量，不能是 nullptr
                     softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             else:
-                attn_out = torch.empty(q.shape, dtype = q.dtype, device="meta")
+                attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
                 if return_softmax_lse:
                     softmax_lse = torch.empty([ori_kv.shape[1], q.shape[0], q.shape[2] / ori_kv.shape[2]],
-                                              dtype = torch.float32, device="meta")
+                                              dtype=torch.float32, device="meta")
                 else:
                     # 给一个空的合法张量，不能是 nullptr
                     softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
@@ -83,6 +89,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
 npu_mixed_quant_sparse_flash_mla_op_builder = MixedQuantSparseFlashMlaOpBuilder()
 op_module = npu_mixed_quant_sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
 
+
 @impl(AS_LIBRARY, npu_mixed_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
 def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_kv=None, cmp_kv=None,
@@ -90,15 +97,17 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_block_table=None, cmp_block_table=None,
                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None,
+                                seqused_ori_kv=None, seqused_cmp_kv=None,
+                                cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
-                                quant_mode = 1, rope_head_dim=64,
-                                softmax_scale= 1.0, cmp_ratio=1,
+                                quant_mode=1, rope_head_dim=64,
+                                softmax_scale=1.0, cmp_ratio=1,
                                 ori_mask_mode=4, cmp_mask_mode=3,
                                 ori_win_left=127, ori_win_right=0,
                                 layout_q='BSND', layout_kv='PA_ND',
                                 topk_value_mode=1, return_softmax_lse=False,
+                                batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
     """
     dispatcher implementation for NPU.zhe
@@ -110,7 +119,8 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_block_table, cmp_block_table,
                                 cu_seqlens_q, cu_seqlens_ori_kv,
                                 cu_seqlens_cmp_kv, seqused_q,
-                                seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+                                seqused_ori_kv, seqused_cmp_kv,
+                                cmp_residual_kv,
                                 ori_topk_length, cmp_topk_length,
                                 sinks, metadata,
                                 quant_mode, rope_head_dim,
@@ -119,4 +129,5 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_win_left, ori_win_right,
                                 layout_q, layout_kv,
                                 topk_value_mode, return_softmax_lse,
+                                batch_invariant,
                                 key_dtype, value_dtype)

@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file mixed_quant_sparse_flash_mla_check_feature.cpp
@@ -40,7 +40,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantShape() const
     OP_CHECK_IF(bSize_ <= 0,
         OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
         return ge::GRAPH_FAILED);
-        
+
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == SASLayout::TND),
             OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
             return ge::GRAPH_FAILED);
@@ -108,12 +108,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
         *opParamInfo_.kvQuantMode),
         return ge::GRAPH_FAILED);
 
-    // if (*opParamInfo_.kvQuantMode == 1) {
-    //     OP_CHECK_IF(*opParamInfo_.tileSize != 64, // 64:当前不泛化
-    //         OP_LOGE(opName_, "tile_size only support 64, but got %ld",
-    //         *opParamInfo_.tileSize),
-    //         return ge::GRAPH_FAILED);
-
+    if (*opParamInfo_.kvQuantMode == 1) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
             OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
             return ge::GRAPH_FAILED);
@@ -122,7 +117,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
             OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got DT_FLOAT8_E4M3FN"),
             return ge::GRAPH_FAILED);
     }
-    
+
     OP_CHECK_IF(*opParamInfo_.ropeHeadDim != 64, // 64:当前不泛化
         OP_LOGE(opName_, "rope_head_dim only support 64, but got %ld",
         *opParamInfo_.ropeHeadDim),
@@ -137,7 +132,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantPa() const
         OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%ld) should be in range (0, %u].",
         oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
 
-    if (cmpBlockSize_ != 0){
+    if (cmpBlockSize_ != 0) {
         OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
             OP_LOGE(opName_, "when page attention is enabled, cmpBlockSize_(%ld) should be in range (0, %u].",
             cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);

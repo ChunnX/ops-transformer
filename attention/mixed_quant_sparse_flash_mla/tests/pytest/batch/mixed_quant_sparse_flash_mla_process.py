@@ -27,8 +27,8 @@ class Network(torch.nn.Module):
     def __init__(self):
         super(Network, self).__init__()
 
-    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
-        cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, rope_head_dim, 
+    def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table,
+        cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, rope_head_dim,
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
         npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
                                 q=q,
@@ -61,6 +61,7 @@ class Network(torch.nn.Module):
                                 layout_kv=layout_kv,
                                 topk_value_mode=1,
                                 return_softmax_lse=False,
+                                batch_invariant=0,
                                 key_dtype=None,
                                 value_dtype=None)
         return npu_result
@@ -138,28 +139,6 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                                 layout_kv=input['layout_kv'])
 
     torch.npu.synchronize()
-    print("npu_mixed_quant_sparse_flash_mla...")
-    npu_result = npu_mode(
-                                q=input['q'].npu() if input['q'] is not None else None,
-                                ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
-                                cmp_kv=input['cmp_kv'].npu() if input['cmp_kv'] is not None else None,
-                                cmp_sparse_indices=input['cmp_sparse_indices'].npu() if input['cmp_sparse_indices'] is not None else None,
-                                ori_block_table=input['ori_block_table'].npu() if input['ori_block_table'] is not None else None,
-                                cmp_block_table=input['cmp_block_table'].npu() if input['cmp_block_table'] is not None else None,
-                                cu_seqlens_q=input['cu_seqlens_q'].npu() if input['cu_seqlens_q'] is not None else None,
-                                seqused_kv=input['seqused_kv'].npu() if input['seqused_kv'] is not None else None,
-                                sinks=input['sinks'].npu() if input['sinks'] is not None else None,
-                                metadata=metadata,
-                                kv_quant_mode=input['kv_quant_mode'],
-                                rope_head_dim=input['rope_head_dim'],
-                                softmax_scale=input['softmax_scale'],
-                                cmp_ratio=input['cmp_ratio'] if params[-1] != "SWA" else 1,
-                                ori_mask_mode=input['ori_mask_mode'],
-                                cmp_mask_mode=input['cmp_mask_mode'],
-                                ori_win_left=input['ori_win_left'],
-                                ori_win_right=input['ori_win_right'],
-                                layout_q=input['layout_q'],
-                                layout_kv=input['layout_kv'])  
     return npu_result, cpu_output
 
 def test_sas_quant_process_ci(test_data, device_id=0):
@@ -168,7 +147,7 @@ def test_sas_quant_process_ci(test_data, device_id=0):
     input = test_data['input']
     cpu_output = test_data['cpu_output']
     torch_npu.npu.set_device(device_id)
-    
+
     print("test_data:", params)
     print("npu_mixed_quant_sparse_flash_mla_metadata...")
     metadata = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv_metadata(
@@ -230,6 +209,7 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                 layout_kv=input['layout_kv'],
                                 topk_value_mode=1,
                                 return_softmax_lse=False,
+                                batch_invariant=0,
                                 key_dtype=None,
                                 value_dtype=None)
 

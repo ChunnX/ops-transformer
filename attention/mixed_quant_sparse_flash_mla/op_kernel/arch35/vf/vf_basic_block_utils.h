@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file vf_basic_block_utils.h
@@ -54,7 +54,7 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitThree = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND,
 };
- 
+
 constexpr static AscendC::MicroAPI::CastTrait castTraitRintZero = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
@@ -68,7 +68,7 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintOne = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
- 
+
 constexpr static AscendC::MicroAPI::CastTrait castTraitRintTwo = {
     AscendC::MicroAPI::RegLayout::TWO,
     AscendC::MicroAPI::SatMode::SAT,

@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file buffers_policy.h
@@ -26,25 +26,25 @@ namespace fa_base_matmul {
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class BuffersPolicySingleBuffer {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size){
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
         buffer_ = bufferManager.template AllocBuffer<syncType>(size);
         buffer_.Init();
     }
- 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
+
+    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
         buffer_.UnInit();
         bufferManager.FreeBuffer(buffer_);
     }
- 
-    __aicore__ inline Buffer<bufferType, syncType> &Get(){
+
+    __aicore__ inline Buffer<bufferType, syncType> &Get() {
         return buffer_;
     }
- 
-    __aicore__ inline Buffer<bufferType, syncType> &GetPre(){
+
+    __aicore__ inline Buffer<bufferType, syncType> &GetPre() {
         return Get();
     }
- 
-    __aicore__ inline Buffer<bufferType, syncType> &GetReused(){
+
+    __aicore__ inline Buffer<bufferType, syncType> &GetReused() {
         return Get();
     }
 private:
@@ -55,7 +55,7 @@ private:
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class BuffersPolicyDB {
 public:
-    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size){
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
         ping_ = bufferManager.template AllocBuffer<syncType>(size);
         pong_ = bufferManager.template AllocBuffer<syncType>(size);
 
@@ -63,7 +63,7 @@ public:
         pong_.Init();
     }
 
-    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
+    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
         ping_.UnInit();
         pong_.UnInit();
 
@@ -95,12 +95,12 @@ public:
         if (flag2_ == 0) {
             flag2_ = 1;
             return pong_;
-        } else { 
+        } else {
             flag2_ = 0;
             return ping_;
         }
     }
- 
+
     // 针对
     __aicore__ inline Buffer<bufferType, syncType> &GetReused(bool isNextS2IdxNoChange) {
         if (isNextS2IdxNoChange) {
@@ -113,7 +113,7 @@ public:
             return GetReused();
         }
     }
- 
+
 private:
     Buffer<bufferType, syncType> ping_;
     Buffer<bufferType, syncType> pong_;
@@ -188,7 +188,7 @@ public:
     __aicore__ inline Buffer<bufferType, syncType> &GetPre() {
         if (flag1_ == 0) {
             return c_;
-        } else if (flag1_ == 1) { 
+        } else if (flag1_ == 1) {
             return a_;
         } else {
             return b_;
@@ -197,10 +197,10 @@ public:
 
     // KV复用
     __aicore__ inline Buffer<bufferType, syncType> &GetReused() {
-        if (flag2_ == 0) { 
+        if (flag2_ == 0) {
             flag2_ = 1;
             return a_;
-        } else if (flag2_ == 1){ 
+        } else if (flag2_ == 1) {
             flag2_ = NUM_2;
             return b_;
         } else {

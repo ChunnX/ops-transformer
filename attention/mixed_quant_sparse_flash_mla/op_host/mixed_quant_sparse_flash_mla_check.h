@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file mixed_quant_sparse_flash_mla_check.h
@@ -133,6 +133,7 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_BATCH_INVARIANT_INDEX = 12;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -224,7 +225,7 @@ struct KvQuantSASParaInfo {
     SASTilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
     SASTilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
     SASTilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
- 	SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
     SASTilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
@@ -291,7 +292,7 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
-    
+
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -352,6 +353,7 @@ public:
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
+    ge::graphStatus GetKvstride();
     ge::graphStatus GetSinks();
     void GenerateInfo(KvQuantSASTilingInfo &sasInfo);
     ge::graphStatus Parse(KvQuantSASTilingInfo &sasInfo);
@@ -364,7 +366,7 @@ public:
 
     bool HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const SASAxis &axis,const SASLayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
@@ -385,6 +387,8 @@ public:
     uint32_t actualLenDimsQ_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
+    uint32_t oriKvStride_ = 0;
+    uint32_t cmpKvStride_ = 0;
     // Layout
     SASLayout qLayout_ = SASLayout::BSND;
     SASLayout outLayout_ = SASLayout::BSND;
@@ -423,7 +427,7 @@ private:
     void Init();
     bool HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const SASAxis &axis,const SASLayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
@@ -524,6 +528,8 @@ private:
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
     uint32_t sparseBlockSize_ = 0;
+    uint32_t oriKvStride_ = 0;
+    uint32_t cmpKvStride_ = 0;
 
     uint32_t oriBlockNum_ = 0;
     uint32_t cmpBlockNum_ = 0;
@@ -545,7 +551,7 @@ private:
     uint32_t dSize_ = sasInfo_.dSize;
     uint32_t dSizeV_ = sasInfo_.dSizeV;
     uint32_t dSizeVInput_ = sasInfo_.dSizeVInput;
-    
+
     uint32_t dSizeOriKvInput_ = 0;
     uint32_t dSizeCmpKvInput_ = 0;
 

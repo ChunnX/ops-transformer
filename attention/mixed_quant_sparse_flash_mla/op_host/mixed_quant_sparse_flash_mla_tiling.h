@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file mixed_quant_sparse_flash_mla_tiling.h
@@ -67,7 +67,7 @@ REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMla, MixedQuantSparseFlashMlaTil
 // ---------------算子Tiling类---------------
 class MixedQuantSparseFlashMlaTiling {
 public:
-    explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context) : context_(context){};
+    explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
     ge::graphStatus DoOpTiling(KvQuantSASTilingInfo *tilingInfo);
 
 private:
