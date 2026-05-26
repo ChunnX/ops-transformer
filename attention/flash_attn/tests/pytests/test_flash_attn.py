@@ -112,7 +112,20 @@ def normalize_case(raw):
             block_table = torch.tensor(c.get("block_table"), dtype=torch.int32)
             c["block_table"] = block_table
         else:
-            block_table = gen_block_table(c.get("B"), seqused_kv, block_size, block_table_shape)
+            b_val = c.get("B")
+            if block_table_shape:
+                b_val = block_table_shape[0]
+                max_block_num_per_batch = block_table_shape[1]
+            else:
+                max_block_num_per_batch = (max(seqused_kv) + block_size - 1) // block_size
+            block_table = torch.full((b_val, max_block_num_per_batch), -1, dtype=torch.int32)
+            block_idx = 0
+            for i in range(b_val):
+                b_seq = seqused_kv[i] if len(seqused_kv) > i else seqused_kv[0]
+                b_block_num = (b_seq + block_size - 1) // block_size
+                for j in range(b_block_num):
+                    block_table[i][j] = block_idx
+                    block_idx += 1
             c["block_table"] = block_table
         c["actual_b"] = block_table.shape[0]
     return c
