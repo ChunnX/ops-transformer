@@ -14,7 +14,9 @@
  */
 
 #include "allto_allv_grouped_mat_mul_tiling.h"
+#include <algorithm>
 #include <cstddef>
+#include <numeric>
 #include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "mc2_comm_utils.h"
@@ -48,6 +50,19 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     OP_TILING_CHECK((groupEpPtr == nullptr) || (epWorldSizePtr == nullptr),
         OP_LOGE(A_INNER_DEBUG, "Group or epWorldSize attr is null, expected non-null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*epWorldSizePtr == 0, OP_LOGE(A_INNER_DEBUG, "EpWorldSize is 0, expected positive value."),
+        return ge::GRAPH_FAILED);
+
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    std::vector<int64_t> validEpWorldSizeValues;
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        validEpWorldSizeValues = {2, 4, 8, 16, 32, 64, 128, 256};
+    } else {
+        validEpWorldSizeValues = {8, 16, 32, 64, 128};
+    }
+    OP_TILING_CHECK(std::find(validEpWorldSizeValues.begin(), validEpWorldSizeValues.end(),
+        *epWorldSizePtr) == validEpWorldSizeValues.end(),
+        OP_LOGE(A_INNER_DEBUG, "EpWorldSize[%lld] is not in valid set for this platform.", *epWorldSizePtr),
         return ge::GRAPH_FAILED);
 
     auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
@@ -125,6 +140,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
     uint64_t H1 = tilingData->taskTilingInfo.H1;
     uint64_t bsk = context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(0);
     uint64_t a = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(0);
+    uint64_t sendCountsSize = sendCountsPtr->GetSize();
+    uint64_t recvCountsSize = recvCountsPtr->GetSize();
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (NeedToCheckCounts()) {
@@ -145,6 +162,15 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
             }
         }
     }
+
+    uint64_t sendCountsSum = std::accumulate(sendCountsLocal, sendCountsLocal + sendCountsSize, 0ULL);
+    OP_TILING_CHECK(sendCountsSum != bsk,
+        OP_LOGE(A_INNER_DEBUG, "Sum of sendCounts is %llu, expected equal to BSK[%llu].", sendCountsSum, bsk),
+        return ge::GRAPH_FAILED);
+    uint64_t recvCountsSum = std::accumulate(recvCountsLocal, recvCountsLocal + recvCountsSize, 0ULL);
+    OP_TILING_CHECK(recvCountsSum != a,
+        OP_LOGE(A_INNER_DEBUG, "Sum of recvCounts is %llu, expected equal to A[%llu].", recvCountsSum, a),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -173,6 +199,28 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* co
         OP_LOGE(A_INNER_DEBUG, "N1 value is %llu, expected in range [1, %llu).",
             N1, static_cast<uint64_t>(MAX_SHAPE_SIZE));
         return ge::GRAPH_FAILED;
+    }
+
+    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        uint64_t BS = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(0);
+        if (BS <= NUM_ZERO || BS >= MAX_BSK) {
+            OP_LOGE(A_INNER_DEBUG, "BS value is %llu, expected in range [1, %llu).",
+                BS, static_cast<uint64_t>(MAX_BSK));
+            return ge::GRAPH_FAILED;
+        }
+        uint64_t H2 = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(1);
+        if (H2 <= NUM_ZERO || H2 > H2_MAX_VALUE) {
+            OP_LOGE(A_INNER_DEBUG, "H2 value is %llu, expected in range [1, %llu].",
+                H2, H2_MAX_VALUE);
+            return ge::GRAPH_FAILED;
+        }
+        uint64_t n2DimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
+        uint64_t N2 = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape().GetDim(n2DimIndex);
+        if (N2 <= NUM_ZERO || N2 >= MAX_SHAPE_SIZE) {
+            OP_LOGE(A_INNER_DEBUG, "N2 value is %llu, expected in range [1, %llu).",
+                N2, static_cast<uint64_t>(MAX_SHAPE_SIZE));
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -229,6 +277,12 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingCo
     uint64_t sendCountsSize = sendCountsPtr->GetSize();
     uint64_t eExpert = sendCountsSize / (*epWorldSizePtr);
 
+    if (sendCountsSize != e_ * (*epWorldSizePtr)) {
+        OP_LOGE(A_INNER_DEBUG, "SendCounts size is %llu, expected equal to e[%llu] * epWorldSize[%lld].",
+            sendCountsSize, e_, *epWorldSizePtr);
+        return ge::GRAPH_FAILED;
+    }
+
     if (eExpert <= NUM_ZERO || eExpert >= E_MAX_VALUE_NON_QUANT) {
         OP_LOGE(A_INNER_DEBUG, "Expert num per rank is %llu, expected in range [1, %u).",
             eExpert, E_MAX_VALUE_NON_QUANT);
@@ -284,6 +338,14 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
             return ge::GRAPH_FAILED);
         auto permuteOutShape =
             context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape();
+        uint64_t permuteOutA = permuteOutShape.GetDim(DIM_ZERO);
+        uint64_t gmmYA = gmmYShape.GetDim(DIM_ZERO);
+        if (permuteOutA != gmmYA) {
+            OP_LOGE(A_INNER_DEBUG,
+                "PermuteOut A dim is %llu, gmmY A is %llu, expected equal.",
+                permuteOutA, gmmYA);
+            return ge::GRAPH_FAILED;
+        }
         uint64_t permuteOutH1 = permuteOutShape.GetDim(DIM_ONE);
         if (permuteOutH1 != H1) {
             OP_LOGE(A_INNER_DEBUG,
@@ -296,6 +358,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     if (tilingData->isPermuteOut) {
         auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
+        uint64_t BS = mmXShape.GetDim(DIM_ZERO);
         uint64_t H = mmXShape.GetDim(1);
         uint64_t h2DimIndex = transMmWeight_ ? DIM_ONE : DIM_ZERO;
         uint64_t H2MM = mmWeightShape.GetDim(h2DimIndex);
@@ -305,13 +368,24 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
             return ge::GRAPH_FAILED;
         }
 
+        uint64_t BSK = gmmXShape.GetDim(0);
+        if (BSK % BS != 0) {
+            OP_LOGE(A_INNER_DEBUG, "BSK[%llu] is not divisible by BS[%llu].", BSK, BS);
+            return ge::GRAPH_FAILED;
+        }
+        uint64_t K = BSK / BS;
+        if (K < K_MIN_VALUE || K > K_MAX_VALUE) {
+            OP_LOGE(A_INNER_DEBUG, "K value is %llu, expected in range [%llu, %llu].",
+                K, K_MIN_VALUE, K_MAX_VALUE);
+            return ge::GRAPH_FAILED;
+        }
+
         // Check mmY output when mmX is present
         OP_TILING_CHECK(context->GetOutputShape(OUTPUT_MM_Y_INDEX) == nullptr,
             OP_LOGE(A_INNER_DEBUG,
                 "MmY output shape is null when mmX is present, expected non-null."),
             return ge::GRAPH_FAILED);
         auto mmYShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape();
-        uint64_t BS = mmXShape.GetDim(DIM_ZERO);
         uint64_t mmYBS = mmYShape.GetDim(DIM_ZERO);
         if (mmYBS != BS) {
             OP_LOGE(A_INNER_DEBUG,
