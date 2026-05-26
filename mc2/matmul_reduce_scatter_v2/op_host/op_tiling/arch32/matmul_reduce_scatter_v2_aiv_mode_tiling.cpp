@@ -700,7 +700,7 @@ void CalTilingParam(CoCTiling &cocTilingData,
     }
 }
 
-void ReduceScatterV2DecodeTilingData(int32_t code, CoCTiling &tilingData, MatmulReduceScatterV2AivModeInfo &info)
+void ReduceScatterV2DecodeTilingData(int32_t code, CoCTiling &tilingData, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t m = static_cast<int32_t>(info.M);
     int32_t k = static_cast<int32_t>(info.K);

@@ -181,8 +181,8 @@ static aclnnStatus DealWithX1Empty(uint64_t *workspaceSize, aclOpExecutor **exec
 
 aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
                                                  const char *group, int64_t gatherIndex, int64_t commTurn,
-                                                 int64_t streamMode, const aclTensor *output,
-                                                 const aclTensor *gatherOut,
+                                                 int64_t streamMode, aclTensor *output,
+                                                 aclTensor *gatherOut,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor) {
   uint64_t timeStamp = NnopbaseMsprofSysTime();
   auto retParam = CheckParams(x1, x2, bias, streamMode, output);
@@ -203,8 +203,8 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   if (IsAscend910A5()) {
     const char *commMode = "ccu";
     return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, gatherIndex,
-                                                  commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
-                                                  const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);
+                                                  commTurn, streamMode, 0, commMode, output,
+                                                  gatherOut, nullptr, workspaceSize, executor);
   }
   aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(x1, x2, bias, group, transposeX1, transposeX2,
                                                               gatherIndex, commTurn, rankSize, isGatherOut,

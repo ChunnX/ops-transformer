@@ -14,8 +14,6 @@
  */
 
 #include <cmath>
-#include <iostream>
-
 #include "mc2_log.h"
 #include "one_calc_two_comm_tiling.h"
 

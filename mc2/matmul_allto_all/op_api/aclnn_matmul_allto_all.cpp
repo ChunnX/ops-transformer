@@ -242,7 +242,7 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllGetWorkspaceSize(const aclTensor*
                                                                 const aclTensor* x1ScaleOptional, const aclTensor* x2ScaleOptional,
                                                                 const aclTensor* commScaleOptional,
                                                                 const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
-                                                                char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
+                                                                const char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
                                                                 int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
                                                                 int64_t commQuantMode, int64_t commQuantDtype,
                                                                 bool transposeX1, bool transposeX2, int64_t groupSize,
@@ -265,7 +265,6 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
     aclTensor* x1OffsetOptional = nullptr;
     aclTensor* x2OffsetOptional = nullptr;
     const aclTensor* out = output;
-    char* str_group = const_cast<char*>(group);
     int64_t worldSize = -1;
     int64_t yDtype = GE_UNDEFINED;
     int64_t x1QuantMode = 0;
@@ -275,7 +274,7 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
     int64_t groupSize = 0;
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
+        group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
         transposeX1, transposeX2, groupSize, out, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     return ret;
