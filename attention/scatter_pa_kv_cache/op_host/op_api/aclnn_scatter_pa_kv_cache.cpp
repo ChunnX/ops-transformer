@@ -88,9 +88,9 @@ static aclnnStatus CheckDtypeValid(
 {
     auto& platformInfo = op::GetCurrentPlatformInfo();
     auto socVersion = platformInfo.GetCurNpuArch();
-    bool is910 = (socVersion == NpuArch::ASCEND910 || socVersion == NpuArch::ASCEND910B);
+    bool isArch35 = (socVersion == NpuArch::DAV_3510);
 
-    auto dtypeSupportList = is910 ? KEY_VALUE_DTYPE_SUPPORT_LIST_910 : KEY_VALUE_DTYPE_SUPPORT_LIST;
+    auto dtypeSupportList = isArch35 ? KEY_VALUE_DTYPE_SUPPORT_LIST : KEY_VALUE_DTYPE_SUPPORT_LIST_910;
 
     OP_CHECK_DTYPE_NOT_SUPPORT(key, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SUPPORT(keyCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
