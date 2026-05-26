@@ -31,7 +31,7 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -62,7 +62,7 @@ aclnnStatus aclnnFusedInferAttentionScore(void *workspace, uint64_t workspaceSiz
                                           const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;

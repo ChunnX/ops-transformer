@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <cstdio>
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
@@ -31,8 +32,7 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
-                    OP_LOGE("FusedInferAttentionScore",
-                            "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+                    ({ char reason[512] = {0}; OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()) > 0) ? reason : "%s datatype support list should be specify in DTYPE_SUPPORT_MAP"); }),
                     return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
@@ -47,7 +47,7 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-                    OP_LOGE("FusedInferAttentionScore", "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()),
+                    ({ char reason[512] = {0}; OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()) > 0) ? reason : "%s format only supports ND/NCHW/NHWC/NCDHW!"); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -69,7 +69,8 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        char reason[512] = {0};
+        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", (snprintf(reason, sizeof(reason), "datatype %d not support", type) > 0) ? reason : "datatype %d not support");
         return "UNDEFINED";
     }
 }

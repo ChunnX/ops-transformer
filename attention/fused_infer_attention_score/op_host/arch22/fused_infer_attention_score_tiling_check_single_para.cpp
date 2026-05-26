@@ -14,6 +14,7 @@
  */
 
 #include <set>
+#include <cstdio>
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
@@ -76,8 +77,8 @@ void FiaTilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expec
             oss << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only supports dtype %s, but got %s",
-        name.c_str(), oss.str().c_str(), FusedDataTypeToSerialString(actualDtype).c_str());
+    char reason[512] = {0};
+    OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "Tensor %s only supports dtype %s, but got %s", name.c_str(), oss.str().c_str(), FusedDataTypeToSerialString(actualDtype).c_str()) > 0) ? reason : "Tensor %s only supports dtype %s, but got %s");
 }
 
 ge::graphStatus FiaTilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
@@ -86,7 +87,7 @@ ge::graphStatus FiaTilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorD
     if (desc != nullptr) {
         const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()) > 0) ? reason : "%s datatype support list should be specify in DTYPE_SUPPORT_MAP"); }),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         OP_CHECK_IF(std::find(
@@ -105,8 +106,7 @@ ge::graphStatus FiaTilingCheck::CheckFormatSupport(const gert::CompileTimeTensor
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF(
             (FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-            OP_LOGE(opName_, "%s format only supports ND/NCHW/NHWC/NCDHW, but got %d",
-                name.c_str(), static_cast<int32_t>(format)),
+            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s format only supports ND/NCHW/NHWC/NCDHW, but got %d", name.c_str(), static_cast<int32_t>(format)) > 0) ? reason : "%s format only supports ND/NCHW/NHWC/NCDHW, but got %d"); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -124,8 +124,8 @@ void FiaTilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLis
         }
     }
 
-    OP_LOGE(opName_, "%s %s only supports %s, but got %s",
-              name.c_str(), subName.c_str(), oss.str().c_str(), std::to_string(actualValue).c_str());
+    char reason[512] = {0};
+    OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s %s only supports %s, but got %s", name.c_str(), subName.c_str(), oss.str().c_str(), std::to_string(actualValue).c_str()) > 0) ? reason : "%s %s only supports %s, but got %s");
 }
 
 template <typename T>
@@ -223,15 +223,15 @@ void FiaTilingCheck::LogErrorLayoutSupport(const std::vector<FiaLayout> &expectL
             oss << ", ";
         }
     }
-    OP_LOGE(opName_, "%s only supports layout %s, but got %s",
-        name.c_str(), oss.str().c_str(), LayoutToSerialString(actualLayout).c_str());
+    char reason[512] = {0};
+    OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s only supports layout %s, but got %s", name.c_str(), oss.str().c_str(), LayoutToSerialString(actualLayout).c_str()) > 0) ? reason : "%s only supports layout %s, but got %s");
 }
 
 ge::graphStatus FiaTilingCheck::CheckLayoutSupport(const FiaLayout &actualLayout, const std::string &name) const
 {
     const auto& it = LAYOUT_SUPPORT_MAP.find(name);
     OP_CHECK_IF(it == LAYOUT_SUPPORT_MAP.end(),
-        OP_LOGE(opName_, "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()),
+        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()) > 0) ? reason : "%s layout support list should be specify in LAYOUT_SUPPORT_MAP"); }),
         return ge::GRAPH_FAILED);
     auto &expectLayoutList = it->second;
     OP_CHECK_IF(std::find(
@@ -253,7 +253,7 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaQuery() const
     }
 
     OP_CHECK_IF(opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0,
-        OP_LOGE(opName_, "%s shapesize is 0.", QUERY_NAME.c_str()), return ge::GRAPH_FAILED);
+        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s shapesize is 0.", QUERY_NAME.c_str()) > 0) ? reason : "%s shapesize is 0."); }), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -542,9 +542,8 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaLayout() const
     };
     std::string inputLayout = opParamInfo_.layOut;
     if (std::find(inputLayoutList.begin(), inputLayoutList.end(), inputLayout) == inputLayoutList.end()) {
-        OP_LOGE(opName_,
-            "input layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
-            inputLayout.c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "input layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s", inputLayout.c_str()) > 0) ? reason : "input layout only supports BSH, BSND, BNSD, TND, NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_B");
         return ge::GRAPH_FAILED;
     }
 
@@ -637,7 +636,8 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaSparseMode() const
         SPARSE_MODE_TREE
     };
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(opParamInfo_.sparseMode, sparseModeList, SPARSE_MODE_NAME)) {
-        OP_LOGE(opName_, "sparseMode only supports 0/1/2/3/4/9, but got %u", *opParamInfo_.sparseMode);
+        char reason[512] = {0};
+        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "sparseMode only supports 0/1/2/3/4/9, but got %u", *opParamInfo_.sparseMode) > 0) ? reason : "sparseMode only supports 0/1/2/3/4/9, but got %u");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
