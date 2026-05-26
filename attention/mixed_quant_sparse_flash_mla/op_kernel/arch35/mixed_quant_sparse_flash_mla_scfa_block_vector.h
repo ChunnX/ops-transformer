@@ -17,9 +17,9 @@
 
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
-#include "../../../common/op_kernel/buffers_policy.h"
-#include "../../../common/op_kernel/buffer_manager.h"
-#include "../../../common/op_kernel/buffer.h"
+#include "../../common/buffers_policy.h"
+#include "../../common/buffer_manager.h"
+#include "../../common/buffer.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
