@@ -44,6 +44,8 @@ get_filename_component(OPS_TRANSFORMER_COMMON_INC_EXTERNAL "${OPS_TRANSFORMER_CO
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_HEADERS  "${OPS_TRANSFORMER_COMMON_INC_EXTERNAL}/aclnn_kernels"       REALPATH)
 get_filename_component(OPS_KERNEL_BINARY_SCRIPT     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_script"       REALPATH)
 get_filename_component(OPS_KERNEL_BINARY_CONFIG     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_config"       REALPATH)
+get_filename_component(BLAZE                        "${OPTENSOR_SOURCE_PATH}/include/blaze"                     REALPATH)
+get_filename_component(TENSOR_API                   "${OPTENSOR_SOURCE_PATH}/include/tensor_api"                REALPATH)
 
 # python
 if(NOT DEFINED ASCEND_PYTHON_EXECUTABLE)
@@ -129,6 +131,7 @@ set(OPAPI_INCLUDE
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
    ${OPS_TRANSFORMER_DIR}/mc2/3rd
    ${OPS_TRANSFORMER_DIR}/mc2
+   ${OPS_TENSOR_INCLUDE_DIRS}
 )
 
 if (NOT BUILD_OPEN_PROJECT)
@@ -181,6 +184,7 @@ set(OP_TILING_INCLUDE
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_api
    ${OPS_TRANSFORMER_DIR}/mc2/3rd
    ${OPS_TRANSFORMER_DIR}/mc2
+   ${OPS_TENSOR_INCLUDE_DIRS}
    ${NNOPBASE_INCLUDE_DIRS}
    ${AICPU_INC_DIRS}
 )
@@ -240,6 +244,7 @@ set(OP_PROTO_INCLUDE
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
    ${OPS_TRANSFORMER_DIR}/mc2/3rd
    ${OPS_TRANSFORMER_DIR}/mc2
+   ${OPS_TENSOR_INCLUDE_DIRS}
 )
 
 if (NOT BUILD_OPEN_PROJECT)
