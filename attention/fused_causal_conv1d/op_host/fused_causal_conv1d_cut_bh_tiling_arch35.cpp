@@ -240,7 +240,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     }
 
     // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
-    const bool *inplacePtr = attrs->GetAttrPointer<bool>(ATTR_INPLACE_INDEX);
     inplace_ = isInplace_ ? 1 : 0;
 
     // APC 开启时 blockSize 必须有效
