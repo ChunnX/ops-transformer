@@ -342,7 +342,7 @@ private:
         uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
         const uint32_t srcShape[2] = {effectiveSp * curLengthPad, NUM1};
         uint32_t dstShape[2] = {effectiveSp * curLengthPad, hDim};
-        if (hDim > NUM256 && effectiveSp >= NUM8) {
+        if (hDim > NUM256 && spAlloc >= NUM8) {
             dstShape[1] = NUM64;
         }
 
@@ -385,7 +385,7 @@ private:
         PipeBarrier<PIPE_V>();
         BroadCast<float, ALIGNED_TO_2, NUM1>(lseexpBroadcastLocal, lseexpLocal, dstShape, srcShape);
         PipeBarrier<PIPE_V>();
-        if (hDim > NUM256 && effectiveSp >= NUM8) {
+        if (hDim > NUM256 && spAlloc >= NUM8) {
             int64_t tmpTailLength = hDim % NUM64;
             int64_t tmpTailStart = hDim - tmpTailLength;
             for (uint32_t i = 0; i < effectiveSp; i++) {
