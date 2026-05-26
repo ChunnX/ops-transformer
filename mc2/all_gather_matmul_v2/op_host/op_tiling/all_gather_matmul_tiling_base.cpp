@@ -41,7 +41,6 @@ using namespace Mc2Tiling;
 namespace optiling {
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
-const std::vector<std::string> SUPPORT_COMM_MODES = {"ccu", "aicpu", "default"};
 
 static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8};
@@ -606,8 +605,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
                     return false);
-    OP_TILING_CHECK(std::find(SUPPORT_COMM_MODES.begin(), SUPPORT_COMM_MODES.end(), commMode_) == SUPPORT_COMM_MODES.end(), 
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or aicpu or default, but the actual value is %s.", commMode_),
+    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", 3) == 0) || (std::strncmp(commMode_, "aicpu", 5) == 0) || (std::strlen(commMode_) == 0)), 
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or aicpu or empty string, but the actual value is %s.", commMode_),
                     return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
@@ -733,11 +732,10 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
     // Non-A5 platform must use AICPU mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     if (npuArch_ == NpuArch::DAV_3510) {    
-        if (commMode_ == "ccu") {
+        if (std::strncmp(commMode_, "ccu", 3) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (commMode_ == "aicpu") {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
-        } else {
+        } else if (std::strlen(commMode_) == 0) { // empty string
+            OP_LOGD("Tiling GetTilingKey commMode_ is  empty string.");
             if (rankSize_ <= 8){
                 commMode = Mc2Comm::COMM_MODE_CCU;
             }

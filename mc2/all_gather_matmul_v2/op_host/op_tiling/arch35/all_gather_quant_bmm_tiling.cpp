@@ -408,9 +408,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
-    if (std::strcmp(commMode_, "ccu") == 0) {
+    if (std::strncmp(commMode_, "ccu", 3) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
-    } else if(std::strcmp(commMode_, "default") == 0){ // default
+    } else if(std::strlen(commMode_) == 0){ // empty string
+        OP_LOGD("Tiling GetTilingKey commMode_ is  empty string.");
         if (rankSize_ <= 8) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }
@@ -494,9 +495,10 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     uint8_t quanMmMode = static_cast<uint8_t>(quantMmMode_) - 1;
     // Set hccl comm engine with comm_mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
-    if (std::strcmp(commMode_, "ccu") == 0) {
+    if (std::strncmp(commMode_, "ccu", 3) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if(std::strcmp(commMode_, "default") == 0){ // default
+    } else if (std::strlen(commMode_) == 0) { // empty string
+        OP_LOGD("Tiling GetTilingKey commMode_ is  empty string.");
         if (rankSize_ <= 8) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         }
