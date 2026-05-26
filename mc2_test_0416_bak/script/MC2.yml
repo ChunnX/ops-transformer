@@ -1,0 +1,18 @@
+
+MC2:
+  bfloat16:
+    avg_re_rtol: 2.0
+    max_re_rtol: 10.0
+    rmse_rtol: 2.0
+    small_value: 0.001
+    small_value_atol: 1.0e-05
+    standard: ULPBenchmarkCompareStandard
+  bool:
+    standard: BinaryCompareStandard
+  float16:
+    avg_re_rtol: 2.0
+    max_re_rtol: 10.0
+    rmse_rtol: 2.0
+    small_value: 0.001
+    small_value_atol: 1.0e-05
+    standard: ULPBenchmarkCompareStandard

@@ -1,0 +1,11 @@
+﻿case_name,bs,h,k,"x_dtype(0=bf16,1=fp16)",quant_mode,graph_type,is_scale,is_continue,tp,localmoe,shareExpertRankNum,moeExperNum,is_fullcore,corenum,seed,is_mask,activeMask_Dim,is_combine_x,comm_mode,is_performance,is_variable_bs,shared_expert_num,is_elastic,share_broken_card_num,moe_broken_card_num,zero_expert_num,copy_expert_num,const_expert_num
+Dispatch_fullmesh2_ID001,4,7168,8,1,2,1,0,1,1,4,0,64,1,24,346,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID002,97,7168,14,1,2,1,16,1,1,29,0,464,1,24,596,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID003,16,7168,8,0,2,1,0,1,1,2,0,32,1,24,498,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID004,128,7168,8,0,2,1,0,1,1,6,0,96,1,24,775,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID005,128,7168,8,0,2,1,1,1,1,11,0,176,1,24,100,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID006,8,7168,8,1,2,1,1,1,1,5,0,80,1,24,625,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID007,128,7168,8,0,2,1,1,1,1,22,0,352,1,24,775,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID008,128,7168,8,1,2,1,1,1,1,13,0,208,1,24,962,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID009,64,7168,8,0,2,1,0,1,1,4,0,64,1,24,705,0,0,0,0,1,0,0,0,0,0,0,0,0
+Dispatch_fullmesh2_ID010,16,7168,8,0,2,1,0,1,1,5,0,80,1,24,491,0,0,0,0,1,0,0,0,0,0,0,0,0

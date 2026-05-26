@@ -1,0 +1,10 @@
+numpy
+pandas
+openpyxl
+psutil
+decorator
+scipy
+attrs
+protobuf
+en_dtypes
+
