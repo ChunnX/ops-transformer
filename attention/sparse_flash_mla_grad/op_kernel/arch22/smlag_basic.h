@@ -35,14 +35,17 @@ public:
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
                                    GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, 
                                    GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
+                                   GM_ADDR cmp_residual_kv,
                                    GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, 
+                                   GM_ADDR cmp_softmax_l1_norm,
                                    GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
 
 private:
     __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, 
                                 const GM_ADDR cu_seqlens_q, 
                                 const GM_ADDR cu_seqlens_ori_kv, 
-                                const GM_ADDR cu_seqlens_cmp_kv);
+                                const GM_ADDR cu_seqlens_cmp_kv,
+                                const GM_ADDR cmp_residual_kv);
     __aicore__ inline void CubeCompute(CubeOp<SMLAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SMLAGT> &vecOp);
     __aicore__ inline void UpdateGmOffset(int64_t task, int32_t loop);
@@ -70,6 +73,7 @@ private:
     int64_t curS1;
     int64_t curS2;
     int64_t curS3;
+    int64_t residual;
     int64_t curMaxS3;
     int64_t dimS1;
     int64_t cmpRatio;
@@ -135,6 +139,7 @@ private:
     const GM_ADDR cu_seqlens_q;
     const GM_ADDR cu_seqlens_ori_kv;
     const GM_ADDR cu_seqlens_cmp_kv;
+    const GM_ADDR cmp_residual_kv;
 
     RunInfo runInfo[2];
 };
@@ -143,7 +148,8 @@ template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__restrict tilingData,
                                                            const GM_ADDR cu_seqlens_q, 
                                                            const GM_ADDR cu_seqlens_ori_kv, 
-                                                           const GM_ADDR cu_seqlens_cmp_kv)
+                                                           const GM_ADDR cu_seqlens_cmp_kv,
+                                                           const GM_ADDR cmp_residual_kv)
 {
     dimB = tilingData->opInfo.B;
     dimS1 = tilingData->opInfo.S1;
@@ -189,15 +195,23 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
         this->cu_seqlens_ori_kv = cu_seqlens_ori_kv;
         this->cu_seqlens_cmp_kv = cu_seqlens_cmp_kv;
     }
+
+    if constexpr (MODE == SMLAG_CFA_MODE) {
+        this->cmp_residual_kv = cmp_residual_kv;
+        if constexpr (IS_BSND) {
+            residual = ((__gm__ int32_t *)this->cmp_residual_kv)[0];
+        }
+    }
 }
 
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
     GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
-    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
-    GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
+    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, 
+    GM_ADDR cmp_residual_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
+    GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
 {
-    Init(tilingData, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv);
+    Init(tilingData, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv);
 
     // AIC Process
     if ASCEND_IS_AIC {
@@ -242,7 +256,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
         vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
-                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, workspace, tilingData, &pipeVec);
+                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -390,6 +404,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::ChangeBatchUpdate()
         if constexpr (MODE == SMLAG_CFA_MODE) {
             t3Offset = ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex - 1];
             curS3 = (((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex] - ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex - 1]);
+            residual = ((__gm__ int32_t *)cmp_residual_kv)[bIndex - 1];
         }
     } else {
         t1Offset = bIndex * curS1;
@@ -418,6 +433,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
         if constexpr (MODE == SMLAG_CFA_MODE) {
             t3Offset = ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx - 1];
             curS3 = (((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx] - ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx - 1]);
+            residual = ((__gm__ int32_t *)cmp_residual_kv)[bIdx - 1];
         }
 
         s1Index = t1Idx - t1Offset;
@@ -458,7 +474,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64
     oriSelectedCount = oriWinEnd - oriWinStart;
 
     if constexpr (MODE == SMLAG_CFA_MODE) {
-        curMaxS3 = Max((oriWinDiagOffset + s1Index + (curLoopS1Basic - 1) + 1) / cmpRatio, 0);
+        curMaxS3 = Max((curS3 * cmpRatio + residual - curS1 + s1Index + (curLoopS1Basic - 1) + 1) / cmpRatio, 0);
         cmpSelectedCount = curMaxS3;
     }
 

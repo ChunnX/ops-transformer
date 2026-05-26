@@ -27,8 +27,8 @@ using namespace AscendC;
         const SparseFlashMlaGradTilingData *__restrict tilingData = &tiling_data_in;            \
         templateClass<SMLAG_BASIC::SMLAG_TYPE<SparseFlashMlaGradTilingData, __VA_ARGS__>> op;     \
         op.Process(query, ori_kv, cmp_kv, out, d_out, lse, cmp_sparse_indices,                      \
-                   cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,                              \
-                   sinks, d_query, d_ori_kv, d_cmp_kv, d_sinks, user, tilingData);                  \
+                   cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv,             \
+                   sinks, d_query, d_ori_kv, d_cmp_kv, d_sinks, cmp_softmax_l1_norm, user, tilingData);\
     } while (0)
 
 template<int LAYOUT, int MODE>

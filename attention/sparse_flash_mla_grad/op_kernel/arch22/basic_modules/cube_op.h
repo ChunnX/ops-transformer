@@ -208,7 +208,8 @@ private:
     uint32_t cBlockIdx;
     uint32_t singleN;
     int64_t s1BasicSize;
-    int64_t dOriKvSize;                                                     
+    int64_t dOriKvSize;
+    int64_t dSL1TotalSize{0};                                                  
 };
 
 template <typename SMLAGT>
