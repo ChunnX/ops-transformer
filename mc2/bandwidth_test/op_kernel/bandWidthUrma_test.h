@@ -149,7 +149,7 @@ private:
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
     __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
-    AscendC::Hcomm<CommProtocol::URMA, CommEngine::AIV> hcomm_; // todo: 通信上下文
+    //AscendC::Hcomm<CommProtocol::URMA, CommEngine::AIV> hcomm_; // todo: 通信上下文
 
     uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
@@ -196,7 +196,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
-    hcomm_.Init((__ubuf__ uint8_t*)hcommTensor_.GetPhyAddr(), HCOMM_INIT_SIZE);
+    //hcomm_.Init((__ubuf__ uint8_t*)hcommTensor_.GetPhyAddr(), HCOMM_INIT_SIZE);
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
@@ -356,11 +356,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
-    if (dstRankId != epRankId_) {
-        uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
-        hcomm_.Wait(handle);
-    }
+    // if (dstRankId != epRankId_) {
+    //     uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
+    //     auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
+    //     hcomm_.Wait(handle);
+    // }
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -468,8 +468,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
-        hcomm_.Wait(handle);
+        // auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
+        // hcomm_.Wait(handle);
     }
 }
 
@@ -644,8 +644,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
-            WaitDispatch();      // 步骤3: 等待所有rank完成发送
-            LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
+            // WaitDispatch();      // 步骤3: 等待所有rank完成发送
+            // LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();
