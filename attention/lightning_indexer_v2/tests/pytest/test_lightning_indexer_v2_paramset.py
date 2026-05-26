@@ -31,7 +31,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [[2048]],
         "seqused_q": [[1]],
         "seqused_k": [[2048]],
-        "cmp_residual_k": [0],
+        "cmp_residual_k": [[0]],
         "output_idx_offset": [[0]],
         "layout_q": ["TND"],
         "layout_k":["PA_BSND"],
@@ -42,7 +42,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-123,123]],
         "output_idx_offset_datarange":[[0, 0]],
         "cmp_ratio":[1],
-        "return_value": [False],
+        "return_value": [0],
         "max_seqlen_q": [1]
     },
 }
