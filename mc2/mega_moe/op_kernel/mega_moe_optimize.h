@@ -632,15 +632,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
         totalTokensInExpert = static_cast<int32_t>(maxOutputSize_) - priorExpertCumsum;
     }
 
-    int32_t totalCores = static_cast<int32_t>(blockNum_); 
-    int32_t coreIdx = static_cast<int32_t>(blockIdx_); 
-    int32_t tokensThisCore = (totalTokensInExpert > coreIdx) ? 
-        ((totalTokensInExpert - 1 - coreIdx) / totalCores + 1) : 0; 
+    int32_t totalCores = static_cast<int32_t>(blockNum_);
+    int32_t coreIdx = static_cast<int32_t>(blockIdx_);
+    // stripe 分核：本核处理专家内全局 idx ∈ {coreIdx, coreIdx + totalCores, ...} 的 token。
+    int32_t tokensThisCore = (totalTokensInExpert - coreIdx + totalCores - 1) / totalCores;
+    if (tokensThisCore < 0) {
+        tokensThisCore = 0;
+    }
 
     // wave-粒度 dispatch flag：本核在 dispatch loop 中按 wave 边界批量 AtomicAdd。
     // 槽位布局：groupFlagListGm2_ 指向当前 expert 的 wave-0 起点，+waveIdx 即对应槽。
-    // dstOffsetInExpert = coreIdx + i_in_core * totalCores，关于 i_in_core 单调递增，
-    // 所以 waveIdx_token = dstOffsetInExpert / L1_TILE_M 也是单调递增的，边界检测 O(1)。
+    // stripe 分核下 globalIdxInExpert = coreIdx + i_in_core * totalCores 是单调递增的，
+    // 所以 waveIdx_token = globalIdxInExpert / L1_TILE_M 也是单调递增的，边界检测 O(1)。
     int32_t curWave = -1;
     int32_t curWaveCnt = 0;
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M);
@@ -750,7 +753,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR);
             WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR);
 
-            // 按核错位排布：核c的第i_in_core个token写到专家内偏移 coreIdx + i_in_core * totalCores
+            // stripe 分核：核 c 的第 i_in_core 个 token 写到专家内偏移 coreIdx + i_in_core * totalCores
             int32_t dstOffsetInExpert = globalIdxInExpert;
             DataCopyPad(tokenRevGlobalTensor[dstOffsetInExpert * widthA], tokenScalebuf,
                 {1, static_cast<uint16_t>(widthA * sizeof(QuantOutType)), 0U, 0U, 0U});
@@ -761,7 +764,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
             ++curWaveCnt;  // 本 token 已记账到 curWave，在下一个 wave 边界 / loop 末尾统一 AtomicAdd
         }
 
-        // 三元组按错位排布搬出（与数据同顺序）。和 dispatch flag 通路独立：cube 不读 triple。
+        // 三元组按 stripe 排布搬出（与数据同顺序）。和 dispatch flag 通路独立：cube 不读 triple。
         SyncFuncStatic<AscendC::HardEvent::S_MTE3, 2>();
         for (int32_t i = 0; i < tokensThisCore; ++i) {
             int32_t dstAbsIdx = priorExpertCumsum + coreIdx + i * totalCores;
@@ -997,9 +1000,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.combineSendPtr);
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
+    // 当 MegaMoeTrace 打开时，y2GmAddr 前 traceBytes 个字节存放时间戳；
+    // Unpermute 这里直接跳过那些 token 不写回，避免覆盖打点。tokens 数 << bs，影响很小。
+#ifdef MEGA_MOE_TRACE_ENABLE
+    int32_t traceBytes = static_cast<int32_t>(MegaMoeTrace::POINTS_PER_CORE) *
+                         static_cast<int32_t>(MegaMoeTrace::MAX_AIC_CORES +
+                                              MegaMoeTrace::MAX_AIV_CORES) *
+                         static_cast<int32_t>(sizeof(uint64_t));
+    int32_t bytesPerToken = static_cast<int32_t>(k_) * static_cast<int32_t>(sizeof(bfloat16_t));
+    int32_t traceSkipTokens = (traceBytes + bytesPerToken - 1) / bytesPerToken;
+#else
+    int32_t traceSkipTokens = 0;
+#endif
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
+        if (tokenIdx < traceSkipTokens) {
+            continue;
+        }
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, 2>();
         LocalTensor<bfloat16_t> dataResBf16(TPosition::VECCALC, dataResAddr_, dataResSize_);
         LocalTensor<bfloat16_t> dataIn0Bf16 = dataResBf16[k_];
@@ -1064,16 +1082,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_KERNEL_ENTRY);
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     BuffInit();
     TopKIdsAllGather();
     ResetFlagList();
     ResetGmm2RowReadyFlags();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_ROUTING_DONE);
     QuantProcessInRank();
 
     // 全卡同步
     CrossRankSyncInWorldSize();
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_CROSSRANK_DONE);
 
     FirstBuffInit();
 
@@ -1131,7 +1152,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             SendInfoCal(0);
             groupFlagListGm2_.SetGlobalBuffer(
                 (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr);
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, false);
             TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_), 0);
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, true);
         }
     }
 
@@ -1151,8 +1174,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 groupFlagListGm2_.SetGlobalBuffer(
                     (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                     static_cast<int64_t>(expertIdx + 1U) * static_cast<int64_t>(maxWavesPerExpert_));
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
+                                                  static_cast<int>(expertIdx + 1U), false);
                 TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_),
                                          static_cast<int32_t>(expertIdx + 1U));
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr,
+                                                  static_cast<int>(expertIdx + 1U), true);
             }
         }
 
@@ -1212,6 +1239,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 uint64_t waveIdx = batchedWaves[bi];
                 int curWaveTrace = waveTraceIdx_ + static_cast<int>(bi);
 
+                MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
+                                              MegaMoeTrace::SP_WAVE_ENTRY);
+
                 uint64_t waveM = (waveIdx == waveCnt - 1 && m_i % MegaMoeImpl::L1_TILE_M != 0) ?
                                  m_i % MegaMoeImpl::L1_TILE_M : MegaMoeImpl::L1_TILE_M;
                 Get<M_VALUE>(problemShape_) = waveM;
@@ -1220,12 +1250,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 UpdateGlobalBuffer(waveGmmInfo, 0, expertIdx, waveIdx);
                 groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
 
+                MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
+                                              MegaMoeTrace::SP_GMM1_BEGIN);
                 if (subBlockIdx_ == 0) {
                     MegaMoeImpl::GroupMatmulSwigluQuant<
                         QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
                         vecSetSyncCom_, curWaveTrace);
                 }
+                MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
+                                              MegaMoeTrace::SP_GMM1_END);
             }
 
             // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 + combine 跑完 =====
@@ -1245,6 +1279,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 uint64_t waveRowOffset = static_cast<uint64_t>(waveIdx) *
                                          static_cast<uint64_t>(MegaMoeImpl::L1_TILE_M);
 
+                MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
+                                              MegaMoeTrace::SP_GMM2_BEGIN);
                 if constexpr(g_coreType == AscendC::AIC) {
                     MegaMoeImpl::GroupMatmul2Optimize<
                         QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
@@ -1256,6 +1292,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                         params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
                         expertBeforeCnt_, expertIdx, rankId_, waveRowOffset, curWaveTrace);
                 }
+                MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
+                                              MegaMoeTrace::SP_GMM2_END);
+                MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
+                                              MegaMoeTrace::SP_WAVE_END);
             }
 
             waveTraceIdx_ += static_cast<int>(batchSize);
@@ -1263,6 +1303,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         Get<M_VALUE>(problemShape_) = m_i;
     }
+
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_EXPERT_LOOP_END);
 
     // ★ 全部 expert 跑完后，drain 最后一次 GMM1 留在 cube/vec flag 槽里的 pending NotifyCube。
     EndSync();
@@ -1284,6 +1326,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_PROCESS_END);
 }
 
 }   // namespace MegaMoeImpl
