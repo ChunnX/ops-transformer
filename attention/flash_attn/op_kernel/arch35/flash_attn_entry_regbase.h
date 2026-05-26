@@ -108,10 +108,10 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
-    TPipe tPipe;
+    InitSocState();
     Kernel op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
-            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
+            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData);
     op.Process();
 }
 
