@@ -53,7 +53,6 @@ public:
     __aicore__ inline DecodeUpdate() {}
     __aicore__ inline void Init(GM_ADDR lse, GM_ADDR in, GM_ADDR out, GM_ADDR lesout, const DecodeUpdateTilingData *tdata)
     {
-        printf("========= 05191936 =====\n");
         this->lsePtr = GetTensorPtr(lse);
         this->inPtr = GetTensorPtr(in);
         ParseTilingData(tdata);
