@@ -223,9 +223,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     if (params_->workspaceGM != nullptr) {
         isDeter_ = true;
         pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
-        constexpr uint32_t SYS_WS_SIZE = 16 * 1024 * 1024U;
         mmQuantOutGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM + SYS_WS_SIZE));
+            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM));
     }
 }
 

@@ -59,7 +59,6 @@ constexpr uint32_t DETER_WEIGHT_TILE_N_SMALL = 16U;
 constexpr uint32_t DETER_WEIGHT_TILE_K_LARGE = 32U;
 constexpr uint32_t DETER_WEIGHT_TILE_N_LARGE = 32U;
 constexpr uint32_t DETER_WEIGHT_TILE_CAPACITY = 512U;
-constexpr uint32_t DETER_SYS_WS_SIZE = 16 * 1024 * 1024U;
 constexpr uint32_t DETER_UB_FLUSH_SIZE = 12 * 1024U;
 } // namespace
 

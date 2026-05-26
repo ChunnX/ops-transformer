@@ -35,6 +35,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
     auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
     auto matmulTiling_ = tilingData.matmulTiling;
 
+    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
+
     using L1TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
     using L0TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
 
@@ -87,7 +89,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
          gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
          gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
         {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
-         workspaceGM, gmmFinalizeRoutingQuantParams_.deterWorkspaceSize},                        // epilogue params
+         userWorkspace, gmmFinalizeRoutingQuantParams_.deterWorkspaceSize},                        // epilogue params
         gmmParams};
     GmmKernel gmm;
     gmm(params);
