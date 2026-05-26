@@ -33,11 +33,11 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "Tensor? cmp_residual_kv=None, "                                     \
                                 "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "       \
                                 "Tensor? sinks=None, Tensor? metadata=None, "                        \
-                                "int quant_mode = 1, int rope_head_dim=64, "                         \
-                                "float softmax_scale= 1.0, int cmp_ratio=1, "                        \
-                                "int ori_mask_mode=4, int cmp_mask_mode=3, "                         \
-                                "int ori_win_left=127, int ori_win_right=0, "                        \
-                                "str layout_q=\"BSND\", str layout_kv=\"PA_ND\", "                   \
+                                "int quant_mode=None, int rope_head_dim=None, "                      \
+                                "float softmax_scale=None, int cmp_ratio=None, "                     \
+                                "int ori_mask_mode=0, int cmp_mask_mode=0, "                         \
+                                "int ori_win_left=-1, int ori_win_right=-1, "                        \
+                                "str layout_q=\"BSND\", str layout_kv=\"BSND\", "                    \
                                 "int topk_value_mode=1, bool return_softmax_lse=False, "             \
                                 "int batch_invariant=0, "                                            \
                                 "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
@@ -58,11 +58,11 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
-                                quant_mode=1, rope_head_dim=64,
-                                softmax_scale=1.0, cmp_ratio=1,
-                                ori_mask_mode=4, cmp_mask_mode=3,
-                                ori_win_left=127, ori_win_right=0,
-                                layout_q='BSND', layout_kv='PA_ND',
+                                quant_mode=None, rope_head_dim=None,
+                                softmax_scale=None, cmp_ratio=None,
+                                ori_mask_mode=0, cmp_mask_mode=0,
+                                ori_win_left=-1, ori_win_right=-1,
+                                layout_q='BSND', layout_kv='BSND',
                                 topk_value_mode=1, return_softmax_lse=False,
                                 batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
@@ -101,11 +101,11 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 cmp_residual_kv=None,
                                 ori_topk_length=None, cmp_topk_length=None,
                                 sinks=None, metadata=None,
-                                quant_mode=1, rope_head_dim=64,
-                                softmax_scale=1.0, cmp_ratio=1,
-                                ori_mask_mode=4, cmp_mask_mode=3,
-                                ori_win_left=127, ori_win_right=0,
-                                layout_q='BSND', layout_kv='PA_ND',
+                                quant_mode=None, rope_head_dim=None,
+                                softmax_scale=None, cmp_ratio=None,
+                                ori_mask_mode=0, cmp_mask_mode=0,
+                                ori_win_left=-1, ori_win_right=-1,
+                                layout_q='BSND', layout_kv='BSND',
                                 topk_value_mode=1, return_softmax_lse=False,
                                 batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
