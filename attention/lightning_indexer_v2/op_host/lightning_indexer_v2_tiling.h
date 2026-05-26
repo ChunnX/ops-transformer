@@ -157,7 +157,7 @@ public:
     int32_t maskMode = 0;
     // Others Flag
     uint32_t topk = 0;
-    int maxSeqlenQ = -1;
+    int32_t maxSeqlenQ = -1;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     int64_t cmpRatio = 1;

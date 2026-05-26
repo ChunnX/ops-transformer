@@ -44,15 +44,15 @@ class LightningIndexerV2OpBuilder(OpBuilder):
                                           output_idx_offset=None, metadata=None, max_seqlen_q=-1,
                                           layout_q="BSND", layout_k="BSND", mask_mode=0,
                                           cmp_ratio=1, return_value=0):
-            key_head_num = key.shape[1] if layout_key == "TND" else key.shape[2]
+            key_head_num = k.shape[1] if layout_k == "TND" else k.shape[2]
 
-            if layout_query == "BSND":
+            if layout_q == "BSND":
                 sparse_indices_out = torch.empty([q.shape[0], q.shape[1], key_head_num, topk],
                     dtype=torch.int32, device="meta")
             else:
                 sparse_indices_out = torch.empty([q.shape[0], key_head_num, topk], dtype=torch.int32, device="meta")
             if return_value:
-                if layout_query == "BSND":
+                if layout_q == "BSND":
                     sparse_values_out = torch.empty([q.shape[0], q.shape[1], key_head_num, topk],
                         dtype=torch.float, device="meta")
                 else:
