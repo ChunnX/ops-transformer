@@ -23,9 +23,9 @@ namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t ATTR_TOPK_INDEX = 0;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 1;
-constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 5;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
+constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
 
 static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
 {

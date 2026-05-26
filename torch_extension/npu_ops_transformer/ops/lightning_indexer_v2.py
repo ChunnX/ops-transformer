@@ -29,7 +29,7 @@ class LightningIndexerV2OpBuilder(OpBuilder):
             "Tensor? seqused_q=None, Tensor? seqused_k=None, " \
             "Tensor? cmp_residual_k=None, Tensor? block_table=None, " \
             "Tensor? output_idx_offset=None, Tensor? metadata=None, int max_seqlen_q," \
-            "str layout_query=\"BSND\", str layout_key=\"BSND\", int mask_mode=0, " \
+            "str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, " \
             "int cmp_ratio=1," \
             "int return_value=0) -> (Tensor, Tensor)"
 
