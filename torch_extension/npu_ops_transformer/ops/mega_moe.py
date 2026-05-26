@@ -89,9 +89,9 @@ class SymmBuffer:
         num_topk: int,
         hidden: int,
         intermediate_hidden: int,
-        dispatch_quant_out_type: Optional[int] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
+        dispatch_quant_out_type: Optional[int] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = ""
     ):
@@ -158,9 +158,9 @@ def get_symm_buffer_for_mega_moe(
     hidden: int,
     intermediate_hidden: int,
     *,
-    dispatch_quant_out_type: Optional[int] = None,
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
+    dispatch_quant_out_type: Optional[int] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = ""
 ) -> SymmBuffer:
@@ -172,9 +172,9 @@ def get_symm_buffer_for_mega_moe(
         num_topk,
         hidden,
         intermediate_hidden,
-        dispatch_quant_out_type,
         max_recv_token_num,
         dispatch_quant_mode,
+        dispatch_quant_out_type,
         combine_quant_mode,
         comm_alg
     )
