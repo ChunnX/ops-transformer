@@ -74,11 +74,11 @@
 ```c++
 aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     const aclTensor   *query,
-    const aclTensor   *oriKvOptional,
-    const aclTensor   *cmpKvOptional,
     const aclTensor   *dOut,
     const aclTensor   *out,
     const aclTensor   *lse,
+    const aclTensor   *oriKvOptional,
+    const aclTensor   *cmpKvOptional,
     const aclTensor   *oriSparseIndicesOptional,
     const aclTensor   *cmpSparseIndicesOptional,
     const aclTensor   *cuSeqlensQOptional,
@@ -160,34 +160,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>oriKvOptional（aclTensor*）</td>
-            <td>输入</td>
-            <td>attention结构的原始输入K(V)。</td>
-            <td>
-            当前暂不支持空tensor。
-            </td>
-            <td>BFLOAT16、FLOAT16</td>
-            <td>ND</td>
-            <td>(B,S2,N2,D)、(T2,N2,D)<br>
-            B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2
-            </td>
-            <td>√</td>
-        </tr>
-        <tr>
-            <td>cmpKvOptional（aclTensor*）</td>
-            <td>输入</td>
-            <td>经过Compressor压缩后的K(V)。</td>
-            <td>
-            支持空tensor，此时按计算公式中的SWA场景计算。
-            </td>
-            <td>BFLOAT16、FLOAT16</td>
-            <td>ND</td>
-            <td>(B,S3,N2,D)、(T3,N2,D)<br>
-            B：与query的B保持一致；S3 = S2 // cmpRatio；N2：1；D：512；T3：B × S3
-            </td>
-            <td>√</td>
-        </tr>
-        <tr>
             <td>dOut（aclTensor*）</td>
             <td>输入</td>
             <td>注意力输出矩阵的梯度。</td>
@@ -226,6 +198,34 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
             B：与query的B保持一致；N2：1；S1：与query的S1保持一致；G：N1/N2；T1：B × S1
+            </td>
+            <td>√</td>
+        </tr>
+        <tr>
+            <td>oriKvOptional（aclTensor*）</td>
+            <td>输入</td>
+            <td>attention结构的原始输入K(V)。</td>
+            <td>
+            当前暂不支持空tensor。
+            </td>
+            <td>BFLOAT16、FLOAT16</td>
+            <td>ND</td>
+            <td>(B,S2,N2,D)、(T2,N2,D)<br>
+            B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2
+            </td>
+            <td>√</td>
+        </tr>
+        <tr>
+            <td>cmpKvOptional（aclTensor*）</td>
+            <td>输入</td>
+            <td>经过Compressor压缩后的K(V)。</td>
+            <td>
+            支持空tensor，此时按计算公式中的SWA场景计算。
+            </td>
+            <td>BFLOAT16、FLOAT16</td>
+            <td>ND</td>
+            <td>(B,S3,N2,D)、(T3,N2,D)<br>
+            B：与query的B保持一致；S3 = S2 // cmpRatio；N2：1；D：512；T3：B × S3
             </td>
             <td>√</td>
         </tr>
@@ -879,6 +879,7 @@ int main() {
   std::vector<int64_t> cuSeqQLenshape = {2};                 // B + 1
   std::vector<int64_t> cuSeqOriKvLenshape = {2};             // B + 1
   std::vector<int64_t> cuSeqCmpKvLenshape = {2};             // B + 1
+  std::vector<int64_t> cmpResidualKvShape = {1};             // B
   std::vector<int64_t> sinksShape = {2};                     // N1
 
   void* qDeviceAddr = nullptr;
@@ -890,6 +891,7 @@ int main() {
   void* cuSeqQLenDeviceAddr = nullptr;
   void* cuSeqOriKvLenDeviceAddr = nullptr;
   void* cuSeqCmpKvLenDeviceAddr = nullptr;
+  void* cmpResidualKvDeviceAddr = nullptr;
   void* sinksDeviceAddr = nullptr;
   void* dqDeviceAddr = nullptr;
   void* dOriKvDeviceAddr = nullptr;
@@ -907,6 +909,7 @@ int main() {
   aclTensor* cuSeqQLen = nullptr;
   aclTensor* cuSeqOriKvLen = nullptr;
   aclTensor* cuSeqCmpKvLen = nullptr;
+  aclTensor* cmpResidualKv = nullptr;
   aclTensor* sinks = nullptr;
   aclTensor* dq = nullptr;
   aclTensor* dOriKv = nullptr;
@@ -924,6 +927,7 @@ int main() {
   std::vector<int32_t> cuSeqQLenHostData = {0, 1};
   std::vector<int32_t> cuSeqOriKvLenHostData = {0, 2048};
   std::vector<int32_t> cuSeqCmpKvLenHostData = {0, 16};
+  std::vector<int32_t> cmpResidualKvHostData = {0};
   std::vector<float> sinksHostData(16, 128.0);
   std::vector<short> dqHostData(1 * 16 * 512, 0);
   std::vector<short> dOriKvHostData(2048 * 1 * 512, 0);
@@ -947,6 +951,8 @@ int main() {
   ret = CreateAclTensor(cuSeqOriKvLenHostData, cuSeqOriKvLenshape, &cuSeqOriKvLenDeviceAddr, aclDataType::ACL_INT32, &cuSeqOriKvLen);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqCmpKvLenHostData, cuSeqCmpKvLenshape, &cuSeqCmpKvLenDeviceAddr, aclDataType::ACL_INT32, &cuSeqCmpKvLen);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(cmpResidualKvHostData, cmpResidualKvShape, &cmpResidualKvDeviceAddr, aclDataType::ACL_INT32, &cmpResidualKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sinksHostData, sinksShape, &sinksDeviceAddr, aclDataType::ACL_FLOAT, &sinks);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -974,8 +980,8 @@ int main() {
   aclOpExecutor* executor;
   
   // 调用aclnnSparseFlashMlaGrad第一段接口
-  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, oriKv, cmpKv, dOut, out, lse, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
-            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
+            nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
             layoutQ, layoutKv, deterministic, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -1011,6 +1017,7 @@ int main() {
   aclDestroyTensor(cuSeqQLen);
   aclDestroyTensor(cuSeqOriKvLen);
   aclDestroyTensor(cuSeqCmpKvLen);
+  aclDestroyTensor(cmpResidualKv);
   aclDestroyTensor(sinks);
   aclDestroyTensor(dq);
   aclDestroyTensor(dOriKv);
@@ -1029,6 +1036,7 @@ int main() {
   aclrtFree(cuSeqQLenDeviceAddr);
   aclrtFree(cuSeqOriKvLenDeviceAddr);
   aclrtFree(cuSeqCmpKvLenDeviceAddr);
+  aclrtFree(cmpResidualKvDeviceAddr);
   aclrtFree(sinksDeviceAddr);
   aclrtFree(dqDeviceAddr);
   aclrtFree(dOriKvDeviceAddr);
