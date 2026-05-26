@@ -213,6 +213,42 @@ public:
     {
         return outterLoopItr * curLoopNum + curLoopItr;
     }
+
+    template <class TensorC>
+    __aicore__ inline
+    void CopyQkL0CToUbLowLevel(TensorC &ubCTensor, uint32_t ubOffset, uint32_t l0CBufId,
+                               uint32_t mPerSubCore, uint32_t nFixPAligned16,
+                               uint32_t curBaseTileSize, float scaleValue)
+    {
+        constexpr static AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
+        intriParams.nSize = 32;
+        intriParams.mSize = nFixPAligned16;
+        intriParams.srcStride = nFixPAligned16;
+        intriParams.dstStride = 32;
+        intriParams.params.srcNdStride = 2 * nFixPAligned16;
+        intriParams.params.dstNdStride = curBaseTileSize * 32;
+        intriParams.params.ndNum = (mPerSubCore == 32U) ? 1 : 2;
+        intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue));
+        intriParams.quantPre = QuantMode_t::DEQF16;
+        intriParams.reluEn = false;
+        intriParams.unitFlag = false;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = false;
+
+        __ubuf__ half *dst = (__ubuf__ half *)ubCTensor.data()[ubOffset].GetPhyAddr();
+        __cc__ int32_t *src = (__cc__ int32_t *)l0CTensor[l0CBufId].GetPhyAddr();
+        AscendC::SetLoop3Para<CFG_ROW_MAJOR_UB>(intriParams);
+        AscendC::SetFixpipePreQuantFlagImpl(intriParams.deqScalar);
+        AscendC::PipeBarrier<PIPE_FIX>();
+
+        AscendC::FixpipeTiling fixpipeTiling;
+        AscendC::FixpipeL0cToUB<half, int32_t, CFG_ROW_MAJOR_UB>(
+            dst, src, intriParams, fixpipeTiling, intriParams.nSize);
+        intriParams.subBlockId = true;
+        AscendC::FixpipeL0cToUB<half, int32_t, CFG_ROW_MAJOR_UB>(
+            dst, src + mPerSubCore * nFixPAligned16, intriParams, fixpipeTiling, intriParams.nSize);
+    }
     
     template <class TensorA, class TensorL1A>
     __aicore__ inline
@@ -452,36 +488,46 @@ public:
                 copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, true);
                 */
                 float scale = scaleValue;
-                AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams0, intriParams1;
-                intriParams0.nSize = 32;
-                intriParams0.mSize = nFixPAligned16;
-                intriParams0.srcStride = nFixPAligned16;
-                intriParams0.dstStride = 32;
-                intriParams0.params.srcNdStride = 2*nFixPAligned16;
-                intriParams0.params.dstNdStride = curBaseTileSize * 32;
-                intriParams0.params.ndNum = mPerSubCore == 32? 1:2;
-                intriParams0.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&scale));
-                intriParams0.quantPre = QuantMode_t::DEQF16;
-                intriParams0.reluEn = false;
-                intriParams0.unitFlag = false;
-                intriParams0.dualDstCtl = 0;
-                intriParams0.subBlockId = false;
-                intriParams1.nSize = 32;
-                intriParams1.mSize = nFixPAligned16;
-                intriParams1.srcStride = nFixPAligned16;
-                intriParams1.dstStride = 32;
-                intriParams1.params.srcNdStride = 2*nFixPAligned16;
-                intriParams1.params.dstNdStride = curBaseTileSize * 32;
-                intriParams1.params.ndNum = mPerSubCore == 32? 1:2;
-                intriParams1.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&scale));
-                intriParams1.quantPre = QuantMode_t::DEQF16;
-                intriParams1.reluEn = false;
-                intriParams1.unitFlag = false;
-                intriParams1.dualDstCtl = 0;
-                intriParams1.subBlockId = true;
-                constexpr static AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
-                AscendC::Fixpipe<half, int32_t, CFG_ROW_MAJOR_UB>(ubCTensor.data()[nL0Itr * L0_TILE_N * 32], l0CTensor[l0CBufId], intriParams0);
-                AscendC::Fixpipe<half, int32_t, CFG_ROW_MAJOR_UB>(ubCTensor.data()[nL0Itr * L0_TILE_N * 32], l0CTensor[l0CBufId][mPerSubCore * nFixPAligned16], intriParams1);
+                bool useLowLevelFixpipe = (l0TileNAct == 128U) && (curBaseTileSize <= 256U) &&
+                    ((mPerSubCore == 32U) || (mPerSubCore == 64U));
+                if (useLowLevelFixpipe) {
+                    CopyQkL0CToUbLowLevel(ubCTensor, nL0Itr * L0_TILE_N * 32, l0CBufId,
+                        mPerSubCore, nFixPAligned16, curBaseTileSize, scale);
+                } else {
+                    AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams0, intriParams1;
+                    intriParams0.nSize = 32;
+                    intriParams0.mSize = nFixPAligned16;
+                    intriParams0.srcStride = nFixPAligned16;
+                    intriParams0.dstStride = 32;
+                    intriParams0.params.srcNdStride = 2 * nFixPAligned16;
+                    intriParams0.params.dstNdStride = curBaseTileSize * 32;
+                    intriParams0.params.ndNum = mPerSubCore == 32 ? 1 : 2;
+                    intriParams0.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scale));
+                    intriParams0.quantPre = QuantMode_t::DEQF16;
+                    intriParams0.reluEn = false;
+                    intriParams0.unitFlag = false;
+                    intriParams0.dualDstCtl = 0;
+                    intriParams0.subBlockId = false;
+                    intriParams1.nSize = 32;
+                    intriParams1.mSize = nFixPAligned16;
+                    intriParams1.srcStride = nFixPAligned16;
+                    intriParams1.dstStride = 32;
+                    intriParams1.params.srcNdStride = 2 * nFixPAligned16;
+                    intriParams1.params.dstNdStride = curBaseTileSize * 32;
+                    intriParams1.params.ndNum = mPerSubCore == 32 ? 1 : 2;
+                    intriParams1.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scale));
+                    intriParams1.quantPre = QuantMode_t::DEQF16;
+                    intriParams1.reluEn = false;
+                    intriParams1.unitFlag = false;
+                    intriParams1.dualDstCtl = 0;
+                    intriParams1.subBlockId = true;
+                    constexpr static AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
+                    AscendC::Fixpipe<half, int32_t, CFG_ROW_MAJOR_UB>(
+                        ubCTensor.data()[nL0Itr * L0_TILE_N * 32], l0CTensor[l0CBufId], intriParams0);
+                    AscendC::Fixpipe<half, int32_t, CFG_ROW_MAJOR_UB>(
+                        ubCTensor.data()[nL0Itr * L0_TILE_N * 32],
+                        l0CTensor[l0CBufId][mPerSubCore * nFixPAligned16], intriParams1);
+                }
 
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                 lNLoopCounterL0++;
