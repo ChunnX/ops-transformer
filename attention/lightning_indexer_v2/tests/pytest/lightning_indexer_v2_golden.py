@@ -19,7 +19,8 @@ import numpy as np
 import math
 import ctypes
 import copy
-import npu_ops_transformer as ops
+import npu_ops_transformer
+from npu_ops_transformer.ops import npu_lightning_indexer_v2
 
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
@@ -462,6 +463,7 @@ class GeneralizedLIV2:
         query = query.cpu()
         key = key.cpu()
         weights = weights.cpu()
+        output_idx_offset = output_idx_offset.cpu()
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
         q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(query, q_shape, layout_query,
@@ -533,18 +535,21 @@ def liv2_output_single(params):
                             if seqused_q is None else torch.tensor(seqused_q).to(torch.int32).npu()
     actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq * cmp_ratio + cmp_residual_k, k_seq * cmp_ratio + cmp_residual_k, batch_size)).to(torch.int32).npu() \
                             if seqused_k is None else torch.tensor(seqused_k).to(torch.int32).npu()
-
-    output_idx_offset = torch.tensor(np.random.uniform(output_idx_offset_datarange[0], output_idx_offset_datarange[1], (batch_size, max_seqlen_q, 1))).to(torch.int32)
-    output_idx_offset = torch.broadcast_to(output_idx_offset, (batch_size, max_seqlen_q, 1, topk)).npu()
-
+    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32).npu()
+    cu_seqlens_k = torch.tensor(cu_seqlens_k).to(torch.int32).npu()
+    seqused_q = torch.tensor(seqused_q).to(torch.int32).npu()
+    seqused_k = torch.tensor(seqused_k).to(torch.int32).npu()
+    cmp_residual_k = torch.tensor(cmp_residual_k).to(torch.int32).npu()
     if layout_query == "BSND":
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype).npu()
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(torch.float32).npu()
-
+        output_idx_offset = torch.tensor(np.random.uniform(output_idx_offset_datarange[0], output_idx_offset_datarange[1], (batch_size, q_seq, 1))).to(torch.int32)
+        output_idx_offset = torch.broadcast_to(output_idx_offset, (batch_size, q_seq, 1, topk)).npu()
     elif layout_query == "TND":
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (q_t_size, q_head_num, head_dim))).to(qk_dtype).npu()
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(torch.float32).npu()
-
+        output_idx_offset = torch.tensor(np.random.uniform(output_idx_offset_datarange[0], output_idx_offset_datarange[1], (q_t_size, 1))).to(torch.int32)
+        output_idx_offset = torch.broadcast_to(output_idx_offset, (q_t_size, 1, topk)).npu()
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype).npu()
         block_table = None
@@ -622,21 +627,21 @@ def liv2_output_single(params):
 
     # metadata = metadata.npu()
     metadata = None
-    npu_result,_ = torch.npu_ops_transformer.ops.npu_lightning_indexer_v2(query, key, weights,
-                                                                          cu_seqlens_q = cu_seqlens_q,
-                                                                          cu_seqlens_k = cu_seqlens_k,
-                                                                          seqused_q = seqused_q,
-                                                                          seqused_k = seqused_k,
-                                                                          cmp_residual_k = cmp_residual_k,
-                                                                          block_table = block_table,
-                                                                          output_idx_offset = output_idx_offset,
-                                                                          metadata = metadata,
-                                                                          topk = topk,
-                                                                          max_seqlen_q = max_seqlen_q,
-                                                                          layout_q = layout_query,
-                                                                          layout_k = layout_key,
-                                                                          mask_mode = mask_mode,
-                                                                          cmp_ratio = cmp_ratio,
-                                                                          return_value = False)
+    npu_result, _ = npu_lightning_indexer_v2(query, key, weights,
+                                             cu_seqlens_q = cu_seqlens_q,
+                                             cu_seqlens_k = cu_seqlens_k,
+                                             seqused_q = seqused_q,
+                                             seqused_k = seqused_k,
+                                             cmp_residual_k = cmp_residual_k,
+                                             block_table = block_table,
+                                             output_idx_offset = output_idx_offset,
+                                             metadata = metadata,
+                                             topk = topk,
+                                             max_seqlen_q = max_seqlen_q,
+                                             layout_q = layout_query,
+                                             layout_k = layout_key,
+                                             mask_mode = mask_mode,
+                                             cmp_ratio = cmp_ratio,
+                                             return_value = 0)
     torch.npu.synchronize()
     return cpu_result, npu_result, topk_value
