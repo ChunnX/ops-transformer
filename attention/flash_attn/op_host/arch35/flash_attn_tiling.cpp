@@ -379,10 +379,10 @@ void FlashAttnTilingImpl::SetFATilingData()
         maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
-    //以下三种情况需要刷0
-    //1、存在actuseqlenQ
-    //2、存在actualseqlenKV(可能导致S2小于S1出现行无效)
-    //3、带mask且S2小于S1
+    // 以下三种情况需要刷0
+    // 1、存在seqUsedQ
+    // 2、存在seqUsedKv(可能导致S2小于S1出现行无效)
+    // 3、带mask且S2小于S1
     if (seqUsedQFlag_ || 
         seqUsedKvFlag_ || 
         ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)){
