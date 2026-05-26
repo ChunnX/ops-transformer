@@ -109,11 +109,11 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
 
 ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupName, const uint32_t reduceType)
 {
-    uint32_t opType1 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_REDUCE_SCATTER);
+    uint32_t opType1 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLTOALL);
     uint32_t opType2 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLGATHER);
     uint8_t dataType1 = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, ge::DataType::DT_INT8));
-    uint8_t dataType2 = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, ge::DataType::DT_FLOAT));
-    const std::string algConfig1 = "ReduceScatter=level0:fullmesh";
+    uint8_t dataType2 = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, ge::DataType::DT_INT8));
+    const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType2, dataType1);
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
