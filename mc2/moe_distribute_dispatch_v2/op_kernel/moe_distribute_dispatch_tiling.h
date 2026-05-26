@@ -60,6 +60,7 @@ struct MoeDistributeDispatchInfo {
     uint32_t moeExpertNum;               // moe expert number
     uint32_t quantMode;                  // quant mode
     uint32_t globalBs;                   // globalBs = BS * worldSize
+    uint64_t shmemBuffer;                // shmem 通信 buffer
     uint32_t bs;                         // bs
     uint32_t k;                          // k
     uint32_t h;                          // h

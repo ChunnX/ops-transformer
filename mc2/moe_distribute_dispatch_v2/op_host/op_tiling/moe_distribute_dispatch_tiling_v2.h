@@ -57,11 +57,12 @@ struct DispatchV2Config {
     uint32_t attrSharedExpertRankNumIndex = 9; // 9: 根据dispatchV2算子原型标志位初始化sharedExpertRankNum索引
     uint32_t attrQuantModeIndex = 10; // 10: 根据dispatchV2算子原型标志位初始化quantMode索引
     uint32_t attrGlobalBsIndex = 11; // 11: 根据dispatchV2算子原型标志位初始化globalBs索引
-    uint32_t attrExpertTokenNumsTypeIndex = 12; // 12: 根据dispatchV2算子原型标志位初始化expertTokenNumType索引
-    uint32_t attrCommAlgIndex = 13; // 13: 根据dispatchV2算子原型标志位初始化commAlg索引
-    uint32_t attrZeroExpertNumIndex = 14; // 14: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
-    uint32_t attrCopyExpertNumIndex = 15; // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
-    uint32_t attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
+    uint32_t attrShmemBufferIndex = 12; // 12: shmem 通信 buffer
+    uint32_t attrExpertTokenNumsTypeIndex = 13; // 13: 根据dispatchV2算子原型标志位初始化expertTokenNumType索引
+    uint32_t attrCommAlgIndex = 14; // 14: 根据dispatchV2算子原型标志位初始化commAlg索引
+    uint32_t attrZeroExpertNumIndex = 15; // 15: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
+    uint32_t attrCopyExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
+    uint32_t attrConstExpertNumIndex = 17; // 17: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     bool isMc2Context = false;
 };
 using namespace Ops::Transformer::OpTiling;

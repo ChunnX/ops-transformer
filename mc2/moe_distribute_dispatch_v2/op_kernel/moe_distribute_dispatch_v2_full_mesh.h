@@ -35,6 +35,9 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+
+#include "shmem.h"
+
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeDispatchV2FullMeshImpl {
 constexpr uint8_t BUFFER_NUM = 2;        // 多buf
@@ -320,6 +323,7 @@ private:
     uint32_t maxSize_{0};
     uint32_t expertIdsSize_{0};
     uint32_t globalBS_{0};
+    uint64_t shmemBuffer_{0};
     uint32_t copyInAxisH_{0};
     uint32_t copyOutAxisH_{0};
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
@@ -503,6 +507,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};
     expertIdsSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+
+    shmemBuffer_ = tilingData->moeDistributeDispatchV2Info.shmemBuffer;
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1666,18 +1672,868 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     }
 }
 
+constexpr uint32_t RANK_NUM = 8;
+constexpr uint32_t AIV_URMA_CORE_NUM = 8;
+// constexpr uint32_t PORT_NUM = 1;
+// constexpr uint32_t JETTY_NUM = 12;
+
+struct HcclAiRMAWQ {
+    uint8_t rmtEid[16];
+    uint32_t jettyId;
+    uint64_t sqVA;     // SQE在HBM上起始地址
+    uint32_t wqeSize;  // 一个WQEBB占用内存大小（64B）
+    uint32_t sqDepth;  // 可用的WQEBB个数
+    uint64_t headAddr; // AIV无依赖
+    uint64_t tailAddr; // AIV无依赖
+    uint64_t dbAddr;   // JFSDoorBell地址
+    uint32_t tp_id;
+    uint32_t rmtObjId; // rmtTokenID
+    uint32_t rmtTokenValue;
+    uint32_t localTokenId;
+};
+
+struct HcclAiRMACQ {
+    uint32_t jfcId;
+    uint64_t cqVA;    // CQE在HBM上起始地址
+    uint32_t cqeSize; // 一个CQE占用内存大小（64B）
+    uint32_t cqDepth; // 可用的CQE个数
+    uint64_t headAddr;
+    uint64_t tailAddr;
+    uint64_t dbAddr; // JFCDoorBell地址
+};
+
+enum class URMAOPCODE : uint32_t {
+    OP_SEND = 0,
+    OP_SEND_WITH_IMM,
+    OP_SEND_WITH_INV,
+    OP_WRITE,
+    OP_WRITE_WITH_IMM,
+    OP_WRITE_WITH_NOTIFY,
+    OP_READ
+};
+
+typedef HcclAiRMAWQ AiURMAWQ;
+typedef HcclAiRMACQ AiURMACQ; 
+
+ACLSHMEM_DEVICE void get_sqs_and_cqs_xb(GM_ADDR sqs, GM_ADDR cqs)
+{
+	uint32_t rankNum = aclshmem_n_pes();
+
+	__gm__ ACLSHMEMAIVUDMAInfo* udmaInfo = aclshmemi_udma_qp_info_fetch();
+
+	// AscendC::printf("udma info %p, sqs %p, cqs %p, mem %p\n", udmaInfo, udmaInfo->sqPtr, udmaInfo->scqPtr, udmaInfo->memPtr);
+
+	// Get data in the "rank -> port -> jetty" order
+	for (uint32_t rankIdx = 0; rankIdx < rankNum; rankIdx++) {
+		if (rankIdx == aclshmem_my_pe()) {
+			continue;
+		}
+
+		for (uint32_t portIdx = 0; portIdx < PORT_NUM; portIdx++) {
+			for (uint32_t jettyIdx = 0; jettyIdx < JETTY_NUM; jettyIdx++) {
+				auto offset = rankIdx * PORT_NUM * JETTY_NUM + portIdx * JETTY_NUM + jettyIdx;
+
+				__gm__ ACLSHMEMUDMAWQCtx* qpCtxEntry =
+					(__gm__ ACLSHMEMUDMAWQCtx*)(udmaInfo->sqPtr + offset * sizeof(ACLSHMEMUDMAWQCtx));
+				__gm__ ACLSHMEMUDMACqCtx* cqCtxEntry =
+					(__gm__ ACLSHMEMUDMACqCtx*)(udmaInfo->scqPtr + offset * sizeof(ACLSHMEMUDMACqCtx));
+				__gm__ ACLSHMEMUBmemInfo* remoteMemInfo =
+					(__gm__ ACLSHMEMUBmemInfo*)(udmaInfo->memPtr + offset * sizeof(ACLSHMEMUBmemInfo));
+
+				__gm__ HcclAiRMAWQ* hcclAiRMAWQ = (__gm__ HcclAiRMAWQ*)(sqs + offset * sizeof(HcclAiRMAWQ));
+				hcclAiRMAWQ->jettyId = qpCtxEntry->wqn;
+				hcclAiRMAWQ->sqVA = qpCtxEntry->bufAddr;
+				hcclAiRMAWQ->wqeSize = (uint32_t)(1 << qpCtxEntry->baseBkShift);
+				hcclAiRMAWQ->sqDepth = qpCtxEntry->depth;
+				hcclAiRMAWQ->headAddr = qpCtxEntry->headAddr;
+				hcclAiRMAWQ->tailAddr = qpCtxEntry->tailAddr;
+				hcclAiRMAWQ->dbAddr = qpCtxEntry->dbAddr;
+				hcclAiRMAWQ->tp_id = remoteMemInfo->tpn;
+
+				// auto eidAddrList = (__gm__ uint64_t*)(remoteMemInfo->eidAddr);
+				// auto rmtEid = (__gm__ uint64_t*)(hcclAiRMAWQ->rmtEid);
+				// AscendC::printf("rank %d meminfo remote eid addr %p, eidl %p, eidh %p\n", rankIdx, eidAddrList, eidAddrList[0], eidAddrList[1]);		// OK
+				// AscendC::printf("rank %d wq %p, eid addr %p, eidl %p, eidh %p\n", rankIdx, hcclAiRMAWQ, hcclAiRMAWQ->rmtEid, rmtEid[0], rmtEid[1]);	// Seg fault
+				// rmtEid[0] = eidAddrList[0];																											// Seg fault
+				// rmtEid[1] = eidAddrList[1];																											// Seg fault
+
+				auto eids = (__gm__ uint8_t*)(remoteMemInfo->eidAddr);
+				for (int i = 0; i < 16; i++) {
+					hcclAiRMAWQ->rmtEid[i] = eids[i];
+				}
+
+				hcclAiRMAWQ->rmtObjId = remoteMemInfo->tid;
+				hcclAiRMAWQ->rmtTokenValue = remoteMemInfo->rmtTokenValue;
+				hcclAiRMAWQ->localTokenId = 0; // NOTE: not use
+
+				__gm__ HcclAiRMACQ* hcclAiRMACQ = (__gm__ HcclAiRMACQ*)(cqs + offset * sizeof(HcclAiRMACQ));
+				hcclAiRMACQ->jfcId = cqCtxEntry->cqn;
+				hcclAiRMACQ->cqVA = cqCtxEntry->bufAddr;
+				hcclAiRMACQ->cqeSize = (uint32_t)(1 << cqCtxEntry->baseBkShift);
+				hcclAiRMACQ->cqDepth = cqCtxEntry->depth;
+				hcclAiRMACQ->headAddr = cqCtxEntry->headAddr;
+				hcclAiRMACQ->tailAddr = cqCtxEntry->tailAddr;
+				hcclAiRMACQ->dbAddr = cqCtxEntry->dbAddr;
+			}
+		}
+	}
+}
+
+#include "simt_api/vector_functions.h"
+#include "simt_api/device_functions.h"
+
+#define DB_ON_UB
+#define WQE_ON_UB
+#define JETTY_ON_UB
+// #define WQE_OUT_ON_UB
+
+#ifdef DB_ON_UB
+#define DB_TMP_POS __ubuf__
+#else 
+#define DB_TMP_POS __gm__
+#endif
+
+#ifdef WQE_ON_UB
+#define WQE_IN_POS __ubuf__
+#else
+#define WQE_IN_POS __gm__
+#endif
+
+#ifdef JETTY_ON_UB
+#define JETTY_POS __ubuf__
+#else
+#define JETTY_POS __gm__
+#endif
+
+#ifdef WQE_OUT_ON_UB
+#define WQE_OUT_POS __ubuf__
+#else
+#define WQE_OUT_POS __gm__
+#endif
+
+typedef struct {
+#define MAX_WQE_CNT 2048
+    uint64_t localAddr[MAX_WQE_CNT];
+    uint64_t remoteAddr[MAX_WQE_CNT];
+    uint32_t dstRank[MAX_WQE_CNT];
+    uint32_t messageLen[MAX_WQE_CNT];
+    URMAOPCODE opcode[MAX_WQE_CNT];
+    uint32_t size;
+} wqe_desc_array_t;
+
+__simt_callee__ inline void get_wqe_content(WQE_IN_POS wqe_desc_array_t *wqe_desc_arr, uint32_t idx, 
+    uint64_t &localAddr, uint64_t &remoteAddr, uint32_t &messageLen, uint32_t &dstRank, URMAOPCODE &op) {
+    localAddr = wqe_desc_arr->localAddr[idx];
+    remoteAddr = wqe_desc_arr->remoteAddr[idx];
+    dstRank = wqe_desc_arr->dstRank[idx];
+    // messageLen = wqe_desc_arr->messageLen[idx];
+    // op = wqe_desc_arr->opcode[idx];
+}
+
+#define MAX_WQE_NUM             (256 * 6)
+#define WQE_IN_OFFSET           (0)
+#define WQE_IN_SIZE             (sizeof(wqe_desc_array_t))
+
+#define MAX_JETTY_NUM           (8 * 2 * 1)
+#define DB_ARRAY_OFFSET         (64 * 1024)
+#define DB_ARRAY_SIZE           (MAX_JETTY_NUM * 8)
+#define HEAD_ARRAY_OFFSET       (DB_ARRAY_OFFSET + DB_ARRAY_SIZE)
+#define HEAD_ARRAY_SIZE         (MAX_JETTY_NUM * 4)
+#define PREV_HEAD_ARRAY_OFFSET  (HEAD_ARRAY_OFFSET + HEAD_ARRAY_SIZE)
+#define PREV_HEAD_ARRAY_SIZE    (MAX_JETTY_NUM * 4)
+#define OUT_JETTY_IDX_OFFSET    (PREV_HEAD_ARRAY_OFFSET + PREV_HEAD_ARRAY_SIZE)
+#define OUT_JETTY_IDX_SIZE      (4)
+#define PORT_IDX_OFFSET         (OUT_JETTY_IDX_OFFSET + OUT_JETTY_IDX_SIZE)
+#define PORT_IDX_SIZE           (4)
+#define JETTY_IDX_OFFSET        (PORT_IDX_OFFSET + PORT_IDX_SIZE)
+#define JETTY_IDX_SIZE          (4)
+#define TOTAL_SIZE              (DB_ARRAY_SIZE + HEAD_ARRAY_SIZE + PREV_HEAD_ARRAY_SIZE + OUT_JETTY_IDX_SIZE + PORT_IDX_SIZE + JETTY_IDX_SIZE)
+
+#define JETTY_INFO_OFFSET       (96 * 1024)
+#define JETTY_INFO_SIZE         (MAX_JETTY_NUM * sizeof(HcclAiRMAWQ))
+
+#define WQE_OUT_OFFSET          (120 * 1024)
+#define WQE_OUT_SIZE            (MAX_WQE_NUM * 64)
+
+__simt_callee__ inline void simt_write_wqe_v5(JETTY_POS HcclAiRMAWQ *sq, uint32_t myHead, uint64_t localAddr, uint64_t remoteAddr, uint32_t messageLen, URMAOPCODE opcode)
+{   
+    auto shift = 14;
+    auto wqeSize = sq->wqeSize;
+    auto qpDepth = sq->sqDepth;
+
+    auto sqBaseAddr = sq->sqVA;
+    auto tpId = (sq->tp_id) & ((1U << 24U) - 1U);
+    auto rmtObjId = (sq->rmtObjId) & 0xFFFFF;
+    auto tokenId = (sq->localTokenId) & 0xFFFFF;
+	
+    __gm__ ulonglong4* wqeWords = (__gm__ ulonglong4*)(sqBaseAddr + wqeSize * (myHead % qpDepth));
+
+    uint64_t dw[8];
+    // Word 0: sqeBbIdx[15:0] | flag[23:16] | rsv0[26:24] | nf[27] | tokenEn[28] | rmtJettyType[30:29] | owner[31]
+    // Word 1: targetHint[7:0] | opcode[15:8] | rsv1[21:16] | inlineMsgLen[31:22]
+    auto owner = (myHead & qpDepth) == 0 ? 1 : 0;
+    dw[0] = (0u << 0)                    // sqeBbIdx = 0
+                | (0b00100000u << 16)          // flag
+                | (0u << 24)                    // rsv0
+                | (0u << 27)                    // nf
+                | (1u << 28)     				// tokenEn
+                | (1u << 29)          			// rmtJettyType
+                | ((uint32_t)owner << 31)       // owner
+                | (static_cast<uint32_t>(URMAOPCODE::OP_WRITE) << 40)
+                | (0u << 48)                    // rsv1
+                | (0u << 54);                   // inlineMsgLen
+
+    // Word 2: tpId[23:0] | sgeNum[31:24]
+    // Word 3: rmtJettyOrSegId[19:0] | rsv2[31:20]
+    dw[1] = (tpId << 0)
+                | (1u << 24)                    // sgeNum = 1
+                | (static_cast<uint32_t>(rmtObjId) << 32)
+                | (0u << 52);                   // rsv2
+
+    // // Word 4-5: rmtEidL (uint64_t)
+    // // Word 6-7: rmtEidH (uint64_t)
+	// auto rmtEid = (JETTY_POS uint64_t *)(sq->rmtEid);
+    // dw[2] = rmtEid[0];
+    // dw[3] = rmtEid[1];
+    
+    // Word 4-5: rmtEidL (uint64_t)
+    // Word 6-7: rmtEidH (uint64_t)
+	auto rmtEid = (JETTY_POS uint32_t *)(sq->rmtEid);
+    dw[2] = rmtEid[0] | ((rmtEid[1]) << 32);
+    dw[3] = rmtEid[2] | ((rmtEid[3]) << 32);
+
+    // Word 8: rmtTokenValue
+    // Word 9: udfType[7:0] | reduceDataType[11:8] | reduceOpcode[15:12] | rsv3[31:16]
+    dw[4] = 0;
+
+    // Word 10: rmtAddrLOrTokenId
+    // Word 11: rmtAddrHOrTokenValue
+    dw[5] = remoteAddr;
+   
+	// SGE
+    dw[6] = 5120;
+    dw[7] = localAddr;
+
+    wqeWords[0] = make_ulonglong4(dw[0], dw[1], dw[2], dw[3]);
+    wqeWords[1] = make_ulonglong4(dw[4], dw[5], dw[6], dw[7]);
+}
+
+__simt_callee__ inline void simt_write_wqe_v4(JETTY_POS HcclAiRMAWQ *sq, uint32_t myHead, uint64_t localAddr, uint64_t remoteAddr, uint32_t messageLen, URMAOPCODE opcode)
+{   
+    auto shift = 14;
+    auto wqeSize = sq->wqeSize;
+    auto qpDepth = sq->sqDepth;
+
+    auto sqBaseAddr = sq->sqVA;
+    auto tpId = (sq->tp_id) & ((1U << 24U) - 1U);
+    auto rmtObjId = (sq->rmtObjId) & 0xFFFFF;
+    auto tokenId = (sq->localTokenId) & 0xFFFFF;
+	
+    __gm__ ulonglong4* wqeWords = (__gm__ ulonglong4*)(sqBaseAddr + wqeSize * (myHead % qpDepth));
+
+    uint64_t dw[8];
+    // Word 0: sqeBbIdx[15:0] | flag[23:16] | rsv0[26:24] | nf[27] | tokenEn[28] | rmtJettyType[30:29] | owner[31]
+    // Word 1: targetHint[7:0] | opcode[15:8] | rsv1[21:16] | inlineMsgLen[31:22]
+    auto owner = (myHead & qpDepth) == 0 ? 1 : 0;
+    dw[0] = (0u << 0)                    // sqeBbIdx = 0
+                | (0b00100000u << 16)          // flag
+                | (0u << 24)                    // rsv0
+                | (0u << 27)                    // nf
+                | (1u << 28)     				// tokenEn
+                | (1u << 29)          			// rmtJettyType
+                | ((uint32_t)owner << 31)       // owner
+                | (static_cast<uint64_t>(URMAOPCODE::OP_WRITE) << 40)
+                | (0ull << 48)                    // rsv1
+                | (0ull << 54);                   // inlineMsgLen
+
+    // Word 2: tpId[23:0] | sgeNum[31:24]
+    // Word 3: rmtJettyOrSegId[19:0] | rsv2[31:20]
+    dw[1] = (tpId << 0)
+                | (1u << 24)                    // sgeNum = 1
+                | (static_cast<uint64_t>(rmtObjId) << 32)
+                | (0ull << 52);                   // rsv2
+
+    // // Word 4-5: rmtEidL (uint64_t)
+    // // Word 6-7: rmtEidH (uint64_t)
+	// auto rmtEid = (JETTY_POS uint64_t *)(sq->rmtEid);
+    // dw[2] = rmtEid[0];
+    // dw[3] = rmtEid[1];
+    
+    // Word 4-5: rmtEidL (uint64_t)
+    // Word 6-7: rmtEidH (uint64_t)
+	auto rmtEid = (JETTY_POS uint32_t *)(sq->rmtEid);
+    dw[2] = rmtEid[0] | (static_cast<uint64_t>(rmtEid[1]) << 32);
+    dw[3] = rmtEid[2] | (static_cast<uint64_t>(rmtEid[3]) << 32);
+
+    // Word 8: rmtTokenValue
+    // Word 9: udfType[7:0] | reduceDataType[11:8] | reduceOpcode[15:12] | rsv3[31:16]
+    dw[4] = 0;
+
+    // Word 10: rmtAddrLOrTokenId
+    // Word 11: rmtAddrHOrTokenValue
+    dw[5] = remoteAddr;
+   
+	// SGE
+    dw[6] = 5120;
+    dw[7] = localAddr;
+
+    wqeWords[0] = make_ulonglong4(dw[0], dw[1], dw[2], dw[3]);
+    wqeWords[1] = make_ulonglong4(dw[4], dw[5], dw[6], dw[7]);
+}
+
+__simt_callee__ inline void simt_write_wqe_v3(JETTY_POS HcclAiRMAWQ *sq, uint32_t myHead, uint64_t localAddr, uint64_t remoteAddr, uint32_t messageLen, URMAOPCODE opcode)
+{
+    constexpr uint32_t shift = 14;
+    constexpr uint32_t wqeSize = 64;
+    constexpr uint32_t qpDepth = 1 << shift;
+
+    auto sqBaseAddr = sq->sqVA;
+    auto tpId = (sq->tp_id) & ((1U << 24U) - 1U);
+    auto rmtObjId = (sq->rmtObjId) & 0xFFFFF;
+    auto tokenId = (sq->localTokenId) & 0xFFFFF;
+	
+    __gm__ uint64_t* wqeWords = (__gm__ uint64_t*)(sqBaseAddr + wqeSize * (myHead % qpDepth));
+
+    uint64_t dw[8];
+    // Word 0: sqeBbIdx[15:0] | flag[23:16] | rsv0[26:24] | nf[27] | tokenEn[28] | rmtJettyType[30:29] | owner[31]
+    // Word 1: targetHint[7:0] | opcode[15:8] | rsv1[21:16] | inlineMsgLen[31:22]
+    auto owner = (myHead & qpDepth) == 0 ? 1 : 0;
+    dw[0] = (0u << 0)                    // sqeBbIdx = 0
+                | (0b00100000u << 16)          // flag
+                | (0u << 24)                    // rsv0
+                | (0u << 27)                    // nf
+                | (1u << 28)     				// tokenEn
+                | (1u << 29)          			// rmtJettyType
+                | ((uint32_t)owner << 31)       // owner
+                | (static_cast<uint64_t>(URMAOPCODE::OP_WRITE) << 40)
+                | (0ull << 48)                    // rsv1
+                | (0ull << 54);                   // inlineMsgLen
+
+    // Word 2: tpId[23:0] | sgeNum[31:24]
+    // Word 3: rmtJettyOrSegId[19:0] | rsv2[31:20]
+    dw[1] = (tpId << 0)
+                | (1u << 24)                    // sgeNum = 1
+                | (static_cast<uint64_t>(rmtObjId) << 32)
+                | (0ull << 52);                   // rsv2
+
+    // // Word 4-5: rmtEidL (uint64_t)
+    // // Word 6-7: rmtEidH (uint64_t)
+	// auto rmtEid = (JETTY_POS uint64_t *)(sq->rmtEid);
+    // dw[2] = rmtEid[0];
+    // dw[3] = rmtEid[1];
+    
+    // Word 4-5: rmtEidL (uint64_t)
+    // Word 6-7: rmtEidH (uint64_t)
+	auto rmtEid = (JETTY_POS uint32_t *)(sq->rmtEid);
+    dw[2] = rmtEid[0] | (static_cast<uint64_t>(rmtEid[1]) << 32);
+    dw[3] = rmtEid[2] | (static_cast<uint64_t>(rmtEid[3]) << 32);
+
+    // Word 8: rmtTokenValue
+    // Word 9: udfType[7:0] | reduceDataType[11:8] | reduceOpcode[15:12] | rsv3[31:16]
+    dw[4] = 0;
+
+    // Word 10: rmtAddrLOrTokenId
+    // Word 11: rmtAddrHOrTokenValue
+    dw[5] = remoteAddr;
+   
+	// SGE
+    dw[6] = 5120;
+    dw[7] = localAddr;
+
+    #pragma unroll
+    for(int i = 0; i < 8; i ++){
+        wqeWords[i] = dw[i];
+    }
+}
+
+__simt_callee__ inline void simt_write_wqe_v2(JETTY_POS HcclAiRMAWQ *sq, uint32_t myHead, uint64_t localAddr, uint64_t remoteAddr, uint32_t messageLen, URMAOPCODE opcode)
+{
+    constexpr uint32_t shift = 14;
+    constexpr uint32_t wqeSize = 64;
+    constexpr uint32_t qpDepth = 1 << shift;
+
+    auto sqBaseAddr = sq->sqVA;
+    auto tpId = (sq->tp_id) & ((1U << 24U) - 1U);
+    auto rmtObjId = (sq->rmtObjId) & 0xFFFFF;
+    auto tokenId = (sq->localTokenId) & 0xFFFFF;
+	
+    __gm__ uint32_t* wqeWords = (__gm__ uint32_t*)(sqBaseAddr + wqeSize * (myHead % qpDepth));
+
+    uint32_t w[16];
+    // Word 0: sqeBbIdx[15:0] | flag[23:16] | rsv0[26:24] | nf[27] | tokenEn[28] | rmtJettyType[30:29] | owner[31]
+    auto owner = (myHead & qpDepth) == 0 ? 1 : 0;
+    w[0] = (0u << 0)                    // sqeBbIdx = 0
+                | (0b00100000u << 16)          // flag
+                | (0u << 24)                    // rsv0
+                | (0u << 27)                    // nf
+                | (1u << 28)     				// tokenEn
+                | (1u << 29)          			// rmtJettyType
+                | ((uint32_t)owner << 31);      // owner
+
+    // Word 1: targetHint[7:0] | opcode[15:8] | rsv1[21:16] | inlineMsgLen[31:22]
+    w[1] = (0u << 0)
+                | (static_cast<uint32_t>(URMAOPCODE::OP_WRITE) << 8)
+                | (0u << 16)                    // rsv1
+                | (0u << 22);                   // inlineMsgLen
+
+    // Word 2: tpId[23:0] | sgeNum[31:24]
+    w[2] = (tpId << 0)
+                | (1u << 24);                   // sgeNum = 1
+
+    // Word 3: rmtJettyOrSegId[19:0] | rsv2[31:20]
+    w[3] = (rmtObjId << 0)
+                | (0u << 20);                   // rsv2
+
+    // Word 4-5: rmtEidL (uint64_t)
+	auto rmtEid = (JETTY_POS uint32_t *)(sq->rmtEid);
+    w[4] = rmtEid[0];
+    w[5] = rmtEid[1];
+
+    // Word 6-7: rmtEidH (uint64_t)
+    w[6] = rmtEid[2];
+    w[7] = rmtEid[3];
+
+    // Word 8: rmtTokenValue
+    w[8] = 0;
+
+    // Word 9: udfType[7:0] | reduceDataType[11:8] | reduceOpcode[15:12] | rsv3[31:16]
+    w[9] = 0;
+
+    // Word 10: rmtAddrLOrTokenId
+    w[10] = remoteAddr & 0xFFFFFFFF;
+
+    // Word 11: rmtAddrHOrTokenValue
+    w[11] = remoteAddr >> 32;
+   
+	// SGE
+    w[12] = messageLen;
+    w[13] = 0;
+    w[14] = (uint32_t)(localAddr & 0xFFFFFFFF);
+    w[15] = (uint32_t)(localAddr >> 32);
+    
+    #pragma unroll
+    for(int i = 0; i < 16; i ++){
+        // asc_stwt(&wqeWords[i], w[i]);
+        wqeWords[i] = w[i];
+    }
+
+}
+
+__simt_callee__ inline void simt_write_wqe(JETTY_POS HcclAiRMAWQ *sq, uint32_t myHead, uint64_t localAddr, uint64_t remoteAddr, uint32_t messageLen, URMAOPCODE opcode)
+{
+    constexpr uint32_t shift = 14;
+    constexpr uint32_t wqeSize = 64;
+    constexpr uint32_t qpDepth = 1 << shift;
+
+    // auto shift = 14;
+    // auto wqeSize = sq->wqeSize;
+    // auto qpDepth = sq->sqDepth;
+
+    auto sqBaseAddr = sq->sqVA;
+    auto tpId = (sq->tp_id) & ((1U << 24U) - 1U);
+    auto rmtObjId = (sq->rmtObjId) & 0xFFFFF;
+    auto tokenId = (sq->localTokenId) & 0xFFFFF;
+    
+#if 0
+    // if (threadIdx.x == 0) printf("writing wqes to UB\n");
+    __ubuf__ uint8_t* wqeAddr = (__ubuf__ uint8_t*)(get_imm(WQE_OUT_OFFSET) + wqeSize * threadIdx.x);
+#else
+    __gm__ uint8_t* wqeAddr = (__gm__ uint8_t*)(sqBaseAddr + wqeSize * (myHead % qpDepth));
+    // if (threadIdx.x == 0) printf("writing wqes to GM, addr %p\n", wqeAddr);
+#endif
+    uint32_t ownBit = ~((myHead >> shift) & 1U); // owner=~((jfs.pi >> jfs.sqe_bb_shift)&0x1)
+    ownBit <<= 31U; // [31] owner_bit
+    ownBit |= 1 << 21; // enable cqe
+    ownBit |= 1 << 29; // rmt_jetty_type
+    ownBit |= 1 << 28; // token_enable
+    *(WQE_OUT_POS uint32_t*)(wqeAddr) = ownBit; // [3:0]
+    // *(WQE_OUT_POS uint32_t*)(wqeAddr + 4) = (uint32_t)opcode << 8U; // opcode=0x3, write
+    *(WQE_OUT_POS uint32_t*)(wqeAddr + 4) = (uint32_t)URMAOPCODE::OP_WRITE << 8U; // opcode=0x3, write
+    *(WQE_OUT_POS uint32_t*)(wqeAddr + 8) = (1U << 24U) | tpId;  // [31:24] num_sge = 1 [23:0] tp_id
+    *(WQE_OUT_POS uint32_t*)(wqeAddr + 12) = rmtObjId; // [19:0] rmt_jetty_or_seg_id
+
+    #pragma unroll
+    for (uint32_t index = 0; index < 16; index++) {
+        *(WQE_OUT_POS uint8_t*)(wqeAddr + 16 + index) = sq->rmtEid[index];
+    }
+    *(WQE_OUT_POS uint64_t*)(wqeAddr + 40) = (uint64_t)remoteAddr; // rmt_addr
+    // *(WQE_OUT_POS uint32_t*)(wqeAddr + 48) = (uint32_t)messageLen; // [31:0] length
+    *(WQE_OUT_POS uint32_t*)(wqeAddr + 48) = (uint32_t)5120; // [31:0] length
+
+    *(WQE_OUT_POS uint64_t*)(wqeAddr + 56) = (uint64_t)localAddr;
+}
+
+template<int rank_num = 1, int port_num = 1, int jetty_num = 1, 
+    int jetty_per_rank = port_num * jetty_num, 
+    int total_jetty = rank_num * port_num * jetty_num>
+__simt_vf__ __aicore__ LAUNCH_BOUND(NUM_THREAD)
+inline void simt_nw_mj_vf(__ubuf__ wqe_desc_array_t *wqe_desc_arr, uint32_t wqe_count, JETTY_POS HcclAiRMAWQ *sqs)
+{
+    int tid = threadIdx.x;
+
+    auto DB_ARR = (__ubuf__ uint64_t *) get_imm(DB_ARRAY_OFFSET);
+    auto HEAD_ARR = (__ubuf__ uint32_t *) get_imm(HEAD_ARRAY_OFFSET);
+    auto PREV_HEAD_ARR = (__ubuf__ uint32_t *) get_imm(PREV_HEAD_ARRAY_OFFSET);
+    auto OUT_JETTY_IDX = (__ubuf__ uint32_t *) get_imm(OUT_JETTY_IDX_OFFSET);
+    auto PORT_IDX = (__ubuf__ uint32_t *) get_imm(PORT_IDX_OFFSET);
+    auto JETTY_IDX = (__ubuf__ uint32_t *) get_imm(JETTY_IDX_OFFSET);
+
+// for (auto inner_iter = 0; inner_iter < 1; inner_iter++) {
+
+    // Phase 1: Each wqe is assigned to a thread so that wqes are written parallelly.
+    for (auto my_idx = tid; my_idx < wqe_count; my_idx += NUM_THREAD)
+    // if (tid < wqe_count) 
+    {
+        uint64_t my_local_addr, my_remote_addr;
+        uint32_t my_message_len, my_dst_rank;
+        URMAOPCODE my_op;
+
+        // my_local_addr = 0; my_remote_addr = 0; my_message_len = 5120; my_dst_rank = 0; my_op = URMAOPCODE::OP_WRITE;
+        get_wqe_content(wqe_desc_arr, my_idx, my_local_addr, my_remote_addr, my_message_len, my_dst_rank, my_op);
+
+        // auto my_port = atomicAdd(PORT_IDX, (uint32_t)1);    my_port %= port_num;
+        auto my_port = atomicAdd(PORT_IDX, (uint32_t)1);    my_port = my_port % CLOS_NUM + FULLMESH_NUM;
+        auto my_jetty = atomicAdd(JETTY_IDX, (uint32_t)1);  my_jetty %= jetty_num; 
+
+        auto my_sq_idx = my_dst_rank * jetty_per_rank + my_port * jetty_num + my_jetty;
+        auto my_sq = &sqs[my_sq_idx];
+
+        // Multi wqes assigned to a same jetty is ordered by atomicAdd      
+#if 1
+        auto newHeadAddr = (__ubuf__ uint32_t *)&(my_sq->localTokenId);
+        auto my_head = atomicAdd(newHeadAddr, (uint32_t)1) % my_sq->sqDepth;
+#else
+        auto my_head = atomicAdd((__gm__ uint32_t *)(my_sq->headAddr), (uint32_t)1) % my_sq->sqDepth;
+#endif
+        // if (threadIdx.x == 0) printf("writing wqes to GM, addr %p\n", my_sq->sqVA);
+        simt_write_wqe_v4(my_sq, my_head, my_local_addr, my_remote_addr, my_message_len, my_op);
+    }
+
+    __syncthreads();
+
+    // Phase 2: Each jetty is assigned to a thread. 
+    // Since SIMT thread can not ring doorbell correctly, activated jetties' doorbell addr and head are written to UB parallelly. And atomicAdd is used to assign order.
+    // Later, scalar will read them and ring doorbell sequentially.
+    for (auto my_idx = tid; my_idx < total_jetty; my_idx += NUM_THREAD)
+    // if (tid < total_jetty) 
+    {
+        uint32_t prevHead = PREV_HEAD_ARR[my_idx];
+        auto my_sq = &sqs[my_idx];
+
+        if (my_sq->headAddr == 0) {
+            continue;
+        }
+#if 1
+        auto curHead = my_sq->localTokenId;
+#else
+        auto curHead = *(__gm__ uint32_t *)(my_sq->headAddr);
+#endif
+        if (curHead != prevHead) {
+            auto my_jetty = atomicAdd(OUT_JETTY_IDX, 1);
+            DB_ARR[my_jetty] = my_sq->dbAddr;
+            HEAD_ARR[my_jetty] = curHead;
+            PREV_HEAD_ARR[my_idx] = curHead;
+        }
+    }
+// }
+}
+
+template<int rank_num = 1, int port_num = 1, int jetty_num = 1>
+__aicore__ inline void simt_nw_mj(__ubuf__ wqe_desc_array_t *wqe_desc_arr, uint32_t wqe_count, JETTY_POS HcclAiRMAWQ *sqs)
+{
+    AscendC::Simt::VF_CALL<simt_nw_mj_vf<rank_num, port_num, jetty_num>>(
+        AscendC::Simt::Dim3{NUM_THREAD, 1, 1}, wqe_desc_arr, wqe_count, sqs);
+
+    set_flag(PIPE_V, PIPE_S, (event_t) 0);
+    wait_flag(PIPE_V, PIPE_S, (event_t) 0);
+
+    
+}
+
+
+__aicore__ inline void cacheWriteThrough(__gm__ uint8_t* sourceAddr, uint64_t length)
+{
+    __gm__ uint8_t* start = (__gm__ uint8_t*)((uint64_t)sourceAddr / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
+    __gm__ uint8_t* end = (__gm__ uint8_t*)(((uint64_t)sourceAddr + length) / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
+    AscendC::GlobalTensor<uint8_t> global;
+    global.SetGlobalBuffer(start);
+    for (uint32_t i = 0; i <= end - start; i += AscendC::CACHE_LINE_SIZE) {
+        asm volatile("");
+        AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(global[i]);
+        asm volatile("");
+    }
+}
+
+__aicore__ inline void URMAPollCQ(__gm__ AiURMAWQ *sq, __gm__ AiURMACQ *cq)
+{
+    uint32_t idx = *(__gm__ uint32_t*)(sq->headAddr);
+    if (idx == 0) {
+        return;
+    }
+    // AscendC::printf("pollcq: sqDB %p, idx %d\n", sq->dbAddr, idx);
+
+    auto cqBaseAddr = cq->cqVA;
+    auto cqeSize = cq->cqeSize;
+    auto depth = cq->cqDepth;
+    uint32_t curTail = *(__gm__ uint32_t*)(cq->tailAddr);
+    while (curTail != idx) {
+        __gm__ uint32_t* cqeAddr = (__gm__ uint32_t*)(cqBaseAddr + cqeSize * (curTail & (depth - 1)));
+        uint32_t cqeByte4 = *(__gm__ uint32_t*)cqeAddr;
+        int64_t start = AscendC::GetSystemCycle(); // reserved for timeout check
+        while ((cqeByte4 & (1 << 2)) == 0) {
+            int64_t tmp = AscendC::GetSystemCycle(); // reserved for timeout check
+            if (tmp - start > 3000000) {
+                AscendC::printf("pollcq timeout: sqDB %p, idx %d\n", sq->dbAddr, idx);
+                break;
+            }
+            cacheWriteThrough((__gm__ uint8_t*)cqeAddr, 8);
+            cqeByte4 = *(__gm__ uint32_t*)cqeAddr;
+        }
+        // Check CQE status
+        uint32_t status = cqeByte4 & 0xFF000000;    status >>= 24;
+        uint32_t subStatus = cqeByte4 & 0x00FF0000; subStatus >>= 16;
+        if (status != 0 || subStatus != 0) {
+            AscendC::printf("status=%d != 0 || subStatus=%d != 0\n", (int)status, (int)subStatus);
+        }
+        curTail++;
+    }
+    uint64_t curJFCDB = curTail & 0x3FFFFF;
+    st_dev(curJFCDB, reinterpret_cast<__gm__ uint32_t*>(cq->dbAddr), 0);
+    // Update JFS tail
+    auto curHardwareTail = sq->tailAddr;
+    *(__gm__ uint32_t*)curHardwareTail = curTail;
+}
+
+#define OFFSET_OF(X, Y, Z, x, y, z)  ((x) * (Y) * (Z) + (y) * (Z) + (z))
+__aicore__ inline void URMAPollCQ(uint32_t pe, uint32_t portNum, uint32_t qpNum, __gm__ AiURMAWQ *sqs, __gm__ AiURMACQ *cq) {
+    for (int portIdx = 0; portIdx < FULLMESH_NUM; portIdx++) {
+        for (int qpIdx = 0; qpIdx < qpNum; qpIdx++) {
+            auto offset = OFFSET_OF(0, portNum, qpNum, pe, portIdx, qpIdx);
+            URMAPollCQ(sqs + offset, cq + offset);
+        }
+    }
+
+    for (int portIdx = FULLMESH_NUM; portIdx < PORT_NUM; portIdx++) {
+        for (int qpIdx = 0; qpIdx < qpNum; qpIdx++) {
+            auto offset = OFFSET_OF(0, portNum, qpNum, pe, portIdx, qpIdx);
+            URMAPollCQ(sqs + offset, cq + offset);
+        }
+    }
+}
+
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Process()
 {
     if ASCEND_IS_AIV {          // 全aiv处理
-        if (aivId_ < aivUsedAllToAll_) {
-            AllToAllDispatch(); // 前面核all2all发送
-        } else {
-            CalCumSum();        // 后面核发送当前卡给每个专家的tokenCnt，输出epRecvCnt/exportTokenNums
+        // if (aivId_ < aivUsedAllToAll_) {
+        //     AllToAllDispatch(); // 前面核all2all发送
+        // } else {
+        //     CalCumSum();        // 后面核发送当前卡给每个专家的tokenCnt，输出epRecvCnt/exportTokenNums
+        // }
+        // // localWindowCopy中包含reset操作，需确保前面操作完成
+        // PipeBarrier<PIPE_ALL>();
+        // LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+
+        AscendC::printf("====================== zzz In moe_distribute_dispatch_v2 ==========================\n");
+        AscendC::printf("Shmem Interface my_pe: %d \n", aclshmem_my_pe());
+        AscendC::printf("Shmem Buffer: %llu \n", shmemBuffer_);
+
+        AscendC::TBuf<AscendC::TPosition::VECOUT> buf;
+        tpipe_->InitBuffer(buf, UB_ALIGN_SIZE * 2);
+        // A user-provided LocalTensor of at least 64 bytes is required to submit UDMA tasks.
+        AscendC::LocalTensor<uint8_t> ubLocal = buf.GetWithOffset<uint8_t>(UB_ALIGN_SIZE * 2, 0);
+
+        __gm__ uint8_t* custom_ptr = (__gm__ uint8_t*)shmemBuffer_;
+        AscendC::printf("[DEVICE custom_ptr] %llu\n", shmemBuffer_);
+
+        // ############### SIMT Data Path
+        int message_length = 64;    // trans_size * sizeof(int32_t)
+
+        int64_t my_pe = aclshmem_my_pe();
+        int64_t pe_size = aclshmem_n_pes();
+
+        int64_t start = 0;
+        int64_t end = 0;
+        int64_t end2 = 0;
+
+        // aclshmemx_barrier_all_vec();
+
+        if (AscendC::GetBlockIdx() < AIV_URMA_CORE_NUM) {
+            GM_ADDR gva = (GM_ADDR)custom_ptr;
+            auto vec_id = AscendC::GetBlockIdx();
+
+            auto out = (__gm__ uint64_t *) expertIdsGMTensor_.GetPhyAddr();
+            auto sqs_ori = (__gm__ HcclAiRMAWQ *)(gva + message_length * pe_size);
+            auto cqs_ori = (__gm__ HcclAiRMACQ *)((uint64_t)sqs_ori + sizeof(HcclAiRMAWQ) * pe_size * PORT_NUM * JETTY_NUM);
+
+            get_sqs_and_cqs_xb((GM_ADDR)sqs_ori, (GM_ADDR)cqs_ori);
+            AscendC::printf("get_sqs_and_cqs_xb ok\n");
+            for (int i = 0; i < RANK_NUM; i++) {
+                for (int j = 0; j < PORT_NUM; j++) {
+                    for (int k = 0; k < JETTY_NUM; k++) {
+                        auto sq = sqs_ori + OFFSET_OF(RANK_NUM, PORT_NUM, JETTY_NUM, i, j, k);
+                        auto cq = cqs_ori + OFFSET_OF(RANK_NUM, PORT_NUM, JETTY_NUM, i, j, k);
+                        // AscendC::printf("rank %d, port %d, jetty %d, sqVa %p, sqDB %p, sqDepth %d, headAddr %p, wqeSize %d, tpid %d, rmtEidL %p, rmtEidH %p, rmtObjId %d, rmtTokenValue %d\n", i, j, k, sq->sqVA, sq->dbAddr, sq->sqDepth, sq->headAddr, sq->wqeSize, sq->tp_id, (__gm__ uint64_t *)(sq->rmtEid), (__gm__ uint64_t *)(sq->rmtEid + 8), sq->rmtObjId, sq->rmtTokenValue);
+                        AscendC::printf("rank %d, port %d, jetty %d, sqVa %p, localTokenId %d\n", i, j, k, sq->sqVA, sq->localTokenId);
+                    }
+                }
+            }
+
+#ifdef JETTY_ON_UB
+            for (int i = 0; i < pe_size * PORT_NUM * JETTY_NUM; i++) {
+                // use localTokenId as head
+                auto tmp_sq = sqs_ori + i;
+                st_dev(0, &(tmp_sq->localTokenId), 0);
+            }
+            auto sqs = (__ubuf__ HcclAiRMAWQ *)get_imm(JETTY_INFO_OFFSET);
+            aclshmemx_mte_get_nbi((__ubuf__ uint8_t *)sqs, (__gm__ uint8_t *)sqs_ori, sizeof(HcclAiRMAWQ) * pe_size * PORT_NUM * JETTY_NUM, my_pe, 0);
+
+            pipe_barrier(PIPE_ALL);
+#else
+            auto sqs = sqs_ori;
+#endif
+            auto cqs = cqs_ori;
+
+            __ubuf__ wqe_desc_array_t *wqes = (__ubuf__ wqe_desc_array_t *)get_imm(WQE_IN_OFFSET); 
+            uint32_t wqe_cnt = NUM_THREAD;
+            uint32_t wqe_cnt_per_rank = NUM_THREAD / pe_size;
+            // Push the local segment to every other PE.
+            uint32_t wqe_idx = 0;
+            for (int peer = 0; peer < pe_size; peer++) {
+                // if (peer / 8 == my_pe / 8) {
+                if (peer == my_pe) {
+                    // skip intra frame
+                    continue;
+                }
+
+                if (peer % AIV_URMA_CORE_NUM != vec_id) {
+                    continue;
+                }
+
+                uint64_t localAddr = (uint64_t)gva + message_length * my_pe;
+                uint64_t remoteAddr = (uint64_t)aclshmem_ptr((__gm__ void *)localAddr, peer);
+                for (int i = 0; i < wqe_cnt_per_rank; i++) {
+                    wqes->localAddr[wqe_idx] = localAddr;
+                    wqes->remoteAddr[wqe_idx] = remoteAddr;
+                    wqes->messageLen[wqe_idx] = message_length;
+                    wqes->dstRank[wqe_idx] = peer;
+                    wqes->opcode[wqe_idx] = URMAOPCODE::OP_WRITE;
+                    wqe_idx++;
+                }
+            }
+            wqes->size = wqe_idx;
+
+            AscendC::printf("start sending %d wqes\n", wqe_idx);
+            
+            auto DB_ARR = (__ubuf__ uint64_t *) get_imm(DB_ARRAY_OFFSET);
+            auto HEAD_ARR = (__ubuf__ uint32_t *) get_imm(HEAD_ARRAY_OFFSET);
+            auto PREV_HEAD_ARR = (__ubuf__ uint32_t *) get_imm(PREV_HEAD_ARRAY_OFFSET);
+            auto OUT_JETTY_IDX = (__ubuf__ uint32_t *) get_imm(OUT_JETTY_IDX_OFFSET);
+
+            LocalTensor<uint8_t> prev;
+            prev.address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECIN);
+            prev.address_.bufferAddr = reinterpret_cast<uint64_t>(PREV_HEAD_ARR);
+            prev.address_.dataLen = PREV_HEAD_ARRAY_SIZE;
+            AscendC::Duplicate<uint8_t>(prev, 0, PREV_HEAD_ARRAY_SIZE);
+            pipe_barrier(PIPE_ALL);
+
+            prev.address_.bufferAddr = reinterpret_cast<uint64_t>(HEAD_ARR);
+            prev.address_.dataLen = HEAD_ARRAY_SIZE;
+            AscendC::Duplicate<uint8_t>(prev, 0, HEAD_ARRAY_SIZE);
+            pipe_barrier(PIPE_ALL);
+
+            prev.address_.bufferAddr = reinterpret_cast<uint64_t>(OUT_JETTY_IDX);
+            prev.address_.dataLen = OUT_JETTY_IDX_SIZE;
+            AscendC::Duplicate<uint8_t>(prev, 0, OUT_JETTY_IDX_SIZE);
+            pipe_barrier(PIPE_ALL);
+            
+            uint64_t startx = AscendC::GetSystemCycle(); uint64_t midx;
+            midx = AscendC::GetSystemCycle();
+            // Write WQEs
+            // for (int i = 0; i < PACKETS_PER_RANK / NUM_THREAD * pe_size ; i++) {
+            for (int i = 0; i < 1; i++) {
+                simt_nw_mj<RANK_NUM, PORT_NUM, JETTY_NUM>(wqes, wqes->size, sqs);
+                // *OUT_JETTY_IDX = 0; 
+            
+                midx = AscendC::GetSystemCycle();
+                
+                // Ring doorbell sequentially
+                // AscendC::printf("iter %d, %d jetties activated\n", i, *OUT_JETTY_IDX);
+                for (auto i = 0; i < *OUT_JETTY_IDX; i++) {
+                    AscendC::printf("dbAddr %p, head %d\n", DB_ARR[i], HEAD_ARR[i]);
+                    st_dev(HEAD_ARR[i], (__gm__ uint32_t *)(DB_ARR[i]), 0);
+                }
+                *OUT_JETTY_IDX = 0; 
+            }
+
+            uint64_t midy = AscendC::GetSystemCycle();
+
+//             // Pollcq
+//             for (int peer = 0; peer < pe_size; peer++) {
+//                 // if (peer / 8 == my_pe / 8) {
+//                 if (peer == my_pe) {
+//                     // skip intra frame
+//                     continue;
+//                 }
+                
+//                 if (peer % AIV_URMA_CORE_NUM != vec_id) {
+//                     continue;
+//                 }
+//                 // AscendC::printf("poll for peer %d\n", peer);
+
+// #ifdef JETTY_ON_UB
+//                 for (int i = 0; i < PORT_NUM * JETTY_NUM; i++) {
+//                     // use localTokenId as head
+//                     auto tmp_sq = sqs_ori + peer * PORT_NUM * JETTY_NUM + i;
+//                     auto sq = sqs + peer * PORT_NUM * JETTY_NUM + i;
+//                     if (i / (PORT_NUM * JETTY_NUM != my_pe)) {
+//                         st_dev(sq->localTokenId, (__gm__ uint32_t *)(tmp_sq->headAddr), 0);
+//                     }
+//                 }
+// #endif
+//                 URMAPollCQ(peer, PORT_NUM, JETTY_NUM, sqs_ori, cqs);
+//             }
+            
+            uint64_t endx = AscendC::GetSystemCycle();
+
+            AscendC::printf("wqe cost %d us, wqe+db cost %d us, total %d us\n", midx - startx, midy - startx, endx - startx);
         }
-        // localWindowCopy中包含reset操作，需确保前面操作完成
+
+        // aclshmemx_barrier_all_vec();
         PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+
+        // // ################### SIMD Data Path
+        // int message_length = 64;    // trans_size * sizeof(int32_t)
+
+        // int64_t my_pe = aclshmem_my_pe();
+        // int64_t pe_size = aclshmem_n_pes();
+
+        // int64_t start = 0;
+        // int64_t end = 0;
+        // int64_t end2 = 0;
+
+        // // aclshmemx_barrier_all_vec();
+
+        // if (AscendC::GetBlockIdx() == 0) {
+        //     start = AscendC::GetSystemCycle();
+        //     for (int32_t pe = 0; pe < aclshmem_n_pes(); pe++) {
+        //         if (pe == aclshmem_my_pe()) {
+        //             continue;
+        //         }
+        //         aclshmemx_udma_put_nbi(
+        //             custom_ptr + my_pe * message_length, custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
+        //             message_length, pe);
+        //         aclshmemx_udma_quiet(pe);
+        //     }
+        //     end = AscendC::GetSystemCycle();
+        //     end2 = AscendC::GetSystemCycle();
+
+        //     *((__gm__ int64_t*)(expertIdsGMTensor_.GetPhyAddr())) = end - start;
+        //     *((__gm__ int64_t*)((expertIdsGMTensor_.GetPhyAddr()) + 8)) = end2 - start;
+
+        //     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
+        // }
+        // PipeBarrier<PIPE_ALL>();
     }
 }
 
