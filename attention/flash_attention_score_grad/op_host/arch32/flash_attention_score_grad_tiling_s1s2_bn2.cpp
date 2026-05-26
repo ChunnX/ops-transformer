@@ -54,7 +54,6 @@ constexpr uint32_t POST_COEX_NODE = 3;
 constexpr uint32_t BUFFER_NUM = 1;
 constexpr int64_t S_LEN_512 = 512;
 constexpr int64_t S_LEN_1024 = 1024;
-constexpr int64_t FP16_BLOCK_NUMS = 16;
 constexpr uint64_t B4_L2_CACHESIZE = 96 * 1024 * 1024;
 constexpr int64_t SAMEAB_MIN_S_THRESHOLD = 768;
 constexpr int64_t L1_MAX_SIZE = 512 * 1024;
@@ -867,7 +866,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetShapeAttrsInfo()
         (td_->opInfo.get_sparseMode() == NO_MASK) && (td_->opInfo.get_S1() > L1_CUSTOM_S_256) &&
         (td_->opInfo.get_S2() > L1_CUSTOM_S_256); // sparseMode=0
 
-    int64_t dAlign = AlignData(td_->opInfo.get_D(), FP16_BLOCK_NUMS);
+    int64_t dAlign = AlignData(td_->opInfo.get_D(), 16);
     if (tmpData_.isL1CustomEnable) {
         if (td_->opInfo.get_D() == L1_CUSTOM_D_72) {
             tmpData_.l1CustomSingleN = AlignData(td_->opInfo.get_S2(), BASE_LEN_128);
@@ -1994,9 +1993,14 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBmm31TilingData(uint32_
     mm31.SetShape(singleM, td_->opInfo.get_D(), singleN);
     mm31.SetOrgShape(m, n, ka, kb);
     mm31.SetBias(false);
+
     if (tmpData_.isL1CustomEnable) {
         mm31.SetFixSplit(128, -1, -1);
+    } else if (tmpData_.isMM345NZOut){
+        int64_t dAlign = AlignData(td_->opInfo.get_D(), 16);
+        mm31.SetFixSplit(-1, dAlign, -1);
     }
+
     mm31.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize);
     OP_CHECK_IF((mm31.GetTiling(td_->mm31TilingData) != 0),
                OP_LOGW(context_, "FlashAttentionScoreGradTilingS1s2Bn2 mm31 GetTiling Failed."),
@@ -2075,20 +2079,18 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBmm4TilingData(uint32_t
     mm4.SetOrgShape(m, n, ka, kb);
     mm4.SetBias(false);
 
-    int64_t dAlign = (td_->opInfo.get_D() + FP16_BLOCK_NUMS - 1) / FP16_BLOCK_NUMS * FP16_BLOCK_NUMS;
-    int64_t minBaseN = std::min(BASE_LEN_128, static_cast<uint32_t>(dAlign));
-    if (tmpData_.isMM345NZOut) {
-        minBaseN = std::min(BASE_LEN_256, static_cast<uint32_t>(dAlign));
-        mm4.SetFixSplit(-1, minBaseN, -1);
-    }
-
+    int64_t dAlign = AlignData(td_->opInfo.get_D(), 16);
     if (needSetFixSplit) {
+        int64_t minBaseN = std::min(BASE_LEN_128, static_cast<uint32_t>(dAlign));
         int64_t s2Align = (td_->opInfo.get_S2() + FRACTAL_NUM - 1) / FRACTAL_NUM * FRACTAL_NUM;
         int64_t minBaseM = std::min(BASE_LEN_256, static_cast<uint32_t>(s2Align));
         mm4.SetFixSplit(minBaseM, minBaseN, -1);
     }
+
     if (tmpData_.isL1CustomEnable) {
         mm4.SetFixSplit(128, -1, -1);
+    } else if (tmpData_.isMM345NZOut){
+        mm4.SetFixSplit(-1, dAlign, -1);
     }
 
     mm4.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize);
