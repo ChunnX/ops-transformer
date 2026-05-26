@@ -318,7 +318,7 @@ struct CommonConstInfo {
 
     /* 输出shape */
     FA_LAYOUT outputLayout;
-    uint32_t isInitOutput;
+    bool needInitOutput;
 };
 
 struct PAConstInfo {
