@@ -225,7 +225,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
         constexpr uint32_t SYS_WS_SIZE = 16 * 1024 * 1024U;
         mmQuantOutGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM) + SYS_WS_SIZE / sizeof(DataTypeOut));
+            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM + SYS_WS_SIZE));
     }
 }
 
@@ -289,7 +289,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
             printf("[WS] blk=%u gaM=%llu offM=%llu i=%u/%u row=%llu idx=%llu n=%llu yOff=%llu\n",
                 GetBlockIdx(), groupAccumM_, offsetM, i, curVecBaseM - 1, wsRow, wsIdx, n_, yOffset);
         }
-        // DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
+        DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
     }
 }
 
