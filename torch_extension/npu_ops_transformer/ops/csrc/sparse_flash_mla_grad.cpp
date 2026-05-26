@@ -84,8 +84,6 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
 
     auto headDim = q.size(q.dim() - 1);
 
-    std::cout << "11111 smlag cmp_residual_kv_const shape:" << cmp_residual_kv_const.sizes() << std::endl;
-
     double default_softmax = 1.0 / std::sqrt(headDim);
     const double softmax_scale_const = softmax_scale.value_or(default_softmax);
     const int64_t cmp_ratio_const = cmp_ratio.value_or(1);
@@ -118,6 +116,6 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_sparse_flash_mla_grad", &npu_sparse_flash_mla_grad, "sparse_flash_mla_grad");
+    m.def("npu_sparse_flash_mla_grad", &npu_sparse_flash_mla_grad, "npu_sparse_flash_mla_grad");
 }
 } // namespace op_api
