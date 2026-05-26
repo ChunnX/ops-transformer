@@ -285,7 +285,11 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
-        DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
+        if (GetBlockIdx() < 2 && (i == 0 || i == curVecBaseM - 1)) {
+            printf("[WS] blk=%u gaM=%llu offM=%llu i=%u/%u row=%llu idx=%llu n=%llu yOff=%llu\n",
+                GetBlockIdx(), groupAccumM_, offsetM, i, curVecBaseM - 1, wsRow, wsIdx, n_, yOffset);
+        }
+        // DataCopyPad(mmQuantOutGm_[wsIdx], yLocal[i * alignN_], paramsOut);
     }
 }
 
@@ -579,35 +583,35 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     auto x1ScaleUb = logitPingPongID_ == 0 ? x1ScaleUbPing_ : x1ScaleUbPong_;
     auto biasUb = logitPingPongID_ == 0 ? biasUbPing_ : biasUbPong_;
     // --- 以下全部注释，逐步恢复 ---
-    // CopyInLogit(singleMInVec, logitOffset, logitUb);
-    // CopyX2ScaleFromGm2Ub(x2ScaleUb, 0);
-    // if (params_->x1ScaleGmAddr != nullptr) {
-    //     CopyX1ScaleFromGm2Ub(x1ScaleUb, singleMInVec * sizeof(DataTypeX1Scale), mOffset);
-    // }
-    // if (params_->biasGmAddr != nullptr) {
-    //     CopyBiasFromGm2Ub(biasUb);
-    // }
-    // AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
-    // AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
-    // VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
-    // logitPingPongID_ = (logitPingPongID_ + 1) & 1;
-    // uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UBSD);
-    // for (uint32_t i = 0; i < loopNumY; i++) {
-    //     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
-    //     repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UBSD;
-    //     __ubuf__ DataTypeOut *outUbAddr = yPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
-    //                                                            (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
-    //     VFDoLogitMuls(i * MAX_OUTPUT_M_UBSD * alignN_, i * MAX_OUTPUT_M_UBSD, repeatTimesLine_, repeatTimesRe, outUbAddr,
-    //                   logitUb);
-    //     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
-    //     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
-    //     auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
-    //     LinearWriteToWorkspace(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UBSD, yOffset, yLocal);
-    //     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
-    //     yPingPongID_ = (yPingPongID_ + 1) & 1;
-    // }
-    // AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
-    // AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
+    CopyInLogit(singleMInVec, logitOffset, logitUb);
+    CopyX2ScaleFromGm2Ub(x2ScaleUb, 0);
+    if (params_->x1ScaleGmAddr != nullptr) {
+        CopyX1ScaleFromGm2Ub(x1ScaleUb, singleMInVec * sizeof(DataTypeX1Scale), mOffset);
+    }
+    if (params_->biasGmAddr != nullptr) {
+        CopyBiasFromGm2Ub(biasUb);
+    }
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
+    VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
+    logitPingPongID_ = (logitPingPongID_ + 1) & 1;
+    uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UBSD);
+    for (uint32_t i = 0; i < loopNumY; i++) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
+        repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UBSD;
+        __ubuf__ DataTypeOut *outUbAddr = yPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
+                                                               (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
+        VFDoLogitMuls(i * MAX_OUTPUT_M_UBSD * alignN_, i * MAX_OUTPUT_M_UBSD, repeatTimesLine_, repeatTimesRe, outUbAddr,
+                      logitUb);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
+        auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
+        LinearWriteToWorkspace(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UBSD, yOffset, yLocal);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
+        yPingPongID_ = (yPingPongID_ + 1) & 1;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitPingPongID_);
 }
 } // namespace Block
 } // namespace Gemm
