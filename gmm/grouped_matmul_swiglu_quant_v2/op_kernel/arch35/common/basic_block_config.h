@@ -66,6 +66,7 @@ struct BasicBlockOffsetParam {
     uint64_t nAlign;
 
     GM_ADDR yGmAddr;
+    GM_ADDR yScaleGmAddr;
 };
 
 struct VecAntiQuantConfig {
