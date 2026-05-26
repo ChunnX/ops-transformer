@@ -41,11 +41,10 @@ using namespace AscendC;
 using namespace ge;
 
 namespace {
-constexpr int64_t MAX_TP_WORLD_SIZE = 2;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_COMM_ALG_INDEX = 13;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
 constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
+constexpr uint32_t ATTR_GROUP_TP_INDEX = 4;
 constexpr uint32_t ATTR_TP_WORLD_SIZE_INDEX = 5;
 constexpr uint32_t ATTR_TP_RANK_ID_INDEX = 6;
 constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 7;
@@ -54,6 +53,7 @@ constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 10;
 constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 11;
 constexpr uint32_t ATTR_EXPERT_TOKEN_NUMS_TYPE_INDEX = 12;
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 13;
 constexpr uint32_t ATTR_ZERO_EXPERT_NUM_INDEX = 14;
 constexpr uint32_t ATTR_COPY_EXPERT_NUM_INDEX = 15;
 constexpr uint32_t ATTR_CONST_EXPERT_NUM_INDEX = 16;
@@ -257,8 +257,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(tpRankIdPtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "tpRankId is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(*tpWorldSizePtr >= 2,
+        OP_LOGE(K_INNER_DEBUG, "tpWorldSize >= 2 is not supported, got tpWorldSize=%ld.", *tpWorldSizePtr),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expertSharedType is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr,
@@ -293,9 +294,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
          zeroExpertNum, copyExpertNum, constExpertNum, moeExpertNum), return ge::GRAPH_FAILED);
 
     info.epWorldSize = *epWorldSizePtr;
-    info.tpWorldSize = static_cast<uint32_t>(0);
+    info.tpWorldSize = static_cast<uint32_t>(*tpWorldSizePtr);
     info.epRankId = *epRankIdPtr;
-    info.tpRankId = static_cast<uint32_t>(0);
+    info.tpRankId = static_cast<uint32_t>(*tpRankIdPtr);
     info.expertSharedType = static_cast<uint32_t>(0);
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
@@ -464,9 +465,6 @@ uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const bool isScales
     }
     if (isLayered) {
         templateDispatch = TILINGKEY_ENABLE_HIERARCHY;
-    }
-    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tp = true;
     }
     tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode,
         templateDispatch, commMode, TILINGKEY_TPL_A3);

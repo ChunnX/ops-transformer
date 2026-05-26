@@ -58,8 +58,8 @@ constexpr uint32_t MX_QUANT = 4;
 
 
 #define TemplateMoeDistributeDispatchA5TypeClass \
-    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMoeDistributeDispatchA5TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist
+#define TemplateMoeDistributeDispatchA5TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 using namespace AscendC;
 template <TemplateMoeDistributeDispatchA5TypeClass>

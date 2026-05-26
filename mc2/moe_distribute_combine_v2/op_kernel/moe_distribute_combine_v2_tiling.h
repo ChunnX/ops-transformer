@@ -48,7 +48,6 @@ struct MoeDistributeCombineV2Info {
     bool reserved2;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     float armAvgFactor;
     float epsilon;
     uint32_t bufferNum;

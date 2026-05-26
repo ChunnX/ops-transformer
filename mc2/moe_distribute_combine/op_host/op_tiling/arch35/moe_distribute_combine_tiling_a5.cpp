@@ -32,7 +32,6 @@ using namespace ge;
 
 namespace {
 constexpr uint32_t INT8_COMM_QUANT = 2U;
-const int64_t MAX_TP_WORLD_SIZE = 2;
 }
 
 namespace optiling {
@@ -44,11 +43,11 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
     std::string groupEp = "";
     std::string groupTp = "";
+    uint32_t tpWorldSize = 1;
     bool isShared = true;
     uint32_t localMoeExpertNum = 1;
     commQuantMode = 0U;
 
-    // 获取入参属性
     OP_TILING_CHECK(
         GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) ==
         ge::GRAPH_FAILED, OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
@@ -80,10 +79,9 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
-    uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -104,13 +102,9 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
     OP_TILING_CHECK(MoeDistributeCombineA5TilingCheckAttr(context, commQuantMode) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "CombineSA5Tiling attr check failed."), return ge::GRAPH_FAILED);
 
-    uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
     bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;
     uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
-    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tp = true;
-    }
     if (commQuantMode == INT8_COMM_QUANT) {
         quantMode = TILINGKEY_INT8_QUANT;
     }

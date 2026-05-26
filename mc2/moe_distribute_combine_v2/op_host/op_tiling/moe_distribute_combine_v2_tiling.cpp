@@ -80,7 +80,6 @@ namespace {
     constexpr int64_t MIN_EP_WORLD_SIZE = 2;
     constexpr int64_t EP_RESTRICT_8 = 8;
     constexpr int64_t MAX_TP_WORLD_SIZE_LAYERED = 1;
-    constexpr int64_t MAX_TP_WORLD_SIZE = 2;
     constexpr int64_t BS_UPPER_BOUND = 512;
     constexpr int64_t BS_UPPER_BOUND_LAYERED = 256;
     constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
@@ -121,9 +120,7 @@ namespace optiling {
 static void PrintTilingDataInfo(const char *nodeName, MoeDistributeCombineV2TilingData& tilingData)
 {
     OP_LOGD(nodeName, "epWorldSize is %u.", tilingData.moeDistributeCombineV2Info.epWorldSize);
-    OP_LOGD(nodeName, "tpWorldSize is %u.", tilingData.moeDistributeCombineV2Info.tpWorldSize);
     OP_LOGD(nodeName, "epRankId is %u.", tilingData.moeDistributeCombineV2Info.epRankId);
-    OP_LOGD(nodeName, "tpRankId is %u.", tilingData.moeDistributeCombineV2Info.tpRankId);
     OP_LOGD(nodeName, "expertShardType is %u.", tilingData.moeDistributeCombineV2Info.expertShardType);
     OP_LOGD(nodeName, "sharedExpertNum is %u.", tilingData.moeDistributeCombineV2Info.sharedExpertNum);
     OP_LOGD(nodeName, "sharedExpertRankNum is %u.", tilingData.moeDistributeCombineV2Info.sharedExpertRankNum);
@@ -136,7 +133,6 @@ static void PrintTilingDataInfo(const char *nodeName, MoeDistributeCombineV2Tili
     OP_LOGD(nodeName, "aivNum is %u.", tilingData.moeDistributeCombineV2Info.aivNum);
     OP_LOGD(nodeName, "totalUbSize is %lu.", tilingData.moeDistributeCombineV2Info.totalUbSize);
     OP_LOGD(nodeName, "totalWinSizeEP is %lu.", tilingData.moeDistributeCombineV2Info.totalWinSizeEp);
-    OP_LOGD(nodeName, "totalWinSizeTP is %lu.", tilingData.moeDistributeCombineV2Info.totalWinSizeTp);
     OP_LOGD(nodeName, "hasElastic is %d.", tilingData.moeDistributeCombineV2Info.hasElasticInfo);
     OP_LOGD(nodeName, "isPerformance is %d.", tilingData.moeDistributeCombineV2Info.isPerformance);
 }
@@ -221,7 +217,7 @@ static ge::graphStatus GetSharedAttrAndSetTilingData(const gert::TilingContext *
 
 static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext *context,
     MoeDistributeCombineV2TilingData &tilingData, const char *nodeName, const CombineV2Config& config, const bool isLayered,
-    const uint32_t commQuantMode, std::string &groupTp)
+    const uint32_t commQuantMode)
 {
     auto attrs = context->GetAttrs();
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
@@ -232,7 +228,6 @@ static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext 
     OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE(nodeName, "tpWorldSize is null."), return ge::GRAPH_FAILED);
     int64_t epWorldSize = *epWorldSizePtr;
     int64_t maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE;
-    int64_t maxTpworldsize = isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_TP_WORLD_SIZE;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
         OP_LOGE(nodeName, "epWorldSize is invalid, only support [%ld, %ld], but got epWorldSize=%ld.",
         MIN_EP_WORLD_SIZE, maxEpworldsize, epWorldSize), return ge::GRAPH_FAILED);
@@ -242,38 +237,19 @@ static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext 
     OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
         OP_LOGE(nodeName, "epRankId is invalid, only support [0, %ld), but got epRankId=%ld.",
         epWorldSize, *epRankIdPtr), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > maxTpworldsize),
-        OP_LOGE(nodeName, "tpWorldSize is invalid, only support [0, %ld], but got tpWorldSize=%ld.",
-        maxTpworldsize, *tpWorldSizePtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*tpWorldSizePtr >= 2),
+        OP_LOGE(nodeName, "tpWorldSize >= 2 is not supported, got tpWorldSize=%ld.", *tpWorldSizePtr),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankId is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE(nodeName, "tpRankId is null."), return ge::GRAPH_FAILED);
-    
-    if (*tpWorldSizePtr > 1) {
-        auto groupTpPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrGroupTpIndex));
-        OP_TILING_CHECK((*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr),
-            OP_LOGE(nodeName, "tpRankId is invalid, only support [0, %ld), but got tpRankId=%ld.",
-            *tpWorldSizePtr, *tpRankIdPtr), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-            OP_LOGE(nodeName, "groupTpPtr is null."), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((commQuantMode != 0), OP_LOGE(nodeName,
-            "commQuantMode only supports 0 when tpWorldSize > 1, but got commQuantMode=%ld, tpWorldSize=%ld.",
-            commQuantMode, *tpWorldSizePtr), return ge::GRAPH_FAILED);
-        groupTp = std::string(groupTpPtr);
-    } else {
-        OP_TILING_CHECK(*tpRankIdPtr != 0,
-            OP_LOGE(nodeName, "tpRankId is invalid, NoTp mode only support 0, but got tpRankId=%ld.", *tpRankIdPtr),
-            return ge::GRAPH_FAILED);
-    }
+
     tilingData.moeDistributeCombineV2Info.epWorldSize = static_cast<uint32_t>(epWorldSize);
-    tilingData.moeDistributeCombineV2Info.tpWorldSize = static_cast<uint32_t>(*tpWorldSizePtr);
     tilingData.moeDistributeCombineV2Info.epRankId = static_cast<uint32_t>(*epRankIdPtr);
-    tilingData.moeDistributeCombineV2Info.tpRankId = static_cast<uint32_t>(*tpRankIdPtr);
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context,
-    MoeDistributeCombineV2TilingData &tilingData, const char *nodeName, std::string &groupEp, std::string &groupTp,
+    MoeDistributeCombineV2TilingData &tilingData, const char *nodeName, std::string &groupEp,
     uint32_t &commQuantMode, const CombineV2Config& config, bool &isLayered)
 {
     auto attrs = context->GetAttrs();
@@ -316,8 +292,8 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
         OP_LOGE(nodeName, "Getting experts attr failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(GetSharedAttrAndSetTilingData(context, tilingData, nodeName, config, isLayered) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "Getting shared expert attr failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(GetTpAndEpAttrAndSetTilingData(context, tilingData, nodeName, config, isLayered, commQuantMode,
-        groupTp) == ge::GRAPH_FAILED, OP_LOGE(nodeName, "Getting tp and ep attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(GetTpAndEpAttrAndSetTilingData(context, tilingData, nodeName, config, isLayered, commQuantMode) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "Getting tp and ep attr failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -486,15 +462,6 @@ static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, cons
 
     OP_TILING_CHECK(!CheckOptionalScalesTensorDim(context, nodeName, config, isLayered),
         OP_LOGE(nodeName, "Param shape of optional scales input tensor is invalid"), return false);
-
-    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
-        const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(config.tpSendCountsIndex);
-        OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE(nodeName, "tpSendCounts is null."), return false);
-        OP_TILING_CHECK(tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE(nodeName, "tpSendCounts must be 1-dimension, but got %lu dim",
-            tpSendCountsStorageShape->GetStorageShape().GetDimNum()), return false);
-        OP_LOGD(nodeName, "tpSendCounts dim0 = %ld", tpSendCountsStorageShape->GetStorageShape().GetDim(0));
-    }
 
     if (isActiveMask) {
         const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(config.xActiveMaskIndex);
@@ -666,14 +633,6 @@ static bool CheckTensorDataType(const gert::TilingContext *context, const char *
     OP_TILING_CHECK((epSendCountsDesc->GetDataType() != ge::DT_INT32),
         OP_LOGE(nodeName, "epSendCounts dataType is invalid, dataType should be int32, but is %s",
         Ops::Base::ToString(epSendCountsDesc->GetDataType()).c_str()), return false);
-    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
-        auto tpSendCountsDesc = context->GetOptionalInputDesc(config.tpSendCountsIndex);
-        OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
-        OP_TILING_CHECK((tpSendCountsDesc->GetDataType() != ge::DT_INT32),
-            OP_LOGE(nodeName, "tpSendCounts dataType is invalid, dataType should be int32, but is %s",
-            Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str()), return false);
-    }
-
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
         OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName, "xActiveMaskDesc is null."), return false);
@@ -775,13 +734,6 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
                     OP_LOGE(nodeName, "Zero_compute_expert Format is invalid"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckInputTensorFormat(context, nodeName, config),
                     OP_LOGE(nodeName, "Input Tensor Format is invalid"), return ge::GRAPH_FAILED);
-    // 除特殊专家外的可选输入Format check
-    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
-        auto tpSendCountsDesc = context->GetOptionalInputDesc(config.tpSendCountsIndex);
-        OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
-            ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "tpSendCountsFormat is invalid"), return false);
-    }
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
         OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE(nodeName, "xActiveMaskDesc is null."), return false);
@@ -1063,12 +1015,6 @@ static bool CheckSendCountTensorShape(const gert::TilingContext *context, MoeDis
     OP_TILING_CHECK(epSendCountDim0 < localEpSendCountSize * tpWorldSize, OP_LOGE(nodeName, "epSendCount's dim0 not "
         "greater than or equal to localEpSendCountSize * tpWorldSize, epSendCount's dim0 is %ld, localEpSendCountSize "
         "is %ld, tpWorldSize is %ld.", epSendCountDim0, localEpSendCountSize, tpWorldSize), return false);
-    if (tpWorldSize == TP_WORLD_SIZE_TWO) {
-        const gert::StorageShape *tpSendCountStorageShape = context->GetOptionalInputShape(config.tpSendCountsIndex);
-        const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize, OP_LOGE(nodeName, "tpSendCount's dim0 not equal to tpWorldSize, "
-            "tpSendCount's dim0 is %ld, tpWorldSize is %ld.", tpSendCountDim0, tpWorldSize), return false);
-    }
     return true;
 }
 
@@ -1227,7 +1173,6 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     const char *nodeName, uint32_t &localMoeExpertNum, bool isActiveMask, const CombineV2Config& config, bool isLayered)
 {
     uint32_t epWorldSize = tilingData.moeDistributeCombineV2Info.epWorldSize;
-    uint32_t tpWorldSize = tilingData.moeDistributeCombineV2Info.tpWorldSize;
     uint32_t moeExpertNum = tilingData.moeDistributeCombineV2Info.moeExpertNum;
     uint32_t sharedExpertRankNum = tilingData.moeDistributeCombineV2Info.sharedExpertRankNum;
 
@@ -1244,11 +1189,6 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     OP_TILING_CHECK((localMoeExpertNum <= 0) || (localMoeExpertNum * epWorldSize > LOCAL_EXPERT_MAX_SIZE),OP_LOGE(nodeName, "localMoeExpertNum is invalid, "
         "localMoeExpertNum * epWorldSize must be less than or equal to 2048, and localMoeExpertNum must be greater than 0, "
         "but got localMoeExpertNum * epWorldSize = %u, localMoeExpertNum = %u", localMoeExpertNum * epWorldSize, localMoeExpertNum), return false);
-    // 校验tp=2时单个moe卡上专家数是否等于1
-    OP_TILING_CHECK((localMoeExpertNum > 1) && (tpWorldSize > 1), OP_LOGE(nodeName, "Cannot support multi-moeExpert %u "
-        "in a rank when tpWorldSize = %u > 1", localMoeExpertNum, tpWorldSize), return false);
-    OP_TILING_CHECK((tpWorldSize > 1) && (tilingData.moeDistributeCombineV2Info.hasElasticInfo), OP_LOGE(nodeName, "Cannot support elasticInfo "
-        "when tpWorldSize = %u > 1", tpWorldSize), return false);
     tilingData.moeDistributeCombineV2Info.moeExpertPerRankNum = localMoeExpertNum;
 
     // 校验输入expertIds的维度0并设bs
@@ -1317,19 +1257,15 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
 
 static uint64_t CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode, bool isLayered)
 {
-    bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;
     uint32_t hierarchy = TILINGKEY_TPL_MTE;
-    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tp = true;
-    }
     if (commQuantMode >= INT8_COMM_QUANT) {
         quantMode = commQuantMode;
     }
     if (isLayered) {
         hierarchy = TILINGKEY_TPL_HIERARCHY;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A3);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(false, quantMode, hierarchy, TILINGKEY_TPL_A3);
     return tilingKey;
 }
 
@@ -1339,9 +1275,7 @@ static ge::graphStatus SetHCommCfg(const gert::TilingContext *context, MoeDistri
     const char* nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "MoeDistributeCombineV2 groupEp = %s", groupEp.c_str());
     uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
-    uint32_t opType2 = OP_TYPE_REDUCE_SCATTER;
     std::string algConfigAllToAllStr = isLayered ? "AlltoAll=level1:hierarchy" : "AlltoAll=level0:fullmesh;level1:pairwise";
-    std::string algConfigReduceScatterStr = "ReduceScatter=level0:ring";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType1, algConfigAllToAllStr);
     mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);   // 通过不拉起AICPU，提高算子退出性能
@@ -1351,14 +1285,6 @@ static ge::graphStatus SetHCommCfg(const gert::TilingContext *context, MoeDistri
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling1) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling1 GetTiling mc2CcTiling1 failed"), return ge::GRAPH_FAILED);
 
-    if (tpWorldSize > 1) {
-        OP_LOGD(nodeName, "MoeDistributeCombineV2 groupTp = %s", groupTp.c_str());
-        mc2CcTilingConfig.SetGroupName(groupTp);
-        mc2CcTilingConfig.SetOpType(opType2);
-        mc2CcTilingConfig.SetAlgConfig(algConfigReduceScatterStr);
-        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling2) != 0,
-            OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling2 GetTiling  mc2CcTiling2 failed"), return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1474,9 +1400,6 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, Mo
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
-    if (winSizeData.tpWorldSize == TP_WORLD_SIZE_TWO) {
-        tilingData.moeDistributeCombineV2Info.totalWinSizeTp = winSizeData.totalWinSizeTp;
-    }
 
     return ge::GRAPH_SUCCESS;
 }

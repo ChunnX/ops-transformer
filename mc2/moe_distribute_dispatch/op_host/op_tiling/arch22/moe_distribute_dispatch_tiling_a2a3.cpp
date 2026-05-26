@@ -35,17 +35,18 @@ constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
 constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
+constexpr uint32_t ATTR_GROUP_TP_INDEX = 4;
+constexpr uint32_t ATTR_TP_WORLD_SIZE_INDEX = 5;
+constexpr uint32_t ATTR_TP_RANK_ID_INDEX = 6;
+constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 7;
+constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 8;
+constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 10;
 constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 11;
 constexpr uint32_t ATTR_EXPERT_TOKEN_NUMS_TYPE_INDEX = 12;
 const char *K_INNER_DEBUG = "MoeDistributeDispatch Tiling Debug";
 
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
-constexpr uint32_t ATTR_TP_WORLD_SIZE_INDEX = 5;
-constexpr uint32_t ATTR_TP_RANK_ID_INDEX = 6;
-constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 7;
-constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 8;
-constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 
 constexpr uint32_t UNQUANT_MODE = 0;
 constexpr uint32_t STATIC_QUANT_MODE = 1;
@@ -61,16 +62,18 @@ static void MoeDistributeDispatchA2SetTiling(gert::TilingContext *context,
 {
     auto attrs = context->GetAttrs();
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    auto tpWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
+    auto tpRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_RANK_ID_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_TOKEN_NUMS_TYPE_INDEX);
-    
+
     info.epWorldSize = *epWorldSizePtr;
-    info.tpWorldSize = static_cast<uint32_t>(0);
+    info.tpWorldSize = static_cast<uint32_t>(*tpWorldSizePtr);
     info.epRankId = *epRankIdPtr;
-    info.tpRankId = static_cast<uint32_t>(0);
+    info.tpRankId = static_cast<uint32_t>(*tpRankIdPtr);
     info.expertSharedType = static_cast<uint32_t>(0);
     info.sharedExpertRankNum = static_cast<uint32_t>(0);
     info.moeExpertNum = *moeExpertNumPtr;
@@ -106,8 +109,6 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(gert::Tiling
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
-    auto tpWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_WORLD_SIZE_INDEX);
-    auto tpRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_RANK_ID_INDEX);
     auto expertSharedTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
@@ -125,16 +126,19 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(gert::Tiling
         OP_LOGE(K_INNER_DEBUG, "epWorldSize is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
         OP_LOGE(K_INNER_DEBUG, "epRankId is invalid."), return GRAPH_FAILED);
+    auto tpWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_WORLD_SIZE_INDEX);
+    auto tpRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_TP_RANK_ID_INDEX);
+    OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE(K_INNER_DEBUG, "tpRankId is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(*tpWorldSizePtr >= 2,
+        OP_LOGE(K_INNER_DEBUG, "tpWorldSize >= 2 is not supported, got tpWorldSize=%ld.",
+        *tpWorldSizePtr), return GRAPH_FAILED);
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr % *epWorldSizePtr != 0 ||
         *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2,
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(!isLayered && *moeExpertNumPtr / *epWorldSizePtr > UNLAYERED_EXP_NUM_PER_RANK_A2,
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is %d, in case of unlayered, it must no more than %d.",
             *moeExpertNumPtr / *epWorldSizePtr, UNLAYERED_EXP_NUM_PER_RANK_A2), return GRAPH_FAILED);
-    OP_TILING_CHECK(tpWorldSizePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "tpWorldSize is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(tpRankIdPtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "tpRankId is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expertSharedType is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr,
@@ -232,7 +236,6 @@ static bool MoeDistributeDispatchA2IsLayered()
 
 static uint64_t MoeDistributeDispatchA2CalcTilingKey(gert::TilingContext *context, const bool isLayered)
 {
-    bool tp = false;
     uint32_t tilingKeyQuantMode = TILINGKEY_NO_QUANT;
     bool scaleMode = false;   // A2 & A3
     uint32_t fullMesh = TILINGKEY_NO_FULLMESH;
@@ -243,7 +246,7 @@ static uint64_t MoeDistributeDispatchA2CalcTilingKey(gert::TilingContext *contex
     }
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
     scaleMode = (scalesStorageShape != nullptr);
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode,
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode,
                                             fullMesh, layeredMode, TILINGKEY_TPL_A2);
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
     return tilingKey;
