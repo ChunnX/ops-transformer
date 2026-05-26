@@ -13,10 +13,9 @@
 - 计算公式：
 对于每个Token `t`：
 
-```
-out[t] = Σ (in[token_table[t, e]] * score_table[t, e])
-         e
-```
+$$
+out[t] = \sum_{e} \big(in[token\_table[t, e]] \cdot score\_table[t, e]\big)
+$$
 
 其中，仅当 `token_table[t, e] >= 0` 时参与计算。
 
