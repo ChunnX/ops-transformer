@@ -191,7 +191,8 @@ __global__ __aicore__ void BsaInferIntfRegular(
     // S is rowMajor on UB(dst)
     using LayoutS = layout::RowMajor;
     // P is actually zN on UB(src), since there is no nd2nz in MTE1
-    using LayoutPDummy = layout::zN;
+    //tODO后续增加一个selector，支持nz和zn
+    using LayoutPDummy = layout::nZ;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
     // OTmp is rowMajor on UB(dst)
@@ -213,7 +214,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
         DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
    // online softmax
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
-    using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
+    using PType = Gemm::GemmType<ElementP, layout::zN>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
     // 处理单个tile内P和Value的matmul
