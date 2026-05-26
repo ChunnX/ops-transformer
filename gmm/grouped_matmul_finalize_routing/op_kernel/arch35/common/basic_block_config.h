@@ -22,7 +22,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "gmm_finalize_routing_weight_quant_tool.h"
+#include "grouped_matmul_finalize_routing_tool.h"
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 
