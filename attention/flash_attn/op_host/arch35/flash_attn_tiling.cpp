@@ -379,6 +379,14 @@ void FlashAttnTilingImpl::SetFATilingData()
         maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+    if (cuSeqLenQFlag_ || 
+        cuSeqLenKVFlag_ || 
+        ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)){
+            tilingData_.baseTiling.flashAttnBaseParams.isInitOutput = 1;
+        }
+    else{
+        tilingData_.baseTiling.flashAttnBaseParams.isInitOutput = 0;
+    }
 }
 
 ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData &tilingData)
