@@ -75,10 +75,15 @@ private:
     uint64_t N1_ = 0UL;
     uint64_t bufferLen_ = 0UL;
 
+#if defined PACK_FACTOR && PACK_FACTOR == 2
+    GlobalTensor<int8_t> sendGlobalBuffer_;
+    GlobalTensor<int8_t> recvGlobalBuffer_;
+    GlobalTensor<int8_t> permuteOutBuffer_;
+#else
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
     GlobalTensor<hcclDataType> permuteOutBuffer_;
-
+#endif
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
@@ -124,9 +129,15 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     H1_ = taskTilingInfo_->H1;
     N1_ = taskTilingInfo_->N1;
     bufferLen_ = MAX_BUFFER_SIZE;
-    sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
-    recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
-    permuteOutBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)permuteBuffer);
+    if constexpr (AscendC::IsSameType<hcclDataType, fp4x2_e2m1_t>::value) {
+        sendGlobalBuffer_.SetGlobalBuffer((__gm__ int8_t *)sendBuffer);
+        recvGlobalBuffer_.SetGlobalBuffer((__gm__ int8_t *)recvBuffer);
+        permuteOutBuffer_.SetGlobalBuffer((__gm__ int8_t *)permuteBuffer);
+    } else {
+        sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
+        recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
+        permuteOutBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)permuteBuffer);
+    }
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
     }
@@ -255,8 +266,7 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
                 if (tile == tileNum - 1UL) {
                     realLength = totalCnt - tile * bufferLen_;
                 }
-                uint64_t realLenBytes = realLength * sizeof(fp8_e8m0_t);
-                DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLenBytes), 0U, 0U};
+                DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
                 DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
                 DataCopyPad(ubTensor, recvScaleGlobalBuffer_[srcOffset + tile * bufferLen_], dataCopyParams,
                             dataCopyPadParams);
@@ -301,7 +311,11 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     uint64_t baseOffset = permuteBaseOffset_;
     uint64_t recvSumCntBefore[MAX_EXPERT_SIZE] = {0UL};
     uint64_t recvSumCntAfter[MAX_EXPERT_SIZE] = {0UL};
+#if defined PACK_FACTOR && PACK_FACTOR == 2
+    LocalTensor<int8_t> ubTensor = dataTBuff.Get<int8_t>();
+#else
     LocalTensor<hcclDataType> ubTensor = dataTBuff.Get<hcclDataType>();
+#endif
 
     for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
         for (uint32_t localExpertIdx = 0U; localExpertIdx < expertNum; localExpertIdx++) {
@@ -350,8 +364,7 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
                 if (tile == tileNum - 1UL) {
                     realLength = totalCnt - tile * bufferLen_;
                 }
-                uint64_t realLenBytes = realLength * sizeof(hcclDataType) * PACK_FACTOR;
-                DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLenBytes), 0U, 0U};
+                DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
                 DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
                 DataCopyPad(ubTensor, recvGlobalBuffer_[srcOffset + tile * bufferLen_], dataCopyParams,
                             dataCopyPadParams);
