@@ -22,7 +22,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../weight_quant_basic_block_tool.h"
+#include "weight_quant_tool.h"
 
 using AscendC::BLOCK_CUBE;
 using AscendC::fp8_e8m0_t;
