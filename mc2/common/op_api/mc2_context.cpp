@@ -528,9 +528,9 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     void *ctx = nullptr;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
-    // if (Protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
-    //     engine = CommEngine::COMM_ENGINE_AICPU_TS;
-    // }
+    if (Protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
+        engine = CommEngine::COMM_ENGINE_AICPU_TS;
+    }
     hcclBuffSize = 0;
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
