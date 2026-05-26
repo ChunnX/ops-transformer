@@ -407,7 +407,7 @@ public:
 
         if (isDeter_) {
             SyncAll<false>();
-            // if ASCEND_IS_AIV { FinalFlush(params); }
+            if ASCEND_IS_AIV { FinalFlush(params); }
             deterSync_.windowStartM = deterSync_.curGroupM;
             SyncAll<false>();
         }
