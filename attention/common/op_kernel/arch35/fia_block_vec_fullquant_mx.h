@@ -396,7 +396,7 @@ public:
             uint16_t copyCount = actVecMSizeAlign16 / 16;
             uint64_t vecOffset = constInfo.subBlockIdx * actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
             for (uint16_t i = 0; i < copyCount; i++) {
-                DataCopy(mm2AScaleL1Tensor[i * 16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE + vecOffset], pScaleSubLoop0Tensor, {copyCount, 4, 0, 0});
+                DataCopy(mm2AScaleL1Tensor[i * 16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE + vecOffset], pScaleSubLoop0Tensor, {1, 4, 0, 0});
             }
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
