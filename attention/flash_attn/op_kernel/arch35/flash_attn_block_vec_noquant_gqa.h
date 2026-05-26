@@ -1133,11 +1133,6 @@ public:
             }
         }
 
-        // vselrIndexesBuf: 保留 TBuf<> 类型，用 LocalTensor 赋值
-        for (uint32_t i = 0; i < 4; i++) {
-            vselrIndexesBuf[i] = allocator.Alloc<TPosition::VECIN, uint8_t, 256>();
-        }
-
         if (constInfo.isSoftmaxLseEnable) {
             lseBuf = allocator.Alloc<TPosition::VECIN, float, (mBaseSize >> 1U) * 8U>();
         }
