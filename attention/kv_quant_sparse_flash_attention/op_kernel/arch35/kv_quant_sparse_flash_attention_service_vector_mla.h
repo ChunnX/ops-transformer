@@ -21,27 +21,36 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_qsfa.h"
-#include "vf/vf_flashupdate_new_qsfa.h"
+#if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
+#include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#else
+#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#endif
+
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
+#include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#else
+#include "../../common/arch35/vf/vf_flashupdate_new.h"
+#endif
 
 #if __has_include("../../common/op_kernel/buffers_policy.h")
 #include "../../common/op_kernel/buffers_policy.h"
 #else
-#include "../common/buffers_policy.h"
+#include "../../common/buffers_policy.h"
 #endif
 #if __has_include("../../common/op_kernel/buffer_manager.h")
 #include "../../common/op_kernel/buffer_manager.h"
 #else
-#include "../common/buffer_manager.h"
+#include "../../common/buffer_manager.h"
 #endif
 #if __has_include("../../common/op_kernel/buffer.h")
 #include "../../common/op_kernel/buffer.h"
 #else
-#include "../common/buffer.h"
+#include "../../common/buffer.h"
 #endif
 
 using namespace AscendC;
-using namespace QSFaVectorApi;
+using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace matmul;
@@ -642,11 +651,12 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2MRealSize);
+            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
         } else {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2MRealSize);
+            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
         }
     }
 
@@ -654,7 +664,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize);
+            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
+                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
         }
 
         this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
