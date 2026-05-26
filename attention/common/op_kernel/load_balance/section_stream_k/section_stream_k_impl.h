@@ -87,7 +87,7 @@ public:
         }
     };
 public:
-    inline SectionStreamKImplResult Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo);
+    inline std::vector<SectionStreamKImplResult> Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo);
     inline uint32_t SetParam(const SectionStreamKParam &param);
 private:
     enum BlockType : uint32_t {
@@ -97,7 +97,8 @@ private:
     };
 
     struct GridInfo {
-        uint32_t bn2Idx {};                 // BN2方向的末尾
+        uint32_t sectionNum { 0U };                             // section
+        std::vector<uint32_t> sectionBn2Idx {};                 // BN2方向，section的切分点
         std::vector<uint32_t> mBaseNum {};                      // S1G方向，切了多少个基本块
         std::vector<uint32_t> s2BaseNum {};                     // S2方向，切了多少个基本块
         std::vector<uint32_t> mTailSize {};                     // S1G方向，尾块size
@@ -115,8 +116,8 @@ private:
         std::vector<int64_t> bN2CostOfEachBatch {};             // 整个batch的开销
         std::vector<uint32_t> bN2BlockOfEachBatch {};           // 整个batch的开销
         std::vector<int64_t> bN2LastBlockCostOfEachBatch {};    // batch最后一块的开销
-        uint32_t blockNum = 0;
-        uint32_t cost = 0;
+        std::vector<uint32_t> sectionBlockNum {};
+        std::vector<uint32_t> sectionCost {};
 
         explicit CostInfo(uint32_t batchSize)
             : bN2CostOfEachBatch(batchSize),
@@ -167,6 +168,7 @@ private:
     };
 
     struct AssignContext {
+        uint32_t curSectionIdx { 0U };
         uint32_t curBIdx { 0U };
         uint32_t curBN2Idx { 0U };
         uint32_t curS1GIdx { 0U };
@@ -189,6 +191,7 @@ private:
         uint32_t coreNum { 0U };
         int64_t coreLimit { 0U };
         int64_t costLimit { INT64_MIN };
+        uint32_t sectionIdx { 0U };
     };
 
     using CostTable = Table<int64_t, BLOCK_MAX_TYPE, BLOCK_MAX_TYPE>;
@@ -196,7 +199,7 @@ private:
     inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
     inline CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
         uint32_t s2TailSize);
-    static inline Range<uint32_t> CalcCoreRange(const ComputeContext &computeContext);
+    static inline Range<uint32_t> CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext);
     inline Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const IBaseInfo &baseInfo, const BatchCache &batchCache);
     inline void CalcGridInfo(ComputeContext &computeContext);
     inline void CalcCostInfo(ComputeContext &computeContext);
@@ -204,7 +207,7 @@ private:
     inline void CalcBatchCache(uint32_t bIdx, const ComputeContext &computeContext, BatchCache &batchCache);
     inline void CalcS1GCache(uint32_t s1GIdx, const ComputeContext &computeContext, const BatchCache &batchCache,
         S1GCache &s1GCache);
-    inline SectionStreamKImplResult ScheduleSection(const ComputeContext &computeContext);
+    inline SectionStreamKImplResult ScheduleSection(uint32_t sectionIdx, const ComputeContext &computeContext);
     inline void ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext,
         SectionStreamKImplResult &result);
     static inline void ScheduleFd(uint32_t aivNum, SectionStreamKImplResult &result);
@@ -220,32 +223,30 @@ private:
     SectionStreamKParam m_param {};
 };
 
-inline SectionStreamKImpl::SectionStreamKImplResult
+inline std::vector<SectionStreamKImpl::SectionStreamKImplResult>
 SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo)
 {
     ComputeContext computeContext { deviceInfo, baseInfo };
-    
-    CalcGridInfo(computeContext);
+    std::vector<SectionStreamKImplResult> result {};
 
-    // 全空case
+    CalcGridInfo(computeContext);
+        // 全空case
     if (computeContext.gridInfo.isEmpty) {
-        SectionStreamKImplResult result{deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum};
-        result.usedCoreNum = 1U;
-        result.bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
-        result.gS1End[0] = 0U;
-        result.s2End[0] = 0U;
+        result.emplace_back(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
+        result[0].usedCoreNum = 1U;
+        result[0].bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
+        result[0].gS1End[0] = 0U;
+        result[0].s2End[0] = 0U;
         return result;
     }
     CalcCostInfo(computeContext);
-    if (computeContext.costInfo.blockNum == 0U) {
-        SectionStreamKImplResult result{deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum};
-        result.usedCoreNum = 1U;
-        result.bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
-        result.gS1End[0] = 0U;
-        result.s2End[0] = 0U;
-        return result;
+    
+    for (uint32_t sectionIdx = 0; sectionIdx < computeContext.gridInfo.sectionNum; ++sectionIdx) {
+        auto res = ScheduleSection(sectionIdx, computeContext);
+        result.emplace_back(res);
     }
-    return ScheduleSection(computeContext);
+
+    return result;
 }
 
 inline uint32_t SectionStreamKImpl::SetParam(const SectionStreamKParam &param)
@@ -279,7 +280,46 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
             gridInfo.isEmpty = false;
         }
     }
-    gridInfo.bn2Idx = baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum();
+
+    // 计算所有head的最大数据量，用于判断是否需要开启section切分
+    uint32_t maxHeadTokenCost = 0U;
+    uint32_t headDim = baseInfo.GetHeadDim();
+    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
+        uint32_t tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;  // 2: K和V两份数据
+        if (tokenCost > maxHeadTokenCost) {
+            maxHeadTokenCost = tokenCost;
+        }
+    }
+
+    // 如果L2未设置，或者最大单个head数据量不超过每个核可用的L2容量，则不进行section切分
+    if (m_param.l2Byte == 0U || maxHeadTokenCost <= m_param.l2Byte / computeContext.deviceInfo.aicCoreMaxNum) {
+        gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
+        gridInfo.sectionNum = 1;
+        return;
+    }
+
+    // calc section
+    uint32_t tokenSize = 0U;
+    uint32_t bn2Idx = 0U;
+    uint32_t tokenCost;
+    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
+        for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
+            tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;     // 2: k and v
+            if (!IsWithinTolerance(m_param.l2Byte, 0U, tokenSize + tokenCost) && tokenSize != 0U) {
+                gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
+                gridInfo.sectionNum++;
+                tokenSize = 0U;
+            }
+            tokenSize += tokenCost;
+            bn2Idx++;
+        }
+    }
+
+    // final section
+    gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
+    gridInfo.sectionNum++;
 }
 
 inline void SectionStreamKImpl::CalcBatchCost(uint32_t bIdx, const ComputeContext &computeContext, CostInfo &costInfo)
@@ -388,20 +428,24 @@ inline void SectionStreamKImpl::CalcCostInfo(ComputeContext &computeContext)
     const GridInfo &gridInfo = computeContext.gridInfo;
 
     CostInfo &costInfo = computeContext.costInfo;
+    costInfo.sectionBlockNum.resize(gridInfo.sectionNum);
+    costInfo.sectionCost.resize(gridInfo.sectionNum);
 
     // 计算batch的负载并记录，用于按batch分配，需要按行计算起止点，统计块数、负载
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         CalcBatchCost(bIdx, computeContext, costInfo);
     }
 
-    uint32_t bn2StartIdx = 0;
-    uint32_t bn2EndIdx = gridInfo.bn2Idx;
+    for (uint32_t sectionIdx = 0; sectionIdx < gridInfo.sectionBn2Idx.size(); ++sectionIdx) {
+        uint32_t bn2StartIdx = (sectionIdx == 0U) ? 0U : gridInfo.sectionBn2Idx[sectionIdx - 1U];
+        uint32_t bn2EndIdx = gridInfo.sectionBn2Idx[sectionIdx];
 
-    uint32_t bIdx = FloorDiv(bn2StartIdx, baseInfo.GetKvHeadNum());
-    for (uint32_t bn2Idx = bn2StartIdx; bn2Idx < bn2EndIdx; ++bn2Idx) {
-        bIdx = FloorDiv(bn2Idx, baseInfo.GetKvHeadNum());
-        costInfo.blockNum += costInfo.bN2BlockOfEachBatch[bIdx];
-        costInfo.cost += costInfo.bN2CostOfEachBatch[bIdx];
+        uint32_t bIdx = FloorDiv(bn2StartIdx, baseInfo.GetKvHeadNum());
+        for (uint32_t bn2Idx = bn2StartIdx; bn2Idx < bn2EndIdx; ++bn2Idx) {
+            bIdx = FloorDiv(bn2Idx, baseInfo.GetKvHeadNum());
+            costInfo.sectionBlockNum[sectionIdx] += costInfo.bN2BlockOfEachBatch[bIdx];
+            costInfo.sectionCost[sectionIdx] += costInfo.bN2CostOfEachBatch[bIdx];
+        }
     }
 }
 
@@ -414,13 +458,13 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-inline Range<uint32_t> SectionStreamKImpl::CalcCoreRange(const ComputeContext &computeContext)
+inline Range<uint32_t> SectionStreamKImpl::CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext)
 {
     const DeviceInfo &deviceInfo = computeContext.deviceInfo;
 
-    uint32_t maxCore = std::min(deviceInfo.aicCoreMaxNum, computeContext.costInfo.blockNum);
+    uint32_t maxCore = std::min(deviceInfo.aicCoreMaxNum, computeContext.costInfo.sectionBlockNum[sectionIdx]);
     uint32_t minCore = std::lround(
-        std::sqrt(static_cast<float>(computeContext.costInfo.blockNum) + 0.25f) + 0.5f);
+        std::sqrt(static_cast<float>(computeContext.costInfo.sectionBlockNum[sectionIdx]) + 0.25f) + 0.5f);
     minCore = std::max(minCore, deviceInfo.aicCoreMinNum);
     minCore = std::min(minCore, maxCore);
 
@@ -488,7 +532,7 @@ inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IB
 }
 
 inline SectionStreamKImpl::SectionStreamKImplResult
-SectionStreamKImpl::ScheduleSection(const ComputeContext &computeContext)
+SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &computeContext)
 {
     const DeviceInfo &deviceInfo = computeContext.deviceInfo;
 
@@ -502,14 +546,16 @@ SectionStreamKImpl::ScheduleSection(const ComputeContext &computeContext)
     FaConfig faConfig {};
     FaConfig faWithFdConfig {};
     faConfig.FdOn = false;
+    faConfig.sectionIdx = sectionIdx;
     faConfig.coreLimit = bestResult.usedCoreNum;
     faConfig.costLimit = bestResult.maxCost;
     faWithFdConfig.FdOn = true;
+    faWithFdConfig.sectionIdx = sectionIdx;
     faWithFdConfig.coreLimit = bestResultWithFd.usedCoreNum;
     faWithFdConfig.costLimit = bestResultWithFd.maxCost;
 
-    auto coreRange = CalcCoreRange(computeContext);
-    for (uint32_t i = coreRange.first; i <= coreRange.second; ++i) {
+    auto coreRange = CalcCoreRange(sectionIdx, computeContext);
+        for (uint32_t i = coreRange.first; i <= coreRange.second; ++i) {
         faConfig.coreNum = i;
         faWithFdConfig.coreNum = i;
 
@@ -550,10 +596,12 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
     result.usedCoreNum = 0U;
 
     AssignContext assignContext {};
-    assignContext.curBIdx = 0;
-    assignContext.curBN2Idx = 0;
+    assignContext.curSectionIdx = faConfig.sectionIdx;
+    assignContext.curBIdx = (faConfig.sectionIdx == 0) ? 0U :
+                            FloorDiv(gridInfo.sectionBn2Idx[faConfig.sectionIdx - 1U], baseInfo.GetKvHeadNum());
+    assignContext.curBN2Idx = (faConfig.sectionIdx == 0) ? 0U : gridInfo.sectionBn2Idx[faConfig.sectionIdx - 1U];
     assignContext.curS1GIdx = 0U;
-    assignContext.unassignedCost = costInfo.cost;
+    assignContext.unassignedCost = costInfo.sectionCost[faConfig.sectionIdx];
     assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
     assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
     CalcBatchCache(assignContext.curBIdx, computeContext, assignContext.batchCache);
@@ -708,7 +756,7 @@ inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeConte
         assignContext.curBN2Idx++;
 
         // to the end
-        if (assignContext.curBN2Idx == gridInfo.bn2Idx) {
+        if (assignContext.curBN2Idx == gridInfo.sectionBn2Idx[assignContext.curSectionIdx]) {
             assignContext.curS1GIdx = 0U;
             assignContext.curS2Idx = 0U;
             assignContext.isFinished = true;
