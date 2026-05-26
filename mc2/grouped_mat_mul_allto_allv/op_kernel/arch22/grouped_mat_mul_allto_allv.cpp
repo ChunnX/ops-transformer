@@ -10,8 +10,6 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv.cpp
- * \brief Grouped MatMul AlltoAllV kernel entry
- * 复用quant版mc2_templates, 量化参数=0使用非量化功能
  */
 #include "grouped_mat_mul_allto_allv_tiling.h"
 #include "../grouped_mat_mul_allto_allv_tiling_key.h"

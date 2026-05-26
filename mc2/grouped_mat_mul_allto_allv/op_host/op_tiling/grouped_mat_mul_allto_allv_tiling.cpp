@@ -10,13 +10,6 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling.cpp
- * \brief 重构后tiling实现，继承QuantGroupedMatmulAllToAllvTilingCommon
- *        仅覆写非量化场景差异方法，消除约400行重复代码
- *        继承方法: IsContains, CheckShapeDimensions, CheckParamsRelationGmmTransShape,
- *        CheckParamsRelationMmTransShape, CheckAndSetSendRecvCountsAttr, CheckLocalParams,
- *        CheckParamsRelationAndSetLocalParams, SetTilingCommonInfo, SetGmmA2avWorkspaceInfo,
- *        SetHcclTiling, PostTiling, GetWorkspaceSize, GetTilingKey, DoOpTiling, GetPlatformInfo,
- *        DoLibApiTiling, DoQuantGMMTiling, CheckOpInputSingleParamsTensorMM
  */
 
 #include "grouped_mat_mul_allto_allv_tiling.h"

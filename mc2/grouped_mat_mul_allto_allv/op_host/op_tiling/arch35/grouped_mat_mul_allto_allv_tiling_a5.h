@@ -10,7 +10,6 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling_a5.h
- * \brief A5 tiling registration, 直接使用GmmAlltoAllvTilingStruct(A3/A5通用)
  */
 #ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_A5_H
 #define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_A5_H

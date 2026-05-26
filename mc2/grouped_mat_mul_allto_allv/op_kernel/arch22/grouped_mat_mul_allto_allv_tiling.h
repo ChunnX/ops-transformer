@@ -10,7 +10,6 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling.h
- * \brief Grouped MatMul AlltoAllV arch22 TilingData，直接复用quant版QuantGmmA2avTilingData结构体
  */
 #ifndef GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 #define GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__

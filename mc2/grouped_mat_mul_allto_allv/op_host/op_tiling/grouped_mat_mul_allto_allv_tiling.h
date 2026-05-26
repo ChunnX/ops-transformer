@@ -10,8 +10,6 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling.h
- * \brief 重构后tiling结构体，继承QuantGroupedMatmulAllToAllvTilingCommon，
- *        仅覆写非量化场景差异方法，消除重复代码
  */
 #ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_STRUCT_H
 #define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_STRUCT_H

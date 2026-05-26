@@ -10,8 +10,6 @@
 
 /*!
  * \file grouped_mat_mul_allto_allv_tiling_base.h
- * \brief 已废弃：GmmAlltoAllvTilingStruct现已继承QuantGroupedMatmulAllToAllvTilingCommon，
- *        此文件保留仅作为兼容性引用
  */
 #ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_BASE_H
 #define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_BASE_H
