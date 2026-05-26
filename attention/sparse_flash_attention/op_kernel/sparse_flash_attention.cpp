@@ -17,13 +17,9 @@
 #include "sparse_flash_attention_template_tiling_key.h"
 #if (__CCE_AICORE__ == 310)
 #include "arch35/sparse_flash_attention_kernel_mla.h"
-#else
-#include "arch22/sparse_flash_attention_kernel_mla.h"
-#endif
 
 using namespace AscendC;
 
-#if (__CCE_AICORE__ == 310)
 #if defined(__DAV_C310_CUBE__)
 #define SFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
     do {                                                                                          \
@@ -52,17 +48,6 @@ using namespace AscendC;
         op.Process();                                                                             \
     } while (0)
 #endif
-#else
-#define SFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
-    do {                                                                                          \
-        templateClass<SFAType<__VA_ARGS__>> op;                                                   \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                     \
-        const tilingdataClass *__restrict tiling_data = &tiling_data_in;                          \
-        op.Init(query, key, value, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,      \
-	    blocktable, queryRope, keyRope, attentionOut, softmaxMax, softmaxSum, user, tiling_data, tiling, &tPipe);         \
-        op.Process();                                                                             \
-    } while (0)
-#endif
 
 template<int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G>
  __global__ __aicore__ void
@@ -78,7 +63,6 @@ sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-#if (__CCE_AICORE__ == 310)
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
         SFA_OP_IMPL(BaseApi::SparseFlashAttentionKernelMla, SparseFlashAttentionTilingDataMla, bfloat16_t, bfloat16_t,
@@ -88,15 +72,6 @@ sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
         SFA_OP_IMPL(BaseApi::SparseFlashAttentionKernelMla, SparseFlashAttentionTilingDataMla, half, half,
             float, half, FLASH_DECODE, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T),
             static_cast<SFA_LAYOUT>(KV_LAYOUT_T), static_cast<SFATemplateMode>(TEMPLATE_MODE), IS_SPLIT_G);
-    }
-#else
-    if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 &&
-                  ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
-        SFA_OP_IMPL(SparseFlashAttentionMla, SparseFlashAttentionTilingDataMla, half, half, half,
-            FLASH_DECODE, static_cast<SFA_LAYOUT>(LAYOUT_T), static_cast<SFA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
-    } else { // bf16
-        SFA_OP_IMPL(SparseFlashAttentionMla, SparseFlashAttentionTilingDataMla, bfloat16_t, bfloat16_t, bfloat16_t,
-            FLASH_DECODE, static_cast<SFA_LAYOUT>(LAYOUT_T), static_cast<SFA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
     }
 #endif
 }
