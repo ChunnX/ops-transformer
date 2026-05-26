@@ -12,8 +12,8 @@
 #define EPILOGUE_BLOCK_COMBINE_SCALE_HPP
 
 #include <limits>
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
+#include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/arch/fused_resource.hpp"
 #include "adv_api/pad/broadcast.h"
 #include "adv_api/reduce/reduce.h"
 
