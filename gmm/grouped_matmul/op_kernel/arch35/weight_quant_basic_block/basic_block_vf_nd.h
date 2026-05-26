@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "weight_quant_basic_block_tool.h"
+#include "op_kernel/weight_quant_tool.h"
 
 namespace MicroAPI = AscendC::MicroAPI;
 using AscendC::VECTOR_REG_WIDTH;

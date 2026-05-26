@@ -24,7 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common/grouped_matmul_finalize_routing_tool.h"
+#include "op_kernel/weight_quant_tool.h"
 
 using AscendC::Dn2NzParams;
 using AscendC::GetBlockIdx;
