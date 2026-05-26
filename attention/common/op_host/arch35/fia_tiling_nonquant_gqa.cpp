@@ -59,6 +59,7 @@ bool FiaTilingNonQuantArch35::IsCapable()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512 || fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D128) {
         return false;
     }
+    
     // 以下场景路由至重构前模板
     if (fiaInfo_->sysPrefixFlag ||     // 使能公共前缀
         fiaInfo_->pseShiftFlag ||      // 使能PSE
@@ -375,9 +376,18 @@ bool FiaTilingNonQuantArch35::CheckS1OutSplit()
     const int64_t dataTypeSize = 2U;
     int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
  
+    // isCapable阶段，platformInfo_中还没有l2Size，额外获取1次
+    auto platformInfoPtr = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
+                return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
+
+    uint64_t requiredL2Size = bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize;
+    OP_LOGI(fiaInfo_->opName, "required L2 size:%lu, platform L2 size:%lu", requiredL2Size, platformInfo_.l2Size);
+
     // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
-           platformInfo_.l2Size;
+    return requiredL2Size * 2 >= platformInfo_.l2Size;
 }
 
 void FiaTilingNonQuantArch35::SplitOutSeq()
@@ -542,7 +552,7 @@ void FiaTilingNonQuantArch35::SplitPolicy()
     split_core_v2::SplitParam splitParam{};
     CreateSplitInput(baseInfo, splitParam);
 
-    enableS1OutSplit = CheckS1OutSplit();
+    enableS1OutSplit = false; // S1外切bugfix中，暂不开启
     if (enableS1OutSplit) {
         SplitOutSeq();
     } else {
