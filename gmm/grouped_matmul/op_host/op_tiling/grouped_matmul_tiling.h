@@ -98,7 +98,7 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmul, GMMTilingData)
 
-BEGIN_TILING_DATA_DEF(GMMQuantBasicApiParams)
+BEGIN_TILING_DATA_DEF(GMMQuantBasicApiParamsDef)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint32_t, activeType);
 TILING_DATA_FIELD_DEF(uint32_t, aQuantMode);
@@ -111,9 +111,9 @@ TILING_DATA_FIELD_DEF(uint8_t, groupListType);
 TILING_DATA_FIELD_DEF(uint8_t, hasBias);
 TILING_DATA_FIELD_DEF(uint16_t, reserved);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMQuantBasicApiParamsOp, GMMQuantBasicApiParams)
+REGISTER_TILING_DATA_CLASS(GMMQuantBasicApiParamsOp, GMMQuantBasicApiParamsDef)
 
-BEGIN_TILING_DATA_DEF(QuantBasicApiMMTilingData)
+BEGIN_TILING_DATA_DEF(QuantBasicApiMMTilingDataDef)
 TILING_DATA_FIELD_DEF(uint32_t, m);
 TILING_DATA_FIELD_DEF(uint32_t, n);
 TILING_DATA_FIELD_DEF(uint32_t, k);
@@ -129,15 +129,15 @@ TILING_DATA_FIELD_DEF(uint8_t, dbL0C);
 TILING_DATA_FIELD_DEF(uint16_t, reserved1);
 TILING_DATA_FIELD_DEF(uint32_t, reserved2);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(QuantBasicApiMMTilingDataOp, QuantBasicApiMMTilingData)
+REGISTER_TILING_DATA_CLASS(QuantBasicApiMMTilingDataOp, QuantBasicApiMMTilingDataDef)
 
-BEGIN_TILING_DATA_DEF(GMMQuantBasicApiTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(GMMQuantBasicApiParams, gmmQuantParams);
-TILING_DATA_FIELD_DEF_STRUCT(QuantBasicApiMMTilingData, mmTilingData);
+BEGIN_TILING_DATA_DEF(GMMQuantBasicApiTilingDataDef)
+TILING_DATA_FIELD_DEF_STRUCT(GMMQuantBasicApiParamsDef, gmmQuantParams);
+TILING_DATA_FIELD_DEF_STRUCT(QuantBasicApiMMTilingDataDef, mmTilingData);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_0, GMMQuantBasicApiTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_1, GMMQuantBasicApiTilingData)
-REGISTER_TILING_DATA_CLASS(GroupedMatmul_4, GMMQuantBasicApiTilingData)
+REGISTER_TILING_DATA_CLASS(GroupedMatmul_0, GMMQuantBasicApiTilingDataDef)
+REGISTER_TILING_DATA_CLASS(GroupedMatmul_1, GMMQuantBasicApiTilingDataDef)
+REGISTER_TILING_DATA_CLASS(GroupedMatmul_4, GMMQuantBasicApiTilingDataDef)
 
 struct GMMCompileInfo {
     uint32_t aicNum;
