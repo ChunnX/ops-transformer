@@ -44,11 +44,11 @@ enum class InputLayout : uint32_t {
 
 enum class InputIndex : uint32_t {
     QUERY = 0,
-    ORI_KV,
-    CMP_KV,
     ATTENTION_OUT_GRAD,
     ATTENTION_OUT,
     LSE,
+    ORI_KV,
+    CMP_KV,
     ORI_SPARSE_INDICES,
     CMP_SPARSE_INDICES,
     CU_SEQLENS_Q,
