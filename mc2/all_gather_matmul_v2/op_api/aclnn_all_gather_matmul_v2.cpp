@@ -172,7 +172,7 @@ static bool IsGatherOut(const aclTensor *gatherOut)
 {
     OP_CHECK_NULL(gatherOut, return false);
     if (gatherOut->IsEmpty()) {
-        OP_LOGD("AllGahterMatmulV2, get gather out is false.");
+        OP_LOGD("AllGatherMatmulV2, get gather out is false.");
         return false;
     }
     return true;
@@ -291,14 +291,14 @@ static aclnnStatus CheckScale(const aclTensor* x1Scale, const aclTensor* x2Scale
     // 如果scaleInV1 和 scaleInV2都不为空指针则为scalar类型数据
     auto x1ScaleLen = x1Scale->GetViewShape().GetDim(0);
     auto x2ScaleLen = x2Scale->GetViewShape().GetDim(0);
-    OP_LOGD("AllGahterMatmulV2, x1ScaleLen is %ld.", x1ScaleLen);
-    OP_LOGD("AllGahterMatmulV2, x2ScaleLen is %ld.", x2ScaleLen);
+    OP_LOGD("AllGatherMatmulV2, x1ScaleLen is %ld.", x1ScaleLen);
+    OP_LOGD("AllGatherMatmulV2, x2ScaleLen is %ld.", x2ScaleLen);
 
     // scale不为空指针为则scalar类型
     if (quantScale != nullptr) {
         OP_CHECK_WRONG_DIMENSION(quantScale, ONE_DIMS, return ACLNN_ERR_PARAM_INVALID);
         auto scaleLen = quantScale->GetViewShape().GetDim(0);
-        OP_LOGD("AllGahterMatmulV2, scaleLen is %ld.", scaleLen);
+        OP_LOGD("AllGatherMatmulV2, scaleLen is %ld.", scaleLen);
         if (scaleLen != SCALAR) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quantScale len should be 1, but actual is %ld.", scaleLen);
             return ACLNN_ERR_PARAM_INVALID;
@@ -314,7 +314,7 @@ static bool IsAMaxOut(const aclTensor *amaxOut)
         return false;
     }
     if (amaxOut->IsEmpty()) {
-        OP_LOGD("AllGahterMatmulV2, get amax out is false.");
+        OP_LOGD("AllGatherMatmulV2, get amax out is false.");
         return false;
     }
     return true;
@@ -339,24 +339,6 @@ static bool CheckAMaxOutVaild(const aclTensor* x1, const aclTensor* amaxOut)
     }
     return true;
 }
-
-// fp8/hif8场景不支持空tensor输入
-static bool DealEmptyTensor(const aclTensor* x1, const aclTensor* x2)
-{
-    if (x1->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "AllGahterMatmulV2 not support empty tensor x1 when input datatype is fp8/hif8.");
-        return false;
-    }
-
-    if (x2->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "AllGahterMatmulV2 not support empty tensor x2 when input datatype is fp8/hif8.");
-        return false;
-    }
-    return true;
-}
-
 static aclnnStatus DealWithX1Empty(uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("AllGatherMatmulV2 dealing with empty tensor.");
@@ -400,20 +382,16 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-static bool checkInputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
+static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 {
-    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
-        CHECK_RET(DealEmptyTensor(x1, x2), ACLNN_ERR_PARAM_INVALID);
-    } else {
-        const auto kValX1 = x1->GetViewShape().GetDim(1);
-        if (kValX1 != 0) {
-            if (x1->IsEmpty()) {
-                return true;
-            }
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Does not support the case where x1 and x2 are empty tensors when k is 0.");
+    const auto kValX1 = x1->GetViewShape().GetDim(1);
+    if (kValX1 != 0) {
+        if (x1->IsEmpty()) {
+            return true;
         }
+    } else {
+        // k will be checked again in following CheckShape()
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not support the case where dim-k is 0.");
     }
     return false;
 }
@@ -429,8 +407,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const 
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     auto retParam = CheckParams(x1, x2, bias, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    // bf16/fp16 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
-    if (checkInputEmptyTensor(x1, x2)) {
+    // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
+    if (checkX1InputEmptyTensor(x1, x2)) {
         return DealWithX1Empty(workspaceSize, executor);
     }
 

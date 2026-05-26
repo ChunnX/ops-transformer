@@ -254,6 +254,11 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckPerTensorScaleInput()
             "ScaleInv1Shape and scaleInv2Shape should be scalar! scaleInv1Shape dim=%ld, scaleInv2Shape dim=%ld",
             scaleInv1Shape->GetStorageShape().GetDim(0), scaleInv2Shape->GetStorageShape().GetDim(0)),
         return ge::GRAPH_FAILED);
+
+    // pertensor模式：每个卡有1个scale值，需要通信scale1
+    scale1kSpaceSize_ = args_.rankDim * sizeof(float);
+    OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -434,7 +439,9 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
-    GE_ASSERT_GRAPH_SUCCESS(DoAdaptSlidWindowTiling());
+    if (args_.nValue != 0) {
+        GE_ASSERT_GRAPH_SUCCESS(DoAdaptSlidWindowTiling());
+    }
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
     return ge::GRAPH_SUCCESS;
@@ -452,7 +459,14 @@ void AllGatherQuantBmmTiling::SetTilingKeyParams()
 ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
 {
     GE_ASSERT_GRAPH_SUCCESS(AllGatherMatmulTilingBase::GetWorkspaceSize());
-    myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
+    // 当N=0时，Helper不执行，myWorkSpaceSize_未被设置，需要手动赋值
+    // workspaceSize_包含：libApiWorkSpaceSize_ + storageA_(含gatherLen) + biasLen_
+    // scale1kSpaceSize_为scale1通信所需空间
+    if (args_.nValue == 0) {
+        myWorkSpaceSize_ = workspaceSize_ + scale1kSpaceSize_;
+    } else {
+        myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
+    }
     OP_LOGI(opName_, "Set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = myWorkSpaceSize_;
@@ -670,13 +684,19 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
 {
     // local块切分
     args_.mValue = args_.orgMValue;
-    AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
-    GE_ASSERT_GRAPH_SUCCESS(mmLocalTile.DoTiling());
+    // 当N=0时，跳过matmul tiling，避免shape检查失败
+    if (args_.nValue != 0) {
+        AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
+        GE_ASSERT_GRAPH_SUCCESS(mmLocalTile.DoTiling());
+    }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
         (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) : tileMValue_;
     AllGatherQuantBmmHelper mmTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3TileTiling, false);
 
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    // 当N=0时，跳过matmul tiling，避免shape检查失败
+    if (args_.nValue != 0) {
+        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTileTilingData().M = tileMValue_;
     } else {
@@ -688,7 +708,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
         (tailMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tailCnt)) : tailMValue_;
     AllGatherQuantBmmHelper mmTail(*this, allGatherMatmulTilingDataFp8_->quantBmmv3TailTiling, false);
-    GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    // 当N=0时，跳过matmul tiling，避免shape检查失败
+    if (args_.nValue != 0) {
+        GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTailTilingData().M = tailMValue_;
     } else {
