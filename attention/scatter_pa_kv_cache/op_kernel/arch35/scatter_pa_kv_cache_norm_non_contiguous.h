@@ -142,8 +142,9 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
 
     DataCopyExtParams outKeyCacheParams = {
         static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
+        static_cast<uint32_t>(0),
         static_cast<uint32_t>((tilingData_->keyCacheStride2 - headSize) * sizeof(T)),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+        static_cast<uint32_t>(0)};
 
     DataCopyPad(keyCacheOutGm_[keyCacheOffset], inputKeyLocal, outKeyCacheParams);
 
@@ -186,8 +187,9 @@ __aicore__ inline void ScatterPaKvCacheNormalNonContiguous<T, IndexDtype, InOutM
 
     DataCopyExtParams outValueCacheParams = {
         static_cast<uint16_t>(headNum), static_cast<uint32_t>(headSize * sizeof(T)),
+        static_cast<uint32_t>(0),
         static_cast<uint32_t>((tilingData_->valueCacheStride2 - headSize) * sizeof(T)),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+        static_cast<uint32_t>(0)};
 
     DataCopyPad(valueCacheOutGm_[valueCacheOffset], inputValueLocal, outValueCacheParams);
 
