@@ -33,7 +33,7 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #endif
 #if defined(V310_GMM_QUANT_MX)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
-#if GMM_MX_IS_BLAZE && __has_include("blaze/gemm/kernel/kernel_qgmm_mx.h")
+#if GMM_MX_IS_BLAZE && __has_include("blaze/gemm/block/block_mmad_mx.h")
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
 #define GMM_MX_ENABLE_TENSOR_API 1
 #else
