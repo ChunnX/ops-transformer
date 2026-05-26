@@ -184,9 +184,9 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOffsetParam &
         vecCompute_.ComputeMaxExp(yF32Buffer_, lastOffsetParam);
         vecCompute_.ComputeScale(lastOffsetParam);
         vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
-        vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam);
+        vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yType *>(lastOffsetParam.yGmAddr));
         vecCompute_.TransMxScaleLayout(lastOffsetParam);
-        vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam);
+        vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yScaleType *>(lastOffsetParam.yScaleAddr));
 
         vecCompute_.SetMTE3ToV();
     }
@@ -278,9 +278,9 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffse
             vecCompute_.ComputeMaxExp(yF32Buffer_, lastOffsetParam);
             vecCompute_.ComputeScale(lastOffsetParam);
             vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
-            vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam);
+            vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yType *>(lastOffsetParam.yGmAddr));
             vecCompute_.TransMxScaleLayout(lastOffsetParam);
-            vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam);
+            vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yScaleType *>(lastOffsetParam.yScaleAddr));
         }
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
