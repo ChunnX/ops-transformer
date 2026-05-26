@@ -1202,8 +1202,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
     int32_t xEnd = baseOff + static_cast<int32_t>(curBS) + 1;
 
     int32_t firstBdy = apcState_.lastFull - (apcState_.nBlockToFill - 1) * BSize;
-    bool hasCachePrefix = (firstBdy > 0 && firstBdy < static_cast<int32_t>(K - 1));
-
     int32_t chunkSkip = 0;
     if (firstBdy < minBdy) {
         int32_t gap = minBdy - firstBdy;       // gap > 0 guaranteed here
@@ -1222,9 +1220,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
 
         int32_t blkId = apcState_.firstBlk + chunk;
         int64_t cLine = GetApcCacheLine(curBatch, static_cast<uint32_t>(blkId));
-        if (cLine == padSlotId_)
-            continue;
-        if (hasCachePrefix && cLine == apcState_.readCIdx)
+        if (cLine == padSlotId_ || cLine == apcState_.readCIdx)
             continue;
 
         uint32_t chunkLen = K - 1;
