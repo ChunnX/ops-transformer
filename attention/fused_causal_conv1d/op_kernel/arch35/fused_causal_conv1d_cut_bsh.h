@@ -1403,7 +1403,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
         if (hasCollision) {
             int32_t chunk = collisionChunk;
             int32_t boundaryIdx = lastFull - (nBlockToFill - chunk - 1) * BCP;
-            if (boundaryIdx <= 0)
+            if (boundaryIdx < static_cast<int32_t>(K - 1))
                 continue;
 
             // x-suffix chunk deferred due to readCIdx collision
