@@ -187,7 +187,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == coreInGroup) {
-                uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
+                // wave 粒度等待：flag 槽已按 wave 切分（每 expert 拥有 maxWavesPerExpert 个槽位），
+                // 目标值 = 本 wave 的 M（满 wave=L1_TILE_M，尾 wave=m_i % L1_TILE_M）。
+                uint32_t targetValue = m;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();

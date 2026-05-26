@@ -325,13 +325,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::BuffInit()
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign((int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_32));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
     // resetTensor_ 用作两个 zero-fill 场景的 UB 缓存：
-    //   (1) ResetFlagList    : flag block 总元素数 = expertPerRank * (maxWavesPerExpert + 1) 对齐到 8
+    //   (1) ResetFlagList    : flag block 总元素数 = expertPerRank * maxWavesPerExpert * 2
+    //                          (swiglu->gmm2 per-wave + dispatch->gmm1 per-wave) 对齐到 8
     //                          按 ALIGN_32 分核（每核 ≤ ALIGN_32 个 int32）
     //   (2) ResetGmm2RowReadyFlags: 单 AIV0 写 align(aicNum, 8) 个 int32
     // 大小取两者上限的较大者，并按 8 个 int32 对齐
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     int32_t flagListTotal = static_cast<int32_t>(
-        Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_ * (maxWavesPerExpert_ + 1U)),
+        Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_ * maxWavesPerExpert_ * 2U),
                              static_cast<uint32_t>(8)));
     int32_t flagPerCoreMax = static_cast<int32_t>(Ops::Base::CeilAlign(
         Ops::Base::CeilDiv(static_cast<uint32_t>(flagListTotal), static_cast<uint32_t>(blockAivNum_)),
@@ -369,12 +370,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
         return;
     }
     // workSpace groupFlagList 清零（覆盖 swiglu->gmm2 段 + dispatch->gmm1 段，共一整块）：
-    //   总元素数 = expertPerRank * maxWavesPerExpert (swiglu, per-wave) + expertPerRank (dispatch, per-expert)
+    //   总元素数 = expertPerRank * maxWavesPerExpert (swiglu, per-wave) + expertPerRank * maxWavesPerExpert (dispatch, per-wave)
     //   workspace 里按 CeilAlign(., 8) 分配，这里 flagNum 也按 8 对齐保证整段覆盖
     //   分核走 ALIGN_32 的粒度（默认）：每核一次写一个 32 个 int32 的块，DataCopy 直发，避免 DataCopyPad 的非对齐小块路径
     groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t swigluElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_);
-    int32_t dispatchElems = static_cast<int32_t>(expertPerRank_);
+    int32_t dispatchElems = static_cast<int32_t>(expertPerRank_ * maxWavesPerExpert_);
     int32_t flagNum = Ops::Base::CeilAlign(
         static_cast<uint32_t>(swigluElems + dispatchElems), static_cast<uint32_t>(8));
     int32_t coreLen, coreOffset;
@@ -636,122 +637,146 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     int32_t tokensThisCore = (totalTokensInExpert > coreIdx) ? 
         ((totalTokensInExpert - 1 - coreIdx) / totalCores + 1) : 0; 
 
-    if (tokensThisCore > 0) { 
-        // 二分查找：在当前专家内，找到首个token (expert内全局idx = coreIdx) 所在的卡号 
-        int32_t firstGlobalIdxInExpert = coreIdx; 
-        int32_t lo = 0; 
-        int32_t hi = static_cast<int32_t>(worldSize_) - 1; 
-        int32_t startRank = hi; 
-        while (lo <= hi) { 
-            int32_t mid = (lo + hi) >> 1; 
-            int32_t cumsumAtMid = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + mid) - priorExpertCumsum; 
-            if (cumsumAtMid > firstGlobalIdxInExpert) { 
-                startRank = mid; 
-                hi = mid - 1; 
-            } else { 
-                lo = mid + 1; 
-            } 
-        } 
+    // wave-粒度 dispatch flag：本核在 dispatch loop 中按 wave 边界批量 AtomicAdd。
+    // 槽位布局：groupFlagListGm2_ 指向当前 expert 的 wave-0 起点，+waveIdx 即对应槽。
+    // dstOffsetInExpert = coreIdx + i_in_core * totalCores，关于 i_in_core 单调递增，
+    // 所以 waveIdx_token = dstOffsetInExpert / L1_TILE_M 也是单调递增的，边界检测 O(1)。
+    int32_t curWave = -1;
+    int32_t curWaveCnt = 0;
+    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M);
 
-        uint32_t tripleTensorAddr = ubBufferUsedAddr_; 
-        uint32_t tripleTensorSize = tokensThisCore * ALIGN_32; 
+    if (tokensThisCore > 0) {
+        // 二分查找：在当前专家内，找到首个token (expert内全局idx = coreIdx) 所在的卡号
+        int32_t firstGlobalIdxInExpert = coreIdx;
+        int32_t lo = 0;
+        int32_t hi = static_cast<int32_t>(worldSize_) - 1;
+        int32_t startRank = hi;
+        while (lo <= hi) {
+            int32_t mid = (lo + hi) >> 1;
+            int32_t cumsumAtMid = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + mid) - priorExpertCumsum;
+            if (cumsumAtMid > firstGlobalIdxInExpert) {
+                startRank = mid;
+                hi = mid - 1;
+            } else {
+                lo = mid + 1;
+            }
+        }
+
+        uint32_t tripleTensorAddr = ubBufferUsedAddr_;
+        uint32_t tripleTensorSize = tokensThisCore * ALIGN_32;
         tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
             tripleTensorSize / sizeof(int32_t));
 
         SyncFuncStatic<AscendC::HardEvent::V_S, 0>();
 
-        constexpr int32_t BufferNum = 2; 
-        int64_t widthA = Get<K_VALUE>(problemShape_); 
-        int64_t widthAScale = Ops::Base::CeilDiv((int64_t)widthA, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE; 
-        uint32_t copyInNum = Ops::Base::CeilAlign((int64_t)(mxFp8TokenAlignBytes_ + mxFp8ScaleAlignBytes_), (int64_t)ALIGN_32); 
+        constexpr int32_t BufferNum = 2;
+        int64_t widthA = Get<K_VALUE>(problemShape_);
+        int64_t widthAScale = Ops::Base::CeilDiv((int64_t)widthA, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        uint32_t copyInNum = Ops::Base::CeilAlign((int64_t)(mxFp8TokenAlignBytes_ + mxFp8ScaleAlignBytes_), (int64_t)ALIGN_32);
 
-        // 目的地址基址按照当前专家在dispatchRevDataPtr中的起始位置 
-        GlobalTensor<QuantOutType> tokenRevGlobalTensor; 
-        GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor; 
-        tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>( 
-            params_.workspaceInfo.dispatchRevDataPtr + priorExpertCumsum * widthA)); 
-        scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>( 
-            params_.workspaceInfo.dispatchRevScalePtr + priorExpertCumsum * widthAScale)); 
+        // 目的地址基址按照当前专家在dispatchRevDataPtr中的起始位置
+        GlobalTensor<QuantOutType> tokenRevGlobalTensor;
+        GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
+        tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(
+            params_.workspaceInfo.dispatchRevDataPtr + priorExpertCumsum * widthA));
+        scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
+            params_.workspaceInfo.dispatchRevScalePtr + priorExpertCumsum * widthAScale));
 
-        int32_t curRank = startRank; 
-        int32_t curRankExprStart = (startRank == 0) ? 0 : 
-            (cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + startRank - 1) - priorExpertCumsum); 
-        int32_t curRankExprEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + startRank) - priorExpertCumsum; 
+        int32_t curRank = startRank;
+        int32_t curRankExprStart = (startRank == 0) ? 0 :
+            (cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + startRank - 1) - priorExpertCumsum);
+        int32_t curRankExprEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + startRank) - priorExpertCumsum;
 
-        uint64_t sendCntCurRank = 0; 
+        uint64_t sendCntCurRank = 0;
         GatherMask(validTopkIndexTensor_, topkIndexTensor_,
             gatherMaskInt32Tensor_[curRank * (maskAlignSize_ / sizeof(uint32_t))],
             true, sendTotalNum_, {1, 1, 0, 0}, sendCntCurRank);
         SyncFuncStatic<AscendC::HardEvent::V_S, 1>();
 
         GlobalTensor<QuantOutType> remoteRankGlobalTensor;
-        remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>( 
-            GetRankWinAddrWithOffset(curRank, PEERMEM_DATA_OFFSET + worldSize_ * topkOffsetPerRank_))); 
+        remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(
+            GetRankWinAddrWithOffset(curRank, PEERMEM_DATA_OFFSET + worldSize_ * topkOffsetPerRank_)));
 
-        for (int32_t i_in_core = 0; i_in_core < tokensThisCore; ++i_in_core) { 
-            int32_t globalIdxInExpert = coreIdx + i_in_core * totalCores; 
+        for (int32_t i_in_core = 0; i_in_core < tokensThisCore; ++i_in_core) {
+            int32_t globalIdxInExpert = coreIdx + i_in_core * totalCores;
 
-            bool rankChanged = false; 
-            while (globalIdxInExpert >= curRankExprEnd) { 
-                ++curRank; 
-                curRankExprStart = curRankExprEnd; 
-                curRankExprEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + curRank) - priorExpertCumsum; 
-                rankChanged = true; 
-            } 
-            if (rankChanged) { 
+            // wave 边界检测：当前 token 属于的 wave 与 curWave 不同时，
+            // 先 drain MTE3 把前一个 wave 全部 dispatch 写入 GM 可见，再 AtomicAdd 前一个 wave 的累积计数。
+            int32_t waveIdx_token = globalIdxInExpert / L1_TILE_M_I32;
+            if (waveIdx_token != curWave) {
+                if (curWaveCnt > 0) {
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, 0>();
+                    AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()) + curWave,
+                              int32_t(curWaveCnt));
+                }
+                curWave = waveIdx_token;
+                curWaveCnt = 0;
+            }
+
+            bool rankChanged = false;
+            while (globalIdxInExpert >= curRankExprEnd) {
+                ++curRank;
+                curRankExprStart = curRankExprEnd;
+                curRankExprEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + curRank) - priorExpertCumsum;
+                rankChanged = true;
+            }
+            if (rankChanged) {
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_,
                     gatherMaskInt32Tensor_[curRank * (maskAlignSize_ / sizeof(uint32_t))],
                     true, sendTotalNum_, {1, 1, 0, 0}, sendCntCurRank);
                 SyncFuncStatic<AscendC::HardEvent::V_S, 2>();
-                remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>( 
-                    GetRankWinAddrWithOffset(curRank, PEERMEM_DATA_OFFSET + worldSize_ * topkOffsetPerRank_))); 
-            } 
+                remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(
+                    GetRankWinAddrWithOffset(curRank, PEERMEM_DATA_OFFSET + worldSize_ * topkOffsetPerRank_)));
+            }
 
-            int32_t withinRankIdx = globalIdxInExpert - curRankExprStart; 
-            int32_t topkIndex = validTopkIndexTensor_.GetValue(withinRankIdx); 
-            int32_t tokenIndex = topkIndex / topK_; 
+            int32_t withinRankIdx = globalIdxInExpert - curRankExprStart;
+            int32_t topkIndex = validTopkIndexTensor_.GetValue(withinRankIdx);
+            int32_t tokenIndex = topkIndex / topK_;
 
-            tripleTensor_[i_in_core * 8].SetValue(0, curRank); 
-            tripleTensor_[i_in_core * 8].SetValue(1, tokenIndex); 
-            tripleTensor_[i_in_core * 8].SetValue(2, topkIndex % topK_); 
+            tripleTensor_[i_in_core * 8].SetValue(0, curRank);
+            tripleTensor_[i_in_core * 8].SetValue(1, tokenIndex);
+            tripleTensor_[i_in_core * 8].SetValue(2, topkIndex % topK_);
 
-            pingpongId = (pingpongId + 1) % BufferNum; 
-            TEventID EVENT_ID_CUR = (pingpongId == 0) ? EVENT_ID0 : EVENT_ID1; 
-            LocalTensor<QuantOutType> tokenScalebuf = (pingpongId == 0) ? copyTmpTensor1_ : copyTmpTensor2_; 
-            LocalTensor<QuantScaleOutType> bufScale = 
-                tokenScalebuf[mxFp8TokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>(); 
+            pingpongId = (pingpongId + 1) % BufferNum;
+            TEventID EVENT_ID_CUR = (pingpongId == 0) ? EVENT_ID0 : EVENT_ID1;
+            LocalTensor<QuantOutType> tokenScalebuf = (pingpongId == 0) ? copyTmpTensor1_ : copyTmpTensor2_;
+            LocalTensor<QuantScaleOutType> bufScale =
+                tokenScalebuf[mxFp8TokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
 
-            auto remoteCopyOffset = tokenIndex * copyInNum; 
+            auto remoteCopyOffset = tokenIndex * copyInNum;
 
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID_CUR); 
-            DataCopy(tokenScalebuf, remoteRankGlobalTensor[remoteCopyOffset], copyInNum); 
-            SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR); 
-            WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR); 
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID_CUR);
+            DataCopy(tokenScalebuf, remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+            SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR);
+            WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID_CUR);
 
-            // 按核错位排布：核c的第i_in_core个token写到专家内偏移 coreIdx + i_in_core * totalCores 
-            int32_t dstOffsetInExpert = coreIdx + i_in_core * totalCores; 
-            DataCopyPad(tokenRevGlobalTensor[dstOffsetInExpert * widthA], tokenScalebuf, 
-                {1, static_cast<uint16_t>(widthA * sizeof(QuantOutType)), 0U, 0U, 0U}); 
-            DataCopyPad(scaleRevGlobalTensor[dstOffsetInExpert * widthAScale], bufScale, 
-                {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U}); 
-            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID_CUR); 
-        } 
+            // 按核错位排布：核c的第i_in_core个token写到专家内偏移 coreIdx + i_in_core * totalCores
+            int32_t dstOffsetInExpert = globalIdxInExpert;
+            DataCopyPad(tokenRevGlobalTensor[dstOffsetInExpert * widthA], tokenScalebuf,
+                {1, static_cast<uint16_t>(widthA * sizeof(QuantOutType)), 0U, 0U, 0U});
+            DataCopyPad(scaleRevGlobalTensor[dstOffsetInExpert * widthAScale], bufScale,
+                {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID_CUR);
 
-        // 三元组按错位排布搬出（与数据同顺序）
+            ++curWaveCnt;  // 本 token 已记账到 curWave，在下一个 wave 边界 / loop 末尾统一 AtomicAdd
+        }
+
+        // 三元组按错位排布搬出（与数据同顺序）。和 dispatch flag 通路独立：cube 不读 triple。
         SyncFuncStatic<AscendC::HardEvent::S_MTE3, 2>();
-        for (int32_t i = 0; i < tokensThisCore; ++i) { 
-            int32_t dstAbsIdx = priorExpertCumsum + coreIdx + i * totalCores; 
-            DataCopy(tripleGloablTensor_[dstAbsIdx * 8], tripleTensor_[i * 8], 8); 
-        } 
-    } 
+        for (int32_t i = 0; i < tokensThisCore; ++i) {
+            int32_t dstAbsIdx = priorExpertCumsum + coreIdx + i * totalCores;
+            DataCopy(tripleGloablTensor_[dstAbsIdx * 8], tripleTensor_[i * 8], 8);
+        }
+    }
 
-    // 保持原有计数：总AtomicAdd次数 = worldSize_ * blockNumPerRank_，与GMM等待目标一致
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, 0>();
-    for (uint32_t idx = blockIdx_; idx < worldSize_ * blockNumPerRank_; idx += blockNum_) { 
-        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1)); 
-    } 
+    // flush 最后一个 wave 累积计数（tokensThisCore==0 时 curWaveCnt 始终为 0，自动跳过）
+    if (curWaveCnt > 0) {
+        SyncFuncStatic<AscendC::HardEvent::MTE3_S, 0>();
+        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()) + curWave,
+                  int32_t(curWaveCnt));
+    }
 
-    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0); 
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
@@ -901,9 +926,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     // 按 wave 切分的 swiglu->gmm2 flag：每个 expert 占 maxWavesPerExpert 个 int32，每 wave 1 个
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) + static_cast<int64_t>(waveIdx);
-    // dispatch->gmm1 flag：每个 expert 1 个 int32（按 localExpertId 直接寻址）
+    // dispatch->gmm1 flag：每个 expert 占 maxWavesPerExpert 个 int32，每 wave 1 个。
+    // cube 在每个 wave 启动时只等本 wave 的槽位，目标值 = waveM。
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                                static_cast<int64_t>(localExpertId);
+                                static_cast<int64_t>(localExpertId) * static_cast<int64_t>(maxWavesPerExpert_) +
+                                static_cast<int64_t>(waveIdx);
     // GMM2 直接写 GM 的目的地址（per-wave row offset）
     if (gmmIndex == 1) {
         gmmAddrInfo.gmm2OutGlobal = params_.workspaceInfo.ptrGmmOut +
@@ -1096,7 +1123,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         minCoresPerWaveGmm1 = 1U;
     }
 
-    // pre-loop: 把 expert 0 的 dispatch 先发出去，启动整条流水线
+    // pre-loop: 把 expert 0 的 dispatch 先发出去，启动整条流水线。
+    // groupFlagListGm2_ 指向 expert 0 的 wave-0 槽起点；TripleInfoCalAndDispatch
+    // 在 wave 边界用 (basePtr + curWave) 偏移做 AtomicAdd。
     if constexpr (g_coreType == AscendC::AIV) {
         if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
             SendInfoCal(0);
@@ -1115,12 +1144,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         // prefetch: 在本轮 UpdateGroupParams 之后，立刻把下一个 expert 的 dispatch 发出去。
         // 注意必须在 UpdateGroupParams 之后调用，否则 totalSendCntInExp_ 会被 (e+1) 提前覆盖。
+        // groupFlagListGm2_ 指向 expert (e+1) 的 wave-0 槽起点，AtomicAdd 内部按 wave 偏移。
         if constexpr (g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
                 SendInfoCal(expertIdx + 1U);
                 groupFlagListGm2_.SetGlobalBuffer(
                     (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                    static_cast<int64_t>(expertIdx + 1U));
+                    static_cast<int64_t>(expertIdx + 1U) * static_cast<int64_t>(maxWavesPerExpert_));
                 TripleInfoCalAndDispatch(static_cast<int32_t>(totalSendCntInExp_),
                                          static_cast<int32_t>(expertIdx + 1U));
             }
@@ -1146,10 +1176,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         coreGroupId_ = blockIdx_ / coresPerWave_;
         coreActive_ = (coreGroupId_ < wavesParallel_);
 
-        // 为当前 expert 配置 cube 用的 gmmAddrInfo（dispatch 不在这里发了，已经被预走了）
+        // 为当前 expert 配置 cube 用的 gmmAddrInfo（dispatch 不在这里发了，已经被预走了）。
+        // groupFlagList2 在 wave loop 中由 UpdateGlobalBuffer(waveGmmInfo, 0, expertIdx, waveIdx)
+        // 改写成 per-wave 槽位，这里先指向 expert 的 wave-0 起点作占位。
         UpdateGlobalBuffer(gmmAddrInfo, 0, expertIdx, 0);
         gmmAddrInfo.groupFlagList2 =
-            (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr + static_cast<int64_t>(expertIdx);
+            (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
+            static_cast<int64_t>(expertIdx) * static_cast<int64_t>(maxWavesPerExpert_);
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 
         // ★ Wave loop: 跨 wave 分核 batch 结构 ★
