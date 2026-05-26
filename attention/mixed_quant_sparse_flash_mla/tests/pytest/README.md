@@ -15,8 +15,8 @@
 ### 环境配置
 
 #### 前置要求
-1、确认torch_npu为最新版本
-2、参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包合自定义算子包
+1、 确认torch_npu为最新版本  
+2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 
 #### custom包调用
 支持custom包调用
