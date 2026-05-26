@@ -202,7 +202,7 @@ int main() {
   aclOpExecutor* executor;
   
   // 调用aclnnSparseFlashMlaGrad第一段接口
-  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, oriKv, cmpKv, dOut, out, lse, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
+  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
             layoutQ, layoutKv, deterministic, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);

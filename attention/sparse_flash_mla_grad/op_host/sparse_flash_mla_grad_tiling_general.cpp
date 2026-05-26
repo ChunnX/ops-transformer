@@ -376,12 +376,27 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
     int64_t dimOriKv = oriKvShape.GetDim(dimSize - 1);
 
+    // -------------- 当前不支持参数必须传空校验 --------------
+    auto oriSparseIndicesTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ORI_SPARSE_INDICES));
+    auto seqUsedQTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_Q));
+    auto seqUsedOriKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_ORI_KV));
+    auto seqUsedCmpKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
+    auto oriTopkLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ORI_TOPK_LENGTH));
+    auto cmpTopkLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_TOPK_LENGTH));
+    OP_CHECK_IF(oriSparseIndicesTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "oriSparseIndices should be nullptr now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(seqUsedQTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedQ should be nullptr now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(seqUsedOriKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedOriKv should be nullptr now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(seqUsedCmpKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedCmpKv should be nullptr now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(oriTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "oriTopkLength should be nullptr now."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cmpTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpTopkLength should be nullptr now."), return ge::GRAPH_FAILED);
+
     // -------------- attrs ----------------
     const char *inputLayoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
     const char *inputLayoutKv = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_KV));
     const int64_t *cmpRatioPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::CMP_RATIO));
     const int64_t *oriWinLeftPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::ORI_WIN_LEFT));
     const int64_t *oriWinRightPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::ORI_WIN_RIGHT));
+    const int64_t *oriMaskModePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::ORI_MASK_MODE));
     const int64_t *cmpMaskModePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
 
     // -------------------------------------
@@ -454,6 +469,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     OP_CHECK_IF(cmpRatioPtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpRatioPtr is null"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriWinLeftPtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "oriWinLeftPtr is null"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriWinRightPtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "oriWinRightPtr is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cmpMaskModePtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpMaskModePtr is null"), return ge::GRAPH_FAILED);
 
     if (tmpData.g <= 0) {
         OP_LOGE(context_, "g (N1 / N2) should be larger than 0, but got g=%ld.", tmpData.g);
@@ -466,6 +482,18 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
 
+    int64_t cmpRatio = *cmpRatioPtr;
+    if (!(cmpRatio >= 1 && cmpRatio <= 128)) {
+        OP_LOGE(context_, "SparseFlashMlaGrad only support cmpRatio >= 1 and <=128, but got cmpRatio=%ld.", cmpRatio);
+        return ge::GRAPH_FAILED;
+    }
+
+    int64_t oriWinLeft = *oriWinLeftPtr;
+    int64_t oriWinRight = *oriWinRightPtr;
+    OP_CHECK_IF(oriWinLeft != 127 || oriWinRight != 0, OP_LOGE("SparseFlashMlaGrad", "SprseFlashMlaGrad only support oriWinLeft=127 and oriWinRight=0 now."), return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(*oriMaskModePtr, OP_LOGE("SparseFlashMlaGrad", "SprseFlashMlaGrad only support oriMaskMode=4 now."), return ge::GRAPH_FAILED);
+
     tilingData.opInfo.set_B(tmpData.b);
     tilingData.opInfo.set_G(tmpData.g);
     tilingData.opInfo.set_N2(tmpData.n2);
@@ -476,9 +504,9 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     tilingData.opInfo.set_layout(tmpData.layout);
     tilingData.opInfo.set_scaleValue(
         *context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::SCALE_VALUE)));
-    tilingData.opInfo.set_cmpRatio(*cmpRatioPtr);
-    tilingData.opInfo.set_oriWinLeft(*oriWinLeftPtr);
-    tilingData.opInfo.set_oriWinRight(*oriWinRightPtr);
+    tilingData.opInfo.set_cmpRatio(cmpRatio);
+    tilingData.opInfo.set_oriWinLeft(oriWinLeft);
+    tilingData.opInfo.set_oriWinRight(oriWinRight);
     
     tmpData.d = tilingData.opInfo.get_D();
     tmpData.dataTypeSize = B32;
@@ -519,6 +547,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     if (tmpData.mode == SMLAG_CFA_MODE || tmpData.mode == SMLAG_SCFA_MODE) {
         OP_CHECK_IF(cmpMaskModePtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpMaskModePtr is null"), return ge::GRAPH_FAILED);
         int64_t cmpMaskMode = *cmpMaskModePtr;
+        OP_CHECK_IF(cmpMaskMode != 3, OP_LOGE("SparseFlashMlaGrad", "cmpMaskMode only support 3 now."), return ge::GRAPH_FAILED);
         if (cmpMaskMode == 3){
             // check cmpResidual tensor shape
             auto cmpResidualKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_RESIDUAL_KV));

@@ -74,11 +74,11 @@
 ```c++
 aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     const aclTensor   *query,
-    const aclTensor   *oriKvOptional,
-    const aclTensor   *cmpKvOptional,
     const aclTensor   *dOut,
     const aclTensor   *out,
     const aclTensor   *lse,
+    const aclTensor   *oriKvOptional,
+    const aclTensor   *cmpKvOptional,
     const aclTensor   *oriSparseIndicesOptional,
     const aclTensor   *cmpSparseIndicesOptional,
     const aclTensor   *cuSeqlensQOptional,
@@ -160,34 +160,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>oriKvOptional（aclTensor*）</td>
-            <td>输入</td>
-            <td>attention结构的原始输入K(V)。</td>
-            <td>
-            当前暂不支持空tensor。
-            </td>
-            <td>BFLOAT16、FLOAT16</td>
-            <td>ND</td>
-            <td>(B,S2,N2,D)、(T2,N2,D)<br>
-            B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2
-            </td>
-            <td>√</td>
-        </tr>
-        <tr>
-            <td>cmpKvOptional（aclTensor*）</td>
-            <td>输入</td>
-            <td>经过Compressor压缩后的K(V)。</td>
-            <td>
-            支持空tensor，此时按计算公式中的SWA场景计算。
-            </td>
-            <td>BFLOAT16、FLOAT16</td>
-            <td>ND</td>
-            <td>(B,S3,N2,D)、(T3,N2,D)<br>
-            B：与query的B保持一致；S3 = S2 // cmpRatio；N2：1；D：512；T3：B × S3
-            </td>
-            <td>√</td>
-        </tr>
-        <tr>
             <td>dOut（aclTensor*）</td>
             <td>输入</td>
             <td>注意力输出矩阵的梯度。</td>
@@ -226,6 +198,34 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
             B：与query的B保持一致；N2：1；S1：与query的S1保持一致；G：N1/N2；T1：B × S1
+            </td>
+            <td>√</td>
+        </tr>
+        <tr>
+            <td>oriKvOptional（aclTensor*）</td>
+            <td>输入</td>
+            <td>attention结构的原始输入K(V)。</td>
+            <td>
+            当前暂不支持空tensor。
+            </td>
+            <td>BFLOAT16、FLOAT16</td>
+            <td>ND</td>
+            <td>(B,S2,N2,D)、(T2,N2,D)<br>
+            B：与query的B保持一致；S2：支持泛化；N2：1；D：512；T2：B × S2
+            </td>
+            <td>√</td>
+        </tr>
+        <tr>
+            <td>cmpKvOptional（aclTensor*）</td>
+            <td>输入</td>
+            <td>经过Compressor压缩后的K(V)。</td>
+            <td>
+            支持空tensor，此时按计算公式中的SWA场景计算。
+            </td>
+            <td>BFLOAT16、FLOAT16</td>
+            <td>ND</td>
+            <td>(B,S3,N2,D)、(T3,N2,D)<br>
+            B：与query的B保持一致；S3 = S2 // cmpRatio；N2：1；D：512；T3：B × S3
             </td>
             <td>√</td>
         </tr>
@@ -974,7 +974,7 @@ int main() {
   aclOpExecutor* executor;
   
   // 调用aclnnSparseFlashMlaGrad第一段接口
-  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, oriKv, cmpKv, dOut, out, lse, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
+  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
             layoutQ, layoutKv, deterministic, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);
