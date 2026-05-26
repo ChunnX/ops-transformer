@@ -344,8 +344,8 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
             outerBlockNums = fiaInfo_->n2Size;
         }
         totalSize += outerBlockNums;
-        OP_LOGD(fiaInfo_->opName, "bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
-            "outerBlockNums:%d, totalSize:%d\n",
+        OP_LOGD(fiaInfo_->opName, "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
+            "outerBlockNums:%lld, totalSize:%lld\n",
             bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
 
@@ -353,8 +353,8 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%d\n", actualUsedCoreNum);
-    OP_LOGD(fiaInfo_->opName, "totalSize:%d\n", totalSize);
+    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%lld\n", actualUsedCoreNum);
+    OP_LOGD(fiaInfo_->opName, "totalSize:%lld\n", totalSize);
     OP_LOGD(fiaInfo_->opName, "gqa enableS1OutSplit\n");
 }
 
