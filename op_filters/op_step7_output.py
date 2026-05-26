@@ -457,6 +457,13 @@ def write_soc_json(data: List[Dict], soc_name: str, output_dir: str, logger: log
     try:
         op_names = sorted([op_info["op_name"] for op_info in data])
         
+        if soc_name == "ascend950":
+            moe_distribute_names = [n for n in op_names if n.startswith("moe_distribute")]
+            if moe_distribute_names:
+                op_names = [n for n in op_names if not n.startswith("moe_distribute")] + ["moe_distribute"]
+                op_names.sort()
+                logger.info(f"ascend950 SOC: 合并 {moe_distribute_names} 为单个 moe_distribute")
+        
         output_path = str(Path(output_dir) / "matched_keywords.txt")
         output_path_obj = Path(output_path)
         parent_dir = output_path_obj.parent
