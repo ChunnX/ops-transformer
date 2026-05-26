@@ -290,8 +290,9 @@ inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
 // 判断是否使用 All2All + Vec Reduce 通路（StandardCard 4P 或 8P）
 inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((npuArch == NpuArch::DAV_3510) &&
-            (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
+    // return ((npuArch == NpuArch::DAV_3510) &&
+    //         (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
+    return true;
 }
 }  // namespace mc2tiling
 
