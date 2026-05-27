@@ -177,6 +177,8 @@ public:
 
         vecOp.SendVecPre(dq_workspace_, dk_workspace_, dv_workspace_, dout_gm_, attention_out_gm_, sftg_workspace_,
                          tilingData, ub_buffer_);
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         vecOp.SendVecSftgFront(dout_gm_, attention_out_gm_, sftg_workspace_, tilingData, ub_buffer_);
         PipeBarrier<PIPE_ALL>();
         SyncAll();

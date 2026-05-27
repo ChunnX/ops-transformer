@@ -138,8 +138,7 @@ public:
                                             const GlobalTensor<float> &sftg_workspace, const TILING_CLASS *tilingData,
                                             TBuf<TPosition::VECCALC> &ub_buffer)
     {
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        EvenCoreInfo info;
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
         uint32_t ub_offset = 0;
         dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
