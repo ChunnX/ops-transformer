@@ -117,6 +117,8 @@ def normalize_case(raw):
                 b_val = block_table_shape[0]
                 max_block_num_per_batch = block_table_shape[1]
             else:
+                if layout_q == "TND":
+                    b_val = len(c["cu_seqlens_q"]) - 1
                 max_block_num_per_batch = (max(seqused_kv) + block_size - 1) // block_size
             block_table = torch.full((b_val, max_block_num_per_batch), -1, dtype=torch.int32)
             block_idx = 0
