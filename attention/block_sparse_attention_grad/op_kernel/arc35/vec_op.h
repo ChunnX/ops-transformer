@@ -115,7 +115,6 @@ public:
 
         ComputeEvenCoreInfo(info, tilingData->dqSize, PRE_TILE_LEN);
         ComputeVecPre(dq_workspace, vec_in_ping_, info);
-
         ComputeEvenCoreInfo(info, tilingData->dkSize, PRE_TILE_LEN);
         ComputeVecPre(dk_workspace, vec_in_ping_, info);
         ComputeVecPre(dv_workspace, vec_in_ping_, info);
@@ -247,6 +246,50 @@ private:
             copyParam.dstStride = 0;
             DataCopyPad(dst_tensor[gm_offset], src_tensor, copyParam);
         }
+    }
+
+    __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_tensor,
+                                                   const GlobalTensor<INPUT_TYPE> &dy_tensor,
+                                                   const GlobalTensor<INPUT_TYPE> &out_tensor, const EvenCoreInfo &info)
+    {
+        // if (info.start_idx >= info.data_size) {
+        //     return;
+        // }
+        // LocalTensor<INPUT_TYPE> vecIn = vec_in_ping_;
+        // LocalTensor<float> vecOut = vec_out_ping_;
+        // uint32_t process_size = info.max_process_size;
+
+        // for (uint32_t i = 0; i < info.loop_num; i++) {
+        //     if (unlikely(i == info.loop_num - 1)) {
+        //         process_size = info.align_tail;
+        //         if (process_size == 0) {
+        //             break;
+        //         }
+        //     }
+        //     uint64_t gm_offset = info.start_idx + i * info.max_process_size * head_dim_;
+
+        //     DataCopyParams copyParam;
+        //     copyParam.blockCount = 1;
+        //     copyParam.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
+        //     copyParam.srcStride = 0;
+        //     copyParam.dstStride = (q_head_num_ - 1) * process_size * head_dim_;
+        //     DataCopyPad(vecIn, dy_tensor[gm_offset], copyParam, {false, 0, 0, 0});
+        //     DataCopyPad(vecIn, out_tensor[gm_offset], copyParam, {false, 0, 0, 0});
+        //     Cast(vecOut, vecIn, RoundMode::None, process_size * head_dim_);
+        //     Cast(vecIn, vecOut, RoundMode::None, process_size * head_dim_);
+        //     PipeBarrier<PIPE_V>();
+
+        //     if (likely(isBasicBlock)) {
+        //         SoftmaxGradFront<float, true>(outputBuf, sfmgClc1, sfmgClc2, tempBuf,
+        //                                       tilingData->softmaxGradTilingData);
+        //     } else {
+        //         SoftmaxGradFront<float, false>(outputBuf, sfmgClc1, sfmgClc2, tempBuf,
+        //                                        tilingData->softmaxGradTilingData);
+        //     }
+
+        //     PipeBarrier<PIPE_V>();
+        //     uint8_t repeat_time = WholeReduceSum(vecOut, vecOut, 64, );
+        // }
     }
 
     template <bool MULS>

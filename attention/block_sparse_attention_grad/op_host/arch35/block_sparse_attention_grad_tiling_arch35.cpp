@@ -68,6 +68,13 @@ private:
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
     static constexpr const char *TND_STR = "TND";
+    uint32_t batch_num_ = 0;
+    uint32_t q_seq_len_ = 0;
+    uint32_t kv_seq_len_ = 0;
+    uint32_t q_head_num_ = 0;
+    uint32_t q_group_ = 0;
+    uint32_t kv_head_num_ = 0;
+    uint32_t head_dim_ = 0;
 
 protected:
     bool IsCapable() override
@@ -231,6 +238,13 @@ protected:
         tilingData_.set_kvHeadNum(k_head_num);
         tilingData_.set_headDim(q_head_dim);
         tilingData_.set_softmaxScale(softmaxScale);
+        batch_num_ = q_batch_num;
+        q_seq_len_ = q_seq_len;
+        kv_seq_len_ = k_seq_len;
+        q_head_num_ = q_head_num;
+        q_group_ = q_group;
+        kv_head_num_ = k_head_num;
+        head_dim_ = q_head_dim;
 
         return ge::GRAPH_SUCCESS;
     }
@@ -256,29 +270,32 @@ protected:
 
     ge::graphStatus DoLibApiTiling() override
     {
+        // softmaxGrad tiling，一次最多处理16K个元素个数
+        constexpr uint32_t element_num = 16 * 1024;
+        constexpr uint32_t process_s1_size = element_num / head_dim_;
+        auto input_shape = ge::Shape({process_s1_size, head_dim_});
+
+        uint32_t tmp_space_size = GetSoftMaxGradMaxTmpSize(input_shape, sizeof(float), true, true);
+        AscendC::SoftMaxGradTilingFunc(input_shape, sizeof(float), tmp_space_size,
+                                       tilingData_->softmaxGradFrontTilingData, true);
+        std::cout << "tmp_space_size: " << tmp_space_size << std::endl;
         return ge::GRAPH_SUCCESS;
     }
 
     ge::graphStatus GetWorkspaceSize() override
     {
         uint64_t dq_size, dk_size, dv_size;
-        uint32_t batch_num = tilingData_.get_batchNum();
-        uint32_t q_head_num = tilingData_.get_qHeadNum();
-        uint32_t kv_head_num = tilingData_.get_kvHeadNum();
-        uint32_t head_dim = tilingData_.get_headDim();
-        uint32_t q_seq_len = tilingData_.get_qSeqLen();
-        uint32_t kv_seq_len = tilingData_.get_kvSeqLen();
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
 
         if (strcmp(layout_, BSH_STR) == 0 || strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
-            dq_size = batch_num * q_seq_len * q_head_num * head_dim;
-            dk_size = batch_num * kv_seq_len * kv_head_num * head_dim;
+            dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
+            dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
         } else if (strcmp(layout_, TND_STR) == 0) {
-            dq_size = q_seq_len * q_head_num * head_dim;
-            dk_size = kv_seq_len * kv_head_num * head_dim;
+            dq_size = q_seq_len_ * q_head_num_ * head_dim_;
+            dk_size = kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
         } else {
             OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSH or BSDN or BNSD or TND.");
@@ -294,7 +311,6 @@ protected:
         usr_workspace_offset += dv_size * sizeof(float);
 
         context_->GetWorkspaceSizes(1)[0] = sys_workspace_size + usr_workspace_offset;
-        std::cout << "workspace size is " << sys_workspace_size + usr_workspace_offset << std::endl;
         return ge::GRAPH_SUCCESS;
     }
 
