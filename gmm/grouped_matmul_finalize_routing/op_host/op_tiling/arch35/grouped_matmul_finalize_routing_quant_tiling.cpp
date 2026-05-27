@@ -113,7 +113,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
     OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleDesc is nullptr."), return false);
-    inputParams_.scaleDtype = scaleDesc != nullptr ? scaleDesc->GetDataType() : inputParams_.scaleDtype;
+    inputParams_.scaleDtype = scaleDesc->GetDataType();
     if (inputParams_.scaleDtype == ge::DT_FLOAT) {
         scaleType_ = 1;
     } else if (inputParams_.scaleDtype == ge::DT_BF16) {
@@ -572,11 +572,9 @@ void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
     tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 1;
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    uint64_t l2_size;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2_size);
-    constexpr uint32_t DETER_WORK_SPACE_SIZE = 96 * 1024 * 1024;
-    constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64 * 1024 * 1024;
-    deterWorkspaceSize_ = l2_size > DETER_WORK_SPACE_SIZE ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
+    uint64_t l2Size;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2Size);
+    deterWorkspaceSize_ = static_cast<uint32_t>((l2Size - SYS_WORKSPACE_SIZES) * DETER_WORKSPACE_RATIO);
     tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
     OP_LOGD(context_->GetNodeName(), "DeterministicTilingProcess: flag=%u, wsSize=%u",
             tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag,
@@ -589,10 +587,10 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-    if (deterWorkspaceSize_ > 0) {
+    if (tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag == 1) {
         size_t *workspaces = context_->GetWorkspaceSizes(1);
-        workspaces[0] += deterWorkspaceSize_;
-        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: added deterministic workspace %u, total=%zu",
+        workspaces[0] = SYS_WORKSPACE_SIZE + deterWorkspaceSize_;
+        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u, total=%zu",
                 deterWorkspaceSize_, workspaces[0]);
     }
     return ge::GRAPH_SUCCESS;
