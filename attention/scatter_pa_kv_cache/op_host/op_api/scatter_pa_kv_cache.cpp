@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -38,35 +38,10 @@ std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCache(
            compressLensOptional, compressSeqOffsetOptional, seqLensOptional,
            cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional);
 
-    const aclTensor *compressLens = compressLensOptional;
-    if (compressLens == nullptr) {
-        compressLens = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-
-    const aclTensor *compressSeqOffset = compressSeqOffsetOptional;
-    if (compressSeqOffset == nullptr) {
-        compressSeqOffset = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-
-    const aclTensor *seqLens = seqLensOptional;
-    if (seqLens == nullptr) {
-        seqLens = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-
-    auto ret = INFER_SHAPE(ScatterPaKvCache,
-                           OP_INPUT(key, keyCacheRef, slotMapping, value, valueCacheRef,
-                                    compressLens, compressSeqOffset, seqLens),
-                           OP_OUTPUT(keyCacheRef, valueCacheRef),
-                           OP_ATTR(cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional));
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
-        return {nullptr, nullptr};
-    }
-
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(
+    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         ScatterPaKvCache,
         OP_INPUT(key, keyCacheRef, slotMapping, value, valueCacheRef,
-                 compressLens, compressSeqOffset, seqLens),
+                 compressLensOptional, compressSeqOffset, seqLensOptional),
         OP_OUTPUT(keyCacheRef, valueCacheRef),
         OP_ATTR(cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional));
     if (ret != ACLNN_SUCCESS) {
