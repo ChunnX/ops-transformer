@@ -21,21 +21,21 @@
 #include "mc2_tiling_case_executor.h"
 
 namespace MoeDistributeDispatchV2UT {
-class MoeDistributeDispatchV2Arch22TilingTest : public testing::Test {
+class MoeDistributeDispatchV2Arch22A3TilingTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MoeDistributeDispatchV2Arch22TilingTest SetUp" << std::endl;
+        std::cout << "MoeDistributeDispatchV2Arch22A3TilingTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MoeDistributeDispatchV2Arch22TilingTest TearDown" << std::endl;
+        std::cout << "MoeDistributeDispatchV2Arch22A3TilingTest TearDown" << std::endl;
     }
 };
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test0)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test0)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -81,7 +81,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test0)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test1)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test1)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -127,7 +127,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test1)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test2)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test2)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -173,7 +173,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test2)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test3)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test3)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -219,7 +219,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test3)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test4)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test4)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -266,7 +266,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test4)
 
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test5)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test5)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -312,7 +312,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test5)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test6)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test6)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -358,7 +358,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test6)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test7)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test7)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -404,7 +404,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test7)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test8)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test8)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -450,7 +450,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test8)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test9)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test9)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -496,7 +496,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test9)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test10)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, Test10)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -543,7 +543,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, Test10)
 
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize384)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, EpWorldSize384)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -589,7 +589,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize384)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize72)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, EpWorldSize72)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -636,7 +636,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize72)
 
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask2dims)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, XActiveMask2dims)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -685,7 +685,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask2dims)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ElasticInfo)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ElasticInfo)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -735,7 +735,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ElasticInfo)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ZeroComputeExpertNum)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ZeroComputeExpertNum)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -781,7 +781,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ZeroComputeExpertNum)
 }
 
 // normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ZeroComputeExpertNumInvalid)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ZeroComputeExpertNumInvalid)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -825,344 +825,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ZeroComputeExpertNumInvalid)
     uint64_t expectTilingKey = 1000000000000000000UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
-// =======================================A2===========================================
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgEmpty)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
-}
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmesh)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("fullmesh")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
-}
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgHierarchy)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_BOOL, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("hierarchy")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 256UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
-}
-
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgError)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("error")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
-}
-
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgEmptyWithEnv)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
-}
-
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshWithEnv)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("fullmesh")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
-}
-
-
-// normal: share rank
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommalgFullmeshZeroComputeExpertNotZero)
-{
-    struct MoeDistributeDispatchV2CompileInfo {};
-    MoeDistributeDispatchV2CompileInfo compileInfo;
-    uint64_t coreNum = 48;
-    uint64_t ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "MoeDistributeDispatchV2",
-        {
-            // input info
-            {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            // output info
-            {{{8 * 8 * 32, 7168}, {8 * 8 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{8 * 8 * 32}, {8 * 8 * 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{8 * 8}, {8 * 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{8 * 32}, {8 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("fullmesh")},
-         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend910B", coreNum, ubSize);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
-}
-
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3QuantMode2WithScales)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, A3QuantMode2WithScales)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1206,7 +869,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3QuantMode2WithScales)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3ElasticInfoQuant2)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, A3ElasticInfoQuant2)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1253,7 +916,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3ElasticInfoQuant2)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, PerformanceInfo)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, PerformanceInfo)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1301,7 +964,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, PerformanceInfo)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, TpWorldSize2RankId1)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, TpWorldSize2RankId1)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1344,7 +1007,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, TpWorldSize2RankId1)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, NoSharedExpert)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, NoSharedExpert)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1387,7 +1050,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, NoSharedExpert)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, GlobalBsNonZero)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, GlobalBsNonZero)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1430,7 +1093,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, GlobalBsNonZero)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpRankIdAsSharedExpert)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, EpRankIdAsSharedExpert)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1473,7 +1136,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpRankIdAsSharedExpert)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ExpertTokenNumsType0)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ExpertTokenNumsType0)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1516,7 +1179,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ExpertTokenNumsType0)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, CommAlgFullmeshV1)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, CommAlgFullmeshV1)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1559,7 +1222,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, CommAlgFullmeshV1)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, CommAlgFullmeshV2)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, CommAlgFullmeshV2)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1602,7 +1265,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, CommAlgFullmeshV2)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, SmallBsAndK)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, SmallBsAndK)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1645,7 +1308,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, SmallBsAndK)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, MoeExpertNumNotDivisibleByMoeRankNum)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, MoeExpertNumNotDivisibleByMoeRankNum)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1688,7 +1351,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, MoeExpertNumNotDivisibleByMoeRan
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, SharedExpertNum2)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, SharedExpertNum2)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1731,7 +1394,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, SharedExpertNum2)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize2)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, EpWorldSize2)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1774,7 +1437,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize2)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, AllZeroExpertNums)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, AllZeroExpertNums)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1817,7 +1480,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, AllZeroExpertNums)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask1dim)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, XActiveMask1dim)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1863,7 +1526,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask1dim)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize64)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, EpWorldSize64)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1906,7 +1569,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpWorldSize64)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, LargeKValue)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, LargeKValue)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1949,7 +1612,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, LargeKValue)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpRankIdLastShared)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, EpRankIdLastShared)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -1992,7 +1655,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, EpRankIdLastShared)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ElasticInfoEnabled)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ElasticInfoEnabled)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2040,7 +1703,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ElasticInfoEnabled)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, PerformanceInfoEnabled)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, PerformanceInfoEnabled)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2088,7 +1751,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, PerformanceInfoEnabled)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, HierarchyCommAlg)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, HierarchyCommAlg)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2134,7 +1797,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, HierarchyCommAlg)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask2D)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, XActiveMask2D)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2180,7 +1843,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask2D)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ZeroExpertNumNonZero)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ZeroExpertNumNonZero)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2223,7 +1886,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ZeroExpertNumNonZero)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, CopyExpertNumNonZero)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, CopyExpertNumNonZero)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2266,7 +1929,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, CopyExpertNumNonZero)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ConstExpertNumNonZero)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ConstExpertNumNonZero)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2309,7 +1972,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ConstExpertNumNonZero)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, GlobalBsNonZeroLargeValue)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, GlobalBsNonZeroLargeValue)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2352,7 +2015,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, GlobalBsNonZeroLargeValue)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, NoSharedExpertRankNum)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, NoSharedExpertRankNum)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2395,7 +2058,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, NoSharedExpertRankNum)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, NoTpMode)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, NoTpMode)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2438,7 +2101,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, NoTpMode)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ElasticInfoAndPerformanceBothEnabled)
+TEST_F(MoeDistributeDispatchV2Arch22A3TilingTest, ElasticInfoAndPerformanceBothEnabled)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -2486,4 +2149,5 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, ElasticInfoAndPerformanceBothEna
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-} // namespace MoeDistributeDispatchV2UT
+}
+// namespace MoeDistributeDispatchV2UT

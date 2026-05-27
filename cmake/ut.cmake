@@ -270,6 +270,24 @@ if(UT_TEST_ALL
           add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
         endif()
         file(GLOB OPHOST_TILING_CASES_SRC ${MODULE_DIR}/test_*_tiling.cpp)
+        # A2/A3 UT mutual exclusion: same as A2A3_DIFF_OPS in obj_func.cmake
+        set(_A2A3_DIFF_OPS
+            moe_distribute_combine
+            moe_distribute_combine_v2
+            moe_distribute_combine_v3
+            moe_distribute_dispatch
+            moe_distribute_dispatch_v2
+            moe_distribute_dispatch_v3
+            moe_distribute_combine_add_rms_norm
+        )
+        list(FIND _A2A3_DIFF_OPS "${OP_NAME}" _A2A3_DIFF_OPS_INDEX)
+        if(NOT _A2A3_DIFF_OPS_INDEX EQUAL -1 AND ARCH_NAME STREQUAL "arch22")
+            if(ASCEND_COMPUTE_UNIT STREQUAL "ascend910b")
+                list(FILTER OPHOST_TILING_CASES_SRC EXCLUDE REGEX ".*_a3\\.cpp$")
+            elseif(ASCEND_COMPUTE_UNIT STREQUAL "ascend910_93")
+                list(FILTER OPHOST_TILING_CASES_SRC EXCLUDE REGEX ".*_a2\\.cpp$")
+            endif()
+        endif()
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_TILING_CASES_SRC})
       endif()
 
