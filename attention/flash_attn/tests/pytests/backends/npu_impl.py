@@ -18,7 +18,7 @@ from einops import rearrange
 import npu_ops_transformer
 from npu_ops_transformer.ops import npu_flash_attn
 from npu_ops_transformer.ops import npu_flash_attn_metadata
-from test_utils import trans_bnsd_to_layout
+from utils import trans_bnsd_to_layout
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 

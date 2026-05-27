@@ -9,6 +9,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
-from test_utils.data import *
-from test_utils.compare import *
-from test_utils.io import *
+from utils.data import *
+from utils.compare import *
+from utils.io import *

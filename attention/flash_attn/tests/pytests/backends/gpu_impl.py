@@ -21,7 +21,7 @@ GPU 后端实现 (基于 flash-attn 库)
 
 import torch
 from typing import Optional, List
-from test_utils import (generate_qkv, generate_npu_mask, trans_bnsd_to_layout,
+from utils import (generate_qkv, generate_npu_mask, trans_bnsd_to_layout,
                          data_compare_benchmark_new, Result, gen_block_table)
 
 try:
