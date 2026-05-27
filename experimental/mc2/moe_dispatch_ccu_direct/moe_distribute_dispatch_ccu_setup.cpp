@@ -46,9 +46,19 @@ CcuKernelArgMoeDistributeDispatchCcuSetup::CcuKernelArgMoeDistributeDispatchCcuS
       globalBs(globalBs_ == 0 ? bs_ * epWorldSize_ : globalBs_),
       commType(commType_), commAlg(commAlg_),
       bs(bs_), topK(topK_), hiddenSize(hiddenSize_),
-      // v6：tokenMsgSize（非量化）= Align256(H) * sizeof(YOutType)；对 H=7168/4096 已 256 对齐时不变。
-      // 来源：aclnnMoeDistributeDispatchSetup.md §约束说明 5（tokenMsgSize）。
-      tokenMsgLen(static_cast<uint64_t>(((hiddenSize_ + 255U) / 256U) * 256U) * sizeof(uint16_t)),
+      // v17 ★ tokenMsgLen 按 quantMode 切公式：
+      //   quantMode == 0 (非量化 BF16)：Align256(H) * sizeof(BF16)
+      //     来源：aclnnMoeDistributeDispatchSetup.md §约束说明 5
+      //   quantMode == 1 (MXFP8)：Align32(H + H/32)
+      //     - data 段 H bytes (FP8 = 1 byte/elem)
+      //     - scale 段 H/32 bytes (E8M0 per-32-elem 共享，每 block 1 byte)
+      //     - 整体 Align32 满足 ascendc DataCopy 32B 对齐
+      //   device 端字节透传：dispatch_setup CCU 算法不感知 quantMode，
+      //     段 4 段长 / 段 7 单 token RDMA 长度 / metadata 偏移全部用 tokenMsgLen 变量，
+      //     host 端按 quantMode 预拼好 xWithMeta 即可（data + scale 紧排到 token 内部）。
+      tokenMsgLen(quantMode_ == 0
+                  ? static_cast<uint64_t>(((hiddenSize_ + 255U) / 256U) * 256U) * sizeof(uint16_t)
+                  : static_cast<uint64_t>(((hiddenSize_ + hiddenSize_ / 32U + 31U) / 32U) * 32U)),
       moeExpertPerRankNum(moeExpertNum_ / (epWorldSize_ - sharedExpertRankNum_))
 {}
 

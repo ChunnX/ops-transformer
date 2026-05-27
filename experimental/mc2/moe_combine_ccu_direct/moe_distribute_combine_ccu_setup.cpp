@@ -62,7 +62,15 @@ CcuKernelArgMoeDistributeCombineCcuSetup::CcuKernelArgMoeDistributeCombineCcuSet
       globalBs(globalBs_ == 0 ? bs_ * epWorldSize_ : globalBs_),
       commQuantMode(commQuantMode_), commType(commType_), commAlg(commAlg_),
       bs(bs_), topK(topK_), hiddenSize(hiddenSize_),
-      tokenMsgLen(static_cast<uint64_t>(((hiddenSize_ + 255U) / 256U) * 256U) * sizeof(uint16_t)),
+      // v17 ★ tokenMsgLen 按 commQuantMode 切公式（与 dispatch_setup quantMode 分支严格一致）：
+      //   commQuantMode == 0 (BF16)：Align256(H) * sizeof(BF16)
+      //   commQuantMode == 1 (MXFP8)：Align32(H + H/32) —— FP8 data (H) + E8M0 scale (H/32)
+      //   两端公式必须一致才能透传 RDMA 字节流（dispatch 发什么格式 combine 收同款）
+      //   关键：tokenMsgLen 影响段 4 段长 / 段 5 PreCount 累加 / 段 7 metadata 偏移
+      //         任一处用错值都会导致 GM 偏移错位 + 数据错乱
+      tokenMsgLen(commQuantMode_ == 0
+                  ? static_cast<uint64_t>(((hiddenSize_ + 255U) / 256U) * 256U) * sizeof(uint16_t)
+                  : static_cast<uint64_t>(((hiddenSize_ + hiddenSize_ / 32U + 31U) / 32U) * 32U)),
       moeExpertPerRankNum(moeExpertNum_ / (epWorldSize_ - sharedExpertRankNum_))
 {}
 

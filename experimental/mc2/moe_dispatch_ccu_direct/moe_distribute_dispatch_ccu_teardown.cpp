@@ -161,12 +161,14 @@ public:
             for (int32_t k = 0; k < srcTokens; ++k) {
                 const uint64_t srcOff = static_cast<uint64_t>(r) * segElemsCapacity
                                        + static_cast<uint64_t>(k) * tokenWithMetaElems;
+
                 const uint64_t dstOff = (dstTokenIdx + static_cast<uint64_t>(k)) * tokenWithMetaElems;
 
                 // chunked GM→UB→GM 整 token + metadata
                 for (uint64_t off = 0; off < tokenWithMetaElems; off += kChunkElems) {
                     uint32_t copyLen = static_cast<uint32_t>(
                         (tokenWithMetaElems - off >= kChunkElems) ? kChunkElems : (tokenWithMetaElems - off));
+
                     DataCopy(ubLocal, commWindowGM_[srcOff + off], copyLen);
                     PipeBarrier<PIPE_ALL>();
                     DataCopy(expandXGM_[dstOff + off], ubLocal, copyLen);
@@ -179,12 +181,15 @@ public:
                 //   metadata 三元组 (srcRank, srcSlot, dstK) 在 commWindow 该 token 偏移 = srcOff + metaOffsetElems
                 //   按 int32 视图换算下标：metaSrcIntIdx = (srcOff + metaOffsetElems) * sizeof(YType) / sizeof(int32_t)
                 const uint64_t metaSrcByteOff = (srcOff + metaOffsetElems) * sizeof(YType);
+
                 const uint64_t metaSrcIntIdx  = metaSrcByteOff / sizeof(int32_t);
+
                 int32_t srcRank = commWindowMetaGM_.GetValue(metaSrcIntIdx + 0);
                 int32_t srcSlot = commWindowMetaGM_.GetValue(metaSrcIntIdx + 1);
                 int32_t dstK    = commWindowMetaGM_.GetValue(metaSrcIntIdx + 2);
 
                 const uint64_t assistIdx = (dstTokenIdx + static_cast<uint64_t>(k)) * 3;
+
                 assistInfoGM_.SetValue(assistIdx + 0, srcRank);
                 assistInfoGM_.SetValue(assistIdx + 1, srcSlot);
                 assistInfoGM_.SetValue(assistIdx + 2, dstK);
@@ -230,6 +235,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_ccu_teardown(
 {
     // v10/v13 简化：device 端不读这 6 个字段（端到端 IO 契约保留，host driver 归零或不动）。
     //   特别地 v13：op_def yAddr 也不读（caller 占位 alloc，device 端真正读的是 commWindow）。
+    
     (void)x;
     (void)y;
     (void)expertIds;
