@@ -399,7 +399,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName_, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
-    if (std::strcmp(commMode, "") != 0) {
+    if (strnlen(commMode, 1UL) > 0) { // 不为空字符串
         OP_LOGI(opName_, "The current soc only support default communication engine.");
     }
     info.worldSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
