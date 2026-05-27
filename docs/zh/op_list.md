@@ -606,6 +606,16 @@
     <td>AI Core</td>
     <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
   </tr>
+   <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/distribute_barrier_extend/README.md">distribute_barrier_extend</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
+ 	</tr>
   <tr>
     <td>mc2</td>
     <td><a href="../../mc2/grouped_mat_mul_all_reduce/README.md">grouped_mat_mul_all_reduce</a></td>
@@ -805,6 +815,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_gating_top_k_backward/README.md">moe_gating_top_k_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>MoeGatingTopK的反向算子。</td>
   </tr>
   <tr>
     <td>moe</td>
