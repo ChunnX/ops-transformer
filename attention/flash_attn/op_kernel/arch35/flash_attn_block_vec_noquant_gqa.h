@@ -82,7 +82,14 @@ public:
 
     using flashdecodeGmType = GlobalTensor<float>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    struct VecConstInfo {
+        uint32_t aicIdx;
+        uint32_t aivIdx;
+        uint8_t subBlockIdx;
+        uint32_t dBasicBlock;
+    };
+
+    using ConstInfoX = VecConstInfo;
 
     __aicore__ inline VecBlockBase(ConstInfoX &constInfo){};
 };
@@ -133,7 +140,9 @@ public:
 
     using flashdecodeGmType = GlobalTensor<float>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoX = typename VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType,
+                                             dTemplateType, dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn,
+                                             bmm2Write2Ub, splitD>::VecConstInfo;
 
     // gm
     TPipe *tPipe;

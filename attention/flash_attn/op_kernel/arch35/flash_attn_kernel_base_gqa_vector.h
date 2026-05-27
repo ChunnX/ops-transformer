@@ -21,6 +21,43 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
+struct FDparamsX {
+    uint32_t fdCoreEnable;
+    uint32_t fdBN2Idx;
+    uint32_t fdMIdx;
+    uint32_t fdS2SplitNum;
+    uint32_t mStart;
+    uint32_t mLen;
+    uint32_t fdWorkspaceIdx;
+};
+
+struct RunInfoXVec {
+    uint64_t actS1Size = 1;
+    uint64_t actS2Size = 1;
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+
+    uint32_t actVecMSize = 0;
+    uint32_t actSingleLoopS2Size = 0;
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    uint32_t actSingleLoopS2SizeAlign = 0;
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t gIdx = 0;
+    uint32_t s2Idx = 0;
+    uint32_t actMSize = 0;
+    uint32_t actMSizeAlign32 = 0;
+    uint32_t vecMbaseIdx = 0;
+    uint32_t faTmpOutWsPos = 0;
+
+    bool isValid = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+    bool isS2SplitCore = false;
+};
+
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attention_noquant_block_vec_flashdecode.h"
@@ -62,7 +99,6 @@ public:
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
 
     using INPUT_T = InputT;
-    using ConstInfoX = typename VecFaBlockType::ConstInfoX;
 
     using QCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
                                                            ActualSeqLensParser<Q_MODE, int32_t, true>,
@@ -73,10 +109,11 @@ public:
     using QSeqUsedParserType = QCuSeqLensParserType;
     using KvSeqUsedParserType = KvCuSeqLensParserType;
 
+    using VecConstInfo = typename VecFaBlockType::ConstInfoX;
+
+    VecConstInfo constInfo;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
-
-    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
 
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;

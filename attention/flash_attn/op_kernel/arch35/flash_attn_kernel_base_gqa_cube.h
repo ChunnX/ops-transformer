@@ -21,6 +21,19 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
+struct RunInfoXCube {
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint32_t actMSize = 0;
+    uint32_t actSingleLoopS2Size = 0;
+    bool isValid = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
+    bool isChangeBatch = false;
+};
+
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 
@@ -76,9 +89,11 @@ public:
     using QSeqUsedParserType = ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>;
     using KvSeqUsedParserType = ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>;
 
+    using CubeConstInfo = typename CubeBlockType::ConstInfoX;
+
     CubeBlockType cubeBlock;
 
-    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
+    CubeConstInfo constInfo;
 
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
