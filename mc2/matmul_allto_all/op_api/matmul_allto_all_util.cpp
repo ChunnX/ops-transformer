@@ -229,10 +229,9 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        // 910B和910_93只支持default
+        // 910B和910_93只支持默认通信引擎
         if (std::strcmp(commModeStr, "") != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support empty string ''.");
-            return ACLNN_ERR_PARAM_INVALID;
+            OP_LOGI("The commMode [%s] is illegal, will use default communication engine.", commModeStr);
         }
     }
 

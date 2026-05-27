@@ -247,11 +247,15 @@ static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_950[] = {
     {"error-AclnnMatmulAlltoAllV2-wrong-commMode-24", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "default", false, false, ACLNN_ERR_PARAM_INVALID}
+        {-1, -2}, "ut_test_matmul_allto_all", "default", false, false, ACLNN_ERR_PARAM_INVALID},
     {"error-AclnnMatmulAlltoAllV2-wrong-commMode-25", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "aicpu", false, false, ACLNN_ERR_PARAM_INVALID}
+        {-1, -2}, "ut_test_matmul_allto_all", "aicpu", false, false, ACLNN_ERR_PARAM_INVALID},
+    {"error-AclnnMatmulAlltoAllV2-nullptr-commMode-26", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        {-1, -2}, "ut_test_matmul_allto_all", nullptr, false, false, ACLNN_ERR_PARAM_NULLPTR}
 };
 
 static aclTensor* CreateAclTensor(const std::vector<int64_t>& shape, aclDataType dataType, aclFormat format)
@@ -407,14 +411,10 @@ static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_910B[] = {
         {-1, -2}, "ut_test_matmul_allto_all", "", false, false, ACLNN_ERR_PARAM_INVALID},
 
     // ========================commMode 覆盖（2条）========================
-    {"AclnnMatmulAlltoAllV2-910B-aicpu-commMode-16", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+    {"AclnnMatmulAlltoAllV2-910B-nullptr-commMode-16", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_FLOAT, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "ai_cpu", false, false, ACLNN_ERR_PARAM_INVALID},
-    {"AclnnMatmulAlltoAllV2-910B-ccu-commMode-17", 2, {256, 128}, {128, 256}, {256}, {512, 128},
-        ACL_BF16, ACL_BF16, ACL_FLOAT, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", "ccu", false, false, ACLNN_ERR_PARAM_INVALID}
+        {-1, -2}, "ut_test_matmul_allto_all", nullptr, false, false, ACLNN_ERR_PARAM_NULLPTR}
 };
 
 TEST_F(TestAclnnMatmulAlltoAllV2, CasesParamsTest910B)
