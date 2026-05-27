@@ -84,5 +84,3 @@ aclnnStatus aclnnFusedInferAttentionScore(void *workspace, uint64_t workspaceSiz
 #ifdef __cplusplus
 }
 #endif
-
-

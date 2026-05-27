@@ -123,5 +123,3 @@ ge::graphStatus TilingCheck::Check(const FiaTilingInfo &fiaInfo)
     return tilingChecker.Process();
 }
 } // namespace optiling
-
-

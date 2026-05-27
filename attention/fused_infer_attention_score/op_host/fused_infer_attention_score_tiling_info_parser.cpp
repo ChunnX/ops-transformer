@@ -22,7 +22,6 @@
 #include "fused_infer_attention_score_tiling_index.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 
-
 using std::map;
 using std::pair;
 using std::string;
@@ -1703,9 +1702,3 @@ ge::graphStatus FiaInfoParser::ParseFeatureInfo()
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
-
-
-
-
-
-

@@ -542,7 +542,6 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
     // 全量化场景下 QS仅支持1-16
     constexpr uint32_t maxQuerySeqLenForMLAFullquant = 16U;
     
-
     OP_CHECK_IF((fiaInfo.s1Size < NUM1),
         ({ char reason[512] = {0};
         OP_LOGE(fiaInfo.opName,
@@ -666,7 +665,3 @@ ge::graphStatus RopeChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaI
 }
 
 } // namespace optiling
-
-
-
-

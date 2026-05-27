@@ -169,7 +169,3 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo
 }
 
 }  // namespace optiling
-
-
-
-

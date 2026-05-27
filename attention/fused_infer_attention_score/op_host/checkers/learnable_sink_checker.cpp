@@ -225,8 +225,3 @@ ge::graphStatus LearnableSinkChecker::CheckMultiParaConsistency(const FiaTilingI
 }
 
 } // namespace optiling
-
-
-
-
-

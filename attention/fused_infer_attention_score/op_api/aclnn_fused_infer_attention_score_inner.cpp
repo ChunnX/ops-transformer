@@ -68,7 +68,6 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
     OP_LOGD("The conversion of kv from int32 to int4 is completed.");
 }
 
-
 void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
     if (tensorKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
@@ -141,5 +140,3 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
 #ifdef __cplusplus
 }
 #endif
-
-

@@ -380,7 +380,3 @@ ge::graphStatus PostQuantChecker::CheckMultiParaConsistency(const FiaTilingInfo 
 }
 
 }  // namespace optiling
-
-
-
-

@@ -624,7 +624,6 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
     faRunTilingAdapter_.multiCoreParamsRegbase.set_sparseStartIdx(gS1StartIdx.data());
 }
 
-
 /*
  * 计算同时参与计算所需的L2 cache大小
  * 算法思路：
@@ -2079,7 +2078,6 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
     OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 
-
     OP_LOGD(fiaInfo.opName, "coreNum:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_coreNum());
     OP_LOGD(fiaInfo.opName, "totalSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_totalSize());
     OP_LOGD(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
@@ -2095,7 +2093,6 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     }
     OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
     OP_LOGD(fiaInfo.opName, "splitCoreMode:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitCoreMode());
-
 
     OP_LOGD(fiaInfo.opName, "singleCoreSize:%d", faRunTilingAdapter_.initOutputParams.get_singleCoreSize());
     OP_LOGD(fiaInfo.opName, "needInit:%d", faRunTilingAdapter_.initOutputParams.get_needInit());

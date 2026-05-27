@@ -886,21 +886,6 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext &context, PromptFlash
         compileInfoPtr.defaultSysWorkspaceSize = 0U;
 
         OP_CHECK_IF((compileInfoPtr.aivNum != compileInfoPtr.aicNum) && (compileInfoPtr.aivNum != compileInfoPtr.aicNum * 2U),
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
             OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.",
                 compileInfoPtr.aicNum, compileInfoPtr.aivNum), return GRAPH_FAILED);
         OP_CHECK_IF(compileInfoPtr.aivNum == compileInfoPtr.aicNum,
@@ -2203,21 +2188,6 @@ static ge::graphStatus CheckInputLayout(gert::TilingContext *context, const stri
     if (isPageAttention == false) {
         if (inputLayoutStr == "TND" || inputLayoutStr == "NTD_TND") {
             OP_CHECK_IF(((tempK->GetStorageShape().GetDimNum() != DIM_NUM_3) || (tempV->GetStorageShape().GetDimNum() != DIM_NUM_3)),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Layout is %s, key and value dims must be %zu! but actual value is keydim(%zu) valuedim(%zu).\n",
                 inputLayoutStr.c_str(), DIM_NUM_3, tempK->GetStorageShape().GetDimNum(), tempV->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
         }

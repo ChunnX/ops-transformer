@@ -932,7 +932,3 @@ ge::graphStatus FiaTilingCheck::CheckMultiParaConsistency()
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
-
-
-
-

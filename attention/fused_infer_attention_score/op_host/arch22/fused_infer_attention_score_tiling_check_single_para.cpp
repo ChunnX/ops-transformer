@@ -739,7 +739,3 @@ ge::graphStatus FiaTilingCheck::CheckSinglePara() const
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
-
-
-
-

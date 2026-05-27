@@ -379,7 +379,3 @@ IMPL_OP(FusedInferAttentionScore).OpExecuteFunc(FusedInferHostExecuteFunc).HostI
 #ifdef __cplusplus
 }
 #endif
-
-
-
-

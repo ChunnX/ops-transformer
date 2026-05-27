@@ -177,7 +177,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeMXFP8Fullquant(const FiaTi
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeMLAFullquant(fiaInfo) ||
@@ -1590,7 +1589,6 @@ ge::graphStatus DequantChecker::CheckInputLayoutPertensor(const FiaTilingInfo &f
                 fiaInfo.opName, "feature", fiaInfo.opParamInfo.layOut); }),
         return ge::GRAPH_FAILED);
     
-
     return ge::GRAPH_SUCCESS;
 }
 

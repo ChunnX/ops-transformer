@@ -92,5 +92,3 @@ template ge::graphStatus BaseChecker::CheckValueSupport(
 template ge::graphStatus BaseChecker::CheckValueSupport(const int32_t value,
                                                         const std::vector<int32_t> &expectValList) const;
 }
-
-

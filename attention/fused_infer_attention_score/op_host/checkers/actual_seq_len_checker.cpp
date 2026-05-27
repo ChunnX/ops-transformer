@@ -236,21 +236,6 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             if (bIdx != 0) {
                 int64_t lastSeqLengthData = actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx - 1];
                 OP_CHECK_IF((fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && curSeqLengthData < lastSeqLengthData),
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
                     ({ char reason[512] = {0};
                     OP_LOGE(fiaInfo.opName,
                             "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
@@ -596,20 +581,3 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiParaConsistency(const FiaTilingIn
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

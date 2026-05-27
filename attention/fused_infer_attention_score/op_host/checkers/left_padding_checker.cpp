@@ -256,5 +256,3 @@ ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInf
 }
 
 }  // namespace optiling
-
-

@@ -328,21 +328,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureMask() const
                 };
                 std::string layout = opParamInfo_.layOut;
                 OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
                     ({ char reason[512] = {0};
                     OP_LOGE(opName_,
                             "In op [%s], [%s] is not supported, got [%s]",
@@ -731,21 +716,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
         if (vHeadDim_ == HEAD_DIM_512) {
             OP_CHECK_IF(std::find(splitRopeLayoutSupportList.begin(), splitRopeLayoutSupportList.end(), layout) == splitRopeLayoutSupportList.end(),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
             ({ char reason[512] = {0};
             OP_LOGE(opName_,
                     "In op [%s], [%s] is not supported, got [%s]",
@@ -754,21 +724,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
         }
         if (vHeadDim_ == HEAD_DIM_128) {
             OP_CHECK_IF(std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) == restrictedLayoutSupportList.end(),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
             ({ char reason[512] = {0};
             OP_LOGE(opName_,
                     "In op [%s], [%s] is not supported, got [%s]",
@@ -777,21 +732,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
         }
     } else if (fiaInfo_.ropeMode == RopeMode::NO_ROPE) {
         OP_CHECK_IF(std::find(restrictedLayoutSupportList.begin(), restrictedLayoutSupportList.end(), layout) == restrictedLayoutSupportList.end(),
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
             ({ char reason[512] = {0};
             OP_LOGE(opName_,
                     "In op [%s], [%s] is not supported, got [%s]",
@@ -800,21 +740,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
 
         if (!fiaInfo_.isLegacyIfa && (vHeadDim_ % ALIGN_SIZE_16 != 0)) {
             OP_CHECK_IF(std::find(noRopeLayoutSupportListA.begin(), noRopeLayoutSupportListA.end(), layout) != noRopeLayoutSupportListA.end(),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
             ({ char reason[512] = {0};
             OP_LOGE(opName_,
                     "In op [%s], [%s] is not supported, got [%s]",
@@ -822,21 +747,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
             return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(std::find(noRopeLayoutSupportListB.begin(), noRopeLayoutSupportListB.end(), layout) != noRopeLayoutSupportListB.end(),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
             ({ char reason[512] = {0};
             OP_LOGE(opName_,
                     "In op [%s], [%s] is not supported, got [%s]",
@@ -845,21 +755,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLayout() const
         }
         if (fiaInfo_.isLegacyIfa && (vHeadDim_ != HEAD_DIM_64 && vHeadDim_ != HEAD_DIM_128)) {
             OP_CHECK_IF(std::find(noRopeLayoutSupportListB.begin(), noRopeLayoutSupportListB.end(), layout) != noRopeLayoutSupportListB.end(),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
             ({ char reason[512] = {0};
             OP_LOGE(opName_,
                     "In op [%s], [%s] is not supported, got [%s]",
@@ -961,21 +856,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureAxisInfo() const
 
     if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT && vHeadDim_ == HEAD_DIM_512) {
         OP_CHECK_IF(std::find(ropeSplitgSizeSupportList.begin(), ropeSplitgSizeSupportList.end(), gSize_) == ropeSplitgSizeSupportList.end(),
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
         ({ char reason[512] = {0};
         OP_LOGE(opName_,
                 "In op [%s], [%s] is not supported, got [%s]",
@@ -1081,21 +961,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
     return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT || fiaInfo_.ropeMode == RopeMode::ROPE_COMBINE) && ropeHeadDim_ != MAX_ROPE_DIM,
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
     ({ char reason[512] = {0};
     OP_LOGE(opName_,
             "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
@@ -1153,21 +1018,6 @@ ge::graphStatus FiaTilingCheck::CheckFeatureHeadDim() const
         }
     } else if (fiaInfo_.ropeMode == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF(!(vHeadDim_ == HEAD_DIM_512 && ropeHeadDim_ == HEAD_DIM_64) && !(vHeadDim_ == HEAD_DIM_128 && ropeHeadDim_ == HEAD_DIM_64),
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
         ({ char reason[512] = {0};
         OP_LOGE(opName_,
                 "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
@@ -1593,20 +1443,3 @@ ge::graphStatus FiaTilingCheck::CheckFeature()
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

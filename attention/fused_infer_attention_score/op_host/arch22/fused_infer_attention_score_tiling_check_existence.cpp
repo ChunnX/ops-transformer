@@ -392,21 +392,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaNoquant() const
     }
     // torch_npu==2.1, 当actualSharedPrefixLen不传的时候, pta会把actualSharedPrefixLen传入一个shape为0的tensor
     OP_CHECK_IF(opParamInfo_.actualSharedPrefixLen.tensor != nullptr && opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0,
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         ({ char reason[512] = {0};
         OP_LOGE(opName_,
                 "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
@@ -464,21 +449,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaAntiquant() const
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.actualSharedPrefixLen.tensor != nullptr && opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0,
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         ({ char reason[512] = {0};
         OP_LOGE(opName_,
                 "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
@@ -535,21 +505,6 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaFullquant() const
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.actualSharedPrefixLen.tensor != nullptr && opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0,
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         ({ char reason[512] = {0};
         OP_LOGE(opName_,
                 "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
@@ -843,20 +798,3 @@ ge::graphStatus FiaTilingCheck::CheckParaExistence()
     }
 }
 } // namespace optiling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

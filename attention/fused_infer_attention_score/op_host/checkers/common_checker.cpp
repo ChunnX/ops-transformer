@@ -1313,21 +1313,6 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
                 "BSH", "BSND", "BNSD", "TND", "NTD", "NTD_TND", "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
             };
             OP_CHECK_IF(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end(),
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
                 ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
                         "In op [%s], [%s] is not supported, got [%s]",
