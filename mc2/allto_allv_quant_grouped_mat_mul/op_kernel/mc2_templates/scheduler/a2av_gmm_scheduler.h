@@ -81,13 +81,18 @@ public:
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
+        uint64_t groupListSize = sizeof(int64_t) * e_;
+        uint64_t ptrTableSize = 4 * 16;
+        uint64_t groupListAreaSize = Align(groupListSize + ptrTableSize, TENSOR_LIST_SIZE);
+        GM_ADDR groupListGm = computeWorkspaceGm_;
+        GM_ADDR workspaceGm = computeWorkspaceGm_ + groupListAreaSize;
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
+                                groupListGm, workspaceGm, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM,
-                       computeWorkspaceGm_, computeWorkspaceGm_, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe,
+                       groupListGm, workspaceGm, tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe,
                        isA2avGmmFlag);
     }
 
