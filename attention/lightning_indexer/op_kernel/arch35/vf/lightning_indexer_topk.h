@@ -41,7 +41,8 @@ public:
         uint64_t bufferSize1 = (2 * LICommon::Align(topK, (uint32_t)256) + 5 * 256 + 64)  * sizeof(uint32_t);
         // LICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
         uint64_t bufferSize2 = (LICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2;
+        uint64_t reuseBufferSize = LICommon::Align(topK, (uint32_t)256) * sizeof(uint32_t);
+        return bufferSize1 + bufferSize2 - reuseBufferSize;
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -50,10 +51,10 @@ public:
         this->trunkLen = trunkLen;
     }
     
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer, LocalTensor<uint32_t>& indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[LICommon::Align(topK, (uint32_t)256)];
+        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
+        LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
         histogramsLocal = hisIndexLocal2[LICommon::Align(topK, (uint32_t)256)];
@@ -94,15 +95,18 @@ public:
                                               histogramsLocal, idx0Local, idx1Local, idx2Local,
                                               idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
+                uint32_t loopBasicIdx = topK < trunkLen ? (loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256)) : ((loopIdx - 1) * trunkLen);
                 topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                              tmpIndexLocal, hisIndexLocal[loopIdx % 2],
                                              topK,
-                                             loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256),
+                                             loopBasicIdx,
                                              s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
-                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                                      LICommon::Align(topK, (uint32_t)256));
+                    if ((loopIdx + 1) % 2 == 1) {
+                        AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+                                        LICommon::Align(topK, (uint32_t)256));
+                    }
                 }
             }
         }
