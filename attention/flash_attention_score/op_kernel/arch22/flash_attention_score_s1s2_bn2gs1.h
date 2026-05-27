@@ -1303,6 +1303,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
         // mul需要等bmm结果搬完
         AscendC::SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         AscendC::WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        DumpTensor(actualUseTensor, 100, extraInfo.vec1S1RealSize * extraInfo.s2AlignedSize);
 
         this->CopyInAttenMask(extraInfo, loopIdx, -1);
         if (this->tilingData->inputParams.pseType != (uint32_t)PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
