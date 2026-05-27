@@ -38,6 +38,7 @@ struct RunTimeInfo {
     uint64_t queryGmOffset{0}; // query gm offset
     uint64_t keyGmOffset{0};   // key gm offset
     uint64_t lseGmOffset{0};   // lse gm offset
+    uint64_t sftgGmOffset{0};  // softmaxGradFront gm offset
     int32_t need_compute{0};   // 是否存在任务需要计算
 };
 
@@ -83,6 +84,12 @@ __aicore__ inline uint64_t GetKeyGmOffset(int32_t lastBatchSum, int32_t head_num
 __aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t s1Idx, int32_t n1Idx)
 {
     return lastBatchSum * head_num + (s1Idx * head_num) + n1Idx;
+}
+
+__aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                           int32_t s1Idx, int32_t n1Idx)
+{
+    return lastBatchSum * head_num * 8 + n1Idx * current_seq_len * 8 + s1Idx * 8;
 }
 
 

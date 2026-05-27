@@ -169,6 +169,8 @@ private:
         runTimeInfo.queryGmOffset = GetQueryGmOffset(last_q_seq_sum_, q_head_num_, head_dim_, s1Idx_, n1Idx_);
         runTimeInfo.keyGmOffset = GetKeyGmOffset(last_kv_seq_sum_, kv_head_num_, head_dim_, s2Idx_, n2Idx);
         runTimeInfo.lseGmOffset = GetLseGmOffset(last_q_seq_sum_, q_head_num_, s1Idx_, n1Idx_);
+        // 数据存放逻辑：[N, last_q_seq_sum_, 8]
+        runTimeInfo.sftgGmOffset = GetSftgGmOffset(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, s1Idx_, n1Idx_);
         runTimeInfo.need_compute = 1;
         current_cube_idx_++;
 

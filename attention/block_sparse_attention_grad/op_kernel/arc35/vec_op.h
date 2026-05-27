@@ -49,6 +49,7 @@ private:
     uint32_t vec_base_m;
     uint32_t vec_base_n;
     GlobalTensor<float> lse_gm_;
+    GlobalTensor<float> sftg_workspace_;
     LocalTensor<float> lse_tensor_;
     LocalTensor<INPUT_TYPE> softmax_res_tensor_;
     LocalTensor<INPUT_TYPE> softmax_res_nz_tensor_;
@@ -105,6 +106,7 @@ public:
 
         // gm_tensor
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
         // local_tensor
         lse_tensor_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
         ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
@@ -175,7 +177,7 @@ public:
                     out_gm_offset = b_idx * q_head_num_ * q_seq_len_ * 8 + n1_idx * q_seq_len_ * 8;
                 } else if constexpr (INPUT_LAYOUT == TND) {
                     q_seq_len = GetSeqLen(b_idx, act_seq_q_len);
-                    uint64_t last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx, act_seq_q_len);
+                    uint64_t last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx - 1, act_seq_q_len);
                     in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * q_seq_len_ * 8;
                 }
@@ -283,8 +285,40 @@ private:
          * out shape:   [s1LenAlign / 2, s2LenAlign]
          * dtype:       float
          */
+        int32_t m_process = runTimeInfo.s1Len;
+        int32_t m_process_align = runTimeInfo.s1LenAlign;
+        int32_t n_process_align = runTimeInfo.s2LenAlign;
+        int32_t sub_m_process = m_process_align / 2;
+        int32_t data_size = sub_m_process * n_process_align;
+        int32_t sub_real_m_process =
+            v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
+        uint64_t sftgGmOffset = runTimeInfo.sftgGmOffset + v_sub_core_idx_ * sub_m_process * 8;
+        uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
 
-        // do something..
+        DataCopy(lse_tensor_, sftg_workspace_[sftgGmOffset], m_process_align * 8);
+        SET_FLAG(MTE2, V, EVENT_ID0);
+        WAIT_FLAG(MTE2, V, EVENT_ID0);
+
+        SubBrcb(src_ub_tensor, src_ub_tensor, lse_tensor_, sub_m_process, n_process_align);
+        PipeBarrier<PIPE_V>();
+
+        Mul(src_ub_tensor, src_ub_tensor, sft_ub_tensor, sub_m_process * n_process_align);
+        PipeBarrier<PIPE_V>();
+
+        Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
+        PipeBarrier<PIPE_V>();
+
+        ND2NZ(softmax_res_nz_tensor_, softmax_res_tensor_, sub_m_process, n_process_align);
+        PipeBarrier<PIPE_V>();
+        SET_FLAG(V, MTE3, EVENT_ID0);
+        WAIT_FLAG(V, MTE3, EVENT_ID0);
+
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = n_process_align / C0_SIZE;
+        dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
     }
 
     __aicore__ inline void ComputeVecPre(const GlobalTensor<float> &dst_tensor, const LocalTensor<float> &src_tensor,
