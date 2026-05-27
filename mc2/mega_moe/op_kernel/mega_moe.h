@@ -63,8 +63,7 @@ public:
     >::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
     static constexpr bool isWeight4Bit = AscendC::IsSameType<Weight1Type, fp4x2_e2m1_t>::value;
-    static constexpr bool isQuantOutType8Bit = AscendC::IsSameType<QuantOutType, fp8_e5m2_t>::value || AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
-    static constexpr bool isQuantOutType8BitE4M3 = AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
+    static constexpr bool isA8W4 = AscendC::IsSameType<Weight1Type, fp4x2_e2m1_t>::value && AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -80,8 +79,11 @@ private:
     __aicore__ inline void CrossRankSyncCntPerExpert();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
+    __aicore__ inline void DispatchTokensIfEnabled(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
     __aicore__ inline bool UpdateGroupParams(uint32_t expertIdx);
+    __aicore__ inline bool UpdateGroupParamsForDispatch(uint32_t expertIdx);
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex);
+    __aicore__ inline void UpdateGlobalBufferForDispatch(GMMAddrInfo &gmmAddrInfo);
     __aicore__ inline void ArgSortExpandedRowIdx();
     __aicore__ inline void ResetTokenPerExpert();
     __aicore__ inline void Unpermute();
@@ -146,7 +148,9 @@ private:
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
     TupleShape problemShape_{};
+    TupleShape problemShapeForDispatch_{};
     BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    BlockOffset baseOffsetForDispatch_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     GM_ADDR tokenPerExpertCurRankAddr_;
 
@@ -156,6 +160,7 @@ private:
     GlobalTensor<int32_t> groupFlagListWorkSpace_;
     GlobalTensor<int32_t> groupFlagListGm_;
     GlobalTensor<int32_t> groupFlagListGm2_;
+    GlobalTensor<int32_t> groupFlagListGm2ForDispatch_;
     GlobalTensor<int32_t> groupList_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
@@ -204,6 +209,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     maxOutputSize_ = tilingData->maxOutputSize;
     Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
     Get<K_VALUE>(problemShape_) = k_;
+    Get<N_VALUE>(problemShapeForDispatch_) = tilingData->hiddenDim;
+    Get<K_VALUE>(problemShapeForDispatch_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -497,11 +504,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
 {
     int64_t widthA; // H 长度
     if constexpr(QuantMode == E2M1_QUANT) {
-        widthA = Get<K_VALUE>(problemShape_) / FP4_NUM;
+        widthA = Get<K_VALUE>(problemShapeForDispatch_) / FP4_NUM;
     } else {
-        widthA = Get<K_VALUE>(problemShape_);
+        widthA = Get<K_VALUE>(problemShapeForDispatch_);
     }
-    int64_t widthAScale = Ops::Base::CeilDiv(Get<K_VALUE>(problemShape_),
+    int64_t widthAScale = Ops::Base::CeilDiv(Get<K_VALUE>(problemShapeForDispatch_),
                             static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     int32_t pingpongId = 0;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -540,10 +547,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             }
         }
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1));
+        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2ForDispatch_.GetPhyAddr()), int32_t(1));
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokensIfEnabled(
+    GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
+{
+    if constexpr (g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1) {
+            DispatchTokens(gmmAddrInfo, expertIdx);
+        }
+    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -594,6 +612,41 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParamsForDispatch(uint32_t expertIdx)
+{
+    // baseOffset_ is 0 when groupIdx = 0
+    if (expertIdx != 0) {
+        uint64_t m = Get<M_VALUE>(problemShapeForDispatch_);
+        uint64_t n = Get<N_VALUE>(problemShapeForDispatch_);
+        uint64_t k = Get<K_VALUE>(problemShapeForDispatch_);
+        // 使用constexpr系数统一量化模式计算，避免分散的条件分支
+        static constexpr uint64_t A_QUANT_DIVISOR = (QuantMode == E2M1_QUANT) ? FP4_NUM : 1U;
+        static constexpr uint64_t B_QUANT_DIVISOR = (QuantMode == E2M1_QUANT || (QuantMode == 4U && isWeight4Bit)) ? FP4_NUM : 1U;
+
+        Get<IDX_A_OFFSET>(baseOffsetForDispatch_) += (m * k) / A_QUANT_DIVISOR;
+        // only splitM
+        auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_A_SCALE_OFFSET>(baseOffsetForDispatch_) += m * scaleK;
+        Get<IDX_FLAG_OFFSET>(baseOffsetForDispatch_) += 1;
+    }
+
+    int32_t splitValue = 0;
+    if (groupListType_ == 0) {
+        int32_t offset = static_cast<int32_t>(groupList_.GetValue(expertIdx));
+        splitValue = offset - preOffset_;
+        preOffset_ = offset;
+    } else {
+        splitValue = static_cast<uint64_t>(groupList_.GetValue(expertIdx));
+    }
+    Get<M_VALUE>(problemShapeForDispatch_) = splitValue;
+    // split_m，when m=0, skip
+    if (Get<M_VALUE>(problemShapeForDispatch_) == 0) {
+        return false;
+    }
+    return true;
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex)
 {
     if (gmmIndex == GMM1_INDEX) {
@@ -634,6 +687,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
     groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBufferForDispatch(GMMAddrInfo &gmmAddrInfo)
+{
+    gmmAddrInfo.aGlobal =
+        params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffsetForDispatch_) * sizeof(ActivationType);
+    gmmAddrInfo.aScaleGlobal =
+        params_.workspaceInfo.ptrAScale + Get<IDX_A_SCALE_OFFSET>(baseOffsetForDispatch_) * sizeof(QuantScaleOutType);
+
+    gmmAddrInfo.groupFlagList2 = (__gm__ int32_t *)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
+                                 Get<IDX_FLAG_OFFSET>(baseOffsetForDispatch_) * INT_CACHELINE;
+    groupFlagListGm2ForDispatch_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -765,18 +831,27 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. for循环按照本卡专家id进行Dispatch，内部gmm1SwigluQuant按照基本块进行流水
     GMMAddrInfo gmmAddrInfo;
+    GMMAddrInfo gmmAddrInfoForDispatch;
+
+    // 4.1 先进行一轮Dispatch，之后Dispatch与GMM1交错进行
+    if (UpdateGroupParamsForDispatch(0)) {
+        UpdateGlobalBufferForDispatch(gmmAddrInfoForDispatch);
+        DispatchTokensIfEnabled(gmmAddrInfoForDispatch, 0);
+    }
+
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+        // 4.2 Dispatch与GMM1交错进行，提前更新下一轮Dispatch的参数
+        if (expertIdx + 1 < expertPerRank_ && UpdateGroupParamsForDispatch(expertIdx + 1)) {
+            UpdateGlobalBufferForDispatch(gmmAddrInfoForDispatch);
+            DispatchTokensIfEnabled(gmmAddrInfoForDispatch, expertIdx + 1);
+        }
+
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, GMM1_INDEX);
-        if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                DispatchTokens(gmmAddrInfo, expertIdx);
-            }
-        }
 
-        if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
+        if constexpr (isA8W4) {
             MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
                 QuantOutType, Weight1Type, float, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx);
@@ -808,7 +883,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, GMM2_INDEX);
-        if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
+        if constexpr (isA8W4) {
             MegaMoeImpl::GroupMatmul2A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                     params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
                     rankId_, expertIdx);
