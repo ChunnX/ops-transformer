@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <cstdio>
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_check.h"
@@ -45,18 +46,18 @@ void FiaTilingCheck::SetFiaShapeCompare()
 ge::graphStatus FiaTilingCheck::CheckQAndQRopeDType() const
 {
     if (opParamInfo_.query.desc->GetDataType() != inputQType_) {
-        OP_LOGE(opName_, "%s's dtype is %s, it should be %s.",
-            QUERY_NAME.c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputQType_).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "input", FusedDataTypeToSerialString(inputQType_).c_str());
             return ge::GRAPH_FAILED;
     }
     if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         if (opParamInfo_.queryRope.desc->GetDataType() != inputQRopeType_) {
-            OP_LOGE(opName_, "%s's dtype is %s, it should be %s.",
-                QUERY_NAME.c_str(),
-                FusedDataTypeToSerialString(opParamInfo_.queryRope.desc->GetDataType()).c_str(),
-                FusedDataTypeToSerialString(inputQRopeType_).c_str());
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the data type of [%s] is not supported, got [%s]",
+                    opName_, "input", FusedDataTypeToSerialString(inputQRopeType_).c_str());
                 return ge::GRAPH_FAILED;
         }
     }
@@ -111,25 +112,25 @@ ge::graphStatus FiaTilingCheck::CheckQAndQRope() const
 ge::graphStatus FiaTilingCheck::CheckKVDType() const
 {
     if (opParamInfo_.key.desc->GetDataType() != inputKvType_) {
-        OP_LOGE(opName_, "%s's dtype is %s, it should be %s.",
-            KEY_NAME.c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.key.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputKvType_).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "input", FusedDataTypeToSerialString(inputKvType_).c_str());
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.value.desc->GetDataType() != inputKvType_) {
-        OP_LOGE(opName_, "%s's dtype is %s, it should be %s.",
-            VALUE_NAME.c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.value.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputKvType_).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "input", FusedDataTypeToSerialString(inputKvType_).c_str());
             return ge::GRAPH_FAILED;
     }
     if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         if (opParamInfo_.keyRope.desc->GetDataType() != inputKRopeType_) {
-            OP_LOGE(opName_, "%s's dtype is %s, it should be %s.",
-                KEY_ROPE_NAME.c_str(),
-                FusedDataTypeToSerialString(opParamInfo_.keyRope.desc->GetDataType()).c_str(),
-                FusedDataTypeToSerialString(inputKRopeType_).c_str());
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the data type of [%s] is not supported, got [%s]",
+                    opName_, "input", FusedDataTypeToSerialString(inputKRopeType_).c_str());
                 return ge::GRAPH_FAILED;
         }
     }
@@ -234,15 +235,27 @@ ge::graphStatus FiaTilingCheck::CheckBlockTable() const
 
     OP_CHECK_IF(
         opParamInfo_.blockTable.tensor->GetStorageShape().GetShapeSize() == 0,
-        OP_LOGE(opName_, "%s shape size is zero.",
-            BLOCK_TABLE_NAME.c_str()),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "input",
+                (snprintf(reason, sizeof(reason),
+                    "%s shape size is zero.",
+                    BLOCK_TABLE_NAME.c_str()) > 0) ? reason : "%s shape size is zero.",
+                "%s shape size is zero."); }),
         return ge::GRAPH_FAILED);
     
     uint32_t blockTableBatch = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(qLayout_ == FiaLayout::TND && blockTableBatch != bSize_,
-        OP_LOGE(opName_, "when %s's layout is TND, %s's first dimension(%u) should be equal to batch size(%u)",
-            QUERY_NAME.c_str(), BLOCK_TABLE_NAME.c_str(),
-            blockTableBatch, bSize_),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                opName_, "input",
+                (snprintf(reason, sizeof(reason),
+                    "when %s's layout is TND, %s's first dimension(%u) should be equal to batch size(%u)",
+                    QUERY_NAME.c_str(), BLOCK_TABLE_NAME.c_str(), blockTableBatch, bSize_) > 0)
+                        ? reason
+                        : "when %s's layout is TND, %s's first dimension(%u) should be equal to batch size(%u)"); }),
         return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
@@ -252,8 +265,10 @@ ge::graphStatus FiaTilingCheck::CheckKVShapeForPageAttention() const
 {
     uint32_t kvBlockElemNum = 32 / GetTypeSize(inputKvType_);
     if (blockSize_ % static_cast<int32_t>(kvBlockElemNum) != 0) {
-        OP_LOGE(opName_, "when kv_dtype is %s, 32 / sizeof(kv_dtype) is %u, block_size %% (32 / sizeof(kv_dtype)) should be 0.",
-            FusedDataTypeToSerialString(inputKvType_).c_str(), kvBlockElemNum);
+        char reason[512] = {0};
+        OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_,
+            (snprintf(reason, sizeof(reason), "When page attention enable, blockSize(%d) should be divisible by %u.", blockSize_, kvBlockElemNum) > 0)
+                ? reason : "When page attention enable, blockSize(%d) should be divisible by %u.");
         return ge::GRAPH_FAILED;
     }
 
@@ -279,8 +294,14 @@ ge::graphStatus FiaTilingCheck::CheckKVShapeForPageAttention() const
     if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         uint32_t kRopeBlockElemNum = 32 / GetTypeSize(inputKRopeType_);
         if (blockSize_ % static_cast<int32_t>(kRopeBlockElemNum) != 0) {
-            OP_LOGE(opName_, "when key_rope_dtype is %s, 32 / sizeof(key_rope_dtype) is %u, block_size %% (32 / sizeof(key_rope_dtype)) should be 0.",
-                FusedDataTypeToSerialString(inputKRopeType_).c_str(), kRopeBlockElemNum);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]", opName_,
+                    (snprintf(reason, sizeof(reason),
+                        "When page attention enable, blockSize(%d) should be divisible by %u.",
+                        blockSize_, kRopeBlockElemNum) > 0)
+                        ? reason
+                        : "When page attention enable, blockSize(%d) should be divisible by %u.");
                 return ge::GRAPH_FAILED;
         }
         shapeParams.D = static_cast<int64_t>(ropeHeadDim_);
@@ -307,7 +328,15 @@ ge::graphStatus FiaTilingCheck::CheckKVShape() const
         return CheckKVShapeForPageAttention();
     }
 
-    OP_LOGE(opName_, "storage mode of key and value is %u, it is incorrect.", static_cast<uint32_t>(kvStorageMode_));
+    char reason[512] = {0};
+    OP_LOGE(opName_,
+            "The op [%s] received bad params, the reason is: [%s]",
+            opName_,
+            (snprintf(reason, sizeof(reason),
+                "storage mode of key and value is %u, it is incorrect.",
+                static_cast<uint32_t>(kvStorageMode_)) > 0)
+                    ? reason
+                    : "storage mode of key and value is %u, it is incorrect.");
     return ge::GRAPH_FAILED;
 }
 
@@ -343,14 +372,29 @@ ge::graphStatus FiaTilingCheck::CheckActualSeqLensQ() const
 
     if (qLayout_ == FiaLayout::TND) {
         if (actualSeqLengthsQSize_ != bSize_ && actualSeqLengthsQSize_ != 1U) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
-                ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_, bSize_);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "%s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
+                        ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_, bSize_) > 0)
+                            ? reason
+                            : "%s shape size is %u, it should be equal to batch size(%u) or equal to 1.");
             return ge::GRAPH_FAILED;
         }
     } else {
         if (actualSeqLengthsQSize_ < bSize_ && actualSeqLengthsQSize_ != 1U) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.",
-                ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_, bSize_);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.",
+                        ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_, bSize_) > 0)
+                            ? reason
+                            : "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.",
+                    "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -368,20 +412,41 @@ ge::graphStatus FiaTilingCheck::CheckActualSeqLensKv() const
         if (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
             opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr &&
             actualSeqLengthsKvSize_ != actualSeqLengthsQSize_) {
-            OP_LOGE(opName_, "when key/value's layout is TND, %s shape size is %u, it should be equal to %s shape size(%u).",
-                ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_,
-                ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                    opName_, "key, value",
+                    (snprintf(reason, sizeof(reason),
+                        "when key/value's layout is TND, %s shape size is %u, it should be equal to %s shape size(%u).",
+                        ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, ACTUAL_SEQ_Q_LEN_NAME.c_str(), actualSeqLengthsQSize_) > 0)
+                            ? reason
+                            : "when key/value's layout is TND, %s shape size is %u, it should be equal to %s shape size(%u).");
             return ge::GRAPH_FAILED;
         }
         if (actualSeqLengthsKvSize_ != bSize_ && actualSeqLengthsKvSize_ != 1U) {
-            OP_LOGE(opName_, "when key/value's layout is TND, %s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
-                ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, bSize_);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                    opName_, "key, value",
+                    (snprintf(reason, sizeof(reason),
+                        "when key/value's layout is TND, %s shape size is %u, it should be equal to batch size(%u) or equal to 1.",
+                        ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, bSize_) > 0)
+                            ? reason
+                            : "when key/value's layout is TND, %s shape size is %u, it should be equal to batch size(%u) or equal to 1.");
             return ge::GRAPH_FAILED;
         }
     } else {
         if (actualSeqLengthsKvSize_ < bSize_ && actualSeqLengthsKvSize_ != 1U) {
-            OP_LOGE(opName_, "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.",
-                ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, bSize_);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.",
+                        ACTUAL_SEQ_KV_LEN_NAME.c_str(), actualSeqLengthsKvSize_, bSize_) > 0)
+                            ? reason
+                            : "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.",
+                    "%s shape size is %u, it should be bigger or equal to batch size(%u) or equal to 1.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -404,18 +469,18 @@ ge::graphStatus FiaTilingCheck::CheckPseShift()
 ge::graphStatus FiaTilingCheck::CheckPseShiftDType()
 {
     if ((inputQType_ == ge::DT_FLOAT16 || inputQType_ == ge::DT_BF16) && opParamInfo_.pseShift.desc->GetDataType() != inputQType_) {
-        OP_LOGE(opName_, "when query's dtype is %s, pseShift dtype should be %s, but got %s.",
-            FusedDataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputQType_).c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.pseShift.desc->GetDataType()).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "query", FusedDataTypeToSerialString(opParamInfo_.pseShift.desc->GetDataType()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (inputQType_ == ge::DT_INT8 && (s1Size_ <= 1 || opParamInfo_.pseShift.desc->GetDataType() != ge::DT_FLOAT16)) {
-        OP_LOGE(opName_, "when query's dtype is %s, pseShift dtype should be %s, but got %s.",
-            FusedDataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputQType_).c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.pseShift.desc->GetDataType()).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "query", FusedDataTypeToSerialString(opParamInfo_.pseShift.desc->GetDataType()).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -467,17 +532,17 @@ ge::graphStatus FiaTilingCheck::CheckSystemPrefix()
 ge::graphStatus FiaTilingCheck::CheckSystemPrefixDtype()
 {
     if (opParamInfo_.keySharedPrefix.desc->GetDataType() != inputKvType_) {
-        OP_LOGE(opName_, "when key's dtype is %s, keySharedPrefix dtype should be %s, but got %s.",
-            FusedDataTypeToSerialString(opParamInfo_.key.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputKvType_).c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.keySharedPrefix.desc->GetDataType()).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "key", FusedDataTypeToSerialString(opParamInfo_.keySharedPrefix.desc->GetDataType()).c_str());
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.valueSharedPrefix.desc->GetDataType() != inputKvType_) {
-        OP_LOGE(opName_, "when value's dtype is %s, valueSharedPrefix dtype should be %s, but got %s.",
-            FusedDataTypeToSerialString(opParamInfo_.value.desc->GetDataType()).c_str(),
-            FusedDataTypeToSerialString(inputKvType_).c_str(),
-            FusedDataTypeToSerialString(opParamInfo_.valueSharedPrefix.desc->GetDataType()).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "value", FusedDataTypeToSerialString(opParamInfo_.valueSharedPrefix.desc->GetDataType()).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -494,11 +559,22 @@ ge::graphStatus FiaTilingCheck::CheckSystemPrefixShape()
     prefixKeyShapeCmp_ = std::make_shared<FiaTilingShapeCompare>(prefixKShape, kvLayout_, KEY_SHARED_PREFIX_NAME, opName_);
 
     if (prefixKShape != prefixVShape) {
-        OP_LOGE(opName_, "Prefix shapes mismatch: prefix key shape and prefix value shape");
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_, "Prefix shapes mismatch: prefix key shape and prefix value shape");
         return ge::GRAPH_FAILED;
     }
     if (prefixKShape.GetDim(0) != 1) {
-        OP_LOGE(opName_, "System prefix is enabled, Prefix batch dimension must be 1, got %ld", prefixKShape.GetDim(0));
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "prefix",
+                (snprintf(reason, sizeof(reason),
+                    "System prefix is enabled, Prefix batch dimension must be 1, got %ld",
+                    prefixKShape.GetDim(0)) > 0)
+                        ? reason
+                        : "System prefix is enabled, Prefix batch dimension must be 1, got %ld",
+                "System prefix is enabled, Prefix batch dimension must be 1, got %ld");
         return ge::GRAPH_FAILED;
     }
 
@@ -515,7 +591,9 @@ ge::graphStatus FiaTilingCheck::CheckSystemPrefixShape()
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo_.systemPrefixLen > fiaInfo_.systemPrefixMaxLen) {
-        OP_LOGE(opName_, "actual prefix len should be less than or equal to prefixlen");
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_, "actual prefix len should be less than or equal to prefixlen");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -553,8 +631,16 @@ ge::graphStatus FiaTilingCheck::SetAttenMaskCompare()
         } else if (maskDimNum == DIM_NUM_FOUR) {
             maskLayout = maskDim0 == 1 ? FiaLayout::I1S1S2 : FiaLayout::B1S1S2;
         } else {
-            OP_LOGE(opName_, "%s dim num only support %zu, %zu, %zu, but got %zu",
-                ATTEN_MASK_NAME.c_str(), DIM_NUM_TWO, DIM_NUM_THREE, DIM_NUM_FOUR, maskDimNum);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "%s dim num only support %zu, %zu, %zu, but got %zu",
+                        ATTEN_MASK_NAME.c_str(), DIM_NUM_TWO, DIM_NUM_THREE, DIM_NUM_FOUR, maskDimNum) > 0)
+                            ? reason
+                            : "%s dim num only support %zu, %zu, %zu, but got %zu",
+                    "%s dim num only support %zu, %zu, %zu, but got %zu");
             return ge::GRAPH_FAILED;
         }
     } else if (sparseMode == SPARSE_MODE_TREE) {
@@ -563,8 +649,16 @@ ge::graphStatus FiaTilingCheck::SetAttenMaskCompare()
         } else if (maskDimNum == DIM_NUM_THREE) {
             maskLayout = FiaLayout::BS1S2;
         } else {
-            OP_LOGE(opName_, "%s dim num only support %zu, %zu, but got %zu",
-                ATTEN_MASK_NAME.c_str(), DIM_NUM_ONE, DIM_NUM_THREE, maskDimNum);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "%s dim num only support %zu, %zu, but got %zu",
+                        ATTEN_MASK_NAME.c_str(), DIM_NUM_ONE, DIM_NUM_THREE, maskDimNum) > 0)
+                            ? reason
+                            : "%s dim num only support %zu, %zu, but got %zu",
+                    "%s dim num only support %zu, %zu, but got %zu");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -575,8 +669,16 @@ ge::graphStatus FiaTilingCheck::SetAttenMaskCompare()
         } else if (maskDimNum == DIM_NUM_FOUR) {
             maskLayout = FiaLayout::I1S1S2;
         } else {
-            OP_LOGE(opName_, "%s dim num only support %zu, but got %zu",
-                ATTEN_MASK_NAME.c_str(), DIM_NUM_TWO, maskDimNum);
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "%s dim num only support %zu, but got %zu",
+                        ATTEN_MASK_NAME.c_str(), DIM_NUM_TWO, maskDimNum) > 0)
+                            ? reason
+                            : "%s dim num only support %zu, but got %zu",
+                    "%s dim num only support %zu, but got %zu");
             return ge::GRAPH_FAILED;
         }
     }
@@ -592,8 +694,15 @@ ge::graphStatus FiaTilingCheck::CheckAttentionMask()
     int32_t sparseMode = *opParamInfo_.sparseMode;
     if (opParamInfo_.attenMask.tensor == nullptr || opParamInfo_.attenMask.desc == nullptr) {
         if (sparseMode != SPARSE_MODE_NO_MASK) {
-            OP_LOGE(opName_, "When %s(%d) not equals to %d, %s must exists",
-            SPARSE_MODE_NAME.c_str(), sparseMode, SPARSE_MODE_NO_MASK, ATTEN_MASK_NAME.c_str());
+            char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_,
+                    (snprintf(reason, sizeof(reason),
+                        "When %s(%d) not equals to %d, %s must exists",
+                        SPARSE_MODE_NAME.c_str(), sparseMode, SPARSE_MODE_NO_MASK, ATTEN_MASK_NAME.c_str()) > 0)
+                            ? reason
+                            : "When %s(%d) not equals to %d, %s must exists");
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -649,13 +758,28 @@ ge::graphStatus FiaTilingCheck::CheckTokens()
     preTokens_ = fiaInfo_.preToken;
     nextTokens_ = fiaInfo_.nextToken;
     OP_CHECK_IF(preTokens_ < 0 && nextTokens_ < 0, 
-        OP_LOGE(opName_, "preTokens(%ld) and nextTokens(%ld) cannot neither be negative number.",
-            preTokens_, nextTokens_),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_,
+                (snprintf(reason, sizeof(reason),
+                    "preTokens(%ld) and nextTokens(%ld) cannot neither be negative number.",
+                    preTokens_, nextTokens_) > 0)
+                        ? reason
+                        : "preTokens(%ld) and nextTokens(%ld) cannot neither be negative number."); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(nextTokens_ * (-1) > preTokens_, 
-        OP_LOGE(opName_, "nextToken line(%ld) should be higher than preToken line(%ld).",
-            nextTokens_, preTokens_),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "input",
+                (snprintf(reason, sizeof(reason),
+                    "nextToken line(%ld) should be higher than preToken line(%ld).",
+                    nextTokens_, preTokens_) > 0)
+                        ? reason
+                        : "nextToken line(%ld) should be higher than preToken line(%ld).",
+                "nextToken line(%ld) should be higher than preToken line(%ld)."); }),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -668,8 +792,13 @@ ge::graphStatus FiaTilingCheck::CheckSoftmaxLse()
     }
 
     if (fiaInfo_.softmaxLseFlag && opParamInfo_.lseOut.desc == nullptr) {
-        OP_LOGE(opName_, "when %s is enabled, softmaxlse should not be NULL.",
-            SOFTMAX_LSE_NAME.c_str()); 
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_,
+                (snprintf(reason, sizeof(reason),
+                    "when %s is enabled, softmaxlse should not be NULL.",
+                    SOFTMAX_LSE_NAME.c_str()) > 0) ? reason : "when %s is enabled, softmaxlse should not be NULL.");
         return ge::GRAPH_FAILED;
     }
 
@@ -683,8 +812,10 @@ ge::graphStatus FiaTilingCheck::CheckSoftmaxLse()
 ge::graphStatus FiaTilingCheck::CheckSoftmaxLseDType() 
 {
     if (opParamInfo_.lseOut.desc->GetDataType() != ge::DT_FLOAT) { 
-        OP_LOGE(opName_, "only support dtype FP32, but got %s",
-            FusedDataTypeToSerialString(opParamInfo_.lseOut.desc->GetDataType()).c_str());
+        char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "input", FusedDataTypeToSerialString(opParamInfo_.lseOut.desc->GetDataType()).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -720,7 +851,9 @@ ge::graphStatus FiaTilingCheck::CheckPostQuant()
 {
     if (fiaInfo_.isOutQuantEnable) {
         OP_CHECK_IF(opParamInfo_.attenOut.desc->GetDataType() != ge::DT_INT8, 
-            OP_LOGE(opName_, "the quantScale2 exist, output data type should be INT8!"), 
+            ({ OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_, "the quantScale2 exist, output data type should be INT8!"); }),
             return ge::GRAPH_FAILED);
         const ge::DataType queryDataType_ = opParamInfo_.query.desc->GetDataType();
         const ge::DataType quantScale2Datatype_ = opParamInfo_.quantScale2.desc->GetDataType();
@@ -730,21 +863,29 @@ ge::graphStatus FiaTilingCheck::CheckPostQuant()
         if (opParamInfo_.quantOffset2.tensor != nullptr && opParamInfo_.quantOffset2.desc != nullptr) {
             const ge::DataType quantOffset2Datatype_ = opParamInfo_.quantOffset2.desc->GetDataType();
             OP_CHECK_IF(quantOffset2Datatype_ != quantScale2Datatype_,
-                OP_LOGE(opName_, "quantScale2 and quantOffset2 should have same dtype!"),
+                ({ OP_LOGE(opName_,
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        opName_, "quantScale2 and quantOffset2 should have same dtype!"); }),
                 return ge::GRAPH_FAILED);
             auto quantOffset2Shape_ = opParamInfo_.quantOffset2.tensor->GetStorageShape();
             OP_CHECK_IF(quantOffset2Shape_ != quantScale2Shape_,
-                OP_LOGE(opName_, "quantScale2 and quantOffset2 should have same shape!"),
+                ({ OP_LOGE(opName_,
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        opName_, "quantScale2 and quantOffset2 should have same shape!"); }),
                 return ge::GRAPH_FAILED);
         }
 
         // scale2 dtype verification
         OP_CHECK_IF((queryDataType_ != ge::DT_FLOAT16 && queryDataType_ != ge::DT_BF16),
-            OP_LOGE(opName_, "in postquant situation, query type should be FP16 or BF16"),
+            ({ OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_, "in postquant situation, query type should be FP16 or BF16"); }),
             return ge::GRAPH_FAILED);
  
         OP_CHECK_IF((queryDataType_ == ge::DT_FLOAT16 && quantScale2Datatype_ != ge::DT_FLOAT),
-            OP_LOGE(opName_, "inputQ dtype is FP16, quantScale2 dtype should be FP32"),
+            ({ OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_, "inputQ dtype is FP16, quantScale2 dtype should be FP32"); }),
             return ge::GRAPH_FAILED);
 
         //scale2 shape verfication
@@ -754,13 +895,17 @@ ge::graphStatus FiaTilingCheck::CheckPostQuant()
                 int64_t currentShapeSize = quantScale2Shape_.GetShapeSize();
                 int64_t expectShapeSize = gert::Shape({n1Size_, vHeadDim_}).GetShapeSize();
                 OP_CHECK_IF(currentShapeSize != expectShapeSize,
-                    OP_LOGE(opName_, "when input_layout is %s, the shape size of quantScale2 should be %lld(Q_N * V_D), but current is %u, shape is %s",
-                        layout.c_str(), expectShapeSize, currentShapeSize, GetShapeStr(quantScale2Shape_).c_str()),
+                    ({ char reason[512] = {0};
+                    OP_LOGE(opName_,
+                            "In op [%s], [%s] is not supported, got [%s]",
+                            opName_, "input_layout", GetShapeStr(quantScale2Shape_).c_str()); }),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(quantScale2Shape_ != gert::Shape({n1Size_, vHeadDim_}),
-                    OP_LOGE(opName_, "when input_layout is %s, quantScale2 expectshape is [Q_N, V_D], it is [%u, %u], but current shape is %s",
-                        layout.c_str(), n1Size_, vHeadDim_, GetShapeStr(quantScale2Shape_).c_str()),
+                    ({ char reason[512] = {0};
+                    OP_LOGE(opName_,
+                            "In op [%s], [%s] is not supported, got [%s]",
+                            opName_, "input_layout", GetShapeStr(quantScale2Shape_).c_str()); }),
                     return ge::GRAPH_FAILED);
             }
         }

@@ -14,6 +14,7 @@
  */
 
 #include <numeric>
+#include <cstdio>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "log/error_code.h"
@@ -42,9 +43,15 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDim(const FiaTilingInfo &f
     uint32_t valueSharedPrefixDimNum = valueSharedPrefixTensor->GetStorageShape().GetDimNum();
     uint32_t keyDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
+        ({ char reason[512] = {0};
         OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName,
+                (snprintf(reason, sizeof(reason),
+                    "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and key/value(%u) are different.",
+                    keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum) > 0)
+                        ? reason
+                        : "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and key/value(%u) are different."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -59,18 +66,16 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
         auto keySharedPrefixType = keySharedPrefixDesc->GetDataType();
         auto valueSharedPrefixType = valueSharedPrefixDesc->GetDataType();
         OP_CHECK_IF((keySharedPrefixType != fiaInfo.inputKvType),
+            ({ char reason[512] = {0};
             OP_LOGE(fiaInfo.opName,
-                "The datatype of keySharedPrefix(%s) and key/value(%s) are different. The datatype of keySharedPrefix "
-                "and key/value must be the same",
-                DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                    "In op [%s], the data type of [%s] is not supported, got [%s]",
+                    fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((keySharedPrefixType != valueSharedPrefixType),
+            ({ char reason[512] = {0};
             OP_LOGE(fiaInfo.opName,
-                "The datatype of keySharedPrefix(%s) and valueSharedPrefix(%s) are different. The datatype "
-                "of keySharedPrefix and valueSharedPrefix must be the same.",
-                DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(valueSharedPrefixType).c_str()),
+                    "In op [%s], the data type of [%s] is not supported, got [%s]",
+                    fiaInfo.opName, "key", DataTypeToSerialString(valueSharedPrefixType).c_str()); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -87,12 +92,28 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         auto &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
         // 第一维batch必须为1
         OP_CHECK_IF((keySharedPrefixShape.GetDim(DIM_NUM_0) != 1),
+            ({ char reason[512] = {0};
             OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of keySharedPrefix is not 1.", keySharedPrefixShape.GetDim(DIM_NUM_0)),
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    fiaInfo.opName, "key",
+                    (snprintf(reason, sizeof(reason),
+                        "The first dim(%ld) of keySharedPrefix is not 1.",
+                        keySharedPrefixShape.GetDim(DIM_NUM_0)) > 0)
+                            ? reason
+                            : "The first dim(%ld) of keySharedPrefix is not 1.",
+                    "The first dim(%ld) of keySharedPrefix is not 1."); }),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueSharedPrefixShape.GetDim(DIM_NUM_0) != 1),
+            ({ char reason[512] = {0};
             OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of valueSharedPrefix is not 1.", valueSharedPrefixShape.GetDim(DIM_NUM_0)),
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    fiaInfo.opName, "value",
+                    (snprintf(reason, sizeof(reason),
+                        "The first dim(%ld) of valueSharedPrefix is not 1.",
+                        valueSharedPrefixShape.GetDim(DIM_NUM_0)) > 0)
+                            ? reason
+                            : "The first dim(%ld) of valueSharedPrefix is not 1.",
+                    "The first dim(%ld) of valueSharedPrefix is not 1."); }),
             return ge::GRAPH_FAILED);
         // layout为BNSD和BSND情况下，N、D轴与key一致
         if (fiaInfo.kvLayout == FiaLayout::BNSD) {
@@ -105,35 +126,60 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             uint32_t keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_2);
             uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_2);
             OP_CHECK_IF((keySharedPrefixN != keyN),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The N axis of keySharedPrefix(%ld) and key(%ld) are different. "
-                    "The N axis of keySharedPrefix and key must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixN, keyN),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, key",
+                        (snprintf(reason, sizeof(reason),
+                            "The N axis of keySharedPrefix(%ld) and key(%ld) are different. The N axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixN, keyN) > 0)
+                                ? reason
+                                : "The N axis of keySharedPrefix(%ld) and key(%ld) are different. The N axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixN != valueSharedPrefixN),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The N axis of keySharedPrefix and valueSharedPrefix must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixN, valueSharedPrefixN),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The N axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixN, valueSharedPrefixN) > 0)
+                                ? reason
+                                : "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The N axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixD != keyD),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The D axis of keySharedPrefix(%ld) and key(%ld) are different. "
-                    "The D axis of keySharedPrefix and key must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixD, keyD),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, key",
+                        (snprintf(reason, sizeof(reason),
+                            "The D axis of keySharedPrefix(%ld) and key(%ld) are different. The D axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixD, keyD) > 0)
+                                ? reason
+                                : "The D axis of keySharedPrefix(%ld) and key(%ld) are different. The D axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixD != valueSharedPrefixD),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The D axis of keySharedPrefix and valueSharedPrefix must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixD, valueSharedPrefixD),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The D axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixD, valueSharedPrefixD) > 0)
+                                ? reason
+                                : "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The D axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
             OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The S axis of keySharedPrefix and valueSharedPrefix must be "
-                    "the same.", keySharedPrefixS, valueSharedPrefixS),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The S axis of keySharedPrefix and valueSharedPrefix must be the same.",
+                            keySharedPrefixS, valueSharedPrefixS) > 0)
+                                ? reason
+                                : "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The S axis of keySharedPrefix and valueSharedPrefix must be the same."); }),
                 return ge::GRAPH_FAILED);
         }
         if (fiaInfo.kvLayout == FiaLayout::BSND) {
@@ -146,35 +192,60 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             uint32_t keySharedPrefixS = keySharedPrefixShape.GetDim(DIM_NUM_1);
             uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
             OP_CHECK_IF((keySharedPrefixN != keyN),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The N axis of keySharedPrefix(%ld) and key(%ld) are different. "
-                    "The N axis of keySharedPrefix and key must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixN, keyN),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, key",
+                        (snprintf(reason, sizeof(reason),
+                            "The N axis of keySharedPrefix(%ld) and key(%ld) are different. The N axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixN, keyN) > 0)
+                                ? reason
+                                : "The N axis of keySharedPrefix(%ld) and key(%ld) are different. The N axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixN != valueSharedPrefixN),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The N axis of keySharedPrefix and valueSharedPrefix must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixN, valueSharedPrefixN),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The N axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixN, valueSharedPrefixN) > 0)
+                                ? reason
+                                : "The N axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The N axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixD != keyD),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The D axis of keySharedPrefix(%ld) and key(%ld) are different. "
-                    "The D axis of keySharedPrefix and key must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixD, keyD),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, key",
+                        (snprintf(reason, sizeof(reason),
+                            "The D axis of keySharedPrefix(%ld) and key(%ld) are different. The D axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixD, keyD) > 0)
+                                ? reason
+                                : "The D axis of keySharedPrefix(%ld) and key(%ld) are different. The D axis of keySharedPrefix and key must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixD != valueSharedPrefixD),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The D axis of keySharedPrefix and valueSharedPrefix must be the same when "
-                    "the layout of key is BNSD or BSND.", keySharedPrefixD, valueSharedPrefixD),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The D axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND.",
+                            keySharedPrefixD, valueSharedPrefixD) > 0)
+                                ? reason
+                                : "The D axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The D axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BNSD or BSND."); }),
                 return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
             OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The S axis of keySharedPrefix and valueSharedPrefix must be "
-                    "the same.", keySharedPrefixS, valueSharedPrefixS),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The S axis of keySharedPrefix and valueSharedPrefix must be the same.",
+                            keySharedPrefixS, valueSharedPrefixS) > 0)
+                                ? reason
+                                : "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The S axis of keySharedPrefix and valueSharedPrefix must be the same."); }),
                 return ge::GRAPH_FAILED);
         }
         // layout为BSH情况下H与key一致
@@ -185,23 +256,38 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             uint32_t valueSharedPrefixS = valueSharedPrefixShape.GetDim(DIM_NUM_1);
             uint32_t keyH = keyShape.GetDim(DIM_NUM_2);
             OP_CHECK_IF((keySharedPrefixH != keyH),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The H axis of keySharedPrefix(%ld) and key(%ld) are different. "
-                    "The H axis of keySharedPrefix and key must be the same when "
-                    "the layout of key is BSH.", keySharedPrefixH, keyH),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, key",
+                        (snprintf(reason, sizeof(reason),
+                            "The H axis of keySharedPrefix(%ld) and key(%ld) are different. The H axis of keySharedPrefix and key must be the same when the layout of key is BSH.",
+                            keySharedPrefixH, keyH) > 0)
+                                ? reason
+                                : "The H axis of keySharedPrefix(%ld) and key(%ld) are different. The H axis of keySharedPrefix and key must be the same when the layout of key is BSH."); }),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF((keySharedPrefixH != valueSharedPrefixH),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The H axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The H axis of keySharedPrefix and valueSharedPrefix must be the same when "
-                    "the layout of key is BSH.", keySharedPrefixH, valueSharedPrefixH),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The H axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The H axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BSH.",
+                            keySharedPrefixH, valueSharedPrefixH) > 0)
+                                ? reason
+                                : "The H axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The H axis of keySharedPrefix and valueSharedPrefix must be the same when the layout of key is BSH."); }),
                 return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
             OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The S axis of keySharedPrefix and valueSharedPrefix must be "
-                    "the same.", keySharedPrefixS, valueSharedPrefixS),
+                        "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                        fiaInfo.opName, "key_shared_prefix, value_shared_prefix",
+                        (snprintf(reason, sizeof(reason),
+                            "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The S axis of keySharedPrefix and valueSharedPrefix must be the same.",
+                            keySharedPrefixS, valueSharedPrefixS) > 0)
+                                ? reason
+                                : "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. The S axis of keySharedPrefix and valueSharedPrefix must be the same."); }),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -229,9 +315,10 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     };
     std::string layout(fiaInfo.opParamInfo.layOut);
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
+        char reason[512] = {0};
         OP_LOGE(fiaInfo.opName,
-            "When system prefix exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s.",
-            layout.c_str());
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "input_layout", layout.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -247,19 +334,37 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     }
     int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
     OP_CHECK_IF((actualSharedPrefixLenData > keySharedPrefixS),
+        ({ char reason[512] = {0};
         OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%lld) can not be greater than "
-            "keySharedPrefixS(%u).", actualSharedPrefixLenData, keySharedPrefixS),
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName,
+                (snprintf(reason, sizeof(reason),
+                    "actualSharedPrefixLen(%lld) can not be greater than keySharedPrefixS(%u).",
+                    actualSharedPrefixLenData, keySharedPrefixS) > 0)
+                        ? reason
+                        : "actualSharedPrefixLen(%lld) can not be greater than keySharedPrefixS(%u)."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((actualSharedPrefixLenData > valueSharedPrefixS),
+        ({ char reason[512] = {0};
         OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%lld) can not be greater than "
-            "valueSharedPrefixS(%u).", actualSharedPrefixLenData, valueSharedPrefixS),
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName,
+                (snprintf(reason, sizeof(reason),
+                    "actualSharedPrefixLen(%lld) can not be greater than valueSharedPrefixS(%u).",
+                    actualSharedPrefixLenData, valueSharedPrefixS) > 0)
+                        ? reason
+                        : "actualSharedPrefixLen(%lld) can not be greater than valueSharedPrefixS(%u)."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((actualSharedPrefixLenData < 0),
+        ({ char reason[512] = {0};
         OP_LOGE(fiaInfo.opName,
-                "actualSharedPrefixLen(%lld) can not be "
-                "less than 0.", actualSharedPrefixLenData),
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName,
+                (snprintf(reason, sizeof(reason),
+                    "actualSharedPrefixLen(%lld) can not be less than 0.",
+                    actualSharedPrefixLenData) > 0)
+                        ? reason
+                        : "actualSharedPrefixLen(%lld) can not be less than 0."); }),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -272,15 +377,17 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixExistence(const FiaTilingI
     auto &valueSharedPrefixTensor = fiaInfo.opParamInfo.valueSharedPrefix.tensor;
     // 两者要么都为空，要么都不为空
     OP_CHECK_IF((keySharedPrefixTensor != nullptr && valueSharedPrefixTensor == nullptr),
-        OP_LOGE(fiaInfo.opName,
-            "keySharedPrefix exists, but valueSharedPrefix does not exist. "
-            "keySharedPrefix and valueSharedPrefix must exist simultaneously."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName,
+                "keySharedPrefix exists, but valueSharedPrefix does not exist. keySharedPrefix and valueSharedPrefix must exist simultaneously."); }),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((keySharedPrefixTensor == nullptr && valueSharedPrefixTensor != nullptr),
-        OP_LOGE(fiaInfo.opName,
-            "valueSharedPrefix exists, but keySharedPrefix does not exist. "
-            "keySharedPrefix and valueSharedPrefix must exist simultaneously."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName,
+                "valueSharedPrefix exists, but keySharedPrefix does not exist. keySharedPrefix and valueSharedPrefix must exist simultaneously."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -299,26 +406,30 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
     bool enablePFAMLA = fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128;
     // 不支持page attention场景
     OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when page attention is enabled."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "feature", "prefix is not supported when page attention is enabled."); }),
         return ge::GRAPH_FAILED);
     // 不支持tensorlist
     if ((fiaInfo.s1Size > 1U && fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) ||
         fiaInfo.npuArch == NpuArch::DAV_3510) {
         OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
-            OP_LOGE(fiaInfo.opName,
-                "prefix is not supported when tensorlist is enabled."),
+            ({ OP_LOGE(fiaInfo.opName,
+                    "In op [%s], [%s] is not supported, got [%s]",
+                    fiaInfo.opName, "feature", "prefix is not supported when tensorlist is enabled."); }),
             return ge::GRAPH_FAILED);
     }
     // 不支持左padding场景
     OP_CHECK_IF((fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when left padding is enabled."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "feature", "prefix is not supported when left padding is enabled."); }),
         return ge::GRAPH_FAILED);
     // 不支持alibi场景
     OP_CHECK_IF((fiaInfo.enableAlibiPse),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when pseType is 2 or 3."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "feature", "prefix is not supported when pseType is 2 or 3."); }),
         return ge::GRAPH_FAILED);
      OP_CHECK_IF(layoutStr == "BSH_BNSD" ||
                     layoutStr == "BSND_BNSD" ||
@@ -326,38 +437,44 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
                     layoutStr == "NTD" ||
                     layoutStr == "NTD_TND" ||
                     layoutStr == "TND_NTD",
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"),
+        ({ OP_LOGE(fiaInfo.opName,
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "feature", "prefix is not supported when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"); }),
         return ge::GRAPH_FAILED);
     // 不支持PFA MLA场景
     OP_CHECK_IF((enablePFAMLA || enablePFARope),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported in PFA MLA scenario."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "feature", "prefix is not supported in PFA MLA scenario."); }),
         return ge::GRAPH_FAILED);
     // 不支持IFA MLA场景
     OP_CHECK_IF((enableIFAMLA),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported in IFA MLA scenario."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "In op [%s], [%s] is not supported, got [%s]",
+                fiaInfo.opName, "feature", "prefix is not supported in IFA MLA scenario."); }),
         return ge::GRAPH_FAILED);
     // 不支持qkv全部为INT8/FP8/HiF8(per-block/per-tensor全量化)的情况
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.inputKvType == ge::DT_INT8),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when the datatype of query and key/value is INT8"),
+        ({ OP_LOGE(fiaInfo.opName,
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName, "prefix is not supported when the datatype of query and key/value is INT8"); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN && fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when the datatype of query and key/value is FP8"),
+        ({ OP_LOGE(fiaInfo.opName,
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName, "prefix is not supported when the datatype of query and key/value is FP8"); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_HIFLOAT8 && fiaInfo.inputKvType == ge::DT_HIFLOAT8),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when the datatype of query and key/value is HiF8"),
+        ({ OP_LOGE(fiaInfo.opName,
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName, "prefix is not supported when the datatype of query and key/value is HiF8"); }),
         return ge::GRAPH_FAILED);
     // 后量化仅支持INT8
     if (fiaInfo.isOutQuantEnable) {
         OP_CHECK_IF((fiaInfo.outputType != ge::DT_INT8),
-            OP_LOGE(fiaInfo.opName,
-                "Invalid output type. The datatype of output only support INT8 when "
-                "prefix is enabled."),
+            ({ OP_LOGE(fiaInfo.opName,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    fiaInfo.opName, "Invalid output type. The datatype of output only support INT8 when prefix is enabled."); }),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -382,25 +499,29 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &
         // Q_S > 1，per-channel(per-tensor)模式，key/value，仅支持INT8
         if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The datatype of key/value(%s) is not INT8. "
-                    "The datatype of key/value only support INT8 when prefix is enabled, Q_S > 1 and "
-                    "keyAntiquantMode is per-channel(per-tensor) mode and valueAntiquantMode is "
-                    "per-channel(per-tensor) mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
         } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                    "The datatype of key/value(%s) is not INT8. "
-                    "The datatype of key/value only support INT8 when prefix is enabled, Q_S > 1, "
-                    "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
         } else {
             // 其余量化模式在Q_S > 1时均为非法
-            OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
-                " prefix is enabled and Q_S > 1.", keyAntiquantMode, valueAntiquantMode);
+            char reason[512] = {0};
+            OP_LOGE(fiaInfo.opName,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    fiaInfo.opName,
+                    (snprintf(reason, sizeof(reason),
+                        "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when prefix is enabled and Q_S > 1.",
+                        keyAntiquantMode, valueAntiquantMode) > 0)
+                            ? reason
+                            : "keyAntiquantMode and valueAntiquantMode combination is invalid when prefix is enabled and Q_S > 1.");
             return ge::GRAPH_FAILED;
         }
     } else if (fiaInfo.s1Size == 1) {
@@ -417,94 +538,85 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &
             if (keyAntiquantScaleTensorDimNum == DIM_NUM_1) {
                 // per-tensor模式，仅支持INT8
                 OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                    ({ char reason[512] = {0};
                     OP_LOGE(fiaInfo.opName,
-                            "The datatype of key/value(%s) is not INT8. "
-                            "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                            "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
-                        DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                            "In op [%s], the data type of [%s] is not supported, got [%s]",
+                            fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                     return ge::GRAPH_FAILED);
             } else {
                 // per-channel模式，支持INT8或INT4(INT32)
                 OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
+                    ({ char reason[512] = {0};
                     OP_LOGE(fiaInfo.opName,
-                            "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                            "The datatype of key/value only support INT8 or INT4(INT32) when "
-                            "prefix is enabled, Q_S = 1, "
-                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-channel mode.",
-                        DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                            "In op [%s], the data type of [%s] is not supported, got [%s]",
+                            fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                     return ge::GRAPH_FAILED);
             }
         }else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
             // per-token模式，支持INT8或INT4(INT32)
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                        "The datatype of key/value only support INT8 or INT4(INT32) when "
-                        "prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
             // per-tensor-head模式，仅支持INT8
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8. "
-                        "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is "
-                        "per-tensor-head mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
             // per-token-head模式，支持INT8或INT4(INT32)
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                        "The datatype of key/value only support INT8 or INT4(INT32) when "
-                        "prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-token-head mode and valueAntiquantMode is per-token-head mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
             // per-token模式使用page attention管理scale/offset，仅支持INT8
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8. "
-                        "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-tensor-PA mode and valueAntiquantMode is "
-                        "per-tensor-PA mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
             // per-token叠加per-head模式并使用page attention管理scale/offset，仅支持INT8
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8. "
-                        "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-token-head-PA mode and valueAntiquantMode is "
-                        "per-token-head-PA mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
             // key支持per-channel叠加value支持per-token，支持INT8或INT4(INT32)
             OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
+                ({ char reason[512] = {0};
                 OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                        "The datatype of key/value only support INT8 or INT4(INT32) when "
-                        "prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-channel mode and valueAntiquantMode is "
-                        "per-token mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                        "In op [%s], the data type of [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "key", DataTypeToSerialString(fiaInfo.inputKvType).c_str()); }),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         } else {
             // 其余量化模式在Q_S=1均为非法
-            OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
-                    " prefix is enabled and Q_S = 1.", keyAntiquantMode, valueAntiquantMode);
+            char reason[512] = {0};
+            OP_LOGE(fiaInfo.opName,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    fiaInfo.opName,
+                    (snprintf(reason, sizeof(reason),
+                        "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when prefix is enabled and Q_S > 1.",
+                        keyAntiquantMode, valueAntiquantMode) > 0)
+                            ? reason
+                            : "keyAntiquantMode and valueAntiquantMode combination is invalid when prefix is enabled and Q_S > 1.");
             return ge::GRAPH_FAILED;
         }
     }

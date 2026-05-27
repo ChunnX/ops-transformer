@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <cstdio>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -51,7 +52,12 @@ std::string FusedDataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        char reason[512] = {0};
+        OP_LOGE("FusedInferAttentionScore",
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                "FusedInferAttentionScore", "input",
+                (snprintf(reason, sizeof(reason), "dtype=%d", static_cast<int>(type)) > 0)
+                    ? reason : "dtype=%d");
         return "UNDEFINED";
     }
 }
