@@ -126,6 +126,7 @@ public:
     uint64_t s1SizeAcc;
     uint64_t s2SizeAcc;
     int32_t aicIdx;
+    event_t AntiVMTE2Event;
 };
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
@@ -224,7 +225,10 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             this->vecBlock.antiquantPerHeadFlag = inputParamsRegbase.antiquantPerHeadFlag;
         }
         this->vecBlock.UbToL1Event = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-        SetFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
+        AntiVMTE2Event = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+        this->vecBlock.keyAntiquantProcessor.AntiVMTE2Event = AntiVMTE2Event;
+        this->vecBlock.valueAntiquantProcessor.AntiVMTE2Event = AntiVMTE2Event;
+        SetFlag<HardEvent::V_MTE2>(AntiVMTE2Event);
     }
     if constexpr (hasRope) {
         constInfo.s1DR = constInfo.s1Size * constInfo.dSizeRope;
@@ -652,7 +656,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         gS1StartIdx = 0;
     }
     if ASCEND_IS_AIV {
-        WaitFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
+        WaitFlag<HardEvent::V_MTE2>(AntiVMTE2Event);
     }
     if constexpr (isFd) {
         int64_t s2InCurrentBatch = GetS2CurrentBatch();

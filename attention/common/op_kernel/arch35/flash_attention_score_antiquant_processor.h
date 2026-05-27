@@ -94,6 +94,7 @@ public:
     static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
     using ANTIQ_PARAMS_T = typename std::conditional<ANTIQUANT_PER_TOKEN, T, Q_T>::type;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    event_t AntiVMTE2Event;
 
     __aicore__ inline AntiquantProcessorBaseAPI(){};
 
@@ -169,10 +170,10 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     if (taskParam.isLoadAntiqParam) {
         if constexpr (KVFP4) {
             if (likely(taskParam.copyTotalS > 0)) {
-                WaitFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
+                WaitFlag<HardEvent::V_MTE2>(AntiVMTE2Event);
                 LoadAntiquantParamsPerTokenGroup(antiqScaleGm, antiqScaleInputQue, kvAntiqMxScaleRes,
                     taskParam, isBeforeHalf, s2RealSize);
-                SetFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
+                SetFlag<HardEvent::V_MTE2>(AntiVMTE2Event);
             }
         } else if constexpr (ANTIQUANT_PER_TOKEN) {
             if (likely(taskParam.copyTotalS > 0)) {
