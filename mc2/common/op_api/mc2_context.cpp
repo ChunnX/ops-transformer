@@ -258,12 +258,13 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-
+    LOGI("start to acquire HCCL channel");
     // auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
     // if (hcclRet != HCCL_SUCCESS) {
     //     OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL channel failed");
     //     return ACLNN_ERR_INNER;
     // }
+    LOGI("HCCL channel acquire success");
     return ACLNN_SUCCESS;
 }
 
