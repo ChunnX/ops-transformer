@@ -615,7 +615,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                    (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
+                                    (uint32_t)(constInfo.dSize), false, true);
         if constexpr (dBaseSize > 128) {
             if constexpr (s2BaseSize == 256) {
                 MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(

@@ -106,7 +106,7 @@ public:
     using AType = typename BlockMmadBuilder::AType;
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, yscale
@@ -344,8 +344,8 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        TupleShape resProblemShape {Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
-                                    Get<K_VALUE>(problemShape_), 0};
+        TupleShape resProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
+                                   Get<K_VALUE>(problemShape_)};
         bs.UpdateNextProblem(resProblemShape);
         epilogueOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);

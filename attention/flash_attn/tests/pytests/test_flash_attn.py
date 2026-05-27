@@ -23,7 +23,8 @@ from cpu_impl import tforward
 from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
                          data_compare_benchmark_new, Result, gen_block_table)
 
-_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
+_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single", 
+                        "test_case_redline_fa_TND", "test_case_redline_fa", "test_case_redline_fia"]
 
 
 def load_case_modules(module_names):

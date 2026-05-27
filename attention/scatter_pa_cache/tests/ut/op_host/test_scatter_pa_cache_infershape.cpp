@@ -10,13 +10,10 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
-#include "infershape_test_util.h"
-#include "kernel_run_context_facker.h"
-#include "log/log.h"
-#include "array_ops.h"
-#include "ut_op_common.h"
-#include "ut_op_util.h"
-#include "../../../op_graph/scatter_pa_cache_proto.h"
+#include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
+#include "infer_shape_case_executor.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 class ScatterPaCache : public testing::Test {
 protected:
@@ -29,29 +26,25 @@ static void TearDownTestCase() {
 }
 };
 
-TEST_F(ScatterPaCache, template1)
+TEST_F(ScatterPaCache, scatter_pa_cache_infershape_0)
 {
-    const int num_tokens = 102;
-    const int num_head = 1;
-    const int k_head_size = 128;
-    const int num_blocks = 306;
-    const int block_size = 128;
-
-    ge::op::ScatterPaCache op;
-
-    std::vector<std::pair<int64_t, int64_t>> shape_range = {{1, 1024}};
-
-    std::vector<int64_t> key_shape = {num_tokens, num_head, k_head_size};
-    std::vector<int64_t> key_cache_shape = {num_blocks, block_size, num_head, k_head_size};
-    std::vector<int64_t> slot_mapping_shape = {num_tokens};
-
-    auto input_key_cache = create_desc_shape_range(key_cache_shape, ge::DT_FLOAT, ge::FORMAT_ND, key_cache_shape, ge::FORMAT_ND, shape_range);
-    op.UpdateInputDesc("key_cache", input_key_cache);
-
-    auto ret = InferShapeTest(op);
-    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
-
-    auto key_cache_shape_cur = op.GetOutputDesc("key_cache");
-    std::vector<int64_t> expected_output_key_cache_shape = key_cache_shape;
-    EXPECT_EQ(key_cache_shape_cur.GetShape().GetDims(), expected_output_key_cache_shape);
+    gert::InfershapeContextPara infershapeContextPara("ScatterPaCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // key
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // keyCache
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND}, // slotMapping
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, 
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, 
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, 
+            
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // keyCache
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+        }
+    );
+    std::vector<std::vector<int64_t>> expectOutputShape = {{306, 128, 1, 128}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
