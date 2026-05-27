@@ -210,22 +210,25 @@ class LightningIndexerGrad:
                 dy_b = dy[b]  # (S1, topk)
                 relu_grad_in = weights_b.unsqueeze(-1) * dy_b  # 广播乘法
                 
-                # ========== 步骤4: Vec2 - TileLang kernels ✓ ==========
-                # ReLU反向
-                relu_grad_out = self.kernel_relu_grad(relu_grad_in, relu_in)
+                # ========== 步骤4: Vec2 - ReLU反向 + ReduceSum ==========
+                # ReLU反向: relu_grad_out = relu_grad_in * (relu_in > 0)
+                # 暂时用 PyTorch 实现，跳过有问题的 TileLang kernel
+                mask = (relu_in > 0).to(dtype)
+                relu_grad_out = relu_grad_in * mask
                 
                 # 调试: 检查 relu_grad_out
                 if n1 == 0:
                     print(f"[调试] relu_grad_in: max={relu_grad_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_in).any().item()}")
-                    print(f"[调试] relu_grad_out: max={relu_grad_out.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_out).any().item()}")
+                    print(f"[调试] relu_grad_out (PyTorch): max={relu_grad_out.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_out).any().item()}")
                 
                 # ReduceSum计算dWeights - 每个Query头的权重梯度
                 relu_in_dy = relu_in * dy_b
-                d_weights_b = self.kernel_reduce(relu_in_dy)
+                # 暂时用 PyTorch 实现
+                d_weights_b = relu_in_dy.sum(dim=-1)
                 
                 # 调试: 检查 d_weights
                 if n1 == 0:
-                    print(f"[调试] d_weights_b: max={d_weights_b.abs().max().item():.2f}, has_nan={torch.isnan(d_weights_b).any().item()}")
+                    print(f"[调试] d_weights_b (PyTorch): max={d_weights_b.abs().max().item():.2f}, has_nan={torch.isnan(d_weights_b).any().item()}")
                 
                 d_weights[b, :, n1] = d_weights_b  # 存储到对应头的位置
                 
