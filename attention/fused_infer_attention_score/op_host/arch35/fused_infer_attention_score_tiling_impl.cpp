@@ -231,7 +231,11 @@ void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaI
                 }
             }
             if (gsMergeFlag_) {
-                actualSeqLengthsQ_.push_back(actSeqLenQData * fiaInfo.gSize);
+                if (fiaInfo.qLayout == FiaLayout::BNSD) {
+                    actualSeqLengthsQ_.push_back(fiaInfo.S1Size * fiaInfo.gSize);
+                } else {
+                    actualSeqLengthsQ_.push_back(actSeqLenQData * fiaInfo.gSize);
+                }
             } else {
                 actualSeqLengthsQ_.push_back(actSeqLenQData);
             }
