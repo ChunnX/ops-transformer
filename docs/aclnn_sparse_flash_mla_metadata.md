@@ -1075,7 +1075,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
 
 <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
     <col style="width: 150px">
-    <col style="width: 100px">
+    <col style="width: 300px">
     <col style="width: 350px">
     <col style="width: 200px">
     <col style="width: 100px">
