@@ -424,6 +424,11 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
         if constexpr (hasRope) {
             constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
+            if constexpr (isInfer) {
+                if (sharedParams.isGqa) {
+                    constInfo.mm1RopeKa = constInfo.dSizeRope;
+                }
+            }
             constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
         }
 
@@ -450,6 +455,11 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
         if constexpr (hasRope) {
             constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
+            if constexpr (isInfer) {
+                if (sharedParams.isGqa) {
+                    constInfo.mm1RopeKa = constInfo.dSizeRope;
+                }
+            }
             constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
         }
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
