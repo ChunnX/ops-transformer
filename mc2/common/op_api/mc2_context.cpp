@@ -236,7 +236,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
                                            const CommProtocol &protocol, const CommEngine &engine,
                                            std::vector<ChannelHandle> &channels)
 {
-    OP_LOGD("Start to get HCCL communication channel");
+    printf("Start to get HCCL communication channel\n");
     uint32_t channelNum = rankDim - 1;
     std::vector<HcclChannelDesc> channelDesc(channelNum);
     channels.resize(channelNum);
@@ -271,7 +271,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
 aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
                                             const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct)
 {
-    OP_LOGD("Start to get HCCL communication resource");
+    printf("Start to get HCCL communication resource\n");
     uint32_t rankId = mc2ContextStruct->epRankId;
     std::vector<ChannelHandle> channels;
 
@@ -521,7 +521,7 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                             aclTensor *&mc2Context,CommProtocol Protocol)
 {
-    OP_LOGD("Start to get Mc2MoeContext Tensor");
+    printf("Start to get Mc2MoeContext Tensor\n");
     auto &instance = GetInstance();
 
     auto aclnnRet = instance.LoadHcclSymbols();
