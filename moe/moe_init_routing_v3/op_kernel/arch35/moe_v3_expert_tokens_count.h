@@ -154,13 +154,17 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertCountElements_);
     expertCountTempGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
+    // expertTotalCountGm地址必须避开sort阶段的workspaceGms区域
+    // workspaceGms占用：Align(n*k)*2 + Align(actualExpertNum) 开始，大小Align(n*k)*4个float
+    // expertTotalCountGm应该放在workspaceGms之后
+    int64_t workspaceGmsEndOffset = Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 + 
+                                      Align(actualExpertNum_, sizeof(int32_t)) +
+                                      Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 4 / sizeof(float);
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + workspaceGmsEndOffset,
                                         actualExpertNum_);
+    // expertIdxValueGm放在expertTotalCountGm之后
     expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-            Align(actualExpertNum_, sizeof(int32_t)) + Align(actualExpertNum_, sizeof(int32_t)),
+        (__gm__ int32_t *)workspace + workspaceGmsEndOffset + Align(actualExpertNum_, sizeof(int32_t)),
         coreNum_ * EXPERT_ID_VALUE_NUM);
 
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreElements_);

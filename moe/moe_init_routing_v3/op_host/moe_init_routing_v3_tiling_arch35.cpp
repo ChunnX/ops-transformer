@@ -498,17 +498,21 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
 
     // DropPad模式需要额外的workspace空间
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
-        // expertIdxValueGm: 每个核需要存储2个int32 (lastExpertId和lastCoreExpertIdNum)
+        // workspaceGms占用空间：Align(n*k)*2 + Align(actualExpertNum) 开始，大小Align(n*k)*4个float
+        int64_t workspaceGmsSize = AlignBytes(totalLength_, sizeof(int32_t)) * NUM_FOUR; // 4个float的sizeof与int32相同
+        
+        // expertTotalCountGm和expertIdxValueGm放在workspaceGms之后
+        int64_t expertTotalCountWorkspaceSize = AlignBytes(actualExpertNum_, sizeof(int32_t));
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
-        workspaceSize_ += expertIdxValueWorkspaceSize;
+        
+        workspaceSize_ += workspaceGmsSize + expertTotalCountWorkspaceSize + expertIdxValueWorkspaceSize;
 
-        // expandDstToSrcRowGm和expandedExpertIdxGm: 每个核需要perCoreRows个int32
-        // SrcToDst DropPad kernel使用
-        int64_t srcToDstWorkspaceSize = totalLength_ * sizeof(int32_t) * NUM_TWO; // expandDstToSrcRow + expandedExpertIdx
+        // expandDstToSrcRowGm和expandedExpertIdxGm: 需要根据Align(n*k)计算
+        int64_t srcToDstWorkspaceSize = AlignBytes(totalLength_, sizeof(int32_t)) * NUM_TWO;
         workspaceSize_ += srcToDstWorkspaceSize;
 
-        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, srcToDstWorkspace=%ld",
-                 expertIdxValueWorkspaceSize, srcToDstWorkspaceSize);
+        OP_LOGD(context_, "DropPad workspace: workspaceGms=%ld, expertTotalCount=%ld, expertIdxValue=%ld, srcToDst=%ld",
+                 workspaceGmsSize, expertTotalCountWorkspaceSize, expertIdxValueWorkspaceSize, srcToDstWorkspaceSize);
     }
 
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&

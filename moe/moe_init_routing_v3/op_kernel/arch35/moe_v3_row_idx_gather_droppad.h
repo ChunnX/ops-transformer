@@ -279,7 +279,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
     this->lastLoopCols_ = this->srcToDstTilingData_->lastLoopCols;
     this->colLoops_ = this->srcToDstTilingData_->colLoops;
 
-    int64_t length = Align(this->totalLength_, sizeof(int32_t));
+int64_t length = Align(this->totalLength_, sizeof(int32_t));
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, length);
 
     if constexpr (IsSameType<T, hifloat8_t>::value) {
@@ -295,17 +295,23 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
                                          this->expertNum_ * this->expertCapacity_);
     }
 
-expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+    // DropPad模式workspace分配（参考tiling.cpp GetWorkspaceSize）：
+    // 位置0-Align(n*k): expertIdxValueGm_ (coreNum*2个int32)
+    // 位置Align(n*k)-Align(n*k)*2: expandDstToSrcRowGm_ + expandedExpertIdxGm_ (每个核perCoreRows个int32)
+    // 偏移计算必须与tiling分配和expert_tokens_count.h保持一致
+    expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
     expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + length +
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
+
     // expertIdxValueGm偏移地址必须与expert_tokens_count.h保持一致
-    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum)*2
-    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
+    // workspace布局：Align(n*k)*2 + Align(actualExpertNum) + Align(n*k)*4 + Align(actualExpertNum)
+    int64_t workspaceGmsEndOffset = length * 2 + Align(tilingData->actualExpertNum, sizeof(int32_t)) +
+                                      Align(this->totalLength_, sizeof(int32_t)) * 4 / sizeof(float);
     expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset, 
+        (__gm__ int32_t *)workspace + workspaceGmsEndOffset + Align(tilingData->actualExpertNum, sizeof(int32_t)),
         this->coreNum_ * 2);
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
