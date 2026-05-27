@@ -46,11 +46,9 @@ uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
 {
     uint64_t singleRowSize = kValue * dtypeSize * rankDim;
     if (singleRowSize == 0) {
-        OP_LOGE(opName.c_str(),
-                "Invalid parameters: kValue=%lu, dtypeSize=%lu, rankDim=%lu\n"
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName.c_str(), "y", "invalid", "Invalid parameters: kValue=%lu, dtypeSize=%lu, rankDim=%lu\n"
                 "  Product is zero, division undefined\n"
-                "  This shape is NOT SUPPORTED",
-                kValue, dtypeSize, rankDim);
+                "  This shape is NOT SUPPORTED");
         return HCCL_UNSUPPORTED;
     }
 

@@ -93,13 +93,12 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
 
     if (winSizeData.isLayered) {
         // 校验可变bs
-        OP_TILING_CHECK((bs != maxBs), OP_LOGE(nodeName, "Layered cannot support variableBs, bs is %lu, maxBs is %lu",
-            bs, maxBs), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((bs != maxBs), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "maxBs", "invalid", "Layered cannot support variableBs, bs is %lu, maxBs is %lu"), return ge::GRAPH_FAILED);
         // 校验buffersize
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
             OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu,"
                 "NEEDED_HCCL_BUFFSIZE_HIERARCHY((moeExpertNum * maxBs * (h * MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) *"
-                "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h, 
+                "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h,
                 actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
@@ -127,7 +126,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     } else {
         auto attrs = context->GetAttrs();
         auto cclBuffSizePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(3)); // 3为V3算子中ccl_buffer_size的index
-        OP_TILING_CHECK(cclBuffSizePtr == nullptr || *cclBuffSizePtr < 0, OP_LOGE(nodeName, "cclBuffSizePtr is invalid."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(cclBuffSizePtr == nullptr || *cclBuffSizePtr < 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "cclBuffSizePtr", "invalid", "cclBuffSizePtr is invalid."), return ge::GRAPH_FAILED);
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }
