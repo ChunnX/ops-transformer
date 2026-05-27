@@ -44,7 +44,7 @@ namespace ge {
  * @li transpose_x1: A bool. Whether x1 is transposed. Default: false.
  * @li transpose_x2: A bool. Whether x2 is transposed. Default: false.
  * @li group_size: An int. Default: 0.
- * @li comm_mode: A string. Communication engine. Default: "default".
+ * @li comm_mode: A string. Communication engine. Default: "".
  */
 REG_OP(MatmulAlltoAll)
     .INPUT(x1, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
@@ -67,7 +67,7 @@ REG_OP(MatmulAlltoAll)
     .ATTR(transpose_x1, Bool, false)
     .ATTR(transpose_x2, Bool, false)
     .ATTR(group_size, Int, 0)
-    .ATTR(comm_mode, String, "default")
+    .ATTR(comm_mode, String, "")
     .OP_END_FACTORY_REG(MatmulAlltoAll)
 } // namespace ge
 
