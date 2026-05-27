@@ -123,7 +123,7 @@ private:
                                             LocalTensor<typename MLAPT::ropeComputType> &sinLocalCkvKr,
                                             CkvkrParams ropeAndScatterKrParams);
     __aicore__ inline void ScatterKr(LocalTensor<krCacheType> &outputKrLocal,
-                                     CkvkrParams ropeAndScatterKrParams)
+                                     CkvkrParams ropeAndScatterKrParams);
     __aicore__ inline void RmsNormAndScatterCkv(LocalTensor<float> &dequantScaleXLocal,
                                                 LocalTensor<uint8_t> &shareTmpUb,
                                                 LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,
