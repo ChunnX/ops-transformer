@@ -118,13 +118,13 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using ComputationContextType = MC2KernelTemplate::MC2MMContext<                                                \
             MC2KernelTemplate::MXQuantMMAdditionalData, MxTensorMatmulTilingData>;                                       \
         using ComputationType = Mc2Kernel::TensorMXQuantMatmulStage<MxTensorMatmulTilingData, X2TRANSPOSE>;              \
-        ComputationType matmulImplName(&pipe);                                                                         \
+        ComputationType matmulImplName;                                                                         \
         using SchedulerContextType = Mc2Kernel::AlltoAllMXTensorQmmPipelineContext<ComputationContextType>;              \
         using SchedulerType = Mc2Kernel::AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, SchedulerContextType>; \
         SchedulerType SchedulerImpl(&commImplName, &matmulImplName);                                                   \
         Mc2Kernel::AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData>    \
             op(&SchedulerImpl);                                                                                        \
-        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
+        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData);                    \
         op.Process();                                                                                                  \
     } while (0)
 #endif

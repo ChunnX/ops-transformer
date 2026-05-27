@@ -47,7 +47,7 @@ public:
     static constexpr uint32_t BASE_N = 128;
     static constexpr uint32_t BASE_K = 128;
 
-    __aicore__ inline TensorMXQuantMatmulStage(AscendC::TPipe *tPipe) : tPipePtr_(tPipe) {}
+    __aicore__ inline TensorMXQuantMatmulStage() {}
     __aicore__ inline void Init() {}
     __aicore__ inline MC2KernelTemplate::MC2MMContext<
         MC2KernelTemplate::MXQuantMMAdditionalData, TilingType> *GetContextPtr() { return &MMcontext_; }
@@ -57,7 +57,6 @@ public:
 private:
     MC2KernelTemplate::MC2MMContext<
         MC2KernelTemplate::MXQuantMMAdditionalData, TilingType> MMcontext_;
-    AscendC::TPipe *tPipePtr_;
 };
 
 
@@ -65,8 +64,6 @@ template <typename TilingType, bool X2TRANSPOSE>
 __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Process(uint32_t taskIndex)
 {
     if ASCEND_IS_AIV { return; }
-
-    tPipePtr_->Reset();
 
     auto* tiling = MMcontext_.tilingDataPtr;
     uint32_t m_ = tiling->tileM;

@@ -25,14 +25,13 @@ public:
     __aicore__ inline AlltoAllMxTensorMatmulArch35(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
                                 GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM,
-                                AlltoAllMatmulTilingDataType *tilingData, AscendC::TPipe *tPipe);
+                                AlltoAllMatmulTilingDataType *tilingData);
     __aicore__ inline void Process();
 
 private:
     SchedulerType *pipeLine_;
     SchedulerContextType pipeLineContext_;
     AlltoAllMatmulTilingDataType *tilingData_;
-    AscendC::TPipe *tPipe_;
     GM_ADDR x1_;
     GM_ADDR x2_;
     GM_ADDR y_;
@@ -54,13 +53,12 @@ template <typename SchedulerType, typename SchedulerContextType, typename AlltoA
 __aicore__ inline void
 AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
-    GM_ADDR workspaceGM, AlltoAllMatmulTilingDataType *tilingData, AscendC::TPipe *tPipe)
+    GM_ADDR workspaceGM, AlltoAllMatmulTilingDataType *tilingData)
 {
     pipeLine_->Init();
 
     tilingData_ = tilingData;
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
-    tPipe_ = tPipe;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
