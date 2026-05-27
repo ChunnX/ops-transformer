@@ -4,15 +4,19 @@
 
 对比 TileLang 实现与官方 Ascend C 算子的结果，验证精度。
 
+官方算子参数限制:
+    head_dim = 128 (必须)
+    group_num = 64 (必须)
+    head_num_k = 1 (必须)
+
 TileLang Kernel 下发情况:
-- kernel_cube4: Cube4 MatMul ✓ 下发NPU
-- kernel_reduce: Vec2 ReduceSum ✓ 下发NPU  
-- kernel_relu_grad: Vec2 ReLU反向 ✓ 下发NPU
+    - kernel_cube4: Cube4 MatMul ✓ 下发NPU
+    - kernel_reduce: Vec2 ReduceSum ✓ 下发NPU  
+    - kernel_relu_grad: Vec2 ReLU反向 ✓ 下发NPU
 """
 
 import torch
 import torch_npu
-import numpy as np
 import sys
 import os
 
@@ -21,29 +25,39 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lightning_indexer_grad_op import LightningIndexerGrad
 
 
-def run_precision_test(
-    batch=1,
-    seqlen_q=64,
-    seqlen_k=128,
-    head_dim=64,
-    topk=32,
-    head_num_q=8,
-    head_num_k=2,
-    group_num=4,
-    block_m=32,
-    block_k=32,
-    block_d=32,
-):
+def run_precision_test():
     """
     运行精度测试，对比 TileLang 和官方 Ascend C 算子。
+    
+    使用官方算子支持的参数配置:
+        head_dim = 128
+        group_num = 64
+        head_num_k = 1
     """
     print("=" * 70)
     print("精度测试 - Lightning Indexer Grad TileLang 实现")
     print("=" * 70)
-    print(f"\n测试配置:")
+    
+    # 官方算子必须的参数配置
+    batch = 1
+    seqlen_q = 64
+    seqlen_k = 2048
+    head_dim = 128    # 必须 128
+    topk = 2048
+    head_num_q = 64   # head_num_k * group_num = 1 * 64 = 64
+    head_num_k = 1    # 必须 1
+    group_num = 64    # 必须 64
+    
+    # 分块大小
+    block_m = 64
+    block_k = 128
+    block_d = 128
+    
+    print(f"\n测试配置 (官方算子支持):")
     print(f"  batch={batch}, seqlen_q={seqlen_q}, seqlen_k={seqlen_k}")
     print(f"  head_dim={head_dim}, topk={topk}")
     print(f"  head_num_q={head_num_q}, head_num_k={head_num_k}, group_num={group_num}")
+    print(f"  block_m={block_m}, block_k={block_k}, block_d={block_d}")
     
     # 创建 TileLang 算子
     op = LightningIndexerGrad(
@@ -139,39 +153,5 @@ def run_precision_test(
         return False
 
 
-def run_multiple_tests():
-    """运行多组不同配置的精度测试。"""
-    test_configs = [
-        # 小尺寸测试
-        {"batch": 1, "seqlen_q": 32, "seqlen_k": 64, "head_dim": 32, "topk": 16,
-         "head_num_q": 4, "head_num_k": 2, "group_num": 2,
-         "block_m": 16, "block_k": 16, "block_d": 16},
-        
-        # 中等尺寸测试
-        {"batch": 2, "seqlen_q": 64, "seqlen_k": 128, "head_dim": 64, "topk": 32,
-         "head_num_q": 8, "head_num_k": 2, "group_num": 4,
-         "block_m": 32, "block_k": 32, "block_d": 32},
-    ]
-    
-    results = []
-    for i, config in enumerate(test_configs):
-        print(f"\n{'='*70}")
-        print(f"测试组 {i+1}/{len(test_configs)}")
-        passed = run_precision_test(**config)
-        results.append(passed)
-    
-    print("\n" + "=" * 70)
-    print("测试总结")
-    print("=" * 70)
-    for i, passed in enumerate(results):
-        status = "✓ 通过" if passed else "✗ 未通过"
-        print(f"  测试组 {i+1}: {status}")
-    
-    all_passed = all(results)
-    print(f"\n总体: {'✓ 全部通过' if all_passed else '✗ 存在失败'}")
-    
-    return all_passed
-
-
 if __name__ == "__main__":
-    run_multiple_tests()
+    run_precision_test()

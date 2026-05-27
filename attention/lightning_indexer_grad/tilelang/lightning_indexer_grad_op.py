@@ -160,7 +160,7 @@ class LightningIndexerGrad:
         返回:
             d_query: Query梯度
             d_key: Key梯度
-            d_weights: Weights梯度 (batch, S1, head_num_per_group)
+            d_weights: Weights梯度 (batch, S1, head_num_q) - 每个Query头独立的梯度
         """
         if head_num is None:
             head_num = self.head_num_q
@@ -169,16 +169,20 @@ class LightningIndexerGrad:
         device = query.device
         dtype = query.dtype
         
+        # 初始化输出梯度
         d_query = torch.zeros_like(query)
         d_key = torch.zeros_like(key)
-        d_weights = torch.zeros(batch, self.seqlen_q, self.head_num_per_group, dtype=dtype, device=device)
+        # d_weights 形状: (batch, S1, head_num_q) - 每个Query头有独立的权重梯度
+        d_weights = torch.zeros(batch, self.seqlen_q, self.head_num_q, dtype=dtype, device=device)
         
         indices_cpu = indices.cpu().numpy()
         key_cpu = key.cpu().numpy()
         
+        # 遍历每个Query头
         for b in range(batch):
-            for n1 in range(self.head_num_per_group):
-                n2_idx = n1 * self.head_num_k // self.head_num_per_group
+            for n1 in range(self.head_num_q):  # 遍历所有Query头
+                # 确定对应的Key头索引
+                n2_idx = n1 // self.group_num
                 
                 # ========== 步骤1: GatherTopk (CPU辅助) ==========
                 key_gather = gather_topk_python(
@@ -196,6 +200,7 @@ class LightningIndexerGrad:
                 relu_in = torch.einsum('sd,skd->sk', query_b.float(), key_gather_npu.float()).to(dtype)
                 
                 # ========== 步骤3: Cube2 - Weights @ Dy ==========
+                # 每个Query头有独立的权重
                 weights_b = weights[b, :, n1]  # (S1,)
                 dy_b = dy[b]  # (S1, topk)
                 relu_grad_in = weights_b.unsqueeze(-1) * dy_b  # 广播乘法
@@ -204,10 +209,10 @@ class LightningIndexerGrad:
                 # ReLU反向
                 relu_grad_out = self.kernel_relu_grad(relu_grad_in, relu_in)
                 
-                # ReduceSum计算dWeights
+                # ReduceSum计算dWeights - 每个Query头的权重梯度
                 relu_in_dy = relu_in * dy_b
                 d_weights_b = self.kernel_reduce(relu_in_dy)
-                d_weights[b, :, n1] = d_weights_b
+                d_weights[b, :, n1] = d_weights_b  # 存储到对应头的位置
                 
                 # ========== 步骤5: Cube3 - dQuery ==========
                 d_query_b = torch.einsum('sk,skd->sd', relu_grad_out.float(), key_gather_npu.float()).to(dtype)
@@ -239,14 +244,15 @@ class LightningIndexerGrad:
 def test_lightning_indexer_grad():
     """测试 Lightning Indexer Gradient 算子。"""
     
-    batch = 2
-    seqlen_q = 128
-    seqlen_k = 256
-    head_dim = 64
-    topk = 32
-    head_num_q = 8
-    head_num_k = 2
-    group_num = 4
+    # 官方算子支持的参数
+    batch = 1
+    seqlen_q = 64
+    seqlen_k = 2048
+    head_dim = 128
+    topk = 2048
+    head_num_q = 64
+    head_num_k = 1
+    group_num = 64
     
     op = LightningIndexerGrad(
         seqlen_q=seqlen_q,
@@ -256,9 +262,9 @@ def test_lightning_indexer_grad():
         head_num_q=head_num_q,
         head_num_k=head_num_k,
         group_num=group_num,
-        block_m=32,
-        block_k=32,
-        block_d=32,
+        block_m=64,
+        block_k=128,
+        block_d=128,
     )
     
     query = torch.randn(batch, seqlen_q, head_num_q, head_dim, dtype=torch.float16).npu()
