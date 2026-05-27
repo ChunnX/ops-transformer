@@ -19,8 +19,9 @@
 #include "arch35/sparse_flash_attention_kernel_mla.h"
 #else
 #include "arch22/sparse_flash_attention_kernel_mla.h"
-#endif
 
+#endif
+   
 using namespace AscendC;
 
 #if (__CCE_AICORE__ == 310)
