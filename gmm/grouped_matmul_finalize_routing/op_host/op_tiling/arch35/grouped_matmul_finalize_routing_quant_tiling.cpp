@@ -574,7 +574,7 @@ void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t l2Size;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2Size);
-    deterWorkspaceSize_ = static_cast<uint32_t>((l2Size - SYS_WORKSPACE_SIZES) * DETER_WORKSPACE_RATIO);
+    deterWorkspaceSize_ = static_cast<uint32_t>((l2Size - SYS_WORKSPACE_SIZE) * DETER_WORKSPACE_RATIO);
     tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
     OP_LOGD(context_->GetNodeName(), "DeterministicTilingProcess: flag=%u, wsSize=%u",
             tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag,
