@@ -82,8 +82,9 @@ public:
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         uint64_t groupListSize = sizeof(int64_t) * e_;
-        uint64_t ptrTableSize = 4 * 16;
-        uint64_t groupListAreaSize = Align(groupListSize + ptrTableSize, TENSOR_LIST_SIZE);
+        constexpr uint32_t PTR_TABLE_SLOT_SIZE = 16;
+constexpr uint32_t PTR_TABLE_SLOT_NUM = 4;
+        uint64_t groupListAreaSize = Align(groupListSize + PTR_TABLE_SLOT_NUM * PTR_TABLE_SLOT_SIZE, TENSOR_LIST_SIZE);
         GM_ADDR groupListGm = computeWorkspaceGm_;
         GM_ADDR workspaceGm = computeWorkspaceGm_ + groupListAreaSize;
         if (tilingData_->isNeedMM != 0) {
