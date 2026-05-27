@@ -152,6 +152,7 @@ public:
         this->Attr("group_size").AttrType(OPTIONAL).Int();
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("mm_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("");
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)

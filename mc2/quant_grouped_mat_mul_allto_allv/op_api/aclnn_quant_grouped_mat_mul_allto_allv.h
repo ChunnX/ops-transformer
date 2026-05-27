@@ -56,6 +56,7 @@ extern "C" {
  * @param [in] commQuantMode: 预留，低比特通信的量化模式，当前仅支持0，表示不支持低比特通信。
  * @param [in] commQuantDtypeOptional: 可选输入，低比特通信量化后的数据类型，当前不支持。
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域，字符串长度要求(0,128)。
+ * @param [in] commMode: 计算输入，str。通信引擎参数，指定当前通信类型，支持输入"default"、"aicpu"和"ccu"
  * @param [in] epWorldSize: 计算输入，int。ep通信域size，支持4、8、16、32、64。
  * @param [in] sendCounts:
  * 计算输入，表示发送给其他卡的token数，数据类型支持INT64，取值大小为e*epWorldSize，最大为256。输入类型需为list。
@@ -93,7 +94,7 @@ ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     const aclTensor *commQuantScaleOptional, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode,
     int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional,
-    int64_t groupSize, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,
+    int64_t groupSize, const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
     const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, const aclTensor *y,
     const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
