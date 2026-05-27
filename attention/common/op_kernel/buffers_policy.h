@@ -29,9 +29,21 @@ public:
         buffer_ = bufferManager.template AllocBuffer<syncType>(size);
         buffer_.Init();
     }
+
+    // 静态Tensor编程模式：使用预定义静态事件ID，p2cEventId/c2pEventId为基础ID
+    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                      uint32_t p2cEventId, uint32_t c2pEventId) {
+        buffer_ = bufferManager.template AllocBuffer<syncType>(size);
+        buffer_.InitStatic(p2cEventId, c2pEventId);
+    }
  
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
         buffer_.UnInit();
+        bufferManager.FreeBuffer(buffer_);
+    }
+
+    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+        buffer_.UnInitStatic();
         bufferManager.FreeBuffer(buffer_);
     }
  
@@ -62,10 +74,26 @@ public:
         pong_.Init();
     }
 
+    // 静态Tensor编程模式：ping用p2cBase/c2pBase，pong用Base+1
+    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                      uint32_t p2cEventIdBase, uint32_t c2pEventIdBase) {
+        ping_ = bufferManager.template AllocBuffer<syncType>(size);
+        pong_ = bufferManager.template AllocBuffer<syncType>(size);
+        ping_.InitStatic(p2cEventIdBase, c2pEventIdBase);
+        pong_.InitStatic(p2cEventIdBase + 1, c2pEventIdBase + 1);
+    }
+
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
         ping_.UnInit();
         pong_.UnInit();
 
+        bufferManager.FreeBuffer(ping_);
+        bufferManager.FreeBuffer(pong_);
+    }
+
+    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+        ping_.UnInitStatic();
+        pong_.UnInitStatic();
         bufferManager.FreeBuffer(ping_);
         bufferManager.FreeBuffer(pong_);
     }
@@ -133,11 +161,31 @@ public:
         c_.Init();
     }
 
+    // 静态Tensor编程模式：a/b/c依次用Base, Base+1, Base+2
+    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                      uint32_t p2cEventIdBase, uint32_t c2pEventIdBase) {
+        a_ = bufferManager.template AllocBuffer<syncType>(size);
+        b_ = bufferManager.template AllocBuffer<syncType>(size);
+        c_ = bufferManager.template AllocBuffer<syncType>(size);
+        a_.InitStatic(p2cEventIdBase, c2pEventIdBase);
+        b_.InitStatic(p2cEventIdBase + 1, c2pEventIdBase + 1);
+        c_.InitStatic(p2cEventIdBase + 2, c2pEventIdBase + 2);
+    }
+
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
         a_.UnInit();
         b_.UnInit();
         c_.UnInit();
 
+        bufferManager.FreeBuffer(a_);
+        bufferManager.FreeBuffer(b_);
+        bufferManager.FreeBuffer(c_);
+    }
+
+    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+        a_.UnInitStatic();
+        b_.UnInitStatic();
+        c_.UnInitStatic();
         bufferManager.FreeBuffer(a_);
         bufferManager.FreeBuffer(b_);
         bufferManager.FreeBuffer(c_);
@@ -232,12 +280,36 @@ public:
         d_.Init();
     }
 
+    // 静态Tensor编程模式：a/b/c/d依次用Base, Base+1, Base+2, Base+3
+    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                      uint32_t p2cEventIdBase, uint32_t c2pEventIdBase) {
+        a_ = bufferManager.template AllocBuffer<syncType>(size);
+        b_ = bufferManager.template AllocBuffer<syncType>(size);
+        c_ = bufferManager.template AllocBuffer<syncType>(size);
+        d_ = bufferManager.template AllocBuffer<syncType>(size);
+        a_.InitStatic(p2cEventIdBase, c2pEventIdBase);
+        b_.InitStatic(p2cEventIdBase + 1, c2pEventIdBase + 1);
+        c_.InitStatic(p2cEventIdBase + 2, c2pEventIdBase + 2);
+        d_.InitStatic(p2cEventIdBase + 3, c2pEventIdBase + 3);
+    }
+
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
         a_.UnInit();
         b_.UnInit();
         c_.UnInit();
         d_.UnInit();
 
+        bufferManager.FreeBuffer(a_);
+        bufferManager.FreeBuffer(b_);
+        bufferManager.FreeBuffer(c_);
+        bufferManager.FreeBuffer(d_);
+    }
+
+    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+        a_.UnInitStatic();
+        b_.UnInitStatic();
+        c_.UnInitStatic();
+        d_.UnInitStatic();
         bufferManager.FreeBuffer(a_);
         bufferManager.FreeBuffer(b_);
         bufferManager.FreeBuffer(c_);
