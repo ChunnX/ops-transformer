@@ -128,6 +128,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
 
 ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantPa() const
 {
+    if (kvLayout_ != SASLayout::PA_ND) {
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
         OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%ld) should be in range (0, %u].",
         oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);

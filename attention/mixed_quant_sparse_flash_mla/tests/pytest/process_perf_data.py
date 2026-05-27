@@ -85,30 +85,30 @@ def process_profiler_data(args):
     try:
         task_duration_col = "Task Duration(us)"
         df_b["metadata_duration"] = ""
-        df_b["sas_duration"] = ""
+        df_b["qsmla_duration"] = ""
         df_b["metadata_perf_diff"] = ""
-        df_b["sas_perf_diff"] = ""
+        df_b["qsmla_perf_diff"] = ""
         df_b["perf_result"] = ""
 
         for i in range(df_b.shape[0]):
             a_row1_idx = 2 * row_idx          # 当前case metadata性能数据
-            a_row2_idx = 2 * row_idx + 1      # 当前case sas性能数据
-
+            a_row2_idx = 2 * row_idx + 1      # 当前case qsmla性能数据
+            
             if df_b.iloc[i]["result"] != "NPU ERROR":    # NPU ERROR时跳过
                 cur_metadata_perf = df_a.iloc[a_row1_idx][task_duration_col]
                 df_b.at[i, "metadata_duration"] = cur_metadata_perf
-                cur_sas_perf = df_a.iloc[a_row2_idx][task_duration_col]
-                df_b.at[i, "sas_duration"] = cur_sas_perf
+                cur_qsmla_perf = df_a.iloc[a_row2_idx][task_duration_col]
+                df_b.at[i, "qsmla_duration"] = cur_qsmla_perf
 
                 if args.is_compare:
                     golden_metadata_perf = df_c.iloc[i]["metadata_duration"]
-                    golden_sas_perf = df_c.iloc[i]["sas_duration"]
+                    golden_qsmla_perf = df_c.iloc[i]["qsmla_duration"]
                     metadata_perf_diff = cur_metadata_perf - golden_metadata_perf
-                    sas_perf_diff = cur_sas_perf - golden_sas_perf
+                    qsmla_perf_diff = cur_qsmla_perf - golden_qsmla_perf
                     df_b.at[i, "metadata_perf_diff"] = metadata_perf_diff
-                    df_b.at[i, "sas_perf_diff"] = sas_perf_diff
+                    df_b.at[i, "qsmla_perf_diff"] = qsmla_perf_diff
 
-                    if abs(sas_perf_diff) > perf_threshold:
+                    if abs(qsmla_perf_diff) > perf_threshold:
                         df_b.at[i, "perf_result"] = "Failed"
                         perf_fail_list.append(df_b.iloc[i]["case_name"])
 
@@ -119,9 +119,9 @@ def process_profiler_data(args):
 
             if i % 10 == 0:
                 print(f"已处理 {i}/{df_b.shape[0]} 行")
-
-        print(f"数据合并完成，为表格B添加了 {df_b.shape[0]} 行的 metadata_duration 和 sas_duration 数据")
-
+        
+        print(f"数据合并完成，为表格B添加了 {df_b.shape[0]} 行的 metadata_duration 和 qsmla_duration 数据")
+        
     except Exception as e:
         print(f"数据合并过程中出错: {e}")
         import traceback
