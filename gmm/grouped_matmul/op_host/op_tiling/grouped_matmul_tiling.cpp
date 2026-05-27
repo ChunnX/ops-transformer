@@ -118,7 +118,16 @@ constexpr int64_t A4W4OPTIMIZE_GROUP_LIST_TYPE = 0L;
 constexpr int64_t A4W4OPTIMIZE_GROUP_TYPE = 0L;
 // A4W4访存优化,合轴发送算法quantGroupSize的范围
 constexpr int64_t A4W4OPTIMIZE_QUANT_GROUP_SIZE = 256L;
-
+// 单tensor的weight dim限制
+constexpr int64_t ND_WEIGHT_DIM_LIMIT = 3;
+constexpr int64_t NZ_WEIGHT_DIM_LIMIT = 5;
+// Dim下标
+constexpr int64_t DIM_NUM_0 = 0;
+constexpr int64_t DIM_NUM_1 = 1;
+constexpr int64_t DIM_NUM_2 = 2;
+constexpr int64_t DIM_NUM_3 = 3;
+constexpr int64_t DIM_NUM_4 = 4;
+constexpr int64_t DIM_NUM_5 = 5;
 
 static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uint32_t avg_m, uint32_t maxN_, uint32_t groupNum_, const uint32_t& aicNum) {
   int32_t mDim = CeilDiv(avg_m, baseM_);
@@ -189,9 +198,13 @@ ge::graphStatus GMMTiling::CheckMKN(const gert::TilingContext* context) {
 }
 
 void GMMTiling::SetTilingDataIsSingleTensor() {
-  tilingData.gmmBaseParams.set_singleWeight(static_cast<uint32_t>(isSingleWeight_));
-  tilingData.gmmBaseParams.set_singleX(static_cast<uint32_t>(isSingleX_));
-  tilingData.gmmBaseParams.set_singleY(static_cast<uint32_t>(isSingleY_));
+    tilingData.gmmBaseParams.set_singleWeight(static_cast<uint32_t>(isSingleWeight_));
+    if (isA8W4FakeA8W8_) {
+        // A8W4FakeA8W8 multi-weight will be handled into single-weight by pre-process
+        tilingData.gmmBaseParams.set_singleWeight(1);
+    }
+    tilingData.gmmBaseParams.set_singleX(static_cast<uint32_t>(isSingleX_));
+    tilingData.gmmBaseParams.set_singleY(static_cast<uint32_t>(isSingleY_));
 }
 
 bool GMMTiling::CheckTensorListLength(const gert::TilingContext *context)
@@ -1202,17 +1215,11 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   auto w0Desc = context->GetDynamicInputDesc(WEIGHT_INDEX, 0);
   OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
   weightDtype_ = w0Desc->GetDataType();
-  if (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4) {
-    const uint64_t n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(2);
-    const uint64_t k = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
-    const uint64_t groupNum = context->GetDynamicInputTensor(WEIGHT_INDEX, 0)->GetStorageShape().GetDim(0);
-    const uint64_t quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(1);
-    isA8W4FakeA8W8_ = true;
-    A8W4noMsdSpace_ = groupNum * k * n * sizeof(int8_t) + groupNum * n * sizeof(float);
-    tilingData.gmmBaseParams.set_groupNum(groupNum);
-    tilingData.gmmBaseParams.set_n(n);
-    tilingData.gmmBaseParams.set_k(k);
-    tilingData.gmmBaseParams.set_quantGroupNum(quantGroupNum);
+  if (isA8W4FakeA8W8_) {
+    tilingData.gmmBaseParams.set_groupNum(A8W4GroupNum_);
+    tilingData.gmmBaseParams.set_n(A8W4N_);
+    tilingData.gmmBaseParams.set_k(A8W4K_);
+    tilingData.gmmBaseParams.set_quantGroupNum(A8W4QuantGroupNum_);
   }
   isA8W8_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT8);
   isA8W4_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4);
@@ -1819,6 +1826,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       auto w0Desc = context->GetDynamicInputDesc(WEIGHT_INDEX, 0);
       auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
       bool wNZ = wFormat0 == ge::FORMAT_FRACTAL_NZ;
+      auto wInput = context->GetDynamicInputTensor(WEIGHT_INDEX, 0);
+      auto wDimNum = wInput->GetStorageShape().GetDimNum();
+      const int64_t isSingleTensor = (wDimNum == ND_WEIGHT_DIM_LIMIT || wDimNum == NZ_WEIGHT_DIM_LIMIT) ? 1 : 0;
 
       constexpr uint32_t cvParallNum = 4; // for cv collaboration
       constexpr uint32_t THIRTY_TWO = 32;
@@ -1844,6 +1854,11 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       bool useHighPerf = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX) ?
                     ((reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX] == 1) : false;
       if (useHighPerf) {
+        if (!isSingleTensor) {
+            OP_LOGE(context->GetNodeName(), "A8W4 MSD high performance path only support single tensor input, "
+                "but current weight dim num is %d.", wDimNum);
+            return ge::GRAPH_FAILED;
+        }
         OP_LOGD(context->GetNodeName(), "Enter GMM A8W4 MSD high performance path...");
         constexpr int CASE_ZERO = 0;
         constexpr int CASE_ONE = 1;
@@ -1949,11 +1964,31 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         PrintA8W4HPTiling(context, &tilingDataA8W4.hpTilingData);
         return ge::GRAPH_SUCCESS;
       } else {
-        const uint32_t n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(TWO);
+        uint32_t n = 0;
+        uint32_t groupNum = 0;
+        uint32_t quantGroupNum = 0;
+        if (isSingleTensor == 1) {
+            n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(DIM_NUM_2);
+            groupNum = context->GetDynamicInputTensor(WEIGHT_INDEX, 0)->GetStorageShape().GetDim(DIM_NUM_0);
+            quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(DIM_NUM_1);
+        } else {
+            n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(DIM_NUM_1);
+            quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(DIM_NUM_0);
+            groupNum = 0;
+            while (context->GetDynamicInputTensor(WEIGHT_INDEX, groupNum) != nullptr) {
+                groupNum++;
+            }
+            auto groupListTensor = context->GetDynamicInputTensor(GROUPLIST_INDEX, 0);
+            OP_CHECK_NULL_WITH_CONTEXT(context, groupListTensor);
+            uint32_t groupNumCheck = groupListTensor->GetStorageShape().GetDim(DIM_NUM_0);
+            OP_CHECK_IF(groupNumCheck != groupNum,
+                      OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                          "groupNum in weight tensors is %u, but groupNum in groupList tensor is %u.",
+                          groupNum, groupNumCheck),
+                      return ge::GRAPH_FAILED);
+        }
         const uint32_t k = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
         const uint32_t m = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
-        const uint32_t groupNum = context->GetDynamicInputTensor(WEIGHT_INDEX, 0)->GetStorageShape().GetDim(0);
-        const uint32_t quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(1);
         std::array<int64_t, FIVE> mKNList = {groupNum, m, k, n, wNZ}; // 5: input shape info size
 
         auto offset = context->GetDynamicInputTensor(OFFSET_INDEX, 0);
@@ -1961,15 +1996,26 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         if (offset != nullptr) {
           auto &offsetShape = offset->GetStorageShape();
           const size_t offsetDimNum = offsetShape.GetDimNum();
-          auto offsetDim0 = offsetShape.GetDim(0);
-          auto offsetDim1 = offsetShape.GetDim(1);
-          auto offsetDim2 = offsetShape.GetDim(TWO);
-          if (offsetDimNum == OFFSET_DIM_A8W4 && offsetDim0 == groupNum && offsetDim1 == 1 && offsetDim2 == n) {
-              withOffset = 1U;
-              OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable .");
+          if (isSingleTensor == 1) {
+              auto offsetDim0 = offsetShape.GetDim(DIM_NUM_0);
+              auto offsetDim1 = offsetShape.GetDim(DIM_NUM_1);
+              auto offsetDim2 = offsetShape.GetDim(DIM_NUM_2);
+              if (offsetDimNum == OFFSET_DIM_A8W4 && offsetDim0 == groupNum && offsetDim1 == 1 && offsetDim2 == n) {
+                  withOffset = 1U;
+                  OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable .");
+              } else {
+                  OP_LOGW(context->GetNodeName(), "GMM A8W4: offset's shape is invalid, "
+                      "If you want to enable offset, the expected shape is (%u,1,%u), and the current shape is (%ld,%ld,%ld).",
+                      groupNum, n, offsetDim0, offsetDim1, offsetDim2);
+              }
           } else {
-              OP_LOGW(context->GetNodeName(), "GMM A8W4: offset's shape is invalid, If you want to enable offset, the expected shape is (%u,1,%u), and the current shape is (%ld,%ld,%ld).",
-                  groupNum, n, offsetDim0, offsetDim1, offsetDim2);
+              auto offsetDim0 = offsetShape.GetDim(DIM_NUM_0);
+              auto offsetDim1 = offsetShape.GetDim(DIM_NUM_1);
+              if ((offsetDimNum == TWO && offsetDim0 == 1 && offsetDim1 == n) ||
+                  (offsetDimNum == 1 && offsetDim0 == n)) {
+                  withOffset = 1U;
+                  OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable (multi-tensor) .");
+              }
           }
         }
         //GEMM Tiling
@@ -1997,6 +2043,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         tilingDataA8W4.gmmBaseParams.set_quantGroupNum(quantGroupNum);
         tilingDataA8W4.gmmBaseParams.set_m(m);
         tilingDataA8W4.gmmBaseParams.set_withOffset(withOffset);
+        tilingDataA8W4.gmmBaseParams.set_isSingleTensor(isSingleTensor);
         context->SetBlockDim(aicNum);
 
         if (quantGroupNum == 0U || k % quantGroupNum != 0U) {
@@ -2026,6 +2073,12 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         uint32_t enableCV11 = 0;
         if (avg_m <= 128 && groupNum <= 4 && k <= 8192 && n <= 8192 && !(isMSD && is_in_a8w4_white_list)) {
             enableCV11 = 1;
+        }
+        if (!isMSD && isPerchannel) { // fake quant perchannel only support cv11
+            enableCV11 = 1;
+        }
+        if (!isMSD && !isPerchannel) { // fake quant pergroup only support cv12
+            enableCV11 = 0;
         }
         if (withOffset && !isMSD) {
             OP_LOGW(context->GetNodeName(), "GMM W4A8: with-offset mode requires "
@@ -2063,7 +2116,14 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
             workspaces[0] = SYS_WORKSPACE_SIZE;  // default size
             workspaces[0] += static_cast<size_t>(groupNum * k * n * static_cast<uint32_t>(sizeof(int8_t)) + (cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
             if (isPerchannel) {
-              return ge::GRAPH_PARAM_INVALID; // continue A8W8
+                tilingData.gmmBaseParams.set_isSingleTensor(isSingleTensor);
+                isA8W4FakeA8W8_ = true;
+                A8W4GroupNum_ = groupNum;
+                A8W4QuantGroupNum_ = quantGroupNum;
+                A8W4N_ = n;
+                A8W4K_ = k;
+                A8W4noMsdSpace_ = groupNum * k * n * sizeof(int8_t) + groupNum * n * sizeof(float);
+                return ge::GRAPH_PARAM_INVALID; // continue A8W8
             } else {
               return ge::GRAPH_SUCCESS;
             }
