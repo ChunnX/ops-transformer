@@ -10,47 +10,311 @@
 
 /*!
  * \file flash_attn_kernel_base_gqa_vector.h
- * \brief Flash Attention GQA vector processing methods
+ * \brief Flash Attention GQA vector processor (fully independent)
  */
 
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_VECTOR_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_VECTOR_H_
 
-#include "flash_attn_kernel_base_gqa_common.h"
+#include "../../../common/op_kernel/fia_public_define.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "../utils/flash_attn_common_def.h"
+#include "../utils/flash_attn_utils.h"
+
+#include "flash_attn_block_vec_noquant_gqa.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "flash_attention_noquant_block_vec_flashdecode.h"
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+
+#include "flash_attn_tiling_data.h"
+
+using namespace AscendC;
+using namespace optiling;
+using namespace AscendC::Impl::Detail;
+using namespace regbaseutil;
 
 namespace BaseApi {
 
-template <typename VectorData>
+template <typename VecFaBlockType, typename VecFdBlockType, typename InputT, LayOutTypeEnum LayoutQ = LayOutTypeEnum::None, bool PageAttention = false>
 class FlashAttentionVectorProcessor {
 public:
-    VectorData vectorData;
+    using VecFaBlockTypeAlias = VecFaBlockType;
+    static constexpr uint32_t mBaseSize = VecFaBlockType::mBaseSize;
+    static constexpr uint32_t s2BaseSize = VecFaBlockType::s2BaseSize;
 
-    __aicore__ inline FlashAttentionVectorProcessor(FlashAttentionGqaContext* ctx) : vectorData(ctx){};
+    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+
+    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+
+    static constexpr LayOutTypeEnum LAYOUT_Q = LayoutQ;
+    static constexpr LayOutTypeEnum LAYOUT_KV = LayoutQ;
+    static constexpr bool PAGE_ATTENTION = PageAttention;
+
+    static constexpr bool IS_TND_LAYOUT = (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD);
+
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
+
+    using INPUT_T = InputT;
+    using ConstInfoX = typename VecFaBlockType::ConstInfoX;
+
+    using QCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
+                                                           ActualSeqLensParser<Q_MODE, int32_t, true>,
+                                                           ActualSeqLensParser<Q_MODE, int32_t>>::type;
+    using KvCuSeqLensParserType = typename std::conditional<IS_TND_LAYOUT,
+                                                            ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                            ActualSeqLensParser<KV_MODE, int32_t>>::type;
+    using QSeqUsedParserType = QCuSeqLensParserType;
+    using KvSeqUsedParserType = KvCuSeqLensParserType;
+
+    VecFaBlockType vecFaBlock;
+    VecFdBlockType vecFdBlock;
+
+    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
+
+    BufferManager<BufferType::UB> ubBufferManager;
+    BufferManager<BufferType::L1> l1BufferManager;
+    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+
+    QCuSeqLensParserType qCuSeqLensParser;
+    KvCuSeqLensParserType kvCuSeqLensParser;
+    QSeqUsedParserType qSeqUsedParser;
+    KvSeqUsedParserType kvSeqUsedParser;
+
+    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+    __gm__ uint8_t *keyPtr;
+    GlobalTensor<uint32_t> faMetaDataGm;
+    TPipe *pipe;
+    uint32_t sectionNum;
+
+    bool isFd = false;
+    uint32_t coreFirstTmpOutWsPos_ = 0;
+    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2];
+    TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
+    TBuf<> SharedBuffer3;
+
+    uint32_t createdTaskCount = 0U;
+    uint32_t executedTaskCount = 0U;
+    uint32_t accGS1Loops = 0U;
+    uint32_t mloop = 0;
+
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t curS2Start;
+    uint32_t curS2End = 0;
+    uint32_t prevBIdx;
+    uint32_t prevBN2Idx;
+    uint32_t prevGS1Idx;
+    bool headS2Split = false;
+    bool tailS2Split = false;
+
+    uint32_t bN2Start_;
+    uint32_t bN2End_;
+    uint32_t gS1OStart_;
+    uint32_t gS1OEnd_;
+    uint32_t s2OStart_;
+    uint32_t s2OEnd_;
+
+    __aicore__ inline FlashAttentionVectorProcessor()
+        : vecFaBlock(constInfo), vecFdBlock(constInfo), tilingData(nullptr), keyPtr(nullptr), pipe(nullptr), sectionNum(0) {}
+
+    __aicore__ inline void InitConstInfo()
+    {
+        constInfo.aivIdx = GetBlockIdx();
+        constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
+        constInfo.subBlockIdx = GetSubBlockIdx();
+        constInfo.dBasicBlock = Align64Func((uint16_t)tilingData->flashAttnBaseParams.dSizeV);
+    }
+
+    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+    }
+
+    __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
+    {
+        bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
+        gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
+        s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
+    }
+
+    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
+    {
+        using MM_T = float;
+        using VecMm2ResPos = typename VecFaBlockTypeAlias::mm2ResPos;
+        using UbBufferType = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+        constexpr bool BMM2_TOUB_ALIAS = std::is_same_v<VecMm2ResPos, UbBufferType>;
+
+        uint32_t mm1OutDtype = sizeof(MM_T);
+        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
+        uint32_t dVBaseSizeVal = Align64Func((uint16_t)tilingData->flashAttnBaseParams.dSizeV);
+        uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSizeVal * sizeof(MM_T);
+        uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+
+        l1BufferManager.Init(pipe, 524286);
+        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+        if constexpr (BMM2_TOUB_ALIAS) {
+            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+        } else {
+            ubBufferManager.Init(pipe, mm1ResultSize * 2);
+        }
+        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+    }
+
+    __aicore__ inline void InitQCuSeqLensParser(GlobalTensor<int32_t> cuSeqLensGmQ, GlobalTensor<int32_t> seqUsedGmQ)
+    {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ,
+                                  tilingData->flashAttnBaseParams.cuSeqLensQSize,
+                                  tilingData->flashAttnBaseParams.seqUsedQSize);
+        } else {
+            qSeqUsedParser.Init(seqUsedGmQ,
+                                tilingData->flashAttnBaseParams.seqUsedQSize,
+                                tilingData->flashAttnBaseParams.s1Size);
+        }
+    }
+
+    __aicore__ inline void InitKvCuSeqLensParser(GlobalTensor<int32_t> cuSeqLensGmKv, GlobalTensor<int32_t> seqUsedGmKv)
+    {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv,
+                                   tilingData->flashAttnBaseParams.cuSeqLensKVSize,
+                                   tilingData->flashAttnBaseParams.seqUsedKvSize);
+        } else {
+            kvSeqUsedParser.Init(seqUsedGmKv,
+                                 tilingData->flashAttnBaseParams.seqUsedKvSize,
+                                 tilingData->flashAttnBaseParams.s2Size);
+        }
+    }
+
+    __aicore__ inline void InitVectorBlock(__gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                           __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
+                                           __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                           __gm__ uint8_t *workspace, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv)
+    {
+        vecFaBlock.isFd = isFd;
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            vecFaBlock.InitVecBlock(pipe, cuSeqLensQ, cuSeqLensKv, attenMask,
+                                     learnableSink, softmaxLse, attentionOut, workspace, tilingData);
+            vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
+        } else {
+            vecFaBlock.InitVecBlock(pipe, seqUsedQ, seqUsedKv, attenMask, learnableSink,
+                                     softmaxLse, attentionOut, workspace, tilingData);
+            vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
+        }
+        vecFaBlock.ClearOutput();
+
+        if (isFd) {
+            vecFdBlock.SetTilingData(tilingData);
+            vecFdBlock.InitParams();
+            vecFdBlock.InitGlobalTensor(vecFaBlock.softmaxFDMaxGm, vecFaBlock.softmaxFDSumGm,
+                                         vecFaBlock.accumOutGm, vecFaBlock.attentionOutGm, keyPtr);
+            if (learnableSink != nullptr) {
+                GlobalTensor<INPUT_T> sinkGm;
+                sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
+                vecFaBlock.learnableSinkFlag = true;
+                vecFdBlock.InitLearnableSinkGm(sinkGm);
+            }
+            if (tilingData->flashAttnBaseParams.isSoftMaxLseEnable) {
+                GlobalTensor<float> softmaxLseGm;
+                softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
+            }
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                vecFdBlock.SetCuSeqLensParsers(qCuSeqLensParser, kvCuSeqLensParser);
+            } else {
+                vecFdBlock.SetCuSeqLensParsers(qSeqUsedParser, kvSeqUsedParser);
+            }
+        }
+    }
 
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            using VecMm2ResPos = typename VectorData::VecFaBlockTypeAlias::mm2ResPos;
+            using VecMm2ResPos = typename VecFaBlockTypeAlias::mm2ResPos;
             using UbBufferType = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
             if constexpr (std::is_same_v<VecMm2ResPos, UbBufferType>) {
-                vectorData.ctx->bmm2Buffers.Get().SetCrossCore();
-                vectorData.ctx->bmm2Buffers.Get().SetCrossCore();
+                bmm2Buffers.Get().SetCrossCore();
+                bmm2Buffers.Get().SetCrossCore();
             }
-            vectorData.ctx->bmm1Buffers.Get().SetCrossCore();
-            vectorData.ctx->bmm1Buffers.Get().SetCrossCore();
+            bmm1Buffers.Get().SetCrossCore();
+            bmm1Buffers.Get().SetCrossCore();
         }
     }
 
     __aicore__ inline void ProcessVector(uint32_t sectionIdx)
     {
         if ASCEND_IS_AIV {
-            vectorData.vecFaBlock.InitBuffers(vectorData.SharedBuffer1, vectorData.SharedBuffer2, vectorData.SharedBuffer3);
-            vectorData.vecFaBlock.AllocEventID();
-            if (vectorData.ctx->constInfo.aicIdx < vectorData.ctx->tilingData->flashAttnBaseParams.coreNum) {
+            vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
+            vecFaBlock.AllocEventID();
+            if (constInfo.aicIdx < tilingData->flashAttnBaseParams.coreNum) {
                 FlashAttentionVector(sectionIdx);
             }
             FlashDecodeVector(sectionIdx);
-            vectorData.vecFaBlock.FreeEventID();
+            vecFaBlock.FreeEventID();
+        }
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                GlobalTensor<int32_t> cuSeqLensGmQ, GlobalTensor<int32_t> seqUsedGmQ,
+                                GlobalTensor<int32_t> cuSeqLensGmKv, GlobalTensor<int32_t> seqUsedGmKv,
+                                __gm__ uint8_t *key)
+    {
+        if ASCEND_IS_AIV {
+            InitConstInfo();
+            keyPtr = key;
+
+            this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
+            this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
+
+            this->InitMMResBuf(workspace);
+
+            uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
+            this->sectionNum = sectionNum;
+
+            faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                          FA_AIC_CORE_NUM * 16U * sectionNum);
+
+            isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+            if (isFd) {
+                __gm__ uint32_t *fdMetaDataPtr = (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                                                      FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM *
+                                                                          sectionNum * sizeof(uint32_t));
+                vecFdBlock.SetFdMetaDataGm(fdMetaDataPtr, sectionNum);
+            }
+
+            this->InitVectorBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink,
+                                  softmaxLse, attentionOut, workspace, seqUsedQ, seqUsedKv);
+        }
+    }
+
+    __aicore__ inline void Process()
+    {
+        if ASCEND_IS_AIV {
+            if (constInfo.aicIdx < tilingData->flashAttnBaseParams.coreNum) {
+                this->CrossCoreBufferInit();
+            }
+
+            for (uint32_t sectionIdx = 0; sectionIdx < this->sectionNum; sectionIdx++) {
+                this->ProcessVector(sectionIdx);
+            }
         }
     }
 
@@ -58,28 +322,28 @@ private:
     __aicore__ inline void FlashAttentionVector(uint32_t sectionIdx)
     {
         if ASCEND_IS_AIV {
-            if (vectorData.ctx->constInfo.aicIdx >= vectorData.ctx->tilingData->flashAttnBaseParams.coreNum) {
+            if (constInfo.aicIdx >= tilingData->flashAttnBaseParams.coreNum) {
                 return;
             }
 
-            vectorData.ctx->GetFASectionInfo(sectionIdx);
-            RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE] = {};
+            GetFASectionInfo(sectionIdx);
+            RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE] = {};
 
-            vectorData.ctx->createdTaskCount = 0;
-            vectorData.ctx->executedTaskCount = 0;
-            vectorData.ctx->mloop = 0;
-            vectorData.ctx->accGS1Loops = 0;
-            vectorData.ctx->headS2Split = false;
-            vectorData.ctx->tailS2Split = false;
+            createdTaskCount = 0;
+            executedTaskCount = 0;
+            mloop = 0;
+            accGS1Loops = 0;
+            headS2Split = false;
+            tailS2Split = false;
 
-            uint32_t bN2Cur = vectorData.ctx->bN2Start_;
-            uint32_t gS1Cur = vectorData.ctx->gS1OStart_;
-            uint32_t s2Cur = vectorData.ctx->s2OStart_;
-            vectorData.ctx->prevBN2Idx = bN2Cur;
-            vectorData.ctx->prevGS1Idx = gS1Cur;
-            
-            vectorData.coreFirstTmpOutWsPos_ = vectorData.ctx->faMetaDataGm.GetValue(
-                vectorData.ctx->GetFAMetaDataIndex(vectorData.ctx->constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
+            uint32_t bN2Cur = bN2Start_;
+            uint32_t gS1Cur = gS1OStart_;
+            uint32_t s2Cur = s2OStart_;
+            prevBN2Idx = bN2Cur;
+            prevGS1Idx = gS1Cur;
+
+            coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
+                GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
 
             bool shouldDispatchTask = true;
             bool shouldExecuteTask = false;
@@ -88,11 +352,11 @@ private:
                 if (shouldDispatchTask) {
                     TASK_DEAL_MODE taskDealMode = GetTaskDealModeVector(bN2Cur, gS1Cur, s2Cur);
                     if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                        CreateTaskVector(vectorData.ctx->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoVec);
-                        vectorData.ctx->createdTaskCount++;
+                        CreateTaskVector(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoVec);
+                        createdTaskCount++;
                         UpdateAxisInfoVector(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                        vectorData.vecFaBlock.DealZeroActSeqLen(bN2Cur);
+                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
                         UpdateAxisInfoVector(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                         continue;
                     } else {
@@ -102,8 +366,8 @@ private:
                 }
                 shouldExecuteTask = ShouldExecuteTaskVector(taskRunInfoVec);
                 if (shouldExecuteTask) {
-                    ExecuteTaskVector(vectorData.ctx->executedTaskCount, taskRunInfoVec);
-                    vectorData.ctx->executedTaskCount++;
+                    ExecuteTaskVector(executedTaskCount, taskRunInfoVec);
+                    executedTaskCount++;
                 }
             }
         }
@@ -112,15 +376,15 @@ private:
     __aicore__ inline bool ShouldDispatchTaskVector(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if ASCEND_IS_AIV {
-            return ((bN2Cur != vectorData.ctx->bN2End_) || (gS1Cur != vectorData.ctx->gS1OEnd_) || (s2Cur != vectorData.ctx->s2OEnd_));
+            return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
         }
         return false;
     }
 
-    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIV {
-            for (uint32_t i = 0; i < VectorData::PRELOAD_TASK_CACHE_SIZE; i++) {
+            for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
                 if (taskRunInfoVec[i].isValid) {
                     return true;
                 }
@@ -132,29 +396,29 @@ private:
     __aicore__ inline TASK_DEAL_MODE GetTaskDealModeVector(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if ASCEND_IS_AIV {
-            bool isFirstTask = (bN2Cur == vectorData.ctx->bN2Start_) && (gS1Cur == vectorData.ctx->gS1OStart_) && (s2Cur == vectorData.ctx->s2OStart_);
-            uint32_t bIdx = bN2Cur / vectorData.ctx->tilingData->flashAttnBaseParams.n2Size;
-            if (isFirstTask || vectorData.ctx->prevBIdx != bIdx) {
-                vectorData.ctx->prevBIdx = bIdx;
-                if (vectorData.ctx->tilingData->flashAttnBaseParams.cuSeqLensKVSize == 0 && vectorData.ctx->tilingData->flashAttnBaseParams.seqUsedKvSize == 0 &&
-                    !vectorData.ctx->tilingData->flashAttnBaseParams.isKvContinuous) {
-                    vectorData.ctx->actSeqLensKv = SeqLenFromTensorList<VectorData::LAYOUT_KV>(vectorData.ctx->keyPtr, bIdx);
+            bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
+            uint32_t bIdx = bN2Cur / tilingData->flashAttnBaseParams.n2Size;
+            if (isFirstTask || prevBIdx != bIdx) {
+                prevBIdx = bIdx;
+                if (tilingData->flashAttnBaseParams.cuSeqLensKVSize == 0 && tilingData->flashAttnBaseParams.seqUsedKvSize == 0 &&
+                    !tilingData->flashAttnBaseParams.isKvContinuous) {
+                    actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
                 } else {
-                    if constexpr (VectorData::LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-                        vectorData.ctx->actSeqLensKv = vectorData.kvCuSeqLensParser.GetActualSeqLength(bIdx);
+                    if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+                        actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
                     } else {
-                        vectorData.ctx->actSeqLensKv = vectorData.kvSeqUsedParser.GetActualSeqLength(bIdx);
+                        actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
                     }
                 }
-                if constexpr (VectorData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vectorData.ctx->actSeqLensQ = vectorData.qCuSeqLensParser.GetActualSeqLength(bIdx);
+                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                    actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
                 } else {
-                    vectorData.ctx->actSeqLensQ = vectorData.qSeqUsedParser.GetActualSeqLength(bIdx);
+                    actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
                 }
             }
-            uint64_t s2LoopTimes = (vectorData.ctx->actSeqLensKv + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
-            uint64_t gS1Size = vectorData.ctx->actSeqLensQ * vectorData.ctx->tilingData->flashAttnBaseParams.gSize;
-            uint64_t gS1LoopTimes = (gS1Size + VectorData::mBaseSize - 1) / VectorData::mBaseSize;
+            uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * tilingData->flashAttnBaseParams.gSize;
+            uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
             if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
                 if (gS1Cur == 0 && s2Cur == 0) {
                     return TASK_DEAL_MODE::DEAL_ZERO;
@@ -162,26 +426,26 @@ private:
                 return TASK_DEAL_MODE::SKIP_ZERO;
             }
 
-            if (isFirstTask || bN2Cur != vectorData.ctx->prevBN2Idx || gS1Cur != vectorData.ctx->prevGS1Idx) {
-                if (vectorData.ctx->tilingData->flashAttnAttenMaskParams.sparseMode == 0) {
+            if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
+                if (tilingData->flashAttnAttenMaskParams.sparseMode == 0) {
                     CalcCurS2StartEndNoSparseVector(bN2Cur, gS1Cur);
                 } else {
                     CalcCurS2StartEndWithSparseVector(bN2Cur, gS1Cur);
                 }
-                vectorData.ctx->prevBN2Idx = bN2Cur;
-                vectorData.ctx->prevGS1Idx = gS1Cur;
+                prevBN2Idx = bN2Cur;
+                prevGS1Idx = gS1Cur;
             }
 
-            if (vectorData.ctx->curS2Start < vectorData.ctx->curS2End && s2Cur >= vectorData.ctx->curS2End) {
+            if (curS2Start < curS2End && s2Cur >= curS2End) {
                 return TASK_DEAL_MODE::S2_END;
             }
 
-            if (s2Cur < vectorData.ctx->curS2Start || s2Cur >= vectorData.ctx->curS2End) {
+            if (s2Cur < curS2Start || s2Cur >= curS2End) {
                 return TASK_DEAL_MODE::SKIP;
             }
 
-            if (s2Cur == vectorData.ctx->curS2Start) {
-                vectorData.ctx->mloop++;
+            if (s2Cur == curS2Start) {
+                mloop++;
             }
 
             return TASK_DEAL_MODE::CREATE_TASK;
@@ -193,18 +457,18 @@ private:
                                                         int64_t &preTokenLeftUp, int64_t &nextTokenLeftUp)
     {
         if ASCEND_IS_AIV {
-            preTokenLeftUp = vectorData.ctx->tilingData->flashAttnAttenMaskParams.winLefts;
-            nextTokenLeftUp = vectorData.ctx->tilingData->flashAttnAttenMaskParams.winRights;
+            preTokenLeftUp = tilingData->flashAttnAttenMaskParams.winLefts;
+            nextTokenLeftUp = tilingData->flashAttnAttenMaskParams.winRights;
             fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
-                                             vectorData.ctx->tilingData->flashAttnAttenMaskParams.sparseMode);
+                                             tilingData->flashAttnAttenMaskParams.sparseMode);
 
-            if (vectorData.ctx->tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::BAND) {
+            if (tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::BAND) {
                 preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
             }
 
-            if (vectorData.ctx->tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+            if (tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
                 nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-            } else if (vectorData.ctx->tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::BAND) {
+            } else if (tilingData->flashAttnAttenMaskParams.sparseMode == fa_base_vector::BAND) {
                 nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
             }
         }
@@ -213,17 +477,17 @@ private:
     __aicore__ inline void CalcCurS2StartEndNoSparseVector(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         if ASCEND_IS_AIV {
-            vectorData.ctx->curS2Start = 0U;
-            vectorData.ctx->curS2End = (static_cast<uint32_t>(vectorData.ctx->actSeqLensKv) + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
+            curS2Start = 0U;
+            curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
 
-            if ((bN2Cur == vectorData.ctx->bN2Start_) && (gS1Cur == vectorData.ctx->gS1OStart_)) {
-                vectorData.ctx->headS2Split = vectorData.ctx->s2OStart_ != 0U;
-                vectorData.ctx->curS2Start = vectorData.ctx->s2OStart_;
+            if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+                headS2Split = s2OStart_ != 0U;
+                curS2Start = s2OStart_;
             }
 
-            if ((bN2Cur == vectorData.ctx->bN2End_) && (gS1Cur == vectorData.ctx->gS1OEnd_)) {
-                vectorData.ctx->tailS2Split = vectorData.ctx->s2OEnd_ != 0U;
-                vectorData.ctx->curS2End = vectorData.ctx->s2OEnd_;
+            if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+                tailS2Split = s2OEnd_ != 0U;
+                curS2End = s2OEnd_;
             }
         }
     }
@@ -233,24 +497,24 @@ private:
         if ASCEND_IS_AIV {
             int64_t preTokenLeftUp = 0;
             int64_t nextTokenLeftUp = 0;
-            GetPreNextTokenLeftUpVector(vectorData.ctx->actSeqLensQ, vectorData.ctx->actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
+            GetPreNextTokenLeftUpVector(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
 
-            int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(VectorData::mBaseSize);
-            int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(VectorData::mBaseSize),
-                                        static_cast<int64_t>(vectorData.ctx->actSeqLensQ) * static_cast<int64_t>(vectorData.ctx->tilingData->flashAttnBaseParams.gSize)) -
+            int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
+            int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+                                        static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(tilingData->flashAttnBaseParams.gSize)) -
                                     1;
             int64_t s1FirstToken = 0;
             int64_t s1LastToken = 0;
-            if constexpr (GetOutUbFormat<VectorData::LAYOUT_Q>() == UbFormat::S1G) {
-                s1FirstToken = static_cast<int64_t>(s1GFirstToken / vectorData.ctx->tilingData->flashAttnBaseParams.gSize);
-                s1LastToken = static_cast<int64_t>(s1GLastToken / vectorData.ctx->tilingData->flashAttnBaseParams.gSize);
+            if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
+                s1FirstToken = static_cast<int64_t>(s1GFirstToken / tilingData->flashAttnBaseParams.gSize);
+                s1LastToken = static_cast<int64_t>(s1GLastToken / tilingData->flashAttnBaseParams.gSize);
             } else {
-                if (s1GFirstToken / static_cast<int64_t>(vectorData.ctx->actSeqLensQ) == s1GLastToken / static_cast<int64_t>(vectorData.ctx->actSeqLensQ)) {
-                    s1FirstToken = s1GFirstToken % static_cast<int64_t>(vectorData.ctx->actSeqLensQ);
-                    s1LastToken = s1GLastToken % static_cast<int64_t>(vectorData.ctx->actSeqLensQ);
+                if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
+                    s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ);
+                    s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ);
                 } else {
                     s1FirstToken = 0;
-                    s1LastToken = static_cast<int64_t>(vectorData.ctx->actSeqLensQ);
+                    s1LastToken = static_cast<int64_t>(actSeqLensQ);
                 }
             }
 
@@ -259,41 +523,41 @@ private:
             int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
             int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
 
-            if (s2FirstToken >= static_cast<int64_t>(vectorData.ctx->actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
-                vectorData.ctx->curS2Start = 0U;
-                vectorData.ctx->curS2End = 0U;
+            if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+                curS2Start = 0U;
+                curS2End = 0U;
                 return;
             }
 
-            s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(vectorData.ctx->actSeqLensKv - 1));
-            s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(vectorData.ctx->actSeqLensKv - 1));
+            s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+            s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
 
-            s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / VectorData::s2BaseSize;
-            s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / VectorData::s2BaseSize + 1U;
+            s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
+            s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
 
-            vectorData.ctx->curS2Start = s2StartWithSparse;
-            vectorData.ctx->curS2End = s2EndWithSparse;
+            curS2Start = s2StartWithSparse;
+            curS2End = s2EndWithSparse;
 
-            if (bN2Cur == vectorData.ctx->bN2Start_ && gS1Cur == vectorData.ctx->gS1OStart_) {
-                vectorData.ctx->headS2Split = vectorData.ctx->s2OStart_ > s2StartWithSparse ? true : false;
-                vectorData.ctx->curS2Start = Max(s2StartWithSparse, vectorData.ctx->s2OStart_);
+            if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) {
+                headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
+                curS2Start = Max(s2StartWithSparse, s2OStart_);
             }
-            if (bN2Cur == vectorData.ctx->bN2End_ && gS1Cur == vectorData.ctx->gS1OEnd_) {
-                vectorData.ctx->tailS2Split = vectorData.ctx->s2OEnd_ > 0U ? true : false;
-                vectorData.ctx->curS2End = vectorData.ctx->s2OEnd_ > 0U ? Min(s2EndWithSparse, vectorData.ctx->s2OEnd_) : s2EndWithSparse;
+            if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) {
+                tailS2Split = s2OEnd_ > 0U ? true : false;
+                curS2End = s2OEnd_ > 0U ? Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
             }
         }
     }
 
-    __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIV {
-            RunInfoXVec &runInfo0 = taskRunInfoVec[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
-            RunInfoXVec &runInfoNegN = taskRunInfoVec[(loop - VectorData::PRELOAD_N) % VectorData::PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXVec &runInfo0 = taskRunInfoVec[loop % PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXVec &runInfoNegN = taskRunInfoVec[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo0.isValid) {
                 ComputeVec1Vector(runInfo0);
             }
-            if (loop >= VectorData::PRELOAD_N) {
+            if (loop >= PRELOAD_N) {
                 if (runInfoNegN.isValid) {
                     ComputeVec2Vector(runInfoNegN);
                     runInfoNegN.isValid = false;
@@ -305,28 +569,28 @@ private:
     __aicore__ inline void ComputeVec1Vector(RunInfoXVec &runInfoVec)
     {
         if ASCEND_IS_AIV {
-            vectorData.vecFaBlock.ProcessVec1(vectorData.ctx->l1PBuffers.Get(), vectorData.ctx->bmm1Buffers.Get(), runInfoVec);
+            vecFaBlock.ProcessVec1(l1PBuffers.Get(), bmm1Buffers.Get(), runInfoVec);
         }
     }
 
     __aicore__ inline void ComputeVec2Vector(RunInfoXVec &runInfoVec)
     {
         if ASCEND_IS_AIV {
-            using VecMm2ResPos = typename VectorData::VecFaBlockTypeAlias::mm2ResPos;
+            using VecMm2ResPos = typename VecFaBlockTypeAlias::mm2ResPos;
             using UbBufferType = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
             if constexpr (std::is_same_v<VecMm2ResPos, UbBufferType>) {
-                vectorData.vecFaBlock.ProcessVec2(vectorData.ctx->bmm2Buffers.Get(), runInfoVec);
+                vecFaBlock.ProcessVec2(bmm2Buffers.Get(), runInfoVec);
             } else {
-                vectorData.vecFaBlock.ProcessVec2(vectorData.ctx->bmm2ResGmBuffers.Get(), runInfoVec);
+                vecFaBlock.ProcessVec2(bmm2ResGmBuffers.Get(), runInfoVec);
             }
         }
     }
 
     __aicore__ inline void CreateTaskVector(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                            RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
+                                            RunInfoXVec taskRunInfoVec[PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIV {
-            RunInfoXVec &runInfo = taskRunInfoVec[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXVec &runInfo = taskRunInfoVec[loop % PRELOAD_TASK_CACHE_SIZE];
             CalcParamsVector(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
             runInfo.isValid = true;
         }
@@ -336,36 +600,36 @@ private:
     {
         if ASCEND_IS_AIV {
             info.loop = loop;
-            info.mloop = vectorData.ctx->mloop;
-            info.bIdx = bN2Cur / vectorData.ctx->tilingData->flashAttnBaseParams.n2Size;
-            info.n2Idx = bN2Cur % vectorData.ctx->tilingData->flashAttnBaseParams.n2Size;
-            info.gS1Idx = gS1Cur * VectorData::mBaseSize;
-            info.s2Idx = s2Cur * VectorData::s2BaseSize;
-            info.actS1Size = vectorData.ctx->actSeqLensQ;
-            info.actS2Size = vectorData.ctx->actSeqLensKv;
+            info.mloop = mloop;
+            info.bIdx = bN2Cur / tilingData->flashAttnBaseParams.n2Size;
+            info.n2Idx = bN2Cur % tilingData->flashAttnBaseParams.n2Size;
+            info.gS1Idx = gS1Cur * mBaseSize;
+            info.s2Idx = s2Cur * s2BaseSize;
+            info.actS1Size = actSeqLensQ;
+            info.actS2Size = actSeqLensKv;
 
-            info.actMSize = VectorData::mBaseSize;
-            uint64_t gS1Size = info.actS1Size * vectorData.ctx->tilingData->flashAttnBaseParams.gSize;
-            if (((gS1Cur + 1) * VectorData::mBaseSize) > gS1Size) {
-                info.actMSize = gS1Size - gS1Cur * VectorData::mBaseSize;
+            info.actMSize = mBaseSize;
+            uint64_t gS1Size = info.actS1Size * tilingData->flashAttnBaseParams.gSize;
+            if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
+                info.actMSize = gS1Size - gS1Cur * mBaseSize;
             }
-            info.actSingleLoopS2Size = VectorData::s2BaseSize;
-            if (((s2Cur + 1) * VectorData::s2BaseSize) > info.actS2Size) {
-                info.actSingleLoopS2Size = info.actS2Size - s2Cur * VectorData::s2BaseSize;
+            info.actSingleLoopS2Size = s2BaseSize;
+            if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
+                info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
             }
             info.actSingleLoopS2SizeAlign =
-                Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename VectorData::INPUT_T)));
+                Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
-            GetPreNextTokenLeftUpVector(vectorData.ctx->actSeqLensQ, vectorData.ctx->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+            GetPreNextTokenLeftUpVector(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
-            info.isFirstS2Loop = ((loop == 0) || (s2Cur == vectorData.ctx->curS2Start));
+            info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
             info.isS2SplitCore = false;
-            info.faTmpOutWsPos = vectorData.coreFirstTmpOutWsPos_;
-            info.isLastS2Loop = (s2Cur + 1 == vectorData.ctx->curS2End);
+            info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
+            info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
             info.actVecMSize = (info.actMSize + 1) >> 1;
             info.vecMbaseIdx = 0;
-            if (vectorData.ctx->constInfo.subBlockIdx == 1) {
+            if (constInfo.subBlockIdx == 1) {
                 info.vecMbaseIdx = info.actVecMSize;
                 info.actVecMSize = info.actMSize - info.actVecMSize;
             }
@@ -373,14 +637,14 @@ private:
             info.gIdx = 0;
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
 
-            if (vectorData.ctx->bN2Start_ == vectorData.ctx->bN2End_ && vectorData.ctx->gS1OStart_ == vectorData.ctx->gS1OEnd_) {
+            if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
                 info.isS2SplitCore = true;
             } else {
-                if (vectorData.ctx->headS2Split && (bN2Cur == vectorData.ctx->bN2Start_) && (gS1Cur == vectorData.ctx->gS1OStart_)) {
+                if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
                     info.isS2SplitCore = true;
-                } else if (vectorData.ctx->tailS2Split && (bN2Cur == vectorData.ctx->bN2End_) && (gS1Cur == vectorData.ctx->gS1OEnd_)) {
+                } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
                     info.isS2SplitCore = true;
-                    info.faTmpOutWsPos = vectorData.ctx->headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
+                    info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
                 }
             }
         }
@@ -390,9 +654,9 @@ private:
                                                 uint32_t &s2Cur)
     {
         if ASCEND_IS_AIV {
-            uint64_t s2LoopTimes = (vectorData.ctx->actSeqLensKv + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
-            uint64_t gS1Size = vectorData.ctx->actSeqLensQ * vectorData.ctx->tilingData->flashAttnBaseParams.gSize;
-            uint64_t gS1LoopTimes = (gS1Size + VectorData::mBaseSize - 1) / VectorData::mBaseSize;
+            uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * tilingData->flashAttnBaseParams.gSize;
+            uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
             if (s2Cur + 1 < s2LoopTimes) {
                 s2Cur++;
@@ -401,7 +665,7 @@ private:
 
             if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
                 taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-                vectorData.ctx->accGS1Loops++;
+                accGS1Loops++;
             }
 
             s2Cur = 0;
@@ -411,7 +675,7 @@ private:
             }
 
             if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-                vectorData.ctx->accGS1Loops++;
+                accGS1Loops++;
             }
 
             gS1Cur = 0;
@@ -422,19 +686,19 @@ private:
     __aicore__ inline void FlashDecodeVector(uint32_t sectionIdx)
     {
         if ASCEND_IS_AIV {
-            if (!vectorData.isFd) {
+            if (!isFd) {
                 return;
             }
-            vectorData.vecFdBlock.GetFDSectionInfo(sectionIdx);
-            vectorData.vecFdBlock.InitBuffers(vectorData.ctx->pipe, vectorData.SharedBuffer1, vectorData.SharedBuffer2, vectorData.SharedBuffer3);
+            vecFdBlock.GetFDSectionInfo(sectionIdx);
+            vecFdBlock.InitBuffers(pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
             AscendC::ICachePreLoad(2);
-            vectorData.vecFdBlock.AllocEventID();
-            vectorData.vecFdBlock.InitDecodeParams();
+            vecFdBlock.AllocEventID();
+            vecFdBlock.InitDecodeParams();
             SyncAll();
-            vectorData.vecFdBlock.FlashDecode();
+            vecFdBlock.FlashDecode();
             SyncAll();
-            vectorData.vecFdBlock.FreeBuffers(vectorData.SharedBuffer1, vectorData.SharedBuffer2);
-            vectorData.vecFdBlock.FreeEventID();
+            vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
+            vecFdBlock.FreeEventID();
         }
     }
 };
