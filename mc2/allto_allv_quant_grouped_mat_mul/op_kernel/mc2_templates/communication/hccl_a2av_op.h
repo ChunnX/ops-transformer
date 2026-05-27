@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef MC2_HCCL_IMPL_H
 #define MC2_HCCL_IMPL_H
@@ -25,23 +25,46 @@ using namespace AscendC;
 namespace MC2KernelTemplate {
 template <typename hcclDataType, bool commBeforeComputeFlag> class HcclA2avOp {
 public:
+    using DataType = hcclDataType;
      __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
         const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer)
     {
         taskTilingInfo_ = taskTilingInfo;
         GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
         hccl_.InitV2(hcclContextGm, hcclInitTiling);
-        hccl_.SetCcTilingV2(hcclCcTilingOffset); 
-        rankId_ = hccl_.GetRankId();	 
-        rankDim_ = hccl_.GetRankDim();	 
+        hccl_.SetCcTilingV2(hcclCcTilingOffset);
+        rankId_ = hccl_.GetRankId();
+        rankDim_ = hccl_.GetRankDim();
         e_ = taskTilingInfo_->e;
         H1_ = taskTilingInfo_->H1;
         N1_ = taskTilingInfo_->N1;
+        expertMergeNum_ = taskTilingInfo_->expertMergeNum;
+        commRoundCount_ = taskTilingInfo_->commRoundCount;
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
+        // Pre-compute expertTokenNum and expertTokenOffset for rearrange offset calc
+        const auto *opCnt = commBeforeComputeFlag ? &taskTilingInfo_->recvCnt[0] : &taskTilingInfo_->sendCnt[0];
+        uint64_t axis = commBeforeComputeFlag ? H1_ : N1_;
+        for (uint32_t eIdx = 0U; eIdx < e_; eIdx++) {
+            expertTokenNum_[eIdx] = 0;
+            for (uint32_t i = 0U; i < rankDim_; i++) {
+                expertTokenNum_[eIdx] += static_cast<uint64_t>(opCnt[eIdx + i * e_]);
+            }
+        }
+        expertTokenOffset_[0] = 0;
+        for (uint32_t eIdx = 1U; eIdx < e_; eIdx++) {
+            expertTokenOffset_[eIdx] = expertTokenOffset_[eIdx - 1] + expertTokenNum_[eIdx - 1];
+        }
     }
 
+    // Backward compat: 2-param Launch for single-expert case (expertMergeNum==1)
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
+    {
+        // When expertMergeNum == 1, roundIdx equals startExpertIdx
+        Launch(startExpertIdx, expertNum, startExpertIdx);
+    }
+
+    __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum, uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -59,13 +82,13 @@ public:
             hcclDataType_ = HCCL_DATA_TYPE_FP16;
         }
         if constexpr (commBeforeComputeFlag) {
-            LaunchCommBeforeCompute(startExpertIdx, expertNum);
+            LaunchCommBeforeCompute(startExpertIdx, expertNum, roundIdx);
         } else {
-            LaunchCommAfterCompute(startExpertIdx, expertNum);
+            LaunchCommAfterCompute(startExpertIdx, expertNum, roundIdx);
         }
     }
 
-    __aicore__ inline void Wait(uint32_t startExpertIdx)
+    __aicore__ inline void Wait(uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -75,10 +98,10 @@ public:
                 return;
             }
         }
-        hccl_.Wait(alltoAllvHandleId_[startExpertIdx]);
+        hccl_.Wait(alltoAllvHandleId_[roundIdx]);
     }
 
-    __aicore__ inline void WaitAll(uint32_t allNum)
+    __aicore__ inline void WaitAll(uint32_t commRoundCount)
     {
         if ASCEND_IS_AIC {
             return;
@@ -88,7 +111,7 @@ public:
                 return;
             }
         }
-        for (uint32_t i = 0U; i < allNum; i++) {
+        for (uint32_t i = 0U; i < commRoundCount; i++) {
             hccl_.Wait(alltoAllvHandleId_[i]);
         }
     }
@@ -101,8 +124,19 @@ public:
         hccl_.Finalize();
     }
 
+    // Accessors for rearrange offset computation (used by scheduler)
+    __aicore__ inline const uint64_t* GetRoundRecvOffsetBase() const { return roundRecvOffsetBase_; }
+    __aicore__ inline const uint64_t* GetExpertTokenOffset() const { return expertTokenOffset_; }
+    __aicore__ inline const uint64_t* GetExpertTokenNum() const { return expertTokenNum_; }
+    __aicore__ inline uint32_t GetExpertMergeNum() const { return expertMergeNum_; }
+    __aicore__ inline uint32_t GetCommRoundCount() const { return commRoundCount_; }
+    __aicore__ inline uint32_t GetE() const { return e_; }
+    __aicore__ inline uint32_t GetRankDim() const { return rankDim_; }
+    __aicore__ inline uint64_t GetAxis() const { return commBeforeComputeFlag ? H1_ : N1_; }
+    __aicore__ inline GM_ADDR GetRecvBufferAddr() const { return (GM_ADDR)(recvGlobalBuffer_.GetPhyAddr()); }
+
 private:
-    __aicore__ inline void LaunchCommBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline void LaunchCommBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum, uint32_t roundIdx)
     {
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
@@ -127,7 +161,7 @@ private:
         }
 
         for (uint32_t i = 0U; i < rankDim_; i++) {
-            if ((startExpertIdx == 0U) && (i == 0U)) {
+            if ((roundIdx == 0U) && (i == 0U)) {
                 alltoAllvRecvOffset[i] = 0UL;
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[0];
             } else {
@@ -135,12 +169,18 @@ private:
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
             }
         }
-        alltoAllvHandleId_[startExpertIdx] =
+        // Store recv offsets for rearrange use by scheduler
+        if (expertMergeNum_ > 1U) {
+            for (uint32_t i = 0U; i < rankDim_; i++) {
+                roundRecvOffsetBase_[i] = alltoAllvRecvOffset[i];
+            }
+        }
+        alltoAllvHandleId_[roundIdx] =
         hccl_.AlltoAllV<true>((__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 
-    __aicore__ inline void LaunchCommAfterCompute(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline void LaunchCommAfterCompute(uint32_t startExpertIdx, uint32_t expertNum, uint32_t roundIdx)
     {
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
@@ -176,7 +216,13 @@ private:
                 alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCnt[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
-        alltoAllvHandleId_[startExpertIdx] =
+        // Store recv offsets for rearrange use by scheduler
+        if (expertMergeNum_ > 1U) {
+            for (uint32_t i = 0U; i < rankDim_; i++) {
+                roundRecvOffsetBase_[i] = alltoAllvRecvOffset[i];
+            }
+        }
+        alltoAllvHandleId_[roundIdx] =
         hccl_.AlltoAllV<true>((__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
@@ -196,6 +242,8 @@ private:
     uint32_t e_ = 0U;
     uint64_t H1_ = 0UL;
     uint64_t N1_ = 0UL;
+    uint32_t expertMergeNum_ = 1U;
+    uint32_t commRoundCount_ = 0U;
 
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
@@ -208,7 +256,9 @@ private:
     uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t roundRecvOffsetBase_[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t expertTokenNum_[64] = {0};
+    uint64_t expertTokenOffset_[64] = {0};
 };
 };
-
 #endif

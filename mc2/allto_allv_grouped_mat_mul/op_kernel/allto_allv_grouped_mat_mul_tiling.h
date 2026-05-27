@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-constexpr uint32_t MAX_EXPERT_SIZE = 384U; // 最大通信域专家的数量
+constexpr uint32_t MAX_EXPERT_SIZE = 1024U; // 最大通信域专家的数量
 constexpr uint32_t MAX_EP_RANK_SIZE = 128U; // 最大通信域内卡的数量
 
 struct AlltoAllvGmmCommonTilingInfo {
@@ -44,6 +44,10 @@ struct AlltoAllvGmmCommonTilingInfo {
     bool isPermuteOut;
     bool isNeedMM;
     bool isFp16;
+    // Expert merge communication parameters
+    uint64_t expertMergeNum;   // experts per merged AlltoAllV call (1=no merge)
+    uint64_t commRoundCount;   // total AlltoAllV calls = min(e, 63)
+    uint64_t rearrangeSize;   // workspace for rearrange (0 when no merge)
 };
 
 struct AlltoAllvGmmAicpuTiling {

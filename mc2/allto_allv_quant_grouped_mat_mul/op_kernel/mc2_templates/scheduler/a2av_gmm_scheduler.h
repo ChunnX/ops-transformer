@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -38,17 +38,35 @@ public:
         GET_TILING_DATA(tilingData, tilingGM);
         tilingData_ = &tilingData;
         e_ = tilingData_->taskTilingInfo.e;
+        expertMergeNum_ = tilingData_->taskTilingInfo.expertMergeNum;
+        commRoundCount_ = tilingData_->taskTilingInfo.commRoundCount;
         const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType,  hcclA2avTilingInfo) +
                         offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         commOutGm = tilingData_->isPermuteOut ? permuteOutOptionalGM : workspaceGM;
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm);
+        rearrangeNeeded_ = (expertMergeNum_ > 1U);
+        // Compute rearrange buffer offset in workspace
+        // Workspace layout: [permuteOut_area | groupList | ptrTable | tensorListArea | rearrange_area]
+        if (rearrangeNeeded_) {
+            const uint64_t tensorListSize = 512;
+            uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (tilingData_->taskTilingInfo.A * tilingData_->taskTilingInfo.H1);
+            uint64_t permuteOutSizeAligned = ((permuteOutSize + tensorListSize - 1) / tensorListSize) * tensorListSize;
+            uint64_t groupListSize = sizeof(int64_t) * e_;
+            uint64_t rearrangeOffset = permuteOutSizeAligned + groupListSize + tensorListSize;
+            rearrangeGm_ = workspaceGM + rearrangeOffset;
+            // compute reads from rearranged data when merge is needed
+            computeOp.Init(rearrangeGm_, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmyGM, workspaceGM, tilingData_,
+                &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+        } else {
+            computeOp.Init(commOutGm, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmyGM, workspaceGM, tilingData_,
+                &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+        }
         if (IsNeedMM) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                 workspaceGM, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe, isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmyGM, workspaceGM, tilingData_,
-            &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+        tPipe_ = tPipe;
     }
 
     __aicore__ inline void Process()
@@ -57,13 +75,28 @@ public:
             localComputeOp.Process(0);
             SyncAll<false>();
         }
-        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            commOp.Launch(expertIdx, 1);
+        // Launch all merged communication rounds
+        uint32_t expertSoFar = 0U;
+        uint32_t tailRounds = e_ % commRoundCount_;
+        for (uint32_t roundIdx = 0U; roundIdx < commRoundCount_; roundIdx++) {
+            uint32_t expertNum = expertMergeNum_ + (roundIdx < tailRounds ? 1U : 0U);
+            commOp.Launch(expertSoFar, expertNum, roundIdx);
+            expertSoFar += expertNum;
         }
-        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            commOp.Wait(expertIdx);
+        // Wait, rearrange, compute for each round
+        expertSoFar = 0U;
+        for (uint32_t roundIdx = 0U; roundIdx < commRoundCount_; roundIdx++) {
+            uint32_t expertNum = expertMergeNum_ + (roundIdx < tailRounds ? 1U : 0U);
+            commOp.Wait(roundIdx);
             SyncAll<false>();
-            computeOp.Process(expertIdx);
+            if (rearrangeNeeded_) {
+                Rearrange(expertSoFar, expertNum, roundIdx);
+                SyncAll<false>();
+            }
+            for (uint32_t localIdx = 0U; localIdx < expertNum; localIdx++) {
+                computeOp.Process(expertSoFar + localIdx);
+            }
+            expertSoFar += expertNum;
         }
         this->End();
     }
@@ -76,13 +109,80 @@ protected:
         localComputeOp.End();
     }
 
+    __aicore__ inline void Rearrange(uint32_t startExpert, uint32_t expertNum, uint32_t roundIdx)
+    {
+        if ASCEND_IS_AIC { return; }
+        if ASCEND_IS_AIV { if (GetBlockIdx() != 0) { return; } }
+        const auto *recvCnt = &tilingData_->taskTilingInfo.recvCnt[0];
+        uint32_t e = commOp.GetE();
+        uint32_t rankDim = commOp.GetRankDim();
+        uint64_t axis = commOp.GetAxis();
+        const uint64_t *roundRecvBase = commOp.GetRoundRecvOffsetBase();
+        const uint64_t *expertTokenOffset = commOp.GetExpertTokenOffset();
+
+        for (uint32_t localIdx = 0U; localIdx < expertNum; localIdx++) {
+            uint32_t expertIdx = startExpert + localIdx;
+            uint64_t dstExpertBase = expertTokenOffset[expertIdx] * axis;
+            uint64_t dstRankOffset = 0UL;
+
+            for (uint32_t rankIdx = 0U; rankIdx < rankDim; rankIdx++) {
+                uint64_t segTokenCnt = static_cast<uint64_t>(recvCnt[expertIdx + rankIdx * e]);
+                uint64_t segSize = segTokenCnt * axis;
+                if (segSize == 0UL) {
+                    dstRankOffset += segSize;
+                    continue;
+                }
+                // Source: within rank_i's merged block, expert j's data offset
+                uint64_t srcExpertOffset = 0UL;
+                for (uint32_t le = 0U; le < localIdx; le++) {
+                    srcExpertOffset += static_cast<uint64_t>(recvCnt[startExpert + le + rankIdx * e]) * axis;
+                }
+                uint64_t srcOffset = roundRecvBase[rankIdx] + srcExpertOffset;
+                uint64_t dstOffset = dstExpertBase + dstRankOffset;
+                // GM->UB->GM copy for each segment
+                CopySegment(srcOffset, dstOffset, segSize);
+                dstRankOffset += segSize;
+            }
+        }
+    }
+
+    __aicore__ inline void CopySegment(uint64_t srcOffset, uint64_t dstOffset, uint64_t totalSize)
+    {
+        using ElemType = typename CommOpType::DataType;
+        constexpr uint64_t REARRANGE_UB_BLOCK = 8192UL;
+        GlobalTensor<ElemType> srcGm;
+        GlobalTensor<ElemType> dstGm;
+        srcGm.SetGlobalBuffer((__gm__ ElemType *)commOp.GetRecvBufferAddr());
+        dstGm.SetGlobalBuffer((__gm__ ElemType *)rearrangeGm_);
+
+        TQue<QuePosition::VECIN, 1> rearrangeQue;
+        tPipe_->InitBuffer(rearrangeQue, 1, REARRANGE_UB_BLOCK * sizeof(ElemType));
+
+        for (uint64_t offset = 0UL; offset < totalSize; offset += REARRANGE_UB_BLOCK) {
+            uint64_t curSize = (totalSize - offset > REARRANGE_UB_BLOCK) ?
+                REARRANGE_UB_BLOCK : (totalSize - offset);
+            LocalTensor<ElemType> ubBuf = rearrangeQue.AllocTensor<ElemType>();
+            DataCopy(ubBuf, srcGm[srcOffset + offset], curSize);
+            rearrangeQue.EnQue(ubBuf);
+            ubBuf = rearrangeQue.DeQue<ElemType>();
+            DataCopy(dstGm[dstOffset + offset], ubBuf, curSize);
+            rearrangeQue.FreeTensor<ElemType>(ubBuf);
+        }
+        rearrangeQue.FreeAllEvent();
+    }
+
 private:
     CommOpType commOp;
     ComputeOpType computeOp;
     LocalComputeOpType localComputeOp;
     GM_ADDR commOutGm = nullptr;
+    GM_ADDR rearrangeGm_ = nullptr;
+    TPipe *tPipe_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
+    uint32_t expertMergeNum_ = 1U;
+    uint32_t commRoundCount_ = 0U;
+    bool rearrangeNeeded_ = false;
 };
 };
 #endif

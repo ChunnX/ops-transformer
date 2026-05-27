@@ -100,11 +100,15 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
         return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
     uint64_t permuteOutSize = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
-    // 将 permuteOutSize 对齐到 512 字节
     permuteOutSize = Ops::Base::CeilAlign(permuteOutSize, tensorListSize);
-    uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
-    // tensorListSize为kernel侧tensorlist开辟的空间
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize_ + groupListSize + tensorListSize;
+    uint64_t groupListSize = sizeof(int64_t) * e_;
+    constexpr uint32_t MAX_A2AV_COMM_CALL_COUNT = 63U;
+    uint32_t expertMergeNum = (e_ <= MAX_A2AV_COMM_CALL_COUNT) ? 1U : (e_ / MAX_A2AV_COMM_CALL_COUNT);
+    uint64_t rearrangeSize = 0;
+    if (expertMergeNum > 1U) {
+        rearrangeSize = Ops::Base::CeilAlign(a_ * h1_ * GetSizeByDataType(gmmXDataType_), tensorListSize);
+    }
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize_ + groupListSize + tensorListSize + rearrangeSize;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -160,6 +164,14 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.mainLoopExpertNum = e_;
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
     tilingData->taskTilingInfo.totalLoopCount = e_;
+    constexpr uint32_t MAX_A2AV_COMM_CALL_COUNT = 63U;
+    if (e_ <= MAX_A2AV_COMM_CALL_COUNT) {
+        tilingData->taskTilingInfo.expertMergeNum = 1U;
+        tilingData->taskTilingInfo.commRoundCount = e_;
+    } else {
+        tilingData->taskTilingInfo.expertMergeNum = e_ / MAX_A2AV_COMM_CALL_COUNT;
+        tilingData->taskTilingInfo.commRoundCount = MAX_A2AV_COMM_CALL_COUNT;
+    }
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];

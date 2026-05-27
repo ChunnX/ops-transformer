@@ -25,7 +25,7 @@
 namespace MC2KernelTemplate {
 static constexpr uint32_t MAX_EP_RANK_SIZE = 8U;
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
-static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
+static constexpr uint32_t MAX_EXPERT_SIZE = 1024U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
@@ -54,7 +54,11 @@ struct TaskTilingInfo {
     uint32_t mainLoopExpertNum;  // 主循环每次处理的expert数量
     uint32_t tailLoopExpertNum;  // 尾循环处理的expert数量
     uint32_t totalLoopCount;     // 总循环次数
-    
+
+    // 专家合并通信参数
+    uint32_t expertMergeNum;     // 每次AlltoAllV合并的专家数量(1=不合并)
+    uint32_t commRoundCount;     // AlltoAllV总调用次数 = ceil(e / expertMergeNum)
+
     // 通信参数（对应sendCounts和recvCounts）
     int32_t sendCnt[MAX_EXPERT_SIZE];  // 每个expert的发送计数
     int32_t recvCnt[MAX_EXPERT_SIZE];  // 每个expert的接收计数
