@@ -677,10 +677,8 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
-    l0aBuffer.Set<HardEvent::MTE1_M>();
 
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-    l0bBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
@@ -690,10 +688,8 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     {
         LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
     }
-    l0bBuffer.Set<HardEvent::MTE1_M>();
-
+    l0aBuffer.Set<HardEvent::MTE1_M>();
     l0aBuffer.Wait<HardEvent::MTE1_M>();
-    l0bBuffer.Wait<HardEvent::MTE1_M>();
 
     MmadParams mmadParams;
     mmadParams.m = param.singleM;
@@ -712,7 +708,6 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
  
     l0aBuffer.Set<HardEvent::M_MTE1>();
-    l0bBuffer.Set<HardEvent::M_MTE1>();
 }
 
 // 切K
