@@ -675,6 +675,23 @@ moe:
     options:
       - moe_gating_top_k
 
+  moe_gating_top_k_backward:
+    module: True
+    src:
+      - moe/moe_gating_top_k_backward
+    exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/README.md
+    ut_cov_exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/examples
+      - moe/moe_gating_top_k_backward/tests
+    test:
+      examples: True
+      ut: True
+    options:
+      - moe_gating_top_k_backward
+
   moe_gating_top_k_softmax:
     module: True
     src:
