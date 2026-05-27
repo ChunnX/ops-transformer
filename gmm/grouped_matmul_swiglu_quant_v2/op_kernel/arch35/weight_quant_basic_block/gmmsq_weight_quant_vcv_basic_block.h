@@ -239,19 +239,24 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockOffsetParam 
         cubeCompute_.GetTensorC(yF32Buffer_, lastOffsetParam);
         SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
     }
-
+    uint64_t kMutilLoadL1Size = MX_SCALE_K_L1_SIZE;
     for (uint64_t kbL1Offset = 0; kbL1Offset < curOffsetParam.kSize;
          kbL1Offset += curOffsetParam.kbL1Size, cvLoopIdx_++) {
         uint64_t kbL1RealSize = (kbL1Offset + curOffsetParam.kbL1Size) >= curOffsetParam.kSize ?
                                     curOffsetParam.kSize - kbL1Offset :
                                     curOffsetParam.kbL1Size;
+        if (kbL1Offset % MX_SCALE_K_L1_SIZE == 0){
+            kMutilLoadL1Size = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
+                                    CeilAlign(param.kSize - kbL1Offset, K_ALIGNMENT64) :
+                                    MX_SCALE_K_L1_SIZE;
+        }
         cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset);
         cubeCompute_.CopyMxScaleGmToL1(curOffsetParam, kbL1Offset);
         cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);
         cubeCompute_.PadL1IfNotAlign(weightL1_, weightL1DbOffset_, cvLoopIdx_, kbL1RealSize, curOffsetParam.nL1Size);
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
-        cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbL1Offset, kbL1RealSize, cvLoopIdx_,
+        cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbL1Offset, kbL1RealSize, kMutilLoadL1Size, cvLoopIdx_,
                                   curOffsetParam);
         cubeCompute_.SetMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.SetScaleMTE1ToMTE2(kbL1Offset, curOffsetParam);
