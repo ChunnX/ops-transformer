@@ -1087,7 +1087,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     // 内存复用，取大
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = recvWinBlockNum_ * sizeof(float);
+    uint32_t setExpertTokenNumsLocalExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    uint64_t setExpertTokenNumsStatusSpace = static_cast<uint64_t>(setExpertTokenNumsLocalExpertNum) *
+        Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN; // count矩阵按[expert][rank]存放，每个expert一行且按32B对齐
     uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+    gatherMaskOutSize = (gatherMaskOutSize > setExpertTokenNumsStatusSpace) ? gatherMaskOutSize : setExpertTokenNumsStatusSpace;
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);                 // recStatusNumPerCore_32对齐后大小  * 32B
     totalUsedUB_ += gatherMaskOutSize;
     tpipe_->InitBuffer(sumCoreBuf_, aivNum_ * UB_ALIGN);                      // 48 * 32B
@@ -1126,9 +1130,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     uint32_t statusBufSize = moeExpertNumPerRank_ * epWorldSize_ * UB_ALIGN; 
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     totalUsedUB_ += statusBufSize;
-    uint32_t workLocalBufSize = Ceil(epWorldSize_, UB_ALIGN / sizeof(float)) * UB_ALIGN;
-    tpipe_->InitBuffer(workLocalBuf_, workLocalBufSize);
-    totalUsedUB_ += workLocalBufSize;
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -1521,28 +1522,48 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();	 
     DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);	 
     SyncFunc<AscendC::HardEvent::MTE2_V>();	 
-    int64_t expertTokenNumCumsum = 0;	 
-    LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();	 
-    LocalTensor<float> expertTokenNumTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), 0);	 
-    LocalTensor<float> workLocalTensor = workLocalBuf_.Get<float>();	 
 
+    LocalTensor<float> expertCountTensor = gatherMaskOutBuf_.Get<float>();
+    LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
+    gatherTmpTensor.SetValue(0, 2); // 2=0b00000010，只选中8个元素中的下标1(count)，不选下标0(flag)
+    uint32_t mask = 2;              // mask覆盖flag/count两个字段，配合gatherTmpTensor使GatherMask只选中count
+    uint32_t epWorldSizeInner = Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    uint64_t rsvdCnt = 0;
+    SyncFunc<AscendC::HardEvent::S_V>();
+    if (epWorldSizeInner == epWorldSize_) {
+        // epWorldSize_是8的倍数时，每个expert的count行32B对齐，可用{1, localStatusSectionNum, 1, 0}连续取count
+        GatherMask(expertCountTensor, allStatusTensorFp32, gatherTmpTensor, true, mask,
+            {1, localStatusSectionNum, 1, 0}, rsvdCnt);
+    } else {
+        Duplicate<float>(expertCountTensor, static_cast<float>(0.0), localExpertNum * epWorldSizeInner);
+        PipeBarrier<PIPE_V>();
+        for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+            LocalTensor<float> expertStatusTensor = allStatusTensorFp32[
+                localExpertIdx * epWorldSize_ * UB_ALIGN / static_cast<uint32_t>(sizeof(float))];
+            // 非8倍数EP卡数逐expert写count；先清零padding，并在每行GatherMask前清零rsvdCnt
+            rsvdCnt = 0;
+            GatherMask(expertCountTensor[localExpertIdx * epWorldSizeInner], expertStatusTensor, gatherTmpTensor, true,
+                mask, {1, static_cast<uint16_t>(epWorldSize_), 1, 0}, rsvdCnt);
+        }
+    }
+    PipeBarrier<PIPE_V>();
+    LocalTensor<float> expertTokenNumTensor = statusBuf_.Get<float>();
+    // SumParams含义：localExpertNum为行数，epWorldSizeInner为32B对齐行宽，epWorldSize_为有效rank数
+    SumParams sumParams{localExpertNum, epWorldSizeInner, epWorldSize_};
+    Sum(expertTokenNumTensor, expertCountTensor, sumParams);
+    SyncFunc<AscendC::HardEvent::V_S>();
 
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {	 
-        LocalTensor<float> expertStatusTensor = statusBuf_.GetWithOffset<float>(	 
-            epWorldSize_ * UB_ALIGN / static_cast<uint32_t>(sizeof(float)), localExpertIdx * epWorldSize_ * UB_ALIGN);	 
-        uint32_t mask = 2;	 
-        SyncFunc<AscendC::HardEvent::S_V>();	 
-        ReduceSum(expertTokenNumTensor, expertStatusTensor, workLocalTensor, mask, epWorldSize_, 1);	 
-        SyncFunc<AscendC::HardEvent::V_S>();	 
-
-        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensor.ReinterpretCast<int32_t>().GetValue(0));	 
-        expertTokenNumCumsum += expertTokenNum;	 
-        if(expertTokenNumsType_ == 0) {	 
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);	 
-        } else {	 
+    int64_t expertTokenNumCumsum = 0;
+    LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
+    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensor.ReinterpretCast<int32_t>().GetValue(localExpertIdx));
+        expertTokenNumCumsum += expertTokenNum;
+        if(expertTokenNumsType_ == 0) {
+            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
+        } else {
             expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNum);
-        }	 
-    }	 
+        }
+    }
     SyncFunc<AscendC::HardEvent::S_MTE3>(); 
     DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 
                                                 0U, 0U, 0U}; 
