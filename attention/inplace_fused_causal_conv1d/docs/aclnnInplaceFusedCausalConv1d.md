@@ -1,6 +1,6 @@
 # aclnnInplaceFusedCausalConv1d
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/fused_causal_conv1d)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/inplace_fused_causal_conv1d)
 
 ## 产品支持情况
 
@@ -260,6 +260,12 @@
       y[i, dim] = x[i, dim] + y[i, dim]
       $$
 
+  9. 原地更新
+
+      $$
+      x[i, dim] = y[i, dim]
+      $$
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 `aclnnInplaceFusedCausalConv1dGetWorkspaceSize`接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnInplaceFusedCausalConv1d`接口执行计算。
@@ -348,7 +354,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
       <td>convStates（aclTensor*）</td>
       <td>输入/输出</td>
       <td>计算公式中的cacheState，代表缓存状态张量，存储各序列的历史token数据，各序列计算完成后原地更新。</td>
-      <td><ul><li>不支持空tensor。</li><li>shape为[..., stateLen, dim]，第 0 维的大小不固定。</li><li>stateLen == K-1+m，prefill 场景下 m=0，decode、PD混部场景下 m=[0,7]。</li><li>m 表示投机个数，映射 numAcceptedTokens 参数的值。</li></ul></td>
+      <td><ul><li>不支持空tensor。</li><li>shape为[..., stateLen, dim]，第0维的大小不固定。</li><li>stateLen == K-1+m，prefill场景下m=0，decode、PD混部场景下m=[0,7]。</li><li>m 表示投机个数，映射numAcceptedTokens参数的值。</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>3</td>
@@ -368,7 +374,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
       <td>cacheIndices（aclTensor*）</td>
       <td>可选输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
-      <td><ul><li>不支持空tensor，APC开启时不能为None且必须为二维。</li><li>1维shape[batch,]或2维shape[batch, maxNumBlocks], maxNumBlocks范围[1,1024]。</li><li>值需要互不相同（除非等于 padSlotId）。</li></ul></td>
+      <td><ul><li>不支持空tensor，APC开启时不能为None且必须为二维。</li><li>1维shape[batch,]或2维shape[batch, maxNumBlocks], maxNumBlocks范围[1,1024]。</li><li>值需要互不相同（除非等于padSlotId）。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1-2</td>
@@ -417,7 +423,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>blockIdxFirstScheduledToken（aclTensor*）</td>
       <td>可选输入</td>
-      <td>当前 batch 的第一个token对应的block索引。</td>
+      <td>当前batch的第一个token对应的block索引。</td>
       <td><ul><li>APC开启时不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -427,7 +433,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>blockIdxLastScheduledToken（aclTensor*）</td>
       <td>可选输入</td>
-      <td>当前 batch 的最后一个token对应的block索引。</td>
+      <td>当前batch的最后一个token对应的block索引。</td>
       <td><ul><li>APC开启时不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -477,7 +483,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>maxQueryLen（int64_t）</td>
       <td>属性</td>
-      <td>所有 batch 中的最大 seq_len，支持为-1。</td>
+      <td>所有batch中的最大seq_len，支持为-1。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -508,7 +514,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
       <td>convMode（int64_t）</td>
       <td>属性</td>
       <td>公式中的convMode，支持Qwen3-Next和Pangu V2两种实现。</td>
-      <td><ul><li>取值为0、1：<br>0：Qwen3-Next 社区版本实现；<br>1：Pangu V2 实现。</li></ul></td>
+      <td><ul><li>取值为0、1：<br>0：Qwen3-Next社区版本实现；<br>1：Pangu V2实现。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -663,26 +669,11 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_aclnn_inplace_fused_causal_conv1d.cpp
- * \brief
- */
-
 #include <iostream>
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_fused_causal_conv1d.h"
+#include "aclnnop/aclnn_inplace_fused_causal_conv1d.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
