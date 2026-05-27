@@ -9,8 +9,11 @@
  */
 
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <vector>
+#include <string>
+#include <cstdint>
 
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant_v2.h"
@@ -34,6 +37,41 @@
     do {                              \
       printf(message, ##__VA_ARGS__); \
     } while (0)
+
+static bool ReadFile(const std::string &filePath, void *buffer, size_t bufferSize) {
+    if (buffer == nullptr) {
+        printf("Read file %s failed. Buffer is nullptr.\n", filePath.c_str());
+        return false;
+    }
+    std::ifstream fd(filePath, std::ios::binary);
+    if (!fd) {
+        printf("Open file failed. path = %s.\n", filePath.c_str());
+        return false;
+    }
+    std::filebuf *buf = fd.rdbuf();
+    size_t size = buf->pubseekoff(0, std::ios::end, std::ios::in);
+    if (size == 0) {
+        printf("File %s size is 0\n", filePath.c_str());
+        return false;
+    }
+    if (size > bufferSize) {
+        printf("File %s size is larger than buffer size.\n", filePath.c_str());
+        return false;
+    }
+    buf->pubseekpos(0, std::ios::in);
+    buf->sgetn(static_cast<char *>(buffer), size);
+    return true;
+}
+
+static bool WriteFile(const std::string &filePath, const void *buffer, size_t bufferSize) {
+    std::ofstream fd(filePath, std::ios::binary);
+    if (!fd) {
+        printf("Open file for write failed. path = %s.\n", filePath.c_str());
+        return false;
+    }
+    fd.write(static_cast<const char *>(buffer), bufferSize);
+    return true;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
     int64_t shapeSize = 1;
@@ -144,13 +182,20 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     aclTensorList* weightAssistMatri = nullptr;
     aclTensorList* smoothScale = nullptr;
 
-    std::vector<int8_t> xHostData(M * K, 1);
-    std::vector<int8_t> weightHostData(E * N * K, 1);
-    std::vector<int8_t> weightScaleHostData(E * Ceil(K, 64) * N * 2, 1);
-    std::vector<int8_t> xScaleHostData(M * Ceil(K, 64) * 2, 1);
-    std::vector<int64_t> groupListHostData(E, 1);
-    std::vector<int8_t> outputHostData(M * N / 2, 1);
-    std::vector<int8_t> outputScaleHostData(M * Ceil(N, 64), 1);
+    std::vector<int8_t> xHostData(M * K, 0);
+    std::vector<int8_t> weightHostData(E * N * K, 0);
+    std::vector<int8_t> weightScaleHostData(E * Ceil(K, 64) * N * 2, 0);
+    std::vector<int8_t> xScaleHostData(M * Ceil(K, 64) * 2, 0);
+    std::vector<int64_t> groupListHostData(E, 0);
+    std::vector<int8_t> outputHostData(M * N / 2, 0);
+    std::vector<int8_t> outputScaleHostData(M * Ceil(N / 2, 64) * 2, 0);
+
+    if (!ReadFile("./a_8.bin", xHostData.data(), xHostData.size())) { return -1; }
+    if (!ReadFile("./b_8.bin", weightHostData.data(), weightHostData.size())) { return -1; }
+    if (!ReadFile("./b_scale.bin", weightScaleHostData.data(), weightScaleHostData.size())) { return -1; }
+    if (!ReadFile("./a_scale.bin", xScaleHostData.data(), xScaleHostData.size())) { return -1; }
+    if (!ReadFile("./group_list.bin", groupListHostData.data(), groupListHostData.size() * sizeof(int64_t))) { return -1; }
+
     std::vector<int64_t> tuningConfigData = {1};
     aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigData.data(), 1);
     
@@ -161,7 +206,7 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
 
     // 创建x aclTensor
     std::vector<unsigned char> xHostDataUnsigned(xHostData.begin(), xHostData.end());
-    ret = CreateAclTensor<uint8_t>(xHostDataUnsigned, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, aclFormat::ACL_FORMAT_ND, &x);
+    ret = CreateAclTensor<uint8_t>(xHostDataUnsigned, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E4M3, aclFormat::ACL_FORMAT_ND, &x);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> xTensorPtr(x, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void*)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -169,7 +214,7 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     // 创建weight aclTensorList
     std::vector<std::vector<int8_t>> weightHostDataList = {weightHostData};
     std::vector<std::vector<int64_t>> weightShapeList = {weightShape};
-    ret = CreateAclTensorList<int8_t>(weightHostDataList, weightShapeList, &weightDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, &weight);
+    ret = CreateAclTensorList<int8_t>(weightHostDataList, weightShapeList, &weightDeviceAddr, aclDataType::ACL_FLOAT8_E4M3, &weight);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> weightTensorListPtr(weight, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void*)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -195,7 +240,7 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 创建y aclTensor
-    ret = CreateAclTensor<int8_t>(outputHostData, outputShape, &outputDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, aclFormat::ACL_FORMAT_ND, &output);
+    ret = CreateAclTensor<int8_t>(outputHostData, outputShape, &outputDeviceAddr, aclDataType::ACL_FLOAT8_E4M3, aclFormat::ACL_FORMAT_ND, &output);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> outputTensorPtr(output, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void*)> outputDeviceAddrPtr(outputDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -234,18 +279,16 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     ret = aclrtMemcpy(outputData.data(), size * sizeof(outputData[0]), outputDeviceAddr,
                       size * sizeof(outputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputData from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%ld] is: %d\n", j, outputData[j]);
-    }
 
     size = GetShapeSize(outputScaleShape);
     std::vector<int8_t> outputScaleData(size, 0);
     ret = aclrtMemcpy(outputScaleData.data(), size * sizeof(outputScaleData[0]), outputScaleDeviceAddr,
                       size * sizeof(outputScaleData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputScaleData from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%ld] is: %d\n", j, outputScaleData[j]);
-    }
+
+    if (!WriteFile("./result.bin", outputData.data(), outputData.size())) { return -1; }
+    if (!WriteFile("./result_scale.bin", outputScaleData.data(), outputScaleData.size())) { return -1; }
+    LOG_PRINT("Output saved to result.bin and result_scale.bin\n");
     return ACL_SUCCESS;
 }
 
