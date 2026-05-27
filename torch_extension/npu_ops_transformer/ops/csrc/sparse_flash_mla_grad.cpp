@@ -94,7 +94,7 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
     const int64_t deterministic_const = ori_win_right.value_or(0);
 
     at::Tensor cmpSoftmaxL1Norm;
-    if (cmp_sparse_indices_const.defined() && cmp_ratio_const == 4) {
+    if (cmp_sparse_indices_const.defined()) {
         cmpSoftmaxL1Norm = at::empty(cmp_sparse_indices_const.sizes(), cmp_sparse_indices_const.options().dtype(at::kFloat));
     } else {
         cmpSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
