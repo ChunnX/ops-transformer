@@ -249,9 +249,9 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::SetHcclTiling()
     OP_TILING_CHECK(commMode == nullptr,
                     OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_COMM_MODE_INDEX failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(std::strcmp(commMode, "") != 0,
-                    OP_LOGE(context_->GetNodeName(), "The input attr comm_mode only support empty string ''."),
-                    return ge::GRAPH_FAILED);
+    if (std::strcmp(commMode, "") != 0) {
+        OP_LOGI(context_->GetNodeName(), "The current soc only support default communication engine.");
+    }
     uint32_t optype = HcclCMDType::HCCL_CMD_ALLTOALL;
     std::string algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
     OP_LOGD(context_->GetNodeName(), "AllToAllFpMatmulTilingBaseA3, SetHcclTiling algConfig is: %s", algConfig.c_str());

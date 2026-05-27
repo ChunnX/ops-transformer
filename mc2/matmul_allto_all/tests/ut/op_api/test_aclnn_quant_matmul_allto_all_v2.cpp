@@ -461,7 +461,11 @@ static QuantMatmulAlltoAllV2AclnnTestParam KCQuant_v2_cases_params[] = {
     {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_other-33", 2, 3, 2, {256, 128}, {256, 128}, {}, {256}, {256}, {512, 128},
         ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_DT_UNDEFINED, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        0, {-1, -2}, "ut_test_quant_matmul_allto_all", "other", false, true, ACLNN_ERR_PARAM_INVALID},
+        0, {-1, -2}, "ut_test_quant_matmul_allto_all", "aicpu", false, true, ACLNN_ERR_PARAM_INVALID},
+    {"AclnnQuantMatmulAlltoAllV2-incalid_commMode_nullptr-34", 2, 3, 2, {256, 128}, {256, 128}, {}, {256}, {256}, {512, 128},
+        ACL_FLOAT8_E5M2, ACL_FLOAT8_E5M2, ACL_DT_UNDEFINED, ACL_FLOAT, ACL_FLOAT, ACL_FLOAT,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        0, {-1, -2}, "ut_test_quant_matmul_allto_all", nullptr, false, true, ACLNN_ERR_PARAM_NULLPTR},
 };
 
 // MX量化UT用例表
@@ -834,7 +838,11 @@ static QuantMatmulAlltoAllV2AclnnTestParam MXQuant_v2_cases_params[] = {
         ACL_FLOAT4_E2M1, ACL_FLOAT4_E2M1, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "aicpu", false, true, ACLNN_ERR_PARAM_INVALID}, // 异常场景：commMode为非法值
-    {"QMMAAV2_MXFP4-error20", 2, 7, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+    {"QMMAAV2_MXFP4-error20", 2, 6, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
+        ACL_FLOAT4_E2M1, ACL_FLOAT4_E2M1, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", nullptr, false, true, ACLNN_ERR_PARAM_NULLPTR}, // 异常场景：commMode为空指针
+    {"QMMAAV2_MXFP4-error21", 2, 7, 6, {256, 128}, {256, 128}, {256}, {256, 2, 2}, {256, 2, 2}, {512, 128},
         ACL_FLOAT4_E2M1, ACL_FLOAT4_E2M1, ACL_FLOAT, ACL_FLOAT8_E8M0, ACL_FLOAT8_E8M0, ACL_FLOAT,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         MX_GROUP_SIZE, {-1, -2}, "ut_test_quant_matmul_allto_all", "ai_cpu", false, true, ACLNN_ERR_PARAM_INVALID} // 异常场景：quantmode组合非法，不是mx量化场景（6,6）
