@@ -49,6 +49,7 @@ public:
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
+    static constexpr bool ENABLE_TREE = FIAT::enableTree;
 
     using UPDATE_T = T;
     using TMP_T = T;
@@ -598,7 +599,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         maskInfo.attenMaskType = fa_base_vector::MASK_BOOL; // compatible with int8/uint8
 
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        if (maskInfo.sparseMode == fa_base_vector::TREE) {
+        if constexpr (ENABLE_TREE) {
             // TREE模式：提前分配并初始化为0，保持占用直到处理完成
             LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
             LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
