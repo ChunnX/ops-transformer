@@ -1074,7 +1074,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
     }
 
     // 增加sparse = 9的处理
-    if constexpr (ENABLE_TREE) {   
+    if constexpr (ENABLE_TREE) {
         // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
         if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
             static_cast<int64_t>(info.s2Size - info.s1Size)) {
@@ -1082,7 +1082,6 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
         } else {
             return true;
         }
-        
     }
 
     int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
