@@ -217,24 +217,24 @@ std::string GetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 
-struct KvQuantSASParaInfo {
-    SASTilingRequiredParaInfo q = {nullptr, nullptr};
-    SASTilingOptionalParaInfo oriKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
-    SASTilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
-    SASTilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
-    SASTilingOptionalParaInfo metadata = {nullptr, nullptr};
-    SASTilingRequiredParaInfo attnOut = {nullptr, nullptr};
+struct QSMLAParaInfo {
+    QSMLATilingRequiredParaInfo q = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
+    QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
     const int64_t *kvQuantMode = nullptr;
     const int64_t *tileSize = nullptr;

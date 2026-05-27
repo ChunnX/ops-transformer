@@ -310,7 +310,7 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensDType()
     }
     if (opParamInfo_.sequsedOriKv.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE(opName_, "sequsedOriKv's dtype is %s, it should be DT_INT32.",
-            SASDataTypeToSerialString(opParamInfo_.sequsedOriKv.desc->GetDataType()).c_str());
+            QSMLADataTypeToSerialString(opParamInfo_.sequsedOriKv.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

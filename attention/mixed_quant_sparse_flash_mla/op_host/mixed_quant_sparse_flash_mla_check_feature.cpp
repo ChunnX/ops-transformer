@@ -128,7 +128,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantPa() const
 {
-    if (kvLayout_ != SASLayout::PA_ND) {
+    if (kvLayout_ != QSMLALayout::PA_ND) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),

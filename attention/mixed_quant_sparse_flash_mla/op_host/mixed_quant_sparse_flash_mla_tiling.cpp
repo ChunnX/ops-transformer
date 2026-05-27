@@ -200,9 +200,9 @@ ge::graphStatus QSMLAInfoParser::GetQueryAndOutLayout()
 
 ge::graphStatus QSMLAInfoParser::GetKvLayout()
 {
-    const map<string, SASLayout> layoutKVMap = {
-        {"PA_ND",     SASLayout::PA_ND},
-        {"TND",       SASLayout::TND},
+    const map<string, QSMLALayout> layoutKVMap = {
+        {"PA_ND",     QSMLALayout::PA_ND},
+        {"TND",       QSMLALayout::TND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -244,7 +244,7 @@ size_t QSMLAInfoParser::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &lay
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t KvQuantSASInfoParser::GetAxisNum(const gert::Shape &shape, const SASAxis &axis,const SASLayout &layout) const
+uint32_t QSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis,const QSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -348,11 +348,11 @@ ge::graphStatus QSMLAInfoParser::GetS1Size()
 
 ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
 {
-    if (kvLayout_ == SASLayout::TND) {
+    if (kvLayout_ == QSMLALayout::TND) {
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
-        OP_LOGE(opName_, "the layout_kv is %s, blockTable must be provided.", KvQuantSASLayoutToSerialString(kvLayout_).c_str());
+        OP_LOGE(opName_, "the layout_kv is %s, blockTable must be provided.", QSMLALayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
     }
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
@@ -405,8 +405,8 @@ ge::graphStatus QSMLAInfoParser::GetS2SizeForPageAttention()
 
 ge::graphStatus QSMLAInfoParser::GetS2Size()
 {
-    if (kvLayout_ == SASLayout::TND) {
-        s2Size_ = GetAxisNum(oriKvShape_, SASAxis::T, kvLayout_);
+    if (kvLayout_ == QSMLALayout::TND) {
+        s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::T, kvLayout_);
         return ge::GRAPH_SUCCESS;
     }
     return GetS2SizeForPageAttention();
@@ -447,13 +447,13 @@ ge::graphStatus QSMLAInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::GetDSizeQ() {
-    dSizeQ_ = GetAxisNum(qShape_, SASAxis::D, qLayout_);
+ge::graphStatus QSMLAInfoParser::GetDSizeQ() {
+    dSizeQ_ = GetAxisNum(qShape_, QSMLAAxis::D, qLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::GetDSizeKV() {
-    dSizeKV_ = GetAxisNum(oriKvShape_, SASAxis::D, kvLayout_);
+ge::graphStatus QSMLAInfoParser::GetDSizeKV() {
+    dSizeKV_ = GetAxisNum(oriKvShape_, QSMLAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -505,13 +505,13 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.qTSize = qTSize_;
     qsmlaInfo.sparseBlockCount = sparseBlockCount_;
 
-    sasInfo.qType = qType_;
-    sasInfo.oriKvType = oriKvType_;
-    sasInfo.cmpKvType = cmpKvType_;
-    sasInfo.outputType = outputType_;
-    sasInfo.dSize = dSizeQ_;
-    sasInfo.dSizeV = 512;
-    sasInfo.dSizeVInput = dSizeKV_;
+    qsmlaInfo.qType = qType_;
+    qsmlaInfo.oriKvType = oriKvType_;
+    qsmlaInfo.cmpKvType = cmpKvType_;
+    qsmlaInfo.outputType = outputType_;
+    qsmlaInfo.dSize = dSizeQ_;
+    qsmlaInfo.dSizeV = 512;
+    qsmlaInfo.dSizeVInput = dSizeKV_;
 
     qsmlaInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
         opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
@@ -522,23 +522,23 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.oriMaxBlockNumPerBatch = oriMaxBlockNumPerBatch_;
     qsmlaInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
-    sasInfo.actualLenDimsQ = actualLenDimsQ_;
-    sasInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
-    sasInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
-    sasInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
-    sasInfo.cmpResidualKVSize = cmpResidualKVSize_;
+    qsmlaInfo.actualLenDimsQ = actualLenDimsQ_;
+    qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
+    qsmlaInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
+    qsmlaInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
+    qsmlaInfo.cmpResidualKVSize = cmpResidualKVSize_;
 
-    sasInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
-    sasInfo.tileSize = 64;
-    sasInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
-    sasInfo.softmaxScale = *opParamInfo_.softmaxScale;
-    sasInfo.oriKvStride = oriKvStride_;
-    sasInfo.cmpKvStride = cmpKvStride_;
-    sasInfo.cmpRatio = *opParamInfo_.cmpRatio;
-    sasInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
-    sasInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
-    sasInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
-    sasInfo.oriWinRight = *opParamInfo_.oriWinRight;
+    qsmlaInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
+    qsmlaInfo.tileSize = 64;
+    qsmlaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
+    qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
+    qsmlaInfo.oriKvStride = oriKvStride_;
+    qsmlaInfo.cmpKvStride = cmpKvStride_;
+    qsmlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
+    qsmlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
+    qsmlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
+    qsmlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
+    qsmlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
     qsmlaInfo.qLayout = qLayout_;
     qsmlaInfo.kvLayout = kvLayout_;

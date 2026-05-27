@@ -37,7 +37,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
     int32_t bIdx = runParam.boIdx;
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[bIdx + 1] - cuSeqlensQAddr[bIdx]) :
             actualSeqQlenAddr[bIdx];
     } else {
@@ -45,7 +45,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             actualSeqQlenAddr[bIdx];
     }
 
-    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
         if (actualSeqOriKvlenAddr != nullptr) {
             actualS2OriSize = actualSeqOriKvlenAddr[bIdx];
         } else {
@@ -56,8 +56,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             (constInfo.actualLenDimsOriKV == actualSeqKVMin) ? actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
     }
 
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
             if (actualSeqCmpKvlenAddr != nullptr) {
                 actualS2CmpSize = actualSeqCmpKvlenAddr[bIdx];
             } else if (cuSeqlensCmpKvAddr != nullptr) {
@@ -74,7 +74,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.actualS1Size = actualS1Size;
     runParam.actualS2OriSize = actualS2OriSize;
     runParam.actualS2CmpSize = actualS2CmpSize;
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.cmpResidual = cmpResidualKvAddr[bIdx];
         runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
     }
@@ -245,11 +245,11 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
         runParam.s1RealSize, 0, runParam.actualS2OriSize);
     runParam.oriKvLoopEndIdx = (runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
 
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio,
             0, runParam.actualS2CmpSize);
-        if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
             runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, runParam.actualS2CmpSize);
             runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
         } else { // SCFA_TEMPLATE_MODE
@@ -273,14 +273,14 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2OriSize = runParam.actualS2OriSize;
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
         runInfo.cmpResidual = runParam.cmpResidual;
     }
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
         runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     }

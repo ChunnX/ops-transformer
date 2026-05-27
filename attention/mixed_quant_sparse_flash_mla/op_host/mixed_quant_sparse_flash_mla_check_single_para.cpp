@@ -41,11 +41,11 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {SINKS_NAME,                     {ge::DT_FLOAT}},
 };
 
-const std::map<std::string, std::vector<SASLayout>> LAYOUT_SUPPORT_MAP = {
-    {QUERY_NAME,             {SASLayout::BSND, SASLayout::TND}},
-    {ORI_KV_NAME,            {SASLayout::PA_ND, SASLayout::TND}},
-    {CMP_KV_NAME,            {SASLayout::PA_ND, SASLayout::TND}},
-    {ATTEN_OUT_NAME,         {SASLayout::BSND, SASLayout::TND}},
+const std::map<std::string, std::vector<QSMLALayout>> LAYOUT_SUPPORT_MAP = {
+    {QUERY_NAME,             {QSMLALayout::BSND, QSMLALayout::TND}},
+    {ORI_KV_NAME,            {QSMLALayout::PA_ND, QSMLALayout::TND}},
+    {CMP_KV_NAME,            {QSMLALayout::PA_ND, QSMLALayout::TND}},
+    {ATTEN_OUT_NAME,         {QSMLALayout::BSND, QSMLALayout::TND}},
 };
 
 template <typename T>
@@ -198,7 +198,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    if (kvLayout_ == SASLayout::PA_ND) {
+    if (kvLayout_ == QSMLALayout::PA_ND) {
         OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
             OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
             oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
@@ -235,7 +235,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
             return ge::GRAPH_FAILED);
 
-        if (kvLayout_ == SASLayout::PA_ND) {
+        if (kvLayout_ == QSMLALayout::PA_ND) {
             OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
                 OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be in range (0, %u].",
                 cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
@@ -297,7 +297,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpResidualKv() const
+ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
     if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
@@ -307,7 +307,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpResidualKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpSparseIndices() const
+ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpSparseIndices() const
 {
     const std::vector<size_t> cmpSparseIndicesDimNumList = {DIM_NUM_FOUR, DIM_NUM_THREE};
 

@@ -174,7 +174,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     constInfo.s1Size = mixedQuantSparseFlashMlaBaseParams.qSeqSize;
     constInfo.s2Size = mixedQuantSparseFlashMlaBaseParams.kvSeqSize;
     constInfo.sparseBlockCount = mixedQuantSparseFlashMlaBaseParams.sparseBlockCount;
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpRatio = mixedQuantSparseFlashMlaBaseParams.cmpRatio;
     }
     constInfo.oriWinLeft = mixedQuantSparseFlashMlaBaseParams.oriWinLeft;
@@ -183,7 +183,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     constInfo.dSizeRope = mixedQuantSparseFlashMlaBaseParams.ropeHeadDim;
     constInfo.softmaxScale = mixedQuantSparseFlashMlaBaseParams.softmaxScale;
     constInfo.oriKvStride = mixedQuantSparseFlashMlaBaseParams.oriKvStride;
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpKvStride = mixedQuantSparseFlashMlaBaseParams.cmpKvStride;
     }
     constInfo.dSize = mixedQuantSparseFlashMlaBaseParams.dSize;
@@ -194,7 +194,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
 
     constInfo.actualLenDimsOriKV = mixedQuantSparseFlashMlaBaseParams.actualLenDimsOriKV;
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.actualLenDimsCmpKV = mixedQuantSparseFlashMlaBaseParams.actualLenDimsCmpKV;
         constInfo.cmpResidualKVSize = mixedQuantSparseFlashMlaBaseParams.cmpResidualKVSize;
     }
@@ -203,7 +203,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     if constexpr (isPa) {
         constInfo.oriBlockSize = mixedQuantSparseFlashMlaBaseParams.paOriBlockSize;
         constInfo.oriMaxBlockNumPerBatch = mixedQuantSparseFlashMlaBaseParams.oriMaxBlockNumPerBatch;
-        if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
             constInfo.cmpBlockSize = mixedQuantSparseFlashMlaBaseParams.paCmpBlockSize;
             constInfo.cmpMaxBlockNumPerBatch = mixedQuantSparseFlashMlaBaseParams.cmpMaxBlockNumPerBatch;
         }
@@ -259,7 +259,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         cuSeqlensOriKvAddr = (__gm__ int32_t *)cuSeqlensOriKv;
     }
 
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         if (cuSeqlensCmpKv != nullptr) {
             cuSeqlensCmpKvAddr = (__gm__ int32_t *)cuSeqlensCmpKv;
         }
@@ -274,7 +274,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         actualSeqOriKvlenAddr = (__gm__ int32_t *)sequsedOriKv;
     }
 
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         if (sequsedCmpKv != nullptr) {
             actualSeqCmpKvlenAddr = (__gm__ int32_t *)sequsedCmpKv;
         }

@@ -52,16 +52,16 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr bool isPa = (KV_LAYOUT_T == SAS_LAYOUT_PA_ND);
+    constexpr bool isPa = (KV_LAYOUT_T == QSMLA_LAYOUT_PA_ND);
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
-        SAS_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
             fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, isPa,
-            static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
-            static_cast<SASTemplateMode>(TEMPLATE_MODE), SPLIT_G);
+            static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
+            static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
     } else {
-        SAS_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
             hifloat8_t, float, bfloat16_t, FLASH_DECODE, isPa,
-            static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
-            static_cast<SASTemplateMode>(TEMPLATE_MODE), SPLIT_G);
+            static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
+            static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
     }
 }

@@ -87,7 +87,7 @@ public:
             if (cuSeqlensOriKv != nullptr) {
                 cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
             }
-            if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+            if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
                 if (cuSeqlensCmpKv != nullptr) {
                     cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
                 }
@@ -95,7 +95,7 @@ public:
             if (sequsedOriKv != nullptr) {
                 actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
             }
-            if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+            if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
                 if (sequsedCmpKv != nullptr) {
                     actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
                 }
@@ -246,7 +246,7 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
             paBlockStride + blkTableOffset * constInfo.dSizeVInput;
-    } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+    } else if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
         int64_t tPrefix = runInfo.isCmp ? cuSeqlensCmpKvGm.GetValue(runInfo.boIdx) :
             cuSeqlensOriKvGm.GetValue(runInfo.boIdx);
         realkeyOffset = (tPrefix + s2Idx) * constInfo.n2Size * constInfo.dSizeVInput +
@@ -616,7 +616,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
             copyFinishElmenCnt += copyElmenCnt;
             curSequence += copyElmenCnt;
         }
-    } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+    } else if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
         int64_t tPrefix = runInfo.isCmp ? cuSeqlensCmpKvGm.GetValue(runInfo.boIdx) :
             cuSeqlensOriKvGm.GetValue(runInfo.boIdx);
         DataCopyPad(kvMergUb, keyGm[(tPrefix + s2Idx) * constInfo.n2Size * combineDim + runInfo.n2oIdx * combineDim], intriParams, padParams);
