@@ -28,15 +28,8 @@ public:
     using VectorProcessor = FlashAttentionVectorProcessor<VecFaBlockType, VecFdBlockType, typename CubeBlockType::Q_T,
                                                           CubeBlockType::LAYOUT, CubeBlockType::PAGE_ATTENTION>;
 
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-
     CubeProcessor cubeProc;
     VectorProcessor vectorProc;
-
-    GlobalTensor<int32_t> cuSeqLensGmQ;
-    GlobalTensor<int32_t> cuSeqLensGmKv;
-    GlobalTensor<int32_t> seqUsedGmQ;
-    GlobalTensor<int32_t> seqUsedGmKv;
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
@@ -45,33 +38,11 @@ public:
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
                                 const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
-        cubeProc.pipe = tPipe;
-        cubeProc.tilingData = tiling;
-        vectorProc.pipe = tPipe;
-        vectorProc.tilingData = tiling;
-
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ,
-                                          tiling->flashAttnBaseParams.cuSeqLensQSize + 1);
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
-                                        tiling->flashAttnBaseParams.seqUsedQSize);
-            cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv,
-                                            tiling->flashAttnBaseParams.cuSeqLensKVSize + 1);
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
-                                          tiling->flashAttnBaseParams.seqUsedKvSize);
-        } else {
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
-                                        tiling->flashAttnBaseParams.seqUsedQSize);
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
-                                          tiling->flashAttnBaseParams.seqUsedKvSize);
-        }
-
-        cubeProc.Init(query, key, value, blockTable, fiaMetaData, seqUsedQ, seqUsedKv,
-                       cuSeqLensGmQ, seqUsedGmQ, cuSeqLensGmKv, seqUsedGmKv, workspace);
+        cubeProc.Init(query, key, value, blockTable, fiaMetaData, cuSeqLensQ, cuSeqLensKv,
+                       seqUsedQ, seqUsedKv, workspace, tPipe, tiling);
 
         vectorProc.Init(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut,
-                        workspace, fiaMetaData, seqUsedQ, seqUsedKv,
-                        cuSeqLensGmQ, seqUsedGmQ, cuSeqLensGmKv, seqUsedGmKv, key);
+                        workspace, fiaMetaData, seqUsedQ, seqUsedKv, key, tPipe, tiling);
     }
 
     __aicore__ inline void Process()

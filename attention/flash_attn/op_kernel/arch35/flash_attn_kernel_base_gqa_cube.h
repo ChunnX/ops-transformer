@@ -232,14 +232,38 @@ public:
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                GlobalTensor<int32_t> cuSeqLensGmQ, GlobalTensor<int32_t> seqUsedGmQ,
-                                GlobalTensor<int32_t> cuSeqLensGmKv, GlobalTensor<int32_t> seqUsedGmKv,
-                                __gm__ uint8_t *&workspace)
+                                __gm__ uint8_t *&workspace, TPipe *tPipe,
+                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
         if ASCEND_IS_AIC {
+            pipe = tPipe;
+            tilingData = tiling;
+            
             InitConstInfo();
             keyPtr = key;
+
+            GlobalTensor<int32_t> cuSeqLensGmQ;
+            GlobalTensor<int32_t> seqUsedGmQ;
+            GlobalTensor<int32_t> cuSeqLensGmKv;
+            GlobalTensor<int32_t> seqUsedGmKv;
+
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ,
+                                              tiling->flashAttnBaseParams.cuSeqLensQSize + 1);
+                seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
+                                            tiling->flashAttnBaseParams.seqUsedQSize);
+                cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv,
+                                               tiling->flashAttnBaseParams.cuSeqLensKVSize + 1);
+                seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
+                                             tiling->flashAttnBaseParams.seqUsedKvSize);
+            } else {
+                seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
+                                            tiling->flashAttnBaseParams.seqUsedQSize);
+                seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
+                                             tiling->flashAttnBaseParams.seqUsedKvSize);
+            }
 
             this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
             this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
