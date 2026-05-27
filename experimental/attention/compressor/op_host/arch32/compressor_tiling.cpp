@@ -801,6 +801,16 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                             pageAttentionParams_->blockSize),
                     return ge::GRAPH_FAILED);
     }
+    uint64_t cacheStride = context_->stateCache.shape->GetShape().GetDim(1) *
+                            context_->stateCache.shape->GetShape().GetDim(2);
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CONTINUOUS)) {
+        OP_CHECK_IF(cacheStride != baseParams_->stateCacheStrideDim0,
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, state_cache must be contiguous, first axes stride should be equal to %u, but got %u",
+                            static_cast<uint8_t>(CACHE_MODE::CONTINUOUS), cacheStride, baseParams_->stateCacheStrideDim0),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
