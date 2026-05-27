@@ -105,8 +105,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     std::string activation_str = std::string(activation);
     char *activation_ptr = const_cast<char *>(activation_str.c_str());
 
-    int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()
-        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
+    int64_t dispatch_quant_result_type = dispatch_quant_out_dtype
+        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype))
         : 28;
 
     at::Tensor y;
