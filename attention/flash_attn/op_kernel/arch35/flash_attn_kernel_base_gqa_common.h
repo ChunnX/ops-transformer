@@ -43,13 +43,6 @@ namespace BaseApi {
 
 class FlashAttentionGqaContext {
 public:
-    BufferManager<BufferType::UB> ubBufferManager;
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -57,72 +50,10 @@ public:
     GlobalTensor<uint32_t> faMetaDataGm;
     __gm__ uint8_t *keyPtr = nullptr;
 
-    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
-
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
 
-    uint32_t coreGS1Loops = 0U;
-    uint32_t frontGS1Count = 0U;
-    uint32_t invalidGS1Size = 0U;
-    uint32_t accGS1Loops = 0U;
-    uint32_t totalSize = 0U;
-    uint32_t createdTaskCount = 0U;
-    uint32_t executedTaskCount = 0U;
-    uint32_t varlenCalcTimes = 0U;
-    bool enableS1OutSplit = false;
-
-    uint64_t actSeqLensKv = 0;
-    uint64_t actSeqLensQ = 0;
-    int32_t s1SizeCurrBatch = 0;
-    uint32_t curS2Start;
-    uint32_t curS2End = 0;
-    uint32_t prevBIdx;
-    uint32_t prevBN2Idx;
-    uint32_t prevGS1Idx;
-    uint32_t mloop = 0;
-    bool headS2Split = false;
-    bool tailS2Split = false;
-    bool emptyBatch = false;
-    uint32_t dealZerosMSize = 0;
-
     uint32_t sectionNum_;
-
-    uint32_t bN2Start_;
-    uint32_t bN2End_;
-    uint32_t gS1OStart_;
-    uint32_t gS1OEnd_;
-    uint32_t s2OStart_;
-    uint32_t s2OEnd_;
-
-__aicore__ inline void InitConstInfoCube()
-    {
-        constInfo.aicIdx = GetBlockIdx();
-        constInfo.dBasicBlock = Align64Func((uint16_t)this->tilingData->flashAttnBaseParams.dSizeV);
-    }
-
-    __aicore__ inline void InitConstInfoVector()
-    {
-        constInfo.aivIdx = GetBlockIdx();
-        constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
-        constInfo.subBlockIdx = GetSubBlockIdx();
-        constInfo.dBasicBlock = Align64Func((uint16_t)this->tilingData->flashAttnBaseParams.dSizeV);
-    }
-
-    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
-    {
-        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
-    }
-
-    __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
-    {
-        bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
-        bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
-        gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
-        s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
-    }
 };
 
 template <typename CubeBlockType>
@@ -168,9 +99,61 @@ public:
     KvSeqUsedParserType kvSeqUsedParser;
 
     CubeBlockType cubeBlock;
-    FlashAttentionGqaContext* ctx;
+    FlashAttentionGqaContext* __restrict ctx;
 
-    __aicore__ inline FlashAttentionCubeData(FlashAttentionGqaContext* c) : cubeBlock(c->constInfo), ctx(c){};
+    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
+
+    BufferManager<BufferType::UB> ubBufferManager;
+    BufferManager<BufferType::L1> l1BufferManager;
+    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+
+    uint32_t createdTaskCount = 0U;
+    uint32_t executedTaskCount = 0U;
+    uint32_t accGS1Loops = 0U;
+    uint32_t mloop = 0;
+
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t curS2Start;
+    uint32_t curS2End = 0;
+    uint32_t prevBIdx;
+    uint32_t prevBN2Idx;
+    uint32_t prevGS1Idx;
+    bool headS2Split = false;
+    bool tailS2Split = false;
+
+    uint32_t bN2Start_;
+    uint32_t bN2End_;
+    uint32_t gS1OStart_;
+    uint32_t gS1OEnd_;
+    uint32_t s2OStart_;
+    uint32_t s2OEnd_;
+
+    __aicore__ inline FlashAttentionCubeData(FlashAttentionGqaContext* c) : cubeBlock(constInfo), ctx(c){};
+
+    __aicore__ inline void InitConstInfo()
+    {
+        constInfo.aicIdx = GetBlockIdx();
+        constInfo.dBasicBlock = Align64Func((uint16_t)ctx->tilingData->flashAttnBaseParams.dSizeV);
+    }
+
+    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+    }
+
+    __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
+    {
+        bN2Start_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2End_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
+        gS1OEnd_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
+        s2OEnd_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
+    }
 };
 
 template <typename VecFaBlockType, typename VecFdBlockType, typename InputT, LayOutTypeEnum LayoutQ = LayOutTypeEnum::None, bool PageAttention = false>
@@ -213,7 +196,16 @@ public:
 
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
-    FlashAttentionGqaContext* ctx;
+    FlashAttentionGqaContext* __restrict ctx;
+
+    ConstInfo_t<FiaKernelType::NO_QUANT> constInfo;
+
+    BufferManager<BufferType::UB> ubBufferManager;
+    BufferManager<BufferType::L1> l1BufferManager;
+    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
+    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
     bool isFd = false;
     uint32_t coreFirstTmpOutWsPos_ = 0;
@@ -221,7 +213,52 @@ public:
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
     TBuf<> SharedBuffer3;
 
-    __aicore__ inline FlashAttentionVectorData(FlashAttentionGqaContext* c) : vecFaBlock(c->constInfo), vecFdBlock(c->constInfo), ctx(c){};
+    uint32_t createdTaskCount = 0U;
+    uint32_t executedTaskCount = 0U;
+    uint32_t accGS1Loops = 0U;
+    uint32_t mloop = 0;
+
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t curS2Start;
+    uint32_t curS2End = 0;
+    uint32_t prevBIdx;
+    uint32_t prevBN2Idx;
+    uint32_t prevGS1Idx;
+    bool headS2Split = false;
+    bool tailS2Split = false;
+
+    uint32_t bN2Start_;
+    uint32_t bN2End_;
+    uint32_t gS1OStart_;
+    uint32_t gS1OEnd_;
+    uint32_t s2OStart_;
+    uint32_t s2OEnd_;
+
+    __aicore__ inline FlashAttentionVectorData(FlashAttentionGqaContext* c) : vecFaBlock(constInfo), vecFdBlock(constInfo), ctx(c){};
+
+    __aicore__ inline void InitConstInfo()
+    {
+        constInfo.aivIdx = GetBlockIdx();
+        constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
+        constInfo.subBlockIdx = GetSubBlockIdx();
+        constInfo.dBasicBlock = Align64Func((uint16_t)ctx->tilingData->flashAttnBaseParams.dSizeV);
+    }
+
+    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+    }
+
+    __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
+    {
+        bN2Start_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2End_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
+        gS1OEnd_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
+        s2OEnd_ = ctx->faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
+    }
 };
 
 } // namespace BaseApi

@@ -41,9 +41,9 @@ public:
     __aicore__ inline void InitConstInfoWithPA()
     {
         if ASCEND_IS_AIC {
-            FlashAttentionGqaContext::InitConstInfoCube();
+            cubeProc.cubeData.InitConstInfo();
         } else {
-            FlashAttentionGqaContext::InitConstInfoVector();
+            vectorProc.vectorData.InitConstInfo();
         }
     }
 
@@ -60,20 +60,33 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        this->l1BufferManager.Init(this->pipe, 524286);
-        this->l1PBuffers.Init(this->l1BufferManager, mm2LeftSize);
-        if constexpr (BMM2_TOUB) {
-            this->ubBufferManager.Init(this->pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            this->bmm2Buffers.Init(this->ubBufferManager, mm2ResultSize);
-        } else {
-            this->ubBufferManager.Init(this->pipe, mm1ResultSize * 2);
-        }
-        this->bmm1Buffers.Init(this->ubBufferManager, mm1ResultSize);
+        
+        if ASCEND_IS_AIC {
+            cubeProc.cubeData.l1BufferManager.Init(this->pipe, 524286);
+            cubeProc.cubeData.l1PBuffers.Init(cubeProc.cubeData.l1BufferManager, mm2LeftSize);
+            if constexpr (BMM2_TOUB) {
+                cubeProc.cubeData.ubBufferManager.Init(this->pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+                cubeProc.cubeData.bmm2Buffers.Init(cubeProc.cubeData.ubBufferManager, mm2ResultSize);
+            } else {
+                cubeProc.cubeData.ubBufferManager.Init(this->pipe, mm1ResultSize * 2);
+            }
+            cubeProc.cubeData.bmm1Buffers.Init(cubeProc.cubeData.ubBufferManager, mm1ResultSize);
 
-        if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSizeCalc = mBaseSize * this->tilingData->flashAttnBaseParams.dSizeV;
-            int64_t prevCoretotalOffset = this->constInfo.aicIdx * 3 * mm2ResultSizeCalc;
-            workspace = workspace + this->tilingData->flashAttnBaseParams.coreNum * 3 * mm2ResultSizeCalc * sizeof(T);
+            if constexpr (!BMM2_TOUB) {
+                int64_t mm2ResultSizeCalc = mBaseSize * this->tilingData->flashAttnBaseParams.dSizeV;
+                int64_t prevCoretotalOffset = cubeProc.cubeData.constInfo.aicIdx * 3 * mm2ResultSizeCalc;
+                workspace = workspace + this->tilingData->flashAttnBaseParams.coreNum * 3 * mm2ResultSizeCalc * sizeof(T);
+            }
+        } else {
+            vectorProc.vectorData.l1BufferManager.Init(this->pipe, 524286);
+            vectorProc.vectorData.l1PBuffers.Init(vectorProc.vectorData.l1BufferManager, mm2LeftSize);
+            if constexpr (BMM2_TOUB) {
+                vectorProc.vectorData.ubBufferManager.Init(this->pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+                vectorProc.vectorData.bmm2Buffers.Init(vectorProc.vectorData.ubBufferManager, mm2ResultSize);
+            } else {
+                vectorProc.vectorData.ubBufferManager.Init(this->pipe, mm1ResultSize * 2);
+            }
+            vectorProc.vectorData.bmm1Buffers.Init(vectorProc.vectorData.ubBufferManager, mm1ResultSize);
         }
     }
 
@@ -136,11 +149,11 @@ public:
     {
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value,
+                cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &cubeProc.cubeData.l1BufferManager, query, key, value,
                                                           blockTable, cubeProc.cubeData.qCuSeqLensParser,
                                                           cubeProc.cubeData.kvCuSeqLensParser, this->tilingData);
             } else {
-                cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value,
+                cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &cubeProc.cubeData.l1BufferManager, query, key, value,
                                                           blockTable, cubeProc.cubeData.qSeqUsedParser,
                                                           cubeProc.cubeData.kvSeqUsedParser, this->tilingData);
             }
@@ -253,7 +266,7 @@ public:
     __aicore__ inline void Process()
     {
         if ASCEND_IS_AIV {
-            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
+            if (vectorProc.vectorData.constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 vectorProc.CrossCoreBufferInit();
             }
         }
@@ -267,7 +280,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
+            if (cubeProc.cubeData.constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 cubeProc.CrossCoreBufferUnInit();
             }
         }
