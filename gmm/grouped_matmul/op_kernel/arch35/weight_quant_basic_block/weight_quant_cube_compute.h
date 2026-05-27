@@ -24,7 +24,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "tool.h"
+#include "weight_quant_tool.h"
 
 #include "basic_api/weight_quant_basic_api_v1.h"
 
