@@ -10,7 +10,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "experimental/attention/common/op_kernel/vector_common.h"
+#include "../../common/op_kernel/vector_common.h"
 #include "sliding_tile_attention_tiling_data.h"
 
 namespace SlidingTileAttentionKernel {
@@ -1027,6 +1027,24 @@ private:
 
 template <bool IS_BF16>
 class SlidingTileAttentionCube {
+private:
+    struct CubeTaskContext {
+        int64_t batch;
+        int64_t head;
+        int64_t seq;
+        int64_t qCount;
+        int64_t ratio;
+        int64_t subBlockRows;
+    };
+
+    struct CubeSubBlockContext {
+        int64_t subBlock;
+        int64_t rowBegin;
+        int64_t rowEnd;
+        int64_t rowCount;
+        int64_t qBase;
+    };
+
 public:
     using DataType = typename DataTypeSelector<IS_BF16>::Type;
     using AType = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
@@ -1057,18 +1075,28 @@ public:
     {
         const int64_t blockNum = GetBlockNum();
         const int64_t blockIdx = GetBlockIdx();
+        const int64_t ratio = GetTaskRatioValue();
+        const int64_t subBlockRows = GetSubBlockRows(tiling_->qBlock, ratio);
         for (int64_t taskIdx = blockIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += blockNum) {
-            int64_t batch = 0;
-            int64_t head = 0;
-            int64_t seq = 0;
-            DecodeCubeTask(taskIdx, batch, head, seq);
-            (void)batch;
+            CubeTaskContext task = MakeCubeTaskContext(taskIdx, ratio, subBlockRows);
+            if (task.seq >= tiling_->validSeqLen) {
+                continue;
+            }
+            qkMatmul_.SetOrgShape(subBlockRows, tiling_->maxKvBlock, tiling_->headDim, tiling_->headDim,
+                                  tiling_->maxKvBlock);
+            pvMatmul_.SetOrgShape(subBlockRows, tiling_->headDim, tiling_->maxKvBlock, tiling_->maxKvBlock,
+                                  tiling_->headDim);
             int64_t textBegin = 0;
             int64_t textEnd = 0;
             GetTextScanRange(textBegin, textEnd);
             int64_t tileLoop = 0;
-            ProcessImageKvTiles(taskIdx, head, seq, tileLoop);
-            ProcessCubeTextKvRange(taskIdx, seq, textBegin, textEnd, tileLoop);
+            bool didMatmul = false;
+            ProcessImageKvTiles(task, tileLoop, didMatmul);
+            ProcessCubeTextKvRange(task, textBegin, textEnd, tileLoop, didMatmul);
+            if (didMatmul) {
+                qkMatmul_.End();
+                pvMatmul_.End();
+            }
         }
     }
 
@@ -1099,6 +1127,28 @@ private:
         head = tmp % tiling_->headNum;
         batch = tmp / tiling_->headNum;
         seq = seqBlock * tiling_->qBlock;
+    }
+
+    __aicore__ inline CubeTaskContext MakeCubeTaskContext(int64_t taskIdx, int64_t ratio,
+                                                          int64_t subBlockRows) const
+    {
+        CubeTaskContext task;
+        DecodeCubeTask(taskIdx, task.batch, task.head, task.seq);
+        task.qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - task.seq);
+        task.ratio = ratio;
+        task.subBlockRows = subBlockRows;
+        return task;
+    }
+
+    __aicore__ inline CubeSubBlockContext MakeCubeSubBlockContext(const CubeTaskContext &task,
+                                                                  int64_t subBlock) const
+    {
+        CubeSubBlockContext block;
+        block.subBlock = subBlock;
+        GetSubBlockRowRangeByIndex(task.qCount, task.ratio, subBlock, block.rowBegin, block.rowEnd);
+        block.rowCount = block.rowEnd - block.rowBegin;
+        block.qBase = TensorOffset(task.batch, task.head, task.seq + block.rowBegin, 0);
+        return block;
     }
 
     __aicore__ inline void DecodeTileCoord(int64_t tileId, int64_t &tileT, int64_t &tileH, int64_t &tileW) const
@@ -1141,67 +1191,72 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessCubeVisibleKvBlock(int64_t taskIdx, int64_t kvSeq, int64_t kvCount,
-                                                     int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeVisibleKvBlock(const CubeTaskContext &task, int64_t kvSeq, int64_t kvCount,
+                                                     int64_t &tileLoop, bool &didMatmul)
     {
         const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
-        for (int64_t subBlock = 0; subBlock < GetTaskRatioValue(); ++subBlock) {
-            ComputeScoreTileTask(taskIdx, kvSeq, kvCount, bufferIdx, subBlock);
-            CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx, subBlock));
-            CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx, subBlock));
-            ComputeValueTileTask(taskIdx, kvSeq, kvCount, bufferIdx, subBlock);
-            CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx, subBlock));
-            CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx, subBlock));
+        const int64_t kvBase = TensorOffset(task.batch, task.head, kvSeq, 0);
+        for (int64_t subBlock = 0; subBlock < task.ratio; ++subBlock) {
+            CubeSubBlockContext block = MakeCubeSubBlockContext(task, subBlock);
+            const bool scoreComputed = ComputeScoreTileTask(task, block, kvBase, kvCount, bufferIdx);
+            CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx, block.subBlock));
+            CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx, block.subBlock));
+            const bool valueComputed = ComputeValueTileTask(task, block, kvBase, kvCount, bufferIdx);
+            CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx, block.subBlock));
+            CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx, block.subBlock));
+            didMatmul = didMatmul || scoreComputed || valueComputed;
         }
         ++tileLoop;
     }
 
-    __aicore__ inline void ProcessCubeVisibleKvRange(int64_t taskIdx, int64_t kvBegin, int64_t kvEnd,
-                                                     int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeVisibleKvRange(const CubeTaskContext &task, int64_t kvBegin, int64_t kvEnd,
+                                                     int64_t &tileLoop, bool &didMatmul)
     {
         const int64_t kvRange = kvEnd - kvBegin;
         const int64_t fullBlockNum = kvRange / tiling_->kvBlock;
         const int64_t fullBlockEnd = kvBegin + fullBlockNum * tiling_->kvBlock;
         for (int64_t kvSeq = kvBegin; kvSeq < fullBlockEnd; kvSeq += tiling_->kvBlock) {
-            ProcessCubeVisibleKvBlock(taskIdx, kvSeq, tiling_->kvBlock, tileLoop);
+            ProcessCubeVisibleKvBlock(task, kvSeq, tiling_->kvBlock, tileLoop, didMatmul);
         }
         if (fullBlockEnd < kvEnd) {
-            ProcessCubeVisibleKvBlock(taskIdx, fullBlockEnd, kvEnd - fullBlockEnd, tileLoop);
+            ProcessCubeVisibleKvBlock(task, fullBlockEnd, kvEnd - fullBlockEnd, tileLoop, didMatmul);
         }
     }
 
-    __aicore__ inline void ProcessCubeImageQueryImageTile(int64_t taskIdx, int64_t kvBegin, int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeImageQueryImageTile(const CubeTaskContext &task, int64_t kvBegin,
+                                                          int64_t &tileLoop, bool &didMatmul)
     {
-        ProcessCubeVisibleKvBlock(taskIdx, kvBegin, tiling_->tileTokenNum, tileLoop);
+        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, tileLoop, didMatmul);
     }
 
-    __aicore__ inline void ProcessCubeTextQueryImageTile(int64_t taskIdx, int64_t kvBegin, int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeTextQueryImageTile(const CubeTaskContext &task, int64_t kvBegin,
+                                                         int64_t &tileLoop, bool &didMatmul)
     {
-        ProcessCubeVisibleKvBlock(taskIdx, kvBegin, tiling_->tileTokenNum, tileLoop);
+        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, tileLoop, didMatmul);
     }
 
-    __aicore__ inline void ProcessCubeTextKvRange(int64_t taskIdx, int64_t seq, int64_t kvBegin, int64_t kvEnd,
-                                                  int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeTextKvRange(const CubeTaskContext &task, int64_t kvBegin, int64_t kvEnd,
+                                                  int64_t &tileLoop, bool &didMatmul)
     {
-        if (seq >= tiling_->validSeqLen) {
+        if (task.seq >= tiling_->validSeqLen) {
             return;
         }
-        ProcessCubeVisibleKvRange(taskIdx, kvBegin, kvEnd, tileLoop);
+        ProcessCubeVisibleKvRange(task, kvBegin, kvEnd, tileLoop, didMatmul);
     }
 
-    __aicore__ inline void ProcessImageKvTiles(int64_t taskIdx, int64_t head, int64_t seq, int64_t &tileLoop)
+    __aicore__ inline void ProcessImageKvTiles(const CubeTaskContext &task, int64_t &tileLoop, bool &didMatmul)
     {
-        if (seq >= tiling_->validSeqLen) {
+        if (task.seq >= tiling_->validSeqLen) {
             return;
         }
-        if ((tiling_->hasText != 0) && (seq >= tiling_->imageSeqLen)) {
+        if ((tiling_->hasText != 0) && (task.seq >= tiling_->imageSeqLen)) {
             for (int64_t kvTileId = 0; kvTileId < tiling_->imageTileNum; ++kvTileId) {
                 const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                ProcessCubeTextQueryImageTile(taskIdx, kvBegin, tileLoop);
+                ProcessCubeTextQueryImageTile(task, kvBegin, tileLoop, didMatmul);
             }
             return;
         }
-        if (seq >= tiling_->imageSeqLen) {
+        if (task.seq >= tiling_->imageSeqLen) {
             return;
         }
 
@@ -1211,13 +1266,13 @@ private:
         int64_t hEnd = 0;
         int64_t wBegin = 0;
         int64_t wEnd = 0;
-        GetImageWindowRange(head, seq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+        GetImageWindowRange(task.head, task.seq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
         for (int64_t tileT = tBegin; tileT < tEnd; ++tileT) {
             for (int64_t tileH = hBegin; tileH < hEnd; ++tileH) {
                 for (int64_t tileW = wBegin; tileW < wEnd; ++tileW) {
                     const int64_t kvTileId = TileLinearId(tileT, tileH, tileW);
                     const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                    ProcessCubeImageQueryImageTile(taskIdx, kvBegin, tileLoop);
+                    ProcessCubeImageQueryImageTile(task, kvBegin, tileLoop, didMatmul);
                 }
             }
         }
@@ -1228,9 +1283,8 @@ private:
         return SCORE_HANDOFF_UB_OFFSET_2D_SOFTMAX;
     }
 
-    __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
+    __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx, int64_t subBlockRows) const
     {
-        const int64_t subBlockRows = GetSubBlockRows(tiling_->qBlock, GetTaskRatioValue());
         const int64_t scoreElems = subBlockRows * tiling_->maxKvBlock;
         const int64_t outElems = subBlockRows * tiling_->headDimAlign;
         const int64_t sharedElems = MaxInt64(scoreElems, outElems);
@@ -1239,9 +1293,8 @@ private:
         return LocalTensor<float>(TPosition::VECIN, offset, scoreElems);
     }
 
-    __aicore__ inline LocalTensor<DataType> GetProbHandoffTensor(uint32_t bufferIdx) const
+    __aicore__ inline LocalTensor<DataType> GetProbHandoffTensor(uint32_t bufferIdx, int64_t subBlockRows) const
     {
-        const int64_t subBlockRows = GetSubBlockRows(tiling_->qBlock, GetTaskRatioValue());
         const int64_t scoreElems = subBlockRows * tiling_->maxKvBlock;
         const int64_t probElems = subBlockRows * tiling_->maxKvBlock;
         const int64_t outElems = subBlockRows * tiling_->headDimAlign;
@@ -1251,9 +1304,8 @@ private:
         return LocalTensor<DataType>(TPosition::VECIN, offset, probElems);
     }
 
-    __aicore__ inline LocalTensor<float> GetOutHandoffTensor(uint32_t bufferIdx) const
+    __aicore__ inline LocalTensor<float> GetOutHandoffTensor(uint32_t bufferIdx, int64_t subBlockRows) const
     {
-        const int64_t subBlockRows = GetSubBlockRows(tiling_->qBlock, GetTaskRatioValue());
         const int64_t scoreElems = subBlockRows * tiling_->maxKvBlock;
         const int64_t outElems = subBlockRows * tiling_->headDimAlign;
         const int64_t sharedElems = MaxInt64(scoreElems, outElems);
@@ -1262,61 +1314,37 @@ private:
         return LocalTensor<float>(TPosition::VECIN, offset, outElems);
     }
 
-    __aicore__ inline void ComputeScoreTileTask(int64_t taskIdx, int64_t kvBegin, int64_t kvCount,
-                                                uint32_t bufferIdx, int64_t subBlock)
+    __aicore__ inline bool ComputeScoreTileTask(const CubeTaskContext &task, const CubeSubBlockContext &block,
+                                                int64_t kvBase, int64_t kvCount, uint32_t bufferIdx)
     {
-        int64_t batch = 0;
-        int64_t head = 0;
-        int64_t seq = 0;
-        DecodeCubeTask(taskIdx, batch, head, seq);
-        const int64_t qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
-        int64_t rowBegin = 0;
-        int64_t rowEnd = 0;
-        GetSubBlockRowRangeByIndex(qCount, GetTaskRatioValue(), subBlock, rowBegin, rowEnd);
-        const int64_t rowCount = rowEnd - rowBegin;
-        if (rowCount <= 0 || kvCount <= 0) {
-            return;
+        if (block.rowCount <= 0 || kvCount <= 0) {
+            return false;
         }
 
-        const int64_t qBase = TensorOffset(batch, head, seq + rowBegin, 0);
-        const int64_t kvBase = TensorOffset(batch, head, kvBegin, 0);
-
-        qkMatmul_.SetOrgShape(rowCount, kvCount, tiling_->headDim, tiling_->headDim, tiling_->maxKvBlock);
-        qkMatmul_.SetTail(rowCount, kvCount, tiling_->headDim);
-        qkMatmul_.SetTensorA(qDataGm_[qBase]);
+        qkMatmul_.SetTail(block.rowCount, kvCount, tiling_->headDim);
+        qkMatmul_.SetTensorA(qDataGm_[block.qBase]);
         qkMatmul_.SetTensorB(kDataGm_[kvBase], true);
-        LocalTensor<float> scoreLocal = GetScoreHandoffTensor(bufferIdx);
+        LocalTensor<float> scoreLocal = GetScoreHandoffTensor(bufferIdx, task.subBlockRows);
         qkMatmul_.template IterateAll<false>(scoreLocal, 0);
         qkMatmul_.WaitIterateAll();
-        qkMatmul_.End();
+        return true;
     }
 
-    __aicore__ inline void ComputeValueTileTask(int64_t taskIdx, int64_t kvBegin, int64_t kvCount,
-                                                uint32_t bufferIdx, int64_t subBlock)
+    __aicore__ inline bool ComputeValueTileTask(const CubeTaskContext &task, const CubeSubBlockContext &block,
+                                                int64_t kvBase, int64_t kvCount, uint32_t bufferIdx)
     {
-        int64_t batch = 0;
-        int64_t head = 0;
-        int64_t seq = 0;
-        DecodeCubeTask(taskIdx, batch, head, seq);
-        const int64_t qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
-        int64_t rowBegin = 0;
-        int64_t rowEnd = 0;
-        GetSubBlockRowRangeByIndex(qCount, GetTaskRatioValue(), subBlock, rowBegin, rowEnd);
-        const int64_t rowCount = rowEnd - rowBegin;
-        if (rowCount <= 0 || kvCount <= 0) {
-            return;
+        if (block.rowCount <= 0 || kvCount <= 0) {
+            return false;
         }
 
-        const int64_t kvBase = TensorOffset(batch, head, kvBegin, 0);
-        pvMatmul_.SetOrgShape(rowCount, tiling_->headDim, kvCount, tiling_->maxKvBlock, tiling_->headDim);
-        pvMatmul_.SetTail(rowCount, tiling_->headDim, kvCount);
-        LocalTensor<DataType> probLocal = GetProbHandoffTensor(bufferIdx);
-        LocalTensor<float> outLocal = GetOutHandoffTensor(bufferIdx);
+        pvMatmul_.SetTail(block.rowCount, tiling_->headDim, kvCount);
+        LocalTensor<DataType> probLocal = GetProbHandoffTensor(bufferIdx, task.subBlockRows);
+        LocalTensor<float> outLocal = GetOutHandoffTensor(bufferIdx, task.subBlockRows);
         pvMatmul_.SetTensorA(probLocal);
         pvMatmul_.SetTensorB(vDataGm_[kvBase]);
         pvMatmul_.template IterateAll<false>(outLocal, 0);
         pvMatmul_.WaitIterateAll();
-        pvMatmul_.End();
+        return true;
     }
 
 private:
