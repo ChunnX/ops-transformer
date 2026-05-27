@@ -205,49 +205,36 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
     bool permuteOutFlag = false;
     
     ge::es::EsTensorHolder transposeOutput;
-    ge::es::EsTensorHolder mc2Input;
     std::vector<int64_t> permValue;
     
     if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
         permValue = {0, 2, 1};
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on gmm_weight, perm=[0,2,1]");
+        transposeOutput = TransposeDL(gmmWeight, ge::es::EsTensorLike(permValue));
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
         permValue = {1, 0};
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on mm_weight, perm=[1,0]");
+        transposeOutput = TransposeDL(mmWeight, ge::es::EsTensorLike(permValue));
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
         permValue = {0, 2, 1, 3};
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on gmm_weight_scale, perm=[0,2,1,3]");
+        transposeOutput = TransposeDL(gmmWeightScale, ge::es::EsTensorLike(permValue));
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
         permValue = {1, 0, 2};
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on mm_weight_scale, perm=[1,0,2]");
+        transposeOutput = TransposeDL(mmWeightScale, ge::es::EsTensorLike(permValue));
     }
-    
-    // 使用 TransposeDL 动态加载的方式（参考 matmul_allto_all）
-    ge::es::EsTensorLike inputTensor;
-    if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
-        inputTensor = gmmWeight;
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
-        inputTensor = mmWeight;
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
-        inputTensor = gmmWeightScale;
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
-        inputTensor = mmWeightScale;
-    }
-    
-    auto transpose = TransposeDL(inputTensor, ge::es::EsTensorLike(permValue));
-    transposeOutput = transpose;
-    mc2Input = transpose;
     
     auto mc2 = ge::es::AlltoAllvQuantGroupedMatMul(
         gmmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? mc2Input : gmmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeOutput : gmmWeight,
         gmmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? mc2Input : gmmWeightScale,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeOutput : gmmWeightScale,
         sendCountsTensor, recvCountsTensor,
         mmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? mc2Input : mmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? transposeOutput : mmWeight,
         mmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? mc2Input : mmWeightScale,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? transposeOutput : mmWeightScale,
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode, false, false, permuteOutFlag,
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype);
