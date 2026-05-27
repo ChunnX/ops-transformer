@@ -211,13 +211,11 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
     if (std::strncmp(commMode_, "ccu", 3) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
     } else if (std::strlen(commMode_) == 0) { // empty string
-        OP_LOGD("Tiling GetTilingKey commMode_ is  empty string.");
         if (rankSize_ <= 8) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
-    OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataV2_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :

@@ -605,8 +605,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
                     return false);
-    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", 3) == 0) || (std::strncmp(commMode_, "aicpu", 5) == 0) || (std::strlen(commMode_) == 0)), 
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or aicpu or empty string, but the actual value is %s.", commMode_),
+    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", 3) == 0) || (std::strncmp(commMode_, "ai_cpu", 5) == 0) || (std::strlen(commMode_) == 0)), 
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or ai_cpu or empty string, but the actual value is %s.", commMode_),
                     return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
@@ -735,7 +735,6 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
         if (std::strncmp(commMode_, "ccu", 3) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else if (std::strlen(commMode_) == 0) { // empty string
-            OP_LOGD("Tiling GetTilingKey commMode_ is  empty string.");
             if (rankSize_ <= 8){
                 commMode = Mc2Comm::COMM_MODE_CCU;
             }

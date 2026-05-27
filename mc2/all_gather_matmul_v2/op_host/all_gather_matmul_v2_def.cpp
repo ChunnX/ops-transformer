@@ -122,7 +122,7 @@ class AllGatherMatmulV2 : public OpDef {
     this->Attr("is_gather_out").AttrType(OPTIONAL).Bool(true);
     this->Attr("is_amax_out").AttrType(OPTIONAL).Bool(false);
     this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
-    this->Attr("comm_mode").AttrType(REQUIRED).String("aicpu");
+    this->Attr("comm_mode").AttrType(REQUIRED).String("");
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
