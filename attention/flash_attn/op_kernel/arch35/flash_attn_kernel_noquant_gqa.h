@@ -354,7 +354,6 @@ public:
 
     __aicore__ inline void CrossCoreBufferInit()
     {
-        printf("[FA_DBG] c%u CrossCoreBufferInit start\n", GetBlockIdx());
         if constexpr (BMM2_TOUB) {
             if ASCEND_IS_AIV {
                 bmm2Buffers.Get().SetCrossCore();
@@ -365,39 +364,28 @@ public:
             bmm1Buffers.Get().SetCrossCore();
             bmm1Buffers.Get().SetCrossCore();
         }
-        printf("[FA_DBG] c%u CrossCoreBufferInit done\n", GetBlockIdx());
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
-        printf("[FA_DBG] c%u CrossCoreBufferUnInit start\n", GetBlockIdx());
         if ASCEND_IS_AIC {
-            printf("[FA_DBG] c%u UnInit wait bmm1[0]\n", GetBlockIdx());
             bmm1Buffers.Get().WaitCrossCore();
-            printf("[FA_DBG] c%u UnInit wait bmm1[1]\n", GetBlockIdx());
             bmm1Buffers.Get().WaitCrossCore();
         }
         if constexpr (BMM2_TOUB) {
             if ASCEND_IS_AIC {
-                printf("[FA_DBG] c%u UnInit wait bmm2[0]\n", GetBlockIdx());
                 bmm2Buffers.Get().WaitCrossCore();
-                printf("[FA_DBG] c%u UnInit wait bmm2[1]\n", GetBlockIdx());
                 bmm2Buffers.Get().WaitCrossCore();
             }
         }
-        printf("[FA_DBG] c%u CrossCoreBufferUnInit done\n", GetBlockIdx());
     }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
-        printf("[FA_DBG] c%u FlashAttention sect=%u start\n", GetBlockIdx(), sectionIdx);
         if (constInfo.aicIdx >= constInfo.coreNum) {
-            printf("[FA_DBG] c%u FlashAttention sect=%u early_exit(aicIdx>=coreNum)\n", GetBlockIdx(), sectionIdx);
             return;
         }
 
         GetFASectionInfo(sectionIdx);
-        printf("[FA_DBG] c%u FA sect=%u bN2=[%u..%u] gS1=[%u..%u] s2=[%u..%u]\n",
-               GetBlockIdx(), sectionIdx, bN2Start_, bN2End_, gS1OStart_, gS1OEnd_, s2OStart_, s2OEnd_);
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
@@ -781,29 +769,18 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        printf("[FA_DBG] c%u FlashDecode sect=%u start\n", GetBlockIdx(), sectionIdx);
         if (!isFd) {
-            printf("[FA_DBG] c%u FlashDecode sect=%u skip(isFd=false)\n", GetBlockIdx(), sectionIdx);
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        printf("[FA_DBG] c%u FlashDecode sect=%u fdCoreEnable=%u\n", GetBlockIdx(), sectionIdx, fdParams_.fdCoreEnable);
         vecFdBlock.InitBuffers();
-        printf("[FA_DBG] c%u FD InitBuffers done\n", GetBlockIdx());
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
-        printf("[FA_DBG] c%u FD AllocEventID done\n", GetBlockIdx());
         vecFdBlock.InitDecodeParams();
-        printf("[FA_DBG] c%u FD SyncAll[0] start\n", GetBlockIdx());
         SyncAll();
-        printf("[FA_DBG] c%u FD SyncAll[0] done\n", GetBlockIdx());
         vecFdBlock.FlashDecode(fdParams_);
-        printf("[FA_DBG] c%u FD FlashDecode done\n", GetBlockIdx());
-        printf("[FA_DBG] c%u FD SyncAll[1] start\n", GetBlockIdx());
         SyncAll();
-        printf("[FA_DBG] c%u FD SyncAll[1] done\n", GetBlockIdx());
         vecFdBlock.FreeEventID();
-        printf("[FA_DBG] c%u FlashDecode sect=%u done\n", GetBlockIdx(), sectionIdx);
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
@@ -838,47 +815,33 @@ public:
 
     __aicore__ inline void Process()
     {
-        printf("[FA_DBG] c%u Process start aicIdx=%u coreNum=%u sectionNum=%u\n",
-               GetBlockIdx(), constInfo.aicIdx, constInfo.coreNum, sectionNum_);
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
-                printf("[FA_DBG] c%u AIV InitBuffers start\n", GetBlockIdx());
                 vecFaBlock.InitBuffers();
-                printf("[FA_DBG] c%u AIV InitBuffers done\n", GetBlockIdx());
                 vecFaBlock.AllocEventID();
             } else {
-                printf("[FA_DBG] c%u AIC InitBuffers start\n", GetBlockIdx());
                 cubeBlock.InitBuffers();
-                printf("[FA_DBG] c%u AIC InitBuffers done\n", GetBlockIdx());
                 cubeBlock.AllocEventID();
-                printf("[FA_DBG] c%u AIC AllocEventID done\n", GetBlockIdx());
             }
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-            printf("[FA_DBG] c%u section=%u begin\n", GetBlockIdx(), sectionIdx);
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);
             }
-            printf("[FA_DBG] c%u section=%u FA_done\n", GetBlockIdx(), sectionIdx);
             if ASCEND_IS_AIV {
                 FlashDecode(sectionIdx);
             }
-            printf("[FA_DBG] c%u section=%u FD_done\n", GetBlockIdx(), sectionIdx);
         }
 
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
-                printf("[FA_DBG] c%u FreeEventID start\n", GetBlockIdx());
                 vecFaBlock.FreeEventID();
-                printf("[FA_DBG] c%u FreeEventID done\n", GetBlockIdx());
             } else {
                 cubeBlock.FreeEventID();
-                printf("[FA_DBG] c%u AIC FreeEventID done\n", GetBlockIdx());
             }
             CrossCoreBufferUnInit();
         }
-        printf("[FA_DBG] c%u Process done\n", GetBlockIdx());
     }
 }; // FlashAttentionNoQuantGqaKernel
 
