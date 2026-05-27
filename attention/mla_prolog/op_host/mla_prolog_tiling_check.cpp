@@ -298,7 +298,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
                 baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (*(context_.quantScaleRepoMode) == static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) {
-            supportedDtileSize += 
+            supportedDtileSize +=
                 baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) *
                     (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
