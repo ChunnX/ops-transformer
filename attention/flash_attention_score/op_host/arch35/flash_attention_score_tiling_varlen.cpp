@@ -15,8 +15,7 @@ namespace optiling {
 namespace FA {
 class FlashAttentionScoreTilingVarLen : public FlashAttentionScoreTilingRegbase {
 public:
-    explicit FlashAttentionScoreTilingVarLen(gert::TilingContext *context) :
-        FlashAttentionScoreTilingRegbase(context)
+    explicit FlashAttentionScoreTilingVarLen(gert::TilingContext *context) : FlashAttentionScoreTilingRegbase(context)
     {
         this->templateName = "VarLenConst";
         this->regbase = true;
@@ -29,12 +28,14 @@ protected:
     STemplateType s1TemplateType = STemplateType::STEMPLATEBOTTOM;
     STemplateType s2TemplateType = STemplateType::STEMPLATEBOTTOM;
 
-    ge::graphStatus CheckContext() override {
+    ge::graphStatus CheckContext() override
+    {
         FlashAttentionScoreTilingRegbase::CheckContext();
         return ge::GRAPH_SUCCESS;
     }
 
-    int64_t CalcTotalSize() override {
+    int64_t CalcTotalSize() override
+    {
         int64_t totalSize = bSize * n2Size * gSize * multiCoreParamsRegbase_->get_s1OuterSize();
         if (totalSize < static_cast<int64_t>(aicNum) && implMode != ImplMode::AA_INVALID_LINE_HIGH_PRECISION &&
             inputDtypeBytes != DATA_TYPE_FP32 && dBasicBlock <= NUM_256 && !hasRope) {
@@ -50,13 +51,14 @@ protected:
         return totalSize;
     }
 
-    void CalcDBasicBlock() override {
+    void CalcDBasicBlock() override
+    {
         /* 先确定D的基本块，确定的逻辑是按照64来分档 */
         dBasicBlock = AlignUp(dSize + dSizeRope, D_TEMPLATE_SPLIT_SIZE);
         /* dBasicBlock > 256 直接令D轴大小为768 */
         if (dBasicBlock > NUM_256) {
             dTemplateType = DTemplateType::ALIGNED_768;
-            return ; // 直接返回不往下走
+            return; // 直接返回不往下走
         }
         /* dBasicBlock <= 256, 根据对齐大小选择*/
         switch (dBasicBlock) {
@@ -106,13 +108,18 @@ protected:
                 if (actualSeqLenData[0] - actualSeqLenKvData[0] + qStartIdx - kvStartIdx == 0) {
                     continue;
                 } else {
-                    OP_LOGE(context_, "Inner pse sparse mode 8 is only supported when actualSeqLenData[0] %ld + qStartIdx %ld - actualSeqLenKvData[0] %ld - kvStartIdx %ld == 0.",
-                    actualSeqLenData[0], qStartIdx, actualSeqLenKvData[0], kvStartIdx);
+                    OP_LOGE(context_,
+                            "Inner pse sparse mode 8 is only supported when actualSeqLenData[0] %ld + qStartIdx %ld - "
+                            "actualSeqLenKvData[0] %ld - kvStartIdx %ld == 0.",
+                            actualSeqLenData[0], qStartIdx, actualSeqLenKvData[0], kvStartIdx);
                     return false;
                 }
             }
             if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
-                OP_LOGE(context_, "Inner pse sparse mode 8 is only supported when actualSeqQLen[%ld] %ld and actualSeqKvLen[%ld] %ld are equal.", i, actualSeqLenData[i], i, actualSeqLenKvData[i]);
+                OP_LOGE(context_,
+                        "Inner pse sparse mode 8 is only supported when actualSeqQLen[%ld] %ld and actualSeqKvLen[%ld] "
+                        "%ld are equal.",
+                        i, actualSeqLenData[i], i, actualSeqLenKvData[i]);
                 return false;
             }
         }
@@ -127,16 +134,19 @@ protected:
         }
         if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-            OP_CHECK_IF(inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "INNER Pse does not support sparse mode 7."), return false);
+            OP_CHECK_IF(inputParamsRegbase_->get_sparseType() ==
+                            static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND),
+                        OPS_REPORT_VECTOR_INNER_ERR(opName, "INNER Pse does not support sparse mode 7."), return false);
             if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND_LEFT_UP_CAUSAL)) {
                 OP_CHECK_IF(!SetBandLeftUpCausalPseParamsRegbase(),
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "Inner pse sparse mode 8 param set error."), return false);
+                            OPS_REPORT_VECTOR_INNER_ERR(opName, "Inner pse sparse mode 8 param set error."),
+                            return false);
                 return true;
             }
             for (int64_t i = 0L; i < bSize; ++i) {
                 if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
-                    OP_LOGE(context_, "Inner pse alibi is only support when actualSeqQLen and actualSeqKvLen are equal.");
+                    OP_LOGE(context_,
+                            "Inner pse alibi is only support when actualSeqQLen and actualSeqKvLen are equal.");
                     return false;
                 }
             }
@@ -155,10 +165,10 @@ protected:
                     return false;
                 }
             }
-            OP_CHECK_IF(inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
-                           inputParamsRegbase_->get_sparseType() !=
-                               static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Pse alibi only support causal sparse type."), return false);
+            OP_CHECK_IF(
+                inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
+                    inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "Pse alibi only support causal sparse type."), return false);
             pseEncodeType = PseEncodeType::PSE_ENCODE_ALIBI_S2_FULL;
             OP_LOGD(context_, "[%s] PSE_ENCODE_ALIBI_S2_FULL.", templateName);
         }
@@ -171,30 +181,33 @@ protected:
     uint64_t GetTilingKey() const override
     {
         uint8_t pseMode = hasPse ? static_cast<uint8_t>(pseType) : static_cast<uint8_t>(PseType::PSE_NONE_TYPE);
-        OP_LOGD(opName, "TND TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
-            "pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, regbase:%d, optionalDn:%d",
-            static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
-            static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType), pseMode, hasAttenMask,
-            hasDropOut, hasRope, static_cast<uint8_t>(regbase), optionalDn);
+        OP_LOGD(opName,
+                "TND TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
+                "pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, regbase:%d, optionalDn:%d",
+                static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
+                static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType), pseMode, hasAttenMask,
+                hasDropOut, hasRope, static_cast<uint8_t>(regbase), optionalDn);
 
         // Const 128
         if (dTemplateType == dVTemplateType) {
             return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
-                static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-                static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED),
-                pseMode, hasAttenMask, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
-                static_cast<uint8_t>(regbase), optionalDn);
+                                      static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
+                                      static_cast<uint16_t>(dTemplateType),
+                                      static_cast<uint16_t>(DTemplateType::NONALIGNED), pseMode, hasAttenMask,
+                                      hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
+                                      static_cast<uint8_t>(regbase), optionalDn);
         }
         return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
-            static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
-            hasDropOut, hasRope, 0, static_cast<uint8_t>(regbase), optionalDn);
+                                  static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
+                                  static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode,
+                                  hasAttenMask, hasDropOut, hasRope, 0, static_cast<uint8_t>(regbase), optionalDn);
     }
 
     void AnalyzeOptionalDn() override
     {
-        if ((hasAttenMask && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)
-            && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) ||
+        if ((hasAttenMask &&
+             attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE) &&
+             attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) ||
             !hasAttenMask || hasPse || hasRope || hasDropOut || inputDtypeBytes == DATA_TYPE_FP32 ||
             inputDtypeBytes == DATA_TYPE_FP8 || dTemplateType > DTemplateType::ALIGNED_256 ||
             dTemplateType != dVTemplateType || s1TemplateType == STemplateType::ALIGNED_64) {
@@ -206,7 +219,7 @@ protected:
             s1TotalLen += actualSeqLenData[i];
             s2TotalLen += actualSeqLenKvData[i];
         }
-        
+
         int64_t s1AvgLen = s1TotalLen / bSize;
         int64_t s2AvgLen = s2TotalLen / bSize;
         if (s1AvgLen < NUM_1536 || s2AvgLen < NUM_1536) {
@@ -214,7 +227,7 @@ protected:
         }
         optionalDn = true;
     }
-    
+
     bool IsCapable() override
     {
         if (npuArch != NpuArch::DAV_3510) {
@@ -239,7 +252,8 @@ protected:
         multiCoreParamsRegbase_->set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
         multiCoreParamsRegbase_->set_totalSize(totalSize);
         multiCoreParamsRegbase_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
-        multiCoreParamsRegbase_->set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParamsRegbase_->get_splitFactorSize()));
+        multiCoreParamsRegbase_->set_splitFactorTailSize(
+            CalcTailSize(totalSize, multiCoreParamsRegbase_->get_splitFactorSize()));
     }
 
     ge::graphStatus GetWorkspaceSize() override
@@ -260,8 +274,8 @@ protected:
         }
         bmm2Bytes = AlignUp(bmm2Bytes, GM_ALIGN);
         vec2Bytes = AlignUp(vec2Bytes, GM_ALIGN);
-        workspaces[0] = static_cast<size_t>(((bmm2Bytes + vec2Bytes) * PING_PONG_VALUE) *
-            multiCoreParamsRegbase_->get_coreNum());
+        workspaces[0] =
+            static_cast<size_t>(((bmm2Bytes + vec2Bytes) * PING_PONG_VALUE) * multiCoreParamsRegbase_->get_coreNum());
         return ge::GRAPH_SUCCESS;
     }
 
@@ -281,7 +295,7 @@ protected:
             }
             if (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i]) {
                 OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", i,
-                            actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
+                        actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
                 return false;
             }
         }
@@ -300,9 +314,9 @@ protected:
         int64_t lastS2 = actualSeqLenKvData[bandIndex];
         if (preTokens < lastS2 || nextTokens > 0) {
             OP_LOGE(context_,
-                        "RightDownCausal_Band mode: pre_tokens[%ld] is smaller than last valid s2[%ld]"
-                        "or next_tokens[%ld] is larger than 0, wrong config.",
-                        preTokens, lastS2, nextTokens);
+                    "RightDownCausal_Band mode: pre_tokens[%ld] is smaller than last valid s2[%ld]"
+                    "or next_tokens[%ld] is larger than 0, wrong config.",
+                    preTokens, lastS2, nextTokens);
             return false;
         }
         for (int64_t i = 0L; i < bSize; ++i) {
@@ -311,12 +325,12 @@ protected:
             }
             if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                 OP_LOGE(context_, "Batch[%ld] s1[%ld] is larger than s2[%ld].", i, actualSeqLenData[i],
-                            actualSeqLenKvData[i]);
+                        actualSeqLenKvData[i]);
                 return false;
             }
             if ((i == bandIndex) && (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i])) {
                 OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", i,
-                            actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
+                        actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
                 return false;
             }
         }
@@ -329,9 +343,9 @@ protected:
         if (sparseMode == static_cast<int64_t>(SparseMode::ALL_MASK)) {
             if (preTokens < s1Size - 1 || nextTokens < s2Size - 1) {
                 OP_LOGW(context_,
-                          "preTokens[%ld] and nextTokens[%ld] not match sparseMode[%ld], "
-                          "preTokens and nextTokens will be reset max int value.",
-                          preTokens, nextTokens, sparseMode);
+                        "preTokens[%ld] and nextTokens[%ld] not match sparseMode[%ld], "
+                        "preTokens and nextTokens will be reset max int value.",
+                        preTokens, nextTokens, sparseMode);
                 preTokens = std::numeric_limits<int32_t>::max();
                 nextTokens = std::numeric_limits<int32_t>::max();
             }
@@ -344,7 +358,7 @@ protected:
             for (int64_t i = 0L; i < bSize; ++i) {
                 if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                     OP_LOGE(context_, "Batch[%ld] s1[%ld] is larger than s2[%ld], exist invalid row.", i,
-                              actualSeqLenData[i], actualSeqLenKvData[i]);
+                            actualSeqLenData[i], actualSeqLenKvData[i]);
                     return false;
                 }
             }
@@ -353,23 +367,23 @@ protected:
             sparseType = SparseEnum::RIGHT_DOWN_CAUSAL;
         } else if (sparseMode == static_cast<int64_t>(SparseMode::BAND)) {
             OP_CHECK_IF(!CheckBandPretokenAndNexttoken(sparseType),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Check band mode pre_tokens and next_tokens fail."),
-                       return false);
+                        OPS_REPORT_VECTOR_INNER_ERR(opName, "Check band mode pre_tokens and next_tokens fail."),
+                        return false);
         } else if (sparseMode == static_cast<int64_t>(SparseMode::RIGHT_DOWN_CAUSAL_BAND)) {
             OP_CHECK_IF(!CheckRightDownCausalBandPretokenAndNexttoken(sparseType),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName,
-                       "Check right down causal band mode pre_tokens and next_tokens fail."),
-                       return false);
+                        OPS_REPORT_VECTOR_INNER_ERR(
+                            opName, "Check right down causal band mode pre_tokens and next_tokens fail."),
+                        return false);
         } else if (sparseMode == static_cast<int64_t>(SparseMode::BAND_LEFT_UP_CAUSAL)) {
             if (actualSeqLenData[bandIndex] - nextTokens > actualSeqLenKvData[bandIndex]) {
                 OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", bandIndex,
-                          actualSeqLenData[0], actualSeqLenKvData[0], nextTokens);
+                        actualSeqLenData[0], actualSeqLenKvData[0], nextTokens);
                 return false;
             }
             int64_t firstS2 = actualSeqLenKvData[bandIndex];
             if (preTokens < firstS2) {
                 OP_LOGE(context_, "Band_LeftUpCausal mode: pre_tokens[%ld] is smaller than first valid s2[%ld].",
-                          preTokens, firstS2);
+                        preTokens, firstS2);
                 return false;
             }
             sparseType = SparseEnum::BAND_LEFT_UP_CAUSAL;
@@ -377,8 +391,7 @@ protected:
         return true;
     }
 
-    bool SparseNoMaskModeCheck(int64_t maxS1Val, int64_t maxS2Val, int64_t minS2Val,
-                               SparseEnum &sparseType)
+    bool SparseNoMaskModeCheck(int64_t maxS1Val, int64_t maxS2Val, int64_t minS2Val, SparseEnum &sparseType)
     {
         if (nextTokens < 0) {
             OP_LOGE(context_, "nextTokens[%ld] config error, there is no valid data block.", nextTokens);
@@ -393,7 +406,7 @@ protected:
             }
             if (actualSeqLenKvData[i] + preTokens < actualSeqLenData[i]) {
                 OP_LOGE(context_, "Batch[%ld] s1[%ld] s2[%ld] has invalid row, check pre_tokens and next_tokens.", i,
-                          actualSeqLenData[i], actualSeqLenKvData[i]);
+                        actualSeqLenData[i], actualSeqLenKvData[i]);
                 return false;
             }
         }
@@ -413,8 +426,8 @@ protected:
                 return true;
             } else {
                 OP_LOGE(context_,
-                          "preTokens[%ld] and nextTokens[%ld] config error with S[%ld], has invalid data block.",
-                          preTokens, nextTokens, minS2Val);
+                        "preTokens[%ld] and nextTokens[%ld] config error with S[%ld], has invalid data block.",
+                        preTokens, nextTokens, minS2Val);
                 return false;
             }
         }
@@ -425,28 +438,28 @@ protected:
     {
         auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
         if (prefixN == nullptr) {
-            OP_LOGE(context_, "[%s] prefixN is null pointer while sparse mode is prefix compress", templateName);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "prefixN");
             return false;
         }
 
         auto &prefixShape = prefixN->GetShape().GetStorageShape();
         if (prefixShape.GetDimNum() != 1) {
             OP_LOGE(context_, "[%s] prefixN shape is invalid, DimNum should be 1, but it is %lu.", templateName,
-                      prefixShape.GetDimNum());
+                    prefixShape.GetDimNum());
             return false;
         }
         if (prefixShape.GetDim(0) != bSize) {
             OP_LOGE(context_,
-                      "[%s] prefixN is invalid, it should be the same size as bSize[%ld], but it "
-                      "is %ld.",
-                      templateName, bSize, prefixShape.GetDim(0));
+                    "[%s] prefixN is invalid, it should be the same size as bSize[%ld], but it "
+                    "is %ld.",
+                    templateName, bSize, prefixShape.GetDim(0));
             return false;
         }
 
         /* Get Data from tensor. */
         prefixNData = prefixN->GetData<int64_t>();
         if (prefixNData == nullptr) {
-            OP_LOGE(context_, "[%s] prefixN data is null pointer", templateName);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "prefixNData");
             return false;
         }
 
@@ -454,7 +467,7 @@ protected:
             if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                 if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
                     OP_LOGE(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [0, %ld]",
-                              templateName, i, prefixNData[i], actualSeqLenKvData[i]);
+                            templateName, i, prefixNData[i], actualSeqLenKvData[i]);
                     return false;
                 }
                 if (prefixNData[i] == 0) {
@@ -465,8 +478,8 @@ protected:
                 if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
                     prefixNData[i] > actualSeqLenKvData[i]) {
                     OP_LOGE(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [%ld, %ld]",
-                              templateName, i, prefixNData[i], actualSeqLenKvData[i] - actualSeqLenData[i],
-                              actualSeqLenKvData[i]);
+                            templateName, i, prefixNData[i], actualSeqLenKvData[i] - actualSeqLenData[i],
+                            actualSeqLenKvData[i]);
                     return false;
                 }
             }
@@ -493,9 +506,8 @@ protected:
 
     bool GetSparseInfo(SparseEnum &sparseType) override
     {
-        OP_LOGD(context_,
-                  "check sparse feature: preTokens[%ld], nextTokens[%ld], s1[%ld], s2[%ld], attenMaskExist[%d]",
-                  preTokens, nextTokens, s1Size, s2Size, hasAttenMask);
+        OP_LOGD(context_, "check sparse feature: preTokens[%ld], nextTokens[%ld], s1[%ld], s2[%ld], attenMaskExist[%d]",
+                preTokens, nextTokens, s1Size, s2Size, hasAttenMask);
         if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX) ||
             sparseMode > static_cast<int64_t>(SparseMode::BAND_LEFT_UP_CAUSAL)) {
             OP_LOGE(context_, "Var len not support sparse mode %ld.", sparseMode);
@@ -557,10 +569,10 @@ protected:
             IsUseSplitCoreMode(SparseMode::LEFT_UP_CAUSAL)) {
             splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
         } else if ((sparseMode == static_cast<int64_t>(SparseMode::RIGHT_DOWN_CAUSAL)) &&
-            IsUseSplitCoreMode(SparseMode::RIGHT_DOWN_CAUSAL)) {
+                   IsUseSplitCoreMode(SparseMode::RIGHT_DOWN_CAUSAL)) {
             splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
         } else if (sparseMode == static_cast<int64_t>(SparseMode::ALL_MASK) &&
-            IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
+                   IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
             splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
         } else if (sparseMode == static_cast<int64_t>(SparseMode::NO_MASK)) {
             if (!hasAttenMask && IsUseSplitCoreMode(SparseMode::ALL_MASK)) {
@@ -574,7 +586,7 @@ protected:
         multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(firstFullLoadS1OuterIdx);
 
         OP_LOGD(context_, "sparseMode: %ld, firstFullLoadS1OuterIdx: %ld, splitCoreMode: %d, s2SizeThreshold: %d.",
-            sparseMode, firstFullLoadS1OuterIdx, splitCoreMode, thresholdS2Size);
+                sparseMode, firstFullLoadS1OuterIdx, splitCoreMode, thresholdS2Size);
     }
 
     int64_t GetS2RealSize(uint8_t sparseType, int32_t bOutIdx, int64_t s1OutIdx)
@@ -594,8 +606,8 @@ protected:
     {
         (void)bIdx;
         OP_CHECK_IF(sparseValidArray.size() == 0,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."),
-                   return false);
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."),
+                    return false);
 
         // 特殊系数, 代表s2Size=[128, 256, 384, 512, 640, 768, 896, 1024] 对应的真实耗时膨胀值
         // 如 {256, 384, 512, 640, 768, 896, 960, 1024}; {384, 512, 640, 768, 832, 896, 960, 1024};
@@ -633,8 +645,8 @@ protected:
                      std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx)
     {
         // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-        int64_t validAivNum = std::min(static_cast<int64_t>(multiCoreParamsRegbase.get_coreNum()),
-                                       static_cast<int64_t>(aicNum));
+        int64_t validAivNum =
+            std::min(static_cast<int64_t>(multiCoreParamsRegbase.get_coreNum()), static_cast<int64_t>(aicNum));
         int64_t totalSize = multiCoreParamsRegbase.get_totalSize();
         int64_t maxVal = *std::max_element(localValue.begin(), localValue.end());
         int64_t tmpMaxVal = maxVal;
@@ -699,13 +711,13 @@ protected:
     {
         (void)maxCoreNum;
         // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-        int64_t validAivNum = std::min(static_cast<int64_t>(multiCoreParamsRegbase.get_coreNum()),
-                                       static_cast<int64_t>(aicNum));
+        int64_t validAivNum =
+            std::min(static_cast<int64_t>(multiCoreParamsRegbase.get_coreNum()), static_cast<int64_t>(aicNum));
         int64_t totalSize = multiCoreParamsRegbase.get_totalSize(); // BN2GS1.o
         int64_t *sparseStartIdx = multiCoreParamsRegbase.get_sparseStartIdxPtr();
 
         OP_CHECK_IF(totalSize <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "totalSize should be larger than 0."),
-                   return false);
+                    return false);
 
         // initLoad: 使用均分策略, 保证后续不会比均分差
         int64_t splitFactorSize = multiCoreParamsRegbase.get_splitFactorSize();
@@ -735,7 +747,8 @@ protected:
             if ((start + 1) < tmpsparseStartIdx[idx]) {
                 int64_t redoSingleLoadValue = singleLoadValue - sparseValidArray[tmpsparseStartIdx[idx] - 1];
                 tmpsparseStartIdx[idx] = ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) ?
-                                         (tmpsparseStartIdx[idx] - 1) : (tmpsparseStartIdx[idx]);
+                                             (tmpsparseStartIdx[idx] - 1) :
+                                             (tmpsparseStartIdx[idx]);
                 singleLoadValue = ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) ? redoSingleLoadValue :
                                                                                                   singleLoadValue;
                 sparseArraySum -= singleLoadValue;
@@ -781,6 +794,7 @@ protected:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingVarLen, static_cast<int32_t>(NpuArch::DAV_3510), 82);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingVarLen,
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 82);
 } // namespace FA
 } // namespace optiling
