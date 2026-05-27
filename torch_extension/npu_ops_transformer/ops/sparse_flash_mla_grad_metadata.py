@@ -28,7 +28,7 @@ class SparseFlashMlaGradMetadataOpBuilder(OpBuilder):
             "*, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, Tensor? cu_seqlens_cmp_kv=None, " \
             "Tensor? seqused_q=None, Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, " \
             "Tensor? cmp_residual_kv=None, Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, " \
-            "int batch_size=None, int max_seqlen_q=None, int max_seqlen_kv=None, " \
+            "int batch_size=None, int max_seqlen_q=None, int max_seqlen_ori_kv=None, int max_seqlen_cmp_kv=None, " \
             "int ori_topk=None, int cmp_topk=None, int cmp_ratio=None, int ori_mask_mode=0, int cmp_mask_mode=0," \
             "int ori_win_left=-1, int ori_win_right=-1, " \
             "str layout_q=\"BSND\", str layout_kv=\"BSND\", bool has_ori_kv=True, bool has_cmp_kv=True," \
@@ -42,7 +42,7 @@ class SparseFlashMlaGradMetadataOpBuilder(OpBuilder):
             *, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
             seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
             cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-            batch_size=None, max_seqlen_q=None, max_seqlen_kv=None,
+            batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
             ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
             ori_win_left=-1, ori_win_right=-1,
             layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True,
@@ -59,7 +59,7 @@ def npu_sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         *, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
                                         seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
                                         cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-                                        batch_size=None, max_seqlen_q=None, max_seqlen_kv=None,
+                                        batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
                                         ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
                                         ori_win_left=-1, ori_win_right=-1,
                                         layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True,
@@ -73,7 +73,7 @@ def npu_sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
                                         seqused_q, seqused_ori_kv, seqused_cmp_kv,
                                         cmp_residual_kv, ori_topk_length, cmp_topk_length,
-                                        batch_size, max_seqlen_q, max_seqlen_kv,
+                                        batch_size, max_seqlen_q, max_seqlen_ori_kv, max_seqlen_cmp_kv,
                                         ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode,
                                         ori_win_left, ori_win_right,
                                         layout_q, layout_kv, has_ori_kv, has_cmp_kv,
