@@ -783,7 +783,7 @@ public:
         }
     }
 
-    __aicore__ inline void S1OutSplitUpdatePos(uint32_t &bN2Cur, uint32_t &gS1Cur)
+    __aicore__ inline void S1OutSplitUpdateAxis(uint32_t &bN2Cur, uint32_t &gS1Cur)
     {
         if (coreGS1Loops >= varlenCalcTimes || bN2Cur >= constInfo.n2Size * constInfo.bSize) {
             return;
@@ -871,7 +871,7 @@ public:
             if (taskDealMode != TASK_DEAL_MODE::SKIP_S1OUT) {
                 coreGS1Loops++;
             }
-            S1OutSplitUpdatePos(bN2Cur, gS1Cur);
+            S1OutSplitUpdateAxis(bN2Cur, gS1Cur);
             return;
         }
 
