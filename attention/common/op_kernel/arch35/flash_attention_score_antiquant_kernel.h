@@ -24,7 +24,6 @@ const int VC_L1_EVENT[2] = {6, 7};
 const int VC_MM1RES_EVENT[2] = {8, 9};
 const int VC_MM2RES_EVENT[2] = {10, 15};
 
-const int ANTI_VMTE2_EVENT = 6;
 
 #include "util_regbase.h"
 
