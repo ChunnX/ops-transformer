@@ -39,8 +39,8 @@ private:
     int32_t last_kv_seq_sum_{0};  // 上一个batch的kv_seq_len的累加和
     int32_t cube_core_idx_{0};    // 实际cube核的Idx
     int32_t cube_core_num_{0};    // cube核的数量
-    int32_t single_s1_len_{0};    // 每个cube核计算的s1方向的长度
-    int32_t single_s2_len_{0};    // 每个cube核计算的s2方向的长度
+    int32_t base_m_{0};           // 每个cube核计算的s1方向的长度
+    int32_t base_n_{0};           // 每个cube核计算的s2方向的长度
     int32_t current_loop_{0};     // 当前循环次数(包括sparse跳过的计算)
     int32_t current_cube_idx_{0}; // 当前cube计算到的位置
 
@@ -57,8 +57,8 @@ public:
         this->cube_core_num_ = tilingData->cubeCoreNum;
         this->actualQseqlen_ = actualQseqlen;
         this->actualKvseqlen_ = actualKvseqlen;
-        this->single_s1_len_ = 512;
-        this->single_s2_len_ = 512;
+        this->base_m_ = tilingData->baseM;
+        this->base_n_ = tilingData->baseN;
         UpdateSeqLen();
 
         if ASCEND_IS_AIC {
@@ -67,19 +67,13 @@ public:
         if ASCEND_IS_AIV {
             this->cube_core_idx_ = GetBlockIdx() / 2;
         }
-
-
-        printf("batch_num: %d, q_seq_len: %d, kv_seq_len: %d, q_group: %d, q_head_num: %d, kv_head_num: %d, head_dim: "
-               "%d\n",
-               batch_num_, q_seq_len_, kv_seq_len_, q_group_, q_head_num_, kv_head_num_, head_dim_);
     }
 
-    __aicore__ inline void GetRunTimeInfo(RunTimeInfo *runTimeInfo)
+    __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
+        runTimeInfo.need_compute = 0;
         while (true) {
             if (InitStartIdx()) {
-                runTimeInfo->loop_finish = 1;
-                printf("loop finish\n");
                 break;
             }
 
@@ -117,8 +111,8 @@ private:
     __aicore__ inline bool InitStartIdx()
     {
         // 遍历顺序 s2->s1->n1->batch
-        int32_t recoderS1 = GetRecoderS(s1Idx_, cur_q_seq_len_, single_s1_len_);
-        int32_t recoderS2 = GetRecoderS(s2Idx_, cur_kv_seq_len_, single_s2_len_);
+        int32_t recoderS1 = GetRecoderS(s1Idx_, cur_q_seq_len_, base_m_);
+        int32_t recoderS2 = GetRecoderS(s2Idx_, cur_kv_seq_len_, base_n_);
 
         if (unlikely(current_loop_ == 0)) {
             return false;
@@ -154,31 +148,32 @@ private:
         return true;
     }
 
-    __aicore__ inline void RunTimeInfoRecord(RunTimeInfo *runTimeInfo)
+    __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo)
     {
         if (current_cube_idx_ % cube_core_num_ != cube_core_idx_) {
             current_cube_idx_++;
             return;
         }
-        s1Len_ = GetRecoderS(s1Idx_, cur_q_seq_len_, single_s1_len_);
-        s2Len_ = GetRecoderS(s2Idx_, cur_kv_seq_len_, single_s2_len_);
+        s1Len_ = GetRecoderS(s1Idx_, cur_q_seq_len_, this->base_m_);
+        s2Len_ = GetRecoderS(s2Idx_, cur_kv_seq_len_, this->base_n_);
         int32_t n2Idx = n1Idx_ / q_group_;
-        runTimeInfo->bIdx = bIdx_;
-        runTimeInfo->s1Idx = s1Idx_;
-        runTimeInfo->s2Idx = s2Idx_;
-        runTimeInfo->n1Idx = n1Idx_;
-        runTimeInfo->n2Idx = n2Idx;
-        runTimeInfo->s1Len = s1Len_;
-        runTimeInfo->s2Len = s2Len_;
-        runTimeInfo->s1LenAlign = RoundUp(s1Len_, 16);
-        runTimeInfo->s2LenAlign = RoundUp(s2Len_, 16);
-        runTimeInfo->queryGmOffset = GetQueryGmOffset(last_q_seq_sum_, q_head_num_, head_dim_, s1Idx_, n1Idx_);
-        runTimeInfo->keyGmOffset = GetKeyGmOffset(last_kv_seq_sum_, kv_head_num_, head_dim_, s2Idx_, n2Idx);
-        runTimeInfo->lseGmOffset = GetLseGmOffset(last_q_seq_sum_, q_head_num_, s1Idx_, n1Idx_);
+        runTimeInfo.bIdx = bIdx_;
+        runTimeInfo.s1Idx = s1Idx_;
+        runTimeInfo.s2Idx = s2Idx_;
+        runTimeInfo.n1Idx = n1Idx_;
+        runTimeInfo.n2Idx = n2Idx;
+        runTimeInfo.s1Len = s1Len_;
+        runTimeInfo.s2Len = s2Len_;
+        runTimeInfo.s1LenAlign = RoundUp(s1Len_, 16);
+        runTimeInfo.s2LenAlign = RoundUp(s2Len_, 16);
+        runTimeInfo.queryGmOffset = GetQueryGmOffset(last_q_seq_sum_, q_head_num_, head_dim_, s1Idx_, n1Idx_);
+        runTimeInfo.keyGmOffset = GetKeyGmOffset(last_kv_seq_sum_, kv_head_num_, head_dim_, s2Idx_, n2Idx);
+        runTimeInfo.lseGmOffset = GetLseGmOffset(last_q_seq_sum_, q_head_num_, s1Idx_, n1Idx_);
+        runTimeInfo.need_compute = 1;
         current_cube_idx_++;
 
-        printf("cube_core_idx: %d, bIdx: %d, s1Idx: %d, s2Idx: %d, s1Len: %d, s2Len: %d\n", cube_core_idx_, bIdx_,
-               s1Idx_, s2Idx_, s1Len_, s2Len_);
+        // printf("cube_core_idx: %d, bIdx: %d, s1Idx: %d, s2Idx: %d, s1Len: %d, s2Len: %d\n", cube_core_idx_, bIdx_,
+        //        s1Idx_, s2Idx_, s1Len_, s2Len_);
     }
 };
 } // namespace BSA_ARC35
