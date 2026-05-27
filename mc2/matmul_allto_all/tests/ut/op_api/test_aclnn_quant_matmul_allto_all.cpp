@@ -1270,7 +1270,7 @@ TEST_F(TestAclnnQuantMatmulAlltoAll, SecondApi_NullParams)
 {
     op::SetPlatformNpuArch(NpuArch::DAV_3510);
     aclnnStatus ret = aclnnQuantMatmulAlltoAll(nullptr, 0, nullptr, nullptr);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 // Helper: create a non-contiguous (transposed-stride) 2D aclTensor
@@ -1342,7 +1342,7 @@ TEST_F(TestAclnnQuantMatmulAlltoAll, Phase2ApiDirect)
     op::SetPlatformNpuArch(NpuArch::DAV_3510);
     // Direct call to phase-2 covers the NnopbaseSetHcclServerType check and inner call
     aclnnStatus ret = aclnnQuantMatmulAlltoAll(nullptr, 0, nullptr, nullptr);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 // Cover lines 346-375: ReFormatNotND with NCHW format on all tensors

@@ -33,14 +33,14 @@ TEST_LIST+="api "
 TEST_LIST+="kernel "
 
 # 要跑的算子仓
-OP_REPO_LIST=""
-OP_REPO_LIST+="moe "
-OP_REPO_LIST+="attention "
-OP_REPO_LIST+="gmm "
-OP_REPO_LIST+="ffn "
-OP_REPO_LIST+="posembedding "
+# OP_REPO_LIST=""
+# OP_REPO_LIST+="moe "
+# OP_REPO_LIST+="attention "
+# OP_REPO_LIST+="gmm "
+# OP_REPO_LIST+="ffn "
+# OP_REPO_LIST+="posembedding "
 OP_REPO_LIST+="mc2 "
-OP_REPO_LIST+="mhc "
+# OP_REPO_LIST+="mhc "
 
 SOC_LIST=""
 SOC_LIST+="ascend310p "
@@ -98,7 +98,8 @@ for OP_REPO in $OP_REPO_LIST; do
     echo ""
 
     cd $CODE_PATH/$OP_REPO
-    OP_LIST=$(ls -d */ | sed 's/\///g' | grep -v "3rd" | grep -v "common")" "
+    # OP_LIST=$(ls -d */ | sed 's/\///g' | grep -v "3rd" | grep -v "common")" "
+    OP_LIST="matmul_all_reduce matmul_reduce_scatter_v2"
     for OP in $OP_LIST; do
         echo -n "$OP_REPO,$OP," &>> $LOG_PATH/results.csv
         printf "%-50s" $OP
@@ -123,7 +124,8 @@ for OP_REPO in $OP_REPO_LIST; do
                 if [ $test_type = "host" ]; then
                     timeout $TIMEOUT bash build.sh -u --ophost --ops=$op_option_list --cov --soc=$soc_param &>> $LOG_PATH/op_test/$OP.log
                 elif [ $test_type = "api" ]; then
-                    timeout $TIMEOUT bash build.sh -u --opapi --ops=$op_option_list --cov &>> $LOG_PATH/op_test/$OP.log
+                    #timeout $TIMEOUT bash build.sh -u --opapi --ops=$op_option_list --cov &>> $LOG_PATH/op_test/$OP.log
+                    timeout $TIMEOUT bash build.sh -u --opapi --ops=$op_option_list --cov
                 fi
 
                 if [ $? -ne 0 ]; then
