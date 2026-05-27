@@ -53,7 +53,7 @@ public:
                                             __gm__ xScaleType *xScale);
     __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
                                       const LocalTensor<biasType> &biasL1);
-    __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
+    __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize, uint64_t kMutilLoadL1Size,
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
@@ -289,7 +289,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const Bas
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1,
-                                                                  int64_t kbOffset, uint64_t kbL1RealSize,
+                                                                  int64_t kbOffset, uint64_t kbL1RealSize, uint64_t kMutilLoadL1Size,
                                                                   uint64_t cvLoopIdx,
                                                                   const BasicBlockOffsetParam &param)
 {
@@ -306,7 +306,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTens
     l0CopyAndCalcParams.kL1Size = param.kaL1Size;
     l0CopyAndCalcParams.nL0Size = param.nL1Size;
     l0CopyAndCalcParams.nL1Size = param.nL1Size;
-    l0CopyAndCalcParams.scaleKL1Size = CeilAlign(kbL1RealSize, K_ALIGNMENT64);
+    l0CopyAndCalcParams.scaleKL1Size = kMutilLoadL1Size;
     uint64_t mL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t nL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     if (kbOffset == 0) {
