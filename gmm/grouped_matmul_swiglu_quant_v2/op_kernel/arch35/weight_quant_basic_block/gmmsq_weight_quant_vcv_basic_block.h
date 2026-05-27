@@ -244,8 +244,8 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockOffsetParam 
                                     curOffsetParam.kSize - kbL1Offset :
                                     curOffsetParam.kbL1Size;
         if (kbL1Offset % MX_SCALE_K_L1_SIZE == 0){
-            kMutilLoadL1Size = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
-                                    CeilAlign(param.kSize - kbL1Offset, K_ALIGNMENT64) :
+            kMutilLoadL1Size = (kbL1Offset + MX_SCALE_K_L1_SIZE) > curOffsetParam.kSize ?
+                                    CeilAlign(curOffsetParam.kSize - kbL1Offset, K_ALIGNMENT64) :
                                     MX_SCALE_K_L1_SIZE;
         }
         cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset);
