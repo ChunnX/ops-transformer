@@ -15,6 +15,7 @@
 
 #include "kernel_operator.h"
 #include "fused_floyd_attention_s1s2_bn2gs1.h"
+#include "fused_floyd_attention_s1s2_bn2gs1special.h"
 
 using namespace AscendC;
 
@@ -130,6 +131,16 @@ fused_floyd_attention(__gm__ uint8_t *query, __gm__ uint8_t *key_1, __gm__ uint8
                                   LayOutTypeEnum::LAYOUT_BNSD, false, false, false, half, float, true, CubeFormat::ND,
                                   false);
         return;
+    } else if (TILING_KEY_IS(10000000000022030953UL)) {
+        INVOKE_FA_GENERAL_OP_IMPL(FusedFloydAttentionS1s2Bn2gs1Special, ImplModeEnum::AA_HIGH_PRECISION,
+                            LayOutTypeEnum::LAYOUT_BNSD, false, false, false, half, float, true, CubeFormat::ND,
+                            false);
+        return;
+    } else if (TILING_KEY_IS(10000000001022030953UL)) {
+        INVOKE_FA_GENERAL_OP_IMPL(FusedFloydAttentionS1s2Bn2gs1Special, ImplModeEnum::AA_HIGH_PRECISION,
+                                  LayOutTypeEnum::LAYOUT_BNSD, false, true, false, half, float, true, CubeFormat::ND,
+                                  false);
+        return;
     }
 #endif
 
@@ -142,6 +153,16 @@ fused_floyd_attention(__gm__ uint8_t *query, __gm__ uint8_t *key_1, __gm__ uint8
     } else if (TILING_KEY_IS(10000000000022030943UL)) {
         INVOKE_FA_GENERAL_OP_IMPL(FusedFloydAttentionS1s2Bn2gs1, ImplModeEnum::AA_HIGH_PRECISION,
                                   LayOutTypeEnum::LAYOUT_BNSD, false, false, false, bfloat16_t, float, true, CubeFormat::ND,
+                                  false);
+        return;
+    } else if (TILING_KEY_IS(10000000000022030953UL)) {
+        INVOKE_FA_GENERAL_OP_IMPL(FusedFloydAttentionS1s2Bn2gs1Special, ImplModeEnum::AA_HIGH_PRECISION,
+                            LayOutTypeEnum::LAYOUT_BNSD, false, false, false, bfloat16_t, float, true, CubeFormat::ND,
+                            false);
+        return;
+    } else if (TILING_KEY_IS(10000000001022030953UL)) {
+        INVOKE_FA_GENERAL_OP_IMPL(FusedFloydAttentionS1s2Bn2gs1Special, ImplModeEnum::AA_HIGH_PRECISION,
+                                  LayOutTypeEnum::LAYOUT_BNSD, false, true, false, bfloat16_t, float, true, CubeFormat::ND,
                                   false);
         return;
     }
