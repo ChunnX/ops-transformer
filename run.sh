@@ -36,7 +36,7 @@ source /home/dpu_ascend/set_env.sh
 git pull
 
 # 后台执行编译，捕获子进程PID
-bash  build.sh -j128  --pkg --soc=ascend950 --ops="moe_distribute_dispatch_v2" 2>&1 | tee compiler.log &
+bash  build.sh -j64  --pkg --soc=ascend950 --ops="moe_distribute_dispatch_v2" 2>&1 | tee compiler.log &
 BUILD_CHILD_PID=$!
 
 # 等待子进程执行，并捕获编译返回码
