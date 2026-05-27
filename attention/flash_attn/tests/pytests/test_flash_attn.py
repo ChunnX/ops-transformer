@@ -368,6 +368,51 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     return {"attn": attn_stats, "lse": lse_stats}
 
 
+def _build_result_row(name, res, max_name_len):
+    a = res["attn"]
+    l = res["lse"]
+    a_tag = "✓ PASS" if a["passed"] else "✗ FAIL"
+    l_tag = "✓ PASS" if l["passed"] else "✗ FAIL"
+    a_max = f"{a['max_abs']:.6f}" if a['total'] > 0 else "N/A"
+    a_fr  = f"{a['fail_ratio']*100:.4f}%" if a['total'] > 0 else "N/A"
+    l_max = f"{l['max_abs']:.6f}" if l['total'] > 0 else "---"
+    l_fr  = f"{l['fail_ratio']*100:.4f}%" if l['total'] > 0 else "---"
+    return (f"│  {name:<{max_name_len}}  "
+            f"{a_tag:>8}  {a_max:>12}  {a_fr:>10}  │  "
+            f"{l_tag:>8}  {l_max:>12}  {l_fr:>10}  │")
+
+
+def _print_results_table(results, total_cases, is_final=False):
+    """Print formatted results table. Returns (pass_cnt, fail_cnt)."""
+    SEP = "─" * 120
+    max_name_len = max((len(n) for n in results.keys()), default=28)
+    if is_final:
+        title = f"  汇总结果  ({len(results)} cases)"
+    else:
+        title = f"  中间统计结果  ({len(results)}/{total_cases} cases)"
+    print(f"\n┌{SEP}┐")
+    print(f"│{title}")
+    print(f"├{SEP}┤")
+    hdr = (f"│  {'Case':<{max_name_len}}  "
+           f"{'Attn':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │  "
+           f"{'LSE':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │")
+    print(hdr)
+    print(f"├{SEP}┤")
+    pass_cnt = fail_cnt = 0
+    for name, res in results.items():
+        print(_build_result_row(name, res, max_name_len))
+        both_pass = res["attn"]["passed"] and res["lse"]["passed"]
+        if both_pass: pass_cnt += 1
+        else:         fail_cnt += 1
+    print(f"├{SEP}┤")
+    if is_final:
+        print(f"│  通过: {pass_cnt}   失败: {fail_cnt}   共: {len(results)}")
+    else:
+        print(f"│  已执行: {len(results)}/{total_cases}  通过: {pass_cnt}  失败: {fail_cnt}")
+    print(f"└{SEP}┘")
+    return pass_cnt, fail_cnt
+
+
 # ─────────────────── main ───────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FlashAttn 精度测试（CPU vs GPU vs NPU）")
@@ -426,7 +471,7 @@ if __name__ == "__main__":
         print("[ERROR] 没有可运行的 case。"); sys.exit(1)
 
     results = {}
-    _int_pass, _int_fail, _int_cnt = 0, 0, 0
+    _int_cnt = 0
     for name in run_cases:
         _int_cnt += 1
         if NPU_AVAILABLE:
@@ -444,11 +489,8 @@ if __name__ == "__main__":
                                        "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
                               "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
                                        "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
-            _int_fail += 1
             if args.report_interval > 0 and _int_cnt % args.report_interval == 0 and _int_cnt < len(run_cases):
-                print(f"\n{'  **[中间统计]**'}")
-                print(f"  已执行: {_int_cnt}/{len(run_cases)}  通过: {_int_pass}  失败: {_int_fail}")
-                print()
+                _print_results_table(results, len(run_cases))
             continue
         kwargs["_use_gpu"] = args.use_gpu
 
@@ -475,43 +517,8 @@ if __name__ == "__main__":
                       "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
                                "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
         results[name] = passed
-        a, l = passed["attn"], passed["lse"]
-        if a["passed"] and l["passed"]:
-            _int_pass += 1
-        else:
-            _int_fail += 1
         if args.report_interval > 0 and _int_cnt % args.report_interval == 0 and _int_cnt < len(run_cases):
-            print(f"\n{'  **[中间统计]**'}")
-            print(f"  已执行: {_int_cnt}/{len(run_cases)}  通过: {_int_pass}  失败: {_int_fail}")
-            print()
+            _print_results_table(results, len(run_cases))
 
-    SEP = "─" * 120
-    print(f"\n┌{SEP}┐")
-    print(f"│  汇总结果  ({len(run_cases)} cases)")
-    print(f"├{SEP}┤")
-    max_name_len = max((len(n) for n in results.keys()), default=28)
-    hdr = (f"│  {'Case':<{max_name_len}}  "
-           f"{'Attn':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │  "
-           f"{'LSE':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │")
-    print(hdr)
-    print(f"├{SEP}┤")
-    pass_cnt = fail_cnt = 0
-    for name, res in results.items():
-        a = res["attn"]
-        l = res["lse"]
-        a_tag = "✓ PASS" if a["passed"] else "✗ FAIL"
-        l_tag = "✓ PASS" if l["passed"] else "✗ FAIL"
-        a_max = f"{a['max_abs']:.6f}" if a['total'] > 0 else "N/A"
-        a_fr  = f"{a['fail_ratio']*100:.4f}%" if a['total'] > 0 else "N/A"
-        l_max = f"{l['max_abs']:.6f}" if l['total'] > 0 else "---"
-        l_fr  = f"{l['fail_ratio']*100:.4f}%" if l['total'] > 0 else "---"
-        print(f"│  {name:<{max_name_len}}  "
-              f"{a_tag:>8}  {a_max:>12}  {a_fr:>10}  │  "
-              f"{l_tag:>8}  {l_max:>12}  {l_fr:>10}  │")
-        both_pass = a["passed"] and l["passed"]
-        if both_pass: pass_cnt += 1
-        else:         fail_cnt += 1
-    print(f"├{SEP}┤")
-    print(f"│  通过: {pass_cnt}   失败: {fail_cnt}   共: {len(run_cases)}")
-    print(f"└{SEP}┘")
+    fail_cnt = _print_results_table(results, len(run_cases), is_final=True)[1]
     sys.exit(0 if fail_cnt == 0 else 1)

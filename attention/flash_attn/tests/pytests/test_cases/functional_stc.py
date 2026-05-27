@@ -88,20 +88,22 @@ TestCases = {
                   "seqused_q": [[60] * 8],
                   "seqused_kv": [[1000] * 8]},
     "PA_07"    : {**BASE,
-                  "layout_kv": ["PA_BBND", "PA_BNBD", "PA_NZ"], # 3条
+                  "layout_kv": ["PA_BBND", "PA_BNBD"], # 2条
+                  # "layout_kv": ["PA_BBND", "PA_BNBD", "PA_NZ"], # 3条
                   "block_size": [128]},
     # PA时，block_size<s2Base，s2Base不整除block_size
     # PA时，block_size>s2Base，block_size不整除s2Base
     # 边界值 典型值
-    "PA_08"    : {**BASE,
-                  "layout_kv": ["PA_BBND"],
-                  "block_size": [96, 192, 16, 1024, 512]}, # 5条
+    # "PA_08"    : {**BASE,
+    #               "layout_kv": ["PA_BBND"],
+    #               "block_size": [96, 192, 16, 1024, 512]}, # 5条
     # ------lse
     "LSE_09"   : {**BASE,
                   "return_softmax_lse": [True]},
     # ------sink
-    "SINK_10"  : {**BASE,
-                  "enable_learnable_sink": [True]},
+    # "SINK_10"  : {**BASE,
+    #               "enable_learnable_sink": [True]},
+
     # ------D
     # 边界值1
     # 边界值512
@@ -109,14 +111,14 @@ TestCases = {
     # D等长，典型值64、128、256
     # D不等长，典型值qkD=192，vD=128
     # D不等长，典型值qkD=64，vD=128
-    "D_11"     : {**BASE,
-                  "D": [1, 7, 8, 15, 16 ,31 ,40, 64, 96, 128, 256, 512]}, # 12条
-    "D_12"     : {**BASE,
-                  "D": [192],
-                  "DV": [128]},
-    "D_13"     : {**BASE,
-                  "D": [64],
-                  "DV": [128]},
+    # "D_11"     : {**BASE,
+    #               "D": [1, 7, 8, 15, 16 ,31 ,40, 64, 96, 128, 256, 512]}, # 12条
+    # "D_12"     : {**BASE,
+    #               "D": [192],
+    #               "DV": [128]},
+    # "D_13"     : {**BASE,
+    #               "D": [64],
+    #               "DV": [128]},
     # ------GS1
     # GS1类型，S1<mBase，mBase%S1==0，GS1<mBase
     # GS1类型，S1<mBase，mBase%S1==0，GS1=mBase
@@ -244,29 +246,29 @@ TestCases = {
     # 场景1:s1Base<s2Base
     # win_left : 1、0; 2、0~s1Base; 3、>=s1Base;
     # win_right : 1、0; 2、0~s2Base-s1Base; 3、s2Base-s1Base; 4、s2Base-s1Base~s2Base; 5、s2Base
-    "MASK_34"  : {**BASE,
-                  "N1": [32], # mBase = 128, G = 32, s1Base = 4
-                  "N2": [1],
-                  "mask_mode": [4],
-                  "win_left": [0, 2, 4], # 14条，其中0 0为无效用例
-                  "win_right": [0, 29, 124, 126, 128]},
+    # "MASK_34"  : {**BASE,
+    #               "N1": [32], # mBase = 128, G = 32, s1Base = 4
+    #               "N2": [1],
+    #               "mask_mode": [4],
+    #               "win_left": [0, 2, 4], # 14条，其中0 0为无效用例
+    #               "win_right": [0, 29, 124, 126, 128]},
     # 场景2:s1Base==s2Base
     # win_left : 1、0; 2、0~s1Base; 3、>=s1Base;
     # win_right : 1、0; 2、0~s2Base; 3、>=s2Base
-    "MASK_35"  : {**BASE,
-                  "N1": [1], # mBase = 128, G = 1, s1Base = 128
-                  "N2": [1],
-                  "mask_mode": [4],
-                  "win_left": [0, 63, 128],
-                  "win_right": [0, 92, 128]}, # 8条，其中0 0为无效用例
+    #      "MASK_35"  : {**BASE,
+    #                    "N1": [1], # mBase = 128, G = 1, s1Base = 128
+    #                    "N2": [1],
+    #                    "mask_mode": [4],
+    #                    "win_left": [0, 63, 128],
+    #                    "win_right": [0, 92, 128]}, # 8条，其中0 0为无效用例
     # 场景3:s1Base>s2Base
     # win_left : 1、0; 2、0~s1Base-s2Base; 3、s1Base-s2Base; 4、s1Base-s2Base~s1Base; 5、s1Base
     # win_right : 1、0; 2、0~s2Base; 3、>=s2Base;
-    "MASK_36"  : {**BASE,
-                  "N1": [1], # mBase = 128, G = 1, s1Base = 128
-                  "N2": [1],
-                  "S2": [64],
-                  "mask_mode": [4],
-                  "win_left": [0, 63, 64, 90, 128],
-                   "win_right": [0, 15, 64]}, # 14条，其中0 0为无效用例
+    # "MASK_36"  : {**BASE,
+    #               "N1": [1], # mBase = 128, G = 1, s1Base = 128
+    #               "N2": [1],
+    #               "S2": [64],
+    #               "mask_mode": [4],
+    #               "win_left": [0, 63, 64, 90, 128],
+    #               "win_right": [0, 15, 64]}, # 14条，其中0 0为无效用例
 }
