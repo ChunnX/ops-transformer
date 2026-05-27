@@ -20,41 +20,6 @@
 #include "kernel_operator.h"
 #endif
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-struct hifloat8_t {
-    int8_t val;
-};
-
-namespace AscendC {
-namespace Reg {
-enum class MaskMergeMode {
-    UNKNOWN,
-    MERGING,
-    ZEROING
-};
-enum class DivAlgo {
-    INTRINSIC = 0,
-    DIFF_COMPENSATION,
-    PRECISION_1ULP_FTZ_TRUE,
-    PRECISION_0ULP_FTZ_TRUE,
-    PRECISION_0ULP_FTZ_FALSE,
-    PRECISION_1ULP_FTZ_FALSE
-};
-struct DivSpecificMode {
-    MaskMergeMode mrgMode = MaskMergeMode::ZEROING;
-    bool precisionMode = false;
-    DivAlgo algo = DivAlgo::INTRINSIC;
-};
-} // namespace Reg
-namespace MicroAPI = Reg;
-} // namespace AscendC
-
-struct MC2GMMBaseParams {
-    int32_t groupType;
-    int32_t groupListType;
-};
-#endif
-
 #if __has_include("../../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h")
 #include "../../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h"
 #elif __has_include("../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h")
