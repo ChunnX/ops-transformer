@@ -28,7 +28,8 @@
 
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
-#include "flash_attn_kernel_base_gqa_template.h"
+#include "flash_attn_kernel_base_gqa_cube.h"
+#include "flash_attn_kernel_base_gqa_vector.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "flash_attn_tiling_data.h"
 
@@ -44,19 +45,14 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                       __gm__ uint8_t *tiling, __gm__ uint8_t *runtimeMetaData)
 {
-    // 1. 解析 q_out layout → (inputLayout, outputLayout)
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
 
-    // config (1-bit), D=128 fixed
-    //   config=0: sOuter=64, sInner=128 → S1=128, S2=128, D=128, DV=128
-    //   config=1: sOuter=32, sInner=256 → S1=64,  S2=256, D=128, DV=128
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
     constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
-    // 其余参数硬编码
     constexpr bool hasRopeConst = false;
     constexpr bool emptyTensorConst = false;
     constexpr uint8_t pFAMaskConst = 0;
@@ -64,7 +60,6 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     constexpr bool enableKVPrefixConst = false;
     constexpr bool enableS1OutSplitConst = false;
 
-    // 2. 推导编译期常量
     constexpr TPosition bmm2OutPos =
         BaseApi::GetC2Position(dVTemplateType,
                                BaseApi::UbOutCondition<INPUT_T>(false, PseTypeEnum::PSE_NONE_TYPE, hasAttenMask, false,
@@ -76,7 +71,6 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 
-    // 3. Block 类型别名
     using CubeBlock =
         BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
                                        dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
@@ -87,28 +81,20 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                                                        hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    // 4. AIC/AIV分别编译：用Dummy Block避免交叉编译不需要的代码
-    using VecBlockDummy =
-        BaseApi::VecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType,
-                              dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
-                              bmm2Write2Ub, splitD>;
-    using CubeBlockDummy =
-        BaseApi::CubeBlockBase<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                               dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
 
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlock, VecBlockDummy, VecBlockDummy>;
+    using Processor = BaseApi::FlashAttentionCubeProcessor<CubeBlock>;
 #else
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlockDummy, VecFaBlock, VecFdBlock>;
+    using Processor = BaseApi::FlashAttentionVectorProcessor<VecFaBlock, VecFdBlock, INPUT_T,
+                                                              CubeBlock::LAYOUT, CubeBlock::PAGE_ATTENTION>;
 #endif
 
-    // 5. Tiling 解析、实例化并执行
     size_t offset = (size_t)(&((FlashAttnTilingData *)0)->baseTiling);
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     TPipe tPipe;
-    Kernel op;
+    Processor op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
     op.Process();

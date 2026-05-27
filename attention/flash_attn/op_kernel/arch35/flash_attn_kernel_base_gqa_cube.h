@@ -231,11 +231,11 @@ public:
     }
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *fiaMetaData,
-                                __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                __gm__ uint8_t *&workspace, TPipe *tPipe,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
+                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
         if ASCEND_IS_AIC {
             pipe = tPipe;
@@ -268,7 +268,8 @@ public:
             this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
             this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
 
-            this->InitMMResBuf(workspace);
+            __gm__ uint8_t *workspaceRef = workspace;
+            this->InitMMResBuf(workspaceRef);
 
             uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
             this->sectionNum = sectionNum;
