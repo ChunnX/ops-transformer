@@ -62,7 +62,15 @@ CcuKernelArgMoeDistributeCombineCcuSetup::CcuKernelArgMoeDistributeCombineCcuSet
       globalBs(globalBs_ == 0 ? bs_ * epWorldSize_ : globalBs_),
       commQuantMode(commQuantMode_), commType(commType_), commAlg(commAlg_),
       bs(bs_), topK(topK_), hiddenSize(hiddenSize_),
-      tokenMsgLen(static_cast<uint64_t>(((hiddenSize_ + 255U) / 256U) * 256U) * sizeof(uint16_t)),
+      // v17 ★ tokenMsgLen 按 commQuantMode 切公式（与 dispatch_setup quantMode 分支严格一致）：
+      //   commQuantMode == 0 (BF16)：Align256(H) * sizeof(BF16)
+      //   commQuantMode == 1 (MXFP8)：Align32(H + H/32) —— FP8 data (H) + E8M0 scale (H/32)
+      //   两端公式必须一致才能透传 RDMA 字节流（dispatch 发什么格式 combine 收同款）
+      //   关键：tokenMsgLen 影响段 4 段长 / 段 5 PreCount 累加 / 段 7 metadata 偏移
+      //         任一处用错值都会导致 GM 偏移错位 + 数据错乱
+      tokenMsgLen(commQuantMode_ == 0
+                  ? static_cast<uint64_t>(((hiddenSize_ + 255U) / 256U) * 256U) * sizeof(uint16_t)
+                  : static_cast<uint64_t>(((hiddenSize_ + hiddenSize_ / 32U + 31U) / 32U) * 32U)),
       moeExpertPerRankNum(moeExpertNum_ / (epWorldSize_ - sharedExpertRankNum_))
 {}
 
@@ -216,20 +224,22 @@ HcclResult CcuKernelMoeDistributeCombineCcuSetup::Algorithm()
     tokenWithMetaLenVar = tokenMsgLenVar_ + metaBytesVar;
 
     // ============ 5. PreCount ============
-    // v15 ★ 完全重写：现在 expandX 是紧密的，每 token 末尾带 metadata，反向发送是 per-token
-    //   遍历紧密 expandX 中所有可能位置（worst-case bs*K 个 token），从 metadata.srcRank 决定 dst rank
-    //   - 有效 token: metadata.srcRank ∈ [0, rankSize) → CCU_IF 命中 → 累计 sendBytesPerPeer
-    //   - padding token: metadata.srcRank = -1 (host 端预初始化 0xFF) → 不命中任何 CCU_IF → 自动跳过
+    // v18 ★ FIX：host unroll 上界从 bs*K 改 A = bs * rankSize * min(localExpertNum, K)
+    //   原因：本卡 expandX 紧密区 worst-case token 数 = A（op_def 标准），可能 > bs*K
+    //   - 之前 bs*K 上界在 routing 极端不均衡时漏发 (A - bs*K) 个 token（demo 巧合掩盖）
+    //   - 改 A 后覆盖所有可能 token；padding token srcRank=-1 自动 CCU_IF 跳过
+    //   - A 是 host 编译期常量（KernelArg attr 派生）→ host unroll 合法
     //
     // wishCnt 累加：每 token tokenWithMetaLen 字节（含 metadata 一起发回）
     // sendTokensPerPeer 累加：用于段 8 写 commCmdInfo
     //
     // 注意：本卡 expandX 紧密区按 r 段（dispatch_teardown 顺序）顺序排，
-    //   段 5 遍历顺序与段 7 完全一致（都是 idx 0..bs*K-1），保证 wishCnt 与 wtCount 累加对账精确。
+    //   段 5 遍历顺序与段 7 完全一致（都是 idx 0..A-1），保证 wishCnt 与 wtCount 累加对账精确。
+    const uint32_t aBound = bs_ * epWorldSize_
+                          * ((moeExpertPerRankNum_ < topK_) ? moeExpertPerRankNum_ : topK_);
     CcuRep::Variable srcRankVarA = CreateVariable();
-    for (uint32_t idx = 0; idx < bs_ * topK_; ++idx) {
+    for (uint32_t idx = 0; idx < aBound; ++idx) {
         // 读 expandX[idx] 末尾 metadata 的 srcRank（int32 在 metadata 块第 0 个 4B 位置）
-        // 偏移：idx * tokenWithMetaLen + tokenMsgLen
         LoadVariable(expandXAddrVar_
                      + static_cast<uint64_t>(idx) * tokenWithMetaLenImm
                      + tokenMsgLen_,
@@ -278,9 +288,11 @@ HcclResult CcuKernelMoeDistributeCombineCcuSetup::Algorithm()
     //   slot=0..K-1: token 0 的副本；slot=K..2K-1: token 1 的副本；...
     //
     // padding token (srcRank=-1) 不命中任何 r ∈ [0, rankSize) → 自动跳过
+    // v18 ★ FIX：host unroll 上界从 bs*K 改 aBound = A（与段 5 一致），
+    //   覆盖 expandX 紧密区所有可能 token (worst-case A 个，可能 > bs*K)
     CcuRep::Variable srcRankVarB    = CreateVariable();
     CcuRep::Variable dstByteOffVar  = CreateVariable();
-    for (uint32_t idx = 0; idx < bs_ * topK_; ++idx) {
+    for (uint32_t idx = 0; idx < aBound; ++idx) {
         // 读 metadata.srcRank（偏移 = idx*tokenWithMetaLen + tokenMsgLen + 0）
         LoadVariable(expandXAddrVar_
                      + static_cast<uint64_t>(idx) * tokenWithMetaLenImm

@@ -112,15 +112,35 @@ int main(int argc, char *argv[]) {
     // 简化（与 950 当前支持范围一致 + comm_type=2 是 URMA）
     const uint32_t sharedExpertNum     = 0;
     const uint32_t sharedExpertRankNum = 0;
-    const uint32_t quantMode           = 0;      // dispatch
-    const uint32_t commQuantMode       = 0;      // combine
+    // v17 ★ quantMode 切换：0 = 非量化 BF16，1 = MXFP8（host 端预量化）
+    //   combine driver 默认 quantMode=0 保留 BF16 端到端闭环验证；
+    //   切换 quantMode=1 测 MXFP8 dispatch 链路（combine_teardown 端 v17 暂未支持量化输出，
+    //   quantMode=1 时 xOut 字节级校验会失败，但 RDMA 量化数据链路本身可验证 launch 成功）
+    const uint32_t quantMode           = 0;      // dispatch quantMode (0=BF16, 1=MXFP8)
+    // v17 ★ 修复 #v17-2：commQuantMode 必须 = quantMode（dispatch 发什么格式 combine 收同款）
+    //   两端 tokenMsgLen 公式必须严格一致才能透传 RDMA 字节流，否则 GM 偏移错位
+    const uint32_t commQuantMode       = quantMode;
     const uint32_t commType            = 2;
     const std::string commAlg          = "";
     const uint32_t expertTokenNumsType = 1;
 
     const uint32_t localExpertNum     = moeExpertNum / (rankSize - sharedExpertRankNum);
     auto align256 = [](uint32_t n) -> uint32_t { return ((n + 255U) / 256U) * 256U; };
-    const uint64_t tokenMsgSizeBytes = static_cast<uint64_t>(align256(hiddenSize)) * sizeof(uint16_t);
+    auto align32  = [](uint32_t n) -> uint32_t { return ((n + 31U)  / 32U)  * 32U;  };
+
+    // v17 Phase 2 ★ MXFP8 模式 H 约束 runtime check：H 必须是 64 的倍数
+    //   原因：combine_teardown 按 BF16 视图整除 copyElemsPerToken = (H + H/32) / 2，
+    //         要求 (H + H/32) = H*33/32 是 2 的倍数 ↔ H 是 64 的倍数
+    //   生产 H ∈ {256, 4096, 7168, 8192} 都满足；违反则字节级闭环最后 1 字节 mismatch
+    if (quantMode == 1 && (hiddenSize % 64U != 0)) {
+        printf("[rank %d][ERROR] MXFP8 模式要求 hiddenSize 是 64 的倍数（当前 H=%u 不满足，"
+               "原因见 combine_teardown.cpp 注释）\n", rankId, hiddenSize);
+        return -1;
+    }
+    // v17 ★ tokenMsgLen 按 quantMode 切（与 dispatch_setup.cpp constructor 公式严格一致）
+    const uint64_t tokenMsgSizeBytes = (quantMode == 0)
+        ? static_cast<uint64_t>(align256(hiddenSize)) * sizeof(uint16_t)              // BF16: Align256(H)*2
+        : static_cast<uint64_t>(align32(hiddenSize + hiddenSize / 32U));             // MXFP8: Align32(H + H/32)
     const uint64_t tokenWithMetaLenBytes = tokenMsgSizeBytes + 32;   // v15 ★ +32B metadata 三元组
     const size_t A = static_cast<size_t>(bs) * rankSize * (localExpertNum < topK ? localExpertNum : topK);
 
@@ -212,17 +232,26 @@ int main(int argc, char *argv[]) {
     const size_t expandIdxBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
     const size_t dispCmdInfoBytes     = (static_cast<size_t>(bs) * (topK + sharedExpertNum)
                                          + static_cast<size_t>(rankSize) * localExpertNum) * 16 * sizeof(int32_t);
-    const size_t expandXBytes         = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes; // v15 ★
+    // v18 ★ FIX：expandXBytes 改用 op_def 标准 A 公式（替代之前的 rankSize*bs*K 保守上界）
+    //   A = bs * rankSize * min(localExpertNum, K)  ← aclnnMoeDistributeDispatchSetup.md
+    //   ★ 原 rankSize*bs*K 不仅浪费空间，更严重的是导致 combine_setup unroll bs*K < A
+    //     时漏发 token（极端 routing 不均衡）；现在 expandX 按 A 紧凑 + combine_setup unroll A
+    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // v18 ★ op_def 标准
     const size_t dynamicScalesBytes   = A * sizeof(float);
-    // v15 ★ assistInfoForCombine 新语义：每个紧密 token 对应 3 个 INT32 三元组
-    //   worst-case alloc = rankSize * bs * topK * 3 * 4 字节（保留 op_def shape 上界 A*128*4 兼容）
+    // v15 ★ assistInfoForCombine：每个紧密 token 对应 3 个 INT32 三元组，紧密上界 = A * 3 * 4
+    //   保留 op_def shape A*128*4 兼容（远大于实际写量）
     const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);
     const size_t expertTokenNumsBytes = static_cast<size_t>(localExpertNum) * sizeof(uint64_t);
     // combine op_def
-    const size_t quantExpandXBytes    = expandXBytes;       // 与 expandX 同公式（v15 含 metadata）
+    const size_t quantExpandXBytes    = expandXBytes;       // 与 expandX 同公式（v18 跟着 A 公式）
     const size_t combCmdInfoBytes     = dispCmdInfoBytes;
     const size_t expertScalesBytes    = static_cast<size_t>(bs) * topK * sizeof(float);
-    const size_t xOutBytes            = xBytes;
+    // v17 Phase 2 ★ xOut 字节数按 quantMode 切：
+    //   BF16:  bs * H * sizeof(BF16) = bs * 2H 字节
+    //   MXFP8: bs * (H + H/32) 字节（保留 FP8 data + E8M0 scale 字节流）
+    const size_t xOutBytes            = (quantMode == 0)
+        ? xBytes
+        : static_cast<size_t>(bs) * (hiddenSize + hiddenSize / 32U);
     const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
     // v16 ★ 删除 yCombineBytes —— combine 阶段复用 dispatch 同一块 commWindowDev
 
@@ -256,28 +285,48 @@ int main(int argc, char *argv[]) {
     }
     ACL_CHECK(aclrtMemcpy(xDev, xBytes, hostX.data(), xBytes, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    // v16 ★ 构造 xWithMetaDev：每行 idx=i*K+j = x[i] data + 32B metadata
-    //   metadata layout（4 个 INT32 + 16B padding = 32B）：
-    //     [0..4):   srcRank = rankId
-    //     [4..8):   srcSlot = i
-    //     [8..12):  dstK = j
-    //     [12..16): dstByteOff = (i*K + j) * tokenWithMetaLen  ← v16 ★ host 预算
-    //     [16..32): pad (16 字节)
-    //
-    //   dstByteOff 设计原理：combine_setup 反向把 token 写到对端 commWindow[slot=srcSlot*K+dstK]
-    //   = commWindow[i*K + j] = commWindow[idx]，所以 dstByteOff = idx * tokenWithMetaLen
-    //   device 端 CCU 严格清单不支持 Var*Var/Var*Imm，host 预算后 device 直接 LoadVariable 用作 GM 偏移
+    // v17 ★ 构造 xWithMetaDev：按 quantMode 切 data 段格式
+    //   layout（每行 tokenWithMetaLen 字节）：
+    //     [0..tokenMsgSize):    token data
+    //       - quantMode=0 (BF16): hiddenSize*2 字节 BF16 数据 + padding to Align256(H)*2
+    //       - quantMode=1 (MXFP8): hiddenSize 字节 FP8 data + hiddenSize/32 字节 E8M0 scale + padding
+    //     [tokenMsgSize..tokenMsgSize+16): metadata 4 个 INT32
+    //       [0..4):   srcRank = rankId
+    //       [4..8):   srcSlot = i
+    //       [8..12):  dstK = j
+    //       [12..16): dstByteOff = idx * tokenWithMetaLen
+    //     [tokenMsgSize+16..tokenWithMetaLen): pad (16 字节)
     std::vector<uint8_t> hostXWithMeta(xWithMetaBytes, 0);
     for (uint32_t i = 0; i < bs; ++i) {
         for (uint32_t j = 0; j < topK; ++j) {
             uint32_t idx = i * topK + j;
             uint8_t* rowBase = hostXWithMeta.data() + idx * tokenWithMetaLenBytes;
-            std::memcpy(rowBase, hostX.data() + i * bytesPerToken, bytesPerToken);
+
+            if (quantMode == 0) {
+                // 非量化：直接 memcpy BF16 数据
+                std::memcpy(rowBase, hostX.data() + i * bytesPerToken, bytesPerToken);
+            } else {
+                // v17 ★ MXFP8 mock 量化：host 端把 BF16 cast 成 FP8 + 算 per-32-block E8M0 scale
+                //   [0..H):    FP8 data (H bytes)：mock 取 BF16 高字节为 FP8（仅 demo，非 IEEE FP8）
+                //   [H..H+H/32): E8M0 scale (H/32 bytes)：mock 全填 0x80 (表 2^0 unit scale)
+                //   注：SE 信息——"dispatch_setup_ccu 拿到的输入是已经量化好的结果"
+                //   生产版本应在 host 端用真实 MXFP8 量化算法（E4M3 + E8M0 per-32-block）
+                const uint8_t* srcBF16 = hostX.data() + i * bytesPerToken;
+                uint8_t* dstFP8   = rowBase;                       // FP8 data 段
+                uint8_t* dstScale = rowBase + hiddenSize;          // E8M0 scale 段
+                for (uint32_t e = 0; e < hiddenSize; ++e) {
+                    dstFP8[e] = srcBF16[e * 2 + 1];                // mock: BF16 高字节作 FP8
+                }
+                for (uint32_t b = 0; b < hiddenSize / 32; ++b) {
+                    dstScale[b] = 0x80;                            // mock E8M0 = 2^0 (unit scale)
+                }
+            }
+
             int32_t* meta = reinterpret_cast<int32_t*>(rowBase + tokenMsgSizeBytes);
             meta[0] = rankId;                                                            // srcRank
             meta[1] = static_cast<int32_t>(i);                                            // srcSlot
             meta[2] = static_cast<int32_t>(j);                                            // dstK
-            meta[3] = static_cast<int32_t>(idx * tokenWithMetaLenBytes);                  // v16 ★ dstByteOff
+            meta[3] = static_cast<int32_t>(idx * tokenWithMetaLenBytes);                  // v16 dstByteOff
         }
     }
     ACL_CHECK(aclrtMemcpy(xWithMetaDev, xWithMetaBytes, hostXWithMeta.data(),
@@ -392,7 +441,7 @@ int main(int argc, char *argv[]) {
     combTearTiling.bs                  = bs;
     combTearTiling.topK                = topK;
     combTearTiling.hiddenSize          = hiddenSize;
-    combTearTiling.commQuantMode       = commQuantMode;
+    combTearTiling.commQuantMode       = commQuantMode;     // v17 Phase 2 ★ 切 BF16/MXFP8 拷贝路径
     combTearTiling.tokenMsgLen         = tokenMsgSizeBytes;
     combTearTiling.tokenWithMetaLen    = tokenWithMetaLenBytes;                                     // v15 ★
     combTearTiling.segBytes            = static_cast<uint64_t>(bs) * topK * tokenWithMetaLenBytes;  // v15 ★
@@ -410,27 +459,56 @@ int main(int argc, char *argv[]) {
     printf("[rank %d] stage 5 combine_teardown done\n", rankId);
 
     // ==================== Stage 6: 校验数据闭环 ====================
+    // v17 Phase 2 ★ MXFP8 路径也支持 byte-level 校验（字节透传方案）：
+    //   BF16:  xOut[i] = bs 个 hostX[i]（每 token 全 byte=(i+1) BF16 数据，2*H 字节）
+    //   MXFP8: xOut[i] = hostXWithMeta[i*K + 0][0..H+H/32) （FP8 data + E8M0 scale）
+    //          identity 模式 + last-write-wins：本卡 (i, j=0) 副本经路由→回本卡 commWindow[i*K]→xOut[i]
     std::vector<uint8_t> hostXOut(xOutBytes);
     ACL_CHECK(aclrtMemcpy(hostXOut.data(), xOutBytes, xOutDev, xOutBytes, ACL_MEMCPY_DEVICE_TO_HOST));
 
     bool pass = true;
-    uint32_t firstMismatchToken = 0;
-    for (uint32_t i = 0; i < bs; ++i) {
-        const uint8_t expectedByte = static_cast<uint8_t>(i + 1);
-        for (size_t off = 0; off < bytesPerToken; ++off) {
-            if (hostXOut[i * bytesPerToken + off] != expectedByte) {
+    if (quantMode == 0) {
+        // BF16: 校验 hostXOut[i] 每字节都等于 (i+1)（hostX 的填充模式）
+        uint32_t firstMismatchToken = 0;
+        for (uint32_t i = 0; i < bs; ++i) {
+            const uint8_t expectedByte = static_cast<uint8_t>(i + 1);
+            for (size_t off = 0; off < bytesPerToken; ++off) {
+                if (hostXOut[i * bytesPerToken + off] != expectedByte) {
+                    if (pass) firstMismatchToken = i;
+                    pass = false;
+                    break;
+                }
+            }
+            if (!pass) break;
+        }
+        if (pass) {
+            printf("[rank %d] ★ PASS (BF16): 数据闭环验证通过——xOut == x (identity + last-write-wins)\n", rankId);
+        } else {
+            printf("[rank %d] ✗ FAIL (BF16): 闭环失败，首个不匹配 token = %u\n", rankId, firstMismatchToken);
+        }
+    } else {
+        // v17 Phase 2 ★ MXFP8: byte-level 校验 xOut[i] 字节流 == hostXWithMeta[i*K+0] 的 FP8+scale 段
+        //   xOutBytesPerToken = H + H/32
+        //   hostXWithMeta[i*K+0][0..H+H/32) = host 端 mock 量化后的 FP8 data + E8M0 scale
+        //   identity 模式：dispatch→teardown→combine_setup→commWindow[i*K]→combine_teardown→xOut[i]
+        //   全程 byte-透传，xOut[i] 应字节级等于原始 mock 量化内容
+        const size_t xOutBytesPerToken = hiddenSize + hiddenSize / 32U;
+        uint32_t firstMismatchToken = 0;
+        for (uint32_t i = 0; i < bs; ++i) {
+            const uint8_t* expected = hostXWithMeta.data() + (i * topK + 0) * tokenWithMetaLenBytes;
+            const uint8_t* actual   = hostXOut.data() + i * xOutBytesPerToken;
+            if (std::memcmp(actual, expected, xOutBytesPerToken) != 0) {
                 if (pass) firstMismatchToken = i;
                 pass = false;
                 break;
             }
         }
-        if (!pass) break;
-    }
-
-    if (pass) {
-        printf("[rank %d] ★ PASS: 数据闭环验证通过——xOut == x（identity expert + last-write-wins）\n", rankId);
-    } else {
-        printf("[rank %d] ✗ FAIL: 闭环失败，首个不匹配 token = %u\n", rankId, firstMismatchToken);
+        if (pass) {
+            printf("[rank %d] ★ PASS (MXFP8): 数据闭环验证通过——xOut == hostXWithMeta[i*K+0].FP8+scale 段\n",
+                   rankId);
+        } else {
+            printf("[rank %d] ✗ FAIL (MXFP8): 闭环失败，首个不匹配 token = %u\n", rankId, firstMismatchToken);
+        }
     }
 
     // ==================== 释放 ====================

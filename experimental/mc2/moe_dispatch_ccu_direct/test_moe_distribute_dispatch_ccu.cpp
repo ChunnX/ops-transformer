@@ -174,9 +174,25 @@ int main(int argc, char *argv[])
     //   A（teardown 接收维度）  = BS * epWorldSize * min(localExpertNum, K)
     //   localExpertNum         = moeExpertNum / (epWorldSize - sharedExpertRankNum)
     auto align256 = [](uint32_t n) -> uint32_t { return ((n + 255U) / 256U) * 256U; };
+    auto align32  = [](uint32_t n) -> uint32_t { return ((n + 31U)  / 32U)  * 32U;  };
+
+    // v17 Phase 2 ★ MXFP8 模式 H 必须是 32 的倍数（block 对齐）
+    //   dispatch single driver 不跑 combine_teardown，无 64 倍数约束（那个是 BF16 视图整除约束）
+    //   但 MXFP8 block size = 32 → H 至少要 32 的倍数才能正确分块
+    if (quantMode == 1 && (hiddenSize % 32U != 0)) {
+        printf("[rank %d][ERROR] MXFP8 模式要求 hiddenSize 是 32 的倍数（block 对齐），"
+               "当前 H=%u\n", rankId, hiddenSize);
+        return -1;
+    }
+
     const uint32_t localExpertNum         = moeExpertPerRankNum;
-    const size_t   tokenMsgSizeBytes      = static_cast<size_t>(align256(hiddenSize)) * sizeof(uint16_t);
-    const uint64_t tokenWithMetaLenBytes  = tokenMsgSizeBytes + 32;     // v15 ★ +32B metadata 三元组
+    // v17 ★ tokenMsgLen 按 quantMode 切（与 dispatch_setup.cpp constructor 公式严格一致）
+    //   quantMode=0 (BF16): Align256(H) * 2
+    //   quantMode=1 (MXFP8): Align32(H + H/32) —— FP8 data + E8M0 scale
+    const size_t   tokenMsgSizeBytes      = (quantMode == 0)
+        ? static_cast<size_t>(align256(hiddenSize)) * sizeof(uint16_t)
+        : static_cast<size_t>(align32(hiddenSize + hiddenSize / 32U));
+    const uint64_t tokenWithMetaLenBytes  = tokenMsgSizeBytes + 32;     // v15 ★ +32B metadata
     const size_t   A                      = static_cast<size_t>(bs) * rankSize
                                             * static_cast<size_t>(localExpertNum < topK ? localExpertNum : topK);
 
@@ -201,8 +217,13 @@ int main(int argc, char *argv[])
                                         * 16 * sizeof(int32_t);
 
     // op_def Output（teardown）
-    // v15 ★ expandX 也是紧密 (rankSize*bs*topK, tokenWithMetaLen) worst-case alloc
-    const size_t expandXBytes         = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes;  // v15 ★
+    // v18 ★ FIX：expandXBytes 改用 op_def 标准 A 公式（替代之前的保守上界 rankSize*bs*K）
+    //   A = BS * epWorldSize * min(localExpertNum, K)  ← aclnnMoeDistributeDispatchSetup.md
+    //   原 rankSize*bs*K 是"K 维度"上界，A 是"min(localExpertNum, K) 维度"紧密上界
+    //   当 localExpertNum < K 时，A < rankSize*bs*K，原 alloc 浪费空间但不越界
+    //   ★ 真正 bug 在 combine_setup unroll 上界：之前 bs*K 在 routing 极端不均衡时
+    //     可能 < A → 漏发 token；改 A 公式 + combine_setup unroll = A 后彻底解决
+    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // v18 ★ A * tokenWithMetaLen (op_def 标准)
     const size_t dynamicScalesBytes   = A * sizeof(float);                                                         // (A,) FLOAT
     const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);                                                 // (A*128,) INT32
     const size_t expertTokenNumsBytes = static_cast<size_t>(localExpertNum) * sizeof(uint64_t);                    // (localExpertNum,) INT64
@@ -248,19 +269,37 @@ int main(int argc, char *argv[])
     ACL_CHECK(aclrtMemcpy(routingTableDev, routingTableBytes, hostRoutingTable.data(),
                           routingTableBytes, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    // v16 ★ 构造 xWithMetaDev：metadata 含 dstByteOff（host 预算，combine_setup 直接用作 GM 偏移）
+    // v17 ★ 构造 xWithMetaDev：按 quantMode 切 data 段格式
+    //   quantMode=0 (BF16): rowBase[0..hiddenSize*2) = hostX[i 行] BF16 数据
+    //   quantMode=1 (MXFP8): rowBase[0..H) = FP8 data + rowBase[H..H+H/32) = E8M0 scale
+    //   metadata 4 个 INT32 写到 rowBase[tokenMsgSize..tokenMsgSize+16)（同 v16）
     const size_t bytesPerToken = static_cast<size_t>(hiddenSize) * sizeof(uint16_t);
     std::vector<uint8_t> hostXWithMeta(xWithMetaBytes, 0);
     for (uint32_t i = 0; i < bs; ++i) {
         for (uint32_t j = 0; j < topK; ++j) {
             uint32_t idx = i * topK + j;
             uint8_t* rowBase = hostXWithMeta.data() + idx * tokenWithMetaLenBytes;
-            std::memcpy(rowBase, hostX.data() + i * bytesPerToken, bytesPerToken);
+
+            if (quantMode == 0) {
+                std::memcpy(rowBase, hostX.data() + i * bytesPerToken, bytesPerToken);
+            } else {
+                // v17 ★ MXFP8 mock 量化（dispatch single 路径，与 combine driver 同款）
+                const uint8_t* srcBF16 = hostX.data() + i * bytesPerToken;
+                uint8_t* dstFP8   = rowBase;
+                uint8_t* dstScale = rowBase + hiddenSize;
+                for (uint32_t e = 0; e < hiddenSize; ++e) {
+                    dstFP8[e] = srcBF16[e * 2 + 1];                // mock: BF16 高字节作 FP8
+                }
+                for (uint32_t b = 0; b < hiddenSize / 32; ++b) {
+                    dstScale[b] = 0x80;                            // mock E8M0 = 2^0
+                }
+            }
+
             int32_t* meta = reinterpret_cast<int32_t*>(rowBase + tokenMsgSizeBytes);
             meta[0] = rankId;
             meta[1] = static_cast<int32_t>(i);
             meta[2] = static_cast<int32_t>(j);
-            meta[3] = static_cast<int32_t>(idx * tokenWithMetaLenBytes);    // v16 ★ dstByteOff
+            meta[3] = static_cast<int32_t>(idx * tokenWithMetaLenBytes);    // v16 dstByteOff
         }
     }
     ACL_CHECK(aclrtMemcpy(xWithMetaDev, xWithMetaBytes, hostXWithMeta.data(),

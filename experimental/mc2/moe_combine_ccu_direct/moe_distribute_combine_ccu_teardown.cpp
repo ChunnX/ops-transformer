@@ -57,6 +57,7 @@ public:
         bs_               = tiling->bs;
         topK_             = tiling->topK;
         hiddenSize_       = tiling->hiddenSize;
+        commQuantMode_    = tiling->commQuantMode;     // v17 Phase 2 ★
         tokenMsgLen_      = tiling->tokenMsgLen;
         tokenWithMetaLen_ = tiling->tokenWithMetaLen;
         segBytes_         = tiling->segBytes;
@@ -123,17 +124,36 @@ public:
         const uint64_t tokenWithMetaElems = tokenWithMetaLen_ / sizeof(YType);
 
         // ====== 阶段 2：以 K 为 stride 取 commWindow[i*K] → xOut[i] ======
-        // demo 简化：identity + last-write-wins 等价语义下直接取 j=0 副本即 = x[i]
-        //   生产版加权求和应改：
-        //     for (i, j) read commWindow[i*K+j] → Cast FP32 → Muls expertScales[i*K+j] → Add accumBuf
-        //     最后 accumBuf → Cast BF16 → write xOut[i]
-        for (uint32_t i = 0; i < bs_; ++i) {
-            // commWindow[i*K] 起始元素偏移（j=0 副本的位置）
-            const uint64_t srcOffset = static_cast<uint64_t>(i) * topK_ * tokenWithMetaElems;
-            const uint64_t dstOffset = static_cast<uint64_t>(i) * static_cast<uint64_t>(hiddenSize_);
+        //
+        // v17 Phase 2 ★ 按 commQuantMode 切 copyLen + dstStride：
+        //   commQuantMode=0 (BF16):
+        //     - commWindow[i*K] data 段 = hiddenSize 个 BF16 元素 = 2*H 字节
+        //     - xOut[i] = hiddenSize 个 BF16 元素 = 2*H 字节
+        //     - copyElemsPerToken = hiddenSize 元素
+        //   commQuantMode=1 (MXFP8 字节透传):
+        //     - commWindow[i*K] data 段 = (H + H/32) 字节 (FP8 data + E8M0 scale)
+        //     - xOut[i] = (H + H/32) 字节字节流（保留 MXFP8 格式，不反量化）
+        //     - copyElemsPerToken = (H + H/32) / sizeof(BF16) 个 BF16 元素
+        //
+        //   ★★★ MXFP8 H 约束（host driver runtime check）：H 必须是 64 的倍数 ★★★
+        //     原因：copyElemsPerToken = (H + H/32) / 2 要求 (H + H/32) 是 2 的倍数
+        //          = H * 33/32 是 2 的倍数 ↔ H/32 是 2 的倍数 ↔ H 是 64 的倍数
+        //     生产 H ∈ {256, 4096, 7168, 8192} 都满足 ✓
+        //     违反约束的边缘 case (H=32/96/160 等) host driver 已 abort，device 端不必再 check
+        //
+        //   两路径都不引入类型转换——纯字节透传，xOut layout 随 quantMode 切
+        //   生产版加权求和（Phase 3+）：BF16 模式可加 Muls expertScales；MXFP8 模式需先 FP8→FP32 cast
+        const uint64_t dataBytesPerToken = (commQuantMode_ == 0)
+            ? static_cast<uint64_t>(hiddenSize_) * sizeof(YType)              // BF16: 2*H 字节
+            : static_cast<uint64_t>(hiddenSize_) + hiddenSize_ / 32U;          // MXFP8: H + H/32 字节
+        const uint64_t copyElemsPerToken = dataBytesPerToken / sizeof(YType); // 按 BF16 视图换元素数
 
-            // 只读 token data 的 hiddenSize 元素（不读 metadata + padding 区）
-            const uint64_t copyElemsPerToken = static_cast<uint64_t>(hiddenSize_);
+        for (uint32_t i = 0; i < bs_; ++i) {
+            // commWindow[i*K] 起始元素偏移（j=0 副本的位置，按 BF16 视图）
+            const uint64_t srcOffset = static_cast<uint64_t>(i) * topK_ * tokenWithMetaElems;
+            // xOut[i] 起始元素偏移（按 BF16 视图）
+            const uint64_t dstOffset = static_cast<uint64_t>(i) * copyElemsPerToken;
+
             for (uint64_t off = 0; off < copyElemsPerToken; off += kCombineChunkElems) {
                 uint32_t copyLen = static_cast<uint32_t>(
                     (copyElemsPerToken - off >= kCombineChunkElems) ? kCombineChunkElems : (copyElemsPerToken - off));
@@ -156,6 +176,7 @@ private:
     uint32_t bs_;
     uint32_t topK_;
     uint32_t hiddenSize_;
+    uint32_t commQuantMode_;       // v17 Phase 2 ★ 0=BF16, 1=MXFP8（影响 copyLen）
     uint64_t tokenMsgLen_;
     uint64_t tokenWithMetaLen_;    // v15 ★
     uint64_t segBytes_;
