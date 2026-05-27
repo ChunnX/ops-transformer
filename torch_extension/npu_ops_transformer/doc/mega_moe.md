@@ -221,7 +221,6 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
         
         return ep_hcomm_info, ep_group
 
-
     def get_megamoe_kwargs(
         x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
     ):
