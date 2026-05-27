@@ -258,13 +258,11 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    printf("start to acquire HCCL channel, srcRankId is: %u\n", srcRankId);
     auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL channel failed");
         return ACLNN_ERR_INNER;
     }
-    printf("HCCL channel acquire success, srcRankId is: %u\n", srcRankId);
     return ACLNN_SUCCESS;
 }
 
@@ -304,17 +302,17 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             OP_LOGI("epHcclBuffer_[%u] = %u", i, mc2ContextStruct->epHcclBuffer_[i]);
         }
     }
-    // if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
-    //     auto hcommRet = HcommChannelGetPtrByHandle(channels.data(), channels.size(), mc2ContextStruct->hcommHandle_);
-    //     if (hcommRet != HCCL_SUCCESS) {
-    //         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL urma channel ptr failed");
-    //         return ACLNN_ERR_INNER;
-    //     }
-    //     OP_LOGI("Get HCCL urma channel ptr success");
-    //     for (uint32_t i =0; i < channels.size(); ++i) {
-    //         OP_LOGI("hcommHandle_[%u] = %u", i, mc2ContextStruct->hcommHandle_[i]);
-    //     }
-    // }
+    if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
+        auto hcommRet = HcommChannelGetPtrByHandle(channels.data(), channels.size(), mc2ContextStruct->hcommHandle_);
+        if (hcommRet != HCCL_SUCCESS) {
+            OP_LOGE(ACLNN_ERR_INNER, "Get HCCL urma channel ptr failed");
+            return ACLNN_ERR_INNER;
+        }
+        OP_LOGI("Get HCCL urma channel ptr success");
+        for (uint32_t i =0; i < channels.size(); ++i) {
+            OP_LOGI("hcommHandle_[%u] = %u", i, mc2ContextStruct->hcommHandle_[i]);
+        }
+    }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
 }
@@ -512,9 +510,9 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
         OP_LOGI("Context cache not found, need to create");
         return ACLNN_SUCCESS;
     }
-    hcclBuffSize = 800 * 1024 * 1024;
-    // auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
-    // CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    // hcclBuffSize = 800 * 1024 * 1024;
+    auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     return ACLNN_SUCCESS;
 }
 
