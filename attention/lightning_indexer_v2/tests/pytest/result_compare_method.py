@@ -235,10 +235,10 @@ def trans_tnd_actseq(list):
     return list_new
 
 def check_result(expect, result, topk_value, params):
-    batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
-    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, layout_query,\
-    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
-    cmp_ratio, return_value, max_seqlen_q = params
+    batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
+    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
+    layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
+    output_idx_offset_datarange, cmp_ratio, return_value, max_seqlen_q = params
 
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]
@@ -305,8 +305,8 @@ def check_result(expect, result, topk_value, params):
         total_rows = 0
         sp = (0, 0)
     print(f"total_line is {total_rows}")
-    npu_reshape = npu_output.reshape([total_rows, sparse_count])
-    cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
+    npu_reshape = npu_output.reshape([total_rows, topk])
+    cpu_reshape = cpu_output.reshape([total_rows, topk])
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
@@ -327,7 +327,10 @@ def check_result(expect, result, topk_value, params):
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
-            b_idx, s1_idx = find_batch_and_position(act_seq_q, bsn[0])
+            if seqused_q is not None:
+                b_idx, s1_idx = find_batch_and_position(seqused_q, bsn[0])
+            else:
+                b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
         cur_cpu_output_value = cpu_reshape[t_id, :]
         cur_npu_output_value = npu_reshape[t_id, :]

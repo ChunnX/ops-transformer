@@ -197,10 +197,6 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.preTokens != INT64_MAX,
-               OP_LOGE(opName_, "input attr pre_tokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
-               OP_LOGE(opName_, "input attr nextTokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
                 ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
@@ -240,8 +236,8 @@ ge::graphStatus LIV2InfoParser::GetAndCheckInOutDataType()
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(valuesOutType_ != inputQType_,
-               OP_LOGE(opName_, "The data types of the output sparse_values must be same as inputQType."),
+    OP_CHECK_IF(valuesOutType_ != ge::DT_FLOAT,
+               OP_LOGE(opName_, "The data types of the output sparse_values must be float32."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -680,8 +676,6 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.maskMode = *opParamInfo_.maskMode;
     liInfo.topk = *opParamInfo_.topk;
     liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
-    liInfo.preTokens = *opParamInfo_.preTokens;
-    liInfo.nextTokens = *opParamInfo_.nextTokens;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     liInfo.returnValue = *opParamInfo_.returnValue;
     liInfo.inputQLayout = qLayout_;
