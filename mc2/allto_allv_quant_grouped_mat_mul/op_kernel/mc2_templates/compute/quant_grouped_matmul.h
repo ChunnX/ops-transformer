@@ -35,8 +35,8 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
-        GM_ADDR groupListGM, GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
-        TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+        GM_ADDR groupListGM, GM_ADDR workspaceGM, const TilingDataType *tilingData,
+        const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
     {
         if ASCEND_IS_AIV {
             return ;
