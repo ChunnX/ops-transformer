@@ -388,6 +388,7 @@ if __name__ == "__main__":
     parser.add_argument("--compare_mode", action="store_true", help="三方对比模式")
     parser.add_argument("--graph_mode",  action="store_true", help="图模式调用 NPU 算子")
     parser.add_argument("--fail_analysis", action="store_true", help="失败元素分布分析")
+    parser.add_argument("--report_interval", type=int, default=20, help="每 N 条用例输出一次中间统计")
     args = parser.parse_args()
 
     if args.use_gpu:
@@ -425,7 +426,9 @@ if __name__ == "__main__":
         print("[ERROR] 没有可运行的 case。"); sys.exit(1)
 
     results = {}
+    _int_pass, _int_fail, _int_cnt = 0, 0, 0
     for name in run_cases:
+        _int_cnt += 1
         if NPU_AVAILABLE:
             torch.npu.synchronize()
             torch.npu.empty_cache()
@@ -441,6 +444,11 @@ if __name__ == "__main__":
                                        "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
                               "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
                                        "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+            _int_fail += 1
+            if args.report_interval > 0 and _int_cnt % args.report_interval == 0 and _int_cnt < len(run_cases):
+                print(f"\n{'  **[中间统计]**'}")
+                print(f"  已执行: {_int_cnt}/{len(run_cases)}  通过: {_int_pass}  失败: {_int_fail}")
+                print()
             continue
         kwargs["_use_gpu"] = args.use_gpu
 
@@ -467,6 +475,15 @@ if __name__ == "__main__":
                       "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
                                "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
         results[name] = passed
+        a, l = passed["attn"], passed["lse"]
+        if a["passed"] and l["passed"]:
+            _int_pass += 1
+        else:
+            _int_fail += 1
+        if args.report_interval > 0 and _int_cnt % args.report_interval == 0 and _int_cnt < len(run_cases):
+            print(f"\n{'  **[中间统计]**'}")
+            print(f"  已执行: {_int_cnt}/{len(run_cases)}  通过: {_int_pass}  失败: {_int_fail}")
+            print()
 
     SEP = "─" * 120
     print(f"\n┌{SEP}┐")
