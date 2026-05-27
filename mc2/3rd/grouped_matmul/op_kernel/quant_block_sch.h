@@ -335,9 +335,8 @@ __aicore__ inline void QuantASWBlockSch::CalcGMOffset()
         if constexpr (!aTrans) { // mx (m, ceil(k / 64), 2)
             pertokenScaleK *= Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::MXFP_DIVISOR_SIZE);
         }
-        if constexpr (bTrans) { // mx (n, ceil(k / 64), 2)
-            scaleK *= Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::MXFP_DIVISOR_SIZE);
-        }
+        // MX weight scale shape is (N, ceil(K/64), 2) regardless of bTrans
+        scaleK *= Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::MXFP_DIVISOR_SIZE);
         offset_.offsetPerTokenScale = mOffset * pertokenScaleK;
         offset_.offsetScale = nOffset * scaleK;
     } else {
