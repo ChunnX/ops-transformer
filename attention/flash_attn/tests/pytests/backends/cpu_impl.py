@@ -11,7 +11,7 @@
 
 import torch
 import math
-from test_utils import *
+from utils import *
 
 
 def tsoftmax(x):
