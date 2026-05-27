@@ -66,7 +66,7 @@ private:
     LocalTensor<float> dy_out_pong_;
     LocalTensor<float> attention_out_ping_;
     LocalTensor<float> attention_out_pong_;
-    LocalTensor<float> sftg_tmp_tensor;
+    LocalTensor<uint8_t> sftg_tmp_tensor;
     static constexpr uint32_t BLOCK_SIZE = 32;
     static constexpr uint32_t C0_SIZE = 16;
     static constexpr uint32_t BLOCK_FP32 = BLOCK_SIZE / sizeof(float);
@@ -158,9 +158,8 @@ public:
         ub_offset += SFTG_TILE_LEN * sizeof(float);
         attention_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(float);
-
-        sftg_tmp_tensor = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
+        ub_offset += tilingData->sftgTmpSpaceSize;
 
         for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
             for (uint32_t n1_idx = 0; n1_idx < q_head_num_; n1_idx++) {
