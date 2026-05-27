@@ -210,7 +210,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
 {
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "aicpu") == 0) {
+        if (std::strcmp(commModeStr, "ai_cpu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
@@ -224,7 +224,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
 #endif
             commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'aicpu'.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'ai_cpu'.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
