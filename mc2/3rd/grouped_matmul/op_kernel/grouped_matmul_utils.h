@@ -289,6 +289,7 @@ __aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr) {
     return reinterpret_cast<__gm__ T*>(*(retPtr + index));
 }
 
+
 template <typename T> __aicore__ inline constexpr uint32_t GetTypeBits()
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
