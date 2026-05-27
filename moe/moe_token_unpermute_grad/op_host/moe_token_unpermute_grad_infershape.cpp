@@ -38,9 +38,9 @@ static graphStatus InferShape4MoeTokenUnpermuteGrad(gert::InferShapeContext* con
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape4MoeTokenUnpermuteGrad");
     const gert::Shape* permutedTokensShape = context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
-    const gert::Shape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
+    const gert::Shape* unpermutedOutputDShape = context->GetOptionalInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
-    const gert::Shape* rowIdMapShape = context->GetInputShape(INPUT_ROWIDMAP_IDX);
+    const gert::Shape* rowIdMapShape = context->GetOptionalInputShape(INPUT_ROWIDMAP_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, rowIdMapShape);
     const gert::Shape* probShape = context->GetOptionalInputShape(INPUT_PROB_IDX);
 
@@ -92,15 +92,15 @@ static ge::graphStatus InferDataType4MoeTokenUnpermuteGrad(gert::InferDataTypeCo
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataType4MoeTokenUnpermuteGrad");
     OP_LOGD(
         context->GetNodeName(), "input input dtype: %s",
-        Ops::Base::ToString(context->GetInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX)).c_str());
-    context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
-    context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
+        Ops::Base::ToString(context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX)).c_str());
+    context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
+    context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
     if (context->GetOptionalInputDataType(INPUT_PERMUTED_TOKENS_IDX) != ge::DT_UNDEFINED) {
-        context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX));
+        context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetOptionalInputDataType(INPUT_PERMUTED_TOKENS_IDX));
     }
     // 混精场景PROBGRAD dtype与PROB一致，与PERMUTED_TOKENS不一致
     if (context->GetOptionalInputDataType(INPUT_PROB_IDX) != ge::DT_UNDEFINED) {
-        context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetInputDataType(INPUT_PROB_IDX));
+        context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetOptionalInputDataType(INPUT_PROB_IDX));
     }
     OP_LOGD(
         context->GetNodeName(), "output input_grad dtype: %s",

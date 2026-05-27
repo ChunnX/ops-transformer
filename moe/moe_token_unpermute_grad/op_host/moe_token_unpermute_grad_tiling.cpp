@@ -242,7 +242,10 @@ static bool CoreSplitInfoProbIsNotNone(
 static ge::graphStatus MoeTokenUnpermuteGradCoreSplitInfo(
     const gert::TilingContext* context, MoeTokenUnpermuteGradTilingData& tiling)
 {
-    auto tokensDtype = context->GetInputDesc(INPUT_PERMUTED_TOKENS_IDX)->GetDataType();
+    auto permutedTokensDesc = context->GetOptionalInputDesc(INPUT_PERMUTED_TOKENS_IDX);
+    auto tokensDtype = (permutedTokensDesc != nullptr)
+        ? permutedTokensDesc->GetDataType()
+        : context->GetOptionalInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType();
     uint32_t tokensTypeLength = GetLengthByType(tokensDtype); // sizeof(bfloat16)
 
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
@@ -253,7 +256,7 @@ static ge::graphStatus MoeTokenUnpermuteGradCoreSplitInfo(
         probTypeLength = GetLengthByType(probDtype);
     }
 
-    auto rowIdMapDtype = context->GetInputDesc(INPUT_ROWIDMAP_IDX)->GetDataType();
+    auto rowIdMapDtype = context->GetOptionalInputDesc(INPUT_ROWIDMAP_IDX)->GetDataType();
     uint32_t rowIdMapTypeLength = GetLengthByType(rowIdMapDtype); // sizeof(int32)
     OP_CHECK_IF(
         tokensTypeLength == 0 || rowIdMapTypeLength == 0 || probTypeLength == 0,
@@ -287,12 +290,11 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteGrad(gert::TilingContext* context
 {
     OP_LOGD("MoeTokenUnpermuteGradTiling tiling start");
     MoeTokenUnpermuteGradTilingData tiling;
-    const gert::StorageShape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
+    const gert::StorageShape* unpermutedOutputDShape = context->GetOptionalInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
 
     auto permutedTokensTensor = context->GetOptionalInputTensor(INPUT_PERMUTED_TOKENS_IDX);
-    const gert::StorageShape* permutedTokensShape =
-        (permutedTokensTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
+    const gert::StorageShape* permutedTokensShape = (permutedTokensTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
 
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     const gert::StorageShape* probShape = (probTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PROB_IDX);
@@ -305,7 +307,7 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteGrad(gert::TilingContext* context
     if (permutedTokensShape != nullptr) {
         numOutTokens = permutedTokensShape->GetStorageShape().GetDim(DIM_0);
     } else {
-        const gert::StorageShape* sortedIndicesShape = context->GetInputShape(INPUT_ROWIDMAP_IDX);
+        const gert::StorageShape* sortedIndicesShape = context->GetOptionalInputShape(INPUT_ROWIDMAP_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context, sortedIndicesShape);
         numOutTokens = sortedIndicesShape->GetStorageShape().GetDim(DIM_0);
     }
