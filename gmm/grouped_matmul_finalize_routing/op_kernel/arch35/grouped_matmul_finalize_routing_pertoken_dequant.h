@@ -36,12 +36,6 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
     auto matmulTiling_ = tilingData.matmulTiling;
 
-    if ASCEND_IS_AIV {
-        AscendC::PRINTF("GMMFR deter flag=%u wsSize=%u\n",
-            (uint32_t)gmmFinalizeRoutingQuantParams_.deterministicFlag,
-            (uint32_t)gmmFinalizeRoutingQuantParams_.deterWorkspaceSize);
-    }
-
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
         grouped_matmul_finalize_routing_pertoken_dequant_deter<layoutA, layoutB, scaleType, rowIndType>(
             x, w, w_scale, bias, x_scale, group_list, share_input,

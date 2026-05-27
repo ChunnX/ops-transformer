@@ -331,23 +331,12 @@ public:
         if (totalM == 0) {
             return;
         }
-        if (GetBlockIdx() < 2) {
-            AscendC::PRINTF("[FF] blk=%u totalM=%llu winStart=%llu curGroupM=%llu\n",
-                GetBlockIdx(), totalM, deterSync_.windowStartM, deterSync_.curGroupM);
-        }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
             if (outRow % coreNumVec != GetBlockIdx()) continue;
-            if (GetBlockIdx() < 2 && mOffset < 4) {
-                AscendC::PRINTF("[FF] blk=%u mOffset=%llu outRow=%llu n=%llu wsOffset=%llu\n",
-                    GetBlockIdx(), mOffset, outRow, n, mOffset * n);
-            }
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
-        }
-        if (GetBlockIdx() < 2) {
-            AscendC::PRINTF("[FF] blk=%u flush loop done\n", GetBlockIdx());
         }
     }
 
@@ -369,11 +358,6 @@ public:
             deterSync_.windowSize = params.gmmParams.deterWorkspaceSize /
                 (params.gmmParams.matmulTiling->N * sizeof(CType));
             deterSync_.lowBoundM = deterSync_.windowSize;
-            if ASCEND_IS_AIV {
-                AscendC::PRINTF("[DETER-INIT] blk=%u wsSize=%u N=%d winSize=%llu\n",
-                    GetBlockIdx(), params.gmmParams.deterWorkspaceSize,
-                    params.gmmParams.matmulTiling->N, deterSync_.windowSize);
-            }
         }
 
         SyncAll<false>();

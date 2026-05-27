@@ -566,7 +566,6 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     auto x2ScaleUb = logitPingPongID_ == 0 ? x2ScaleUbPing_ : x2ScaleUbPong_;
     auto x1ScaleUb = logitPingPongID_ == 0 ? x1ScaleUbPing_ : x1ScaleUbPong_;
     auto biasUb = logitPingPongID_ == 0 ? biasUbPing_ : biasUbPong_;
-    // --- 以下全部注释，逐步恢复 ---
     CopyInLogit(singleMInVec, logitOffset, logitUb);
     CopyX2ScaleFromGm2Ub(x2ScaleUb, 0);
     if (params_->x1ScaleGmAddr != nullptr) {
