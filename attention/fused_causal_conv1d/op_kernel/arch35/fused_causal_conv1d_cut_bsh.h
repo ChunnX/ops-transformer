@@ -68,6 +68,7 @@ private:
     // Deferred write (post-SyncAll) for first batch on non-first BS cores.
     // Reads cache prefix from GM and x suffix from GM.
     __aicore__ inline void WriteDeferredCacheSimple();
+    __aicore__ inline void ExecuteDeferredRunningCache();
 
     // ---- Distributed APC prefix fill ----
     __aicore__ inline void FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt, uint32_t batchLen,
