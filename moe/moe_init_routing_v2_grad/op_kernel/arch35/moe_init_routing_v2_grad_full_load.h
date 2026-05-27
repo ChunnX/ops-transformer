@@ -85,6 +85,10 @@ private:
             for (int64_t kIdx = 0; kIdx < td_->k; kIdx++) {
                 int64_t curIndexOffset = indexOffset + nIndexOffset + kIdx;
                 int32_t rowIdx = indexGm.GetValue(curIndexOffset);
+                if (rowIdx < 0 || rowIdx >= td_->n) {
+                    Duplicate(inputUb[nInputOffset + kIdx * currentHAlign], static_cast<T>(0.0f), currentHAlign);
+                    continue;
+                }
                 if constexpr (Mode == DROP_PAD_MODE) {
                     if (rowIdx == -1) {
                         Duplicate(inputUb[nInputOffset + kIdx * currentHAlign], static_cast<T>(0.0f), currentHAlign);

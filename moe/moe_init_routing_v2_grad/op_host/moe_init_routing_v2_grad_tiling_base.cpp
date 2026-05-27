@@ -232,6 +232,11 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::GetShapeAttrsInfo()
     }
     N = BSK / topK;
 
+    if (dropPadMode == 0 && activeNum > 0 && activeNum > N) {
+        OP_LOGE(context_->GetNodeName(), "active_num [%ld] should not exceed N [%ld] under active mode.", activeNum, N);
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

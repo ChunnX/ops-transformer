@@ -96,6 +96,10 @@ private:
             for (int64_t kIdx = 0; kIdx < this->k; kIdx++) {
                 int64_t curIndexOffset = nIndexOffset + kIdx;
                 int32_t rowIdx = indexGm.GetValue(curIndexOffset);
+                if (rowIdx < 0 || rowIdx >= this->n) {
+                    Duplicate(inputUb[nInputOffset + kIdx * currSubhAlign], static_cast<T>(0.0f), currSubhAlign);
+                    continue;
+                }
                 if constexpr (Mode == DROP_PAD_MODE) {
                     if (rowIdx == -1) {
                         Duplicate(inputUb[nInputOffset + kIdx * currSubhAlign], static_cast<T>(0.0f), currSubhAlign);
