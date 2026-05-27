@@ -30,3 +30,4 @@ from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_n
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
 )
+from .mhc_post import npu_mhc_post
