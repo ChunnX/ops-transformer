@@ -382,7 +382,8 @@ public:
         }
         bmm1ResBuf.SetCrossCore();
 
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         //-------------------------Data copy to l1-------------------------
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
@@ -443,7 +444,8 @@ public:
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> &lseUb = this->lseBuf;
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser->GetTBase(runInfo.bIdx);
@@ -600,7 +602,8 @@ public:
         bmm1ResBuf.SetCrossCore();
 
         // ===================DataCopy to L1 ====================
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         LocalTensor<INPUT_T> mm2AL1Tensor;
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
@@ -927,12 +930,14 @@ public:
     {
         // Copy sum to gm
         FaVectorApi::BroadcastMaxSum(this->sumBrdcstBuf, sumUb, runInfo.actVecMSize);
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         DataCopy(softmaxFDSumGm[gmOffset], this->sumBrdcstBuf, calculateSize);
 
         // Copy max to gm
         FaVectorApi::BroadcastMaxSum(this->maxBrdcstBuf, maxUb, runInfo.actVecMSize);
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         DataCopy(softmaxFDMaxGm[gmOffset], this->maxBrdcstBuf, calculateSize);
     }
 
