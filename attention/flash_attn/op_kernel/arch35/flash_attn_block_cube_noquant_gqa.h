@@ -335,6 +335,16 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
+        // 静态Tensor编程模式：使用静态事件ID初始化L1/L0A/L0B/L0C缓冲区
+        // L1 (EventP2C=MTE2_MTE1, EventC2P=MTE1_MTE2):
+        //   l1QBuffers: DB ping p2c=0,c2p=0; pong p2c=1,c2p=1
+        //   l1KBuffers: DB ping p2c=2,c2p=2; pong p2c=3,c2p=3
+        //   l1VBuffers: DB ping p2c=4,c2p=4; pong p2c=5,c2p=5
+        // L0A+L0B (EventP2C=MTE1_M, EventC2P=M_MTE1):
+        //   mmL0ABuffers: DB ping p2c=0,c2p=0; pong p2c=1,c2p=1
+        //   mmL0BBuffers: DB ping p2c=2,c2p=2; pong p2c=3,c2p=3
+        // L0C (EventP2C=M_FIX, EventC2P=FIX_M):
+        //   mmL0CBuffers: 4buff a/b/c/d p2c=0..3, c2p=0..3
         if constexpr (dBaseSize > 256) {
             /* D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K
             Bmm2左矩阵3 Buffer循环，Bmm1右矩阵和Bmm2右矩阵在L1上切D轴，并开启DoubleBuffer
@@ -343,16 +353,16 @@ public:
             constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
             constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
             constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
+            l1QBuffers.InitStatic((*l1BufferManagerPtr), mm1LeftSize, 0, 0);
+            l1KBuffers.InitStatic((*l1BufferManagerPtr), mm1RightSize, 2, 2);
+            l1VBuffers.InitStatic((*l1BufferManagerPtr), mm2RightSize, 4, 4);
         } else {
             constexpr uint32_t mm1LeftSize = mBaseSize * dBaseSize * sizeof(Q_T);
             constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
             constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T);
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
+            l1QBuffers.InitStatic((*l1BufferManagerPtr), mm1LeftSize, 0, 0);
+            l1KBuffers.InitStatic((*l1BufferManagerPtr), mm1RightSize, 2, 2);
+            l1VBuffers.InitStatic((*l1BufferManagerPtr), mm2RightSize, 4, 4);
         }
 
         // L0A B C 各硬件内存从 offset=0 起静态使用
@@ -360,14 +370,14 @@ public:
         l0bBufferManager.InitStatic(); // L0B from offset=0, TPosition::B2
         l0cBufferManager.InitStatic(); // L0C from offset=0, TPosition::CO1
         // L0A B C当前写死，要改成通过计算获取
-        mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
-        mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
+        mmL0ABuffers.InitStatic(l0aBufferManager, 32 * 1024, 0, 0);
+        mmL0BBuffers.InitStatic(l0bBufferManager, 32 * 1024, 2, 2);
 
         if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                       mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
-            mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
+            mmL0CBuffers.InitStatic(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES, 0, 0);
         } else {
-            mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
+            mmL0CBuffers.InitStatic(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES, 0, 0);
         }
     }
 
@@ -431,12 +441,12 @@ public:
 
     __aicore__ inline void FreeEventID()
     {
-        l1QBuffers.Uninit((*l1BufferManagerPtr));
-        l1KBuffers.Uninit((*l1BufferManagerPtr));
-        l1VBuffers.Uninit((*l1BufferManagerPtr));
-        mmL0ABuffers.Uninit(l0aBufferManager);
-        mmL0BBuffers.Uninit(l0bBufferManager);
-        mmL0CBuffers.Uninit(l0cBufferManager);
+        l1QBuffers.UninitStatic((*l1BufferManagerPtr));
+        l1KBuffers.UninitStatic((*l1BufferManagerPtr));
+        l1VBuffers.UninitStatic((*l1BufferManagerPtr));
+        mmL0ABuffers.UninitStatic(l0aBufferManager);
+        mmL0BBuffers.UninitStatic(l0bBufferManager);
+        mmL0CBuffers.UninitStatic(l0cBufferManager);
     }
 
     // copy query with full s1g and split D
