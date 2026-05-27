@@ -231,54 +231,50 @@ public:
     }
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
-        if ASCEND_IS_AIC {
-            pipe = tPipe;
-            tilingData = tiling;
-            
-            InitConstInfo();
-            keyPtr = key;
+        pipe = tPipe;
+        tilingData = tiling;
+        
+        InitConstInfo();
+        keyPtr = key;
 
-            GlobalTensor<int32_t> cuSeqLensGmQ;
-            GlobalTensor<int32_t> seqUsedGmQ;
-            GlobalTensor<int32_t> cuSeqLensGmKv;
-            GlobalTensor<int32_t> seqUsedGmKv;
+        GlobalTensor<int32_t> cuSeqLensGmQ;
+        GlobalTensor<int32_t> seqUsedGmQ;
+        GlobalTensor<int32_t> cuSeqLensGmKv;
+        GlobalTensor<int32_t> seqUsedGmKv;
 
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ,
-                                              tiling->flashAttnBaseParams.cuSeqLensQSize + 1);
-                seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
-                                            tiling->flashAttnBaseParams.seqUsedQSize);
-                cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv,
-                                               tiling->flashAttnBaseParams.cuSeqLensKVSize + 1);
-                seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
-                                             tiling->flashAttnBaseParams.seqUsedKvSize);
-            } else {
-                seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
-                                            tiling->flashAttnBaseParams.seqUsedQSize);
-                seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
-                                             tiling->flashAttnBaseParams.seqUsedKvSize);
-            }
-
-            this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
-            this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
-
-            __gm__ uint8_t *workspaceRef = workspace;
-            this->InitMMResBuf(workspaceRef);
-
-            uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
-            this->sectionNum = sectionNum;
-
-            faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                          FA_AIC_CORE_NUM * 16U * sectionNum);
-
-            this->InitCubeBlock(query, key, value, blockTable);
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ,
+                                          tiling->flashAttnBaseParams.cuSeqLensQSize + 1);
+            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
+                                        tiling->flashAttnBaseParams.seqUsedQSize);
+            cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv,
+                                           tiling->flashAttnBaseParams.cuSeqLensKVSize + 1);
+            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
+                                         tiling->flashAttnBaseParams.seqUsedKvSize);
+        } else {
+            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
+                                        tiling->flashAttnBaseParams.seqUsedQSize);
+            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
+                                         tiling->flashAttnBaseParams.seqUsedKvSize);
         }
+
+        this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
+        this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
+
+        this->InitMMResBuf(workspace);
+
+        uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
+        this->sectionNum = sectionNum;
+
+        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                      FA_AIC_CORE_NUM * 16U * sectionNum);
+
+        this->InitCubeBlock(query, key, value, blockTable);
     }
 
     __aicore__ inline void Process()

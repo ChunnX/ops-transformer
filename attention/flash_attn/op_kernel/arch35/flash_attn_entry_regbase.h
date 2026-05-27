@@ -82,21 +82,23 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                                                        hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
 
-#ifdef __DAV_C310_CUBE__
-    using Processor = BaseApi::FlashAttentionCubeProcessor<CubeBlock>;
-#else
-    using Processor = BaseApi::FlashAttentionVectorProcessor<VecFaBlock, VecFdBlock, INPUT_T,
-                                                              CubeBlock::LAYOUT, CubeBlock::PAGE_ATTENTION>;
-#endif
-
     size_t offset = (size_t)(&((FlashAttnTilingData *)0)->baseTiling);
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     TPipe tPipe;
-    Processor op;
-    op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
+
+#ifdef __DAV_C310_CUBE__
+    BaseApi::FlashAttentionCubeProcessor<CubeBlock> op;
+    op.Init(query, key, value, blocktable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv,
+            workspace, runtimeMetaData, tilingData, &tPipe);
+#else
+    BaseApi::FlashAttentionVectorProcessor<VecFaBlock, VecFdBlock, INPUT_T,
+                                            CubeBlock::LAYOUT, CubeBlock::PAGE_ATTENTION> op;
+    op.Init(key, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
+#endif
+
     op.Process();
 }
 
