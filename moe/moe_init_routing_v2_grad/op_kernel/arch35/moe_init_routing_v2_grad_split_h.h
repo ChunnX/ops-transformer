@@ -96,17 +96,9 @@ private:
             for (int64_t kIdx = 0; kIdx < this->k; kIdx++) {
                 int64_t curIndexOffset = nIndexOffset + kIdx;
                 int32_t rowIdx = indexGm.GetValue(curIndexOffset);
-                if constexpr (Mode == DROP_PAD_MODE) {
-                    if (rowIdx == -1) {
-                        Duplicate(inputUb[nInputOffset + kIdx * currSubhAlign], static_cast<T>(0.0f), currSubhAlign);
-                        continue;
-                    }
-                }
-                if constexpr (Mode == ACTIVE_MODE) {
-                    if (rowIdx >= this->activeNum) {
-                        Duplicate(inputUb[nInputOffset + kIdx * currSubhAlign], static_cast<T>(0.0f), currSubhAlign);
-                        continue;
-                    }
+                if (IsInvalidRowIdx<Mode>(rowIdx, this->n * this->k, this->activeNum)) {
+                    Duplicate(inputUb[nInputOffset + kIdx * currSubhAlign], static_cast<T>(0.0f), currSubhAlign);
+                    continue;
                 }
                 int64_t curInputOffset = rowIdx * this->h + inputOffset;
                 DataCopyPadExtParams<T> dataCopyPadExtParams;
