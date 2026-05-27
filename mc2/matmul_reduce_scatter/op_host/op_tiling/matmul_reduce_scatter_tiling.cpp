@@ -315,6 +315,56 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
     }
 
     CutResult mCutScatter = GetCutResult(tilingData, args);
+    // Dynamic longTileLen correction based on 312-run empirical sweep (8-rank, bf16)
+    // Corrects baseline EstimateKernelTime inaccuracies for specific K/N/localM regimes
+    {
+        constexpr uint64_t BLOCK = 128;
+        const uint64_t localM = args.mValue;
+        const uint64_t K = args.kValue;
+        const uint64_t N = args.nValue;
+        int64_t newTileLen = -1;
+
+        if (K > 1024 && K <= 2048) {
+            newTileLen = (N <= 8192) ? 256 : 128;
+        } else if (K > 2048 && K <= 4096) {
+            newTileLen = 128;
+        } else if (K > 4096 && K <= 8192) {
+            if (N >= 8192) {
+                newTileLen = 768;
+            }
+        } else if (K > 8192) {
+            if (N <= 5120) {
+                if (K >= 16384) {
+                    newTileLen = 896;
+                } else if (localM <= 1024) {
+                    newTileLen = 768;
+                } else if (localM <= 2048) {
+                    newTileLen = 896;
+                } else {
+                    newTileLen = static_cast<int64_t>((localM / 3 / BLOCK) * BLOCK);
+                    if (newTileLen < 768) {
+                        newTileLen = 768;
+                    }
+                }
+            } else {
+                newTileLen = 384;
+            }
+        }
+
+        if (newTileLen > 0) {
+            uint64_t tileLen = static_cast<uint64_t>(newTileLen);
+            if (tileLen > localM) {
+                tileLen = localM;
+            }
+            if (tileLen != mCutScatter.longTileLen || !mCutScatter.shortTileAtBack) {
+                mCutScatter.shortTileAtBack = true;
+                mCutScatter.longTileLen = tileLen;
+                mCutScatter.numLongTile = localM / tileLen;
+                mCutScatter.shortTileLen = localM - mCutScatter.numLongTile * tileLen;
+                mCutScatter.numShortTile = (mCutScatter.shortTileLen > 0) ? 1 : 0;
+            }
+        }
+    }
     if (mCutScatter.shortTileAtBack || mCutScatter.numShortTile == 0) {
         tilingData.param.tileCnt = mCutScatter.numLongTile;
         args.mValue = mCutScatter.longTileLen;
