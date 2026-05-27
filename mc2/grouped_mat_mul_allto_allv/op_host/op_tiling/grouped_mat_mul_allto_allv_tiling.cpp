@@ -302,14 +302,16 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
     bool isEpNumMatch = (localParams_.ep > 0) && (localParams_.ep < 33);
     if (!isEpNumMatch) {
         OP_LOGE_FOR_INVALID_VALUE(opName_, "ep",
-            std::to_string(localParams_.ep).c_str(), "in range (0, 33)");
+            std::to_string(localParams_.ep).c_str(),
+            ("in range (1, " + std::to_string(MAX_EXPERT_NUM_PER_RANK) + "]").c_str());
         return ge::GRAPH_FAILED;
     }
     uint64_t expertNum = localParams_.ep * rankDim;
     OP_TILING_CHECK(
         expertNum > MAX_EXPERT_NUM,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "experts (ep * world_size)",
-            std::to_string(expertNum).c_str(), "should not exceed max expert num"),
+            std::to_string(expertNum).c_str(),
+            ("should not exceed " + std::to_string(MAX_EXPERT_NUM)).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

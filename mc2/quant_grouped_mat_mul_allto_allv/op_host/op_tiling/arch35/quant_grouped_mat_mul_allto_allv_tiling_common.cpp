@@ -307,21 +307,25 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsA
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckFormat()
 {
     OP_LOGD(opName_, "start CheckFormat.");
-    OP_TILING_CHECK(context_->GetInputDesc(GMM_X_INDEX)->GetStorageFormat() != ge::Format::FORMAT_ND,
+    auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
+    OP_TILING_CHECK(gmmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(opName_, "gmmX",
-                        Ops::Base::ToString(context_->GetInputDesc(GMM_X_INDEX)->GetStorageFormat()).c_str(), "ND"),
+                        Ops::Base::ToString(gmmXDesc->GetStorageFormat()).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetStorageFormat() != ge::Format::FORMAT_ND,
+    auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
+    OP_TILING_CHECK(gmmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(opName_, "gmmWeight",
-                        Ops::Base::ToString(context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetStorageFormat()).c_str(), "ND"),
+                        Ops::Base::ToString(gmmWeightDesc->GetStorageFormat()).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX)->GetStorageFormat() != ge::Format::FORMAT_ND,
+    auto gmmXScaleDesc2 = context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX);
+    OP_TILING_CHECK(gmmXScaleDesc2->GetStorageFormat() != ge::Format::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(opName_, "gmmXScale",
-                        Ops::Base::ToString(context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX)->GetStorageFormat()).c_str(), "ND"),
+                        Ops::Base::ToString(gmmXScaleDesc2->GetStorageFormat()).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX)->GetStorageFormat() != ge::Format::FORMAT_ND,
+    auto gmmWeightScaleDesc2 = context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX);
+    OP_TILING_CHECK(gmmWeightScaleDesc2->GetStorageFormat() != ge::Format::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(opName_, "gmmWeightScale",
-                        Ops::Base::ToString(context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX)->GetStorageFormat()).c_str(), "ND"),
+                        Ops::Base::ToString(gmmWeightScaleDesc2->GetStorageFormat()).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(yDesc == nullptr, OP_LOGE(opName_, "y tensor desc can not be null."), return ge::GRAPH_FAILED);
@@ -335,27 +339,32 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckFormat()
     auto mmXDesc = context_->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX);
     if (mmXDesc != nullptr) {
         OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmX", "non-ND", "ND"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmX",
+                            Ops::Base::ToString(mmXDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
     }
     auto mmWeightDesc = context_->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX);
     if (mmWeightDesc != nullptr) {
         OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmWeight", "non-ND", "ND"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmWeight",
+                            Ops::Base::ToString(mmWeightDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
     }
     auto mmXScaleDesc = context_->GetOptionalInputDesc(MM_X_SCALE_OPTIONAL_INDEX);
     if (mmXScaleDesc != nullptr) {
         OP_TILING_CHECK(mmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmXScale", "non-ND", "ND"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmXScale",
+                            Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
     }
     auto mmWeightScaleDesc = context_->GetOptionalInputDesc(MM_WEIGHT_SCALE_OPTIONAL_INDEX);
     if (mmWeightScaleDesc != nullptr) {
         OP_TILING_CHECK(mmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmWeightScale", "non-ND", "ND"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmWeightScale",
+                            Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
     }
     auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
     if (mmYDesc != nullptr) {
         OP_TILING_CHECK(mmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmY", "non-ND", "ND"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmY",
+                            Ops::Base::ToString(mmYDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
     }
     OP_LOGD(opName_, "end CheckFormat.");
     return ge::GRAPH_SUCCESS;
@@ -588,11 +597,13 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
         OP_TILING_CHECK(
             expertNum > MAX_EXPERT_NUM,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "experts (ep * world_size)",
-                std::to_string(expertNum).c_str(), "should not exceed max expert num"),
+                std::to_string(expertNum).c_str(),
+                ("should not exceed " + std::to_string(MAX_EXPERT_NUM)).c_str()),
             return ge::GRAPH_FAILED);
     } else {
         OP_LOGE_FOR_INVALID_VALUE(opName_, "ep",
-            std::to_string(localParams_.ep).c_str(), "in range (0, 33)");
+            std::to_string(localParams_.ep).c_str(),
+            ("in range (1, " + std::to_string(MAX_EXPERT_NUM_PER_RANK) + "]").c_str());
         return ge::GRAPH_FAILED;
     }
 
