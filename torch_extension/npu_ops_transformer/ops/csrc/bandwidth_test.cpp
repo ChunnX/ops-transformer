@@ -22,7 +22,7 @@ using tensor_list = std::tuple<at::Tensor, at::Tensor>;
 const int DIM_TWO = 2;
 
 tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id,
-                                         std::string group, int64_t world_size, int64_t max_bs, int64_t mode, std::string comm_alg)
+                                         std::string group, int64_t world_size, int64_t max_bs, int64_t mode, std::string comm_alg, int64_t aiv_num)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D");
     TORCH_CHECK((dstrank_id.dim() == 1), "The expert_id should be 1D");
@@ -47,7 +47,7 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
     char *group_ptr = const_cast<char *>(group.c_str());
     char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
 
-    ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size, max_bs, mode, comm_alg_ptr, y, receive_cnt);
+    ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size, max_bs, mode, comm_alg_ptr, aiv_num, y, receive_cnt);
 
     return std::tie(y, receive_cnt);
 }
