@@ -40,7 +40,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     int64_t            quantMode,
     int64_t            batchSize,
     int64_t            maxSeqlenQ,
-    int64_t            maxSeqlenKv,
+    int64_t            maxSeqlenOriKv,
+    int64_t            maxSeqlenCmpKv,
     int64_t            oriTopk,
     int64_t            cmpTopk,
     int64_t            ropeHeadDim,
@@ -242,9 +243,19 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenKv</td>
+      <td>maxSeqlenOriKv</td>
       <td>输入</td>
-      <td>表示KV的最长Sequence Length。</td>
+      <td>表示ori_kv的最长Sequence Length。</td>
+      <td>支持非负数</br>建议值为0</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maxSeqlenCmpKv</td>
+      <td>输入</td>
+      <td>表示cmp_kv的最长Sequence Length。</td>
       <td>支持非负数</br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
@@ -465,7 +476,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     - ori_kv、cmp_kv Sequence Length与Query的获取规则一致
   - BSND场景
     - 当传入的layoutQOptional为"BSND"时，在未传入sequsedQOptional的情况下，必传maxSeqlenQ参数
-    - 当传入的layoutKvOptional为"BSND"时，在未传入sequsedOriKvOptional和sequsedCmpKvOptional的情况下，必传maxSeqlenKv参数
+    - 当传入的layoutKvOptional为"BSND"时，若hasOriKv为true，在未传入sequsedOriKvOptional的情况下，必传maxSeqlenOriKv参数；若hasCmpKv为true，在未传入sequsedCmpKvOptional的情况下，必传maxSeqlenCmpKv参数
   - TND场景
     - 当传入的layoutQOptional为"TND"时，必传cuSeqlensQOptional参数
     - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数
@@ -577,7 +588,8 @@ struct ArgContext {
     Tensor cmpTopkLengthOptional {};
     int64_t batchSize { 0 };
     int64_t maxSeqlenQ { 0 };
-    int64_t maxSeqlenKv { 0 };
+    int64_t maxSeqlenOriKv { 0 };
+    int64_t maxSeqlenCmpKv { 0 };
     int64_t oriTopk { 0 };
     int64_t cmpTopk { 0 };
     int64_t ropeHeadDim { 64 };
@@ -708,7 +720,8 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
 
     if (!scenario.hasCuSeq && !scenario.hasSeqused) {
         context.batchSize = batchSize;
-        context.maxSeqlenKv = 1024;
+        context.maxSeqlenOriKv = 1024;
+        context.maxSeqlenCmpKv = 1024;
         context.maxSeqlenQ = 1024;
         return ACL_SUCCESS;
     }
@@ -772,10 +785,10 @@ int main() {
         context.sequsedQOptional.data, context.sequsedOriKvOptional.data, context.sequsedCmpKvOptional.data,
         context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data, 
         context.numHeadsQ, context.numHeadsKv, context.headDim, context.quantMode, context.batchSize,
-        context.maxSeqlenQ, context.maxSeqlenKv, context.oriTopk, context.cmpTopk, context.ropeHeadDim,
-        context.cmpRatio, context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft = 127, context.oriWinRight = 0,
-        context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv, context.metaData.data,
-        &workspaceSize, &executor);
+        context.maxSeqlenQ, context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk,
+        context.ropeHeadDim, context.cmpRatio, context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft = 127,
+        context.oriWinRight = 0, context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv,
+        context.metaData.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
@@ -829,314 +842,3 @@ int main() {
     return 0;
 }
 ```
-
-## 调用说明
-
-| 调用方式  | 样例代码                                                                | 说明                                                                                          |
-| ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp) | 通过[`aclnnMixedQuantSparseFlashMlaMetadata`](./docs/aclnnMixedQuantSparseFlashMlaMetadata.md)接口方式调用 |
-
-## 附录：
-
-### 归属领域
-transformer/attention
-
-### Pytorch AtenIR
-```
-npu_mixed_quant_sparse_flash_mla_metadata(
-    int num_heads_q, int num_heads_kv, int head_dim, int quant_mode, *, Tensor? cu_seqlens_q=None,
-    Tensor? cu_seqlens_ori_kv=None, Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, Tensor? seqused_ori_kv=None,
-    Tensor? seqused_cmp_kv=None, Tensor? cmp_residual_kv=None, Tensor? ori_topk_length=None,
-    Tensor? cmp_topk_length=None, int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None,
-    int? ori_topk=None, int? cmp_topk=None, int? rope_head_dim=None, int? cmp_ratio=None, int? ori_mask_mode=None,
-    int? cmp_mask_mode=None, int? ori_win_left=None, int? ori_win_right=None, str? layout_q=None, str? layout_kv=None,
-    bool? has_ori_kv=None, bool? has_cmp_kv=None, int? batch_invariant=None) -> Tensor
-
-参考：
-aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
-    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional,
-    const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
-    const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional, int64_t numHeadsQ,
-    int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    int64_t oriTopk, int64_t cmpTopk, int64_t ropeHeadDim, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode,
-    int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional, const char *layoutKvOptional,
-    bool hasOriKv, bool hasCmpKv, int64_t batchInvariant, const aclTensor *metaData, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
-```
-
-### AtenIR参数描述
-<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 50px">
-    <col style="width: 80px">
-    <col style="width: 150px">
-    <col style="width: 50px">
-    <col style="width: 50px">
-    </colgroup>
-    <thead>
-        <tr>
-        <th>类型</th>
-        <th>名称</th>
-        <th>描述</th>
-        <th>GPU支持的数据类型</th>
-        <th>CPU支持的数据类型</th>
-        </tr></thead>
-    <tbody>
-        <tr>
-            <td>属性</td>
-            <td>num_heads_q</td>
-            <td>表示query的head个数</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>num_heads_kv</td>
-            <td>key和value对应的多头数</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>head_dim</td>
-            <td>表示token数</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>quant_mode</td>
-            <td>表示量化模式</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>cu_seqlens_q</td>
-            <td>表示不同batch中query的有效Sequence Length</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>cu_seqlens_ori_kv</td>
-            <td>表示不同batch中ori_kv的有效Sequence Length</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>cu_seqlens_cmp_kv</td>
-            <td>表示不同batch中cmp_kv的有效Sequence Length</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>seqused_q</td>
-            <td>表示不同batch中query实际参与运算的Sequence Length</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>seqused_ori_kv</td>
-            <td>表示不同batch中ori_kv实际参与运算的Sequence Length</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>seqused_cmp_kv</td>
-            <td>表示不同batch中cmp_kv实际参与运算的Sequence Length</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>cmp_residual_kv</td>
-            <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>ori_topk_length</td>
-            <td>预留参数，表示不同q token对应的ori_kv部分关键稀疏token的个数</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>输入</td>
-            <td>cmp_topk_length</td>
-            <td>预留参数，表示不同q token对应的cmp_kv部分关键稀疏token的个数</td>
-            <td>INT32</td>
-            <td>INT32</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>batch_size</td>
-            <td>表示batch数量</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>max_seqlen_q</td>
-            <td>表示query的最长seqlen</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>max_seqlen_kv</td>
-            <td>表示kv的最长seqlen</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>ori_topk</td>
-            <td>表示ori_kv中筛选出的关键稀疏token的个数</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>cmp_topk</td>
-            <td>表示cmp_kv中筛选出的关键稀疏token的个数</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>rope_head_dim</td>
-            <td>rope头的维度</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>cmp_ratio</td>
-            <td>表示对cmp_kv的压缩率</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>ori_mask_mode</td>
-            <td>表示q和ori_kv计算的mask模式</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>cmp_mask_mode</td>
-            <td>表示q和cmp_kv计算的mask模式</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>ori_win_left</td>
-            <td>表示q和ori_kv计算中q对过去token计算的数量</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>ori_win_right</td>
-            <td>表示q和ori_kv计算中q对未来token计算的数量</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>layout_q</td>
-            <td>表示query的排列格式</td>
-            <td>STRING</td>
-            <td>STRING</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>layout_kv</td>
-            <td>表示kv的排列格式</td>
-            <td>STRING</td>
-            <td>STRING</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>has_ori_kv</td>
-            <td>用于标识是否含有ori_kv</td>
-            <td>BOOL</td>
-            <td>BOOL</td>
-        </tr>
-        <tr>
-            <td>属性</td>
-            <td>has_cmp_kv</td>
-            <td>用于标识是否含有cmp_kv</td>
-            <td>BOOL</td>
-            <td>BOOL</td>
-        </tr>
-        <tr>
-            <td>输出</td>
-            <td>output</td>
-            <td>输出tensor, 表示负载均衡结果输出</td>
-            <td>INT32, INT64</td>
-            <td>INT32, INT64</td>
-        </tr>
-    </tbody>
-    </table>
-
-### HostAPI接口约束
-
-<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 50px">
-    <col style="width: 50px">
-    <col style="width: 50px">
-    </colgroup>
-    <thead>
-        <tr>
-            <th>功能维度</th>
-            <th>以支持</th>
-            <th>应支持但未支持</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>数据类型</td>
-            <td>INT32, INT64</td>
-            <td>NA</td>
-        </tr>
-        <tr>
-            <td>数据格式</td>
-            <td>ND</td>
-            <td>NA</td>
-        </tr>
-        <tr>
-            <td>空Tensor</td>
-            <td>支持空进空出</td>
-            <td>NA</td>
-        </tr>
-        <tr>
-            <td>非连续Tensor</td>
-            <td>支持输入非连续，不支持输出非连续</td>
-            <td>NA</td>
-        </tr>
-    </tbody>
-    </table>
-
-### HostAPI异常处理
-以下场景会出现参数校验异常：
-
-1. 传入的Tensor数据类型不在支持的范围内
-2. 传入的数据未满足约束条件，参考[约束说明](#约束说明)
-
-### 兼容性说明
-1. 功能兼容性：兼容 Pytorch/TensorFlow/MindSpore/Onnx 框架定义；
-2. 平台兼容性：已支持的芯片版本，功能无差异
-3. 接口兼容性：新增接口
-4. 行为兼容性：新增接口
-5. 性能兼容性：新增接口
-6. 资源兼容性：新增接口
-7. 错误处理兼容性：新增接口
